@@ -1,25 +1,18 @@
 /**
- * Tenant STT-config client. Three sub-resources:
+ * Tenant STT-config client. Two sub-resources:
  *  - the versioned config ROW (fallback pointer + auto-switch knobs; OCC If-Match),
- *  - the fallback-candidate pipelines (read-only picker options),
- *  - the versioned BYO CREDENTIALS (write-only key, masked reads; OCC If-Match —
- *    the credential-OCC divergence from the TTS precedent).
+ *  - the fallback-candidate pipelines (read-only picker options).
+ *
+ * TASK-862 removed the BYO credential functions that used to sit here (dead —
+ * no component called them) together with their gateway facade
+ * (`admin/stt-config/credentials/**`); credentials are edited and tested on
+ * `/ai-providers` (`features/ai-providers`). The rest retires under TASK-861.
  * Paths are gateway-relative; the shared core prepends the BFF proxy mount.
  */
 
-import { deleteJson, getJson, getWithEtag, postJson, request } from '@/shared/api';
+import { getJson, getWithEtag, request } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
-import type {
-  EffectiveSttConfig,
-  SetSttCredentialRequest,
-  SetSttFallbackRequest,
-  SttConfigRow,
-  SttCredential,
-  SttPipelineCandidate,
-  SttProvider,
-  TestSttCredentialRequest,
-  TestSttCredentialResult,
-} from './types';
+import type { EffectiveSttConfig, SetSttFallbackRequest, SttConfigRow, SttPipelineCandidate } from './types';
 
 const BASE = 'admin/stt-config';
 
@@ -55,32 +48,4 @@ export function putSttRow(patch: Omit<SetSttFallbackRequest, 'expectedVersion'>,
 /** Enabled, cloud-engine-backed pipelines the tenant may point its fallback at. */
 export function getSttFallbackCandidates(): Promise<SttPipelineCandidate[]> {
   return getJson(`${BASE}/fallback-candidates`);
-}
-
-/** Masked BYO credentials for every configured provider (never the key). */
-export function getSttCredentials(): Promise<SttCredential[]> {
-  return getJson(`${BASE}/credentials`);
-}
-
-/** Set or rotate a provider's write-only BYO key under OCC (0 = create). */
-export function setSttCredential(
-  provider: SttProvider,
-  body: Omit<SetSttCredentialRequest, 'expectedVersion'>,
-  version: number,
-): Promise<SttCredential> {
-  return request<SttCredential>(`${BASE}/credentials/${provider}`, {
-    method: 'PUT',
-    body: { ...body, expectedVersion: version },
-    etag: etagFor(version),
-  }).then((result) => result.data);
-}
-
-/** Remove a provider's BYO credential (soft delete → 204). */
-export function removeSttCredential(provider: SttProvider): Promise<void> {
-  return deleteJson(`${BASE}/credentials/${provider}`);
-}
-
-/** Ephemeral "Test connection" probe — never persisted, no OCC. Validates before (or independent of) saving. */
-export function testSttCredential(provider: SttProvider, body: TestSttCredentialRequest): Promise<TestSttCredentialResult> {
-  return postJson(`${BASE}/credentials/${provider}/test`, body);
 }

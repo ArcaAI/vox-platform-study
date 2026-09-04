@@ -172,8 +172,6 @@ describe('modelHasSoftDelete', () => {
       'AiUsageOutbox',
       'AiUsageRollupHourly',
       'AiUsageRollupDaily',
-      // Rule 6 — the provider-reconciliation audit trail.
-      'ProviderReconciliationRun',
       // A credit memo against a FINALIZED invoice. Finalized
       // periods are immutable, so an adjustment can never be retracted by
       // deleting it; the correction path is another adjustment. No

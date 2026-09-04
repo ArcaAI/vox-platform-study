@@ -41,6 +41,7 @@ const SPEC_FIELDS = [
   'sarvamPublicApiAllowed',
 ] as const;
 
+/** @deprecated TASK-862 — removed in R3 (replaced by the TTS Agent + assignment, TASK-863). */
 @Injectable()
 export class TenantTtsConfigService extends BaseService implements ITenantTtsConfigService {
   constructor(

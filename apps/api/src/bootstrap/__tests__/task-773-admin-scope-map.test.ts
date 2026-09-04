@@ -35,7 +35,10 @@ const repoRoot = cwd.endsWith(join('apps', 'api')) ? join(cwd, '..', '..') : cwd
 // 65 -> 63: deleted `DepartmentAgentController` and
 // `DepartmentAgentResyncController`, whose rows both carried
 // `admin:department-agent:manage` — a scope that went with them.
-const EXPECTED_ROW_COUNT = 63;
+// 63 -> 62: TASK-862 deleted `AdminReconciliationController` (Provider Reconciliation removed outright).
+// 62 -> 61: TASK-862 deleted the legacy `AiProviderConnectionController` (`admin/ai-providers` alias).
+// 61 -> 60: TASK-862 deleted `AiRuntimeProfileController` (`admin:ai-runtime-profile:manage` retired with it).
+const EXPECTED_ROW_COUNT = 60;
 
 describe('TASK_773_ADMIN_SCOPE_MAP', () => {
   it('has not silently grown or shrunk', () => {

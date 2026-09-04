@@ -379,12 +379,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'GlobalSetting' }],
     reserved: true,
   },
-  'admin:ai-runtime-profile:manage': {
-    description: 'Manage AI runtime profiles',
-    category: 'Admin',
-    implies: [{ action: 'manage', subject: 'all' }],
-    reserved: true,
-  },
   'admin:ai-service:manage': {
     description: 'Manage AI service configuration',
     category: 'Admin',

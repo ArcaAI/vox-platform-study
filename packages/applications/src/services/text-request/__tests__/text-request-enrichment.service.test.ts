@@ -92,7 +92,7 @@ function makeEnrichment(opts: { rowsByTenant?: Record<string, unknown[]>; entitl
   );
   vi.spyOn((connections as any).logger, 'warn').mockImplementation(() => undefined);
 
-  const enrichment = new TextRequestEnrichmentService(cls as any, undefined, connections);
+  const enrichment = new TextRequestEnrichmentService(cls as any, connections);
   vi.spyOn((enrichment as any).logger, 'warn').mockImplementation(() => undefined);
 
   return { enrichment, connections, repo, secrets, entitlements };

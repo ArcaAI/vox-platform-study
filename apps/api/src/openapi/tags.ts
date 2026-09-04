@@ -208,18 +208,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'The model catalog: which models exist, their metadata, and their label taxonomies.',
   },
   {
-    name: 'admin-ai-provider-connections-legacy',
-    displayName: 'Provider Connections (legacy alias)',
-    plane: 'admin',
-    description: 'Deprecated alias of the provider-connection routes. Use admin-provider-connections.',
-  },
-  {
-    name: 'admin-ai-runtime-profiles',
-    displayName: 'AI Runtime Profiles',
-    plane: 'admin',
-    description: 'Runtime tuning profiles applied to inference requests.',
-  },
-  {
     name: 'admin-ai-routing-policies',
     displayName: 'AI Routing Policies',
     plane: 'admin',
@@ -389,7 +377,7 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     name: 'admin-usage',
     displayName: 'Usage & Consumption',
     plane: 'admin',
-    description: 'Metered consumption, cost attribution, and provider reconciliation.',
+    description: 'Metered consumption and cost attribution.',
   },
   { name: 'admin-user-departments', displayName: 'User Departments', plane: 'admin', description: 'Assignment of users to departments.' },
   { name: 'admin-users', displayName: 'Users', plane: 'admin', description: 'User lifecycle, credentials, and role assignment.' },

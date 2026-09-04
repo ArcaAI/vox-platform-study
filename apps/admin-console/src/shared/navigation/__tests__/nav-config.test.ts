@@ -91,16 +91,22 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   //     implied it was a sibling of the configurations rather than their knobs.
   // Net: 10-19 loses both (25 -> 23), 20-29 gains `/ai-platform` (8 -> 9),
   // so the total goes 60 -> 59.
-  // TASK-863: /agents is back as a REAL screen (the Agent entity), 59 -> 60, tier 30-49 21 -> 22.
-  it('covers the full 60-route rail map across the four tiers (including /ai-platform, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(60);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
+  // TASK-862 REMOVED `/ai-operations/reconciliation` (Provider Reconciliation
+  // deleted outright, owner directive 2026-09-04; the URL keeps a one-release
+  // redirect to `/ai-operations/consumption`), taking 59 -> 58 and tier 10-19
+  // from 23 -> 22. TASK-862 also DISSOLVED `/ai-platform` (one-release redirect)
+  // into the one `/ai-providers` screen (tier 20-29): 20-29 stays at 9.
+  // TASK-863: /agents is back as a REAL screen (the Agent entity), 58 -> 59,
+  // tier 30-49 21 -> 22.
+  it('covers the full 59-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    // TASK-863: 61 -> 62 (`/agents` returns to the rail as a real screen).
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(62);
+    // TASK-862: 62 -> 60; TASK-863: 60 -> 61 (`/agents` returns to the rail as a real screen).
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -125,40 +131,37 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']).map((entry) => entry.route)).not.toContain('/account');
   });
 
-  it('merges the standalone /stt-config, /tts-config and /ai-providers screens into the /ai-configuration hub', () => {
-    for (const route of ['/stt-config', '/tts-config', '/ai-providers']) {
+  it('keeps the retired per-capability credential screens (/stt-config, /tts-config) out of the rail', () => {
+    for (const route of ['/stt-config', '/tts-config']) {
       expect(NAV_ENTRIES.some((entry) => entry.route === route)).toBe(false);
     }
     expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-configuration')).toBe(true);
   });
 
-  it('collapses the two task-default tiers onto one shared-audience screen ', () => {
-    // The platform-default screen is GONE from the rail: SYSTEM and the working
-    // tenant are the two tiers of one cascade, so they are a control on one
-    // screen rather than two routes. `/ai-task-defaults` keeps a one-release
-    // redirect, and a redirect is not a navigable destination.
-    expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-task-defaults')).toBe(false);
-    // Same for the older rename, still absent.
-    expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-model-defaults')).toBe(false);
+  it('lists the ONE AI provider screen (TASK-862) and none of the surfaces it absorbed', () => {
+    // `/ai-platform` (hub), `/ai-task-defaults` and `/ai-model-defaults` all
+    // keep or kept a one-release redirect; a redirect is not a navigable
+    // destination and has no place in the rail.
+    for (const route of ['/ai-platform', '/ai-task-defaults', '/ai-model-defaults']) {
+      expect(NAV_ENTRIES.some((entry) => entry.route === route)).toBe(false);
+    }
 
-    const unified = NAV_ENTRIES.find((entry) => entry.route === '/ai-platform');
-    expect(unified?.label).toBe('AI Platform');
-    // Tier 20-29: cross-tenant for a super admin, tenant-scoped for a tenant
-    // admin — which is exactly what the shared audience tier means.
-    expect(unified?.tier).toBe('20-29');
-    expect(unified?.domain).toBe('ai-platform');
-    // OR-gated over the reads its tabs make, so a caller who can read any one
-    // of them reaches the screen and sees only the tabs they may read.
-    expect(unified?.required).toEqual([
-      ['manage', 'AiRoutingPolicy'],
-      ['read', 'AiTaskDefault'],
+    const providers = NAV_ENTRIES.find((entry) => entry.route === '/ai-providers');
+    expect(providers?.label).toBe('AI providers');
+    // Tier 20-29: cross-tenant for a super admin (SYSTEM tier), tenant-scoped
+    // for a tenant admin — the two tiers of one cascade, one screen.
+    expect(providers?.tier).toBe('20-29');
+    expect(providers?.domain).toBe('ai-platform');
+    // Mirrors `ProviderConnectionController`'s `CanRead`/`CanManage('GlobalSetting')`.
+    expect(providers?.required).toEqual([
       ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
     ]);
-    expect(unified?.implemented).toBe(true);
+    expect(providers?.implemented).toBe(true);
 
-    // `/ai-configuration` survives, narrowed to the surfaces that did NOT move:
-    // speech and voice are pipeline and voice BINDINGS, not provider
-    // configuration. Its URL is unchanged, so it takes no redirect.
+    // `/ai-configuration` survives (deprecated, removed in R4 with the ASR/TTS
+    // agents): speech and voice are pipeline and voice BINDINGS, not provider
+    // configuration. Its URL is unchanged, so it takes no redirect yet.
     const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
     expect(tenant?.label).toBe('Speech & Voice');
     expect(tenant?.tier).toBe('30-49');
@@ -169,20 +172,14 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(tenant?.implemented).toBe(true);
   });
 
-  it('retires /ai-runtime-profiles as a rail PEER without retiring the route', () => {
-    // Runtime profiles tune a (provider, model) pair, so they belong beside the
-    // configuration that names that pair. The rail entry goes; the URL stays,
-    // reached from the Providers tab — which is why there is no redirect stub.
+  it('carries no /ai-runtime-profiles entry — the route was removed with AiRuntimeProfile (TASK-862)', () => {
     expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-runtime-profiles')).toBe(false);
   });
 
-  it('moves provider reconciliation to Platform Ops — it is a billing auditor, not an AI surface', () => {
-    const reconciliation = NAV_ENTRIES.find((entry) => entry.route === '/ai-operations/reconciliation');
-    expect(reconciliation?.domain).toBe('platform-ops');
-    // Domain retag only: the URL, tier and gate are untouched, so no redirect
-    // is possible or needed.
-    expect(reconciliation?.tier).toBe('10-19');
-    expect(reconciliation?.required).toEqual([['manage', 'all']]);
+  it('no longer lists provider reconciliation — the feature was removed outright (TASK-862)', () => {
+    // The route keeps a one-release redirect to `/ai-operations/consumption`,
+    // and a redirect has no place in a navigation list.
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-operations/reconciliation')).toBe(false);
   });
 
   it('re-tiers AI models to super-admin only and folds frontend config into the tenant detail', () => {
@@ -460,7 +457,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/ai-operations/runs', '10-19', [['manage', 'all']]],
   ['/ai-operations/metrics', '10-19', [['manage', 'all']]],
   ['/ai-operations/consumption', '10-19', [['manage', 'all']]],
-  ['/ai-operations/reconciliation', '10-19', [['manage', 'all']]],
+  // `/ai-operations/reconciliation` REMOVED by TASK-862 (Provider Reconciliation deleted outright).
   ['/billing', '10-19', [['manage', 'all']]],
   ['/queues', '10-19', [['manage', 'all']]],
   ['/schedulers', '10-19', [['manage', 'all']]],
@@ -507,16 +504,15 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
       ['update', 'Tenant'],
     ],
   ],
-  // the unified AI provider console. Shared audience: cross-tenant
-  // for a super admin, tenant-scoped for a tenant admin. OR-gated over the
-  // reads its tabs make.
+  // TASK-862 — the ONE AI provider screen (replaced the `/ai-platform` hub).
+  // Shared audience: cross-tenant for a super admin, tenant-scoped for a tenant
+  // admin. Mirrors `ProviderConnectionController`'s GlobalSetting gate.
   [
-    '/ai-platform',
+    '/ai-providers',
     '20-29',
     [
-      ['manage', 'AiRoutingPolicy'],
-      ['read', 'AiTaskDefault'],
       ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
     ],
   ],
   // / OD-7 (2026-09-01) — RELOCATED from the 10-19 block, where it read
@@ -638,21 +634,18 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
 const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly string[]]> = [
   ['overview', ['/dashboard', '/monitoring', '/releases']],
   ['tenancy', ['/tenants', '/tenants/storage', '/entitlements', '/billing', '/tenant-profile', '/departments']],
+  // TASK-862 (README §3.4): AI Platform = AI models · AI providers · AI
+  // services (+ its three engine views) · Agentic policy. `/ai-configuration`
+  // stays until R4 (deprecated bindings). `/ai-operations/*` moved to Platform
+  // Ops (observability), `/tools-mcp` to Knowledge & Agents (agent tooling).
   [
     'ai-platform',
     [
       '/ai-models',
-      // the unified provider console. It absorbed
-      // `/ai-task-defaults` (retired) and the provider/model half of
-      // `/ai-configuration` (narrowed, not retired).
-      '/ai-platform',
+      '/ai-providers',
       '/ai-services',
       '/agentic-policy',
       '/ai-configuration',
-      '/tools-mcp',
-      '/ai-operations/runs',
-      '/ai-operations/metrics',
-      '/ai-operations/consumption',
       // The self-hosted engines and the model registry of record.
       '/ai-services/lm-studio',
       '/ai-services/vllm',
@@ -661,30 +654,38 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
   ],
   // `/document-templates` sits next to `/context-schemas`: the two
   // halves of one contract — what context may go in, what document comes out.
-  // TASK-863: `/agents` (the Agent entity) joins knowledge-agents, 5 -> 6.
-  ['knowledge-agents', ['/agents', '/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles']],
-  ['clinical', ['/consultations', '/consent', '/audio/pipelines', '/audio/transcription-jobs']],
+  // TASK-862 (README §3.4): Knowledge & Agents = Agents (TASK-863) · Workflow
+  // Studio · Assignments · Prompt templates · Context schemas · Document
+  // templates · Knowledge base — plus Tools & MCP (the tools agents call).
+  // TASK-863: `/agents` (the Agent entity) joins knowledge-agents, 8 -> 9.
   [
-    'workflow-harness',
-    [
-      '/harness/policy',
-      '/harness/observability',
-      '/harness/workflows',
-      '/harness/pipeline-policy',
-      '/workflow-runs',
-      '/workflow-studio',
-      '/workflow-studio/assignments',
-    ],
+    'knowledge-agents',
+    ['/agents', '/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles', '/tools-mcp', '/workflow-studio', '/workflow-studio/assignments'],
   ],
+  ['clinical', ['/consultations', '/consent', '/audio/pipelines', '/audio/transcription-jobs']],
+  ['workflow-harness', ['/harness/policy', '/harness/observability', '/harness/workflows', '/harness/pipeline-policy', '/workflow-runs']],
   ['identity-access', ['/users', '/rbac/roles', '/rbac/policies', '/api-keys', '/identity-providers', '/allowed-origins', '/security-policy']],
   // `/settings-registry` joins `/settings` here: same
   // domain, different resource — descriptor-governed keys vs raw rows/secrets.
-  // `/ai-operations/reconciliation` joined Platform Ops in: a vendor
-  // BILLING auditor that never reads an AI table, filed under AI only because
-  // it shares a URL prefix with its `/ai-operations/*` neighbours.
+  // `/ai-operations/reconciliation` used to sit here as a vendor BILLING
+  // auditor; TASK-862 removed the feature outright — and moved the three
+  // surviving `/ai-operations/*` dashboards (runs, metrics, consumption) here:
+  // observability over runs, latency and spend is Platform Ops work.
   [
     'platform-ops',
-    ['/queues', '/schedulers', '/audit-logs', '/db-studio', '/rate-limits', '/settings-registry', '/settings', '/storage', '/ai-operations/reconciliation'],
+    [
+      '/queues',
+      '/schedulers',
+      '/audit-logs',
+      '/db-studio',
+      '/rate-limits',
+      '/settings-registry',
+      '/settings',
+      '/storage',
+      '/ai-operations/runs',
+      '/ai-operations/metrics',
+      '/ai-operations/consumption',
+    ],
   ],
   [
     'playground',
@@ -753,8 +754,13 @@ describe('NAV_DOMAINS', () => {
   // ai-platform 14 -> 12 (`/ai-task-defaults` and
   // `/ai-runtime-profiles` retired from the rail, `/ai-platform` added,
   // `/ai-operations/reconciliation` retagged out) and platform-ops 8 -> 9.
-  // TASK-863: knowledge-agents 5 -> 6 (/agents).
-  it('partitions the 60 rail routes exactly as the ticket Domain Model does (3·6·12·6·4·7·7·9·6)', () => {
+  // platform-ops 9 -> 8: TASK-862 removed `/ai-operations/reconciliation`.
+  // TASK-862 README §3.4 retag: ai-platform 12 -> 8 (`/ai-platform` → `/ai-providers`,
+  // `/tools-mcp` → knowledge-agents, `/ai-operations/*` ×3 → platform-ops);
+  // knowledge-agents 5 -> 8 (+ `/tools-mcp`, `/workflow-studio`, `/workflow-studio/assignments`);
+  // workflow-harness 7 -> 5; platform-ops 8 -> 11.
+  // TASK-863: knowledge-agents 8 -> 9 (/agents).
+  it('partitions the 59 rail routes exactly as the ticket Domain Model does (3·6·8·9·4·5·7·11·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -763,7 +769,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(60);
+    expect(NAV_ENTRIES).toHaveLength(59);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {
@@ -860,7 +866,7 @@ describe('activeNavDomainId (AC-6 — selection is derived from the URL)', () =>
 
   it('prefers the longest prefix, so /tenants/storage keeps its own entry', () => {
     expect(activeNavDomainId('/tenants/storage', all)).toBe('tenancy');
-    expect(activeNavDomainId('/workflow-studio/assignments', all)).toBe('workflow-harness');
+    expect(activeNavDomainId('/workflow-studio/assignments', all)).toBe('knowledge-agents');
   });
 
   it('follows the domain axis, not the tier axis (OD-2)', () => {

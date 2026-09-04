@@ -334,9 +334,14 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'all']],
     implemented: true,
   },
+  // TASK-862 (README §3.4): the AI Platform domain lists AI models · AI
+  // providers · AI services · Agentic policy. The three `/ai-operations/*`
+  // dashboards are OBSERVABILITY over runs, latency and spend — Platform Ops
+  // work, filed under AI only because of a shared URL prefix — so they move
+  // there. Domain and route are independent (OD-2/OD-3): URLs are unchanged.
   {
     route: '/ai-operations/runs',
-    domain: 'ai-platform',
+    domain: 'platform-ops',
     label: 'AI operations — runs',
     tier: '10-19',
     icon: IconTimeline,
@@ -345,7 +350,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/ai-operations/metrics',
-    domain: 'ai-platform',
+    domain: 'platform-ops',
     label: 'AI operations — metrics',
     tier: '10-19',
     icon: IconChartHistogram,
@@ -354,30 +359,10 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/ai-operations/consumption',
-    domain: 'ai-platform',
+    domain: 'platform-ops',
     label: 'Consumption & cost',
     tier: '10-19',
     icon: IconReportMoney,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    // the provider-reconciliation audit trail. Platform-wide
-    // (a vendor bills the platform, not a tenant), so tier 10-19 with no
-    // working-tenant gate, unlike its /ai-operations neighbours.
-    //
-    // step 3 moved it out of `ai-platform` and into `platform-ops`:
-    // it is a VENDOR BILLING auditor and never touches `AiModel`, a provider
-    // connection or a routing configuration. It sat in the AI domain because it
-    // shares a URL prefix with `/ai-operations/*`, which is a routing accident
-    // rather than a capability. Domain and route are independent (OD-2/OD-3),
-    // so the URL is unchanged — this is neither a rename nor a retier, and a
-    // redirect stub would be a duplicate route rather than a courtesy.
-    route: '/ai-operations/reconciliation',
-    domain: 'platform-ops',
-    label: 'Provider reconciliation',
-    tier: '10-19',
-    icon: IconScale,
     required: [['manage', 'all']],
     implemented: true,
   },
@@ -517,28 +502,24 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // the rail into USER_MENU_ENTRIES (below) — they are personal chrome, not
   // capability domains. Tier and ability gate are unchanged.
 
-  // THE unified AI provider console. Tier 20-29 because it renders
+  // TASK-862 — THE one AI provider screen. Tier 20-29 because it renders
   // cross-tenant for a super admin and tenant-scoped for a tenant admin, and
   // because tenancy is a CONTROL on the screen rather than a route: the SYSTEM
   // (platform-default) tier and the working tenant are the two tiers of ONE
-  // cascade, so `/ai-task-defaults` and the AI half of `/ai-configuration`
-  // collapsed into it.
-  //
-  // The ability gate is the OR of the reads its tabs make, so a caller who can
-  // read any one of them reaches the screen and sees only the tabs they may
-  // read; each surface is separately gated inside, and the gateway stays
-  // authoritative (routing-policy writes are SUPER_ADMIN-only and answer 403,
-  // which the Providers tab renders as "managed by the platform").
+  // cascade. It replaced the five-tab `/ai-platform` hub (one-release redirect
+  // here); the model catalogue is `/ai-models`, engine status `/ai-services/*`,
+  // and task routing moves to the registry election (TASK-860) + the Agent
+  // (TASK-863). The gate mirrors `ProviderConnectionController`'s
+  // `CanRead`/`CanManage('GlobalSetting')`.
   {
-    route: '/ai-platform',
+    route: '/ai-providers',
     domain: 'ai-platform',
-    label: 'AI Platform',
+    label: 'AI providers',
     tier: '20-29',
     icon: IconCpu,
     required: [
-      ['manage', 'AiRoutingPolicy'],
-      ['read', 'AiTaskDefault'],
       ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
     ],
     implemented: true,
   },
@@ -548,11 +529,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // tenant-scoped for a tenant admin. Its ability gate narrows from the
   // `manage:all` super-admin proxy to the resource's own `manage:McpServer`,
   // the grant seeded tenant-admin roles have always held (`manage:all` still
-  // matches it, so super admins are unaffected). Domain stays `ai-platform`
-  // — domain and tier are orthogonal (OD-2/OD-3).
+  // matches it, so super admins are unaffected). Domain: `knowledge-agents`
+  // since TASK-862 — MCP connectors are the TOOLS an agent calls, so they sit
+  // beside Agents and Workflow Studio (README §3.4), not under provider
+  // configuration. Domain and tier are orthogonal (OD-2/OD-3).
   {
     route: '/tools-mcp',
-    domain: 'ai-platform',
+    domain: 'knowledge-agents',
     label: 'Tools & MCP',
     tier: '20-29',
     icon: IconPlugConnected,
@@ -785,9 +768,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // controllers). `manage` mirrors `WorkflowDefinitionController`'s class-level
   // `@CanManage('WorkflowDefinition')` gate — the console never widens past what the gateway
   // itself requires.
+  // TASK-862 (README §3.4): Knowledge & Agents lists Agents · Workflow Studio ·
+  // Assignments · Prompt templates · Context schemas · Document templates ·
+  // Knowledge base — authoring surfaces. The Studio and its assignment matrix
+  // move here; `/workflow-runs` stays with the harness (observability).
   {
     route: '/workflow-studio',
-    domain: 'workflow-harness',
+    domain: 'knowledge-agents',
     label: 'Workflow Studio',
     tier: '30-49',
     icon: IconBinaryTree2,
@@ -802,7 +789,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // Design gate waived for this screen (owner decision).
   {
     route: '/workflow-studio/assignments',
-    domain: 'workflow-harness',
+    domain: 'knowledge-agents',
     label: 'Workflow Assignments',
     tier: '30-49',
     icon: IconLayoutGrid,
@@ -821,6 +808,11 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // would recreate the by-which-table grouping exists to remove.
   // `required` is the OR of the two remaining reads; each tab is separately
   // `<RequirePermission>`-gated in the screen.
+  //
+  // DEPRECATED (TASK-862, removed in R4): both bindings retire with the ASR and
+  // TTS Agents (TASK-861/863), when this route becomes a one-release
+  // `redirect('/agents')`. The Models/Providers halves it used to link to now
+  // live on `/ai-providers`.
   {
     route: '/ai-configuration',
     domain: 'ai-platform',
