@@ -119,6 +119,20 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package tts --extra kokoro ${TTS_EXTRAS} --no-dev --no-editable --inexact \
         ${UV_NO_CUDA_SKIPS}
 
+# Layer 2b (indic-parler variant only): `parler-tts` is not on PyPI and hard-pins
+# `transformers==4.46.1`, which the shared uv.lock cannot satisfy next to nlp/stt —
+# so, exactly like the spaCy wheel above, it is installed HERE rather than declared
+# in apps/tts/pyproject.toml. `--no-deps` keeps the lock's resolution (transformers,
+# torch, accelerate, sentencepiece) authoritative. TASK-860 pins the commit because
+# the repo publishes no tags; parler-tts's runtime compatibility with the locked
+# transformers major is an open item on the TASK-860 README.
+ARG PARLER_TTS_GIT=git+https://github.com/huggingface/parler-tts.git@d108732cd57788ec86bc857d99a6cabd66663d68
+RUN --mount=type=cache,target=/root/.cache/uv \
+    case "${TTS_EXTRAS}" in \
+      *indic-parler*) uv pip install --python /app/.venv/bin/python --no-deps "parler-tts @ ${PARLER_TTS_GIT}" ;; \
+      *) echo "indic-parler variant not requested; skipping parler-tts" ;; \
+    esac
+
 RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
     && find /app/.venv/lib -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true \
     && find /app/.venv/lib \( -name "*.pyc" -o -name "*.pyo" \) -type f -delete 2>/dev/null || true

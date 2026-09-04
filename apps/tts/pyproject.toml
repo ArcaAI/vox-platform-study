@@ -89,8 +89,11 @@ kokoro = [
 # sentencepiece/accelerate tail on top of a much larger weight set, so it is
 # installed by the `[indic-parler]` image VARIANT
 # (`docker build --build-arg TTS_EXTRAS="--extra indic-parler"`).
-# `parler-tts` is not on PyPI; TASK-860 pins it to a git TAG so the shared
-# `uv.lock` records one commit (uv resolves git sources). The ai4bharat
+# `parler-tts` is not on PyPI and hard-pins `transformers==4.46.1`, which no
+# single workspace lock can satisfy next to nlp/stt's transformers floors —
+# so it is deliberately NOT a locked dependency: the Dockerfile's
+# `indic-parler` variant installs it with `uv pip install --no-deps` from the
+# git commit pinned there (TASK-860; the repo publishes no tags). The ai4bharat
 # weights are HF-gated — the publisher mirrors them into the bucket
 # (OD-7 licence acceptance). `transformers` is pinned here as a direct
 # requirement because indic_parler uses it directly.
@@ -98,7 +101,6 @@ indic-parler = [
     "transformers>=4.46.1",
     "sentencepiece>=0.2.2",
     "accelerate>=1.0.0",
-    "parler-tts @ git+https://github.com/huggingface/parler-tts.git@v0.2.2",
 ]
 
 # Back-compat aggregate: everything local. Kept so `--extra local` in existing
