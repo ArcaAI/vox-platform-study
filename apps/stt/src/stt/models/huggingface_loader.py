@@ -15,6 +15,17 @@ from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
 
+# transformers release that ships `AutoModelForRNNT` (the native transducer
+# head NVIDIA's Nemotron / Parakeet-RNNT checkpoints load through). Decision
+# D-3 (TASK-860): transformers first, parakeet.cpp GGUF as the optional engine.
+RNNT_MIN_TRANSFORMERS = "5.13"
+
+# `config.json` facts that mark a transducer (RNNT / TDT) ASR checkpoint.
+_RNNT_MODEL_TYPES = frozenset(
+    {"parakeet_rnnt", "parakeet_tdt", "fastconformer_rnnt", "nemotron_asr", "nemotron_rnnt"}
+)
+_RNNT_ARCH_MARKERS = ("ForRNNT", "ForTransducer", "ForTDT", "RNNT")
+
 
 class HuggingFaceLoader(BaseModelLoader):
     """Load models from HuggingFace Hub using Transformers library."""
@@ -75,7 +86,7 @@ class HuggingFaceLoader(BaseModelLoader):
             )
 
             # Load model in a thread pool to avoid blocking the event loop.
-            model, tokenizer, processor, feature_extractor, is_multimodal_lm = (
+            model, tokenizer, processor, feature_extractor, is_multimodal_lm, is_rnnt = (
                 await asyncio.to_thread(
                     self._load_by_task,
                     model_source=model_source,
@@ -108,6 +119,8 @@ class HuggingFaceLoader(BaseModelLoader):
             if is_multimodal_lm:
                 extra["multimodal_lm"] = True
                 extra["max_audio_seconds"] = 30
+            if is_rnnt:
+                extra["rnnt"] = True
 
             return LoadedModel(
                 model_id=model_config.id,
@@ -139,7 +152,7 @@ class HuggingFaceLoader(BaseModelLoader):
         revision: str | None,
         token: str | None,
         attn_implementation: str | None = None,
-    ) -> tuple[Any, Any, Any, Any, bool]:
+    ) -> tuple[Any, Any, Any, Any, bool, bool]:
         """Load model components based on task type.
 
         For ASR models, peeks at ``config.json`` via ``AutoConfig`` to
@@ -147,7 +160,7 @@ class HuggingFaceLoader(BaseModelLoader):
         Whisper / Seq2Seq / CTC models.  No manual tags needed.
 
         Returns:
-            (model, tokenizer, processor, feature_extractor, is_multimodal_lm)
+            (model, tokenizer, processor, feature_extractor, is_multimodal_lm, is_rnnt)
         """
         import transformers
 
@@ -174,6 +187,7 @@ class HuggingFaceLoader(BaseModelLoader):
         processor = None
         feature_extractor = None
         is_multimodal_lm = False
+        is_rnnt = False
 
         common_kwargs: dict[str, Any] = {
             "cache_dir": cache_dir,
@@ -192,7 +206,37 @@ class HuggingFaceLoader(BaseModelLoader):
                 is_multimodal_lm,
             )
 
-            if is_multimodal_lm:
+            is_rnnt = not is_multimodal_lm and self._is_rnnt_model(
+                transformers, model_source, common_kwargs
+            )
+
+            if is_rnnt:
+                # Nemotron / Parakeet transducer heads (TASK-860 D-3). Gated on
+                # the transformers release that ships the auto class: an older
+                # transformers would otherwise fall into the Whisper → Seq2Seq
+                # → CTC chain and fail with a misleading "not a Whisper" error.
+                AutoModelForRNNT = getattr(transformers, "AutoModelForRNNT", None)
+                if AutoModelForRNNT is None:
+                    raise ModelLoadError(
+                        f"'{model_source}' is a transducer (RNNT/TDT) ASR checkpoint; "
+                        f"loading it needs transformers >= {RNNT_MIN_TRANSFORMERS} "
+                        "(AutoModelForRNNT) — installed "
+                        f"{getattr(transformers, '__version__', 'unknown')}. Bump the "
+                        "`ml` extra, or register the model on `libraryName: parakeet.cpp` "
+                        "with a GGUF conversion instead."
+                    )
+                try:
+                    model = AutoModelForRNNT.from_pretrained(
+                        model_source,
+                        dtype=torch_dtype,
+                        **_device_map_kwargs,
+                        **common_kwargs,
+                    )
+                except Exception as err:
+                    raise ModelLoadError(
+                        f"Cannot load RNNT ASR model '{model_source}': {err}"
+                    ) from err
+            elif is_multimodal_lm:
                 AutoModelForMultimodalLM = getattr(
                     transformers,
                     "AutoModelForMultimodalLM",
@@ -309,7 +353,7 @@ class HuggingFaceLoader(BaseModelLoader):
             if task_type == ModelTaskType.VOICE_ACTIVITY_DETECTION or not _has_accelerate:
                 model = model.to(device)
 
-        return model, tokenizer, processor, feature_extractor, is_multimodal_lm
+        return model, tokenizer, processor, feature_extractor, is_multimodal_lm, is_rnnt
 
     @staticmethod
     def _has_accelerate() -> bool:
@@ -368,6 +412,44 @@ class HuggingFaceLoader(BaseModelLoader):
                 return "sdpa"
 
         return requested
+
+    @staticmethod
+    def _is_rnnt_model(
+        transformers_module: Any,
+        model_source: str,
+        common_kwargs: dict[str, Any],
+    ) -> bool:
+        """Auto-detect a transducer (RNNT / TDT) ASR checkpoint from ``config.json``.
+
+        Reads ``model_type`` + ``architectures`` via ``AutoConfig``; a peek
+        failure is reported and treated as "not RNNT" so the existing Whisper
+        → Seq2Seq → CTC chain still gets its turn.
+        """
+        AutoConfig = getattr(transformers_module, "AutoConfig", None)
+        if AutoConfig is None:
+            return False
+        try:
+            config = AutoConfig.from_pretrained(model_source, **common_kwargs)
+        except Exception as exc:
+            logger.warning(
+                "Failed to peek config for RNNT detection: model_source=%s, error=%s",
+                model_source,
+                exc,
+            )
+            return False
+        model_type = str(getattr(config, "model_type", "") or "").lower()
+        architectures: list[str] = getattr(config, "architectures", None) or []
+        result = model_type in _RNNT_MODEL_TYPES or any(
+            marker in arch for arch in architectures for marker in _RNNT_ARCH_MARKERS
+        )
+        logger.info(
+            "_is_rnnt_model detection: model_source=%s, model_type=%s, architectures=%s, result=%s",
+            model_source,
+            model_type,
+            architectures,
+            result,
+        )
+        return result
 
     @staticmethod
     def _is_multimodal_lm(

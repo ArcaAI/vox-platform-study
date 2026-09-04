@@ -1,11 +1,13 @@
-import { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
 import { SYSTEM_TENANT_ID } from '../00-constants';
-import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, type AiModelSeed } from './shared';
+import { AiDeploymentKind, AiModelFormat, AiModelSource, AiTaskKind, ModelCategory, ModelTaskType, ModelType, type AiModelSeed } from './shared';
 
 /**
- * NLP task-model catalog — the two `built-in`
- * (transformers-library) models the NLP service serves. Registry-backed
- * defaults for the `nlp.ner` / `nlp.classification` AiTaskDefault keys.
+ * NLP task-model catalogue (TASK-860 — the owner's catalogue, exactly): the
+ * two transformers checkpoints (`medical-ner`, `symps-disease-bert-v3-c41`),
+ * the three GLiNER2 guardrail-plane models and the MiniCheck groundedness
+ * fact-checker — all `servedBy: nlp`. The DISABLED doc-type-classifier
+ * placeholder is retired (see `retired.ts`); a missing selection fails closed
+ * exactly the way the DISABLED row did.
  */
 export const NLP_AI_MODELS: AiModelSeed[] = [
   {
@@ -21,6 +23,13 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'blaze999/Medical-NER',
     sourceRevision: 'main',
     format: AiModelFormat.SAFETENSOR,
+    libraryName: 'transformers',
+    servedBy: 'nlp',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    license: 'apache-2.0',
+    baseModel: 'microsoft/deberta-v3-base',
+    languages: ['en'],
+    isPlatformDefaultFor: [AiTaskKind.NAMED_ENTITY_RECOGNITION],
     provider: 'built-in',
     architecture: null,
     memorySizeMb: 1024,
@@ -352,7 +361,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     name: 'Symptom-Disease BERT v3 C41',
     slug: 'symps-disease-bert-v3-c41',
     description:
-      'shanover/symps_disease_bert_v3_c41 — symptom→disease text classification (diagnosis suggestion). Platform default for nlp.classification (AiTaskDefault).',
+      'shanover/symps_disease_bert_v3_c41 — symptom→disease text classification (diagnosis suggestion; nlp.diagnosis). Low-traffic community checkpoint, NOT clinically validated — suggestions only.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_CLASSIFICATION,
     modelType: ModelType.FINETUNED_MODEL,
@@ -360,6 +369,12 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'shanover/symps_disease_bert_v3_c41',
     sourceRevision: 'main',
     format: AiModelFormat.SAFETENSOR,
+    libraryName: 'transformers',
+    servedBy: 'nlp',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    license: 'apache-2.0',
+    baseModel: 'google-bert/bert-base-uncased',
+    languages: ['en'],
     provider: 'built-in',
     architecture: 'bert',
     memorySizeMb: 512,
@@ -420,6 +435,12 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'fastino/gliner2-privacy-filter-PII-multi',
     sourceRevision: 'main',
     format: AiModelFormat.SAFETENSOR,
+    libraryName: 'gliner2',
+    servedBy: 'nlp',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    license: 'apache-2.0',
+    languages: ['en'],
+    isPlatformDefaultFor: [AiTaskKind.PII_DETECTION],
     provider: 'built-in',
     architecture: 'gliner2',
     memorySizeMb: 1024,
@@ -513,6 +534,11 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'fastino/GLiNER2-Guardrails-PII-Multi',
     sourceRevision: 'main',
     format: AiModelFormat.SAFETENSOR,
+    libraryName: 'gliner2',
+    servedBy: 'nlp',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    license: 'apache-2.0',
+    languages: ['en'],
     provider: 'built-in',
     architecture: 'gliner2',
     memorySizeMb: 1400,
@@ -667,6 +693,12 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'fastino/gliguard-LLMGuardrails-300M',
     sourceRevision: 'main',
     format: AiModelFormat.SAFETENSOR,
+    libraryName: 'gliner2',
+    servedBy: 'nlp',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    license: 'apache-2.0',
+    languages: ['en'],
+    isPlatformDefaultFor: [AiTaskKind.CONTENT_SAFETY],
     provider: 'built-in',
     architecture: 'gliner2',
     memorySizeMb: 1024,
@@ -779,6 +811,13 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF',
     sourceRevision: 'main',
     format: AiModelFormat.GGUF,
+    libraryName: 'llama.cpp',
+    servedBy: 'nlp',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    license: 'mit',
+    baseModel: 'lytang/MiniCheck-Flan-T5-Large',
+    languages: ['en'],
+    isPlatformDefaultFor: [AiTaskKind.GROUNDEDNESS],
     provider: 'built-in',
     architecture: 'flan-t5',
     memorySizeMb: 1200,
@@ -814,34 +853,5 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
         unsupportedClaim: 'The students are on vacation.',
       },
     },
-  },
-  // explicit DISABLED placeholder for the `/classify/text`
-  // document-type classifier. `nlp.classification` historically pointed at the
-  // diagnosis suggester (symps-disease-bert), which is the WRONG model for the
-  // doc-type endpoint. No real doc-type classifier is deployed yet, so
-  // `nlp.classification` is repointed here and the capability is fail-closed
-  // (a DISABLED row never resolves to an ENABLED model → 503) until a real
-  // model is seeded. The diagnosis suggester moves to the new `nlp.diagnosis`
-  // task key.
-  {
-    id: '80000000-0000-0000-0007-000000000019',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'Document-Type Classifier (placeholder)',
-    slug: 'nlp-doc-type-classifier',
-    description:
-      'Placeholder for the /classify/text document-type classifier. Seeded DISABLED: no doc-type model is deployed, so nlp.classification fails closed until a real classifier replaces this row.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_CLASSIFICATION,
-    modelType: ModelType.BASE_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'placeholder://nlp-doc-type-classifier',
-    sourceRevision: 'main',
-    format: AiModelFormat.SAFETENSOR,
-    provider: 'built-in',
-    architecture: null,
-    memorySizeMb: 0,
-    computeType: 'float32',
-    tags: ['nlp', 'classification', 'placeholder', 'disabled'],
-    resourceStatus: ResourceStatusType.DISABLED,
   },
 ];

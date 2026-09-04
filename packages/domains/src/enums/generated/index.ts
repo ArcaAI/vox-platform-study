@@ -6,6 +6,7 @@ export * from './AiCapability';
 export * from './AiCostBasis';
 export * from './AiDeploymentKind';
 export * from './AiExplicitProviderMode';
+export * from './AiModelAvailability';
 export * from './AiModelDownloadStatus';
 export * from './AiModelFormat';
 export * from './AiModelSource';

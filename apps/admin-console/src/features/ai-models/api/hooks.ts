@@ -12,12 +12,13 @@ import {
   getModelRegistryConnectionStatus,
   listModels,
   listModelsPaginated,
-  registerDiscoveredModel,
+  runModelInventory,
+  setModelPlatformDefault,
   startModelDownload,
   updateModel,
 } from './client';
 import { aiModelKeys } from './keys';
-import type { CreateModelRequest, RegisterDiscoveredModelRequest, UpdateModelRequest } from './types';
+import type { AiTaskKind, CreateModelRequest, ModelInventoryReport, UpdateModelRequest } from './types';
 
 export function useModels() {
   return useQuery({ queryKey: aiModelKeys.all(), queryFn: listModels });
@@ -58,6 +59,42 @@ export function useDeleteModel() {
   return useMutation({ mutationFn: (id: string) => deleteModel(id), onSuccess: invalidate });
 }
 
+/** Platform-default election; invalidates the root so the previous holder's row refreshes too. */
+export function useSetModelPlatformDefault() {
+  const invalidate = useInvalidateAiModels();
+  return useMutation({
+    mutationFn: ({ id, tasks }: { id: string; tasks: AiTaskKind[] }) => setModelPlatformDefault(id, tasks),
+    onSuccess: invalidate,
+  });
+}
+
+/**
+ * Runs the inventory, caches the report under `aiModelKeys.inventory()` (the
+ * "In bucket, not registered" panel reads it) and refreshes the grid so every
+ * row's measured `availability` updates in place.
+ */
+export function useRunModelInventory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => runModelInventory(),
+    onSuccess: (report) => {
+      queryClient.setQueryData<ModelInventoryReport>(aiModelKeys.inventory(), report);
+      void queryClient.invalidateQueries({ queryKey: aiModelKeys.all() });
+      void queryClient.invalidateQueries({ queryKey: aiModelKeys.list() });
+    },
+  });
+}
+
+/** The last inventory report of this session, if a run happened (never fetched on its own). */
+export function useLastInventoryReport() {
+  return useQuery<ModelInventoryReport | null>({
+    queryKey: aiModelKeys.inventory(),
+    queryFn: () => Promise.resolve(null),
+    enabled: false,
+    staleTime: Infinity,
+  });
+}
+
 /**
  * Live merge view. `enabled` gates the probe so it fires only when
  * the drawer is open (the registry grid must never wait on an engine probe);
@@ -71,18 +108,6 @@ export function useModelDiscovery(provider: string | undefined, enabled: boolean
     enabled,
     staleTime: 30_000,
     retry: false,
-  });
-}
-
-/**
- * Registering invalidates the whole `ai-models` root, so BOTH the drawer entry
- * (→ `registered`) and the registry grid behind it refresh — no manual reload.
- */
-export function useRegisterDiscoveredModel() {
-  const invalidate = useInvalidateAiModels();
-  return useMutation({
-    mutationFn: (body: RegisterDiscoveredModelRequest) => registerDiscoveredModel(body),
-    onSuccess: invalidate,
   });
 }
 

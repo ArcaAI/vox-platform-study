@@ -3,6 +3,7 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
+import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
@@ -17,21 +18,30 @@ import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateModel, useModel, useUpdateModel } from '../api/hooks';
-import type { AiModel, AiModelFormat, AiModelSource, CreateModelRequest, ModelCategory, ModelType, UpdateModelRequest } from '../api/types';
+import type { AiDeploymentKind, AiModel, AiModelFormat, AiModelSource, CreateModelRequest, ModelCategory, ModelType, UpdateModelRequest } from '../api/types';
 import { ModelDownloadPanel } from './model-download';
 import {
   CATEGORY_OPTIONS,
+  DEPLOYMENT_KIND_LABELS,
+  DEPLOYMENT_KIND_OPTIONS,
   FORMAT_OPTIONS,
+  LIBRARY_OPTIONS,
   MODEL_TYPE_OPTIONS,
   RUNTIME_PROVIDER_OPTIONS,
+  SERVED_BY_OPTIONS,
   SOURCE_LABELS,
   SOURCE_OPTIONS,
+  deriveLocalPath,
   humanizeEnum,
 } from './model-meta';
 import { ModelRegistryConnectionStatus } from './model-registry-connection-status';
 
 /** Radix SelectItem forbids the empty string; sentinel for "no runtime provider". */
 const PROVIDER_NONE = 'none';
+
+/** The two string vocabularies render verbatim (they are identifiers, not enums to humanise). */
+const LIBRARY_LABELS = Object.fromEntries(LIBRARY_OPTIONS.map((library) => [library, library])) as Record<string, string>;
+const SERVED_BY_LABELS = Object.fromEntries(SERVED_BY_OPTIONS.map((workload) => [workload, workload])) as Record<string, string>;
 
 interface ModelFormValues {
   name: string;
@@ -49,11 +59,25 @@ interface ModelFormValues {
   memorySizeMb: string;
   computeType: string;
   tags: string;
-  /** Mode M override — edit-only; the create DTO does not accept this field. */
-  localPath: string;
+  // ── Hugging Face taxonomy + serving identity (TASK-860) ──────────────────
+  libraryName: string;
+  servedBy: string;
+  deploymentKind: AiDeploymentKind;
+  wireModelId: string;
+  license: string;
+  gated: boolean;
+  baseModel: string;
+  languages: string;
+  hfRevision: string;
+  /** Bucket identity — normally written by the publish job; typed only when registering weights already in the bucket. */
+  bucketPrefix: string;
+  primaryObject: string;
 }
 
-function toValues(model?: AiModel): ModelFormValues {
+/** Pre-fill for "register from the bucket" (the inventory's unregistered prefixes). */
+export type ModelFormSeed = Partial<Pick<ModelFormValues, 'name' | 'slug' | 'bucketPrefix' | 'primaryObject'>>;
+
+function toValues(model?: AiModel, seed?: ModelFormSeed): ModelFormValues {
   return {
     name: model?.name ?? '',
     slug: model?.slug ?? '',
@@ -70,7 +94,18 @@ function toValues(model?: AiModel): ModelFormValues {
     memorySizeMb: model?.memorySizeMb != null ? String(model.memorySizeMb) : '',
     computeType: model?.computeType ?? '',
     tags: model?.tags.join(', ') ?? '',
-    localPath: model?.localPath ?? '',
+    libraryName: model?.libraryName ?? 'transformers',
+    servedBy: model?.servedBy ?? 'nlp',
+    deploymentKind: model?.deploymentKind ?? 'SELF_HOSTED',
+    wireModelId: model?.wireModelId ?? '',
+    license: model?.license ?? '',
+    gated: model?.gated ?? false,
+    baseModel: model?.baseModel ?? '',
+    languages: model?.languages.join(', ') ?? '',
+    hfRevision: model?.hfRevision ?? '',
+    bucketPrefix: model?.bucketPrefix ?? '',
+    primaryObject: model?.primaryObject ?? '',
+    ...(seed ?? {}),
   };
 }
 
@@ -92,25 +127,47 @@ function toRequest(values: ModelFormValues): CreateModelRequest {
     ...(values.sourceRevision.trim() ? { sourceRevision: values.sourceRevision.trim() } : {}),
     ...(values.memorySizeMb.trim() ? { memorySizeMb: Number(values.memorySizeMb) } : {}),
     ...(values.computeType.trim() ? { computeType: values.computeType.trim() } : {}),
-    ...(values.tags.trim()
-      ? {
-          tags: values.tags
-            .split(',')
-            .map((tag) => tag.trim())
-            .filter(Boolean),
-        }
-      : {}),
+    ...(values.tags.trim() ? { tags: splitList(values.tags) } : {}),
+    // Registry identity (TASK-860). `localPath` is never sent — the gateway derives it.
+    libraryName: values.libraryName,
+    servedBy: values.servedBy,
+    deploymentKind: values.deploymentKind,
+    ...(values.wireModelId.trim() ? { wireModelId: values.wireModelId.trim() } : {}),
+    ...(values.license.trim() ? { license: values.license.trim() } : {}),
+    ...(values.gated ? { gated: true } : {}),
+    ...(values.baseModel.trim() ? { baseModel: values.baseModel.trim() } : {}),
+    ...(values.languages.trim() ? { languages: splitList(values.languages) } : {}),
+    ...(values.hfRevision.trim() ? { hfRevision: values.hfRevision.trim() } : {}),
+    ...(values.bucketPrefix.trim() ? { bucketPrefix: values.bucketPrefix.trim() } : {}),
+    ...(values.primaryObject.trim() ? { primaryObject: values.primaryObject.trim() } : {}),
   };
 }
 
+function splitList(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 /**
- * Same payload as `toRequest`, plus the Mode M override — `localPath` is
- * accepted by `UpdateModelRequest` only (never `CreateModelRequest`), and is
- * ALWAYS sent so clearing the field can send `""` to remove a previously-set
- * override (the DTO's documented clear semantics), not silently omit it.
+ * Same payload as `toRequest`, but the nullable registry fields are ALWAYS
+ * sent (an empty string clears them — the DTO's documented semantics) so an
+ * edit that blanks a wire id, licence or bucket prefix removes it rather than
+ * silently keeping the old value. `gated` travels as a boolean either way.
  */
 function toUpdateRequest(values: ModelFormValues): UpdateModelRequest {
-  return { ...toRequest(values), localPath: values.localPath.trim() };
+  return {
+    ...toRequest(values),
+    wireModelId: values.wireModelId.trim(),
+    license: values.license.trim(),
+    gated: values.gated,
+    baseModel: values.baseModel.trim(),
+    languages: splitList(values.languages),
+    hfRevision: values.hfRevision.trim(),
+    bucketPrefix: values.bucketPrefix.trim(),
+    primaryObject: values.primaryObject.trim(),
+  };
 }
 
 function isOccError(error: unknown): boolean {
@@ -221,11 +278,14 @@ export function ModelFormSheet({
   open,
   onOpenChange,
   modelId,
+  seed,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** null = register mode. */
   modelId: string | null;
+  /** Register-mode pre-fill (from an inventory-reported bucket prefix). */
+  seed?: ModelFormSeed;
 }) {
   const uid = useId();
   const formId = `${uid}-form`;
@@ -245,9 +305,9 @@ export function ModelFormSheet({
 
   // Seed during render (never in an effect): the fields must already hold the
   // loaded row on the commit that first shows them.
-  const seedKey = seedKeyOf(open, isEdit, model);
+  const seedKey = seedKeyOf(open, isEdit, model) + (seed ? `:${seed.bucketPrefix ?? ''}${seed.slug ?? ''}` : '');
   if (seedKey !== seededFor) {
-    const seeded = seedKey.startsWith('row:') && model ? toValues(model) : toValues();
+    const seeded = seedKey.startsWith('row:') && model ? toValues(model) : toValues(undefined, seed);
     setSeededFor(seedKey);
     setValues(seeded);
     setBaseline(seeded);
@@ -326,7 +386,11 @@ export function ModelFormSheet({
         title={isEdit ? 'Edit model' : 'Register model'}
         meta={
           <>
-            <span>{isEdit ? 'Changes are saved with optimistic concurrency (If-Match).' : 'Register a model so tenants can be assigned to it.'}</span>
+            <span>
+              {isEdit
+                ? 'Changes are saved with optimistic concurrency (If-Match).'
+                : 'Register a row in the platform catalogue (SYSTEM tenant) — agents bind to it, tenants read it.'}
+            </span>
             {isEdit && model ? (
               <>
                 <span className="font-mono">{model.id}</span>
@@ -394,7 +458,7 @@ export function ModelFormSheet({
                   options={MODEL_TYPE_OPTIONS}
                 />
               </Field>
-              <Field id={`${uid}-task-type`} label="Task type" required className="sm:col-span-2">
+              <Field id={`${uid}-task-type`} label="Task (Hugging Face pipeline tag)" required className="sm:col-span-2">
                 <Input
                   id={`${uid}-task-type`}
                   value={values.taskType}
@@ -403,6 +467,36 @@ export function ModelFormSheet({
                   className="font-mono"
                   placeholder="AUTOMATIC_SPEECH_RECOGNITION"
                 />
+              </Field>
+              <Field id={`${uid}-library`} label="Serving library" required>
+                <EnumSelect id={`${uid}-library`} value={values.libraryName} onChange={(value) => set('libraryName', value)} options={[...LIBRARY_OPTIONS]} labels={LIBRARY_LABELS} />
+              </Field>
+              <Field id={`${uid}-served-by`} label="Served by" required>
+                <EnumSelect id={`${uid}-served-by`} value={values.servedBy} onChange={(value) => set('servedBy', value)} options={[...SERVED_BY_OPTIONS]} labels={SERVED_BY_LABELS} />
+              </Field>
+              <Field id={`${uid}-deployment`} label="Deployment" required>
+                <EnumSelect
+                  id={`${uid}-deployment`}
+                  value={values.deploymentKind}
+                  onChange={(value) => set('deploymentKind', value)}
+                  options={DEPLOYMENT_KIND_OPTIONS}
+                  labels={DEPLOYMENT_KIND_LABELS}
+                />
+              </Field>
+              <Field id={`${uid}-wire-model-id`} label="Wire model id" required={values.deploymentKind === 'CLOUD'}>
+                <Input
+                  id={`${uid}-wire-model-id`}
+                  value={values.wireModelId}
+                  onChange={(event) => set('wireModelId', event.target.value)}
+                  required={values.deploymentKind === 'CLOUD'}
+                  disabled={values.deploymentKind !== 'CLOUD'}
+                  className="font-mono"
+                  placeholder="gpt-transcribe"
+                  aria-describedby={`${uid}-wire-model-id-hint`}
+                />
+                <p id={`${uid}-wire-model-id-hint`} className="text-muted-foreground text-xs">
+                  {values.deploymentKind === 'CLOUD' ? 'The id the vendor is invoked with.' : 'Cloud rows only — self-hosted rows are identified by their bucket prefix.'}
+                </p>
               </Field>
               <Field id={`${uid}-source`} label="Source" required>
                 <EnumSelect
@@ -454,40 +548,61 @@ export function ModelFormSheet({
                   aria-describedby={`${uid}-weight-source-help`}
                 />
               </Field>
-              <Field id={`${uid}-local-path`} label="Local path (mount override)" className="sm:col-span-2">
-                <Input
-                  id={`${uid}-local-path`}
-                  value={values.localPath}
-                  onChange={(event) => set('localPath', event.target.value)}
-                  disabled={!isEdit}
-                  className="font-mono"
-                  placeholder="/mnt/models-bucket/whisper-large-v4/q4-0-451faffb5a16/"
-                  aria-describedby={!isEdit ? `${uid}-local-path-hint` : `${uid}-weight-source-help`}
-                />
-                {!isEdit ? (
-                  <p id={`${uid}-local-path-hint`} className="text-muted-foreground text-xs">
-                    Available once the model is registered — set a mount override from its edit drawer.
-                  </p>
-                ) : null}
+              <Field id={`${uid}-license`} label="Licence">
+                <Input id={`${uid}-license`} value={values.license} onChange={(event) => set('license', event.target.value)} className="font-mono" placeholder="apache-2.0" />
               </Field>
-              <div
-                id={`${uid}-weight-source-help`}
-                className="text-muted-foreground flex flex-col gap-1.5 rounded-md border border-dashed p-3 text-xs sm:col-span-2"
-              >
+              <Field id={`${uid}-base-model`} label="Base model">
+                <Input
+                  id={`${uid}-base-model`}
+                  value={values.baseModel}
+                  onChange={(event) => set('baseModel', event.target.value)}
+                  className="font-mono"
+                  placeholder="openai/whisper-large-v3-turbo"
+                />
+              </Field>
+              <Field id={`${uid}-languages`} label="Languages (comma-separated ISO codes)">
+                <Input id={`${uid}-languages`} value={values.languages} onChange={(event) => set('languages', event.target.value)} placeholder="en, ml" />
+              </Field>
+              <div className="flex items-center gap-2 self-end pb-2">
+                <Checkbox id={`${uid}-gated`} checked={values.gated} onCheckedChange={(checked) => set('gated', checked === true)} />
+                <Label htmlFor={`${uid}-gated`}>Gated Hub repo (needs the platform token)</Label>
+              </div>
+              <Field id={`${uid}-bucket-prefix`} label="Bucket prefix" className="sm:col-span-2">
+                <Input
+                  id={`${uid}-bucket-prefix`}
+                  value={values.bucketPrefix}
+                  onChange={(event) => set('bucketPrefix', event.target.value)}
+                  className="font-mono"
+                  placeholder="<slug>/<version>/ or hf/hub/models--org--repo/snapshots/<sha>/"
+                  aria-describedby={`${uid}-bucket-help`}
+                />
+              </Field>
+              <Field id={`${uid}-primary-object`} label="Primary object (single-file loaders)">
+                <Input
+                  id={`${uid}-primary-object`}
+                  value={values.primaryObject}
+                  onChange={(event) => set('primaryObject', event.target.value)}
+                  className="font-mono"
+                  placeholder="ggml-model-q8_0.bin"
+                  aria-describedby={`${uid}-bucket-help`}
+                />
+              </Field>
+              <Field id={`${uid}-hf-revision`} label="Hub revision (sha)">
+                <Input id={`${uid}-hf-revision`} value={values.hfRevision} onChange={(event) => set('hfRevision', event.target.value)} className="font-mono" />
+              </Field>
+              <div id={`${uid}-bucket-help`} className="text-muted-foreground flex flex-col gap-1.5 rounded-md border border-dashed p-3 text-xs sm:col-span-2">
                 <p>
-                  <span className="text-foreground font-medium">Mode U — S3 URI:</span>{' '}
-                  <code className="font-mono">sourceUri = s3://hope-models/&lt;slug&gt;/&lt;version&gt;/</code> — the service fetches and
-                  SHA256-verifies it into its cache.
+                  <span className="text-foreground font-medium">Where the weights live.</span> Every serving pod mounts{' '}
+                  <code className="font-mono">s3://hope-models</code> read-only at <code className="font-mono">/mnt/models-bucket</code>. The
+                  bucket prefix is normally written by <span className="text-foreground font-medium">Publish to bucket</span> (below, once the row
+                  exists) — type it only when registering weights the inventory found already in the bucket.
                 </p>
                 <p>
-                  <span className="text-foreground font-medium">Mode M — mount:</span>{' '}
-                  <code className="font-mono">localPath = /mnt/models-bucket/&lt;slug&gt;/&lt;version&gt;/</code> — an s3fs sidecar mounts the bucket
-                  and the weights are read in place, never copied. Local path wins whenever both are set.
-                </p>
-                <p>
-                  <code className="font-mono">&lt;version&gt;</code> is content-derived (e.g. <code className="font-mono">q4-0-451faffb5a16</code>),
-                  not a constant like <code className="font-mono">v1</code> — it is normally written by the Download action once the model is
-                  registered, not typed by hand.
+                  <span className="text-foreground font-medium">Derived local path:</span>{' '}
+                  <code className="font-mono" data-testid="derived-local-path">
+                    {values.bucketPrefix.trim() ? deriveLocalPath(values.bucketPrefix.trim(), values.primaryObject.trim() || null) : '— (not published)'}
+                  </code>{' '}
+                  — the services read it as the highest-precedence weight location; it is never typed by hand.
                 </p>
                 <ModelRegistryConnectionStatus />
               </div>
@@ -520,7 +635,7 @@ export function ModelFormSheet({
                 <Input id={`${uid}-tags`} value={values.tags} onChange={(event) => set('tags', event.target.value)} placeholder="stt, fallback" />
               </Field>
             </form>
-            {/* Download needs an id — no create-time equivalent, so this is edit-only. */}
+            {/* Publish needs an id — no create-time equivalent, so this is edit-only. */}
             {isEdit && model ? <ModelDownloadPanel model={model} /> : null}
           </>
         )}
