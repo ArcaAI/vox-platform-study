@@ -215,17 +215,31 @@ belongs to when the mapping has been lost.
 
 ```
 s3://hope-models/
-└── <slug>/                                  # lowercase [a-z0-9._-], the model's identity
-    └── <version>/                           # IMMUTABLE. Never written twice.
-        ├── manifest.json                    # the Merkle root — see §5.3
-        ├── SHA256SUMS                       # same digests, `shasum -c` / `mc` interop
-        ├── <name>.gguf                      # PRIMARY — single-file (preferred), OR
-        ├── <name>-00001-of-000NN.gguf       # shard 1 — the ONLY one a server is pointed at
-        ├── <name>-00002-of-000NN.gguf
-        ├── <name>-mmproj.gguf               # COMPANION projector (multimodal only)
-        ├── config.json                      # when the engine needs it
-        └── tokenizer.json / tokenizer_config.json / vocab.json / merges.txt
+├── <slug>/                                  # lowercase [a-z0-9._-], the model's identity
+│   └── <version>/                           # IMMUTABLE. Never written twice.
+│       ├── manifest.json                    # the Merkle root — see §5.3
+│       ├── SHA256SUMS                       # same digests, `shasum -c` / `mc` interop
+│       ├── <name>.gguf                      # PRIMARY — single-file (preferred), OR
+│       ├── <name>-00001-of-000NN.gguf       # shard 1 — the ONLY one a server is pointed at
+│       ├── <name>-00002-of-000NN.gguf
+│       ├── <name>-mmproj.gguf               # COMPANION projector (multimodal only)
+│       ├── config.json                      # when the engine needs it
+│       └── tokenizer.json / tokenizer_config.json / vocab.json / merges.txt
+└── hf/hub/models--<org>--<repo>/            # transformers family (TASK-860): a VERBATIM HF cache
+    ├── refs/main                            # the commit sha — what hf_hub_download resolves offline
+    └── snapshots/<sha>/…                    # the repo files, manifest.json + SHA256SUMS alongside
 ```
+
+Two layouts, one contract (TASK-860 §3.3): GGUF / CT2 / ONNX / pth publish
+**flat** under `<slug>/<version>/`; the transformers family (`transformers`,
+`gliner2`, `speechbrain`, `pyannote-audio`, `kokoro`, `parler-tts`,
+`cadence-punctuation`) publishes as an HF cache so `HF_HOME=/mnt/models-bucket/hf`
++ `HF_HUB_OFFLINE=1` serves it with no per-library path plumbing. The cache is
+written with `HF_HUB_DISABLE_SYMLINKS=1` semantics — real files under
+`snapshots/<sha>/`, because s3fs cannot follow symlinks. The registry row records
+either prefix in `AiModel.bucketPrefix`; single-file loaders (whisper.cpp,
+llama.cpp) additionally record `primaryObject`, and the gateway derives
+`localPath` from the two.
 
 **Flat within the version prefix. Do not nest `model/` or
 `components/tokenizer/` subdirectories.** Two independent reasons, so the rule
@@ -278,14 +292,21 @@ only hazardous in a *bucket* name, under virtual-host addressing.
 ### 5.2 `<version>` is content-addressed
 
 **Preferred form: `<quant>-<sha256-12>`** — e.g. `q4-k-m-3f9a1c7d2e05` — where
-the twelve hex characters are the first 12 of `sha256(manifest.json)`.
+the twelve hex characters are the first 12 of **`sha256(SHA256SUMS)`** (the
+`deriveModelVersion` helper in
+`packages/applications/src/services/ai-model/publish/model-version.util.ts`;
+the bare 12-char hash when no quant token can be derived). An earlier revision
+of this section defined it as the digest of `manifest.json` — circular, since
+the manifest itself records the version (TASK-860 corrected it).
 
-Why the digest of the *manifest* and not of the weights file: a model is
-frequently more than one object (tokenizer, config, shards). The manifest lists
-a digest for every object, so hashing the manifest yields a **Merkle root** —
-one short label that pins the entire tree. Naming the prefix after the weights
-file alone would leave the tokenizer free to change under a stable URI, which is
-the exact class of silent drift this convention exists to prevent.
+Why the digest of the *sums file* and not of the weights file: a model is
+frequently more than one object (tokenizer, config, shards). `SHA256SUMS` lists
+a digest for every object, so hashing it yields a **Merkle root** — one short
+label that pins the entire tree. Naming the prefix after the weights file alone
+would leave the tokenizer free to change under a stable URI, which is the exact
+class of silent drift this convention exists to prevent. `manifest.json` carries
+the same digests plus the metadata; its own sha256 is recorded on the registry
+row (`AiModel.manifestDigest`) and re-verified by the inventory job.
 
 Why content-addressing at all, rather than `v1`, `v2`: **overwriting a published
 prefix means running pods keep serving the old bytes from page cache while newly
