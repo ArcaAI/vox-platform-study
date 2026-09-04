@@ -29,6 +29,23 @@ const BASE_MODEL: AiModel = {
   sourceUri: 'openai/whisper-large-v4',
   sourceRevision: null,
   format: 'FASTER_WHISPER',
+  pipelineTag: 'automatic-speech-recognition',
+  libraryName: 'faster-whisper',
+  servedBy: 'stt',
+  deploymentKind: 'SELF_HOSTED',
+  wireModelId: null,
+  license: null,
+  gated: false,
+  baseModel: null,
+  languages: [],
+  hfRevision: null,
+  bucketPrefix: null,
+  primaryObject: null,
+  manifestDigest: null,
+  availability: 'UNKNOWN',
+  availabilityCheckedAt: null,
+  availabilityDetail: null,
+  isPlatformDefaultFor: [],
   provider: 'built-in',
   architecture: 'whisper',
   memorySizeMb: 3096,
@@ -77,21 +94,21 @@ describe('ModelDownloadPanel — disabled state', () => {
   it('disables Download with a visible reason when the model has no source', () => {
     renderWithProviders(<ModelDownloadPanel model={{ ...BASE_MODEL, sourceUri: '', localPath: null }} />);
 
-    const button = screen.getByRole('button', { name: /download/i });
+    const button = screen.getByRole('button', { name: /publish/i });
     expect(button).toHaveProperty('disabled', true);
     expect(button.getAttribute('aria-describedby')).toBeTruthy();
     const reason = document.getElementById(button.getAttribute('aria-describedby')!);
-    expect(reason?.textContent).toMatch(/no source uri or mounted path/i);
+    expect(reason?.textContent).toMatch(/no source uri/i);
   });
 
   it('enables Download when a sourceUri is present', () => {
     renderWithProviders(<ModelDownloadPanel model={BASE_MODEL} />);
-    expect(screen.getByRole('button', { name: /^download$/i })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: /^publish to bucket$/i })).toHaveProperty('disabled', false);
   });
 
   it('enables Download when only localPath is set (no sourceUri)', () => {
     renderWithProviders(<ModelDownloadPanel model={{ ...BASE_MODEL, sourceUri: '', localPath: '/mnt/models-bucket/whisper/v1/' }} />);
-    expect(screen.getByRole('button', { name: /^download$/i })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: /^publish to bucket$/i })).toHaveProperty('disabled', false);
   });
 });
 
@@ -106,13 +123,13 @@ describe('ModelDownloadPanel — start + poll + terminal outcomes', () => {
     });
     renderWithProviders(<ModelDownloadPanel model={BASE_MODEL} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^download$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^publish to bucket$/i }));
 
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
     expect(calls[0].url).toBe('/api/hope/admin/ai-models/m-1/download');
 
     // While DOWNLOADING the button is disabled and shows the busy label.
-    await screen.findByRole('button', { name: /downloading/i });
+    await screen.findByRole('button', { name: /publishing/i });
 
     // Terminal state reached — the badge flips, the button re-enables, and the
     // outcome toasts exactly once.
@@ -139,13 +156,13 @@ describe('ModelDownloadPanel — start + poll + terminal outcomes', () => {
     });
     renderWithProviders(<ModelDownloadPanel model={BASE_MODEL} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^download$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^publish to bucket$/i }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('checksum mismatch'), { timeout: 5000 });
     expect(await screen.findByText('Download failed')).toBeDefined();
     expect(screen.getByRole('alert').textContent).toContain('checksum mismatch');
     // Retry affordance after a failure.
-    expect(screen.getByRole('button', { name: /retry download/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /retry publish/i })).toBeDefined();
   }, 10000);
 
   it('resumes polling on mount for a model already DOWNLOADING (started elsewhere)', async () => {
@@ -154,7 +171,7 @@ describe('ModelDownloadPanel — start + poll + terminal outcomes', () => {
 
     await waitFor(() => expect(calls.some((c) => c.method === 'GET')).toBe(true));
     expect(calls[0].url).toBe('/api/hope/admin/ai-models/m-1/download');
-    expect(screen.getByRole('button', { name: /downloading/i })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: /publishing/i })).toHaveProperty('disabled', true);
   });
 
   it('maps a 409 (already in flight) to a friendly toast and starts polling to catch up', async () => {
@@ -168,11 +185,11 @@ describe('ModelDownloadPanel — start + poll + terminal outcomes', () => {
     });
     renderWithProviders(<ModelDownloadPanel model={BASE_MODEL} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^download$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^publish to bucket$/i }));
 
     await waitFor(() => expect(postCount).toBe(1));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('A download is already in progress for this model.'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('A publish is already in progress for this model.'));
     // The 409 still resumes polling so the UI catches up with the real state.
-    await screen.findByRole('button', { name: /downloading/i });
+    await screen.findByRole('button', { name: /publishing/i });
   });
 });
