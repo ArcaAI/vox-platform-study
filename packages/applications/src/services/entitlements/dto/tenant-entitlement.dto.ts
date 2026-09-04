@@ -23,6 +23,7 @@ export class TenantEntitlementResponse {
   maxPromptTemplates?: number | null;
 
   @ApiPropertyOptional({ description: 'Override max ASR pipelines; null = inherit', nullable: true })
+  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; placeholder alias of the agent ceiling (TASK-863). */
   maxAsrPipelines?: number | null;
 
   @ApiPropertyOptional({ description: 'Override max API keys; null = inherit', nullable: true })
@@ -122,6 +123,7 @@ export class UpsertTenantEntitlementRequest {
   @IsOptional()
   @IsInt()
   @Min(0)
+  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; placeholder alias of the agent ceiling (TASK-863). */
   maxAsrPipelines?: number | null;
 
   @ApiPropertyOptional({ description: 'Override max API keys; null = inherit', nullable: true })
