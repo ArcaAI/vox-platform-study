@@ -158,11 +158,13 @@ export class AgentInvocationService {
   }
 
   /**
-   * TODO(TASK-861): replace with the gateway-resolved `resolvedSpec` (the ASR Agent replaces
-   * `AsrPipeline`). Today a batch job still needs an `AsrPipeline` row, so pick the tenant's
-   * (then SYSTEM's) enabled pipeline whose `models.asr` is the agent's primary model slug, else
-   * the tenant default pipeline. `null` when nothing matches — the caller fails closed.
+   * TASK-861 RESOLVED — the gateway-resolved `ResolvedAsrSpec` replaced this: the agent
+   * `transcriptions` route creates the job with `agentVersionId` + `resolvedSpec` and never
+   * looks a pipeline row up. Kept for the deprecation window only. Picks the tenant's (then
+   * SYSTEM's) enabled pipeline whose `models.asr` is the agent's primary model slug, else the
+   * tenant default pipeline; `null` when nothing matches.
    */
+  /** @deprecated TASK-861 — removed in R4. The agent `transcriptions` route resolves a `ResolvedAsrSpec` through `AsrAgentResolverService` (no pipeline lookup); this helper exists only for the window. */
   async resolveAsrPipelineId(resolved: ResolvedAgent, tenantId: string): Promise<string | null> {
     if (resolved.task !== 'SPEECH_TO_TEXT') {
       throw new BadRequestException(`Agent '${resolved.slug}' is a ${resolved.task} agent; transcriptions apply to SPEECH_TO_TEXT agents only.`);

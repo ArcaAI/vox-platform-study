@@ -55,6 +55,7 @@ export interface PipelineTemplateResyncCronConfig {
  * write into each target tenant (see the service's TENANT CONTEXT note).
  */
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. with `AsrPipeline`. */
 export class PipelineTemplateResyncCronService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PipelineTemplateResyncCronService.name);
   private activeCron: string | null = null;

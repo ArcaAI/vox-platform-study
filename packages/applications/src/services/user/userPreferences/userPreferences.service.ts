@@ -310,6 +310,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
    * additive and backward-compatible: when the tenant has no isDefault pipeline
    * we fall through to the existing GlobalSetting behaviour unchanged.
    */
+  /** @deprecated TASK-861 — removed in R4. The per-user assigned-pipeline preference and the tenant default `AsrPipeline` retire; the ASR Agent assignment cascade (`AgentAssignment`, task `SPEECH_TO_TEXT`) is the replacement. Kept so the SDK's `remoteConfig` shape survives the window. */
   private async resolveRemoteConfig(userId: string): Promise<UserPreferencesResponse['remoteConfig']> {
     // 1. Check per-user admin override
     const adminOverride = await this.userSettingsRepository.findByUserKeyNamespace(userId, ADMIN_KEYS.ASSIGNED_PIPELINE, ADMIN_NAMESPACE);

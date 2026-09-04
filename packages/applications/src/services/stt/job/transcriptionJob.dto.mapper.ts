@@ -7,8 +7,10 @@ export class TranscriptionJobDtoMapper {
     return {
       id: entity.id,
       jobType: entity.jobType,
-      pipelineId: entity.pipelineId,
+      pipelineId: entity.pipelineId ?? null,
       pipeline: entity.Pipeline ? PipelineDtoMapper.toResponse(entity.Pipeline) : undefined,
+      agentVersionId: entity.agentVersionId ?? null,
+      resolvedSpec: entity.resolvedSpec ?? null,
       consultationId: entity.consultationId,
       contextItemId: entity.contextItemId,
       mediaId: entity.mediaId,
