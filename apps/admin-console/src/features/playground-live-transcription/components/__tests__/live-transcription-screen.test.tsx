@@ -205,9 +205,10 @@ const JOBS: PlaygroundTranscriptionJob[] = [
   job({ id: 'j-old-1', status: 'FAILED', completedAt: '2026-07-06T06:10:00.000Z', errorMessage: 'Decoder crashed', errorCode: 'DECODER_ERROR' }),
 ];
 
-const PIPELINES = [
-  { id: 'p-default', name: 'Default Clinical', slug: 'default-clinical', isDefault: true, resourceStatus: 'ENABLED' },
-  { id: 'p-cardio', name: 'Cardio', slug: 'cardio', isDefault: false, resourceStatus: 'ENABLED' },
+/** Published ASR agents (TASK-863 `GET /agents?task=SPEECH_TO_TEXT`). */
+const ASR_AGENTS = [
+  { slug: 'default-clinical', name: 'Default Clinical', description: null, task: 'SPEECH_TO_TEXT', versionNumber: 2, isTenantDefault: true },
+  { slug: 'cardio', name: 'Cardio', description: null, task: 'SPEECH_TO_TEXT', versionNumber: 1, isTenantDefault: false },
 ];
 
 const SESSION_RESPONSE = {
@@ -246,7 +247,7 @@ function defaultHandler(call: RecordedCall): Response | undefined {
   }
   if (call.method !== 'GET') return undefined;
   if (path === '/api/auth/session') return Response.json(session());
-  if (path === '/api/hope/audio/pipelines') return Response.json(PIPELINES);
+  if (path === '/api/hope/agents') return Response.json({ data: ASR_AGENTS });
   if (path === '/api/hope/audio/transcription-jobs') {
     return Response.json({ data: JOBS, total: 2, page: 1, limit: 20, totalPages: 1 });
   }
@@ -314,7 +315,7 @@ describe('LiveTranscriptionScreen', () => {
     expect(calls.every((call) => !call.url.includes('/audio/'))).toBe(true);
   });
 
-  it('renders both tabs, defaults the pipeline picker to the tenant default and shows the streaming empty state', async () => {
+  it('renders both tabs, offers the tenant default as the empty agent selection and shows the streaming empty state', async () => {
     stubScreen();
     renderWithProviders(<LiveTranscriptionScreen />);
 
@@ -327,22 +328,27 @@ describe('LiveTranscriptionScreen', () => {
     // top-bar persona control — no page-level statusBanner strip here).
     expect(screen.getByText(/Streaming session .* runs under your own account/)).toBeDefined();
 
-    const picker = (await screen.findByLabelText('Pipeline')) as HTMLSelectElement;
-    await waitFor(() => expect(picker.value).toBe('p-default'));
+    // TASK-865: nothing is preselected — an empty value means "the tenant
+    // assignment cascade decides"; the published tenant default is the hint.
+    const picker = (await screen.findByLabelText('Transcription agent')) as HTMLSelectElement;
+    await waitFor(() => expect(within(picker).getByRole('option', { name: /Default Clinical .* tenant default/ })).toBeDefined());
+    expect(picker.value).toBe('');
 
     expect(screen.getByText('No live session')).toBeDefined();
   });
 
-  it('starts a session against the selected pipeline and streams the WS transcript (partial caret row, then final)', async () => {
+  it('starts a session on the tenant default agent (no slug sent) and streams the WS transcript (partial caret row, then final)', async () => {
     const calls = stubScreen();
     renderWithProviders(<LiveTranscriptionScreen />);
-    await screen.findByLabelText('Pipeline');
+    await screen.findByLabelText('Transcription agent');
 
     const ws = await startSession();
 
-    // Session create carried the picker's pipeline; WS carries the tenant claim.
+    // Nothing selected ⇒ the session names no agent (the gateway resolves the
+    // tenant default) and never a pipeline; WS carries the tenant claim.
     const create = calls.find((call) => call.method === 'POST' && call.url.endsWith('/stream/session'));
-    expect((create?.body as { pipelineId: string }).pipelineId).toBe('p-default');
+    expect(create?.body).not.toHaveProperty('agentSlug');
+    expect(create?.body).not.toHaveProperty('pipelineId');
     expect(ws.connectedUrl).toContain('sessionId=s-9d42');
     expect(ws.connectedUrl).toContain('ticket=tkt-abc');
     expect(ws.connectedUrl).toContain('tenantId=tnt-1');
@@ -390,7 +396,7 @@ describe('LiveTranscriptionScreen', () => {
       return undefined;
     });
     renderWithProviders(<LiveTranscriptionScreen />);
-    await screen.findByLabelText('Pipeline');
+    await screen.findByLabelText('Transcription agent');
 
     fireEvent.click(screen.getAllByRole('button', { name: /start session/i })[0]);
 
@@ -406,7 +412,7 @@ describe('LiveTranscriptionScreen', () => {
   it('uploads a batch file as multipart and follows the job through its SSE stream', async () => {
     const calls = stubScreen();
     renderWithProviders(<LiveTranscriptionScreen />, { searchParams: '?tab=batch' });
-    await screen.findByLabelText('Pipeline');
+    await screen.findByLabelText('Transcription agent');
 
     const file = new File(['RIFF'.repeat(64)], 'visit.wav', { type: 'audio/wav' });
     const input = (await screen.findByLabelText(/audio files?/i)) as HTMLInputElement;
@@ -418,12 +424,14 @@ describe('LiveTranscriptionScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /upload & transcribe/i }));
 
-    // Multipart body through the BFF: file + pipelineId fields.
+    // Multipart body through the BFF: the file; no agent named ⇒ no agentSlug
+    // (and never a pipelineId) — the tenant default transcribes.
     await waitFor(() => {
       const upload = calls.find((call) => call.url === '/api/hope/audio/transcription-jobs/transcribe');
       expect(upload).toBeDefined();
       expect(upload?.body).toBeInstanceOf(FormData);
-      expect((upload?.body as FormData).get('pipelineId')).toBe('p-default');
+      expect((upload?.body as FormData).get('agentSlug')).toBeNull();
+      expect((upload?.body as FormData).get('pipelineId')).toBeNull();
       expect(((upload?.body as FormData).get('file') as File).name).toBe('visit.wav');
     });
 
@@ -448,7 +456,7 @@ describe('LiveTranscriptionScreen', () => {
   it('lists my jobs with cancel/retry actions wired to the owner-scoped mutations', async () => {
     const calls = stubScreen();
     renderWithProviders(<LiveTranscriptionScreen />, { searchParams: '?tab=batch' });
-    await screen.findByLabelText('Pipeline');
+    await screen.findByLabelText('Transcription agent');
 
     const strip = within(await screen.findByRole('region', { name: /my jobs/i }));
     expect(await strip.findByText('j-run')).toBeDefined();
@@ -474,7 +482,7 @@ describe('LiveTranscriptionScreen', () => {
       return undefined;
     });
     renderWithProviders(<LiveTranscriptionScreen />, { searchParams: '?tab=batch' });
-    await screen.findByLabelText('Pipeline');
+    await screen.findByLabelText('Transcription agent');
 
     expect(await screen.findByText('No batch jobs yet')).toBeDefined();
   });
@@ -483,8 +491,10 @@ describe('LiveTranscriptionScreen', () => {
     stubScreen();
     renderWithProviders(<LiveTranscriptionScreen />, { searchParams: '?tab=batch' });
 
-    const picker = (await screen.findByLabelText('Pipeline')) as HTMLSelectElement;
-    await waitFor(() => expect(picker.value).toBe('p-default'));
+    const picker = (await screen.findByLabelText('Transcription agent')) as HTMLSelectElement;
+    // Loaded: the tenant-default hint is listed; nothing is preselected (TASK-865).
+    await waitFor(() => expect(within(picker).getByRole('option', { name: /Default Clinical .* tenant default/ })).toBeDefined());
+    expect(picker.value).toBe('');
     await screen.findByText('j-run');
 
     expect(screen.queryByText(/did not load/i)).toBeNull();
@@ -521,12 +531,12 @@ describe('LiveTranscriptionScreen — queries that never fetch', () => {
     onlineManager.setOnline(true);
   });
 
-  it('replaces the pipeline-picker skeleton with a retryable terminal state', async () => {
+  it('replaces the agent-picker skeleton with a retryable terminal state', async () => {
     stubScreen();
     renderOffline();
 
-    expect(await screen.findByText(/pipelines did not load/i)).toBeDefined();
-    expect(screen.getByRole('button', { name: /retry loading pipelines/i })).toBeDefined();
+    expect(await screen.findByText(/agents did not load/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /retry loading agents/i })).toBeDefined();
     expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
   });
 
@@ -540,10 +550,10 @@ describe('LiveTranscriptionScreen — queries that never fetch', () => {
     expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
   });
 
-  it('surfaces a failed pipelines request as a terminal state rather than "No pipelines available"', async () => {
+  it('surfaces a failed agents request as a terminal state rather than "No agents published"', async () => {
     stubScreen((call) => {
       const path = new URL(call.url, 'http://test.local').pathname;
-      if (call.method === 'GET' && path === '/api/hope/audio/pipelines') {
+      if (call.method === 'GET' && path === '/api/hope/agents') {
         // 404-over-403 tenancy posture: a denied read reads as "not found".
         return Response.json({ statusCode: 404, message: 'Not Found', error: 'Not Found' }, { status: 404 });
       }
@@ -551,9 +561,9 @@ describe('LiveTranscriptionScreen — queries that never fetch', () => {
     });
     renderWithProviders(<LiveTranscriptionScreen />);
 
-    expect(await screen.findByText(/pipelines did not load/i)).toBeDefined();
-    expect(screen.getByRole('button', { name: /retry loading pipelines/i })).toBeDefined();
-    expect(screen.queryByText('No pipelines available')).toBeNull();
+    expect(await screen.findByText(/agents did not load/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /retry loading agents/i })).toBeDefined();
+    expect(screen.queryByText(/No agents published/)).toBeNull();
     expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
   });
 });

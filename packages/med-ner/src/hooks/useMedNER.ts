@@ -138,6 +138,8 @@ export interface UseMedNERReturn {
  *   );
  * }
  * ```
+ *
+ * @deprecated TASK-865 — removed in R4. Client-side model inference is retired: in-browser medical NER. Entity extraction runs in `apps/nlp` through the realtime lane (`agent.ner`).
  */
 export function useMedNER(options: UseMedNEROptions = {}): UseMedNERReturn {
   const { autoInit = true, onEntitiesExtracted, onError, onProgress, ...nerOptions } = options;

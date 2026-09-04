@@ -48,44 +48,58 @@ send `X-Tenant-Id` alongside one.
 
 The narrow case: live transcript, no consultation workflow. Four steps.
 
-### 1.1 Pick a pipeline
+### 1.1 Pick an agent
 
-An STT pipeline is the compiled form of a published transcription workflow.
-List what your tenant may use:
+What transcribes is a **server-side decision**: the tenant's published ASR
+**Agent** (task `SPEECH_TO_TEXT`, TASK-863) carries the engine, the model, the
+VAD and the denoise settings. The browser captures audio and renders the result
+— it never runs a model (TASK-865). List what your tenant may name:
 
 ```tsx
-const { list } = usePipelines();
-const pipelines = await list();   // GET /audio/pipelines — scope stt:model:read
+const { agents, tenantDefault, isLoading, refresh } = useSelectableAsrAgents();
+// GET /agents?task=SPEECH_TO_TEXT — the same predicate the session route resolves with,
+// so anything listed is accepted at start and anything omitted is refused.
 ```
 
-Only `list`, `get`, `getBySlug` and `select` are reachable from a browser. The
-rest of `usePipelines` (`createPipeline`, `assignToTenant`, `setDefault`, …)
-targets `/admin/audio/pipelines/**`, which is `apiKeyForbidden` and
-service-account-only.
+Two "nothing to show" states are deliberately distinct: `agents === null` means
+the read has not resolved or failed (render nothing, or a retry); `agents.length
+=== 0` means the tenant has published no ASR agent and the platform default
+governs. `tenantDefault` names the slug the tenant-level assignment points at —
+surface it as a hint; do **not** preselect it, because a department assignment
+can still win at resolution and a slug sent on every start would silently
+override it.
 
-`select(pipelineId)` persists the choice to the user's settings
-(`PATCH /users/me/settings/arcaai-sdk/selectedPipelineId`), which is how a
-clinician's preference survives a reload.
+Nothing is persisted per user: the selection is per capture. (`usePipelines`,
+`select(pipelineId)` and the `selectedPipelineId` user setting are deprecated
+and removed in R4, with the `AsrPipeline` resource under TASK-861.)
 
 ### 1.2 Start capture
 
 ```tsx
+import type { AudioStartOptions } from '@arcaai/vox/core';
+
 const { start, stop, transcriptSegments, currentTranscript, sttConnectionState } = useArcaAudio();
 
-await start({
-  pipelineId,              // omit → the tenant default engine
+const options: AudioStartOptions = {
+  agentSlug,               // optional; omit → the tenant → department assignment cascade decides
   language: 'en',
   deviceId,                // optional; exact-match getUserMedia constraint
   secondaryDeviceId,       // optional; mixed with the primary via @arcaai/room AudioMixer
-});
+};
+await start(options);
 ```
 
-`pipelineId` is what switches STT from in-browser inference to backend
-streaming. The SDK opens and refreshes the streaming session for you — do not
-hand-roll the WebSocket.
+The SDK opens and refreshes the streaming session for you — do not hand-roll
+the WebSocket. `pipelineId` is **deprecated** (removed in R4): it is still
+forwarded with a warning, and when both are passed `agentSlug` wins and
+`pipelineId` is dropped — warned, never silent.
 
-> The `AudioStartOptions` type is **not exported** from any entry point today.
-> Pass an object literal; annotating it will not compile.
+No client model is involved: `audio.noiseFilter` / `audio.vad` are ignored even
+when `enabled: true` (a deprecation warning is logged) unless the host sets the
+deprecated `audio.clientInference: { allow: true }`. Native `getUserMedia`
+constraints (`noiseSuppression`, `echoCancellation`, `autoGainControl`) are not
+models and stay on; disable them per capture with `audioProcessing` for raw
+clinical capture.
 
 ### 1.3 Render the transcript
 
@@ -113,10 +127,11 @@ await stop();
 
 | Route | Credential | Scope |
 |---|---|---|
-| `GET /api/v1/audio/pipelines` | JWT or API key | `stt:model:read` |
-| `GET /api/v1/audio/pipelines/slug/{slug}` | JWT or API key | `stt:model:read` |
-| `POST /api/v1/audio/transcription-jobs/stream/session` | JWT or API key | `stt:transcription:write` |
+| `GET /api/v1/agents?task=SPEECH_TO_TEXT` | JWT or API key | business plane (TASK-863) |
+| `GET /api/v1/agents/{slug}` | JWT or API key | business plane (TASK-863) |
+| `POST /api/v1/audio/transcription-jobs/stream/session` `{ agentSlug? }` | JWT or API key | `stt:transcription:write` (body: TASK-861) |
 | `WS /ws/stt/stream` | session ticket | — (WebSocket gateways carry no manifest row) |
+| ~~`GET /api/v1/audio/pipelines`~~ | deprecated | removed in R4 (TASK-861) |
 
 Note the streaming session mints **its own** ticket
 (`…/stream/session/{sessionId}/refresh-ticket`). That is a different mechanism

@@ -1,5 +1,7 @@
 # @arcaai/stt
 
+> **DEPRECATED (TASK-865) — removed in R4.** In-browser Whisper is retired; transcription is backend streaming ASR selected by the tenant's ASR Agent (@arcaai/vox audio.start({ agentSlug })). The browser captures audio and renders results; it never runs a model. This package keeps building and stays importable until R4 so existing hosts can migrate; do not add new consumers. Register row: `docs/operations/deprecation-register.md` §SDK.
+
 Speech-to-text plugin for `@arcaai/room`. Supports three provider modes: local Whisper inference in the browser (Transformers.js + ONNX Runtime, run inside a dedicated Web Worker with optional WebGPU), remote transcription over a self-managed WebSocket, and a pipeline-aware streaming mode where the host application supplies the transport (used by `@arcaai/vox` against the STT backend).
 
 Last updated: 2026-07-04

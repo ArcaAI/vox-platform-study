@@ -91,7 +91,7 @@ function validateAudioFile(file: File): string | null {
  * remove control) and only enqueued on the explicit action, so a mis-drop is
  * always recoverable before anything reaches the gateway.
  */
-function UploadCard({ pipelineId, onEnqueue }: { pipelineId: string | null; onEnqueue: (files: File[]) => void }) {
+function UploadCard({ onEnqueue }: { onEnqueue: (files: File[]) => void }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [rejections, setRejections] = useState<string[]>([]);
@@ -128,15 +128,16 @@ function UploadCard({ pipelineId, onEnqueue }: { pipelineId: string | null; onEn
   }
 
   function handleUpload() {
-    if (files.length === 0 || !pipelineId) return;
+    if (files.length === 0) return;
     onEnqueue(files);
     toast.success(files.length === 1 ? `${files[0].name} queued` : `${files.length} files queued`);
     clearStaged();
   }
 
-  const disabledReason = !pipelineId
-    ? 'Select a pipeline first — the picker above has not produced one yet.'
-    : files.length === 0
+  // No agent is REQUIRED (TASK-865): with none selected the gateway resolves the
+  // tenant default transcription agent, so only the file gates the upload.
+  const disabledReason =
+    files.length === 0
       ? 'Choose one or more audio files to enable upload.'
       : null;
 
@@ -205,7 +206,7 @@ function UploadCard({ pipelineId, onEnqueue }: { pipelineId: string | null; onEn
           </div>
         ) : null}
 
-        <Button onClick={handleUpload} disabled={files.length === 0 || !pipelineId} aria-describedby={disabledReason ? 'batch-upload-reason' : undefined}>
+        <Button onClick={handleUpload} disabled={files.length === 0} aria-describedby={disabledReason ? 'batch-upload-reason' : undefined}>
           <IconUpload aria-hidden />
           Upload &amp; transcribe
           {files.length > 1 ? ` (${files.length})` : ''}
@@ -686,12 +687,12 @@ function MyJobsStrip({ selection, onSelectJob }: { selection: Selection; onSelec
  * (one gateway job per file) → a master/detail transcript panel fed either by a
  * queue row's live SSE segments or by a past job from the owner-scoped strip.
  */
-export function BatchTab({ pipelineId }: { pipelineId: string | null }) {
+export function BatchTab({ agentSlug }: { agentSlug: string | null }) {
   const [selection, setSelection] = useState<Selection>(null);
   const [streamStatuses, setStreamStatuses] = useState<Record<string, StreamStatus>>({});
 
   const queue = useBatchQueue({
-    pipelineId,
+    agentSlug,
     onItemCompleted: (item) => toast.success(`${item.fileName} transcribed`),
     onItemFailed: (item) => toast.error(`${item.fileName} failed — ${item.error ?? 'unknown error'}`),
   });
@@ -750,7 +751,7 @@ export function BatchTab({ pipelineId }: { pipelineId: string | null }) {
         />
       ))}
 
-      <UploadCard pipelineId={pipelineId} onEnqueue={handleEnqueue} />
+      <UploadCard onEnqueue={handleEnqueue} />
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <QueueCard
           items={queue.items}

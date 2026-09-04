@@ -511,6 +511,8 @@ export const transcriptionJobScopeFor = (jobId: string): string => `transcriptio
  *
  * Read operations use `/audio/pipelines` (any authenticated user).
  * Write operations use `/admin/audio/pipelines` (admin only).
+ *
+ * @deprecated TASK-865 — removed in R4 (`AsrPipeline` retires under TASK-861). See {@link AGENT_ENDPOINTS}.
  */
 export const PIPELINE_ENDPOINTS = {
   /** List ASR pipelines (paginated) */
@@ -611,6 +613,9 @@ export const STORAGE_KEYS = {
  *
  * TO RE-ENABLE: flip this back to `true`. This is the single, findable
  * switch — no other code path needs to change.
+ *
+ * @deprecated TASK-865 — removed in R4 together with the local Whisper stage: the constant
+ * stays `false` until then and is never flipped. The browser never runs a model.
  */
 export const LOCAL_TRANSCRIPTION_ENABLED = false;
 
@@ -1243,3 +1248,18 @@ export const WORKFLOW_ENDPOINTS = {
  * minted for ONE run, so the scope carries the run id.
  */
 export const workflowRunStreamScope = (runId: string): string => `workflow_run:${runId}`;
+
+// =============================================================================
+// Agent endpoints (TASK-865 — business plane, TASK-863 routes)
+// =============================================================================
+
+/**
+ * Published-Agent discovery and invocation, business plane (API key or JWT).
+ * Administration (`/admin/agents/**`) is NOT here — it is the admin plane.
+ */
+export const AGENT_ENDPOINTS = {
+  /** List published, active agents visible to the tenant, optionally filtered by task. */
+  LIST: (task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH') => (task ? `/agents?task=${encodeURIComponent(task)}` : '/agents'),
+  /** One published agent: summary + input/output schema + protocols. */
+  GET: (slug: string) => `/agents/${encodeURIComponent(slug)}`,
+} as const;

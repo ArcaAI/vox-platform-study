@@ -141,6 +141,8 @@ export interface UseSTTReturn {
  *   );
  * }
  * ```
+ *
+ * @deprecated TASK-865 — removed in R4. Client-side model inference is retired: in-browser Whisper. Transcription is backend streaming ASR selected by the tenant's ASR Agent (`@arcaai/vox` `audio.start({ agentSlug })`).
  */
 export function useSTT(options: UseSTTOptions): UseSTTReturn {
   const { track, autoAttach = true, onTranscription, onPartialTranscription, onError, onProgress, ...sttOptions } = options;

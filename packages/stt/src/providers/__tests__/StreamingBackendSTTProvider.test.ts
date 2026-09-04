@@ -103,6 +103,49 @@ describe('StreamingBackendSTTProvider', () => {
       expect(provider.isReady()).toBe(true);
     });
 
+    it('creates the session from an agentSlug ALONE (TASK-865) — no pipelineId is required or sent', async () => {
+      await provider.init({
+        sessionId: 'ignored',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 2,
+        agentSlug: 'clinic-asr',
+      });
+
+      expect(session.createSession).toHaveBeenCalledTimes(1);
+      const req = (session.createSession as ReturnType<typeof vi.fn>).mock.calls[0]![0] as Record<string, unknown>;
+      expect(req.agentSlug).toBe('clinic-asr');
+      expect('pipelineId' in req).toBe(false);
+      expect(provider.getAgentSlug()).toBe('clinic-asr');
+      expect(provider.getPipelineId()).toBeNull();
+    });
+
+    it('creates the session with NEITHER id — the gateway resolves the tenant default agent (TASK-865)', async () => {
+      await provider.init({
+        sessionId: 'ignored',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 2,
+      });
+
+      const req = (session.createSession as ReturnType<typeof vi.fn>).mock.calls[0]![0] as Record<string, unknown>;
+      expect('pipelineId' in req).toBe(false);
+      expect('agentSlug' in req).toBe(false);
+      expect(provider.isReady()).toBe(true);
+    });
+
     it('forwards the end-user languageMode to createSession', async () => {
       await provider.init({
         sessionId: 'x',
@@ -160,24 +203,6 @@ describe('StreamingBackendSTTProvider', () => {
       expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ channelCount: 2 }));
     });
 
-    it('throws when pipelineId is missing', async () => {
-      await expect(
-        provider.init({
-          sessionId: 'x',
-          language: 'en-US',
-          sampleRate: 48000,
-          channels: 1,
-          chunkLengthS: 30,
-          overlapLengthS: 5,
-          returnTimestamps: 'word',
-          codeSwitching: false,
-          diarization: false,
-          numSpeakers: 1,
-          // @ts-expect-error — intentionally omit pipelineId
-          pipelineId: undefined,
-        }),
-      ).rejects.toThrow(/pipelineId is required/i);
-    });
   });
 
   describe('processAudio()', () => {

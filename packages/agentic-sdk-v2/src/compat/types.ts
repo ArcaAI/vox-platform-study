@@ -52,10 +52,20 @@ export interface V1SdkConfig {
   environment?: 'development' | 'staging' | 'production';
   /**
    * Backend ASR pipeline id for live streaming transcription. v1 had no such
-   * field (its STT WS was api-key-flat); v2 requires a `pipelineId` to route
-   * STT to the backend streaming provider. Optional — omit for local STT.
+   * field (its STT WS was api-key-flat); v2 routed STT to the backend streaming
+   * provider by it.
+   *
+   * @deprecated TASK-865 — removed in R4. Name the tenant's ASR Agent with
+   * {@link V1SdkConfig.sttAgentSlug}, or set neither (the tenant default applies).
+   * When both are set `sttAgentSlug` wins.
    */
   sttPipelineId?: string;
+  /**
+   * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that transcribes live
+   * capture (TASK-865). Routes STT to the backend streaming provider exactly as
+   * `sttPipelineId` did; wins over it when both are set.
+   */
+  sttAgentSlug?: string;
   /**
    * Tenant id the developer provisions alongside the API key and pipeline id
    * Accepted for API parity and for raw-compat-API symmetry; the

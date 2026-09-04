@@ -67,8 +67,8 @@ export interface BatchQueueItem {
 }
 
 export interface UseBatchQueueOptions {
-  /** Snapshot onto every row at enqueue time, so a picker change mid-queue cannot rewrite history. */
-  pipelineId: string | null;
+  /** Snapshot onto every row at enqueue time, so a picker change mid-queue cannot rewrite history. `null` ⇒ the tenant default agent. */
+  agentSlug: string | null;
   /** Rows in flight at once (upload + stream). */
   concurrency?: number;
   onItemCompleted?: (item: BatchQueueItem) => void;
@@ -83,7 +83,7 @@ const ACTIVE_STATUSES: readonly BatchItemStatus[] = ['uploading', 'processing'];
 /** Per-row handles that must never trigger a re-render. */
 interface ItemRuntime {
   file: File;
-  pipelineId: string | null;
+  agentSlug: string | null;
   abort: AbortController | null;
 }
 
@@ -138,7 +138,7 @@ export interface BatchQueueHandle {
   applyJob: (itemId: string, job: PlaygroundTranscriptionJob) => void;
 }
 
-export function useBatchQueue({ pipelineId, concurrency = DEFAULT_BATCH_CONCURRENCY, onItemCompleted, onItemFailed }: UseBatchQueueOptions): BatchQueueHandle {
+export function useBatchQueue({ agentSlug, concurrency = DEFAULT_BATCH_CONCURRENCY, onItemCompleted, onItemFailed }: UseBatchQueueOptions): BatchQueueHandle {
   const queryClient = useQueryClient();
   const [items, setItems] = useState<BatchQueueItem[]>([]);
 
@@ -155,14 +155,14 @@ export function useBatchQueue({ pipelineId, concurrency = DEFAULT_BATCH_CONCURRE
   // Latest props kept reachable from long-lived async callbacks without making
   // them dependencies. Written in an effect: a ref write during render is a
   // lint error here (react-hooks/refs) and the same pattern as `useEventStream`.
-  const pipelineRef = useRef(pipelineId);
+  const agentRef = useRef(agentSlug);
   const onCompletedRef = useRef(onItemCompleted);
   const onFailedRef = useRef(onItemFailed);
   useEffect(() => {
-    pipelineRef.current = pipelineId;
+    agentRef.current = agentSlug;
     onCompletedRef.current = onItemCompleted;
     onFailedRef.current = onItemFailed;
-  }, [pipelineId, onItemCompleted, onItemFailed]);
+  }, [agentSlug, onItemCompleted, onItemFailed]);
 
   const patch = useCallback((id: string, update: Partial<BatchQueueItem> | ((previous: BatchQueueItem) => Partial<BatchQueueItem>)) => {
     if (unmountedRef.current) return;
@@ -210,18 +210,13 @@ export function useBatchQueue({ pipelineId, concurrency = DEFAULT_BATCH_CONCURRE
     async (id: string) => {
       const runtime = runtimeRef.current.get(id);
       if (!runtime) return;
-      if (!runtime.pipelineId) {
-        patch(id, { status: 'failed', error: 'No pipeline was selected when this file was queued.' });
-        notify(id, 'failed');
-        return;
-      }
 
       const abort = new AbortController();
       runtime.abort = abort;
       patch(id, { status: 'uploading', uploadProgress: 0, error: null });
 
       try {
-        const created = await uploadBatchAudio({ file: runtime.file, pipelineId: runtime.pipelineId, signal: abort.signal });
+        const created = await uploadBatchAudio({ file: runtime.file, agentSlug: runtime.agentSlug ?? undefined, signal: abort.signal });
         runtime.abort = null;
         if (cancelledRef.current.has(id)) {
           // Cancelled while the POST was in flight: the job exists on the
@@ -276,7 +271,7 @@ export function useBatchQueue({ pipelineId, concurrency = DEFAULT_BATCH_CONCURRE
     const created: BatchQueueItem[] = list.map((file) => {
       idCounterRef.current += 1;
       const id = `batch-item-${idCounterRef.current}`;
-      runtimeRef.current.set(id, { file, pipelineId: pipelineRef.current, abort: null });
+      runtimeRef.current.set(id, { file, agentSlug: agentRef.current, abort: null });
       return {
         id,
         fileName: file.name,

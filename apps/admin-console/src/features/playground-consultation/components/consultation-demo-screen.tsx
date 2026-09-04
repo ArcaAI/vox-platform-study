@@ -30,6 +30,7 @@ import {
   useArcaLiveSummary,
   useArcaSttLanguageModes,
   useConsultationWorkflow,
+  useSelectableAsrAgents,
   useSelectableConsultationWorkflows,
   useStoreApi,
 } from '@arcaai/vox';
@@ -49,7 +50,6 @@ import {
   getLatestSummary,
   playgroundConsultationKeys,
   useApproveSummary,
-  useAudioPipelines,
   useCancelConsultationJob,
   useConsultationLoopStream,
   useDnaStyleOptions,
@@ -194,11 +194,11 @@ function SdkBoundary() {
         wsUrl: publicEnv.apiHost,
         tenantId,
       },
+      // The browser never runs a model (TASK-865): no client VAD, no client
+      // denoise — the backend runs both, selected by the tenant's ASR Agent.
+      // Backend streaming STT; the agent is picked per capture via
+      // audio.start({ agentSlug }) or left to the assignment cascade.
       audio: {
-        noiseFilter: { enabled: true },
-        vad: { enabled: true },
-        // Backend streaming STT; the pipeline is picked per capture
-        // via audio.start({ pipelineId }).
         stt: { enabled: true, provider: 'backend' },
       },
       autoWireTokenRefresh: false,
@@ -228,7 +228,11 @@ function ScribeWorkspace() {
   const [consultation, setConsultation] = useState<ConsultationListRow | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [approved, setApproved] = useState(false);
-  const [pipelineChoice, setPipelineChoice] = useState('');
+  // which published ASR Agent transcribes the next capture. EMPTY IS THE
+  // DEFAULT and means "send no slug": the department → tenant AgentAssignment
+  // cascade decides (same rule as `workflowChoice` below). The tenant default
+  // is surfaced in the picker as a hint, never preselected.
+  const [agentChoice, setAgentChoice] = useState('');
   // end-user STT language mode. Empty ⇒ pipeline default. The
   // backend guarantees the chosen mode fits the session's engines (422 otherwise).
   const [languageMode, setLanguageMode] = useState('');
@@ -250,7 +254,8 @@ function ScribeWorkspace() {
   // column's evidence panel).
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
 
-  const pipelines = useAudioPipelines();
+  // Tri-state like `selectableWorkflows`: `null` could-not-ask vs `[]` none published.
+  const asrAgents = useSelectableAsrAgents();
   const departments = useScopingDepartments();
   /**
    * the selectable workflow set and the governing read-back, both from
@@ -263,8 +268,6 @@ function ScribeWorkspace() {
  */
   const selectableWorkflows = useSelectableConsultationWorkflows();
   const dnaStyles = useDnaStyleOptions();
-  const defaultPipelineId = pipelines.data ? ((pipelines.data.find((pipeline) => pipeline.isDefault) ?? pipelines.data[0])?.id ?? '') : '';
-  const pipelineId = pipelineChoice || defaultPipelineId;
 
   const recordingStart = useStartRecording();
   const recordingStop = useStopRecording();
@@ -450,7 +453,7 @@ function ScribeWorkspace() {
     }
     setCaptureBusy(true);
     try {
-      await audio.start({ pipelineId: pipelineId || undefined, ...(languageMode ? { languageMode } : {}) });
+      await audio.start({ ...(agentChoice ? { agentSlug: agentChoice } : {}), ...(languageMode ? { languageMode } : {}) });
       const sessionId = (await resolveStreamingSessionId(storeApi)) ?? undefined;
       const state = await recordingStart.mutateAsync({ consultationId: consultation.id, sessionId });
       setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
@@ -594,13 +597,13 @@ function ScribeWorkspace() {
 
   const transcriptionModels: ModelOption[] = useMemo(
     () =>
-      (pipelines.data ?? []).map((pipeline) => ({
-        id: pipeline.id,
-        name: pipeline.name ?? pipeline.id,
+      (asrAgents.agents ?? []).map((agent) => ({
+        id: agent.slug,
+        name: agent.isTenantDefault ? `${agent.name} \u00b7 tenant default` : agent.name,
         source: 'backend' as const,
-        description: pipeline.description ?? undefined,
+        description: agent.description ?? undefined,
       })),
-    [pipelines.data],
+    [asrAgents.agents],
   );
 
   // The note model isn't a picker endpoint yet — surface the model that
@@ -634,9 +637,9 @@ function ScribeWorkspace() {
       footer={
         <ScribeFooter
           transcriptionModels={transcriptionModels}
-          selectedTranscriptionId={pipelineId}
-          onTranscriptionChange={setPipelineChoice}
-          transcriptionLoading={pipelines.isLoading}
+          selectedTranscriptionId={agentChoice}
+          onTranscriptionChange={setAgentChoice}
+          transcriptionLoading={asrAgents.isLoading}
           languageModes={languageModes.modes}
           selectedLanguageMode={languageMode}
           onLanguageModeChange={setLanguageMode}

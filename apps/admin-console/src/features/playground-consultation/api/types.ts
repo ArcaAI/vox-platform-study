@@ -8,15 +8,6 @@
  * helpers below fold both.
  */
 
-/** AudioPipelinePublicController `GET audio/pipelines` row (PipelineResponse subset). */
-export interface AudioPipeline {
-  id: string;
-  name: string;
-  slug: string;
-  description?: string | null;
-  isDefault?: boolean;
-}
-
 /** ConsultationResponse subset — the demo only reads identity + lifecycle. */
 export interface PlaygroundConsultation {
   id: string;

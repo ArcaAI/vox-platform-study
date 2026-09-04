@@ -80,7 +80,8 @@ interface SttStreamClient {
 }
 
 export interface StartLiveSttOptions {
-  pipelineId: string;
+  /** Published ASR Agent slug; omitted ⇒ the tenant default (TASK-865). */
+  agentSlug?: string;
   /** `effectiveTenantId ?? session.user.tenantId` — REQUIRED for the WS tenant-claim guard. */
   tenantId: string;
   language?: string;
@@ -252,7 +253,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
       setStatus('creating_session');
       let created;
       try {
-        created = await createStreamSession({ pipelineId: options.pipelineId, sampleRate: SAMPLE_RATE, language: options.language });
+        created = await createStreamSession({ ...(options.agentSlug ? { agentSlug: options.agentSlug } : {}), sampleRate: SAMPLE_RATE, language: options.language });
       } catch (createError) {
         releaseAudio();
         if (createError instanceof GatewayError && createError.status === 429) {

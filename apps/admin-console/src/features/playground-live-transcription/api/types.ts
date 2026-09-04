@@ -48,7 +48,12 @@ export interface PaginatedPlaygroundJobs {
 
 /** POST /audio/transcription-jobs/stream/session body (CreateStreamSessionRequest). */
 export interface CreateStreamSessionInput {
-  pipelineId: string;
+  /**
+   * Slug of the published ASR Agent to transcribe with (TASK-865/861). Omit to
+   * let the tenant → department AgentAssignment cascade decide. The client
+   * never names a pipeline, engine or model.
+   */
+  agentSlug?: string;
   consultationId?: string;
   /** Negotiated capture rate; the gateway default is 16000. */
   sampleRate?: number;
@@ -84,15 +89,16 @@ export interface BatchTranscribeResponse {
   audioUri: string;
 }
 
-/** GET /audio/pipelines rows (PipelineResponse) — picker subset. */
-export interface PlaygroundPipeline {
-  id: string;
-  name: string;
+/** GET /agents?task=SPEECH_TO_TEXT rows (TASK-863) — the transcription-agent picker subset. */
+export interface PlaygroundAsrAgent {
+  /** The value sent as `agentSlug`. */
   slug: string;
+  name: string;
   description?: string | null;
-  /** Exactly one pipeline per tenant carries true. */
-  isDefault: boolean;
-  resourceStatus: string;
+  task: 'SPEECH_TO_TEXT';
+  versionNumber: number;
+  /** The slug the TENANT-level assignment names — shown as a hint, never preselected. */
+  isTenantDefault: boolean;
 }
 
 /** Gateway upload cap (MAX_FILE_SIZE in the controller dto). */

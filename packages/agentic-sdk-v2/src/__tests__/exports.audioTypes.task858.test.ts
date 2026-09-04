@@ -44,6 +44,11 @@ describe('audio type exports — core barrel', () => {
     expect(options.audioProcessing?.autoGainControl).toBe(false);
   });
 
+  it('AudioStartOptions carries agentSlug (TASK-865) — a host can annotate the new selector from /core', () => {
+    const options: AudioStartOptions = { agentSlug: 'clinic-asr' };
+    expect(options.agentSlug).toBe('clinic-asr');
+  });
+
   it('names DualCaptureResult', () => {
     const capture: DualCaptureResult = { raw: new Blob(['raw']), processed: new Blob(['processed']) };
     expect(capture.raw).toBeInstanceOf(Blob);
@@ -61,7 +66,7 @@ describe('audio type exports — core barrel', () => {
 describe('audio type exports — root barrel', () => {
   it('re-exports all five through @arcaai/vox', () => {
     const processing: RootAudioProcessingConstraints = { noiseSuppression: true };
-    const options: RootAudioStartOptions = { audioProcessing: processing };
+    const options: RootAudioStartOptions = { audioProcessing: processing, agentSlug: 'clinic-asr' };
     const capture: RootDualCaptureResult = { raw: new Blob(), processed: new Blob() };
     const pipeline: RootActivePipelineInfo = { id: 'p-2', name: 'Fallback', isFallback: true };
     const state: RootSttConnectionState = 'reconnecting';

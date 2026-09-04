@@ -18,7 +18,6 @@ import {
   getTranscriptions,
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
-  listAudioPipelines,
   listDnaStyleOptions,
   liveSummaryStreamPath,
   loopStreamPath,
@@ -67,10 +66,6 @@ export function useDnaStyleOptions() {
     retry: false,
     staleTime: 5 * 60_000,
   });
-}
-
-export function useAudioPipelines() {
-  return useQuery({ queryKey: playgroundConsultationKeys.pipelines(), queryFn: listAudioPipelines });
 }
 
 /** Latest draft for the review pane. null = nothing generated yet (not an error). */

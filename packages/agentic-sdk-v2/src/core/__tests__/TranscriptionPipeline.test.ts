@@ -2,6 +2,11 @@
  * TranscriptionPipeline Unit Tests
  *
  * Tests for the sequential audio processing pipeline.
+ *
+ * TASK-865: the `noiseFilter` / `vad` stages are DEPRECATED client models and
+ * are constructed only behind `clientInference: { allow: true }` — every config
+ * below that expects one of them to exist states that allow explicitly. The
+ * gate itself is pinned in `src/__tests__/client-inference-gate.task865.test.ts`.
  * @vitest-environment jsdom
  */
 
@@ -112,6 +117,7 @@ describe('TranscriptionPipeline', () => {
 
     it('should create pipeline with custom config', () => {
       const config: Partial<TranscriptionPipelineConfig> = {
+        clientInference: { allow: true },
         noiseFilter: { enabled: true, level: 'high', location: 'browser' },
         vad: { enabled: true, sensitivity: 0.7, location: 'browser' },
         stt: { enabled: false, location: 'skip' },
@@ -130,7 +136,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('factory function', () => {
     it('should create pipeline using factory', () => {
-      const pipeline = createTranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = createTranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       expect(pipeline).toBeInstanceOf(TranscriptionPipeline);
       expect(pipeline.name).toBe('transcription-pipeline');
@@ -141,6 +147,7 @@ describe('TranscriptionPipeline', () => {
     it('should initialize and start enabled stages', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           noiseFilter: { enabled: true, location: 'browser' },
           vad: { enabled: true, location: 'browser' },
           stt: { enabled: true, location: 'browser' },
@@ -163,6 +170,7 @@ describe('TranscriptionPipeline', () => {
     it('should only initialize enabled stages', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           noiseFilter: { enabled: true, location: 'browser' },
           vad: { enabled: false, location: 'browser' },
           stt: { enabled: false, location: 'skip' },
@@ -178,7 +186,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should not reinitialize if already running', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -188,7 +196,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should emit stateChange events during initialization', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       const stateChanges: Array<{ status: string }> = [];
       pipeline.on('stateChange', (state) => {
@@ -203,7 +211,7 @@ describe('TranscriptionPipeline', () => {
     it('should handle initialization errors', async () => {
       mockNoiseFilter.init.mockRejectedValueOnce(new Error('Init failed'));
 
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       const errorHandler = vi.fn();
       pipeline.on('error', errorHandler);
@@ -217,6 +225,7 @@ describe('TranscriptionPipeline', () => {
     it('should map VAD sensitivity and timing options correctly', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           noiseFilter: { enabled: false, location: 'skip' },
           vad: {
             enabled: true,
@@ -401,6 +410,7 @@ describe('TranscriptionPipeline', () => {
     it('should stop and destroy all processors', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           noiseFilter: { enabled: true, location: 'browser' },
           vad: { enabled: true, location: 'browser' },
         },
@@ -419,7 +429,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should do nothing if already stopped', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.stop();
 
@@ -431,6 +441,7 @@ describe('TranscriptionPipeline', () => {
     it('should pause the pipeline', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           noiseFilter: { enabled: true, location: 'browser' },
           vad: { enabled: true, location: 'browser' },
         },
@@ -446,7 +457,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should resume the pipeline', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.pause();
@@ -457,7 +468,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should not pause if not running', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       pipeline.pause();
 
@@ -465,7 +476,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should not resume if not paused', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       pipeline.resume();
@@ -477,9 +488,10 @@ describe('TranscriptionPipeline', () => {
 
   describe('updateConfig', () => {
     it('should update configuration', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       pipeline.updateConfig({
+        clientInference: { allow: true },
         vad: { enabled: true, sensitivity: 0.8, location: 'browser' },
       });
 
@@ -491,6 +503,7 @@ describe('TranscriptionPipeline', () => {
     it('should merge config deeply', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           noiseFilter: { enabled: true, level: 'low', location: 'browser' },
         },
         mockLogger,
@@ -508,7 +521,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('toggleStage', () => {
     it('should toggle stage enabled state', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.toggleStage('noiseFilter', false);
@@ -531,7 +544,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('getProcessor', () => {
     it('should return processor by name', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
@@ -548,7 +561,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('getProcessedTrack', () => {
     it('should return original track when no processing', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
@@ -560,7 +573,7 @@ describe('TranscriptionPipeline', () => {
       const processedTrack = {} as MediaStreamTrack;
       mockNoiseFilter.processedTrack = processedTrack;
 
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
@@ -633,7 +646,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should emit VAD events', async () => {
-      const pipeline = new TranscriptionPipeline({ vad: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, vad: { enabled: true, location: 'browser' } }, mockLogger);
 
       const vadHandler = vi.fn();
       pipeline.on('vadEvent', vadHandler);
@@ -654,6 +667,7 @@ describe('TranscriptionPipeline', () => {
     it('should transcribe VAD speech-end segments when local STT is VAD-gated', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           vad: { enabled: true, location: 'browser' },
           stt: { enabled: true, location: 'browser', provider: 'local' },
         },
@@ -683,7 +697,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('destroy', () => {
     it('should destroy pipeline and clear resources', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.destroy();
@@ -699,7 +713,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('stop should release audio resources', () => {
     it('should stop all MediaStream tracks when stopping', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       const mockStop = vi.fn();
       const trackWithStop = { ...mockTrack, stop: mockStop };
@@ -713,6 +727,7 @@ describe('TranscriptionPipeline', () => {
     it('should close AudioContext when stopping (contextOwnership: owned)', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           noiseFilter: { enabled: true, location: 'browser' },
           contextOwnership: 'owned',
         },
@@ -729,7 +744,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should NOT close AudioContext when contextOwnership is borrowed (default)', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       const mockClose = vi.fn().mockResolvedValue(undefined);
       const ctxWithClose = { ...mockAudioContext, close: mockClose, state: 'running' };
@@ -743,6 +758,7 @@ describe('TranscriptionPipeline', () => {
     it('should not close AudioContext if already closed (owned context)', async () => {
       const pipeline = new TranscriptionPipeline(
         {
+          clientInference: { allow: true },
           noiseFilter: { enabled: true, location: 'browser' },
           contextOwnership: 'owned',
         },
@@ -765,7 +781,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('pause/resume should await processor operations', () => {
     it('pause() should return a Promise', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
@@ -775,7 +791,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('resume() should return a Promise', async () => {
-      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
+      const pipeline = new TranscriptionPipeline({ clientInference: { allow: true }, noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.pause();

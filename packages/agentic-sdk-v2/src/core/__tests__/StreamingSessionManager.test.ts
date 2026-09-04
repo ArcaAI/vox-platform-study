@@ -56,6 +56,54 @@ describe('StreamingSessionManager', () => {
   // createSession
   // ===========================================================================
 
+  describe('createSession — agentSlug replaces pipelineId (TASK-865)', () => {
+    const response: StreamingSessionResponse = { sessionId: 's-1', status: 'active', maxConcurrent: 5, currentActive: 1, wsUrl: '/ws/stt/stream' };
+
+    it('POSTs agentSlug and sends NO pipelineId key when the caller named an agent only', async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse(response));
+
+      await manager.createSession({ agentSlug: 'clinic-asr', language: 'en' });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.agentSlug).toBe('clinic-asr');
+      expect('pipelineId' in body).toBe(false);
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('prefers agentSlug when BOTH are passed — pipelineId is dropped from the body and a warning names the conflict', async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse(response));
+
+      await manager.createSession({ agentSlug: 'clinic-asr', pipelineId: 'legacy-pipe' });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.agentSlug).toBe('clinic-asr');
+      expect('pipelineId' in body).toBe(false);
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/both/i), expect.objectContaining({ operation: 'createSession' }));
+    });
+
+    it('still sends pipelineId alone (deprecated path) and logs a deprecation warning', async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse(response));
+
+      await manager.createSession({ pipelineId: 'legacy-pipe' });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.pipelineId).toBe('legacy-pipe');
+      expect('agentSlug' in body).toBe(false);
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/deprecat/i), expect.objectContaining({ operation: 'createSession' }));
+    });
+
+    it('sends NEITHER when the caller named nothing — the gateway resolves the tenant default agent', async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse(response));
+
+      await manager.createSession({ language: 'en' });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect('pipelineId' in body).toBe(false);
+      expect('agentSlug' in body).toBe(false);
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+  });
+
   describe('createSession', () => {
     const mockSessionResponse: StreamingSessionResponse = {
       sessionId: 'session-abc-123',

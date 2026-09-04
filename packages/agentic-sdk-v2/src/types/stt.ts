@@ -74,8 +74,20 @@ export enum ResourceStatus {
  * @see apps/api/src/modules/stt/dto/create-streaming-session.request.ts
  */
 export interface CreateStreamingSessionRequest {
-  /** Pipeline UUID or slug (required) */
-  pipelineId: string;
+  /**
+   * Pipeline UUID or slug.
+   * @deprecated TASK-865 — removed in R4 (`AsrPipeline` retires under TASK-861).
+   * Name the ASR Agent with {@link CreateStreamingSessionRequest.agentSlug}, or
+   * send neither and let the tenant assignment cascade decide. When both are
+   * present the SDK sends ONLY `agentSlug` and warns.
+   */
+  pipelineId?: string;
+  /**
+   * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
+   * transcribe this session (TASK-865). Optional: absent ⇒ the gateway
+   * resolves the tenant → department default.
+   */
+  agentSlug?: string;
   /** Optional consultation to link the session to */
   consultationId?: string;
   /** Audio sample rate in Hz (8000-48000, default: 16000) */

@@ -17,6 +17,8 @@ export { HopeClient } from './client';
 export type { HopeClientOptions, HopeLogger } from './client';
 
 export {
+  AGENT_PLANE_ROUTES,
+  AgentsResource,
   ConsultationSummariesResource,
   ConsultationsResource,
   ConsultationWorkflowsResource,
@@ -30,6 +32,7 @@ export {
 export type {
   AddContextOptions,
   ConsultationRequestOptions,
+  InvokeAgentOptions,
   ContextSchemaDiscoveryOptions,
   ConsultationSummaryRequestOptions,
   GenerateSummaryOptions,
@@ -148,4 +151,14 @@ export type {
   WorkflowRunHandle,
   WorkflowRunStatus,
   WorkflowSummary,
+  AgentInvocationEvent,
+  AgentInvocationEventPayload,
+  AgentInvocationResult,
+  AgentSummary,
+  AgentTask,
+  InvokeAgentRequest,
+  SpeechRequest,
+  SpeechSynthesis,
+  TranscribeSource,
+  TranscriptionJobHandle,
 } from './types';

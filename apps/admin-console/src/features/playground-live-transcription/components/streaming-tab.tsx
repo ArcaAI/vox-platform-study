@@ -104,12 +104,12 @@ export function DegradedBanner({ droppedFrameCount }: { droppedFrameCount: numbe
 
 function SessionControlsCard({
   live,
-  pipelineName,
+  agentName,
   now,
   onStop,
 }: {
   live: UseLiveSttSessionResult;
-  pipelineName: string | null;
+  agentName: string | null;
   now: number;
   onStop: () => void;
 }) {
@@ -134,8 +134,8 @@ function SessionControlsCard({
           <dd className="truncate text-xs" title={live.micLabel ?? undefined}>
             {live.micLabel ?? '\u2014'}
           </dd>
-          <dt className="text-muted-foreground text-xs">Pipeline</dt>
-          <dd className="truncate text-xs">{pipelineName ?? '\u2014'}</dd>
+          <dt className="text-muted-foreground text-xs">Transcription agent</dt>
+          <dd className="truncate text-xs">{agentName ?? '\u2014'}</dd>
           <dt className="text-muted-foreground text-xs">Capture</dt>
           <dd className="text-xs">
             16 kHz mono {'\u00b7'} VAD auto-pause on {'\u00b7'} echo cancel on {'\u00b7'} noise suppression on
@@ -260,12 +260,12 @@ export function TranscriptPane({ live }: { live: UseLiveSttSessionResult }) {
  */
 export function StreamingTab({
   live,
-  pipelineName,
+  agentName,
   canStart,
   onStart,
 }: {
   live: UseLiveSttSessionResult;
-  pipelineName: string | null;
+  agentName: string | null;
   canStart: boolean;
   onStart: () => void;
 }) {
@@ -333,7 +333,7 @@ export function StreamingTab({
     <div className="flex flex-col gap-4">
       {live.audioLostThisSession ? <DegradedBanner droppedFrameCount={live.droppedFrameCount} /> : null}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-        <SessionControlsCard live={live} pipelineName={pipelineName} now={now} onStop={() => void live.stop()} />
+        <SessionControlsCard live={live} agentName={agentName} now={now} onStop={() => void live.stop()} />
         <TranscriptPane live={live} />
       </div>
     </div>

@@ -1,9 +1,10 @@
 # @arcaai/vox-node
 
 The HOPE **server-side Node SDK** — a typed client for the HOPE gateway's
-summarization and consultation-summary surfaces, plus the full **administration
-plane** (`hope.admin.*`, 52 areas), for backend engineers who need to call HOPE
-from a Node service, script, or worker.
+summarization and consultation-summary surfaces, the workflow and published-agent
+invocation planes (`hope.workflows.*`, `hope.agents.*`), plus the full
+**administration plane** (`hope.admin.*`, 52 areas), for backend engineers who
+need to call HOPE from a Node service, script, or worker.
 
 ## What this is, and what it is NOT
 
@@ -397,6 +398,49 @@ while you build it.
 There is no "run completed" webhook — see
 [Known gateway quirks](#known-gateway-quirks-the-sdk-deliberately-does-not-hide).
 Hold the stream or poll `getRun`; do not fire and forget.
+
+## Invoking agents — `hope.agents.*`
+
+A published **Agent** is a single-task product — an LLM agent (`TEXT_GENERATION`),
+a TTS agent (`TEXT_TO_SPEECH`), an ASR agent (`SPEECH_TO_TEXT`) — that a tenant
+admin configures and publishes; a workflow composes agents, an agent is what a
+workflow node calls. `hope.agents` invokes them directly, with the same client
+and the same credential rule as `hope.workflows` (API key only; `svcScopes: []`).
+Routes: TASK-863 §3.5.
+
+```ts
+const hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL!, apiKey: process.env.HOPE_API_KEY! });
+
+// Discovery — the same predicate the gateway resolves an `agentSlug` with.
+const writers = await hope.agents.list({ task: 'TEXT_GENERATION' });   // GET /api/v1/agents?task=…
+const writer = await hope.agents.get(writers[0].slug);                 // + inputSchema / outputSchema / protocols
+
+// LLM agent — blocking (60s gateway ceiling → GatewayTimeoutError) or streaming.
+const { output } = await hope.agents.invoke(writer.slug, { note }, { idempotencyKey: visitId });
+for await (const event of hope.agents.invokeAndStream(writer.slug, { note })) console.log(event.type, event.payload);
+
+// TTS agent — the audio body is handed back unbuffered.
+const speech = await hope.agents.synthesize('clinic-tts', { text: 'Take one tablet daily.' });
+await pipeline(Readable.fromWeb(speech.stream!), createWriteStream('advice.mp3'));   // or await speech.arrayBuffer()
+
+// Batch ASR agent — multipart file or an already-uploaded mediaId → a TranscriptionJob.
+const job = await hope.agents.transcribe('clinic-asr', { file: recording, filename: 'visit.wav', language: 'en' });
+```
+
+`invoke` sends the `Idempotency-Key` header exactly like a workflow run: a retry
+with the same key JOINS the in-flight invocation. The blocking 504 ceiling is never
+retried. `invokeAndStream` yields the same envelope as a workflow-run frame
+(`type`, `correlationId`, `payload`, `resumeToken`, …) but does **not** reconnect —
+TASK-863 exposes no per-invocation stream route to resume against; re-invoke with
+the same idempotency key instead.
+
+Realtime transcription is deliberately **not** here: a browser captures audio and
+opens the stream session through `@arcaai/vox` (`audio.start({ agentSlug })`).
+This package has no audio stack and never will — *the browser never runs a model*,
+and neither does this SDK.
+
+Administration of agents (CRUD, versions, publish, assignments) is the generated
+admin plane, `hope.admin.agent.*` — service account only.
 
 ## Streaming
 

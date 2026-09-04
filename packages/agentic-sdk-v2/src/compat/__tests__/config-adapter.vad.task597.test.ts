@@ -141,6 +141,9 @@ describe('a disabled stage is genuinely skipped, not merely bypassed', () => {
 
     const pipeline = new TranscriptionPipeline(
       {
+        // TASK-865: `enabled: true` alone no longer constructs a client stage;
+        // the explicit allow is what this positive control now proves.
+        clientInference: { allow: true },
         noiseFilter: { enabled: false, location: 'skip' },
         vad: { enabled: true, location: 'browser' },
         stt: { enabled: false, location: 'browser', provider: 'local' },
