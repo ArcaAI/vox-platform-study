@@ -5,6 +5,7 @@ import type {
   SttLanguageModeCatalog,
 } from '@arcaai/applications';
 import {
+  AsrAgentResolverService,
   Authorize,
   BATCH_TRANSCRIPTION_DEFAULTS,
   BatchTranscriptionLimitsService,
@@ -20,8 +21,9 @@ import {
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
-import type { SttProviderOverrides } from '@arcaai/applications';
+import type { ResolvedAsrSession, ResolvedAsrSpec, SttProviderOverrides } from '@arcaai/applications';
 import { TenantBucketPurpose } from '@arcaai/domains';
+import type { Response } from 'express';
 import { probeAudioDurationSeconds } from './audio-duration';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../auth/stream-ticket.service';
@@ -44,6 +46,7 @@ import {
   Param,
   Post,
   Query,
+  Res,
   ServiceUnavailableException,
   Sse,
   UploadedFile,
@@ -105,6 +108,7 @@ export class TranscriptionJobController {
   private async dispatchBatchJob(params: {
     jobId: string;
     tenantId: string;
+    /** The runtime key: the agent VERSION id (agent path) or the deprecated pipeline id. */
     pipelineId: string;
     audioUri: string;
     consultationId?: string;
@@ -113,8 +117,10 @@ export class TranscriptionJobController {
     userId?: string;
     audioBucketName?: string;
     storage?: StorageDescriptor | null;
-    /** Tenant fallback pipeline the worker re-runs on if the primary ASR fails. */
+    /** @deprecated TASK-861 — tenant fallback pipeline the worker re-runs on if the primary ASR fails (legacy path only). */
     fallbackPipelineId?: string;
+    /** TASK-861 — the resolved spec the worker assembles the engine chain from (carries its own fallback). */
+    resolvedSpec?: ResolvedAsrSpec;
   }): Promise<void> {
     const service = this.realtimeService as unknown as {
       dispatchDramatiqJob: (args: typeof params) => Promise<void>;
@@ -149,7 +155,48 @@ export class TranscriptionJobController {
     // module still work — the ceilings then apply at their CODE DEFAULTS. The
     // limit is never SKIPPED when this is absent, only made non-configurable.
     @Optional() private readonly batchLimits?: BatchTranscriptionLimitsService,
+    // TASK-861 — the ONE resolution path from "start transcribing" to a runnable
+    // `ResolvedAsrSpec` (explicit agentSlug → assignment cascade → spec + cloud
+    // credentials). Optional + trailing so positional test construction keeps
+    // compiling; when absent the agent path answers 503 (never a pipeline guess)
+    // while the deprecated `pipelineId` path keeps working for the window.
+    @Optional() private readonly asrResolver?: AsrAgentResolverService,
   ) {}
+
+  /**
+   * TASK-861 — resolve the ASR Agent (explicit slug or the assignment cascade)
+   * into the spec + credentials one session / job runs on. Fails CLOSED when the
+   * resolver is not wired: guessing an engine is worse than refusing.
+   */
+  /**
+   * TASK-861 — which path serves a request. An explicit `pipelineId` is the
+   * deprecated path. A gateway WITHOUT the agent resolver (a stack that has not
+   * wired `AsrAgentResolverServiceModule`) degrades to the legacy tenant-default
+   * resolution when nothing is named, so it keeps transcribing; an explicit
+   * `agentSlug` can never be honoured there and fails closed (503) instead.
+   */
+  private useLegacyPipelinePath(body: { pipelineId?: string; agentSlug?: string }): boolean {
+    return Boolean(body.pipelineId) || (!this.asrResolver && !body.agentSlug);
+  }
+
+  private async resolveAsrAgent(tenantId: string, agentSlug?: string | null): Promise<ResolvedAsrSession> {
+    if (!this.asrResolver) {
+      throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
+    }
+    return this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null });
+  }
+
+  /**
+   * TASK-861 — the deprecated `pipelineId` path answers with the program-wide
+   * deprecation headers (RFC 9745 `Deprecation` + an operator-readable notice).
+   * Set per request because the SAME route serves both paths; `@ApiDeprecated`
+   * is a per-route marker and would mislabel the agent path.
+   */
+  private markPipelineIdDeprecated(res?: Response): void {
+    res?.setHeader('Deprecation', 'true');
+    res?.setHeader('X-Deprecation-Notice', 'TASK-861 — `pipelineId` is removed in R4; send `agentSlug` (or nothing, for the assigned ASR agent)');
+    res?.setHeader('Link', '</api/v1/agents?task=SPEECH_TO_TEXT>; rel="successor-version"');
+  }
 
   /**
    * The effective batch ceilings for the caller's tenant, or the code defaults
@@ -341,7 +388,11 @@ export class TranscriptionJobController {
   // enforced in the handler below; this only stops a multi-GB body from being
   // buffered before that check can run.
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_HARD_CEILING } }))
-  async transcribeFile(@UploadedFile() file: Express.Multer.File, @Body() body: TranscribeFileRequest): Promise<BatchTranscribeResponse> {
+  async transcribeFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: TranscribeFileRequest,
+    @Res({ passthrough: true }) res?: Response,
+  ): Promise<BatchTranscribeResponse> {
     // 1. Validate file
     if (!file?.buffer) {
       throw new BadRequestException('Audio file is required');
@@ -388,22 +439,33 @@ export class TranscriptionJobController {
     // limit. Without it "5 per batch" is bypassed by sending five batches.
     await this.assertBatchConcurrency(limits.maxActiveJobsPerUser);
 
-    // 1c. Resolve the pipeline. `pipelineId` is optional since: omitting
-    //     it means "use the tenant's default", the same intent a live session has
-    //     always been able to express. Resolution order — the pipeline the tenant
-    //     marked default, then the configured STT fallback. If the tenant has
-    //     neither, REFUSE: transcribing a consultation on an arbitrary engine is
-    //     worse than a clear error.
-    const { fallbackPipelineId } = await this.resolveSttFallbackConfig(tenantId);
-    const pipelineId = body.pipelineId ?? (await this.resolveDefaultPipelineId(fallbackPipelineId));
-
-    // Block cross-tenant pipeline use before any I/O.
-    await this.assertPipelineOwnership(pipelineId);
+    // 1c. Resolve WHAT runs the job (TASK-861). The agent path — explicit
+    //     `agentSlug`, else the tenant's assigned agent — yields a
+    //     `ResolvedAsrSpec` the job is keyed to and reproducible from. The
+    //     deprecated `pipelineId` path keeps its resolution for the window
+    //     (tenant default → configured fallback → 409) and answers with
+    //     `Deprecation` headers. Either way the gateway never guesses an engine.
+    let pipelineId: string;
+    let fallbackPipelineId: string | undefined;
+    let resolved: ResolvedAsrSession | undefined;
+    if (this.useLegacyPipelinePath(body)) {
+      this.markPipelineIdDeprecated(res);
+      fallbackPipelineId = (await this.resolveSttFallbackConfig(tenantId)).fallbackPipelineId;
+      pipelineId = body.pipelineId ?? (await this.resolveDefaultPipelineId(fallbackPipelineId));
+      // Block cross-tenant pipeline use before any I/O.
+      await this.assertPipelineOwnership(pipelineId);
+    } else {
+      resolved = await this.resolveAsrAgent(tenantId, body.agentSlug);
+      pipelineId = resolved.spec.runtimeKey;
+    }
     const mediaId = uuidv7();
 
-    // 2. Create batch job in DB (status: QUEUED)
+    // 2. Create batch job in DB (status: QUEUED) — keyed to the agent version +
+    //    spec snapshot (never a credential), or to the deprecated pipeline row.
     const job = await this.jobService.createBatchJob({
-      pipelineId,
+      ...(resolved
+        ? { agentVersionId: resolved.spec.agent.versionId, resolvedSpec: resolved.spec as unknown as Record<string, unknown> }
+        : { pipelineId }),
       mediaId,
       consultationId: body.consultationId,
     });
@@ -455,11 +517,12 @@ export class TranscriptionJobController {
         return null;
       });
 
-      // 7. Dispatch Dramatiq message to stt_batch queue. `fallbackPipelineId`
-      //    (resolved above) lets a cloud-ASR/model failure in the worker re-run
-      // on the tenant fallback instead of failing the job:
-      // `transcribe_file` has accepted it, but nothing ever
-      //    supplied it, so the whole batch-fallback path was unreachable.
+      // 7. Dispatch Dramatiq message to stt_batch queue. On the agent path the
+      //    worker assembles the engine chain from `resolvedSpec` (which carries
+      //    its own fallback) and reads nothing from Postgres; the deprecated
+      //    path still sends `fallbackPipelineId` so a cloud-ASR/model failure
+      //    re-runs on the tenant fallback instead of failing the job. Credentials
+      //    never enter the queue message: the worker pulls them at execution.
       const user = this.cls.get('user');
       await this.dispatchBatchJob({
         jobId: job.id,
@@ -472,7 +535,8 @@ export class TranscriptionJobController {
         userId: user?.id,
         audioBucketName: uploadBucket,
         storage,
-        ...(fallbackPipelineId ? { fallbackPipelineId } : {}),
+        ...(resolved ? { resolvedSpec: resolved.spec } : {}),
+        ...(!resolved && fallbackPipelineId ? { fallbackPipelineId } : {}),
       });
     } catch (error) {
       // If upload or dispatch fails, mark the job as failed
@@ -490,6 +554,7 @@ export class TranscriptionJobController {
       status: job.status,
       sseUrl,
       audioUri,
+      ...(resolved ? { agentSlug: resolved.spec.agent.slug, agentVersionId: resolved.spec.agent.versionId } : {}),
     };
   }
 
@@ -557,14 +622,41 @@ export class TranscriptionJobController {
    * It exposes only the pipeline's id and name — never credential material.
    */
   @Get('fallback')
-  @ApiOperation({ summary: 'The tenant’s configured STT fallback pipeline, for the live provider toggle' })
-  @ApiResponse({ status: 200, description: 'Fallback pipeline pointer (configured flag + id + display name)' })
-  async getFallbackProvider(): Promise<SttFallbackProviderResponse> {
+  @ApiOperation({ summary: 'The fallback engine of the tenant’s assigned (or the named) ASR agent, for the live provider toggle' })
+  @ApiQuery({
+    name: 'agentSlug',
+    required: false,
+    description: 'ASR Agent slug; omit for the assigned agent (department → tenant → platform default)',
+  })
+  @ApiResponse({ status: 200, description: 'Fallback engine pointer (configured flag + runtime key + display name)' })
+  async getFallbackProvider(@Query('agentSlug') agentSlug?: string): Promise<SttFallbackProviderResponse> {
     const notConfigured: SttFallbackProviderResponse = { configured: false, pipelineId: null, pipelineName: null };
-    if (!this.sttConfig) return notConfigured;
+    const tenantId = this.getTenantId();
 
+    // TASK-861 — the fallback is a property of the resolved ASR agent
+    // (`ResolvedAsrSpec.fallback`), no longer a tenant-wide `TenantSttConfig`
+    // pointer. Reported through the SAME response shape so the SDK toggle label
+    // keeps working; `pipelineId` now carries the fallback engine's runtime key.
+    if (this.asrResolver) {
+      try {
+        const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null });
+        const fallback = spec.fallback.spec;
+        if (!fallback) return { ...notConfigured, agentSlug: spec.agent.slug };
+        const pipelineName = spec.fallback.kind === 'agent' ? fallback.agent.slug : fallback.models.asr.slug;
+        return { configured: true, pipelineId: fallback.runtimeKey, pipelineName, agentSlug: spec.agent.slug };
+      } catch (err) {
+        this.logger.warn({
+          message: 'ASR agent fallback lookup failed; reporting not-configured',
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return notConfigured;
+      }
+    }
+
+    // Deprecated (TASK-861, removed in R4): the tenant-wide fallback pipeline pointer.
+    if (!this.sttConfig) return notConfigured;
     try {
-      const effective = await this.sttConfig.getEffective(this.getTenantId());
+      const effective = await this.sttConfig.getEffective(tenantId);
       const pipelineId = effective?.fallbackPipelineId ?? null;
       if (!pipelineId) return notConfigured;
 
@@ -596,11 +688,19 @@ export class TranscriptionJobController {
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a WebSocket streaming session' })
   @ApiResponse({ status: 201, description: 'Streaming session created', type: StreamSessionResponse })
-  async createStreamSession(@Body() body: CreateStreamSessionRequest): Promise<StreamSessionResponse> {
+  async createStreamSession(@Body() body: CreateStreamSessionRequest, @Res({ passthrough: true }) res?: Response): Promise<StreamSessionResponse> {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
     const user = this.cls.get('user');
     const sampleRate = body.sampleRate ?? 16000;
+    // TASK-861 — the agent path is the default; the deprecated `pipelineId`
+    // path is taken ONLY when the caller sends one (and answers with the
+    // deprecation headers).
+    const legacyPipelinePath = this.useLegacyPipelinePath(body);
+    if (legacyPipelinePath) {
+      if (!body.pipelineId) throw new BadRequestException('pipelineId is required when no ASR agent resolver is configured');
+      this.markPipelineIdDeprecated(res);
+    }
 
     // HARD-BLOCK a new session when the tenant is at/
     // over its resolved `maxConcurrentSessions` (live socket-registry count).
@@ -633,25 +733,43 @@ export class TranscriptionJobController {
       }
     };
 
-    const [, { audioBucketName, storage }] = await Promise.all([this.assertPipelineOwnership(body.pipelineId), resolveAudioBucket()]);
+    // Ownership (legacy path) or agent resolution (TASK-861) runs in parallel
+    // with the bucket resolution — independent reads; a rejected resolution
+    // still rejects the whole step before anything is forwarded to STT.
+    const [resolved, { audioBucketName, storage }] = await Promise.all([
+      legacyPipelinePath
+        ? this.assertPipelineOwnership(body.pipelineId as string).then(() => undefined)
+        : this.resolveAsrAgent(tenantId, body.agentSlug),
+      resolveAudioBucket(),
+    ]);
 
-    // Resolve the tenant's STT fallback pointer + decrypted BYO provider
-    // overrides and forward both to the session runtime. Fails
-    // OPEN: a config/decrypt error creates the session WITHOUT overrides or a
-    // fallback (transcription proceeds on platform env creds) — never a 500.
-    const { providerOverrides, fallbackPipelineId, autoSwitchEnabled, consecutiveFailureThreshold } = await this.resolveSttFallbackConfig(tenantId);
+    // The fallback + credentials for this session. Agent path: the spec's own
+    // `fallback` block (autoSwitch + threshold are the agent's governance) and
+    // the credentials TASK-862's resolver bound to the chain. Deprecated path:
+    // the tenant-wide `TenantSttConfig` pointer + BYO map, fail-OPEN as before.
+    const { providerOverrides, fallbackPipelineId, autoSwitchEnabled, consecutiveFailureThreshold } = resolved
+      ? {
+          providerOverrides: resolved.providerOverrides,
+          fallbackPipelineId: resolved.spec.fallback.spec?.runtimeKey,
+          autoSwitchEnabled: resolved.spec.fallback.autoSwitch,
+          consecutiveFailureThreshold: resolved.spec.fallback.switchAfterConsecutiveFailures,
+        }
+      : await this.resolveSttFallbackConfig(tenantId);
 
     // Pre-start default-provider selection. Fail-closed: opening
-    // directly on the fallback engine requires a resolved fallback pipeline —
+    // directly on the fallback engine requires a resolved fallback —
     // never silently start on primary (mirrors the C3 switch guard).
     if (body.startOn === 'fallback' && !fallbackPipelineId) {
-      throw new ConflictException('No fallback pipeline configured for this tenant');
+      throw new ConflictException(
+        resolved ? `Agent '${resolved.spec.agent.slug}' declares no fallback engine` : 'No fallback pipeline configured for this tenant',
+      );
     }
 
     const sessionPayload = {
       sessionId,
       tenantId,
-      pipelineId: body.pipelineId,
+      pipelineId: resolved ? resolved.spec.runtimeKey : (body.pipelineId as string),
+      ...(resolved ? { resolvedSpec: resolved.spec } : {}),
       consultationId: body.consultationId,
       sampleRate,
       language: body.language,
@@ -719,6 +837,8 @@ export class TranscriptionJobController {
       // would have to distinguish from "opened on primary".
       ...(result.pipelineId ? { pipelineId: result.pipelineId } : {}),
       ...(result.activeEngine ? { activeEngine: result.activeEngine } : {}),
+      // TASK-861 — the agent identity the session resolved to.
+      ...(resolved ? { agentSlug: resolved.spec.agent.slug, agentVersionId: resolved.spec.agent.versionId } : {}),
     };
   }
 
@@ -811,8 +931,12 @@ export class TranscriptionJobController {
     }
     const tenantId = this.getTenantId();
 
-    // Fail-closed selection guard: the tenant must have a fallback configured.
-    if (this.sttConfig) {
+    // Fail-closed selection guard. TASK-861: on the agent path the fallback is a
+    // property of the SESSION (its resolved spec), not of the tenant, so the
+    // runtime is the authority — apps/stt answers 409 when the session declares
+    // none, mapped below. The tenant-wide `TenantSttConfig` pre-check survives
+    // only for a gateway without the agent resolver (deprecated path).
+    if (!this.asrResolver && this.sttConfig) {
       const effective = await this.sttConfig.getEffective(tenantId);
       if (!effective.fallbackPipelineId) {
         throw new ConflictException('No fallback pipeline configured for this tenant');

@@ -1,6 +1,7 @@
 import {
   AgentServiceModule,
   AiProviderConnectionServiceModule,
+  AsrAgentResolverServiceModule,
   EntitlementsServiceModule,
   MediaServiceModule,
   TenantTtsConfigServiceModule,
@@ -24,6 +25,8 @@ import { AgentController } from './agent.controller';
     TranscriptionJobServiceModule,
     TranscriptionRealtimeServiceModule,
     MediaServiceModule,
+    // TASK-861 — the ASR resolution behind `POST /agents/:slug/transcriptions`.
+    AsrAgentResolverServiceModule,
   ],
   controllers: [AgentController],
 })

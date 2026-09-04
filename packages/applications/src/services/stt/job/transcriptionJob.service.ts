@@ -67,10 +67,19 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Verify pipeline exists
-    const pipeline = await this.pipelineRepository.findById(dto.pipelineId);
-    if (!pipeline) {
-      throw new NotFoundException(`Pipeline ${dto.pipelineId} not found`);
+    // TASK-861 — a job is keyed to the ASR Agent VERSION that runs it (+ the
+    // resolved spec snapshot, so it is reproducible from its own row). The
+    // deprecated `pipelineId` path stays for the window and still verifies
+    // the row exists.
+    if (dto.pipelineId) {
+      const pipeline = await this.pipelineRepository.findById(dto.pipelineId);
+      if (!pipeline) {
+        throw new NotFoundException(`Pipeline ${dto.pipelineId} not found`);
+      }
+    } else if (!dto.agentVersionId) {
+      throw new BadRequestException('Either agentVersionId (with resolvedSpec) or pipelineId is required');
+    } else if (!dto.resolvedSpec) {
+      throw new BadRequestException('resolvedSpec is required when agentVersionId is set');
     }
 
     // Validate batch job requires mediaId
@@ -86,7 +95,9 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     const job = TranscriptionJobFactory.CreateTranscriptionJob({
       tenantId,
       jobType: dto.jobType,
-      pipelineId: dto.pipelineId,
+      pipelineId: dto.pipelineId ?? null,
+      agentVersionId: dto.agentVersionId ?? null,
+      resolvedSpec: (dto.resolvedSpec as JsonValue | undefined) ?? null,
       consultationId: dto.consultationId,
       mediaId: dto.mediaId,
       maxRetries: dto.maxRetries,
@@ -98,7 +109,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
       createdAt: saved.createdAt,
-      data: { jobType: dto.jobType, pipelineId: dto.pipelineId },
+      data: { jobType: dto.jobType, pipelineId: dto.pipelineId ?? null, agentVersionId: dto.agentVersionId ?? null },
     });
 
     return TranscriptionJobDtoMapper.toResponse(saved);

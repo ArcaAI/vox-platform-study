@@ -25,4 +25,5 @@ import { TenantSttConfigService } from './tenant-stt-config.service';
   ],
   exports: [ITenantSttConfigService, TenantSttConfigService],
 })
+/** @deprecated TASK-861 — removed in R4. with `TenantSttConfig`. */
 export class TenantSttConfigServiceModule {}

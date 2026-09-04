@@ -12,7 +12,12 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
   consultationId?: string | null;
   contextItemId?: string | null;
   mediaId?: string | null;
-  pipelineId: string;
+  /** @deprecated TASK-861 — removed in R4. The `AsrPipeline` that ran the job; `null` on agent-keyed jobs. */
+  pipelineId?: string | null;
+  /** TASK-861 — the ASR Agent VERSION (`Agent.id`, rows are versions) that ran the job. No FK. */
+  agentVersionId?: string | null;
+  /** TASK-861 — the `ResolvedAsrSpec` snapshot the gateway handed to the worker (never a credential). */
+  resolvedSpec?: JsonValue | null;
   status: Enums.TranscriptionJobStatus;
   progress: number;
   queuedAt: Date;
@@ -31,6 +36,7 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
   retryCount: number;
   maxRetries: number;
   workerId?: string | null;
+  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`. */
   Pipeline?: Entities.AsrPipelineEntity | null;
 }
 
@@ -39,7 +45,9 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   private _consultationId?: ITranscriptionJobEntity['consultationId'];
   private _contextItemId?: ITranscriptionJobEntity['contextItemId'];
   private _mediaId?: ITranscriptionJobEntity['mediaId'];
-  private _pipelineId: ITranscriptionJobEntity['pipelineId'];
+  private _pipelineId?: ITranscriptionJobEntity['pipelineId'];
+  private _agentVersionId?: ITranscriptionJobEntity['agentVersionId'];
+  private _resolvedSpec?: ITranscriptionJobEntity['resolvedSpec'];
   private _status: ITranscriptionJobEntity['status'];
   private _progress: ITranscriptionJobEntity['progress'];
   private _queuedAt: ITranscriptionJobEntity['queuedAt'];
@@ -64,6 +72,8 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this._contextItemId = init.contextItemId;
     this._mediaId = init.mediaId;
     this._pipelineId = init.pipelineId;
+    this._agentVersionId = init.agentVersionId;
+    this._resolvedSpec = init.resolvedSpec;
     this._status = init.status;
     this._progress = init.progress;
     this._queuedAt = init.queuedAt;
@@ -115,12 +125,31 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this.setProperty('mediaId', value);
   }
 
+  /** @deprecated TASK-861 — removed in R4. Read `agentVersionId` / `resolvedSpec` for agent-keyed jobs. */
   get pipelineId(): ITranscriptionJobEntity['pipelineId'] {
     return this._pipelineId;
   }
 
   set pipelineId(value: ITranscriptionJobEntity['pipelineId']) {
     this.setProperty('pipelineId', value);
+  }
+
+  get agentVersionId(): ITranscriptionJobEntity['agentVersionId'] {
+    return this._agentVersionId;
+  }
+
+  set agentVersionId(value: ITranscriptionJobEntity['agentVersionId']) {
+    this.setProperty('agentVersionId', value);
+  }
+
+  // The resolved spec is operational metadata, not PHI — but it is still
+  // never a credential (provider overrides travel out-of-band).
+  get resolvedSpec(): ITranscriptionJobEntity['resolvedSpec'] {
+    return this._resolvedSpec;
+  }
+
+  set resolvedSpec(value: ITranscriptionJobEntity['resolvedSpec']) {
+    this.setProperty('resolvedSpec', value);
   }
 
   get status(): ITranscriptionJobEntity['status'] {
@@ -453,8 +482,14 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
 
   public override validate(): void {
     super.validate();
-    if (!this._pipelineId) {
-      throw new BusinessException('Pipeline ID is required');
+    // TASK-861 — a job is attributable to EXACTLY the thing that ran it: the
+    // agent version (+ its resolved spec, so the job is reproducible from its
+    // own row) or, for the deprecation window, the legacy pipeline row.
+    if (!this._pipelineId && !this._agentVersionId) {
+      throw new BusinessException('Either agentVersionId or pipelineId is required');
+    }
+    if (this._agentVersionId && !this._resolvedSpec) {
+      throw new BusinessException('resolvedSpec is required when agentVersionId is set');
     }
     if (this._progress < 0 || this._progress > 100) {
       throw new BusinessException('Progress must be between 0 and 100');

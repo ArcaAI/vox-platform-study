@@ -30,6 +30,7 @@ export interface IAsrPipelineEntity extends IBaseTaggedEntity {
   TranscriptionJobs?: Entities.TranscriptionJobEntity[] | null;
 }
 
+/** @deprecated TASK-861 — removed in R4. Replaced by the ASR Agent (`Agent`, task `SPEECH_TO_TEXT`, TASK-863) + the gateway-resolved `ResolvedAsrSpec`; `apps/stt` no longer reads this table. */
 export class AsrPipelineEntity extends BaseTaggedEntity {
   private _name: IAsrPipelineEntity['name'];
   private _slug: IAsrPipelineEntity['slug'];

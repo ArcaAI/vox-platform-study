@@ -760,6 +760,12 @@ class InferenceConfig:
     language: str | None = None  # None = auto-detect
     code_switching: bool = False  # Enable multilingual code-switching
     initial_prompt: str | None = None  # PromptTemplate UUID for Whisper conditioning
+    # TASK-861 — the agent's LITERAL decoder prompt (ResolvedAsrSpec.instruction);
+    # takes precedence over the template id above, which needs a DB read.
+    initial_prompt_text: str | None = None
+    # TASK-861 — agent hotwords (ResolvedAsrSpec.instruction.hotwords). Carried
+    # for engines that accept them; not yet wired into every adapter.
+    hotwords: list[str] = field(default_factory=list)
     prev_text_context_words: int = 50
     enable_prev_text_context: bool = True
     condition_on_prev_tokens: bool = False

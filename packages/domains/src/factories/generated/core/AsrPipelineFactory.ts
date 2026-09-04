@@ -31,6 +31,7 @@ export interface CreateAsrPipelineProps extends BaseEntityFactoryCreateProps {
   updatedBy?: IAsrPipelineEntity['updatedBy'];
 }
 
+/** @deprecated TASK-861 — removed in R4. Replaced by the ASR Agent (`Agent`, task `SPEECH_TO_TEXT`, TASK-863) + the gateway-resolved `ResolvedAsrSpec`; `apps/stt` no longer reads this table. */
 export class AsrPipelineFactory {
   /**
    * Create a new ASR pipeline

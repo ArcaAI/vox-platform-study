@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsUUID, Matches, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsObject, IsUUID, Matches, Min, Max } from 'class-validator';
 import { TranscriptionJobType } from '@arcaai/domains';
 
 /**
@@ -20,16 +20,33 @@ export class CreateJobRequest {
   @IsEnum(TranscriptionJobType)
   jobType: TranscriptionJobType;
 
-  @ApiProperty({
-    description: 'Pipeline ID (slug or UUID) to use for transcription',
+  /** @deprecated TASK-861 — removed in R4. Supply `agentVersionId` + `resolvedSpec` (the gateway does) instead. */
+  @ApiPropertyOptional({
+    description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.',
     example: '01234567-89ab-cdef-0123-456789abcdef',
+    deprecated: true,
   })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @Matches(PIPELINE_ID_PATTERN, {
     message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
   })
-  pipelineId: string;
+  pipelineId?: string;
+
+  @ApiPropertyOptional({
+    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
+  })
+  @IsString()
+  @IsOptional()
+  @IsNotEmpty()
+  agentVersionId?: string;
+
+  @ApiPropertyOptional({
+    description: 'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
+  })
+  @IsObject()
+  @IsOptional()
+  resolvedSpec?: Record<string, unknown>;
 
   @ApiPropertyOptional({
     description: 'Consultation ID to associate the transcription with',
@@ -79,13 +96,29 @@ export class CreateJobRequest {
 }
 
 export class CreateBatchJobRequest {
-  @ApiProperty({
-    description: 'Pipeline ID to use for transcription',
+  /** @deprecated TASK-861 — removed in R4. Supply `agentVersionId` + `resolvedSpec` instead. */
+  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.', deprecated: true })
+  @IsString()
+  @IsOptional()
+  @Matches(PIPELINE_ID_PATTERN, {
+    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
+  })
+  pipelineId?: string;
+
+  @ApiPropertyOptional({
+    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
   })
   @IsString()
+  @IsOptional()
   @IsNotEmpty()
-  @IsUUID(7)
-  pipelineId: string;
+  agentVersionId?: string;
+
+  @ApiPropertyOptional({
+    description: 'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
+  })
+  @IsObject()
+  @IsOptional()
+  resolvedSpec?: Record<string, unknown>;
 
   @ApiProperty({
     description: 'Media ID for batch transcription',
@@ -131,13 +164,29 @@ export class CreateBatchJobRequest {
 }
 
 export class CreateStreamingJobRequest {
-  @ApiProperty({
-    description: 'Pipeline ID to use for transcription',
+  /** @deprecated TASK-861 — removed in R4. Supply `agentVersionId` + `resolvedSpec` instead. */
+  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Omit on the agent path.', deprecated: true })
+  @IsString()
+  @IsOptional()
+  @Matches(PIPELINE_ID_PATTERN, {
+    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
+  })
+  pipelineId?: string;
+
+  @ApiPropertyOptional({
+    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
   })
   @IsString()
+  @IsOptional()
   @IsNotEmpty()
-  @IsUUID(7)
-  pipelineId: string;
+  agentVersionId?: string;
+
+  @ApiPropertyOptional({
+    description: 'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
+  })
+  @IsObject()
+  @IsOptional()
+  resolvedSpec?: Record<string, unknown>;
 
   @ApiPropertyOptional({
     description: 'Consultation ID to associate the transcription with',

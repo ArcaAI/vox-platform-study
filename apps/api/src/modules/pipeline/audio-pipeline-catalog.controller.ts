@@ -25,6 +25,7 @@ import { ApiEndpoint, Authorize, RequiredScopes } from '../../decorators';
 // the pipeline half of the same "what can I transcribe with" question the
 // STT model list answers, and a key issued to transcribe already needs it.
 @RequiredScopes('stt:model:read')
+/** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; `GET /agents?task=SPEECH_TO_TEXT` is the replacement catalogue. Reads keep answering for the window. */
 export class AudioPipelineCatalogController {
   constructor(private readonly pipelineService: PipelineService) {}
 

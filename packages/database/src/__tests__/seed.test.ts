@@ -50,12 +50,6 @@ import {
 import { DEFAULT_AI_MODELS, RETIRED_AI_MODEL_SLUGS, retireCustomerTenantAiModels } from '../prisma/db_main/seed/06-ai-models';
 import { ALL_SETTINGS, PLATFORM_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 import { seedHarnessPolicy, SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS } from '../prisma/db_main/seed/13-harness-policy';
-import {
-  seedPipelinePolicy,
-  SYSTEM_PIPELINE_POLICY_DEFAULTS,
-  DEMO_PIPELINE_POLICY_OVERRIDE,
-  ARCAAI_PIPELINE_POLICY_OVERRIDE,
-} from '../prisma/db_main/seed/14-pipeline-policy';
 import { TENANT_FRONTEND_CONFIGS } from '../prisma/db_main/seed/05-tenant';
 import { DEFAULT_PROMPT_TEMPLATES, DEFAULT_PROMPT_VERSIONS } from '../prisma/db_main/seed/07-prompt-template';
 import {
@@ -2860,127 +2854,8 @@ describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
   });
 });
 
-// =============================================================================
-// SYSTEM + demo PipelinePolicy cascade defaults + WORM audit
-// =============================================================================
-
-describe('Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
-  // The seed ensures two TENANT-scope rows idempotently (find-then-create, never
-  // upsert — the (tenantId, scope, scopeId) unique index treats null scopeId as
-  // DISTINCT, so a blind create would duplicate). Each create also appends a WORM
-  // PipelinePolicyChange (beforeJson=null). The mock keys existing rows by tenant.
-  const makeMockClient = (existingByTenant: Record<string, Record<string, unknown> | null>) => {
-    const created: Array<{ data: Record<string, unknown> }> = [];
-    const changes: Array<{ data: Record<string, unknown> }> = [];
-    const client = {
-      pipelinePolicy: {
-        findFirst: vi.fn(async (args: { where: Record<string, unknown> }) => {
-          const tenantId = args.where.tenantId as string;
-          return existingByTenant[tenantId] ?? null;
-        }),
-        create: vi.fn(async (args: { data: Record<string, unknown> }) => {
-          created.push(args);
-          return { id: `pp-${created.length}`, version: 1, ...args.data };
-        }),
-      },
-      pipelinePolicyChange: {
-        create: vi.fn(async (args: { data: Record<string, unknown> }) => {
-          changes.push(args);
-          return args.data;
-        }),
-      },
-    };
-    return { client, created, changes };
-  };
-
-  it('exposes the SYSTEM defaults (auto on, harness ON since)', () => {
-    expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.autoSummaryEnabled).toBe(true);
-    expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.autoNerEnabled).toBe(true);
-    // (Phase 2 exit criterion): the legacy signable generator this
-    // toggle used to fall back to when false was deleted, so the SYSTEM
-    // default flipped to true.
-    expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.harnessEnabled).toBe(true);
-  });
-
-  it('exposes the demo-tenant override that preserves the clinical-workspace harness', () => {
-    expect(DEMO_PIPELINE_POLICY_OVERRIDE.harnessEnabled).toBe(true);
-  });
-
-  it('exposes the ArcaAI-tenant override that routes ArcaAI through the harness', () => {
-    expect(ARCAAI_PIPELINE_POLICY_OVERRIDE.harnessEnabled).toBe(true);
-  });
-
-  it('creates the SYSTEM default + demo override + ArcaAI override rows (each with a beforeJson=null WORM change)', async () => {
-    const { client, created, changes } = makeMockClient({
-      [SYSTEM_TENANT_ID]: null,
-      [SEED_TENANT_ID]: null,
-      [SEED_CUSTOMER_TENANT_IDS.ARCAAI]: null,
-    });
-    const result = await seedPipelinePolicy(client as never);
-
-    expect(result.success).toBe(true);
-    expect(result.system).toBe('created');
-    expect(result.demo).toBe('created');
-    expect(result.arcaai).toBe('created');
-
-    expect(client.pipelinePolicy.create).toHaveBeenCalledTimes(3);
-    const systemRow = created.find((c) => c.data.tenantId === SYSTEM_TENANT_ID)!.data;
-    expect(systemRow.scope).toBe('TENANT');
-    expect(systemRow.scopeId ?? null).toBeNull();
-    expect(systemRow.harnessEnabled).toBe(true);
-    expect(systemRow.autoSummaryEnabled).toBe(true);
-
-    const demoRow = created.find((c) => c.data.tenantId === SEED_TENANT_ID)!.data;
-    expect(demoRow.scope).toBe('TENANT');
-    expect(demoRow.harnessEnabled).toBe(true);
-
-    const arcaaiRow = created.find((c) => c.data.tenantId === SEED_CUSTOMER_TENANT_IDS.ARCAAI)!.data;
-    expect(arcaaiRow.scope).toBe('TENANT');
-    expect(arcaaiRow.scopeId ?? null).toBeNull();
-    expect(arcaaiRow.harnessEnabled).toBe(true);
-
-    // One WORM change per created row, before=null (creation), changedBy=SYSTEM.
-    expect(client.pipelinePolicyChange.create).toHaveBeenCalledTimes(3);
-    for (const change of changes) {
-      expect(change.data.beforeJson).toBeNull();
-      expect(change.data.changedBy).toBe(SYSTEM_USER_ID);
-    }
-    const demoChange = changes.find((c) => c.data.tenantId === SEED_TENANT_ID)!.data;
-    expect((demoChange.afterJson as Record<string, unknown>).harnessEnabled).toBe(true);
-    const arcaaiChange = changes.find((c) => c.data.tenantId === SEED_CUSTOMER_TENANT_IDS.ARCAAI)!.data;
-    expect((arcaaiChange.afterJson as Record<string, unknown>).harnessEnabled).toBe(true);
-  });
-
-  it('is idempotent — no write/WORM when all rows already exist', async () => {
-    const { client } = makeMockClient({
-      [SYSTEM_TENANT_ID]: { id: 'sys', tenantId: SYSTEM_TENANT_ID, scope: 'TENANT', harnessEnabled: false },
-      [SEED_TENANT_ID]: { id: 'demo', tenantId: SEED_TENANT_ID, scope: 'TENANT', harnessEnabled: true },
-      [SEED_CUSTOMER_TENANT_IDS.ARCAAI]: { id: 'arcaai', tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI, scope: 'TENANT', harnessEnabled: true },
-    });
-    const result = await seedPipelinePolicy(client as never);
-
-    expect(result.system).toBe('noop');
-    expect(result.demo).toBe('noop');
-    expect(result.arcaai).toBe('noop');
-    expect(client.pipelinePolicy.create).not.toHaveBeenCalled();
-    expect(client.pipelinePolicyChange.create).not.toHaveBeenCalled();
-  });
-
-  it('creates ONLY the missing row when the others already exist (demo + ArcaAI present, SYSTEM absent)', async () => {
-    const { client, created } = makeMockClient({
-      [SYSTEM_TENANT_ID]: null,
-      [SEED_TENANT_ID]: { id: 'demo', tenantId: SEED_TENANT_ID, scope: 'TENANT', harnessEnabled: true },
-      [SEED_CUSTOMER_TENANT_IDS.ARCAAI]: { id: 'arcaai', tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI, scope: 'TENANT', harnessEnabled: true },
-    });
-    const result = await seedPipelinePolicy(client as never);
-
-    expect(result.system).toBe('created');
-    expect(result.demo).toBe('noop');
-    expect(result.arcaai).toBe('noop');
-    expect(client.pipelinePolicy.create).toHaveBeenCalledTimes(1);
-    expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
-  });
-});
+// TASK-861: the `seedPipelinePolicy` block is GONE with `14-pipeline-policy.ts`
+// (`PipelinePolicy` deprecated, removed in R4; no rows seeded).
 
 // =============================================================================
 // SEED DATA VALIDATION

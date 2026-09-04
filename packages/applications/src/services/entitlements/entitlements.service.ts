@@ -208,6 +208,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       buildCapabilityRow('users', resolved.limits.maxUsers, usage.totalUsers),
       buildCapabilityRow('departments', resolved.limits.maxDepartments, usage.totalDepartments),
       buildCapabilityRow('promptTemplates', resolved.limits.maxPromptTemplates, usage.totalPromptTemplates),
+      // @deprecated TASK-861 — removed in R4 with `AsrPipeline` (the agent ceiling replaces it, TASK-863).
       buildCapabilityRow('asrPipelines', resolved.limits.maxAsrPipelines, usage.totalPipelines),
       buildCapabilityRow('apiKeys', resolved.limits.maxApiKeys, apiKeyCount),
       buildCapabilityRow('storageBytes', resolved.limits.storageQuotaBytes, usage.storageUsedBytes),

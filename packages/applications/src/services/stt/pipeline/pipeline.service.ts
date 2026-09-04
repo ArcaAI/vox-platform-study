@@ -33,6 +33,7 @@ import { PipelineDtoMapper } from './pipeline.dto.mapper';
 export const TEMPLATE_LOCKED_MESSAGE = 'Template copies are read-only — clone to customize';
 
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. `AsrPipeline` retires; the ASR Agent (`Agent`, task `SPEECH_TO_TEXT`) + `AsrAgentResolverService` → `ResolvedAsrSpec` replace it. Reads keep working for the window; write routes carry `Deprecation` headers. */
 export class PipelineService extends BaseService implements IPipelineService {
   constructor(
     private readonly pipelineRepository: AsrPipelineRepository,

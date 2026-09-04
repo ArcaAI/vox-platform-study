@@ -18,6 +18,7 @@ function stripNonWritableFields<T extends object>(model: T, fields: string[]): T
   return model;
 }
 
+/** @deprecated TASK-861 — removed in R4. Its toggles become `enabled` flags on the nodes of the assigned workflow (`WorkflowAssignment`, TASK-864). */
 export class PipelinePolicyEntityMapper extends BaseMapper<Entities.PipelinePolicyEntity, Models.PipelinePolicy> {
   constructor() {
     super();

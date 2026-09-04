@@ -397,10 +397,10 @@ describe('TranscriptionJobEntity', () => {
       expect(() => entity.validate()).not.toThrow();
     });
 
-    it('should throw error when pipelineId is missing', () => {
+    it('should throw error when the job is keyed to neither a pipeline nor an agent (TASK-861 relaxed pipelineId)', () => {
       const entity = createTestEntity({ pipelineId: '' });
 
-      expect(() => entity.validate()).toThrow('Pipeline ID is required');
+      expect(() => entity.validate()).toThrow('Either agentVersionId or pipelineId is required');
     });
 
     it('should throw error for invalid progress', () => {
@@ -493,5 +493,43 @@ describe('TranscriptionJobEntity', () => {
       entity.startProcessing('worker-002');
       expect(entity.workerId).toBe('worker-002');
     });
+  });
+});
+
+// TASK-861 — a job is keyed EITHER to the deprecated pipeline row OR to the ASR
+// Agent version that ran it (+ the resolved spec snapshot). Exactly what the
+// migration `task_861_transcription_job_agent_version` allows.
+describe('TranscriptionJobEntity — agent re-key (TASK-861)', () => {
+  const resolvedSpec = { schemaVersion: 1, runtimeKey: 'agent-v-1', models: { asr: { slug: 'whisper' } } };
+
+  it('validates an agent-keyed job with no pipelineId', () => {
+    const entity = createTestEntity({ pipelineId: null, agentVersionId: 'agent-v-1', resolvedSpec });
+    expect(() => entity.validate()).not.toThrow();
+    expect(entity.agentVersionId).toBe('agent-v-1');
+    expect(entity.resolvedSpec).toEqual(resolvedSpec);
+    expect(entity.pipelineId).toBeNull();
+  });
+
+  it('still validates a legacy pipeline-keyed job (history rows stay readable)', () => {
+    const entity = createTestEntity({ pipelineId: 'pipeline-123', agentVersionId: null, resolvedSpec: null });
+    expect(() => entity.validate()).not.toThrow();
+  });
+
+  it('rejects a job keyed to neither — an unattributable job is never persisted', () => {
+    const entity = createTestEntity({ pipelineId: null, agentVersionId: null, resolvedSpec: null });
+    expect(() => entity.validate()).toThrow(/agentVersionId|pipelineId/);
+  });
+
+  it('rejects an agentVersionId without its resolvedSpec snapshot (the job must be reproducible from its row)', () => {
+    const entity = createTestEntity({ pipelineId: null, agentVersionId: 'agent-v-1', resolvedSpec: null });
+    expect(() => entity.validate()).toThrow(/resolvedSpec/);
+  });
+
+  it('tracks agentVersionId / resolvedSpec as change-tracked properties', () => {
+    const entity = createTestEntity();
+    entity.agentVersionId = 'agent-v-2';
+    entity.resolvedSpec = resolvedSpec;
+    expect(entity.hasChanges).toBe(true);
+    expect(entity.changes).toMatchObject({ agentVersionId: 'agent-v-2', resolvedSpec });
   });
 });

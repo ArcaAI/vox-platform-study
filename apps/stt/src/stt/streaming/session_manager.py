@@ -15,6 +15,7 @@ Responsibilities:
 from __future__ import annotations
 
 import asyncio
+import copy
 import inspect
 import json
 import os
@@ -37,7 +38,8 @@ from stt.core.metrics import (
     streaming_session_started,
 )
 from stt.models.whisper_kwargs import build_whisper_generate_kwargs
-from stt.pipeline.dto import AiModelFormat, DualCaptureConfig, EndpointConfig
+from stt.pipeline.dto import AiModelConfig, AiModelFormat, DualCaptureConfig, EndpointConfig
+from stt.pipeline.spec import ResolvedSpecBundle, bundle_from_resolved
 from stt.storage.blob_service import BlobService
 from stt.streaming.capacity_guard import CapacityGuard
 from stt.streaming.commit_policy import LocalAgreementPolicy
@@ -151,6 +153,29 @@ class _SessionRuntime:
     effective_diarization: bool
 
 
+def _spec_bundles_of(manager: Any) -> dict[str, ResolvedSpecBundle]:
+    """The per-session spec bundles of ``manager`` (TASK-861), read defensively.
+
+    getattr guard, same posture as ``_draining``: pre-existing unit tests build
+    ``MagicMock(spec=SessionManager)`` fixtures that predate ``_session_specs``
+    and bind real methods onto them — a method helper would itself be mocked, so
+    this is a module function. Real instances always have the dict via
+    ``__init__``; anything else reads as "no spec-driven sessions".
+    """
+    bundles = getattr(manager, "_session_specs", None)
+    return bundles if isinstance(bundles, dict) else {}
+
+
+def _spec_model_config_of(
+    manager: Any, session_id: str | None, slug: str | None
+) -> AiModelConfig | None:
+    """The pre-resolved ``AiModelConfig`` for ``slug`` on a spec-driven session, else ``None``."""
+    if not session_id or not slug:
+        return None
+    bundle = _spec_bundles_of(manager).get(session_id)
+    return bundle.model_configs.get(slug) if bundle is not None else None
+
+
 class SessionManager:
     """Manages the full lifecycle of streaming sessions.
 
@@ -187,6 +212,10 @@ class SessionManager:
         self._switch_controllers: dict[str, EngineSwitchController] = {}
         self._provider_overrides: dict[str, dict[str, Any]] = {}
         self._fallback_pipeline_ids: dict[str, str] = {}
+        # TASK-861 — per-session gateway-resolved spec bundle (the engine chains
+        # + every model config, pre-mapped). When present for a session, NO
+        # pipeline/model row is read from Postgres for it.
+        self._session_specs: dict[str, ResolvedSpecBundle] = {}
         # Per-session end-user language mode id, resolved against the
         # session's ASR engine at load time.
         self._session_language_modes: dict[str, str] = {}
@@ -874,6 +903,7 @@ class SessionManager:
         auto_switch_enabled: bool | None = None,
         consecutive_failure_threshold: int | None = None,
         channel_count: int = 1,
+        resolved_spec: dict[str, Any] | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -922,6 +952,13 @@ class SessionManager:
             consecutive_failure_threshold: Tenant governance for how many
                 consecutive threshold-class utterance failures arm the auto
                 switch. ``None`` = the controller's default (2).
+            resolved_spec: TASK-861 — the gateway-resolved ``ResolvedAsrSpec``
+                (wire JSON). When present the engine chain, its models, the
+                fallback and the decoder prompt come from it and this method
+                reads NOTHING from Postgres; ``pipeline_id`` /
+                ``fallback_pipeline_id`` become the spec's runtime keys and the
+                request's ``auto_switch_enabled`` / ``consecutive_failure_threshold``
+                / ``language_mode`` fill in from the spec when omitted.
         """
         # PLANNED scale-down: reject before touching capacity at all. Distinct
         # signal (SessionManagerDrainingError) from the ordinary at-capacity
@@ -939,6 +976,28 @@ class SessionManager:
         if not await self._capacity_guard.try_acquire(session_id):
             return None
         try:
+            # TASK-861 — the agent path: register the spec bundle FIRST so every
+            # loader below resolves from it, and let the spec govern the keys.
+            if resolved_spec is not None:
+                bundle = self._register_resolved_spec(session_id, resolved_spec)
+                if pipeline_id != bundle.runtime_key:
+                    logger.warning(
+                        "Session runtime key disagrees with its resolved spec; the spec wins",
+                        session_id=session_id,
+                        requested=pipeline_id,
+                        runtime_key=bundle.runtime_key,
+                    )
+                pipeline_id = bundle.runtime_key
+                fallback_pipeline_id = bundle.fallback_runtime_key
+                if auto_switch_enabled is None:
+                    auto_switch_enabled = bundle.spec.fallback.auto_switch
+                if consecutive_failure_threshold is None:
+                    consecutive_failure_threshold = (
+                        bundle.spec.fallback.switch_after_consecutive_failures
+                    )
+                if not language_mode:
+                    language_mode = bundle.spec.decoding.language_mode
+
             # Register per-tenant storage routing before any audio I/O. A
             # `storage` descriptor (multi-provider) wins and also pins the audio
             # bucket; otherwise fall back to the legacy bucket override.
@@ -959,6 +1018,9 @@ class SessionManager:
                 sample_rate=sample_rate,
                 worker_id=self._worker_id,
                 user_id=user_id,
+                # Persisted so crash recovery rebuilds the chain from the spec,
+                # not from a database read (TASK-861).
+                resolved_spec_json=json.dumps(resolved_spec) if resolved_spec is not None else "",
             )
 
             # Create session object
@@ -1159,6 +1221,7 @@ class SessionManager:
             )
             return session
         except Exception as exc:
+            _spec_bundles_of(self).pop(session_id, None)
             logger.error(
                 "Failed to create session, rolling back",
                 session_id=session_id,
@@ -1467,6 +1530,7 @@ class SessionManager:
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
         self._session_channel_counts.pop(session_id, None)
+        _spec_bundles_of(self).pop(session_id, None)
         # The teardown summary (if any) is built BEFORE this
         # runs (see `_finalize_session_locked`), so dropping the tracking dict
         # here is safe cleanup, not a lost read.
@@ -1532,20 +1596,46 @@ class SessionManager:
     # Model loading helpers (VAD + ASR pipeline wiring)
     # ------------------------------------------------------------------
 
+    def _register_resolved_spec(
+        self, session_id: str, resolved_spec: dict[str, Any]
+    ) -> ResolvedSpecBundle:
+        """TASK-861 — validate + map the gateway-resolved spec for ``session_id``.
+
+        Fails CLOSED on an invalid spec or a format this runtime does not execute
+        (``pydantic.ValidationError`` / ``UnsupportedAsrSpecError``) — never a
+        guessed engine.
+        """
+        bundle = bundle_from_resolved(resolved_spec)
+        bundles = getattr(self, "_session_specs", None)
+        if not isinstance(bundles, dict):
+            bundles = {}
+            self._session_specs = bundles
+        bundles[session_id] = bundle
+        return bundle
+
     async def _load_pipeline_config(self, pipeline_id: str, tenant_id: str | None = None) -> Any:
-        """Load pipeline spec from the pipeline reader.
+        """Load the ``PipelineSpec`` for a runtime key.
 
-        Returns the ``PipelineSpec`` if found.
+        TASK-861: a key registered by any spec-driven session (runtime keys are
+        agent VERSION ids, so two sessions on the same key share the same spec)
+        resolves from that bundle — a fresh deep copy per call, because callers
+        mutate ``inference.language`` — and NEVER touches Postgres. Anything
+        else goes to the deprecated pipeline reader (removed in R4; warns on
+        use; fails closed while the DB is disabled).
 
-        Forwards ``tenant_id`` to the config reader so the
-        SQL query rejects pipelines belonging to other tenants. The API
-        gateway already enforces its own check; this is the defense-in-depth layer.
+        Forwards ``tenant_id`` to the deprecated reader so its SQL query rejects
+        pipelines belonging to other tenants (defense in depth).
 
         Raises
         ------
         RuntimeError
             If the pipeline cannot be loaded (missing config, DB error, etc.).
         """
+        for bundle in _spec_bundles_of(self).values():
+            spec = bundle.pipeline_specs.get(pipeline_id)
+            if spec is not None:
+                return copy.deepcopy(spec)
+
         from stt.pipeline.config_reader import get_pipeline_reader
 
         reader = get_pipeline_reader()
@@ -1626,7 +1716,11 @@ class SessionManager:
             try:
                 db_cfg = None
                 if not (ref.is_inline and ref.inline) and ref.slug:
-                    db_cfg = await get_model_reader().get_model_by_slug(ref.slug, tenant_id)
+                    # TASK-861 — spec-driven sessions carry every model config;
+                    # only the deprecated pipeline path still reads the registry.
+                    db_cfg = _spec_model_config_of(self, session_id, ref.slug)
+                    if db_cfg is None and session_id not in _spec_bundles_of(self):
+                        db_cfg = await get_model_reader().get_model_by_slug(ref.slug, tenant_id)
                 loaded = await model_cache.get_or_load_from_ref(
                     model_ref=ref, task_type=task_type, db_model_config=db_cfg
                 )
@@ -1748,9 +1842,20 @@ class SessionManager:
         # batch_service._load_models).
         db_model_config = None
         if not (asr_ref.is_inline and asr_ref.inline) and asr_ref.slug:
-            from stt.pipeline.config_reader import get_model_reader
+            # TASK-861 — a spec-driven session resolves the ASR row from its
+            # bundle; a slug the spec does not carry is a hard error (never a
+            # database fallback on the agent path).
+            db_model_config = _spec_model_config_of(self, session_id, asr_ref.slug)
+            if db_model_config is None and session_id in _spec_bundles_of(self):
+                raise RuntimeError(
+                    f"ASR model '{asr_ref.slug}' is not part of session {session_id}'s resolved spec"
+                )
+            if db_model_config is None:
+                from stt.pipeline.config_reader import get_model_reader
 
-            db_model_config = await get_model_reader().get_model_by_slug(asr_ref.slug, tenant_id)
+                db_model_config = await get_model_reader().get_model_by_slug(
+                    asr_ref.slug, tenant_id
+                )
 
         # Cloud BYOK: bypass the shared by-slug cache when a per-tenant
         # override is present for a cloud ASR engine (a tenant key must not be
@@ -1816,9 +1921,14 @@ class SessionManager:
             # no translate gloss); applied to the session's initial_prompt below.
             code_switch_prompt = resolved.initial_prompt
 
-        initial_prompt: str | None = None
+        # TASK-861 — the agent's LITERAL prompt wins; the template-id lookup
+        # (a database read) survives only for the deprecated pipeline path.
+        prompt_text = getattr(inference_config, "initial_prompt_text", None)
+        initial_prompt: str | None = (
+            prompt_text if isinstance(prompt_text, str) and prompt_text else None
+        )
         initial_prompt_id = getattr(inference_config, "initial_prompt", None)
-        if initial_prompt_id:
+        if initial_prompt is None and initial_prompt_id:
             from stt.core.initial_prompt import get_initial_prompt
 
             initial_prompt = await get_initial_prompt(initial_prompt_id)
@@ -1919,7 +2029,7 @@ class SessionManager:
             AiModelFormat.PARAKEET_CPP,
         ):
             logger.warning(
-                "streaming_english_gloss is not supported for engine %s — " "gloss disabled",
+                "streaming_english_gloss is not supported for engine %s — gloss disabled",
                 fmt,
             )
             return None
@@ -2129,7 +2239,7 @@ class SessionManager:
         ):
             if getattr(inference_config, param, None) is not None:
                 logger.warning(
-                    "Azure Speech streaming: ignoring Whisper-specific " "param %s",
+                    "Azure Speech streaming: ignoring Whisper-specific param %s",
                     param,
                 )
 
@@ -3410,7 +3520,7 @@ class SessionManager:
                 except (ValueError, TypeError):
                     await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
                     logger.error(
-                        "stt.transcript.outbox_corrupt_drop — dropping unparseable " "outbox entry",
+                        "stt.transcript.outbox_corrupt_drop — dropping unparseable outbox entry",
                         idempotency_key=field_key,
                     )
                     continue
@@ -3932,6 +4042,20 @@ class SessionManager:
                         continue
                     meta = SessionMetadata.from_redis_dict(data)
                     session_id_for_cleanup = meta.session_id
+                    # TASK-861 — a spec-driven session rebuilds from its persisted
+                    # spec; a corrupt one is skipped rather than guessed.
+                    if isinstance(meta.resolved_spec_json, str) and meta.resolved_spec_json:
+                        try:
+                            self._register_resolved_spec(
+                                meta.session_id, json.loads(meta.resolved_spec_json)
+                            )
+                        except Exception as spec_exc:  # noqa: BLE001 — recovery must not crash the sweep
+                            logger.warning(
+                                "Cannot recover session — persisted resolved spec is invalid",
+                                session_id=meta.session_id,
+                                error=str(spec_exc),
+                            )
+                            continue
 
                     # Only recover active sessions assigned to this worker (or unassigned)
                     if meta.status != SessionStatus.ACTIVE:

@@ -1,6 +1,7 @@
 import {
   AgentInvocationService,
   AgentResolverService,
+  AsrAgentResolverService,
   AgentSummaryListResponse,
   AgentSummaryResponse,
   AgentTask,
@@ -23,7 +24,6 @@ import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -77,6 +77,7 @@ export interface AgentTranscriptionResponse {
   status: string;
   agentSlug: string;
   agentVersionId: string;
+  /** @deprecated TASK-861 — removed in R4. Now the spec's runtime key (= `agentVersionId`); read `agentVersionId`. */
   pipelineId: string;
   sseUrl: string;
 }
@@ -114,6 +115,9 @@ export class AgentController {
     @Optional() private readonly jobService?: TranscriptionJobService,
     @Optional() private readonly realtimeService?: TranscriptionRealtimeService,
     @Optional() @Inject(IMediaService) private readonly mediaService?: IMediaService,
+    // TASK-861 — the ONE STT resolution (agent → ResolvedAsrSpec + credentials);
+    // the batch `transcriptions` route needs no pipeline row any more.
+    @Optional() private readonly asrResolver?: AsrAgentResolverService,
   ) {}
 
   @Get()
@@ -337,35 +341,37 @@ export class AgentController {
   @ApiOperation({
     summary: 'Start a batch transcription with a SPEECH_TO_TEXT agent (returns a TranscriptionJob)',
     description:
-      'Body `{ mediaId, consultationId?, language? }` — the media must already be uploaded. The agent’s primary model selects the ASR pipeline ' +
-      '(TODO(TASK-861): the gateway-resolved spec replaces the pipeline row). Progress streams from the returned `sseUrl`.',
+      'Body `{ mediaId, consultationId?, language? }` — the media must already be uploaded. The agent is resolved to a `ResolvedAsrSpec` ' +
+      '(TASK-861) the job is keyed to and reproducible from; no pipeline row is involved. Progress streams from the returned `sseUrl`.',
   })
   @ApiParam({ name: 'slug', type: String })
   @ApiResponse({ status: 201, description: 'The transcription job.' })
   @ApiResponse({ status: 400, description: 'Missing mediaId, or the agent is not a SPEECH_TO_TEXT agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent (or media).' })
-  @ApiResponse({ status: 409, description: 'No ASR pipeline can serve the agent’s model for this tenant.' })
+  @ApiResponse({ status: 409, description: 'The agent cannot become a runnable ASR spec (no primary model), or a provider veto.' })
   async transcribe(@Param('slug') slug: string, @Body() body: AgentTranscriptionBody): Promise<AgentTranscriptionResponse> {
     const tenantId = this.requireTenant();
     if (!body?.mediaId) throw new BadRequestException('`mediaId` is required.');
-    if (!this.jobService || !this.realtimeService || !this.mediaService) {
+    if (!this.jobService || !this.realtimeService || !this.mediaService || !this.asrResolver) {
       throw new HttpException({ detail: 'Batch transcription is not configured on this gateway' }, HttpStatus.SERVICE_UNAVAILABLE);
     }
-    const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.SPEECH_TO_TEXT, agentSlug: slug });
-    const pipelineId = await this.invocation.resolveAsrPipelineId(resolved, tenantId);
-    if (!pipelineId) {
-      throw new ConflictException({
-        code: 'ASR_PIPELINE_UNRESOLVED',
-        message: `No ASR pipeline can serve agent '${slug}' (model ${resolved.compiledConfig.model.slug}) for this tenant.`,
-      });
-    }
+    // TASK-861 — one resolution: explicit slug → PUBLISHED ACTIVE SPEECH_TO_TEXT agent
+    // (404-over-403 inside) → ResolvedAsrSpec. Credentials never enter the job row or
+    // the queue message; the worker pulls them at execution time.
+    const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: slug, departmentId: null });
     const media = await this.mediaService.fetchById(body.mediaId);
-    const job = await this.jobService.createBatchJob({ pipelineId, mediaId: body.mediaId, consultationId: body.consultationId });
+    const job = await this.jobService.createBatchJob({
+      agentVersionId: spec.agent.versionId,
+      resolvedSpec: spec as unknown as Record<string, unknown>,
+      mediaId: body.mediaId,
+      consultationId: body.consultationId,
+    });
     try {
       await this.realtimeService.dispatchDramatiqJob({
         jobId: job.id,
         tenantId,
-        pipelineId,
+        pipelineId: spec.runtimeKey,
+        resolvedSpec: spec,
         audioUri: media.uri,
         consultationId: body.consultationId,
         mediaId: body.mediaId,
@@ -381,9 +387,9 @@ export class AgentController {
     return {
       id: job.id,
       status: String(job.status),
-      agentSlug: resolved.slug,
-      agentVersionId: resolved.agentVersionId,
-      pipelineId,
+      agentSlug: spec.agent.slug,
+      agentVersionId: spec.agent.versionId,
+      pipelineId: spec.runtimeKey,
       sseUrl: `/api/v1/audio/transcription-jobs/${job.id}/stream`,
     };
   }

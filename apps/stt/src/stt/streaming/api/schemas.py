@@ -12,7 +12,23 @@ class CreateStreamingSessionRequest(BaseModel):
 
     session_id: str = Field(..., description="Unique session identifier (UUID)")
     tenant_id: str = Field(..., description="Tenant identifier")
-    pipeline_id: str = Field(..., description="ASR pipeline identifier (UUID or slug)")
+    pipeline_id: str = Field(
+        ...,
+        description=(
+            "The session's runtime key: `resolved_spec.runtimeKey` (the ASR Agent "
+            "VERSION id) on the agent path, or — DEPRECATED (TASK-861, removed in R4) — "
+            "an AsrPipeline UUID/slug this service still looks up in Postgres."
+        ),
+    )
+    resolved_spec: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "TASK-861 — the gateway-resolved ASR runtime contract (ResolvedAsrSpec, "
+            "packages/types asr-spec.ts). When present the engine chain, its models, "
+            "the fallback and the decoder prompt come from it and this service reads "
+            "nothing from Postgres. Absent ⇒ the deprecated pipeline_id path."
+        ),
+    )
     consultation_id: str | None = Field(default=None, description="Optional consultation context")
     sample_rate: int = Field(default=16000, description="Audio sample rate in Hz")
     microphone_id: str | None = Field(
