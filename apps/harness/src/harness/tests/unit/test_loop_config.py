@@ -79,7 +79,7 @@ class TestOptimisticDeliveryFlag:
     """The ``HARNESS_OPTIMISTIC_DELIVERY_ENABLED`` kill-switch.
 
     The FIRST key of the two-key optimistic gate (the second is the durable
-    ``task-355-optimistic-delivery`` patch marker). It is read here, in NON-workflow
+    ``optimistic-delivery`` patch marker). It is read here, in NON-workflow
     settings, and snapshotted into ``HarnessGateConfig`` at workflow start so it stays
     deterministic across replay. Default OFF: unset / falsy ⇒ False.
     """
