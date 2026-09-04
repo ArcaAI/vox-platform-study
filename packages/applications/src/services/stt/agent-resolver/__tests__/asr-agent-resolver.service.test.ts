@@ -5,7 +5,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { QuotaExceededException } from '@arcaai/exceptions';
 import { AgentTask } from '@arcaai/domains';
 import type { ResolvedAgent } from '@arcaai/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -121,5 +122,63 @@ describe('AsrAgentResolverService.resolve — cloud credentials (TASK-862 Provid
     const result = await make(false).resolve({ tenantId: TENANT, agentSlug: 'clinic-azure-transcription' });
     expect(result.providerOverrides).toEqual({ 'azure-speech': { api_key: 'REDACTED-NEVER-IN-SPEC', funding: 'tenant', region: 'eastus' } });
     expect(result.fundingTier).toBe('tenant');
+  });
+});
+
+describe('AsrAgentResolverService.resolveProviderOverrides — the batch-worker whole-service pull (TASK-861 follow-up)', () => {
+  const binding = (funding: 'tenant' | 'platform', override: Record<string, unknown>) => ({
+    override: { funding, ...override },
+    fundingTier: funding,
+    connectionId: `conn-${funding}`,
+  });
+
+  it('resolves every cloud STT provider through the ONE resolver: the tenant’s row → tenant, the SYSTEM default → platform, no row → no key', async () => {
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
+      if (provider === 'azure-speech') return binding('tenant', { api_key: 'k-azure', region: 'eastus' });
+      if (provider === 'sarvam') return binding('platform', { api_key: 'k-sarvam', base_url: 'https://api.sarvam.ai', model: 'saarika:v2' });
+      return null;
+    });
+    const out = await make().resolveProviderOverrides(TENANT);
+    expect(credentials.resolve.mock.calls).toEqual([
+      ['stt', 'azure-speech', TENANT],
+      ['stt', 'sarvam', TENANT],
+      ['stt', 'openai', TENANT],
+    ]);
+    expect(out).toEqual({
+      'azure-speech': { api_key: 'k-azure', funding: 'tenant', region: 'eastus' },
+      sarvam: { api_key: 'k-sarvam', funding: 'platform', base_url: 'https://api.sarvam.ai', model: 'saarika:v2' },
+    });
+    // A credential pull, not a selection: the agent resolver is never consulted.
+    expect(agents.resolve).not.toHaveBeenCalled();
+  });
+
+  it('a veto (DISABLED tenant row) leaves THAT provider out — no tier serves it — while the others still resolve', async () => {
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
+      if (provider === 'sarvam') throw new ProviderVetoedException('stt', 'sarvam', TENANT);
+      return binding('platform', { api_key: `k-${provider}` });
+    });
+    const out = await make().resolveProviderOverrides(TENANT);
+    expect(Object.keys(out).sort()).toEqual(['azure-speech', 'openai']);
+    expect(credentials.resolve).toHaveBeenCalledTimes(3);
+  });
+
+  it('an entitlement refusal of the platform default leaves that provider out — never a substituted credential', async () => {
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
+      if (provider === 'openai') {
+        throw new QuotaExceededException('not entitled', { capability: 'platformDefaultCredential', limit: 0, used: 0, requested: 1 });
+      }
+      return binding('tenant', { api_key: `k-${provider}` });
+    });
+    const out = await make().resolveProviderOverrides(TENANT);
+    expect(Object.keys(out).sort()).toEqual(['azure-speech', 'sarvam']);
+  });
+
+  it('a backend fault propagates — it is never disguised as "no credential"', async () => {
+    credentials.resolve.mockRejectedValueOnce(new Error('vault transit unavailable'));
+    await expect(make().resolveProviderOverrides(TENANT)).rejects.toThrow('vault transit unavailable');
+  });
+
+  it('without the credential resolver wired it fails closed (503) — never an empty map', async () => {
+    await expect(make(false).resolveProviderOverrides(TENANT)).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
