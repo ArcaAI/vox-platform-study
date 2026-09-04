@@ -153,7 +153,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // outright (TASK-862, owner directive 2026-09-04).
     // -1 (86): AiRuntimeProfile — retired by TASK-862 (ceilings moved onto
     // AiProviderConnection, hyper-parameters to the Agent).
-    expect(TENANT_SCOPED_MODELS.size).toBe(86);
+    // +4 (90): Agent, AgentModelFallback, AgentAssignment, AgentAssignmentChange (TASK-863).
+    expect(TENANT_SCOPED_MODELS.size).toBe(90);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -482,6 +483,9 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // PipelinePolicy above. READS widen to [caller, SYSTEM]; WRITES are
         // NOT widened — a tenant can never mutate a SYSTEM-owned rule row.
         'WorkflowInvariantRule',
+        // TASK-863 — platform-default agents + assignments resolve tenant → SYSTEM.
+        'Agent',
+        'AgentAssignment',
       ]),
     );
   });

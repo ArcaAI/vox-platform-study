@@ -1,6 +1,7 @@
 export * from './AgentSessionKind';
 export * from './AgentStepStatus';
 export * from './AgentStepType';
+export * from './AgentTask';
 export * from './AiCapability';
 export * from './AiCostBasis';
 export * from './AiDeploymentKind';

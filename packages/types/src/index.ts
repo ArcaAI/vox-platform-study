@@ -16,3 +16,6 @@ export * from './speaker-mapping.js';
 export * from './vad.js';
 export * from './model-management.js';
 export * from './stepper.js';
+
+// TASK-863 — the resolved-agent contract (gateway ↔ harness ↔ SDK).
+export * from './agent.js';
