@@ -1,14 +1,13 @@
 /**
- * Discovery drawer: loading skeleton, empty and error states,
- * per-tag + load-state badges, per-provider probe lines, staleness + refresh,
- * the register flow (success invalidates both queries; failure toasts), and an
+ * Discovery drawer (READ-ONLY since TASK-860): loading skeleton, empty and
+ * error states, per-tag + load-state badges, per-provider probe lines,
+ * staleness + refresh, NO register action (the route answers 410 Gone), and an
  * axe 0-violations pass with the drawer open.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import { toast } from 'sonner';
 import { renderWithProviders } from '@/test/render';
 import type { DiscoveryResponse } from '../../api/types';
 import { DiscoveryDrawer } from '../discovery-drawer';
@@ -144,46 +143,16 @@ describe('DiscoveryDrawer merge rendering', () => {
     await waitFor(() => expect(calls.length).toBeGreaterThan(before));
   });
 
-  it('offers Register only for discovered entries', async () => {
-    stubFetch(() => Response.json(RESPONSE));
+  it('never offers a Register action — discovery is read-only (TASK-860); a discovered entry says where to register', async () => {
+    const calls = stubFetch(() => Response.json(RESPONSE));
     renderOpen();
 
     await screen.findByText('mistral:7b');
-    expect(screen.getAllByRole('button', { name: /^register /i })).toHaveLength(1);
-  });
-});
-
-describe('DiscoveryDrawer register flow', () => {
-  it('POSTs the provider + engine model name and refreshes the view', async () => {
-    const calls = stubFetch((url, method) => {
-      if (method === 'POST') return Response.json({ id: 'new-1', slug: 'mistral-7b' });
-      return Response.json(RESPONSE);
-    });
-    renderOpen();
-    await screen.findByText('mistral:7b');
-
-    fireEvent.click(screen.getByRole('button', { name: /^register mistral:7b/i }));
-
-    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
-    const post = calls.find((c) => c.method === 'POST')!;
-    expect(post.url).toContain('admin/ai-models/discovery/register');
-    expect(post.body).toEqual({ provider: 'ollama', modelName: 'mistral:7b' });
-    await waitFor(() => expect(toast.success).toHaveBeenCalled());
-    // The registry grid query must be invalidated too, not just the drawer.
-    await waitFor(() => expect(calls.filter((c) => c.method === 'GET').length).toBeGreaterThan(1));
-  });
-
-  it('toasts the gateway message on failure', async () => {
-    stubFetch((url, method) => {
-      if (method === 'POST') return Response.json({ message: "The slug 'mistral-7b' is already taken." }, { status: 400 });
-      return Response.json(RESPONSE);
-    });
-    renderOpen();
-    await screen.findByText('mistral:7b');
-
-    fireEvent.click(screen.getByRole('button', { name: /^register mistral:7b/i }));
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(screen.queryAllByRole('button', { name: /^register /i })).toHaveLength(0);
+    expect(screen.getByText(/not in the catalogue/i)).toBeDefined();
+    expect(screen.getByRole('dialog', { name: /loaded on engines/i })).toBeDefined();
+    // Nothing but the probe GET ever leaves the drawer.
+    expect(calls.every((c) => c.method === 'GET')).toBe(true);
   });
 });
 

@@ -1,16 +1,17 @@
-/** AI model registry admin (capabilities-matrix row 8). SUPER_ADMIN only. */
+/** AI model registry admin (capabilities-matrix row 8). SUPER_ADMIN only — rows live in the SYSTEM tenant (TASK-860). */
 
-import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchJson, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
 import type { ListParams, WithEtag } from '@/shared/api';
 import { SYSTEM_TENANT_ID } from '@/shared/catalog';
 import type {
   AiModel,
+  AiTaskKind,
   CreateModelRequest,
   DiscoveryResponse,
   ModelDownloadState,
+  ModelInventoryReport,
   ModelRegistryConnectionStatus,
   PaginatedModels,
-  RegisterDiscoveredModelRequest,
   StartModelDownloadResponse,
   UpdateModelRequest,
 } from './types';
@@ -49,6 +50,24 @@ export function deleteModel(id: string): Promise<void> {
 }
 
 /**
+ * The super-admin "platform default for task" election (TASK-860). Not an OCC
+ * field edit — the gateway also clears each task from its previous holder —
+ * so it has its own route and no If-Match.
+ */
+export function setModelPlatformDefault(id: string, tasks: AiTaskKind[]): Promise<AiModel> {
+  return patchJson(`${BASE}/${encodeURIComponent(id)}/platform-default`, { tasks });
+}
+
+/**
+ * Run the bucket inventory: measures every row's `availability` against
+ * `s3://hope-models` and lists the prefixes in the bucket no row references.
+ * Synchronous on the gateway (one listing + one manifest read per row).
+ */
+export function runModelInventory(): Promise<ModelInventoryReport> {
+  return postJson(`${BASE}/inventory`);
+}
+
+/**
  * Merge the registry with the live engine listings. Probes run
  * upstream (the text-generation service aggregates them under a per-provider timeout), so this call can
  * take a couple of seconds: it is fired lazily when the drawer opens, never on
@@ -56,11 +75,6 @@ export function deleteModel(id: string): Promise<void> {
  */
 export function discoverModels(provider?: string): Promise<DiscoveryResponse> {
   return getJson(`${BASE}/discovery`, provider ? { provider } : undefined);
-}
-
-/** Explicit `discovered` → `registered` transition; the only mutating discovery path. */
-export function registerDiscoveredModel(body: RegisterDiscoveredModelRequest): Promise<AiModel> {
-  return postJson(`${BASE}/discovery/register`, body);
 }
 
 // =============================================================================
