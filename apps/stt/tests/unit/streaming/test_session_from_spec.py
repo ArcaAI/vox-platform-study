@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from stt.pipeline.dto import AiModelFormat
-from stt.streaming.session_manager import SessionManager
+from stt.streaming.session_manager import SessionManager, _spec_model_config_of
 
 
 def _fixture() -> dict[str, Any]:
@@ -70,7 +70,6 @@ def _make_manager() -> MagicMock:
     # REAL spec plumbing + switch-controller factory; heavy assembly mocked.
     mgr._make_switch_controller = lambda **kw: SessionManager._make_switch_controller(mgr, **kw)
     mgr._load_pipeline_config = lambda *a, **k: SessionManager._load_pipeline_config(mgr, *a, **k)
-    mgr._spec_model_config = lambda *a, **k: SessionManager._spec_model_config(mgr, *a, **k)
     mgr._register_resolved_spec = lambda *a, **k: SessionManager._register_resolved_spec(
         mgr, *a, **k
     )
@@ -140,9 +139,7 @@ async def test_fallback_pipeline_config_comes_from_the_spec_too() -> None:
         patch("stt.pipeline.config_reader.get_pipeline_reader", _boom),
         patch("stt.pipeline.config_reader.get_model_reader", _boom),
     ):
-        fb = await SessionManager._load_pipeline_config(
-            mgr, FALLBACK_KEY, tenant_id="t1"
-        )
+        fb = await SessionManager._load_pipeline_config(mgr, FALLBACK_KEY, tenant_id="t1")
     assert fb.models.asr.slug == "faster-whisper-large-v3-turbo-int8"
     assert fb.models.vad.slug == "silero-vad"
 
@@ -151,12 +148,12 @@ async def test_fallback_pipeline_config_comes_from_the_spec_too() -> None:
 async def test_pre_resolved_model_configs_replace_the_model_reader() -> None:
     mgr = _make_manager()
     await _create(mgr)
-    cfg = SessionManager._spec_model_config(mgr, "s1", "arcaai-whisper-large-ml-en-gguf")
+    cfg = _spec_model_config_of(mgr, "s1", "arcaai-whisper-large-ml-en-gguf")
     assert cfg is not None
     assert cfg.format is AiModelFormat.WHISPER_CPP
     assert cfg.local_path == "/models/whisper-turbo-ml-en/ggml-model.gguf"
-    assert SessionManager._spec_model_config(mgr, "s1", "not-in-spec") is None
-    assert SessionManager._spec_model_config(mgr, "other-session", "silero-vad") is None
+    assert _spec_model_config_of(mgr, "s1", "not-in-spec") is None
+    assert _spec_model_config_of(mgr, "other-session", "silero-vad") is None
 
 
 @pytest.mark.asyncio
@@ -166,9 +163,7 @@ async def test_each_session_gets_its_own_pipeline_spec_copy() -> None:
     await _create(mgr, language="vi")
     first = mgr._assemble_session_runtime.await_args.kwargs["pipeline_config"]
     assert first.inference.language == "vi"
-    again = await SessionManager._load_pipeline_config(
-        mgr, PRIMARY_KEY, tenant_id="t1"
-    )
+    again = await SessionManager._load_pipeline_config(mgr, PRIMARY_KEY, tenant_id="t1")
     assert again is not first
     assert again.inference.language == "ml"  # the spec's own value, untouched
 
