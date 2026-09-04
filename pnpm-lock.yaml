@@ -2076,6 +2076,10 @@ importers:
       vitest-axe:
         specifier: ^0.1.0
         version: 0.1.0(vitest@4.1.10)
+    optionalDependencies:
+      elkjs:
+        specifier: ^0.11.1
+        version: 0.11.1
 
   packages/utils:
     dependencies:
