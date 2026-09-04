@@ -9,6 +9,12 @@
 // Models are referenced by slug in configYaml, no FK relationships to AiModel
 // =============================================================================
 
+/// @deprecated TASK-861 — removed in R4. The ASR Agent (`Agent`, task
+/// `SPEECH_TO_TEXT`, TASK-863) + the gateway-resolved `ResolvedAsrSpec`
+/// replace the pipeline row: `apps/stt` no longer reads this table. Kept for
+/// the deprecation window (`docs/operations/deprecation-register.md`); no new
+/// columns, no new rows from seeds (`06-stt.ts` pipeline half retires in a
+/// follow-up), write routes carry `Deprecation` headers.
 model AsrPipeline {
   // Meta fields (BaseEntity pattern)
   metaData Json?  @map("_metadata") @db.JsonB
@@ -85,6 +91,8 @@ model AsrPipeline {
 // Immutable history of an AsrPipeline's configYaml for rollback/diff.
 // =============================================================================
 
+/// @deprecated TASK-861 — removed in R4 with its parent `AsrPipeline`;
+/// the `Agent` entity's rows-are-versions model (TASK-863) replaces it.
 model AsrPipelineVersion {
   // Meta fields
   metaData Json?  @map("_metadata") @db.JsonB
@@ -253,9 +261,22 @@ model TranscriptionJob {
   contextItemId  String? // Created ContextItem (after completion)
   mediaId        String? // Source audio file (for batch)
 
-  // Pipeline used (FK relationship)
-  pipelineId String
-  Pipeline   AsrPipeline @relation(fields: [pipelineId], references: [id])
+  /// @deprecated TASK-861 — removed in R4. The pipeline that ran the job;
+  /// NULLABLE since TASK-861 because a job created through the ASR Agent path
+  /// carries `agentVersionId` + `resolvedSpec` instead. History rows keep
+  /// their pointer read-only (owner question Q3). No new rows write it.
+  pipelineId String?
+  Pipeline   AsrPipeline? @relation(fields: [pipelineId], references: [id])
+
+  // TASK-861 — the ASR Agent VERSION that ran this job (`Agent.id`; rows are
+  // versions). No FK: the agent row may be deprecated/archived after the job,
+  // and the job must stay readable as operational history.
+  agentVersionId String?
+  // TASK-861 — the exact `ResolvedAsrSpec` (packages/types `asr-spec.ts`) the
+  // gateway resolved for this job and handed to the worker. Snapshot, never
+  // re-resolved: the job is reproducible from its own row. Never carries a
+  // credential (provider overrides travel separately).
+  resolvedSpec Json? @db.JsonB
 
   // Job status
   status   TranscriptionJobStatus @default(QUEUED)
@@ -294,6 +315,7 @@ model TranscriptionJob {
   @@index([tenantId], name: "TranscriptionJob_tenantId_idx")
   @@index([status], name: "TranscriptionJob_status_idx")
   @@index([pipelineId], name: "TranscriptionJob_pipelineId_idx")
+  @@index([agentVersionId], name: "TranscriptionJob_agentVersionId_idx")
   @@index([consultationId], name: "TranscriptionJob_consultationId_idx")
   @@index([createdAt], name: "TranscriptionJob_createdAt_idx")
   @@index([tenantId, status, createdAt], name: "TranscriptionJob_tenant_status_created_idx")

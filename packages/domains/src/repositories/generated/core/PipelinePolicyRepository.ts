@@ -20,6 +20,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
  * `updateWithVersion` (OCC CAS on `_version`).
  */
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. Its toggles become `enabled` flags on the nodes of the assigned workflow (`WorkflowAssignment`, TASK-864). */
 export class PipelinePolicyRepository extends Repository<PipelinePolicyEntity, PipelinePolicy> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'pipelinePolicy', PipelinePolicyEntityMapper.getInstance());

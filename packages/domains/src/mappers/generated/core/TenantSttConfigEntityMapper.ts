@@ -17,6 +17,7 @@ function stripNonWritableFields<T extends object>(model: T, fields: string[]): T
   return model;
 }
 
+/** @deprecated TASK-861 — removed in R4. `fallbackPipelineId` / `autoSwitchEnabled` become the ASR Agent's `fallback` block (`ResolvedAsrSpec.fallback`). */
 export class TenantSttConfigEntityMapper extends BaseMapper<Entities.TenantSttConfigEntity, Models.TenantSttConfig> {
   constructor() {
     super();

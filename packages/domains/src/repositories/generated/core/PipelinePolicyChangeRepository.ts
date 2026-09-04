@@ -13,6 +13,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
  * ordering by `id` reflects append order. Mirrors `HarnessPolicyChangeRepository`.
  */
 @Injectable()
+/** @deprecated TASK-861 — removed in R4 with `PipelinePolicy` (WORM log stays read-only until the drop). */
 export class PipelinePolicyChangeRepository extends Repository<PipelinePolicyChangeEntity, PipelinePolicyChange> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'pipelinePolicyChange', PipelinePolicyChangeEntityMapper.getInstance());

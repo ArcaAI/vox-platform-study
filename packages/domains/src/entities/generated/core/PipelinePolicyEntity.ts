@@ -33,6 +33,7 @@ export interface IPipelinePolicyEntity extends IBaseTenantEntity {
   dnaRedactionEnabled?: boolean | null;
 }
 
+/** @deprecated TASK-861 — removed in R4. Its toggles become `enabled` flags on the nodes of the assigned workflow (`WorkflowAssignment`, TASK-864). */
 export class PipelinePolicyEntity extends BaseTenantEntity {
   private _scope: IPipelinePolicyEntity['scope'];
   private _scopeId?: IPipelinePolicyEntity['scopeId'];
