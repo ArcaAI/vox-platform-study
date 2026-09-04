@@ -166,6 +166,16 @@ def _spec_bundles_of(manager: Any) -> dict[str, ResolvedSpecBundle]:
     return bundles if isinstance(bundles, dict) else {}
 
 
+def _spec_model_config_of(
+    manager: Any, session_id: str | None, slug: str | None
+) -> AiModelConfig | None:
+    """The pre-resolved ``AiModelConfig`` for ``slug`` on a spec-driven session, else ``None``."""
+    if not session_id or not slug:
+        return None
+    bundle = _spec_bundles_of(manager).get(session_id)
+    return bundle.model_configs.get(slug) if bundle is not None else None
+
+
 class SessionManager:
     """Manages the full lifecycle of streaming sessions.
 
@@ -1598,13 +1608,6 @@ class SessionManager:
         bundles[session_id] = bundle
         return bundle
 
-    def _spec_model_config(self, session_id: str | None, slug: str | None) -> AiModelConfig | None:
-        """The pre-resolved ``AiModelConfig`` for ``slug`` on a spec-driven session, else ``None``."""
-        if not session_id or not slug:
-            return None
-        bundle = _spec_bundles_of(self).get(session_id)
-        return bundle.model_configs.get(slug) if bundle is not None else None
-
     async def _load_pipeline_config(self, pipeline_id: str, tenant_id: str | None = None) -> Any:
         """Load the ``PipelineSpec`` for a runtime key.
 
@@ -1710,7 +1713,7 @@ class SessionManager:
                 if not (ref.is_inline and ref.inline) and ref.slug:
                     # TASK-861 — spec-driven sessions carry every model config;
                     # only the deprecated pipeline path still reads the registry.
-                    db_cfg = self._spec_model_config(session_id, ref.slug)
+                    db_cfg = _spec_model_config_of(self, session_id, ref.slug)
                     if db_cfg is None and session_id not in _spec_bundles_of(self):
                         db_cfg = await get_model_reader().get_model_by_slug(ref.slug, tenant_id)
                 loaded = await model_cache.get_or_load_from_ref(
@@ -1837,7 +1840,7 @@ class SessionManager:
             # TASK-861 — a spec-driven session resolves the ASR row from its
             # bundle; a slug the spec does not carry is a hard error (never a
             # database fallback on the agent path).
-            db_model_config = self._spec_model_config(session_id, asr_ref.slug)
+            db_model_config = _spec_model_config_of(self, session_id, asr_ref.slug)
             if db_model_config is None and session_id in _spec_bundles_of(self):
                 raise RuntimeError(
                     f"ASR model '{asr_ref.slug}' is not part of session {session_id}'s resolved spec"
@@ -1915,7 +1918,10 @@ class SessionManager:
 
         # TASK-861 — the agent's LITERAL prompt wins; the template-id lookup
         # (a database read) survives only for the deprecated pipeline path.
-        initial_prompt: str | None = getattr(inference_config, "initial_prompt_text", None) or None
+        prompt_text = getattr(inference_config, "initial_prompt_text", None)
+        initial_prompt: str | None = (
+            prompt_text if isinstance(prompt_text, str) and prompt_text else None
+        )
         initial_prompt_id = getattr(inference_config, "initial_prompt", None)
         if initial_prompt is None and initial_prompt_id:
             from stt.core.initial_prompt import get_initial_prompt
@@ -4033,7 +4039,7 @@ class SessionManager:
                     session_id_for_cleanup = meta.session_id
                     # TASK-861 — a spec-driven session rebuilds from its persisted
                     # spec; a corrupt one is skipped rather than guessed.
-                    if meta.resolved_spec_json:
+                    if isinstance(meta.resolved_spec_json, str) and meta.resolved_spec_json:
                         try:
                             self._register_resolved_spec(
                                 meta.session_id, json.loads(meta.resolved_spec_json)
