@@ -34,7 +34,7 @@ import {
 const STT_SERVICE = 'stt' as const;
 
 @Injectable()
-/** @deprecated TASK-861 — removed in R4. `fallbackPipelineId` / `autoSwitchEnabled` become the ASR Agent's `fallback` block (`ResolvedAsrSpec.fallback`, `AsrAgentResolverService`); `resolveProviderOverrides` is superseded by `ProviderCredentialResolver` (TASK-862). Only the batch-worker pull route still reads it. */
+/** @deprecated TASK-861 — removed in R4. `fallbackPipelineId` / `autoSwitchEnabled` become the ASR Agent's `fallback` block (`ResolvedAsrSpec.fallback`, `AsrAgentResolverService`); `resolveProviderOverrides` is superseded by `ProviderCredentialResolver` (TASK-862); no gateway route reads it any more — the batch-worker pull resolves through `AsrAgentResolverService.resolveProviderOverrides` (TASK-861 follow-up). */
 export class TenantSttConfigService extends BaseService implements ITenantSttConfigService {
   private readonly logger = new Logger(TenantSttConfigService.name);
 
