@@ -25,6 +25,7 @@ from ...core.job_concurrency import get_job_gate, refresh_job_concurrency_limit
 from ...core.messaging.pubsub import TranscriptionEventPublisher
 from ...core.worker_loop import run_on_worker_loop
 from ...pipeline.config_reader import get_pipeline_reader
+from ...pipeline.spec import bundle_from_resolved, pipeline_config_from_bundle
 from ...storage.blob_service import get_blob_service
 from ..batch_service import get_batch_service
 
@@ -51,6 +52,7 @@ def transcribe_file(
     user_id: str | None = None,
     storage: dict[str, Any] | None = None,
     fallback_pipeline_id: str | None = None,
+    resolved_spec: dict[str, Any] | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -114,6 +116,7 @@ def transcribe_file(
                 user_id=user_id,
                 storage=storage,
                 fallback_pipeline_id=fallback_pipeline_id,
+                resolved_spec=resolved_spec,
             )
         )
 
@@ -131,6 +134,7 @@ async def _transcribe_file_async(
     user_id: str | None = None,
     storage: dict[str, Any] | None = None,
     fallback_pipeline_id: str | None = None,
+    resolved_spec: dict[str, Any] | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -146,8 +150,12 @@ async def _transcribe_file_async(
     _settings = get_settings()
     api_client = get_api_client()
     blob_service = get_blob_service()
-    pipeline_reader = get_pipeline_reader()
     batch_service = get_batch_service()
+    # TASK-861 — the agent path: the job carries its whole engine chain (primary +
+    # fallback + every model config) in `resolved_spec`; nothing is read from
+    # Postgres. The deprecated `pipeline_id` path still goes through the reader.
+    bundle = bundle_from_resolved(resolved_spec) if resolved_spec is not None else None
+    pipeline_reader = None if bundle is not None else get_pipeline_reader()
 
     # Register per-tenant storage routing. A `storage` descriptor (multi-provider
     # S3/MinIO/Azure) wins and also pins the tenant audio bucket; otherwise fall
@@ -187,8 +195,15 @@ async def _transcribe_file_async(
         await publisher.publish_status(job_id, "PROCESSING", worker_id=worker_id)
 
         # Step 2: Load pipeline configuration
-        logger.info(f"[{job_id}] Loading pipeline {pipeline_id}")
-        pipeline_config = await pipeline_reader.get_pipeline(pipeline_id)
+        if bundle is not None:
+            logger.info(
+                f"[{job_id}] Assembling engine chain from resolved spec {bundle.runtime_key}"
+            )
+            pipeline_config = pipeline_config_from_bundle(bundle, bundle.runtime_key)
+        else:
+            assert pipeline_reader is not None
+            logger.info(f"[{job_id}] Loading pipeline {pipeline_id}")
+            pipeline_config = await pipeline_reader.get_pipeline(pipeline_id)
 
         if language is not None:
             pipeline_config.spec.inference.language = language
@@ -312,28 +327,37 @@ async def _transcribe_file_async(
                 audio_filename=audio_filename,
                 user_id=user_id,
                 provider_overrides=provider_overrides,
+                model_configs=bundle.model_configs if bundle is not None else None,
             )
+
+        # The fallback engine: the spec's own `fallback` chain on the agent path,
+        # the deprecated tenant pointer otherwise.
+        fallback_key = bundle.fallback_runtime_key if bundle is not None else fallback_pipeline_id
 
         try:
             result = await _do_transcribe(pipeline_config)
         except (CloudASRError, ModelError) as asr_exc:
             # Batch fallback dispatch. On a cloud-ASR/model failure
-            # with a configured fallback, re-run ONCE on the fallback pipeline
+            # with a configured fallback, re-run ONCE on the fallback chain
             # within this same Dramatiq attempt (CloudASRAuthError → straight to
             # fallback; retrying a bad key is pointless). No fallback configured
             # ⇒ re-raise, byte-identical to today (Dramatiq retry/skip taxonomy).
-            if not fallback_pipeline_id:
+            if not fallback_key:
                 raise
             logger.warning(
                 f"[{job_id}] Primary ASR failed ({type(asr_exc).__name__}); "
-                f"re-dispatching on fallback pipeline {fallback_pipeline_id}"
+                f"re-dispatching on fallback {fallback_key}"
             )
-            fb_pipeline_config = await pipeline_reader.get_pipeline(fallback_pipeline_id)
+            if bundle is not None:
+                fb_pipeline_config = pipeline_config_from_bundle(bundle, fallback_key)
+            else:
+                assert pipeline_reader is not None
+                fb_pipeline_config = await pipeline_reader.get_pipeline(fallback_key)
             if language is not None:
                 fb_pipeline_config.spec.inference.language = language
             result = await _do_transcribe(fb_pipeline_config)
             # Auditability: record which fallback actually produced the result.
-            result.metadata["usedFallbackPipelineId"] = fallback_pipeline_id
+            result.metadata["usedFallbackPipelineId"] = fallback_key
 
         # Await pending progress tasks before publishing final events
         if _pending_progress_tasks:

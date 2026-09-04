@@ -423,8 +423,21 @@ async def get_loaded_pipelines() -> dict[str, Any]:
         stats = cache.stats()
         cached_slugs = {m["slug"] for m in stats.models}
 
-        # Get enabled pipelines
-        pipelines = await pipeline_reader.get_enabled_pipelines()
+        # Get enabled pipelines. TASK-861: the pipeline table is deprecated and
+        # the DB is off by default — report an empty, explicitly-disabled list
+        # rather than a 500 (this is a readiness aid, not selection).
+        from stt.core.database.connection import DatabaseDisabledError
+
+        try:
+            pipelines = await pipeline_reader.get_enabled_pipelines()
+        except DatabaseDisabledError:
+            return {
+                "total_pipelines": 0,
+                "ready_pipelines": 0,
+                "pipelines": [],
+                "database": "disabled",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
 
         ready_pipelines = []
         for pipeline in pipelines:

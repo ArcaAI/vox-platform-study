@@ -24,7 +24,10 @@ Selection fails CLOSED: a schema version this runtime does not know, or a model
 
 from __future__ import annotations
 
-from typing import Literal
+import copy
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
@@ -41,6 +44,7 @@ from .dto import (
     ModelRef,
     ModelRefs,
     ModelTaskType,
+    PipelineConfig,
     PipelineSpec,
     PostprocessingConfig,
     PreprocessingConfig,
@@ -340,6 +344,8 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
         inference_kwargs["beam_size"] = decoding.beam_size
     if decoding.temperature is not None:
         inference_kwargs["temperature"] = [decoding.temperature]
+    inference_kwargs["initial_prompt_text"] = core.instruction.initial_prompt
+    inference_kwargs["hotwords"] = list(core.instruction.hotwords)
     inference = InferenceConfig(**inference_kwargs)  # type: ignore[arg-type]
 
     pp = core.post_processing
@@ -367,6 +373,73 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     return spec, model_configs
 
 
+# ---------------------------------------------------------------------------
+# Per-session / per-job bundle: the spec, pre-mapped, ready for the runtime
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ResolvedSpecBundle:
+    """One ``ResolvedAsrSpec`` mapped onto everything the runtime consumes.
+
+    ``pipeline_specs`` is keyed by runtime key (primary + fallback) and holds
+    the MASTER copies — hand out ``copy.deepcopy`` (``pipeline_config_from_bundle``
+    / the session manager's loader) because callers mutate ``inference.language``.
+    ``model_configs`` is the union over both chains, keyed by slug: the map the
+    runtime consults INSTEAD of the deprecated ``ModelRegistryReader``.
+    """
+
+    spec: ResolvedAsrSpec
+    pipeline_specs: dict[str, PipelineSpec] = field(default_factory=dict)
+    model_configs: dict[str, AiModelConfig] = field(default_factory=dict)
+
+    @property
+    def runtime_key(self) -> str:
+        return self.spec.runtime_key
+
+    @property
+    def fallback_runtime_key(self) -> str | None:
+        return self.spec.fallback.spec.runtime_key if self.spec.fallback.spec else None
+
+
+def bundle_from_resolved(raw: dict[str, Any] | ResolvedAsrSpec) -> ResolvedSpecBundle:
+    """Validate (when raw) and map a resolved spec — the ONE entry point for both runtimes."""
+    spec = raw if isinstance(raw, ResolvedAsrSpec) else ResolvedAsrSpec.model_validate(raw)
+    pipeline_specs: dict[str, PipelineSpec] = {}
+    model_configs: dict[str, AiModelConfig] = {}
+    chains: list[AsrSpecCore] = [spec]
+    if spec.fallback.spec is not None:
+        chains.append(spec.fallback.spec)
+    for chain in chains:
+        pipeline_spec, configs = pipeline_spec_from_resolved(chain)
+        pipeline_specs[chain.runtime_key] = pipeline_spec
+        model_configs.update(configs)
+    return ResolvedSpecBundle(spec=spec, pipeline_specs=pipeline_specs, model_configs=model_configs)
+
+
+def pipeline_config_from_bundle(bundle: ResolvedSpecBundle, runtime_key: str) -> PipelineConfig:
+    """The ``PipelineConfig`` wrapper the batch service consumes, for one chain.
+
+    A fresh deep copy every call; ``KeyError`` when the key is not part of the
+    bundle (never a silently substituted chain).
+    """
+    pipeline_spec = bundle.pipeline_specs[runtime_key]
+    core = bundle.spec if runtime_key == bundle.spec.runtime_key else bundle.spec.fallback.spec
+    assert core is not None  # the key came from pipeline_specs, so a chain exists
+    now = datetime.now(UTC)
+    return PipelineConfig(
+        id=runtime_key,
+        tenant_id=core.agent.tenant_id,
+        slug=core.agent.slug,
+        name=core.agent.slug,
+        description=None,
+        spec=copy.deepcopy(pipeline_spec),
+        tags=[],
+        created_at=now,
+        updated_at=now,
+    )
+
+
 __all__ = [
     "AGENT_PIPELINE_SPEC_VERSION",
     "RESOLVED_ASR_SPEC_SCHEMA_VERSION",
@@ -376,7 +449,10 @@ __all__ = [
     "AsrSpecModel",
     "AsrSpecModels",
     "ResolvedAsrSpec",
+    "ResolvedSpecBundle",
     "UnsupportedAsrSpecError",
+    "bundle_from_resolved",
+    "pipeline_config_from_bundle",
     "pipeline_spec_from_resolved",
     "to_ai_model_config",
 ]
