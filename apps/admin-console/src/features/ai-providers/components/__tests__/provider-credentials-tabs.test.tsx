@@ -27,7 +27,7 @@ function stubFetch() {
         return Response.json({ user: { id: 'u-1', roles: ['SUPER_ADMIN'] }, isElevated: true });
       }
       if (url.startsWith('/api/hope/admin/providers/')) {
-        const [service, provider] = url.replace('/api/hope/admin/providers/', '').split('/');
+        const [service, provider] = new URL(url, 'http://test.local').pathname.replace('/api/hope/admin/providers/', '').split('/');
         return Response.json({
           tenantId: 't-1',
           service,
@@ -40,6 +40,10 @@ function stubFetch() {
           keyVersion: null,
           enabled: false,
           extraJson: null,
+          maxConcurrent: null,
+          rpmLimit: null,
+          tpmLimit: null,
+          timeoutS: null,
           version: 0,
         });
       }
@@ -56,28 +60,28 @@ afterEach(() => {
 describe('ProviderCredentialsTabs — every capability the gateway serves', () => {
   it('renders one tab per capability, including the three P1-C.1 added', async () => {
     stubFetch();
-    renderWithProviders(<ProviderCredentialsTabs />);
+    renderWithProviders(<ProviderCredentialsTabs tenantId="t-1" />);
 
     const tabs = await screen.findAllByRole('tab');
     expect(tabs).toHaveLength(PROVIDER_SERVICES.length);
 
-    for (const label of ['LLM', 'STT', 'TTS', 'Embeddings', 'Rerank', 'Vector DB']) {
+    for (const label of ['Text generation', 'Speech-to-text', 'Text-to-speech', 'Embeddings', 'Rerank', 'Vector store', 'Model registry']) {
       expect(screen.getByRole('tab', { name: label })).toBeDefined();
     }
   });
 
-  it('opens on LLM so the existing entry point is unchanged', async () => {
+  it('opens on Text generation (llm) so the existing entry point is unchanged', async () => {
     stubFetch();
-    renderWithProviders(<ProviderCredentialsTabs />);
+    renderWithProviders(<ProviderCredentialsTabs tenantId="t-1" />);
 
-    const llm = await screen.findByRole('tab', { name: 'LLM' });
+    const llm = await screen.findByRole('tab', { name: 'Text generation' });
     expect(llm.getAttribute('aria-selected')).toBe('true');
   });
 
   it('has no axe violations', async () => {
     stubFetch();
-    const { container } = renderWithProviders(<ProviderCredentialsTabs />);
-    await screen.findByRole('tab', { name: 'Vector DB' });
+    const { container } = renderWithProviders(<ProviderCredentialsTabs tenantId="t-1" />);
+    await screen.findByRole('tab', { name: 'Vector store' });
     await waitFor(() => expect(screen.queryAllByRole('tab')).toHaveLength(PROVIDER_SERVICES.length));
 
     expect(await axe(container)).toHaveNoViolations();

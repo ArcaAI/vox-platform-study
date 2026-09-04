@@ -73,7 +73,7 @@ Verdict legend: **IMPLEMENTED** / **PARTIAL** / **ABSENT** / **VIOLATED** (code 
 | `(tenant)/dna-writing-styles`, `context-schemas`, `agentic-policy`, `harness/policy`, `harness/pipeline-policy`, `audio/pipelines`, `audio/transcription-jobs`, `ai-configuration` | 30-49 | Tenant-scoped AI/governance config screens |
 | `(tenant)/harness/observability` | 30-49 | **QA/provenance dashboard**: WORM audit trail, eval runs, gate queue, golden sets, edit-burden, gate→golden-case promotion |
 | `(tenant)/harness/workflows` | 30-49 | Temporal workflow observability |
-| `(global)/ai-operations/{metrics,runs,consumption,reconciliation}` | 10-19 (+ WorkingTenantGate) | LLM throughput/latency dashboard, per-run trajectory inspector, usage/cost |
+| `(global)/ai-operations/{metrics,runs,consumption}` | 10-19 (+ WorkingTenantGate) | LLM throughput/latency dashboard, per-run trajectory inspector, usage/cost (Provider Reconciliation removed by TASK-862) |
 | `(shared)/settings` | 20-29 | Generic `GlobalSetting` grid where retention-TTL/audit-retention keys surface generically |
 
 | `@arcaai/ui` component | Path | Role |

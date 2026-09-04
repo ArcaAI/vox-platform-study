@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { IconPlugConnectedX, IconTestPipe } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -12,8 +13,8 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
-import { useDeleteProviderConnection, useProviderConnection, usePutProviderConnection } from '../api/hooks';
-import type { ProviderService } from '../api/types';
+import { useDeleteProviderConnection, useProviderConnection, usePutProviderConnection, useTestProviderConnection } from '../api/hooks';
+import { CONNECTION_CEILINGS, connectionStateOf, type ConnectionCeiling, type ConnectionState, type ProviderService } from '../api/types';
 import type { ProviderField, ProviderMeta } from './provider-meta';
 
 /** Rule 10: skeleton shaped like the loaded card. */
@@ -36,30 +37,59 @@ function CardSkeleton() {
 }
 
 /**
- * One `(service, provider)` BYO-credential card — the shared masked
- * `CredentialCard` interaction (Configured / None + enabled badges, a
- * WRITE-ONLY password field, inline remove confirmation, toasts, OCC
- * If-Match) generalized over the unified `admin/providers/:service` route
- * (C2/C3) so ONE component drives the LLM, STT, and TTS tabs.
+ * The three-state vocabulary of a `(service, provider)` row, as the console
+ * names it. Mirrors the gateway's `CONNECTION_ENABLED_SEMANTICS`: absent = the
+ * platform default may serve; enabled + keyed = this tenant's own credential
+ * serves; disabled = a VETO that blocks the platform key too.
+ */
+const STATE_LABEL: Record<ConnectionState, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+  'platform-default': { label: 'Use platform default', variant: 'outline' },
+  'bring-your-own': { label: 'Bring your own', variant: 'default' },
+  disabled: { label: 'Disabled for this tenant', variant: 'destructive' },
+};
+
+/** Parse a ceiling input: blank = clear (null); a positive integer = the cap; anything else = invalid. */
+function parseCeiling(raw: string): number | null | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const value = Number(trimmed);
+  return Number.isInteger(value) && value >= 1 ? value : undefined;
+}
+
+/**
+ * One `(service, provider)` connection card — the shared masked credential
+ * interaction (state badge, a WRITE-ONLY password field, per-provider fields,
+ * the TASK-862 connection CEILINGS, an ephemeral "Test connection" probe,
+ * inline remove confirmation, toasts, OCC If-Match) generalized over the
+ * unified `admin/providers/:service` route so ONE component drives every tab.
  *
- * Composes the interaction already proven by the LLM lane's
- * `ByoCredentialCard` (`features/ai-task-defaults/components/byo-credential-card.tsx`)
- * and the TTS/STT `CredentialCard` variants — parametrized by `service` +
- * per-service field metadata (`provider-meta.ts`) rather than forked per
- * capability.
+ * `tenantId` is the tier the screen selected (SYSTEM or the working tenant);
+ * every read and write on this card carries it.
  *
  * The key is never rendered, never returned by any read, and there is no
  * reveal flow — the field always starts empty and reports only Configured /
- * None.
+ * None. The probe re-tests a STORED key without the operator re-entering it.
  */
-export function ProviderCredentialCard({ service, meta }: { service: ProviderService; meta: ProviderMeta }) {
+export function ProviderCredentialCard({
+  service,
+  meta,
+  tenantId,
+  enabled: queriesEnabled = true,
+}: {
+  service: ProviderService;
+  meta: ProviderMeta;
+  tenantId?: string;
+  enabled?: boolean;
+}) {
   const uid = useId();
-  const query = useProviderConnection(service, meta.id);
+  const query = useProviderConnection(service, meta.id, tenantId, queriesEnabled);
   const putMutation = usePutProviderConnection();
   const deleteMutation = useDeleteProviderConnection();
+  const testMutation = useTestProviderConnection();
 
   const [apiKey, setApiKey] = useState('');
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
+  const [ceilingDraft, setCeilingDraft] = useState<Partial<Record<ConnectionCeiling, string>> | null>(null);
   const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
 
@@ -72,6 +102,7 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
   const etag = query.data.etag;
   const hasKey = current.hasKey;
   const enabled = enabledDraft ?? current.enabled;
+  const state = connectionStateOf(current);
   const currentColumns = current as unknown as Record<string, unknown>;
 
   /** Stored value for a field: a column reads its column, an `extra` field reads `extraJson[name]`. */
@@ -80,10 +111,16 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
     return typeof raw === 'string' ? raw : '';
   };
   const valueOf = (field: ProviderField) => draft?.[field.name] ?? storedValue(field);
+  const ceilingValueOf = (name: ConnectionCeiling): string => ceilingDraft?.[name] ?? (current[name] == null ? '' : String(current[name]));
 
-  function handleSave() {
-    if (apiKey.trim().length === 0) return;
-    const body: Record<string, unknown> = { apiKey: apiKey.trim(), enabled };
+  const invalidCeilings = CONNECTION_CEILINGS.filter((c) => parseCeiling(ceilingValueOf(c.name)) === undefined).map((c) => c.label);
+  // A key is required on the FIRST save; afterwards the stored key stays and
+  // the other fields (endpoint, ceilings, enabled) can be edited on their own.
+  const canSave = invalidCeilings.length === 0 && !putMutation.isPending && (apiKey.trim().length > 0 || hasKey);
+
+  function buildBody(): Record<string, unknown> {
+    const body: Record<string, unknown> = { enabled };
+    if (apiKey.trim().length > 0) body.apiKey = apiKey.trim();
     const extra: Record<string, unknown> = {};
     for (const field of meta.fields) {
       const value = valueOf(field).trim() || null;
@@ -96,13 +133,22 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
     if (Object.keys(extra).length > 0) {
       body.extraJson = extra;
     }
+    for (const ceiling of CONNECTION_CEILINGS) {
+      body[ceiling.name] = parseCeiling(ceilingValueOf(ceiling.name)) ?? null;
+    }
+    return body;
+  }
+
+  function handleSave() {
+    if (!canSave) return;
     putMutation.mutate(
-      { service, provider: meta.id, body, etag },
+      { service, provider: meta.id, body: buildBody(), etag, tenantId },
       {
         onSuccess: () => {
-          toast.success(`${meta.label} credential saved`);
+          toast.success(`${meta.label} connection saved`);
           setApiKey('');
           setDraft(null);
+          setCeilingDraft(null);
           setEnabledDraft(null);
         },
         // A 412/428 renders the OCC alert below; only other failures toast.
@@ -115,14 +161,39 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
     );
   }
 
+  function handleTest() {
+    // Ephemeral: the typed key (if any) plus the drafted endpoint fields; an
+    // omitted key means "probe the stored one".
+    const body: Record<string, string> = {};
+    if (apiKey.trim().length > 0) body.apiKey = apiKey.trim();
+    for (const field of meta.fields) {
+      if (field.store === 'extra') continue;
+      const value = valueOf(field).trim();
+      if (value) body[field.name] = value;
+    }
+    testMutation.mutate(
+      { service, provider: meta.id, body, tenantId },
+      {
+        onSuccess: (result) => {
+          const via = result.probe === 'auth' ? 'credential verified' : 'endpoint reachable';
+          const from = result.source === 'request' ? 'typed values' : result.source === 'tenant' ? 'the tenant row' : 'the platform row';
+          if (result.ok) toast.success(`${meta.label}: ${result.message} (${via}, ${from})`);
+          else toast.error(`${meta.label}: ${result.message}`);
+        },
+        onError: (error) => toast.error(error.message),
+      },
+    );
+  }
+
   function handleRemove() {
     deleteMutation.mutate(
-      { service, provider: meta.id },
+      { service, provider: meta.id, tenantId },
       {
         onSuccess: () => {
-          toast.success(`${meta.label} credential removed`);
+          toast.success(`${meta.label} connection removed — the platform default serves this provider again`);
           setConfirmingRemove(false);
           setDraft(null);
+          setCeilingDraft(null);
           setEnabledDraft(null);
         },
         onError: (error) => toast.error(error.message),
@@ -136,12 +207,12 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
         <h3 id={`${uid}-title`} className="text-sm font-medium">
           {meta.label}
         </h3>
+        <Badge variant={STATE_LABEL[state].variant}>{STATE_LABEL[state].label}</Badge>
         {hasKey ? (
-          <Badge variant="default">configured{current.keyVersion != null ? ` · v${current.keyVersion}` : ''}</Badge>
+          <Badge variant="secondary">key configured{current.keyVersion != null ? ` · v${current.keyVersion}` : ''}</Badge>
         ) : (
-          <Badge variant="outline">not configured</Badge>
+          <Badge variant="outline">no key</Badge>
         )}
-        <Badge variant={current.enabled ? 'secondary' : 'outline'}>{current.enabled ? 'enabled' : 'disabled'}</Badge>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -175,9 +246,40 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
         </div>
       ))}
 
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-muted-foreground text-xs font-medium">Ceilings (blank = no opinion)</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {CONNECTION_CEILINGS.map((ceiling) => (
+            <div key={ceiling.name} className="flex flex-col gap-1">
+              <Label htmlFor={`${uid}-${ceiling.name}`} className="text-muted-foreground text-xs">
+                {ceiling.label}
+              </Label>
+              <Input
+                id={`${uid}-${ceiling.name}`}
+                inputMode="numeric"
+                value={ceilingValueOf(ceiling.name)}
+                onChange={(event) => setCeilingDraft((prev) => ({ ...prev, [ceiling.name]: event.target.value }))}
+                placeholder={ceiling.placeholder}
+                aria-describedby={`${uid}-${ceiling.name}-help`}
+                aria-invalid={parseCeiling(ceilingValueOf(ceiling.name)) === undefined || undefined}
+                className="h-8 font-mono text-xs"
+              />
+              <span id={`${uid}-${ceiling.name}-help`} className="text-muted-foreground text-xs">
+                {ceiling.help}
+              </span>
+            </div>
+          ))}
+        </div>
+        {invalidCeilings.length > 0 ? (
+          <p className="text-destructive text-xs" role="alert">
+            {invalidCeilings.join(', ')}: enter a positive whole number, or leave blank.
+          </p>
+        ) : null}
+      </fieldset>
+
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <Switch id={`${uid}-enabled`} checked={enabled} onCheckedChange={setEnabledDraft} />
+          <Switch id={`${uid}-enabled`} checked={enabled} onCheckedChange={setEnabledDraft} aria-describedby={`${uid}-enabled-help`} />
           <Label htmlFor={`${uid}-enabled`} className="text-muted-foreground text-xs">
             Enabled
           </Label>
@@ -185,15 +287,13 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
         {/*
           Turning this OFF is a VETO, not "unused" — it blocks the
           platform-provided key for this provider too, and calls that select it
-          fail rather than falling through to another provider. An admin cannot
-          be expected to infer that from a switch, and the resulting 409 is
-          otherwise unexplainable. Removing the credential entirely returns this
-          provider to "no opinion" instead.
+          fail rather than falling through to another provider. Removing the
+          connection entirely returns this provider to "use platform default".
         */}
         <p id={`${uid}-enabled-help`} className="text-muted-foreground pl-10 text-xs">
           {enabled
-            ? 'Your credential serves this provider. Remove it to fall back to the platform-provided key.'
-            : 'Disabled blocks this provider for your tenant entirely — including the platform-provided key. Remove the credential instead to allow the platform default.'}
+            ? 'Your credential serves this provider. Remove the connection to fall back to the platform-provided key.'
+            : 'Disabled blocks this provider for your tenant entirely — including the platform-provided key. Remove the connection instead to use the platform default.'}
         </p>
       </div>
 
@@ -207,10 +307,21 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
       />
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {hasKey ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleTest}
+          disabled={testMutation.isPending || (apiKey.trim().length === 0 && !hasKey)}
+          aria-label={`Test the ${meta.label} connection`}
+          title={apiKey.trim().length === 0 && !hasKey ? 'Enter a key (or save one) to test this connection' : undefined}
+        >
+          {testMutation.isPending ? <Spinner /> : <IconTestPipe aria-hidden />}
+          Test connection
+        </Button>
+        {current.version > 0 ? (
           confirmingRemove ? (
             <>
-              <span className="text-muted-foreground text-xs">Remove this credential?</span>
+              <span className="text-muted-foreground text-xs">Remove this connection and use the platform default?</span>
               <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(false)} disabled={deleteMutation.isPending}>
                 Cancel
               </Button>
@@ -220,19 +331,15 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
               </Button>
             </>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => setConfirmingRemove(true)} aria-label={`Remove the ${meta.label} credential`}>
-              Remove
+            <Button variant="outline" size="sm" onClick={() => setConfirmingRemove(true)} aria-label={`Remove the ${meta.label} connection (use platform default)`}>
+              <IconPlugConnectedX aria-hidden />
+              Use platform default
             </Button>
           )
         ) : null}
-        <Button
-          size="sm"
-          onClick={handleSave}
-          disabled={apiKey.trim().length === 0 || putMutation.isPending}
-          aria-label={`${hasKey ? 'Rotate' : 'Save'} key for ${meta.label} · If-Match`}
-        >
+        <Button size="sm" onClick={handleSave} disabled={!canSave} aria-label={`${hasKey ? 'Save' : 'Save key'} for ${meta.label} · If-Match`}>
           {putMutation.isPending ? <Spinner /> : null}
-          {hasKey ? 'Rotate key' : 'Save key'}
+          {hasKey ? (apiKey.trim().length > 0 ? 'Rotate key & save' : 'Save') : 'Save key'}
         </Button>
       </div>
     </Card>

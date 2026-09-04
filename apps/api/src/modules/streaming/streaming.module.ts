@@ -1,7 +1,6 @@
 import {
   AiModelServiceModule,
   AiProviderConnectionServiceModule,
-  AiRuntimeProfileServiceModule,
   AiTaskDefaultServiceModule,
   DnaWritingStyleServiceModule,
   EffectiveSettingsModule,
@@ -59,9 +58,6 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // resolves the effective `guardrail.validate` default.
     AiModelServiceModule,
     AiTaskDefaultServiceModule,
-    // Hyperparameter profile resolver for the TEXT proxy's
-    // caller-wins, fail-open parameter injection.
-    AiRuntimeProfileServiceModule,
     // Tenant BYO cloud-credential resolver for the TEXT proxy's
     // cloud-only, minimal-exposure, fail-open `provider_overrides` injection.
     AiProviderConnectionServiceModule,

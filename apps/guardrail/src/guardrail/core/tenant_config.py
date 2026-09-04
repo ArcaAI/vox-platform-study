@@ -1,20 +1,23 @@
 """Per-tenant Guardrail config resolution from the database.
 
 The Guardrail service resolves the admin-chosen provider/model **per tenant** at
-request time by reading ``core."AiTaskDefault"`` joined to ``core."AiModel"``
-directly (SQLAlchemy + asyncpg, mirroring STT's read-only DB access), with a
-short TTL cache (~60s).
+request time by reading ``core."AiRoutingPolicy"`` (the ELECTED ``isDefault``
+configuration per ``(tenant, taskKey)``) joined to ``core."AiModel"`` by the
+``modelId`` FK, directly (SQLAlchemy + asyncpg, mirroring STT's read-only DB
+access), with a short TTL cache (~60s). TASK-862 repointed this read off the
+retired ``AiTaskDefault`` projection; nothing reads that table any more.
 
 **The runtime cascade is exactly TWO tiers: request tenant → SYSTEM.**
 
     1. rows for the request tenant (``X-Tenant-Id`` header) — each lookup
-       widens to the SYSTEM tenant's rows, preferring the tenant's own
-       ``AiTaskDefault`` row over the SYSTEM row for the same task key
+       widens to the SYSTEM tenant's rows, preferring the tenant's own elected
+       ``AiRoutingPolicy`` row over the SYSTEM row for the same task key
     2. the SYSTEM tenant's rows (``00000000-…``) — the platform default tier
-    3. the provider-level ``AiRuntimeProfile`` row, for TUNING only — resolved
-       by the SAME two tiers, so a tenant that brought its own connection can
-       tune it; provider and model SELECTION stays fail-closed (there is no env
-       engine left to fall back to — guardrail hosts no LLM )
+    3. TUNING (``temperature`` / ``maxTokens`` / ``timeoutS``) rides on the
+       SAME winning row's ``configJson`` — ``AiRuntimeProfile`` was retired by
+       TASK-862 — so a tenant that elected its own configuration tunes it;
+       provider and model SELECTION stays fail-closed (there is no env engine
+       left to fall back to — guardrail hosts no LLM)
 
 A request with **no** ``X-Tenant-Id`` has no tenant context and therefore
 resolves SYSTEM only. It must never act as some customer tenant.
@@ -38,8 +41,8 @@ refused a selection and the resolver fails closed (503, raised as
 rather than silently falling through to the SYSTEM row.
 
 Cross-worker contract (the seed provides the SYSTEM rows):
-    ``AiTaskDefault`` — taskKey ``guardrail.validate`` → ``modelSlug``
-    ``AiModel``       — ``slug`` → provider / sourceUri / metaData.azureDeployment
+    ``AiRoutingPolicy`` — taskKey ``guardrail.validate``, ``isDefault`` → ``modelId``
+    ``AiModel``         — ``id`` → provider / sourceUri / metaData.azureDeployment
 The model sent to the runtime is the AiModel row's **sourceUri**, not the slug.
 
 Selection is DB-only (fail-closed at the dependency layer when the resolved
@@ -51,12 +54,12 @@ platform floor. The caller must not fall back to env for provider/model
 selection either way.
 
 Guardrail deliberately keeps this SQL resolver rather than adopting the HTTP
-effective-config client the other services use. The read is merely extended with
-``core."AiRuntimeProfile"`` — the provider-level ``temperature`` / ``maxTokens``
-/ ``timeoutS`` tuning, folded into the same cache entry so it costs no extra TTL
-window. Those tuning fields fail safe to env (absent profile ⇒ env engine config);
-the fail-closed posture above still governs provider/model selection.
-``local_path`` / model sources stay out of scope for this resolver.
+effective-config client the other services use. The ``temperature`` /
+``maxTokens`` / ``timeoutS`` tuning is read off the winning row's ``configJson``
+in the SAME query, so it costs no extra round-trip or TTL window. Those tuning
+fields fail safe (absent ⇒ the judge policy's own defaults); the fail-closed
+posture above still governs provider/model selection. ``local_path`` / model
+sources stay out of scope for this resolver.
 
 This choice was re-examined against preferring gateway-resolved injection
 over per-service DB reads, and CONFIRMED, on two
@@ -81,7 +84,7 @@ fail-open/closed choice is fail-CLOSED on selection (503 in
 ``SettingDescriptor.failMode``. The cache key is ``f"{task_key}::{tenant_id}"`` —
 tenant-keyed, so the tenant-keying requirement is satisfied.
 
-The one genuine gap is INVALIDATION: a gateway-side ``AiTaskDefault`` /
+The one genuine gap is INVALIDATION: a gateway-side ``AiRoutingPolicy`` /
 ``AiModel`` change is not pushed here, so it lands within one TTL window rather
 than immediately. Closing it needs a PUBLISHER in the gateway (the TS side
 already has its own settings channel, ``app-settings:invalidate``); a subscriber
@@ -97,7 +100,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import Float, Integer, String, select
+from sqlalchemy import Boolean, String, select
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -115,7 +118,7 @@ logger = get_logger(__name__)
 # Cross-worker contract — do NOT rename (seeded by the TS worker).
 TASK_KEY_GUARDRAIL_VALIDATE = "guardrail.validate"
 
-# aux-model selection keys (SYSTEM AiTaskDefault ⋈ AiModel):
+# aux-model selection keys (SYSTEM AiRoutingPolicy ⋈ AiModel):
 #   guardrail.safety → LLM-safety moderation model (six tasks)
 #   guardrail.pii → PII span model (English only)
 #   guardrail.groundedness → NLI entailment scorer
@@ -175,8 +178,8 @@ KEY_POLICY = "policy"
 #: letting it mis-score. That is the safe direction, but it is still a gate
 #: that silently stops working, so this key must travel with the selection.
 KEY_ENTAILMENT = "entailment"
-# Provider-level runtime-profile tuning, cached alongside the
-# selection keys so a profile read costs no extra round-trip or TTL window.
+# Tuning read off the winning `AiRoutingPolicy.configJson` (TASK-862 — the
+# former `AiRuntimeProfile` row), cached alongside the selection keys.
 KEY_TEMPERATURE = "temperature"
 KEY_MAX_TOKENS = "max-tokens"
 KEY_TIMEOUT_S = "timeout-s"
@@ -189,7 +192,7 @@ KEY_SOURCE_REVISION = "source-revision"
 
 
 class TenantSelectionVetoedError(Exception):
-    """A tenant explicitly DISABLED its own ``AiTaskDefault`` row for a task key.
+    """A tenant explicitly DISABLED its own elected ``AiRoutingPolicy`` row for a task key.
 
     Three-state parity with ``AiProviderConnection``: absent = no opinion (the
     SYSTEM row applies), ENABLED = the tenant's row wins, DISABLED = a VETO.
@@ -201,7 +204,7 @@ class TenantSelectionVetoedError(Exception):
         self.tenant_id = tenant_id
         self.task_key = task_key
         super().__init__(
-            f"tenant {tenant_id!r} has DISABLED its own AiTaskDefault selection "
+            f"tenant {tenant_id!r} has DISABLED its own AiRoutingPolicy selection "
             f"for task_key {task_key!r} — veto, not falling through to SYSTEM."
         )
 
@@ -246,17 +249,41 @@ _ResourceStatusType = ENUM(
 )
 
 
-class AiTaskDefaultRead(_Base):
-    """Read-only mapping of ``core."AiTaskDefault"`` (column names from Prisma)."""
+# Mirror Prisma's `core."AiRoutingPolicyStatus"` enum (enums.prisma) — same
+# create_type=False posture as `_ResourceStatusType` above.
+_AiRoutingPolicyStatus = ENUM(
+    "DRAFT",
+    "ACTIVE",
+    "ARCHIVED",
+    name="AiRoutingPolicyStatus",
+    schema="core",
+    create_type=False,
+)
 
-    __tablename__ = "AiTaskDefault"
+
+class AiRoutingPolicyRead(_Base):
+    """Read-only mapping of ``core."AiRoutingPolicy"`` (column names from Prisma).
+
+    TASK-862: this replaced ``AiTaskDefaultRead``. One row is ONE provider
+    configuration for ``(tenantId, taskKey)``; the ``isDefault = true`` row is
+    the elected default (DB-enforced, at most one per selection) and ``modelId``
+    is the FK into the catalogue — no string join on a slug any more.
+    """
+
+    __tablename__ = "AiRoutingPolicy"
     __table_args__ = {"schema": "core"}
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column("tenantId", String)
     task_key: Mapped[str] = mapped_column("taskKey", String)
-    model_slug: Mapped[str] = mapped_column("modelSlug", String)
+    model_id: Mapped[str | None] = mapped_column("modelId", String)
+    is_default: Mapped[bool] = mapped_column("isDefault", Boolean)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    status: Mapped[str] = mapped_column(_AiRoutingPolicyStatus)
     resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
+    # Task-specific extras (absorbed from `AiTaskDefault.configJson`); carries
+    # the `temperature` / `maxTokens` / `timeoutS` tuning since TASK-862.
+    config_json: Mapped[dict[str, Any] | None] = mapped_column("configJson", JSONB)
 
 
 class AiModelRead(_Base):
@@ -280,28 +307,6 @@ class AiModelRead(_Base):
     source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
 
 
-class AiRuntimeProfileRead(_Base):
-    """Read-only mapping of ``core."AiRuntimeProfile"``.
-
-    Only the provider-level tuning columns guardrail can act on are mapped;
-    ``local_path`` / model-source concerns stay out of scope.
-    """
-
-    __tablename__ = "AiRuntimeProfile"
-    __table_args__ = {"schema": "core"}
-
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    tenant_id: Mapped[str] = mapped_column("tenantId", String)
-    provider: Mapped[str] = mapped_column(String)
-    # '' is the provider-default row; a model-specific row does not set
-    # service-level tuning here.
-    model_slug: Mapped[str] = mapped_column("modelSlug", String)
-    temperature: Mapped[float | None] = mapped_column(Float)
-    max_tokens: Mapped[int | None] = mapped_column("maxTokens", Integer)
-    timeout_s: Mapped[int | None] = mapped_column("timeoutS", Integer)
-    resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
-
-
 @dataclass(frozen=True)
 class GuardrailTenantConfig:
     """A resolved per-tenant guardrail config (any field may be ``None``)."""
@@ -322,9 +327,9 @@ class GuardrailTenantConfig:
     entailment: dict[str, Any] | None = None
     # The tenant the primary lookup targeted (request tenant or default tenant).
     source_tenant_id: str | None = None
-    # Provider-level runtime profile (``core."AiRuntimeProfile"``).
-    # None on every field means "no opinion": the env engine config wins, so an
-    # absent profile row leaves behaviour byte-identical to the env-only path.
+    # Tuning off the winning row's ``configJson`` (TASK-862; formerly the
+    # ``AiRuntimeProfile`` row). None on every field means "no opinion": the
+    # judge policy's own defaults win, byte-identical to the untuned path.
     temperature: float | None = None
     max_tokens: int | None = None
     timeout_s: int | None = None
@@ -417,7 +422,7 @@ class TenantConfigResolver:
         # Single-flight. One in-flight load per `task_key::tenant_id`;
         # every other coroutine that misses the same key AWAITS that load instead of
         # issuing its own. Without it, the opening burst of N consultation sessions is
-        # N identical `AiTaskDefault ⋈ AiModel` queries against a pool_size=5 engine.
+        # N identical `AiRoutingPolicy ⋈ AiModel` queries against a pool_size=5 engine.
         # Keyed identically to the cache, so coalescing can never merge two tenants.
         self._in_flight: dict[str, asyncio.Future[dict[str, str]]] = {}
 
@@ -428,7 +433,7 @@ class TenantConfigResolver:
     ) -> GuardrailTenantConfig:
         """Resolve config for ``tenant_id`` (header value), widening to SYSTEM.
 
-        ``task_key`` selects which ``AiTaskDefault`` row to read —
+        ``task_key`` selects which elected ``AiRoutingPolicy`` row to read —
         ``guardrail.validate`` (default), ``guardrail.safety`` (GLiNER) or
         ``guardrail.groundedness`` (MiniCheck).
 
@@ -585,39 +590,44 @@ class TenantConfigResolver:
         tenant_id: str,
         task_key: str = TASK_KEY_GUARDRAIL_VALIDATE,
     ) -> dict[str, str]:
-        """Resolve this tenant's guardrail model via ``AiTaskDefault ⋈ AiModel``.
+        """Resolve this tenant's guardrail model via ``AiRoutingPolicy ⋈ AiModel``.
 
         Tenant-first selection (AiProviderConnection three-state parity): reads
-        the ``task_key`` row for BOTH ``tenant_id`` and SYSTEM — ENABLED *or*
-        DISABLED, so a disabled tenant row is visible rather than
-        indistinguishable from an absent one — and prefers a tenant-owned
-        ENABLED row over the SYSTEM row (``_row_rank``). Absence (no tenant
-        row) defers entirely to SYSTEM. A tenant-owned DISABLED row is a VETO:
-        raises :class:`TenantSelectionVetoedError` rather than folding through
-        to SYSTEM (mapped to HTTP 503 in ``core/dependencies.py``).
-        The ``AiModel`` join stays ENABLED-only and shared-read across
-        ``[SYSTEM, request-tenant]``.
+        the ELECTED (``isDefault``, ACTIVE) ``task_key`` row for BOTH
+        ``tenant_id`` and SYSTEM — ENABLED *or* DISABLED / switched off, so a
+        disabled tenant row is visible rather than indistinguishable from an
+        absent one — and prefers a tenant-owned live row over the SYSTEM row
+        (``_row_rank``). Absence (no tenant row) defers entirely to SYSTEM. A
+        tenant-owned row that is DISABLED (``resourceStatus``) or switched off
+        (``enabled = false``) is a VETO: raises
+        :class:`TenantSelectionVetoedError` rather than folding through to
+        SYSTEM (mapped to HTTP 503 in ``core/dependencies.py``).
+        The ``AiModel`` join is by the ``modelId`` FK, ENABLED-only and
+        shared-read across ``[SYSTEM, request-tenant]``.
         Returns: provider ← ``AiModel.provider``, model ← ``AiModel.sourceUri``,
-        azure deployment ← ``AiModel._metadata->>'azureDeployment'``.
+        azure deployment ← ``AiModel._metadata->>'azureDeployment'``, tuning ←
+        ``AiRoutingPolicy.configJson`` (``temperature`` / ``maxTokens`` / ``timeoutS``).
         """
         model_scope = [SYSTEM_TENANT_ID, tenant_id]
 
         # `slug::<slug>` is a by-slug pseudo task key for weight
-        # consumers that have no `AiTaskDefault` row (e.g. harness atomic-fact).
+        # consumers that have no routing row (e.g. harness atomic-fact).
         if task_key.startswith(_SLUG_TASK_KEY_PREFIX):
             return await self._load_model_by_slug(
                 task_key[len(_SLUG_TASK_KEY_PREFIX) :], model_scope, tenant_id
             )
 
-        task_default_scope = (
+        policy_scope = (
             [SYSTEM_TENANT_ID, tenant_id] if tenant_id != SYSTEM_TENANT_ID else [SYSTEM_TENANT_ID]
         )
 
         async with self._session_factory() as session:
             result = await session.execute(
                 select(
-                    AiTaskDefaultRead.tenant_id.label("default_tenant_id"),
-                    AiTaskDefaultRead.resource_status.label("default_resource_status"),
+                    AiRoutingPolicyRead.tenant_id.label("default_tenant_id"),
+                    AiRoutingPolicyRead.resource_status.label("default_resource_status"),
+                    AiRoutingPolicyRead.enabled.label("default_enabled"),
+                    AiRoutingPolicyRead.config_json.label("config_json"),
                     AiModelRead.tenant_id.label("model_tenant_id"),
                     AiModelRead.provider,
                     AiModelRead.source_uri,
@@ -628,31 +638,35 @@ class TenantConfigResolver:
                     AiModelRead.source,
                     AiModelRead.source_revision,
                 )
-                .select_from(AiTaskDefaultRead)
+                .select_from(AiRoutingPolicyRead)
                 .join(
                     AiModelRead,
-                    (AiModelRead.slug == AiTaskDefaultRead.model_slug)
+                    (AiModelRead.id == AiRoutingPolicyRead.model_id)
                     & AiModelRead.tenant_id.in_(model_scope)
                     & (AiModelRead.resource_status == "ENABLED"),
                     isouter=True,
                 )
                 .where(
-                    AiTaskDefaultRead.task_key == task_key,
-                    AiTaskDefaultRead.tenant_id.in_(task_default_scope),
-                    AiTaskDefaultRead.resource_status.in_(("ENABLED", "DISABLED")),
+                    AiRoutingPolicyRead.task_key == task_key,
+                    AiRoutingPolicyRead.tenant_id.in_(policy_scope),
+                    AiRoutingPolicyRead.is_default.is_(True),
+                    AiRoutingPolicyRead.status == "ACTIVE",
+                    AiRoutingPolicyRead.resource_status.in_(("ENABLED", "DISABLED")),
                 )
             )
             rows = result.all()
 
-        # VETO: the tenant's OWN row is DISABLED — fail closed, never fall
-        # through to the SYSTEM row.
+        def _is_live(r: Any) -> bool:
+            return r.default_resource_status == "ENABLED" and bool(getattr(r, "default_enabled", True))
+
+        # VETO: the tenant's OWN elected row is DISABLED or switched off — fail
+        # closed, never fall through to the SYSTEM row.
         if tenant_id != SYSTEM_TENANT_ID and any(
-            r.default_tenant_id == tenant_id and r.default_resource_status == "DISABLED"
-            for r in rows
+            r.default_tenant_id == tenant_id and not _is_live(r) for r in rows
         ):
             raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
 
-        enabled_rows = [r for r in rows if r.default_resource_status == "ENABLED"]
+        enabled_rows = [r for r in rows if _is_live(r)]
         row = min(enabled_rows, key=lambda r: self._row_rank(r, tenant_id), default=None)
         if row is None:
             return {}
@@ -687,19 +701,26 @@ class TenantConfigResolver:
             if isinstance(value, str) and value.strip():
                 keys[key] = value
 
-        # Fold in the provider-level runtime profile. Failures here are
-        # swallowed: profile tuning is an ENHANCEMENT, and losing it must never
-        # cost us the selection keys we already resolved above.
-        if row.provider:
-            try:
-                keys.update(await self._load_runtime_profile(row.provider, tenant_id))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "guardrail.tenant_config.runtime_profile_error",
-                    provider=row.provider,
-                    error=str(exc),
-                )
+        # Tuning rides on the WINNING row's configJson (TASK-862) — row-level,
+        # never a blend of two tiers, exactly like the selection itself.
+        keys.update(self._tuning_from_config(getattr(row, "config_json", None)))
         return keys
+
+    @staticmethod
+    def _tuning_from_config(config_json: Any) -> dict[str, str]:
+        """``configJson`` → the three tuning keys; anything non-numeric is ignored."""
+        if not isinstance(config_json, dict):
+            return {}
+        tuning: dict[str, str] = {}
+        for key, name in (
+            (KEY_TEMPERATURE, "temperature"),
+            (KEY_MAX_TOKENS, "maxTokens"),
+            (KEY_TIMEOUT_S, "timeoutS"),
+        ):
+            value = config_json.get(name)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                tuning[key] = str(value)
+        return tuning
 
     async def _load_model_by_slug(
         self, slug: str, model_scope: list[str], tenant_id: str
@@ -745,59 +766,6 @@ class TenantConfigResolver:
                 keys[key] = value
         return keys
 
-    async def _load_runtime_profile(self, provider: str, tenant_id: str) -> dict[str, str]:
-        """Read the provider-DEFAULT profile row for ``provider``, tenant-first.
-
-        Only the ``modelSlug == ''`` row carries provider-level tuning; a
-        model-specific row is per-request territory and is ignored here. An
-        absent row returns ``{}``, leaving every engine value on its env default.
-
-        Resolution matches the selection above — the request tenant's own row
-        wins, SYSTEM applies only on ABSENCE. This read used to pin SYSTEM
-        unconditionally, so a tenant that brought its own connection still ran on
-        the platform's temperature/maxTokens/timeoutS and could not express its
-        own. Widening is ROW-level, as it is for the selection: a tenant row is
-        that tenant's whole opinion and is never blended with SYSTEM's, so a
-        profile can't end up half one tier and half the other.
-
-        There is no three-state veto here: ``AiTaskDefault`` declares one for
-        SELECTION, whereas a profile is TUNING (an absent one is byte-identical
-        to the env path), so a DISABLED row means "no opinion" and stays filtered
-        out exactly as before.
-        """
-        profile_scope = (
-            [SYSTEM_TENANT_ID, tenant_id] if tenant_id != SYSTEM_TENANT_ID else [SYSTEM_TENANT_ID]
-        )
-
-        async with self._session_factory() as session:
-            result = await session.execute(
-                select(
-                    AiRuntimeProfileRead.tenant_id,
-                    AiRuntimeProfileRead.temperature,
-                    AiRuntimeProfileRead.max_tokens,
-                    AiRuntimeProfileRead.timeout_s,
-                ).where(
-                    AiRuntimeProfileRead.tenant_id.in_(profile_scope),
-                    AiRuntimeProfileRead.provider == provider,
-                    AiRuntimeProfileRead.model_slug == "",
-                    AiRuntimeProfileRead.resource_status == "ENABLED",
-                )
-            )
-            rows = result.all()
-
-        row = min(rows, key=lambda r: self._model_rank(r.tenant_id, tenant_id), default=None)
-        if row is None:
-            return {}
-
-        profile: dict[str, str] = {}
-        if row.temperature is not None:
-            profile[KEY_TEMPERATURE] = str(row.temperature)
-        if row.max_tokens is not None:
-            profile[KEY_MAX_TOKENS] = str(row.max_tokens)
-        if row.timeout_s is not None:
-            profile[KEY_TIMEOUT_S] = str(row.timeout_s)
-        return profile
-
     @staticmethod
     def _model_rank(model_tenant_id: str | None, tenant_id: str) -> int:
         """Catalog-row preference: the request tenant's own row, then SYSTEM.
@@ -818,7 +786,7 @@ class TenantConfigResolver:
     def _row_rank(row: Any, tenant_id: str) -> tuple[int, int]:
         """Preference rank for a joined row.
 
-        First: the tenant's OWN ``AiTaskDefault`` row over the SYSTEM row
+        First: the tenant's OWN ``AiRoutingPolicy`` row over the SYSTEM row
         (tenant-first resolution ). Second, as a tie-break
         within the winning owner: the same tenant-first order over the joined
         ``AiModel`` catalog row (``_model_rank``).
@@ -878,8 +846,8 @@ def build_judge_client(
     Guardrail hosts no engine : this returns a
     :class:`~guardrail.services.external_text_client.TextJudgeClient` pointed at
     ``apps/text``'s isolated judge lane. The DB supplies the provider/model pair
-    — the ONLY selection input — and the provider-level runtime profile supplies
-    optional tuning; an absent profile leaves the policy defaults in force.
+    — the ONLY selection input — and the winning row's ``configJson`` supplies
+    optional tuning; absent tuning leaves the policy defaults in force.
 
     ``base_url`` and ``api_key`` are deliberately absent from the argument list.
     The endpoint is `text`'s (bootstrap transport) and the tenant's credential

@@ -13,7 +13,10 @@ import {
 import { BadRequestException, Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { ApiDeprecated, CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+
+/** TASK-862 — every route here is deprecated; removed in R3. Reads: `AiRoutingPolicyService.resolveDefault`; the SYSTEM election is edited from the model registry (TASK-860), tenant choice on the Agent (TASK-863). */
+const DEPRECATION = { ticket: 'TASK-862', removeIn: 'R3', replacement: '/api/v1/admin/ai-routing-policies' } as const;
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
@@ -50,6 +53,10 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * row (the platform-approved list) — also a `ForbiddenException`. A
  * `featureGuardrailModelSelection` entitlement ceiling is catalogued but not
  * yet enforced (needs a DB migration outside 's scope).
+ *
+ * @deprecated TASK-862 — removed in R3. The service behind these routes is a
+ * FACADE over `AiRoutingPolicy` (no `AiTaskDefault` row is read or written any
+ * more); every route carries `Deprecation` headers.
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-task-defaults')
@@ -64,6 +71,7 @@ export class AiTaskDefaultAdminController {
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
+  @ApiDeprecated(DEPRECATION)
   @Get('options')
   @CanRead('AiTaskDefault')
   @ApiOperation({
@@ -86,6 +94,7 @@ export class AiTaskDefaultAdminController {
     return models.filter((model) => model.resourceStatus === 'ENABLED');
   }
 
+  @ApiDeprecated(DEPRECATION)
   @Get()
   @CanRead('AiTaskDefault')
   @ApiOperation({
@@ -110,6 +119,7 @@ export class AiTaskDefaultAdminController {
     return Promise.all(AI_TASK_KEYS.map((key) => this.aiTaskDefaultService.getEffective(key, scopedTenantId)));
   }
 
+  @ApiDeprecated(DEPRECATION)
   @Get('row')
   @CanRead('AiTaskDefault')
   @ApiOperation({
@@ -127,6 +137,7 @@ export class AiTaskDefaultAdminController {
     return this.aiTaskDefaultService.getRow(taskKey, this.resolveTenantId(tenantId));
   }
 
+  @ApiDeprecated(DEPRECATION)
   @Put('row')
   @CanManage('AiTaskDefault')
   @RequiresIfMatch()
