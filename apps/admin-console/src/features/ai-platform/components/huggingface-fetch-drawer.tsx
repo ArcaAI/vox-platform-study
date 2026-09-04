@@ -29,7 +29,7 @@ function normaliseRepoId(raw: string): string {
 }
 
 function hubUrl(raw: string): string {
-  return `https://huggingface.co/${raw.trim.replace(/^hf:/, '').replace(/^https?:\/\/huggingface\.co\//i, '')}`;
+  return `https://huggingface.co/${raw.trim().replace(/^hf:/, '').replace(/^https?:\/\/huggingface\.co\//i, '')}`;
 }
 
 /**
