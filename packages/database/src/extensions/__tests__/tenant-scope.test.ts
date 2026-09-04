@@ -149,7 +149,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +1 (88): AiRoutingPolicy — the config-plane routing policy.
     // SYSTEM row = platform default, tenant row wins on presence; also a
     // SYSTEM_SHARED_READ_MODEL (see that suite below).
-    expect(TENANT_SCOPED_MODELS.size).toBe(88);
+    // +1 (89): WorkflowWebhookSecret — TASK-864's per-definition inbound
+    // webhook HMAC secret, keyed (tenantId, workflowSlug).
+    expect(TENANT_SCOPED_MODELS.size).toBe(89);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

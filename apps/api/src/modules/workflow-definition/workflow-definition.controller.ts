@@ -12,6 +12,23 @@ import {
   WorkflowDefinitionResponse,
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { ApiProperty } from '@nestjs/swagger';
+import { IWorkflowExposureService } from '@arcaai/applications';
+
+/** TASK-864 — the one-time secret payload (declared here: the exposure DTOs carry no class for it). */
+export class WorkflowWebhookSecretResponseDto {
+  @ApiProperty({ description: 'The workflow lineage the secret belongs to.' })
+  slug: string;
+
+  @ApiProperty({ description: 'The raw HMAC secret. Shown exactly once — store it now.' })
+  secret: string;
+
+  @ApiProperty({ description: 'ISO-8601 rotation instant.' })
+  rotatedAt: string;
+
+  @ApiProperty({ description: 'The relative URL external systems POST signed deliveries to.' })
+  hookUrl: string;
+}
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
@@ -40,6 +57,9 @@ export class WorkflowDefinitionController {
   constructor(
     @Inject(IWorkflowDefinitionService)
     private readonly workflowDefinitionService: IWorkflowDefinitionService,
+    // TASK-864 — the webhook secret lives on the exposure plane (it authenticates an invoke).
+    @Inject(IWorkflowExposureService)
+    private readonly workflowExposureService: IWorkflowExposureService,
   ) {}
 
   @Post()
@@ -74,6 +94,24 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 200, type: [WorkflowDefinitionResponse] })
   async fetchTemplates(): Promise<WorkflowDefinitionResponse[]> {
     return this.workflowDefinitionService.listTemplates();
+  }
+
+  // TASK-864 §3.4 — the inbound webhook trigger's secret, issued/rotated per LINEAGE (slug).
+  // Declared above `@Get(':id')` for the same declaration-order reason `templates` is.
+  @Post('slug/:slug/webhook-secret')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Issue or rotate the inbound webhook secret for a workflow lineage (returned exactly once)',
+    description:
+      'Mints the HMAC secret external systems sign `POST /hooks/workflows/{hookId}` deliveries with, and the `hookUrl` they POST to. ' +
+      'The raw secret is returned ONCE; only reversible ciphertext is persisted. Rotating invalidates the previous secret immediately. ' +
+      'The Trigger node must declare the `webhook` kind for deliveries to be accepted.',
+  })
+  @ApiParam({ name: 'slug', description: 'WorkflowDefinition slug (the lineage key)' })
+  @ApiResponse({ status: 200, type: WorkflowWebhookSecretResponseDto })
+  @ApiResponse({ status: 404, description: 'No published version of this slug in the caller`s tenant (or cross-tenant).' })
+  async rotateWebhookSecret(@Param('slug') slug: string): Promise<WorkflowWebhookSecretResponseDto> {
+    return this.workflowExposureService.rotateWebhookSecret(slug);
   }
 
   @Get(':id')

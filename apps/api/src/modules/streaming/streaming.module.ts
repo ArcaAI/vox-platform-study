@@ -18,6 +18,7 @@ import {
   TranscriptionRealtimeServiceModule,
   UsageLedgerServiceModule,
   VisitTypeServiceModule,
+  WorkflowExposureServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { HttpModule } from '@nestjs/axios';
@@ -29,6 +30,7 @@ import { TextProxyController } from './text-proxy.controller';
 import { TextProxyRedirectShimController } from './text-proxy-redirect.shim.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
+import { WorkflowWsGateway } from './workflow-ws.gateway';
 
 @Module({
   imports: [
@@ -95,12 +97,16 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // `getEffectiveStyleText` accessor instead of reading the (ciphertext-only,
     // ungated) repository row directly.
     DnaWritingStyleServiceModule,
+    // TASK-864 — `WorkflowWsGateway` (the `socket` publish protocol) re-checks run ownership and
+    // takes its snapshot through `IWorkflowExposureService.getRunStatus`, the SSE route's own
+    // pre-stream check.
+    WorkflowExposureServiceModule,
   ],
   controllers: [TranscriptionJobController, AdminTranscriptionJobController, TextProxyController, TextProxyRedirectShimController],
   // SessionRemovalRetryService resolves
   // `StreamingSessionService` from StreamingSessionServiceModule above and
   // `IRedisCacheService` from the @Global() RedisCacheModule registration.
-  providers: [SttWsGateway, SessionRemovalRetryService],
-  exports: [SttWsGateway],
+  providers: [SttWsGateway, SessionRemovalRetryService, WorkflowWsGateway],
+  exports: [SttWsGateway, WorkflowWsGateway],
 })
 export class StreamingModule {}
