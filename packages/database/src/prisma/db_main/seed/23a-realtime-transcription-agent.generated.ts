@@ -15,7 +15,7 @@
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-realtime-transcription-agent-seed.ts
  */
 
-export const REGISTRY_CHECKSUM: string = "01d5e994db9f73efea11d968f6fbe0e2c1dd113a09673405dc1eb1844c694f95" as const;
+export const REGISTRY_CHECKSUM: string = "417ead4b5af8d5a651580fcd04498a93724053f0adaaef8b393fda81afe6b1cc" as const;
 
 export const PLATFORM_TRANSCRIPTION_GRAPH_CHECKSUM: string = "31838f6798a2cec20d4c7bf92dc038b25a17711a76fab8b5ff2b5b6cd6d0607d" as const;
 
@@ -24,7 +24,7 @@ export const PLATFORM_TRANSCRIPTION_VALIDATION_REPORT: Record<string, unknown> =
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "01d5e994db9f73efea11d968f6fbe0e2c1dd113a09673405dc1eb1844c694f95",
+  "registryChecksum": "417ead4b5af8d5a651580fcd04498a93724053f0adaaef8b393fda81afe6b1cc",
   "evaluatedAt": "2026-09-03T00:00:00.000Z"
 } as const;
 
@@ -37,7 +37,7 @@ export const PLATFORM_TRANSCRIPTION_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "stt",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "01d5e994db9f73efea11d968f6fbe0e2c1dd113a09673405dc1eb1844c694f95",
+  "registryChecksum": "417ead4b5af8d5a651580fcd04498a93724053f0adaaef8b393fda81afe6b1cc",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -269,7 +269,7 @@ export const PLATFORM_TRANSCRIPTION_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "9618bd5589e55d746715f420ea74a8b347bc000a1b4a7f36201eecaaee6298dd"
+  "checksum": "1fa6fe48fafa18223354d3d82a43953a0b4a81bcb8186164c0e7ef2f2edec2e8"
 } as const;
 
 export const ARCAAI_TRANSCRIPTION_GRAPH_CHECKSUM: string = "31838f6798a2cec20d4c7bf92dc038b25a17711a76fab8b5ff2b5b6cd6d0607d" as const;
@@ -279,7 +279,7 @@ export const ARCAAI_TRANSCRIPTION_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "01d5e994db9f73efea11d968f6fbe0e2c1dd113a09673405dc1eb1844c694f95",
+  "registryChecksum": "417ead4b5af8d5a651580fcd04498a93724053f0adaaef8b393fda81afe6b1cc",
   "evaluatedAt": "2026-09-03T00:00:00.000Z"
 } as const;
 
@@ -292,7 +292,7 @@ export const ARCAAI_TRANSCRIPTION_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "stt",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "01d5e994db9f73efea11d968f6fbe0e2c1dd113a09673405dc1eb1844c694f95",
+  "registryChecksum": "417ead4b5af8d5a651580fcd04498a93724053f0adaaef8b393fda81afe6b1cc",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -524,7 +524,7 @@ export const ARCAAI_TRANSCRIPTION_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "bf9f224d4f146dfbad7d406638764c3982c369706a8753e292428294176b9351"
+  "checksum": "7aa621ae1ef2a131680c7b903c8cddfd9e1dc18e08215a9155bd1ace16b77386"
 } as const;
 
 export const PIPELINE_CONFIG_YAML: string = "version: \"2.0\"\nmodels:\n  asr: \"whisper-large-en-medical-260726-merged-gguf-q8_0\"\n  vad: \"silero-vad\"\n  denoise: \"deepfilternet3\"\ninference:\n  language: \"en\"\n" as const;

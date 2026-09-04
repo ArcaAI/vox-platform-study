@@ -39,9 +39,9 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
 |---|---|---|---|---|---|
-| `stt` palette (8 node types), `WF-STT-*` rules, `stt-pipeline.compiler.ts`, `stt-pipeline-resolver.service.ts`, `stt_placeholder.py` | TASK-861 | R2 | R4 | ASR Agent | planned |
-| `summarization`, `consultation`, `agentic` palettes (50 node types) | TASK-864 | R2 | R4 | `core.*` vocabulary (+ `core.action` catalogue, seeded Agents) | planned |
-| `EXPOSURE_ALLOWED_PALETTES` | TASK-864 | R2 | R4 | class-based exposure boundary | planned |
+| `stt` palette (8 node types), `WF-STT-*` rules, `stt-pipeline.compiler.ts`, `stt-pipeline-resolver.service.ts`, `stt_placeholder.py` | TASK-861 (node types marked by TASK-864: `deprecated: true`, `replacedBy: 'core.agent'`) | R2 | R4 | ASR Agent | marked (node types) / planned (compiler, resolver, placeholder) |
+| `summarization`, `consultation`, `agentic` palettes + the palette-less `noop`/`passthrough`/`core.start`/`core.end`/`guard.*` (50 node types) | TASK-864 | R2 | R4 | `core.*` vocabulary (+ `core.action` catalogue, seeded Agents) — every descriptor carries `deprecated: true` + `replacedBy`; `deprecation.task864.test.ts` pins the set; the Studio rail hides them | marked |
+| `EXPOSURE_ALLOWED_PALETTES` | TASK-864 | R2 | R4 | class-based exposure boundary (`clinicalWriteViolation`) — the palette sets now admit `core` and are consulted only for legacy graphs | marked |
 | Harness `_llm_policy.get_policy(task_key)` over `AiTaskDefault` | TASK-863 | R1 | R3 | `/internal/agents/resolve` + `AiRoutingPolicy` | planned |
 | `HarnessPolicy.textProvider`, `textModel` | TASK-863 | R1 | R3 | Agent binding | planned |
 
@@ -78,4 +78,4 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `06-stt.ts` pipelines, `14-pipeline-policy.ts`, `23a-realtime-transcription-agent{,.generated}.ts`, regen script | TASK-861 |
 | `16-ai-task-default.ts`, `18-ai-runtime-profile.ts`, `19-tenant-tts-config.ts`, `llm:sarvam` connection row | TASK-862 |
 | 10 catalogue rows not in the owner's list; `RETIRED_AI_MODEL_SLUGS` ledger extended | TASK-860 |
-| `21`, `23`, `24` workflow seeds rewritten in `core.*` | TASK-864 |
+| `21`, `23`, `24` workflow seeds rewritten in `core.*` — NOT DONE in the first TASK-864 landing: their derived blobs were regenerated for the core registry (checksums), the authoring sources still use the legacy palettes (owner question: the consultation rule set `CR-*` keys on `consultation.*` types, so a `core.action` rewrite needs the rules retargeted first) | TASK-864 |
