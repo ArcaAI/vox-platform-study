@@ -22,6 +22,7 @@ from typing import Any
 import structlog
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+from ...core.database.connection import DatabaseDisabledError
 from ...core.exceptions import (
     NotFoundError,
     STTServiceError,
@@ -120,6 +121,17 @@ async def transcribe_audio(
                 pipeline_id, tenant_id=tenant_id
             )
 
+    except DatabaseDisabledError as exc:
+        # TASK-861 — this direct route still resolves a deprecated pipeline row;
+        # with the DB off it cannot serve. The gateway's agent path is the
+        # replacement (POST /agents/:slug/transcriptions).
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error_code": "PIPELINE_SELECTION_DISABLED",
+                "message": str(exc),
+            },
+        ) from exc
     except NotFoundError:
         raise HTTPException(
             status_code=404,

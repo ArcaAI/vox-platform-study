@@ -24,6 +24,7 @@ export class PlanEntitlementResponse {
   maxPromptTemplates?: number | null;
 
   @ApiPropertyOptional({ description: 'Max ASR pipelines; null = unlimited', nullable: true })
+  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; placeholder alias of the agent ceiling (TASK-863). */
   maxAsrPipelines?: number | null;
 
   @ApiPropertyOptional({ description: 'Max API keys; null = unlimited', nullable: true })
@@ -90,8 +91,7 @@ export class PlanEntitlementResponse {
   rateLimitTier: string;
 
   @ApiPropertyOptional({
-    description:
-      'ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.',
+    description: 'ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.',
     nullable: true,
   })
   rateLimitPerMinute?: number | null;
@@ -131,6 +131,7 @@ export class UpdatePlanEntitlementRequest {
   @IsOptional()
   @IsInt()
   @Min(0)
+  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; placeholder alias of the agent ceiling (TASK-863). */
   maxAsrPipelines?: number | null;
 
   @ApiPropertyOptional({ description: 'Max API keys; null = unlimited', nullable: true })

@@ -2,6 +2,7 @@ import {
   AiModelServiceModule,
   AiProviderConnectionServiceModule,
   AiTaskDefaultServiceModule,
+  AsrAgentResolverServiceModule,
   DnaWritingStyleServiceModule,
   EffectiveSettingsModule,
   EntitlementsServiceModule,
@@ -17,6 +18,7 @@ import {
   TranscriptionRealtimeServiceModule,
   UsageLedgerServiceModule,
   VisitTypeServiceModule,
+  WorkflowExposureServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { HttpModule } from '@nestjs/axios';
@@ -28,6 +30,7 @@ import { TextProxyController } from './text-proxy.controller';
 import { TextProxyRedirectShimController } from './text-proxy-redirect.shim.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
+import { WorkflowWsGateway } from './workflow-ws.gateway';
 
 @Module({
   imports: [
@@ -75,8 +78,11 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Exposes `StreamSessionTenantBindingService`
     // to `TranscriptionJobController` so it can bind on create / clear on close.
     TenantOwnedResourceModule,
-    // Resolves the caller tenant's STT fallback pointer + BYO provider
-    // overrides for `createStreamSession` injection + `switch-to-fallback`.
+    // TASK-861 — the ONE resolution path (agent → ResolvedAsrSpec + credentials)
+    // for stream/session, transcribe and the fallback surfaces.
+    AsrAgentResolverServiceModule,
+    // Deprecated (TASK-861, removed in R4): the tenant-wide STT fallback pointer +
+    // BYO provider overrides for the legacy `pipelineId` path only.
     TenantSttConfigServiceModule,
     // `IUsageLedgerService` for `TextProxyController`'s
     // generate.stream emission AND `StreamingSessionService`'s
@@ -91,12 +97,16 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // `getEffectiveStyleText` accessor instead of reading the (ciphertext-only,
     // ungated) repository row directly.
     DnaWritingStyleServiceModule,
+    // TASK-864 — `WorkflowWsGateway` (the `socket` publish protocol) re-checks run ownership and
+    // takes its snapshot through `IWorkflowExposureService.getRunStatus`, the SSE route's own
+    // pre-stream check.
+    WorkflowExposureServiceModule,
   ],
   controllers: [TranscriptionJobController, AdminTranscriptionJobController, TextProxyController, TextProxyRedirectShimController],
   // SessionRemovalRetryService resolves
   // `StreamingSessionService` from StreamingSessionServiceModule above and
   // `IRedisCacheService` from the @Global() RedisCacheModule registration.
-  providers: [SttWsGateway, SessionRemovalRetryService],
-  exports: [SttWsGateway],
+  providers: [SttWsGateway, SessionRemovalRetryService, WorkflowWsGateway],
+  exports: [SttWsGateway, WorkflowWsGateway],
 })
 export class StreamingModule {}

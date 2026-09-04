@@ -7,6 +7,7 @@ import { AsrPipelineVersion } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
+/** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; the Agent's rows-are-versions model replaces it. */
 export class AsrPipelineVersionRepository extends Repository<AsrPipelineVersionEntity, AsrPipelineVersion> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'asrPipelineVersion', AsrPipelineVersionEntityMapper.getInstance());

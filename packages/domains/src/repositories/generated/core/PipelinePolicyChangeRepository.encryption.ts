@@ -1,3 +1,4 @@
+// @deprecated TASK-861 — removed in R4 with `PipelinePolicyChange` (the WORM log stays read-only until the drop).
 // Field encryption for the
 // append-only WORM table PipelinePolicyChange (beforeJson / afterJson JSONB).
 //

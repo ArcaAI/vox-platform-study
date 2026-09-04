@@ -8,6 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { ResourceStatusType } from '../../../enums';
 
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. Replaced by the ASR Agent (`Agent`, task `SPEECH_TO_TEXT`, TASK-863) + the gateway-resolved `ResolvedAsrSpec`; `apps/stt` no longer reads this table. */
 export class AsrPipelineRepository extends Repository<AsrPipelineEntity, AsrPipeline> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'asrPipeline', AsrPipelineEntityMapper.getInstance());

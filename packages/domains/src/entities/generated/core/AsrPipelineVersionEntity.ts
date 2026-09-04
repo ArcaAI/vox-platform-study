@@ -14,6 +14,7 @@ export interface IAsrPipelineVersionEntity extends IBaseTenantEntity {
   changedBy?: string | null;
 }
 
+/** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; the Agent's rows-are-versions model replaces it. */
 export class AsrPipelineVersionEntity extends BaseTenantEntity {
   private _asrPipelineId: IAsrPipelineVersionEntity['asrPipelineId'];
   private _versionNumber: IAsrPipelineVersionEntity['versionNumber'];

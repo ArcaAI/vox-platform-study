@@ -12,7 +12,9 @@ export class TranscriptionJob extends BaseTenantDataModel {
   public consultationId: string | null;
   public contextItemId: string | null;
   public mediaId: string | null;
-  public pipelineId: string;
+  public pipelineId: string | null;
+  public agentVersionId: string | null;
+  public resolvedSpec: JsonValue | null;
   public status: Enums.TranscriptionJobStatus;
   public progress: number;
   public queuedAt: Date;
@@ -40,6 +42,8 @@ export class TranscriptionJob extends BaseTenantDataModel {
     this.contextItemId = data.contextItemId;
     this.mediaId = data.mediaId;
     this.pipelineId = data.pipelineId;
+    this.agentVersionId = data.agentVersionId;
+    this.resolvedSpec = data.resolvedSpec;
     this.status = data.status;
     this.progress = data.progress;
     this.queuedAt = data.queuedAt;

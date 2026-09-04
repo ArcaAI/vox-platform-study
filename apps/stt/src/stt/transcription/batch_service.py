@@ -50,7 +50,13 @@ from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
 from ..models.whisper_kwargs import build_whisper_generate_kwargs
 from ..pipeline.config_reader import get_model_reader
-from ..pipeline.dto import AiModelFormat, InferenceConfig, ModelTaskType, PipelineConfig
+from ..pipeline.dto import (
+    AiModelConfig,
+    AiModelFormat,
+    InferenceConfig,
+    ModelTaskType,
+    PipelineConfig,
+)
 from .dto import (
     AudioSegment,
     ChunkTranscriptionResult,
@@ -227,9 +233,14 @@ class BatchTranscriptionService:
         audio_filename: str | None = None,
         user_id: str | None = None,
         provider_overrides: dict[str, Any] | None = None,
+        model_configs: dict[str, AiModelConfig] | None = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio file with optional speaker diarization.
+
+        TASK-861: ``model_configs`` (slug → ``AiModelConfig``) is the pre-resolved
+        registry the gateway put in ``resolved_spec``; when given, the model
+        registry is NOT read.
 
         Steps:
         1. Load required models
@@ -269,7 +280,9 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             logger.info(f"[{job_id}] Loading models...")
             model_start = time.time()
-            models = await self._load_models(pipeline_config, provider_overrides=provider_overrides)
+            models = await self._load_models(
+                pipeline_config, provider_overrides=provider_overrides, model_configs=model_configs
+            )
             timing.model_loading_seconds = time.time() - model_start
 
             asr_model = models.get("asr")
@@ -895,6 +908,7 @@ class BatchTranscriptionService:
         self,
         pipeline: PipelineConfig,
         provider_overrides: dict[str, Any] | None = None,
+        model_configs: dict[str, AiModelConfig] | None = None,
     ) -> dict[str, LoadedModel | None]:
         """Load all models required by pipeline.
 
@@ -907,14 +921,16 @@ class BatchTranscriptionService:
         existing cache path byte-identical.
         """
         cache = get_model_cache()
-        model_reader = get_model_reader()
         model_refs = pipeline.spec.models
 
-        # Get model configs from database for slug references
-        slug_refs = model_refs.get_all_slugs()
-        model_configs = {}
-        if slug_refs:
-            model_configs = await model_reader.get_models_for_pipeline(pipeline)
+        # TASK-861 — the agent path hands every model config in; only the
+        # deprecated pipeline path still reads the registry (warns; fails closed
+        # while the DB is disabled).
+        if model_configs is None:
+            slug_refs = model_refs.get_all_slugs()
+            model_configs = {}
+            if slug_refs:
+                model_configs = await get_model_reader().get_models_for_pipeline(pipeline)
 
         models: dict[str, LoadedModel | None] = {}
 
@@ -1683,7 +1699,7 @@ class BatchTranscriptionService:
         }
 
         logger.info(
-            "[%s] Per-segment ASR: %d/%d segments transcribed, %d chars, " "%d total chunks",
+            "[%s] Per-segment ASR: %d/%d segments transcribed, %d chars, %d total chunks",
             job_id,
             len(segment_latencies),
             len(speech_segments),
@@ -1916,7 +1932,7 @@ class BatchTranscriptionService:
 
             # ---- Run transcription --------------------------------
             logger.info(
-                "Starting Azure conversation transcription " "(language=%s, code_switching=%s)",
+                "Starting Azure conversation transcription (language=%s, code_switching=%s)",
                 language,
                 code_switching,
             )

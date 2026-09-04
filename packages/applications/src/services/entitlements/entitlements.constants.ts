@@ -153,6 +153,7 @@ export interface PlanEntitlementValues {
   maxUsers: number | null;
   maxDepartments: number | null;
   maxPromptTemplates: number | null;
+  /** @deprecated TASK-861 — removed in R4. Ceiling on the retired `AsrPipeline` rows; the Agent ceiling (`maxAgents`) is TASK-863's key and this stays its placeholder alias until it lands. */
   maxAsrPipelines: number | null;
   maxApiKeys: number | null;
   /** Quantity ceiling on PUBLISHED WorkflowDefinition slugs ( exposure plane). */

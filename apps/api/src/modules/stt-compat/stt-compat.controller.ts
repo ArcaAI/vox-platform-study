@@ -1,5 +1,12 @@
-import { Authorize, IApiKeyService, ITenantSttConfigService, PipelineService, StreamingSessionService } from '@arcaai/applications';
-import type { SttProviderOverrides } from '@arcaai/applications';
+import {
+  AsrAgentResolverService,
+  Authorize,
+  IApiKeyService,
+  ITenantSttConfigService,
+  PipelineService,
+  StreamingSessionService,
+} from '@arcaai/applications';
+import type { ResolvedAsrSession, SttProviderOverrides } from '@arcaai/applications';
 import {
   BadRequestException,
   Body,
@@ -101,6 +108,10 @@ export class SttCompatController {
     // . Optional so positional test construction still works and a
     // stack without the module degrades gracefully; injection is fail-open.
     @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
+    // TASK-861 — the ONE resolution path (agentSlug → assignment cascade →
+    // ResolvedAsrSpec + credentials). Optional + trailing; when absent the
+    // legacy `provider`-enum pipeline selection still serves (degradation).
+    @Optional() private readonly asrResolver?: AsrAgentResolverService,
   ) {}
 
   @Post('start_session')
@@ -129,10 +140,17 @@ export class SttCompatController {
     const sessionService = this.sessionService;
     const sessionBinding = this.sessionBinding;
     const createSession = async (): Promise<StartSessionResponse> => {
-      // C4: an explicit `pipelineId` is used directly (bypassing the
-      // provider-enum selection); otherwise the pipeline is picked from `provider`.
+      // TASK-861 — the agent path is the default: `agentSlug`, else the
+      // tenant's assigned ASR agent, resolved to a `ResolvedAsrSpec` keyed on
+      // its runtime key. An explicit `pipelineId` (deprecated) is used directly;
+      // a gateway without the resolver degrades to the legacy `provider`-enum
+      // pipeline selection so v1 clients keep transcribing.
       let pipelineId = body.pipelineId;
-      if (!pipelineId) {
+      let resolved: ResolvedAsrSession | undefined;
+      if (!pipelineId && this.asrResolver) {
+        resolved = await this.asrResolver.resolve({ tenantId, agentSlug: body.agentSlug ?? null, departmentId: null });
+        pipelineId = resolved.spec.runtimeKey;
+      } else if (!pipelineId) {
         const pipelines = await pipelineService.getAll();
         const pipeline = this.selectPipeline(pipelines, provider);
         if (!pipeline) {
@@ -141,9 +159,17 @@ export class SttCompatController {
         pipelineId = pipeline.id;
       }
 
-      // Always resolve the tenant fallback + BYO overrides (fail-open — a broken
-      // or absent config must never block session creation).
-      const { providerOverrides, fallbackPipelineId, autoSwitchEnabled, consecutiveFailureThreshold } = await this.resolveSttFallbackConfig(tenantId);
+      // The fallback + credentials for this session: the spec's own `fallback`
+      // block + resolver-bound credentials on the agent path; the tenant-wide
+      // `TenantSttConfig` pointer (fail-open) on the deprecated path.
+      const { providerOverrides, fallbackPipelineId, autoSwitchEnabled, consecutiveFailureThreshold } = resolved
+        ? {
+            providerOverrides: resolved.providerOverrides,
+            fallbackPipelineId: resolved.spec.fallback.spec?.runtimeKey,
+            autoSwitchEnabled: resolved.spec.fallback.autoSwitch,
+            consecutiveFailureThreshold: resolved.spec.fallback.switchAfterConsecutiveFailures,
+          }
+        : await this.resolveSttFallbackConfig(tenantId);
 
       // Pre-start default-provider selection. Map the compat
       // vocabulary (pipeline≡primary, default≡fallback) to the applications
@@ -158,6 +184,7 @@ export class SttCompatController {
         sessionId: body.session_id,
         tenantId,
         pipelineId,
+        ...(resolved ? { resolvedSpec: resolved.spec } : {}),
         sampleRate: body.audioSettings.sampleRate,
         userId,
         language: body.language ?? undefined,
@@ -189,6 +216,7 @@ export class SttCompatController {
         ...response,
         ...(session.pipelineId ? { pipeline_id: session.pipelineId } : {}),
         ...(session.activeEngine ? { active_engine: session.activeEngine } : {}),
+        ...(resolved ? { agent_slug: resolved.spec.agent.slug, agent_version_id: resolved.spec.agent.versionId } : {}),
       };
     };
 
@@ -242,8 +270,12 @@ export class SttCompatController {
 
     const target = this.normalizeSwitchTarget(body.target);
 
-    // Fail-closed selection guard: a fallback switch needs a configured fallback.
-    if (target === 'fallback' && this.sttConfig) {
+    // Fail-closed selection guard. TASK-861: on the agent path the fallback is a
+    // property of the SESSION (its resolved spec) — the runtime is the
+    // authority and apps/stt 409s when the session declares none. The
+    // tenant-wide `TenantSttConfig` pre-check survives only for a gateway
+    // without the agent resolver (deprecated path).
+    if (target === 'fallback' && !this.asrResolver && this.sttConfig) {
       const effective = await this.sttConfig.getEffective(tenantId);
       if (!effective.fallbackPipelineId) {
         throw new ConflictException('No fallback pipeline configured for this tenant');

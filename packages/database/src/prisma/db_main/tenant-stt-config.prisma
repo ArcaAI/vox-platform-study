@@ -25,6 +25,11 @@
 // This model is OCC-written (carries `_version`); its mapper strips `version`.
 // ============================================================================
 
+/// @deprecated TASK-861 — removed in R4. `fallbackPipelineId` /
+/// `autoSwitchEnabled` become the ASR Agent's `fallback` block
+/// (`ResolvedAsrSpec.fallback`, resolved by `AsrAgentResolverService`);
+/// the credential facade already moved to `AiProviderConnection` (TASK-862).
+/// Reads keep working; no new rows are seeded.
 model TenantSttConfig {
   // meta fields
   metaData Json?  @map("_metadata") @db.JsonB

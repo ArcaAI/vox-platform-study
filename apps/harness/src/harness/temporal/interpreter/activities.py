@@ -70,6 +70,7 @@ from harness.temporal.interpreter.nodes.consultation_verify import (
     interpreter_consultation_sensors,
 )
 from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
+from harness.temporal.interpreter.nodes.core import CORE_ACTIVITIES
 from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
 from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
 from harness.temporal.interpreter.nodes.guards import GUARD_ACTIVITIES
@@ -258,6 +259,9 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     # including the cross-language parity guard -- then fails at runtime with an
     # unregistered-activity error.
     *AGENTIC_ACTIVITIES,
+    # TASK-864 — the `core` vocabulary (nodes/core.py), including `interpreter.core_evaluate`,
+    # the CEL activity `LoopWorkflow` calls for `until`. Same two-list discipline as above.
+    *CORE_ACTIVITIES,
 ]
 
 # ---------------------------------------------------------------------------

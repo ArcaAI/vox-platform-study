@@ -1556,7 +1556,7 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
       sample_count: { type: 'number', required: false },
     },
     // PHI containment: this is the tenant whose DNA feature is
-    // LIVE today (`14-pipeline-policy.ts` ARCAAI_PIPELINE_POLICY_OVERRIDE
+    // LIVE today (the former `14-pipeline-policy.ts` ARCAAI_PIPELINE_POLICY_OVERRIDE, retired by TASK-861,
     // sets `dnaStyleEnabled: true`), so the schema constraint that closes the
     // free-text output defect must be seeded onto ArcaAI's OWN copy of the
     // template — `listPromptTemplates` resolves strictly by `tenantId`, so

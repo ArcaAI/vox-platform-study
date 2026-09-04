@@ -11,7 +11,7 @@ the consultation palette (Wave 4's job, per the ticket's own scoping).
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -322,6 +322,88 @@ async def approve_workflow_run_gate(
         decision=body.decision,
     )
     return {"runId": run_id, "workflowId": workflow_id, "signaled": True}
+
+
+class ReviewDecisionRequest(BaseModel):
+    """Body for ``POST /workflow-runs/{run_id}/reviews/{node_id}:decide`` (TASK-864)."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    decision: Literal["approved", "rejected"]
+    reviewer_id: str | None = Field(default=None, alias="reviewerId")
+    comment: str | None = None
+    edited_payload: dict[str, Any] | None = Field(default=None, alias="editedPayload")
+
+
+@router.post(
+    "/workflow-runs/{run_id}/reviews/{node_id}:decide",
+    dependencies=[Depends(require_service_token)],
+)
+async def decide_workflow_run_review(
+    run_id: str, node_id: str, body: ReviewDecisionRequest, request: Request
+) -> dict[str, Any]:
+    """Release a `core.humanReview` node with a decision (TASK-864 §3.3).
+
+    Signals the REVIEW CHILD workflow (`ReviewGateWorkflow`), never the interpreter, whose own
+    signal surface stays cancel-only. The child id is derived from the run id and the node id
+    alone, so a graph may carry several reviews and the gateway addresses each without reading
+    run state. A missing or already-decided review surfaces the Temporal RPC error rather than
+    reporting a decision that reached nothing. The signal is a code allow-list.
+    """
+    from harness.temporal.interpreter.models import ReviewDecisionSignal
+    from harness.temporal.interpreter.review_workflow import (
+        ReviewGateWorkflow,
+        review_gate_workflow_id,
+    )
+
+    client = await _temporal_client_or_503(request)
+    workflow_id = review_gate_workflow_id(run_id, node_id)
+    handle = client.get_workflow_handle(workflow_id)
+    try:
+        await handle.signal(
+            ReviewGateWorkflow.review,
+            ReviewDecisionSignal(
+                decision=body.decision,
+                reviewer_id=body.reviewer_id,
+                comment=body.comment,
+                edited_payload=body.edited_payload,
+            ),
+        )
+    except RPCError as exc:
+        raise _rpc_error_response(exc, action="review") from exc
+
+    logger.info(
+        "harness.interpreter.run.review_decided",
+        run_id=run_id,
+        node_id=node_id,
+        decision=body.decision,
+    )
+    return {"runId": run_id, "nodeId": node_id, "workflowId": workflow_id, "signaled": True}
+
+
+@router.get(
+    "/workflow-runs/{run_id}/reviews/{node_id}",
+    dependencies=[Depends(require_service_token)],
+)
+async def get_workflow_run_review(run_id: str, node_id: str, request: Request) -> dict[str, Any]:
+    """The live state of ONE `core.humanReview` node's child — `exists: false` is a normal 200
+    (the node has not been reached, or the review already settled and the child is gone)."""
+    client = await _temporal_client_or_503(request)
+    workflow_id = review_gate_workflow_id_for(run_id, node_id)
+    handle = client.get_workflow_handle(workflow_id)
+    try:
+        state = await handle.query("state")
+    except RPCError as exc:
+        if exc.status == RPCStatusCode.NOT_FOUND:
+            return {"runId": run_id, "nodeId": node_id, "exists": False}
+        raise _rpc_error_response(exc, action="review-state") from exc
+    return {"runId": run_id, "nodeId": node_id, "exists": True, **cast(dict[str, Any], state)}
+
+
+def review_gate_workflow_id_for(run_id: str, node_id: str) -> str:
+    from harness.temporal.interpreter.review_workflow import review_gate_workflow_id
+
+    return review_gate_workflow_id(run_id, node_id)
 
 
 @router.post(

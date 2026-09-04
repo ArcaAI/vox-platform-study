@@ -26,7 +26,7 @@ lint-ts:
     - pnpm --filter @arcaai/database db:generate
     # Concurrency is capped by TURBO_CONCURRENCY on `.node-base` (a
     # --concurrency flag here would override it).
-    - pnpm turbo lint
+    - pnpm turbo lint --filter='!@arcaai/compat-playground'
   rules:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-any-ts, rules]

@@ -26,6 +26,7 @@ import { PipelineService } from '../../stt/pipeline/pipeline.service';
 const STT_PALETTE_KEY = 'stt';
 
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. Never wired on the hot path; the ASR Agent path (`AsrAgentResolverService`) is the one resolution. */
 export class SttPipelineResolverService {
   constructor(
     private readonly workflowDefinitionRepository: WorkflowDefinitionRepository,

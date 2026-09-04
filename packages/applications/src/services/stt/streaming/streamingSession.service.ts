@@ -180,6 +180,9 @@ export class StreamingSessionService implements IStreamingSessionService {
             // Held by the session runtime in memory only; NEVER logged.
             provider_overrides: dto.providerOverrides ?? null,
             fallback_pipeline_id: dto.fallbackPipelineId ?? null,
+            // TASK-861 — the gateway-resolved ASR spec. `null` (not absent) on the
+            // deprecated pipeline path so apps/stt can tell the two apart.
+            resolved_spec: dto.resolvedSpec ?? null,
             // Tenant governance for the FAILURE-DRIVEN auto switch.
             // Both are real `TenantSttConfig` settings that were resolved by the
             // gateway and then dropped here, so STT's EngineSwitchController

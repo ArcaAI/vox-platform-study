@@ -247,6 +247,7 @@ export class EntitlementsLifecycleService extends BaseService implements IEntitl
     return [
       { capability: 'maxDepartments', resourceType: ResourceType.Department, delegate: db.department as unknown as SoftDisableDelegate },
       { capability: 'maxPromptTemplates', resourceType: ResourceType.PromptTemplate, delegate: db.promptTemplate as unknown as SoftDisableDelegate },
+      // @deprecated TASK-861 — removed in R4 with `AsrPipeline`.
       { capability: 'maxAsrPipelines', resourceType: ResourceType.AsrPipeline, delegate: db.asrPipeline as unknown as SoftDisableDelegate },
       { capability: 'maxApiKeys', resourceType: ResourceType.ApiKey, delegate: db.apiKey as unknown as SoftDisableDelegate },
     ];

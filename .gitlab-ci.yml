@@ -151,10 +151,11 @@ variables:
   # 24 MB of that is apps/stt/tests/e2e audio fixtures, which no CI job uses —
   # test-stt runs pytest with --ignore=tests/e2e/.
   #
-  # The four jobs that DO need a real LFS blob (the 112 KB
+  # The jobs that DO need a real LFS blob (the 112 KB
   # packages/noise-filter/assets/rnnoise.wasm, shipped via package.json
   # "files") re-enable the smudge with GIT_LFS_SKIP_SMUDGE: "0":
-  #   test-sdk, publish-sdk, build-admin-console, build-compat-playground.
+  #   test-sdk, publish-sdk, build-admin-console.
+  # (build-compat-playground used to be on this list.)
   # Without it they would get a ~130-byte pointer stub — test-sdk's
   # wasmAsset.test.ts asserts size > 10_000, and the build jobs would
   # SILENTLY ship a broken wasm.

@@ -104,34 +104,6 @@
       ]
     },
     {
-      "name": "compat-playground",
-      "tagPrefixes": [
-        "COMPAT"
-      ],
-      "dockerfile": "apps/compat-playground/Dockerfile",
-      "context": ".",
-      "target": null,
-      "pythonBase": false,
-      "promotable": true,
-      "platforms": [
-        "linux/amd64"
-      ],
-      "buildArgs": {
-        "VITE_API_BASE_URL": "env:NEXT_PUBLIC_API_HOST"
-      },
-      "paths": [
-        "apps/compat-playground/**",
-        "packages/ui/**",
-        "packages/room/**",
-        "packages/stt/**",
-        "packages/vad/**",
-        "packages/noise-filter/**",
-        "packages/agentic-sdk-v2/**",
-        "packages/med-ner/**",
-        "pnpm-lock.yaml"
-      ]
-    },
-    {
       "name": "database",
       "tagPrefixes": [],
       "dockerfile": "packages/database/Dockerfile",

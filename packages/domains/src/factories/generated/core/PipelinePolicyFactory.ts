@@ -25,6 +25,7 @@ export interface CreatePipelinePolicyProps extends BaseEntityFactoryCreateProps 
   updatedBy?: IPipelinePolicyEntity['updatedBy'];
 }
 
+/** @deprecated TASK-861 — removed in R4. Its toggles become `enabled` flags on the nodes of the assigned workflow (`WorkflowAssignment`, TASK-864). */
 export class PipelinePolicyFactory {
   /**
    * Build a new pipeline-policy row. `scope` defaults to TENANT (the

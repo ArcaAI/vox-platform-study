@@ -9,7 +9,7 @@ import { Badge } from '@/components/shadcn/badge';
 import { Button } from '@/components/shadcn/button';
 import { cn } from '@/lib/utils';
 
-import type { WorkflowCanvasNode, WorkflowCanvasNodeRendererProps, WorkflowCanvasNodeTypes } from './types';
+import type { WorkflowCanvasNode, WorkflowCanvasNodeRendererProps, WorkflowCanvasNodeTypes, WorkflowCanvasPort } from './types';
 
 /** Internal xyflow node-data payload. Never exposed to composite consumers directly. */
 export interface WorkflowNodeData extends Record<string, unknown> {
@@ -39,32 +39,78 @@ const SEVERITY_BADGE_VARIANT: Record<'ERROR' | 'WARNING', 'destructive' | 'secon
   WARNING: 'secondary',
 };
 
+const HANDLE_CLASS = 'workflow-canvas-port !bg-[var(--workflow-canvas-handle)]';
+
+function PortHandle({ port, direction }: { port: WorkflowCanvasPort; direction: 'input' | 'output' }) {
+  const label = port.label ?? port.id;
+  return (
+    <span className={cn('flex items-center gap-1 text-[11px] leading-4', direction === 'output' && 'flex-row-reverse text-right')}>
+      <Handle
+        id={port.id}
+        type={direction === 'input' ? 'target' : 'source'}
+        position={direction === 'input' ? Position.Left : Position.Right}
+        className={HANDLE_CLASS}
+        data-port-kind={port.kind}
+        data-port-primitive={port.primitive}
+        title={`${label} (${port.primitive})`}
+      />
+      <span className="truncate">
+        {label}
+        <span className="sr-only">
+          {' '}
+          ({port.kind} port, {port.primitive})
+        </span>
+      </span>
+    </span>
+  );
+}
+
 /**
  * The shared chrome for every workflow node — label, safety badge, problem border, and a
  * hidden validation-summary description every node points at via `aria-describedby` (set on
  * the outer xyflow node object by `workflow-canvas.tsx`, not here). Registry-driven inner
  * content (`data.renderer`) renders inside this chrome; when absent, the label is the whole
  * body. This is the ONE xyflow-registered node type — see `workflow-canvas.tsx`.
+ *
+ * TASK-864 B1: a node carrying `ports` renders ONE handle per port, inputs down the left and
+ * outputs down the right, each keyed by the port id so an edge lands on the socket it names;
+ * a node without `ports` keeps the legacy single `in`/`out` pair. A `kind: 'group'` node (a
+ * loop body) renders as a container its children sit inside.
  */
 function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeData }) {
   const { node, renderer: Renderer, readOnly, onDeleteRequest, overlay } = data;
   const problem = node.problem;
   const mandatory = isMandatory(node);
+  const group = node.kind === 'group';
   const rendererProps: WorkflowCanvasNodeRendererProps = { node, selected: Boolean(selected) };
+  const ports = node.ports;
 
   return (
     <div
       data-slot="workflow-node"
       data-node-type={node.type}
+      data-node-kind={group ? 'group' : 'node'}
       data-mandatory={mandatory ? 'true' : 'false'}
+      data-deprecated={node.deprecated ? 'true' : undefined}
       className={cn(
-        'min-w-[180px] rounded-md border-2 bg-[var(--workflow-canvas-node-bg)] px-3 py-2 text-[var(--workflow-canvas-node-fg)]',
-        problem ? SEVERITY_BORDER[problem.severity] : 'border-[var(--workflow-canvas-node-border)]',
+        'rounded-md border-2 text-[var(--workflow-canvas-node-fg)]',
+        group
+          ? 'size-full min-h-[120px] min-w-[240px] border-dashed bg-[var(--workflow-canvas-group-bg)] px-3 py-2'
+          : 'min-w-[180px] bg-[var(--workflow-canvas-node-bg)] px-3 py-2',
+        problem
+          ? SEVERITY_BORDER[problem.severity]
+          : group
+            ? 'border-[var(--workflow-canvas-group-border)]'
+            : 'border-[var(--workflow-canvas-node-border)]',
         selected && 'ring-2 ring-primary ring-offset-1',
       )}
     >
-      <Handle type="target" position={Position.Left} className="!bg-[var(--workflow-canvas-handle)]" />
-      <Handle type="source" position={Position.Right} className="!bg-[var(--workflow-canvas-handle)]" />
+      {!ports ? (
+        <>
+          <Handle type="target" position={Position.Left} className="!bg-[var(--workflow-canvas-handle)]" />
+          <Handle type="source" position={Position.Right} className="!bg-[var(--workflow-canvas-handle)]" />
+        </>
+      ) : null}
 
       <div className="flex items-start justify-between gap-2">
         <span className="text-sm font-medium">{node.label}</span>
@@ -91,6 +137,11 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
             mandatory
           </Badge>
         ) : null}
+        {node.deprecated ? (
+          <Badge variant="secondary" className="text-xs">
+            deprecated
+          </Badge>
+        ) : null}
         {problem ? (
           <Badge variant={SEVERITY_BADGE_VARIANT[problem.severity]} className="text-xs">
             {problem.severity === 'ERROR' ? 'error' : 'warning'}
@@ -101,6 +152,21 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
       {Renderer ? (
         <div className="nodrag mt-2">
           <Renderer {...rendererProps} />
+        </div>
+      ) : null}
+
+      {ports ? (
+        <div className="mt-2 grid grid-cols-2 gap-x-3" data-slot="workflow-node-ports">
+          <div className="-ml-3 flex flex-col gap-1" aria-label="Inputs">
+            {ports.inputs.map((port) => (
+              <PortHandle key={port.id} port={port} direction="input" />
+            ))}
+          </div>
+          <div className="-mr-3 flex flex-col gap-1" aria-label="Outputs">
+            {ports.outputs.map((port) => (
+              <PortHandle key={port.id} port={port} direction="output" />
+            ))}
+          </div>
         </div>
       ) : null}
 

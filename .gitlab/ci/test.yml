@@ -81,7 +81,7 @@ test-api:
     # hand-maintained subset was listed here and silently omitted
     # `@arcaai/async-contract`, so every suite importing it failed to resolve
     # its `dist` entry. `^...` picks up new workspace deps automatically —
-    # same idiom as the compat-playground job below.
+    # same idiom as the (now hidden) compat-playground job below.
     - pnpm turbo build --filter=@arcaai/api^...
     - pnpm --filter @arcaai/api test -- --reporter=junit --outputFile=junit-api.xml
   artifacts:
@@ -418,7 +418,13 @@ test-admin-console-a11y:
     - if: $RUN_A11Y_E2E == "true"
     - when: never
 
-test-compat-playground:
+# ── compat-playground is DEPRECATED ───────────────────
+# Hidden, not deleted: a leading dot makes GitLab treat the key as a template
+# that is never instantiated. Re-enable with the matching hidden jobs in
+# build.yml / scan.yml / publish.yml, restore the services.json entry, and
+# put COMPAT back in SERVICE_TAG_PREFIXES.
+#
+.test-compat-playground:
   stage: test
   extends: .test-node-base
   needs:

@@ -48,7 +48,13 @@ describe('every registry descriptor declares the  contract (D-4)', () => {
   it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares inputs and outputs', (_key, descriptor) => {
     expect(Array.isArray(descriptor.inputs)).toBe(true);
     expect(Array.isArray(descriptor.outputs)).toBe(true);
-    // A node with neither an input nor an output cannot participate in a graph at all.
+    // A node with neither an input nor an output cannot participate in a graph at all — except a
+    // canvas ANNOTATION (TASK-864 `core.note`), which is stripped by compile() and by design has
+    // nothing to wire.
+    if (descriptor.classes.includes('annotation')) {
+      expect(descriptor.inputs.length + descriptor.outputs.length).toBe(0);
+      return;
+    }
     expect(descriptor.inputs.length + descriptor.outputs.length).toBeGreaterThan(0);
   });
 

@@ -357,6 +357,13 @@ export class SttInternalController {
     return resolveModelRegistryCredential(this.providerConnections, this.cls, provider, tenantId);
   }
 
+  /**
+   * TASK-861: still the batch worker's credential pull on the agent path too —
+   * the Dramatiq message carries `resolved_spec` (never a key), so the worker
+   * fetches the tenant's cloud credentials here at execution time. Backed by the
+   * deprecated `TenantSttConfigService.resolveProviderOverrides`; repointing it
+   * onto `ProviderCredentialResolver` is a follow-up (the wire shape is identical).
+   */
   @Get('provider-overrides')
   @ApiOperation({ summary: 'Resolve a tenant’s decrypted BYO STT provider overrides (batch-worker pull)' })
   async getProviderOverrides(@Req() request: RequestWithAuth, @Query('tenantId') tenantId?: string): Promise<SttProviderOverrides> {

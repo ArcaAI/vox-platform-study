@@ -82,7 +82,7 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
     expect(entries).toEqual(sorted);
   });
 
-  it('carries exactly the seed + boundary + summarization + stt + consultation + endpoint-stage + agentic keys, no more, no less', () => {
+  it('carries exactly the seed + boundary + summarization + stt + consultation + endpoint-stage + agentic + core keys, no more, no less', () => {
     expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual([
       // lane A — the target catalogue and the guards.
       'agent.discharge_summary',
@@ -125,8 +125,21 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'consultation.sensors',
       'consultation.suggestions',
       'consultation.synthesize',
+      // TASK-864 — the `core` vocabulary. Sorted position: `core.action` < `core.agent` <
+      // ... < `core.end` < ... < `core.start` < `core.trigger` < `core.variable`.
+      'core.action',
+      'core.agent',
+      'core.classify',
+      'core.condition',
+      'core.data',
       'core.end',
+      'core.humanReview',
+      'core.loop',
+      'core.note',
+      'core.output',
       'core.start',
+      'core.trigger',
+      'core.variable',
       // the endpoint stage. Sorted position, not pipeline position; the list is
       // asserted sorted so a future addition never looks like a reorder.
       'feedback.capture',

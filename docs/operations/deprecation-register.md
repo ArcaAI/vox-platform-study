@@ -12,11 +12,11 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
 |---|---|---|---|---|---|
-| `AsrPipeline`, `AsrPipelineVersion` (Prisma, domain trio, `PipelineService`, `admin/audio/pipelines/**`, `audio/pipelines/**`) | TASK-861 | R2 | R4 | `Agent` (task `SPEECH_TO_TEXT`) + gateway-resolved `ResolvedAsrSpec` | planned |
-| `TranscriptionJob.pipelineId` | TASK-861 | R2 | R4 | `TranscriptionJob.agentVersionId` + `resolvedSpec` | planned |
-| `TenantSttConfig` (+ `admin/stt-config/**`, `/ai-configuration` Speech tab) | TASK-861 | R2 | R4 | ASR Agent `fallback` block | planned |
-| `PipelinePolicy`, `PipelinePolicyChange` (+ `admin/harness/pipeline-policy`, `/harness/pipeline-policy`) | TASK-861 | R2 | R4 | node `enabled` flags on the assigned workflow (`WorkflowAssignment`) | planned |
-| `Tenant.transcriptionMode`, `Tenant.captureMode` | TASK-861 (OD-13) | R2 | R4 | — (local transcription no longer exists) | planned |
+| `AsrPipeline`, `AsrPipelineVersion` (Prisma, domain trio, `PipelineService`, `admin/audio/pipelines/**`, `audio/pipelines/**`) | TASK-861 | R2 | R4 | `Agent` (task `SPEECH_TO_TEXT`) + gateway-resolved `ResolvedAsrSpec` | marked — Prisma `/// @deprecated TASK-861 — removed in R4` on both models (`stt.prisma`); `@deprecated` JSDoc on both domain trios (entity / factory / mapper / repository), on `PipelineService` / `IPipelineService` / its module and on `pipeline-template-resync.{service,cron.service}`; `@ApiDeprecated` (`Deprecation: true` + `X-Deprecation-Notice` + `Link` → `/api/v1/admin/agents`, no `Sunset` until OD-2) on all 8 `admin/audio/pipelines` routes; the `audio/pipelines` catalogue reads keep answering (JSDoc marker only). Writes still succeed — the `410 Gone` step of §3.3 is owed once the Agents screen exposes the SPEECH_TO_TEXT authoring path |
+| `TranscriptionJob.pipelineId` | TASK-861 | R2 | R4 | `TranscriptionJob.agentVersionId` + `resolvedSpec` | marked — migration `20260904150000_task_861_transcription_job_agent_version` (`pipelineId` nullable, FK re-added `ON DELETE SET NULL`; `agentVersionId` + `resolvedSpec` + index added); `@deprecated` on the entity / factory / model field, on `CreateJobRequest.pipelineId`, `JobResponse.pipelineId` and the console `transcription-jobs` type; `TranscriptionJobService.create` takes `agentVersionId` + `resolvedSpec` (no pipeline lookup) and the Dramatiq message carries `resolved_spec` |
+| `TenantSttConfig` (+ `admin/stt-config/**`, `/ai-configuration` Speech tab) | TASK-861 | R2 | R4 | ASR Agent `fallback` block | marked — Prisma marker (`tenant-stt-config.prisma`); domain trio, `TenantSttConfigService` / `ITenantSttConfigService` / module `@deprecated`; `@ApiDeprecated` on all 4 `admin/stt-config` routes; the Speech tab (`stt-fallback-tab.tsx`) is a retirement notice linking to `/agents?task=SPEECH_TO_TEXT` (`stt-fallback-form.tsx` deleted); the agent path reads `ResolvedAsrSpec.fallback` instead. Still live for the window: `seedTenantSttConfig` (`06-stt.ts`, see Seeds) and the batch worker's credential pull (`internal/stt/*` → `resolveProviderOverrides`, repoint to `ProviderCredentialResolver` is a follow-up) |
+| `PipelinePolicy`, `PipelinePolicyChange` (+ `admin/harness/pipeline-policy`, `/harness/pipeline-policy`) | TASK-861 | R2 | R4 | node `enabled` flags on the assigned workflow (`WorkflowAssignment`) | marked — Prisma markers (`pipeline-policy.prisma`); both domain trios + `PipelinePolicyChangeRepository.encryption.ts`, `PipelinePolicyService` / module and the five `pipeline.descriptors.ts` keys `@deprecated`; `@ApiDeprecated` (`Link` → `/api/v1/admin/workflow-assignments`) on all 3 `admin/harness/pipeline-policy` routes; `/harness/pipeline-policy` → `redirect('/workflow-studio/assignments')`; seed `14-pipeline-policy.ts` deleted |
+| `Tenant.transcriptionMode`, `Tenant.captureMode` | TASK-861 (OD-13) | R2 | R4 | — (local transcription no longer exists) | planned (untouched by the TASK-861 branch — OD-13 still open) |
 | `AiTaskDefault` (table, `AiTaskDefaultService`, `admin/ai-task-defaults`, `vox-node` admin resource) | TASK-862 | R1 | R3 | `AiRoutingPolicy.resolveDefault` (non-agent task defaults) + `Agent.modelId` | marked — service is a facade (no table reads/writes), routes carry `Deprecation` headers, `features/ai-task-defaults` already deleted; table drop + reader repoint in R3 |
 | `AiRuntimeProfile` (all layers, `/ai-runtime-profiles`) | TASK-862 | R1 (**removed outright** — deviation 2) | — | `Agent.parameters` (hyper-parameters) + `AiProviderConnection` ceilings | removed (`ResourceType.AiRuntimeProfile` enum member left in place) |
 | `TenantTtsConfig` (+ `admin/tts-config/**`, `/ai-configuration` Voice tab) | TASK-862 / 863 | R1 | R3 | TTS Agent + `AgentAssignment` | marked (`@deprecated` on service/interface, `Deprecation` headers on every `admin/tts-config` route; credential facade already removed) |
@@ -32,16 +32,16 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `admin/ai-providers/**` (llm-only alias) | TASK-862 | R1 (**removed** — no caller remained) | — | `admin/providers/:service/:provider` | removed |
 | `admin/tts-config/credentials/**`, `admin/stt-config/credentials/**` | TASK-862 | R1 (**removed** — console hooks were dead) | — | `admin/providers/**` + `POST …/test` | removed |
 | `POST admin/ai-models/discovery/register` | TASK-860 | R1 | R3 | registry inventory "register from bucket" | marked |
-| `pipelineId` on `POST audio/transcription-jobs/stream/session`, `POST …/transcribe`, `POST api/stt/start_session` | TASK-861 | R2 | R4 | `agentSlug` | planned |
+| `pipelineId` on `POST audio/transcription-jobs/stream/session`, `POST …/transcribe`, `POST api/stt/start_session` | TASK-861 | R2 | R4 | `agentSlug` | marked — all three accept `agentSlug` (absent = the tenant's assigned ASR agent via the `AgentAssignment` cascade) and resolve a `ResolvedAsrSpec` through `AsrAgentResolverService`; `stream/session` and `transcribe` still honour `pipelineId` and answer `Deprecation: true` + `X-Deprecation-Notice` + `Link: </api/v1/agents?task=SPEECH_TO_TEXT>; rel="successor-version"` (no `Sunset` until OD-2); `api/stt/start_session` honours `pipelineId` WITHOUT the headers (follow-up); the DTO fields carry `@deprecated` |
 | `POST /workflows/:slug/invoke` (alias) | already deprecated in code | — | R3 | `POST /workflows/:slug/runs` | marked |
 
 ## Workflow contract
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
 |---|---|---|---|---|---|
-| `stt` palette (8 node types), `WF-STT-*` rules, `stt-pipeline.compiler.ts`, `stt-pipeline-resolver.service.ts`, `stt_placeholder.py` | TASK-861 | R2 | R4 | ASR Agent | planned |
-| `summarization`, `consultation`, `agentic` palettes (50 node types) | TASK-864 | R2 | R4 | `core.*` vocabulary (+ `core.action` catalogue, seeded Agents) | planned |
-| `EXPOSURE_ALLOWED_PALETTES` | TASK-864 | R2 | R4 | class-based exposure boundary | planned |
+| `stt` palette (8 node types), `WF-STT-*` rules, `stt-pipeline.compiler.ts`, `stt-pipeline-resolver.service.ts`, `stt_placeholder.py` | TASK-861 (node types marked by TASK-864: `deprecated: true`, `replacedBy: 'core.agent'`) | R2 | R4 | ASR Agent | planned — partial: `stt-pipeline.compiler.ts` and `stt-pipeline-resolver.service.ts` carry `@deprecated TASK-861` (this ticket); the 8 palette descriptors are marked `deprecated: true` + `replacedBy` by TASK-864; the `WF-STT-*` retirement and the `stt_placeholder.py` removal are a post-merge follow-up (TASK-861 step 10) |
+| `summarization`, `consultation`, `agentic` palettes + the palette-less `noop`/`passthrough`/`core.start`/`core.end`/`guard.*` (50 node types) | TASK-864 | R2 | R4 | `core.*` vocabulary (+ `core.action` catalogue, seeded Agents) — every descriptor carries `deprecated: true` + `replacedBy`; `deprecation.task864.test.ts` pins the set; the Studio rail hides them | marked |
+| `EXPOSURE_ALLOWED_PALETTES` | TASK-864 | R2 | R4 | class-based exposure boundary (`clinicalWriteViolation`) — the palette sets now admit `core` and are consulted only for legacy graphs | marked |
 | Harness `_llm_policy.get_policy(task_key)` over `AiTaskDefault` | TASK-863 | R1 | R3 | `/internal/agents/resolve` + `AiRoutingPolicy` | planned |
 | `HarnessPolicy.textProvider`, `textModel` | TASK-863 | R1 | R3 | Agent binding | planned |
 
@@ -52,11 +52,11 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `/ai-platform` (hub) + `features/ai-platform` | TASK-862 | R1 (redirect) | R3 | `/ai-providers`, `/ai-models`, `/agents`, `/ai-services/*` | marked — `redirect('/ai-providers')` stub; feature folder deleted |
 | `/ai-task-defaults` redirect stub | TASK-862 | — | R1 | — | removed |
 | `/ai-runtime-profiles` | TASK-862 | R1 | R1 (no nav entry) | — | removed |
-| `/ai-configuration` (Speech & Voice) | TASK-861/862 | R2 (redirect) | R4 | `/agents` | planned |
+| `/ai-configuration` (Speech & Voice) | TASK-861/862 | R2 (redirect) | R4 | `/agents` | marked (TASK-861: the Speech tab is a retirement notice pointing at `/agents?task=SPEECH_TO_TEXT`; the route still renders `SpeechAndVoiceScreen` for the Voice tab — the `redirect('/agents')` lands when the TTS binding retires with TASK-863) |
 | `/ai-operations/reconciliation` | TASK-862 | R1 (redirect) | R3 | `/ai-operations/consumption` | marked — redirect stub |
-| `/audio/pipelines`, `features/audio-pipelines` | TASK-861 | R2 (redirect) | R4 | `/agents?task=speech-to-text` | planned |
-| `/harness/pipeline-policy`, `features/pipeline-policy` | TASK-861 | R2 (redirect) | R4 | workflow assignments | planned |
-| `features/tenant-stt-config`, `features/tenant-tts-config` | TASK-861/862 | R1–R2 | R3–R4 | agents | marked (TASK-862: dead credential hooks removed; `speech-and-voice-screen` relocated into `tenant-tts-config`, `@deprecated`) |
+| `/audio/pipelines`, `features/audio-pipelines` | TASK-861 | R2 (redirect) | R4 | `/agents?task=SPEECH_TO_TEXT` | marked — `page.tsx` is `redirect('/agents?task=SPEECH_TO_TEXT')` (`loading.tsx` deleted), nav entry removed; `features/audio-pipelines` kept with `@deprecated` on the api index + screen (no route mounts it) — `useAudioPipelines` still feeds the two playgrounds until TASK-865 gives `audio.start` an `agentSlug` |
+| `/harness/pipeline-policy`, `features/pipeline-policy` | TASK-861 | R2 (redirect) | R4 | workflow assignments | marked — `page.tsx` is `redirect('/workflow-studio/assignments')` (`loading.tsx` deleted), nav entry removed; feature folder kept with `@deprecated` on the api index + screen |
+| `features/tenant-stt-config`, `features/tenant-tts-config` | TASK-861/862 | R1–R2 | R3–R4 | agents | marked (TASK-862: dead credential hooks removed; `speech-and-voice-screen` relocated into `tenant-tts-config`, `@deprecated`; TASK-861: `stt-fallback-form.tsx` deleted, `stt-fallback-tab.tsx` is a retirement notice, `features/tenant-stt-config/api` `@deprecated`) |
 | `/agents` redirect to `/prompt-templates` | TASK-863 | — | R1 (route becomes the Agents screen) | `/agents` Agents screen (`features/agents`); prompt-template components live under `features/prompt-templates` | removed |
 | `/prompt-studio`, `/pstudio` redirect stubs | pre-existing | — | R1 | — | marked |
 | `/ai-model-defaults` redirect stub | pre-existing | — | R1 | — | marked |
@@ -71,13 +71,13 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `TranscriptionPipeline` local stages, `LOCAL_TRANSCRIPTION_ENABLED`, `DEFAULT_LOCAL_CONFIG` model pins | TASK-865 | R2 | R4 | — | marked |
 | `audio.clientInference: { allow }` (the client-stage escape hatch, deprecated on arrival) | TASK-865 | R2 | R4 | — | marked |
 | compat `V1SdkConfig.sttPipelineId` | TASK-865 | R2 | R4 | `V1SdkConfig.sttAgentSlug` | marked |
-| `hope.admin.audioPipeline.*` (generated) | TASK-861 | R2 | R4 | `hope.admin.agent.*` (generated) | planned |
+| `hope.admin.audioPipeline.*` (generated) | TASK-861 | R2 | R4 | `hope.admin.agent.*` (generated) | planned (the route markers it will pick up are in place; regeneration — `pnpm --filter @arcaai/vox-node gen:admin` with the other four artifacts — is owed post-merge, TASK-861 step 13) |
 
 ## Seeds (deleted immediately — no production data)
 
 | Item | Ticket |
 |---|---|
-| `06-stt.ts` pipelines, `14-pipeline-policy.ts`, `23a-realtime-transcription-agent{,.generated}.ts`, regen script | TASK-861 |
+| `14-pipeline-policy.ts`, `23a-realtime-transcription-agent{,.generated}.ts`, regen script + their seed tests — DONE; `06-stt.ts` pipelines + `seedTenantSttConfig` — STILL SEEDED, deferred to the TASK-860 file split (TASK-860 rewrites `06-stt.ts` and is not in the TASK-861 base; deleting the pipeline half on the 861 branch would conflict) | TASK-861 |
 | `16-ai-task-default.ts` (replaced by `16-ai-routing-policy.ts`), `18-ai-runtime-profile.ts`, `llm:sarvam` connection row — DONE; `19-tenant-tts-config.ts` — with TASK-863 | TASK-862 |
 | 10 catalogue rows not in the owner's list; `RETIRED_AI_MODEL_SLUGS` ledger extended | TASK-860 |
-| `21`, `23`, `24` workflow seeds rewritten in `core.*` | TASK-864 |
+| `21`, `23`, `24` workflow seeds rewritten in `core.*` — NOT DONE in the first TASK-864 landing: their derived blobs were regenerated for the core registry (checksums), the authoring sources still use the legacy palettes (owner question: the consultation rule set `CR-*` keys on `consultation.*` types, so a `core.action` rewrite needs the rules retargeted first) | TASK-864 |

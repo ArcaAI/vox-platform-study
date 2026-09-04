@@ -154,7 +154,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // -1 (86): AiRuntimeProfile — retired by TASK-862 (ceilings moved onto
     // AiProviderConnection, hyper-parameters to the Agent).
     // +4 (90): Agent, AgentModelFallback, AgentAssignment, AgentAssignmentChange (TASK-863).
-    expect(TENANT_SCOPED_MODELS.size).toBe(90);
+    // +1 (91): WorkflowWebhookSecret — TASK-864's per-definition inbound
+    // webhook HMAC secret, keyed (tenantId, workflowSlug).
+    expect(TENANT_SCOPED_MODELS.size).toBe(91);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

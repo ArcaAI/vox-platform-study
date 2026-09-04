@@ -19,6 +19,7 @@ function stripNonPrismaFields<T extends object>(model: T, fields: string[]): T {
   return model;
 }
 
+/** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; the Agent's rows-are-versions model replaces it. */
 export class AsrPipelineVersionEntityMapper extends BaseMapper<Entities.AsrPipelineVersionEntity, Models.AsrPipelineVersion> {
   constructor() {
     super();

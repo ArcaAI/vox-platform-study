@@ -31,6 +31,7 @@ export interface CreatePipelinePolicyChangeProps extends BaseEntityFactoryCreate
   createdBy?: IPipelinePolicyChangeEntity['createdBy'];
 }
 
+/** @deprecated TASK-861 — removed in R4 with `PipelinePolicy` (WORM log stays read-only until the drop). */
 export class PipelinePolicyChangeFactory {
   /**
    * Build an append-only policy-change record (before/after snapshot of a

@@ -1,6 +1,5 @@
 import {
   IconActivity,
-  IconAdjustmentsAlt,
   IconApi,
   IconAtom,
   IconBinaryTree2,
@@ -66,7 +65,6 @@ import {
   IconUserScan,
   IconUserShield,
   IconVersions,
-  IconWaveSine,
   IconWorld,
   type TablerIcon,
 } from '@tabler/icons-react';
@@ -678,15 +676,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'ConsentGrant']],
     implemented: true,
   },
-  {
-    route: '/audio/pipelines',
-    domain: 'clinical',
-    label: 'Audio pipelines',
-    tier: '30-49',
-    icon: IconWaveSine,
-    required: [['manage', 'AsrPipeline']],
-    implemented: true,
-  },
+  // TASK-861: `/audio/pipelines` RETIRED (redirect stub → `/agents?task=SPEECH_TO_TEXT`);
+  // the ASR Agent replaces the pipeline. 59 -> 58, tier 30-49 22 -> 21.
   {
     route: '/audio/transcription-jobs',
     domain: 'clinical',
@@ -736,18 +727,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  {
-    route: '/harness/pipeline-policy',
-    domain: 'workflow-harness',
-    label: 'Pipeline policy',
-    tier: '30-49',
-    icon: IconAdjustmentsAlt,
-    required: [
-      ['read', 'PipelinePolicy'],
-      ['manage', 'PipelinePolicy'],
-    ],
-    implemented: true,
-  },
+  // TASK-861: `/harness/pipeline-policy` RETIRED (redirect stub → `/workflow-studio/assignments`);
+  // its toggles become node `enabled` flags on the assigned workflow. 58 -> 57, tier 30-49 21 -> 20.
   // the DEFINITION-scoped runs/observability view — distinct from
   // `/ai-operations/runs` (tier 10-19, cross-tenant platform ops over every
   // agentic session, This one reads `WorkflowRun`, the workflow-
