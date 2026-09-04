@@ -65,10 +65,12 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
 |---|---|---|---|---|---|
-| `@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/stt` (browser Whisper), `@arcaai/med-ner`, `@arcaai/vox/plugins/med-ner` | TASK-865 | R2 | R4 | server-side VAD/denoise/ASR/NER via the ASR Agent and realtime lane | planned |
-| `useLocalVoiceEmbedding` | TASK-865 (OD-11) | R2 | R4 | `useVoiceEmbedding` | planned |
-| `AudioStartOptions.pipelineId`, `usePipelines`, `useArcaPipelines`, `selectedPipelineId` user setting, `useSttProviderToggle`, compat `sttPipelineId` | TASK-865 | R2 | R4 | `AudioStartOptions.agentSlug`, `useSelectableAsrAgents` | planned |
-| `TranscriptionPipeline` local stages, `LOCAL_TRANSCRIPTION_ENABLED`, `DEFAULT_LOCAL_CONFIG` model pins | TASK-865 | R2 | R4 | — | planned |
+| `@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/stt` (browser Whisper), `@arcaai/med-ner`, `@arcaai/vox/plugins/med-ner` | TASK-865 | R2 | R4 | server-side VAD/denoise/ASR/NER via the ASR Agent and realtime lane | marked |
+| `useLocalVoiceEmbedding` | TASK-865 (OD-11) | R2 | R4 | `useVoiceEmbedding` | marked |
+| `AudioStartOptions.pipelineId`, `usePipelines`, `useArcaPipelines`, `selectedPipelineId` user setting, `useSttProviderToggle`, compat `sttPipelineId` | TASK-865 | R2 | R4 | `AudioStartOptions.agentSlug`, `useSelectableAsrAgents` | marked |
+| `TranscriptionPipeline` local stages, `LOCAL_TRANSCRIPTION_ENABLED`, `DEFAULT_LOCAL_CONFIG` model pins | TASK-865 | R2 | R4 | — | marked |
+| `audio.clientInference: { allow }` (the client-stage escape hatch, deprecated on arrival) | TASK-865 | R2 | R4 | — | marked |
+| compat `V1SdkConfig.sttPipelineId` | TASK-865 | R2 | R4 | `V1SdkConfig.sttAgentSlug` | marked |
 | `hope.admin.audioPipeline.*` (generated) | TASK-861 | R2 | R4 | `hope.admin.agent.*` (generated) | planned (the route markers it will pick up are in place; regeneration — `pnpm --filter @arcaai/vox-node gen:admin` with the other four artifacts — is owed post-merge, TASK-861 step 13) |
 
 ## Seeds (deleted immediately — no production data)

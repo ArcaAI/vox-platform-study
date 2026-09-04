@@ -183,3 +183,24 @@ describe('STTProcessor — streaming-transport wiring', () => {
     });
   });
 });
+
+describe('STTProcessor — agentSlug on the streaming transport (TASK-865)', () => {
+  it('forwards transport.agentSlug to the provider (and therefore to createSession), with no pipelineId', async () => {
+    const processor = new STTProcessor({
+      sessionId: 'test-session',
+      audio: { language: 'en-US', sampleRate: 16000, channels: 1, chunkLengthS: 30, overlapLengthS: 5 },
+      features: { provider: 'remote' },
+    });
+    const session = makeSession();
+    const wsClient = makeWsClient();
+    processor.setStreamingTransport({ sessionManager: session, wsClient, agentSlug: 'clinic-asr' });
+
+    await (processor as unknown as { initializeRemoteProvider(): Promise<void> }).initializeRemoteProvider();
+
+    expect(processor.getProvider()).toBeInstanceOf(StreamingBackendSTTProvider);
+
+    const req = (session.createSession as ReturnType<typeof vi.fn>).mock.calls[0]![0] as Record<string, unknown>;
+    expect(req.agentSlug).toBe('clinic-asr');
+    expect('pipelineId' in req).toBe(false);
+  });
+});

@@ -8,6 +8,7 @@
 import type { BaseProcessor } from '@arcaai/room';
 import type {
   AudioPluginConfig,
+  AudioPluginStageName,
   NoiseFilterPluginConfig,
   VADPluginConfig,
   STTPluginConfig,
@@ -38,8 +39,13 @@ import { SttWebSocketClient } from './SttWebSocketClient';
  * the STT stage.
  */
 export interface PluginManagerRuntimeOptions {
-  /** Backend ASR pipeline UUID or slug. Triggers the streaming-aware path. */
+  /**
+   * Backend ASR pipeline UUID or slug. Triggers the streaming-aware path.
+   * @deprecated TASK-865 — removed in R4. Use `agentSlug`; ignored when `agentSlug` is set.
+   */
   pipelineId?: string;
+  /** Slug of the published ASR Agent to transcribe with (TASK-865). Wins over `pipelineId`. */
+  agentSlug?: string;
   /** Optional consultation id to associate with the streaming session. */
   consultationId?: string;
   /** Optional language override (forwarded to createSession). */
@@ -168,12 +174,13 @@ export interface PluginManagerState {
  * Delegates to TranscriptionPipeline and KnowledgePipeline for processing.
  * Handles processor lifecycle and provides unified state.
  *
+ * The browser never runs a model (TASK-865): `noiseFilter` / `vad` are
+ * deprecated client stages, ignored unless `clientInference: { allow: true }`.
+ *
  * @example
  * ```typescript
  * const manager = new PluginManager({
- *   noiseFilter: { enabled: true, level: 'high' },
- *   vad: { enabled: true, sensitivity: 0.5 },
- *   stt: { enabled: true, provider: 'auto' },
+ *   stt: { enabled: true, provider: 'backend' },
  * });
  *
  * await manager.initialize(track, audioContext);
@@ -594,11 +601,12 @@ export class PluginManager {
     const vadConfig = this.getConfig<VADPluginConfig>('vad');
     const sttConfig = this.getConfig<STTPluginConfig>('stt');
 
-    // The runtime pipelineId (from `startAudio({pipelineId})`)
-    // takes precedence over the static plugin config; the streaming transport
-    // is only built when we have BOTH an apiClient and a pipelineId.
-    const effectivePipelineId = this.runtimeOptions.pipelineId ?? sttConfig.pipelineId;
-    const streamingTransport = this.buildStreamingTransport(sttConfig, effectivePipelineId);
+    // Selection of WHAT transcribes (TASK-865): the runtime option wins over
+    // the static plugin config, and an ASR Agent slug wins over the deprecated
+    // pipeline id — the two are never carried together.
+    const effectiveAgentSlug = this.runtimeOptions.agentSlug ?? sttConfig.agentSlug;
+    const effectivePipelineId = effectiveAgentSlug ? undefined : (this.runtimeOptions.pipelineId ?? sttConfig.pipelineId);
+    const streamingTransport = this.buildStreamingTransport(sttConfig, effectivePipelineId, effectiveAgentSlug);
 
     // Pull user-persisted overrides.
     const prefs = this.userPreferences;
@@ -626,6 +634,11 @@ export class PluginManager {
 
     return {
       debugMode: this._debugMode,
+      // TASK-865: the client-inference gate travels with the config. Absent ⇒
+      // the pipeline refuses to construct the two client stages whatever their
+      // `enabled` flags say. Spread only when stated, so the pipeline's own
+      // "no opinion" stays `undefined`.
+      ...(this.config.clientInference ? { clientInference: { allow: this.config.clientInference.allow === true } } : {}),
       noiseFilter: {
         enabled: noiseFilterConfig.enabled ?? false,
         location: noiseFilterConfig.enabled ? 'browser' : 'skip',
@@ -656,6 +669,7 @@ export class PluginManager {
         modelId: localConfig?.stt?.modelId ?? sttConfig.modelId,
         sttSocket: sttConfig.sttSocket,
         pipelineId: effectivePipelineId,
+        ...(effectiveAgentSlug ? { agentSlug: effectiveAgentSlug } : {}),
         diarization: localConfig?.diarization?.enabled ?? sttConfig.diarization ?? false,
         numSpeakers: sttConfig.numSpeakers ?? 2,
         returnTimestamps: sttConfig.returnTimestamps ?? 'word',
@@ -781,7 +795,12 @@ export class PluginManager {
 
   /**
    * Build the streaming transport (StreamingSessionManager
-   * + SttWebSocketClient) when the runtime config asks for a pipeline.
+   * + SttWebSocketClient) for the backend STT path.
+   *
+   * Built when the capture names an ASR Agent (`agentSlug`) or a deprecated
+   * `pipelineId`, or when the provider is explicitly `'backend'` with neither
+   * (TASK-865: the gateway then resolves the tenant's default agent). A
+   * legacy `sttSocket` consumer that names nothing keeps its `RemoteSTTProvider`.
    *
    * The transport is `unknown` in `TranscriptionPipelineConfig.stt` to keep
    * `@arcaai/vox/types/pipeline.ts` free of an `@arcaai/stt` dependency;
@@ -790,17 +809,23 @@ export class PluginManager {
    * Visible (public, not private) so the surrounding hook tests can assert
    * the wiring without dipping into private state.
    */
-  buildStreamingTransport(sttConfig: STTPluginConfig, pipelineId: string | undefined): unknown {
-    if (!pipelineId) return undefined;
-    if (!this.apiClient) {
-      this.logger?.warn('Cannot build streaming transport without an apiClient', {
-        operation: 'buildStreamingTransport',
-        component: 'PluginManager',
-      });
-      return undefined;
-    }
+  buildStreamingTransport(sttConfig: STTPluginConfig, pipelineId: string | undefined, agentSlug?: string): unknown {
     const provider = sttConfig.provider ?? DEFAULT_STT_CONFIG.provider;
     if (provider === 'local') {
+      return undefined;
+    }
+    const named = Boolean(pipelineId || agentSlug);
+    // Nothing named: only an EXPLICIT backend provider opens a session on the
+    // tenant default. 'auto' keeps its pre-865 resolution, and a legacy
+    // `sttSocket` keeps the RemoteSTTProvider path.
+    if (!named && (provider !== 'backend' || sttConfig.sttSocket)) return undefined;
+    if (!this.apiClient) {
+      if (named) {
+        this.logger?.warn('Cannot build streaming transport without an apiClient', {
+          operation: 'buildStreamingTransport',
+          component: 'PluginManager',
+        });
+      }
       return undefined;
     }
 
@@ -858,7 +883,10 @@ export class PluginManager {
     return {
       sessionManager,
       wsClient,
-      pipelineId,
+      // At most one of the two selectors rides the transport (see
+      // `getTranscriptionPipelineConfig`); the provider POSTs whichever is set.
+      ...(agentSlug ? { agentSlug } : {}),
+      ...(pipelineId ? { pipelineId } : {}),
       consultationId: this.runtimeOptions.consultationId,
       // Per-capture stop-drain ceiling. Spread only
       // when positive so the provider keeps seeing `undefined` — and therefore
@@ -940,7 +968,7 @@ export class PluginManager {
   /**
    * Check if a plugin is enabled in configuration
    */
-  isEnabled(name: keyof AudioPluginConfig): boolean {
+  isEnabled(name: AudioPluginStageName): boolean {
     const config = this.config[name];
     if (typeof config === 'boolean') return config;
     return config?.enabled ?? false;
@@ -949,7 +977,7 @@ export class PluginManager {
   /**
    * Get plugin configuration
    */
-  private getConfig<T extends object>(name: keyof AudioPluginConfig): T {
+  private getConfig<T extends object>(name: AudioPluginStageName): T {
     const config = this.config[name];
     if (typeof config === 'boolean') {
       return { enabled: config } as T;

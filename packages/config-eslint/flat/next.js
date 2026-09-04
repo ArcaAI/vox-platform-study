@@ -70,6 +70,26 @@ const HANDROLLED_SHEET_PATH = {
     'Record detail/edit belongs in the console-wide `DetailDrawer` (@/shared/detail/detail-drawer), not a feature-local Sheet — see .claude/rules/11-ux-ui-principles.md §1 Detail Surface. Short confirmations stay Dialogs.',
 };
 
+/**
+ * TASK-865 — the browser never runs a model. The client-AI packages are
+ * deprecated (removed in R4) and the admin console, as the platform's own
+ * first-party consumer, may not import them: VAD / denoise / ASR / NER are
+ * server-side decisions of the tenant's agents, reached through `@arcaai/vox`
+ * (`audio.start({ agentSlug })`). `@arcaai/stt` keeps two capture-only helpers
+ * reachable (PCM plumbing, no model) for the live-transcription playground;
+ * everything else in it is banned.
+ */
+const CLIENT_AI_MESSAGE =
+  'TASK-865: client-side AI is retired (removed in R4) — the browser never runs a model. Capture with @arcaai/vox useArcaAudio and let the tenant ASR Agent decide VAD/denoise/ASR server-side (audio.start({ agentSlug })). See .claude/rules/08-vox-sdk.md.';
+
+const CLIENT_AI_PATHS = [
+  { name: '@arcaai/vad', message: CLIENT_AI_MESSAGE },
+  { name: '@arcaai/noise-filter', message: CLIENT_AI_MESSAGE },
+  { name: '@arcaai/med-ner', message: CLIENT_AI_MESSAGE },
+  { name: '@arcaai/vox/plugins/med-ner', message: CLIENT_AI_MESSAGE },
+  { name: '@arcaai/stt', allowImportNames: ['createAudioCapture', 'float32ToInt16', 'AudioCaptureHandle'], message: CLIENT_AI_MESSAGE },
+];
+
 /** @type {import('eslint').Linter.Config[]} */
 module.exports = [
   {
@@ -150,7 +170,7 @@ module.exports = [
       // the shared core). Server-side Next.js code could import
       // @arcaai/database; the unscoped client bypasses tenant-scope and
       // soft-delete.
-      'no-restricted-imports': ['error', { paths: [UNSCOPED_PRISMA_PATH], patterns: [UNSCOPED_PRISMA_PATTERN] }],
+      'no-restricted-imports': ['error', { paths: [UNSCOPED_PRISMA_PATH, ...CLIENT_AI_PATHS], patterns: [UNSCOPED_PRISMA_PATTERN] }],
     },
   },
   {
@@ -161,7 +181,7 @@ module.exports = [
     files: ['src/features/**/*.ts', 'src/features/**/*.tsx'],
     ignores: ['src/shared/detail/**'],
     rules: {
-      'no-restricted-imports': ['error', { paths: [UNSCOPED_PRISMA_PATH, HANDROLLED_SHEET_PATH], patterns: [UNSCOPED_PRISMA_PATTERN] }],
+      'no-restricted-imports': ['error', { paths: [UNSCOPED_PRISMA_PATH, HANDROLLED_SHEET_PATH, ...CLIENT_AI_PATHS], patterns: [UNSCOPED_PRISMA_PATTERN] }],
     },
   },
   // MUST stay last: disables stylistic rules that conflict with Prettier.

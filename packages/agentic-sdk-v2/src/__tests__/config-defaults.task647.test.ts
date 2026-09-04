@@ -26,6 +26,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PluginManager } from '../core/PluginManager';
 import { TranscriptionPipeline } from '../core/TranscriptionPipeline';
 import { DEFAULT_AUDIO_CONFIG, DEFAULT_LOCAL_CONFIG } from '../types';
+import { DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG } from '../types/pipeline';
 import { createMockLogger } from './setup';
 
 const createVAD = vi.fn();
@@ -46,6 +47,15 @@ describe('optional audio features default OFF (config objects)', () => {
     expect(DEFAULT_AUDIO_CONFIG.stt).toMatchObject({ enabled: true });
   });
 
+  it('DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG (the pipeline-level fallback) also declares VAD and noise-filter OFF', () => {
+    // TASK-865: a `new TranscriptionPipeline({ stt })` that names neither stage
+    // must not inherit a client model from the pipeline's OWN defaults either —
+    // the directive is "nothing loads unless the host opts in", at every layer.
+    expect(DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG.vad.enabled).toBe(false);
+    expect(DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG.noiseFilter.enabled).toBe(false);
+    expect(DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG.stt.enabled).toBe(true);
+  });
+
   it('DEFAULT_LOCAL_CONFIG does NOT auto-extract medical NER by default', () => {
     expect(DEFAULT_LOCAL_CONFIG.ner.autoExtract).toBe(false);
     // Already-off features stay off (regression guard, not a change).
@@ -62,6 +72,14 @@ describe('PluginManager resolves the DEFAULT audio config to a gated pipeline', 
     expect(pipelineConfig.vad.enabled).toBe(false);
     expect(pipelineConfig.noiseFilter.enabled).toBe(false);
     expect(pipelineConfig.stt.enabled).toBe(true);
+  });
+
+  it('a PluginManager constructed with NO audio config resolves both client stages DISABLED', () => {
+    const manager = new PluginManager(undefined, createMockLogger(), undefined, false);
+    const pipelineConfig = manager.getTranscriptionPipelineConfig();
+
+    expect(pipelineConfig.vad.enabled).toBe(false);
+    expect(pipelineConfig.noiseFilter.enabled).toBe(false);
   });
 });
 
@@ -96,11 +114,27 @@ describe('a default mount never constructs the optional stages', () => {
     expect(pipeline.getProcessor('noiseFilter')).toBeFalsy();
   });
 
-  it('POSITIVE CONTROL — the SAME pipeline DOES construct VAD once a consumer opts in', async () => {
+  it('a TranscriptionPipeline built with NO config (pipeline-level defaults) imports neither package', async () => {
+    const pipeline = new TranscriptionPipeline({ stt: { enabled: false, location: 'browser', provider: 'local' } }, createMockLogger());
+
+    await pipeline.start({
+      track: { kind: 'audio' } as unknown as MediaStreamTrack,
+      audioContext: {} as unknown as AudioContext,
+    });
+
+    expect(createVAD).not.toHaveBeenCalled();
+    expect(createNoiseFilter).not.toHaveBeenCalled();
+  });
+
+  it('POSITIVE CONTROL — the SAME pipeline DOES construct VAD once a consumer opts in (stage enabled AND clientInference.allow)', async () => {
     createVAD.mockResolvedValue({ init: vi.fn(), on: vi.fn(), isEnabled: () => true, processedTrack: null });
 
     const pipeline = new TranscriptionPipeline(
       {
+        // TASK-865: `enabled: true` alone is no longer enough — see
+        // `client-inference-gate.task865.test.ts`. The explicit allow is what
+        // proves the gate can still be opened by a host that means it.
+        clientInference: { allow: true },
         noiseFilter: { enabled: false, location: 'skip' },
         vad: { enabled: true, location: 'browser' },
         stt: { enabled: false, location: 'browser', provider: 'local' },

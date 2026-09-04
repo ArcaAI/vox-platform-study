@@ -314,7 +314,24 @@ export interface AudioStartOptions {
    * configured.
    */
   startOn?: 'primary' | 'fallback';
+  /**
+   * Backend ASR pipeline UUID or slug.
+   *
+   * @deprecated TASK-865 — removed in R4 (the `AsrPipeline` resource retires
+   * under TASK-861). Pass {@link AudioStartOptions.agentSlug} instead, or
+   * nothing. Still forwarded for now, with a deprecation warning; when BOTH are
+   * passed, `agentSlug` wins and this value is dropped (warned, never silent).
+   */
   pipelineId?: string;
+  /**
+   * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
+   * transcribe this capture — a lineage key, like `workflowDefinitionSlug` at
+   * `session.open()`. Omit to let the tenant → department assignment cascade
+   * decide. The client never names a pipeline, an engine, a model or a VAD:
+   * what transcribes is a server-side decision. Discover the selectable set
+   * with `useSelectableAsrAgents()`.
+   */
+  agentSlug?: string;
   /**
    * Primary microphone deviceId. Forwarded as
    * `getUserMedia({ audio: { deviceId: { exact } } })`. Omit for the default mic.

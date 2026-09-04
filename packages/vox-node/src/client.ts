@@ -15,7 +15,15 @@
 import { ServiceAccountTokenProvider } from './core/service-account-token';
 import type { ServiceAccountCredentials } from './core/service-account-token';
 import { Transport } from './core/transport';
-import { AdminNamespace, ConsultationsResource, JobsResource, SummarizationResource, TenantsResource, WorkflowsResource } from './resources';
+import {
+  AdminNamespace,
+  AgentsResource,
+  ConsultationsResource,
+  JobsResource,
+  SummarizationResource,
+  TenantsResource,
+  WorkflowsResource,
+} from './resources';
 
 /**
  * Structured logger hook for `HopeClient`. Every method is optional so a
@@ -112,6 +120,13 @@ export class HopeClient {
    */
   readonly workflows: WorkflowsResource;
   /**
+   * The published-AGENT invocation plane (TASK-865, over the TASK-863 routes):
+   * list/get a tenant's published agents, invoke an LLM agent (blocking or
+   * streaming), synthesize speech, submit a batch transcription. Same
+   * credential rule as {@link workflows}: API key only.
+   */
+  readonly agents: AgentsResource;
+  /**
    * The `/api/v1/admin/**` administration plane — 52 areas, one property per
    * `svc:admin:*` scope.
    *
@@ -187,6 +202,7 @@ export class HopeClient {
     this.jobs = new JobsResource(transport);
     this.tenants = new TenantsResource(transport);
     this.workflows = new WorkflowsResource(transport, isServiceAccount);
+    this.agents = new AgentsResource(transport, isServiceAccount);
     this.admin = new AdminNamespace(transport);
   }
 }

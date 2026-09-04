@@ -66,3 +66,17 @@ export type {
   WorkflowRunStatus,
   WorkflowSummary,
 } from './workflow';
+
+/** Published-Agent invocation plane — `hope.agents.*` (TASK-865). */
+export type {
+  AgentInvocationEvent,
+  AgentInvocationEventPayload,
+  AgentInvocationResult,
+  AgentSummary,
+  AgentTask,
+  InvokeAgentRequest,
+  SpeechRequest,
+  SpeechSynthesis,
+  TranscribeSource,
+  TranscriptionJobHandle,
+} from './agent';

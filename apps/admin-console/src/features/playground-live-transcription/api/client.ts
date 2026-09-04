@@ -11,7 +11,7 @@ import type {
   BatchTranscribeResponse,
   CreateStreamSessionInput,
   PaginatedPlaygroundJobs,
-  PlaygroundPipeline,
+  PlaygroundAsrAgent,
   PlaygroundTranscriptionJob,
   RefreshTicketResponse,
   StreamSessionResponse,
@@ -56,14 +56,15 @@ export function buildStreamWsUrl(apiHost: string, wsPath: string, params: { sess
  */
 export async function uploadBatchAudio(input: {
   file: File;
-  pipelineId: string;
+  /** Published ASR Agent slug; omitted ⇒ the tenant default agent (TASK-865/861). */
+  agentSlug?: string;
   language?: string;
   /** Abort handle — the batch queue cancels an in-flight upload with it. */
   signal?: AbortSignal;
 }): Promise<BatchTranscribeResponse> {
   const form = new FormData();
   form.append('file', input.file);
-  form.append('pipelineId', input.pipelineId);
+  if (input.agentSlug) form.append('agentSlug', input.agentSlug);
   if (input.language) form.append('language', input.language);
   return (await request<BatchTranscribeResponse>(`${JOB_BASE}/transcribe`, { method: 'POST', body: form, signal: input.signal })).data;
 }
@@ -92,9 +93,10 @@ export function jobStreamPath(id: string): string {
   return `${JOB_BASE}/${encodeURIComponent(id)}/stream`;
 }
 
-// --- pipeline picker ---------------------------------------------------------
+// --- transcription-agent picker ----------------------------------------------
 
-/** Public tenant-scoped read (AudioPipelinePublicController) — SDK picker plane. */
-export function listPlaygroundPipelines(): Promise<PlaygroundPipeline[]> {
-  return getJson('audio/pipelines');
+/** Published ASR agents the caller may name (TASK-863 business route) — same predicate the session route resolves with. */
+export async function listPlaygroundAsrAgents(): Promise<PlaygroundAsrAgent[]> {
+  const response = await getJson<{ data?: PlaygroundAsrAgent[] }>('agents?task=SPEECH_TO_TEXT');
+  return Array.isArray(response?.data) ? response.data : [];
 }

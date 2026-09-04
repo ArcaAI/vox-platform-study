@@ -124,6 +124,8 @@ export interface StreamRunOptions {
   autoResume?: boolean;
   /** Reconnect attempts before giving up. Default `5`. */
   maxResumeAttempts?: number;
+  // TODO(TASK-864): workflow socket protocol — a `transport: 'sse' | 'socket'` option lands here
+  // when the run stream gains a socket lane; SSE with `Last-Event-ID` resume stays the default.
 }
 
 function runsPath(slug: string): string {

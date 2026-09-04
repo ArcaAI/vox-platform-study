@@ -225,16 +225,59 @@ export interface ApiConfig {
 // =============================================================================
 
 /**
+ * The three audio pipeline stages a host can address by name.
+ * (`clientInference` on {@link AudioPluginConfig} is a GATE, not a stage.)
+ */
+export type AudioPluginStageName = 'noiseFilter' | 'vad' | 'stt';
+
+/**
+ * Explicit opt-in for CLIENT-SIDE model inference (TASK-865).
+ *
+ * The browser captures audio and renders results; it never runs a model. The
+ * runtime therefore IGNORES `noiseFilter.enabled: true` / `vad.enabled: true`
+ * — logging a deprecation warning once — unless the host ALSO sets
+ * `audio.clientInference: { allow: true }`. This switch exists only so a host
+ * that genuinely needs in-browser VAD/denoise during the deprecation window
+ * can keep it, and it retires with the client packages.
+ *
+ * @deprecated TASK-865 — removed in R4 with `@arcaai/vad` / `@arcaai/noise-filter`.
+ * Server-side VAD/denoise are selected by the tenant's ASR Agent instead.
+ */
+export interface ClientInferenceConfig {
+  /** `true` opens the gate for the two client stages. Anything else keeps it closed. */
+  allow: boolean;
+}
+
+/**
  * Audio Plugin Configuration
  * Each plugin can be enabled with a boolean or configured with options
  */
 export interface AudioPluginConfig {
-  /** Noise filter configuration */
+  /**
+   * Noise filter (RNNoise, in-browser) configuration.
+   *
+   * @deprecated TASK-865 — removed in R4. `enabled: true` is IGNORED unless
+   * {@link AudioPluginConfig.clientInference} allows it; denoise is a server-side
+   * decision of the tenant's ASR Agent (`audioFrontEnd.denoise`).
+   */
   noiseFilter?: NoiseFilterPluginConfig | boolean;
-  /** Voice Activity Detection configuration */
+  /**
+   * Voice Activity Detection (Silero, in-browser) configuration.
+   *
+   * @deprecated TASK-865 — removed in R4. `enabled: true` is IGNORED unless
+   * {@link AudioPluginConfig.clientInference} allows it; VAD is a server-side
+   * decision of the tenant's ASR Agent (`audioFrontEnd.vad`).
+   */
   vad?: VADPluginConfig | boolean;
   /** Speech-to-Text configuration */
   stt?: STTPluginConfig | boolean;
+  /**
+   * Explicit opt-in for client-side model inference. Absent ⇒ closed: the
+   * two client stages never load a model, whatever their `enabled` says.
+   *
+   * @deprecated TASK-865 — removed in R4 (documented as deprecated on arrival).
+   */
+  clientInference?: ClientInferenceConfig;
 }
 
 /**
@@ -279,8 +322,23 @@ export interface STTPluginConfig {
   languageMode?: string;
   /** Model ID from model registry */
   modelId?: string;
-  /** Backend ASR pipeline ID or slug (required for provider: 'backend') */
+  /**
+   * Backend ASR pipeline ID or slug.
+   *
+   * @deprecated TASK-865 — removed in R4 (the `AsrPipeline` resource retires
+   * under TASK-861). Name the tenant's ASR Agent with {@link STTPluginConfig.agentSlug}
+   * — or pass `agentSlug` per capture via `audio.start({ agentSlug })` — or
+   * omit both and let the tenant's assignment cascade decide.
+   */
   pipelineId?: string;
+  /**
+   * Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) that should
+   * transcribe this session. A lineage key, like `workflowDefinitionSlug` at
+   * `session.open()`. Omit to let the tenant → department assignment cascade
+   * pick. The per-capture `audio.start({ agentSlug })` wins over this value.
+   * Discover the selectable set with `useSelectableAsrAgents()`.
+   */
+  agentSlug?: string;
   /** WebSocket URL for backend STT streaming (overrides api.wsUrl + default path) */
   sttSocket?: string;
   // v1-compatibility
@@ -595,7 +653,11 @@ export interface UserPreferencesUpdate {
 // =============================================================================
 
 /**
- * Default local workflow configuration
+ * Default local workflow configuration.
+ *
+ * @deprecated TASK-865 — removed in R4. The `noiseCancellation` (`rnnoise`), `stt` (`whisper-*`)
+ * and `vad` (`silero-vad-v5`) model pins describe CLIENT models the runtime no longer loads;
+ * they are kept only so persisted user preferences keep deserialising during the window.
  */
 export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
   noiseCancellation: { modelId: 'rnnoise', level: 'medium' },

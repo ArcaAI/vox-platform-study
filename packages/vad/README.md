@@ -1,5 +1,7 @@
 # @arcaai/vad
 
+> **DEPRECATED (TASK-865) — removed in R4.** Client-side VAD is retired; the tenant's ASR Agent runs VAD server-side. The browser captures audio and renders results; it never runs a model. This package keeps building and stays importable until R4 so existing hosts can migrate; do not add new consumers. Register row: `docs/operations/deprecation-register.md` §SDK.
+
 Voice Activity Detection plugin for `@arcaai/room` built on Silero VAD (v5 or legacy) via `@ricky0123/vad-web` and ONNX Runtime WebAssembly. Detects speech in real time, emits speech start/end events with the captured audio segment, and exposes both a `VADProcessor` class and a `useVAD` React hook.
 
 Last updated: 2026-07-04

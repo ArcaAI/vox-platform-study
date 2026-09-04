@@ -46,8 +46,12 @@ function ensureApiV1Base(apiEndpoint: string): string {
  * the provider uses the default — no longer inherits VAD/noise or triggers an
  * unsolicited Silero/RNNoise model fetch. Opt in per stage to turn them on.
  */
-function mapAudioSettings(audio: V1AudioSettings | undefined, sttPipelineId: string | undefined): AudioPluginConfig | undefined {
-  if (!audio && !sttPipelineId) return undefined;
+function mapAudioSettings(
+  audio: V1AudioSettings | undefined,
+  sttPipelineId: string | undefined,
+  sttAgentSlug: string | undefined,
+): AudioPluginConfig | undefined {
+  if (!audio && !sttPipelineId && !sttAgentSlug) return undefined;
 
   const config: AudioPluginConfig = {};
 
@@ -63,8 +67,12 @@ function mapAudioSettings(audio: V1AudioSettings | undefined, sttPipelineId: str
     config.vad = { enabled: !!audio.voiceActivityDetection };
   }
 
-  if (sttPipelineId) {
-    // A pipelineId routes STT to the backend streaming provider.
+  // Either selector routes STT to the backend streaming provider. The ASR
+  // Agent slug (TASK-865) wins over the deprecated pipeline id; they are never
+  // both emitted, so the session body carries at most one.
+  if (sttAgentSlug) {
+    config.stt = { enabled: true, provider: 'backend', agentSlug: sttAgentSlug, requireTenantClaim: false };
+  } else if (sttPipelineId) {
     config.stt = { enabled: true, provider: 'backend', pipelineId: sttPipelineId, requireTenantClaim: false };
   }
 
@@ -113,7 +121,7 @@ export function mapV1ConfigToAgenticConfig(v1: V1SdkConfig): AgenticConfig {
       wsUrl: v1.websocketUrl,
       apiKey,
     },
-    audio: mapAudioSettings(v1.audioSettings, v1.sttPipelineId),
+    audio: mapAudioSettings(v1.audioSettings, v1.sttPipelineId, v1.sttAgentSlug),
     debug: v1.environment === 'development' ? true : undefined,
     // Observability passthrough. The transports own their activation gates, so
     // this enables nothing by itself. Spread only when stated, so a v1 app that

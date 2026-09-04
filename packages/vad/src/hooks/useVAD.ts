@@ -123,6 +123,8 @@ export interface UseVADReturn {
  *   );
  * }
  * ```
+ *
+ * @deprecated TASK-865 — removed in R4. Client-side model inference is retired: in-browser Silero VAD. VAD is a server-side decision of the tenant's ASR Agent (`audioFrontEnd.vad`); the browser never runs a model.
  */
 export function useVAD(options: UseVADOptions): UseVADReturn {
   const { track, autoAttach = true, onSpeechStart, onSpeechEnd, onVADMisfire, onFrameProcessed, ...vadOptions } = options;

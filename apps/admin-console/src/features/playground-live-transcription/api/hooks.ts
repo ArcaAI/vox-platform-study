@@ -5,7 +5,7 @@ import {
   cancelTranscriptionJob,
   getTranscriptionJob,
   listMyTranscriptionJobs,
-  listPlaygroundPipelines,
+  listPlaygroundAsrAgents,
   retryTranscriptionJob,
   uploadBatchAudio,
 } from './client';
@@ -18,8 +18,8 @@ const REFRESH_MS = 30_000;
 /** Poll cadence for the active job while its SSE stream is down. */
 const JOB_POLL_MS = 5_000;
 
-export function usePlaygroundPipelines() {
-  return useQuery({ queryKey: liveTranscriptionKeys.pipelines(), queryFn: listPlaygroundPipelines });
+export function usePlaygroundAsrAgents() {
+  return useQuery({ queryKey: liveTranscriptionKeys.asrAgents(), queryFn: listPlaygroundAsrAgents });
 }
 
 export function useMyTranscriptionJobs(params?: { page?: number; limit?: number }) {

@@ -325,7 +325,7 @@ export function AccountScreen() {
                     {preferences.transcriptionModeLocked ? <Badge variant="outline">Locked by admin</Badge> : null}
                   </ReadOnlyField>
                   {preferences.remoteConfig ? (
-                    <ReadOnlyField label="Assigned pipeline">
+                    <ReadOnlyField label="Assigned transcription agent">
                       <span>{preferences.remoteConfig.pipelineName ?? preferences.remoteConfig.pipelineId}</span>
                       <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
                         {preferences.remoteConfig.assignedBy}

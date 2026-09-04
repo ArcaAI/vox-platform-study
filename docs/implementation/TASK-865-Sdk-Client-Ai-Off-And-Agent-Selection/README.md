@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | refactor |
 | **Program** | [TASK-859 — AI Platform Consolidation](../TASK-859-Ai-Platform-Consolidation-Program/README.md) |
 | **Packages** | `packages/agentic-sdk-v2` (`@arcaai/vox`), `packages/vox-node`, `packages/vad`, `packages/noise-filter`, `packages/stt`, `packages/med-ner`, `apps/admin-console/src/features/playground-*` |
@@ -175,10 +175,64 @@ TDD, in this order. Each step names its RED test first.
 
 ## 6. Implementation Summary
 
-_Pending — filled at implementation time with test/build/lint output._
+Implemented 2026-09-04 on branch `task-865-sdk-client-ai-off` (worktree `hope-v2-task-865`, base `dev-2.2` @ `1896ebc03`), TDD, one commit per plan step. All ten plan steps landed; the console's `build` gate is blocked by a pre-existing error outside this ticket (see below).
+
+### What changed, per step
+
+| # | Step | Outcome |
+|---|---|---|
+| 1 | Defaults pin | `DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG` flipped both client stages OFF (the pipeline-level fallback had `enabled: true`); `config-defaults.task647.test.ts` extended (pipeline-level defaults, bare `PluginManager`, bare `TranscriptionPipeline`). |
+| 2 | Hard-off gate | `TranscriptionPipeline` ignores `noiseFilter.enabled` / `vad.enabled` unless `clientInference: { allow: true }`; warns ONCE per pipeline naming the ignored stages. `AudioPluginConfig.clientInference` (deprecated on arrival) forwarded by `PluginManager`. New `client-inference-gate.task865.test.ts`. |
+| 3 | `agentSlug` | `AudioStartOptions.agentSlug`, `STTPluginConfig.agentSlug`, `PluginManagerRuntimeOptions.agentSlug`, `CreateStreamingSessionRequest.agentSlug`; `StreamingSessionManager.normalizeSelection` is the single chokepoint (both → `agentSlug` only + warn; `pipelineId` alone → sent + deprecation warn; neither → no selector). `@arcaai/stt` transport/provider/session-like accept `agentSlug`, `pipelineId` optional, no throw without one. An explicit `provider: 'backend'` with nothing named now opens a selector-less session (gateway resolves the tenant default, TASK-861). |
+| 4 | Exports | `AudioStartOptions` was already exported from `/core` + root (F-10 closed before this branch); the export test now pins `agentSlug` from both barrels. `ClientInferenceConfig`, `AudioPluginStageName`, `SelectableAgent`/`SelectableAsrAgent`/`AgentTask` exported. No `check:exports` script exists for `@arcaai/vox`. |
+| 5 | `useSelectableAsrAgents()` | `GET /agents?task=SPEECH_TO_TEXT`; `null` ≠ `[]`; non-ASR rows dropped; exported from hooks barrel, `/core`, root. |
+| 6 | Deprecations | `@deprecated TASK-865 — removed in R4` on every §3.2 item; `package.json#deprecated` + README banner on `@arcaai/vad`/`noise-filter`/`stt`/`med-ner`; `useLocalVoiceEmbedding` console-warns once; compat `sttAgentSlug` added (wins over `sttPipelineId`); `@arcaai/config-eslint` `flat/next.js` bans the client-AI imports in the console (`@arcaai/stt` keeps `createAudioCapture`/`float32ToInt16`); `deprecations.task865.test.ts` pins every marker + its removal release. |
+| 7 | Console | Scribe: hard-enables removed (F-1), picker on `useSelectableAsrAgents`, `audio.start({ agentSlug })` or nothing (cascade), footer label "Transcription agent", `naming.test.ts` updated, orphaned `useAudioPipelines` plumbing removed. Live Transcription: picker on `GET /agents?task=SPEECH_TO_TEXT`, session + batch bodies send `agentSlug` only when picked, no agent required. Account: "Assigned transcription agent". |
+| 8 | `hope.agents` | `packages/vox-node/src/resources/agents.ts` (hand-authored): `list/get/invoke/invokeAndStream/synthesize/transcribe`; transport passes `FormData` through; `AGENT_PLANE_ROUTES` + contract test that skips until TASK-863's manifest rows exist; `TODO(TASK-864)` on both stream-option surfaces. |
+| 9 | Docs | `@arcaai/vox` README ("The browser never runs a model"), `@arcaai/vox-node` README ("Invoking agents"), integration guide §1 ("Pick an agent"), rule `08-vox-sdk.md` new section. |
+| 10 | Register | SDK rows → `marked` (+ `clientInference` and compat `sttPipelineId` rows). |
+
+### Gate evidence (actual output, 2026-09-04)
+
+```
+$ pnpm sdk:build            Tasks: 7 successful, 7 total   (build + dts)
+$ pnpm sdk:test             Test Files 282 passed (282) · Tests 4373 passed (4373)
+$ pnpm sdk:lint             ✖ 1 problem (0 errors, 1 warning)   ← pre-existing prettier warning in src/hooks/useRoles.ts (0 diff vs base)
+$ pnpm sdk:typecheck        Tasks: 7 successful, 7 total
+$ pnpm --filter @arcaai/vox-node build   ESM/CJS/DTS ⚡️ Build success
+$ pnpm --filter @arcaai/vox-node test    Test Files 25 passed (25) · Tests 365 passed | 10 skipped (375)   ← skipped = agents contract suite awaiting TASK-863 manifest rows
+$ pnpm --filter @arcaai/vox-node check:exports   attw: node10 🟢 · node16 CJS 🟢 · node16 ESM 🟢 · bundler 🟢 · publint: All good!
+$ pnpm --filter @arcaai/vad test           Test Files 9 passed (9)  · Tests 205 passed
+$ pnpm --filter @arcaai/noise-filter test  Test Files 15 passed (15) · Tests 186 passed
+$ pnpm --filter @arcaai/stt test           Test Files 27 passed (27) · Tests 446 passed
+$ (admin-console) npx vitest run           Test Files 263 passed (263) · Tests 2343 passed (2343)
+$ (admin-console) eslint src --max-warnings 0   ✖ 1 error — src/features/ai-platform/components/__tests__/ai-platform-screen.test.tsx:366 (pre-existing, 0 diff vs base, not owned by this ticket)
+$ (admin-console) tsc --noEmit             1 error — src/features/ai-platform/components/huggingface-fetch-drawer.tsx(32,45) TS2339 (pre-existing, 0 diff vs base)
+$ pnpm --filter @arcaai/admin-console build   "Failed to type check." on the SAME pre-existing ai-platform error; Turbopack compiled successfully in 9.0s; 5 Edge-runtime WARNINGS in instrumentation.ts (pre-existing, 0 diff vs base)
+$ pnpm sdk-node:build       FAILS in the DEPENDENCY @arcaai/vox-node-codegen (src/schema-to-ts.ts(234,10) TS2322) — 0 diff vs base; the package-level vox-node build above is green
+$ grep -rn "enabled: true" apps/admin-console/src --include=*.tsx | grep -E "vad|noiseFilter"   → (nothing)
+```
+
+Not run (out of the worktree's remit): Playwright proof of zero `cdn.jsdelivr.net` / `*.onnx` / `*.wasm` requests from `/playground/consultation`, and the end-to-end backend transcription check — both need a running stack and land with the orchestrator's integration pass after TASK-861/863 merge.
+
+### Cross-ticket contracts this branch codes against
+
+- **TASK-861** — `POST /audio/transcription-jobs/stream/session` and `POST …/transcribe` accept `agentSlug?: string` and make `pipelineId` optional. Today's gateway DTO still REQUIRES `pipelineId` and `forbidNonWhitelisted` rejects `agentSlug`, so a console session opened with an explicit agent (or none) 400s until 861 merges.
+- **TASK-863** — `GET /agents[?task]`, `GET /agents/{slug}`, `POST /agents/{slug}/invocations?mode=blocking|stream`, `POST /agents/{slug}/speech`, `POST /agents/{slug}/transcriptions` — business plane, `svcScopes: []`. Row shape coded: `{ slug, name, description, task, versionNumber, isTenantDefault, inputSchema?, outputSchema?, protocols? }` under `{ data: [...] }`. The blocking invocation response is assumed `{ output, …extra }`.
+- **TASK-864** — `TODO(TASK-864)` on `UseWorkflowRunOptions` (vox) and `StreamRunOptions` (vox-node) where a socket transport option lands.
+
+### Deviations / decisions to confirm
+
+1. `naming.test.ts` lives in `features/agents/**` (not in this ticket's ownership list) but the brief named it explicitly; only its wording/assertion changed.
+2. `provider: 'auto'` with nothing named keeps its pre-865 resolution (no transport ⇒ `LOCAL_TRANSCRIPTION_DISABLED`). Widening `'auto'` to auto-open a backend session on the tenant default is a behaviour change left for an owner decision (the scribe and live playgrounds use an explicit `'backend'`).
+3. `useLocalVoiceEmbedding` deprecated now (README §5 Q3 recommendation), with a console warning on first use.
+4. No SDK version bump was made; recommendation: `@arcaai/vox` and `@arcaai/vox-node` 3.0.0 → 3.1.0 together at the next `publish-sdk` run (additive surface + deprecations, no removals).
+5. The scribe's transcription picker has no explicit "clear" affordance yet (`ModelSelector` without `noneOption`) — a reload returns to the cascade default; the live-transcription picker has an explicit "Tenant default" option.
 
 ## 7. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-04 | Ticket created from the TASK-859 review: current-state evidence, target design, plan. |
+| 2026-09-04 | Implemented steps 1–10 on `task-865-sdk-client-ai-off` (9 commits); status → Review. Console `build` gate blocked by a pre-existing `ai-platform` type error; `sdk-node:build` blocked by a pre-existing `vox-node-codegen` DTS error — both 0 diff vs base, reported to the orchestrator. |
+| 2026-09-04 | Orchestrator: dev-2.2 merged into the branch through TASK-861 + TASK-864 (`a69263e51`; register reconciled per ticket). Gates on the merged tree (Prisma client regenerated per worktree, every workspace dist rebuilt): `@arcaai/vox` 282 files / 4373 tests, typecheck + build clean (lint: one pre-existing prettier warning in `hooks/useRoles.ts:233`, identical to the owner's base — out of scope); `@arcaai/vox-node` 365 tests, typecheck clean, `check:exports` clean (`gen:admin:check` red by design until the orchestrator regenerates the artifacts after this merge); workflow-contract 1498; database 1813; domains 1919; applications 11074; `pnpm api:build` 12/12; api unit 4182 passed, 0 failed; console lint clean, 2315 tests, `next build` 94 routes — the two blockers recorded in the previous row are gone on the merged tree; stt ruff/mypy clean, unit 3086 with the single known host-env MinIO case; shadow-DB proof drift-free (no 865 migration). Merged into dev-2.2. |
