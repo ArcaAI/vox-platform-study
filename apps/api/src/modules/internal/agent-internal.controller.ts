@@ -1,5 +1,5 @@
 import { AgentResolverService, AgentTask, IActiveUserContext } from '@arcaai/applications';
-import type { ResolvedAgent } from '@arcaai/types';
+import type { ResolvedAgent } from '@arcaai/applications';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { Controller, Get, Headers, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiTags } from '@nestjs/swagger';
