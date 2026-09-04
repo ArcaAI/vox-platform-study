@@ -2,16 +2,14 @@
  * The retired console routes.
  *
  * `/prompt-studio` folded into the prompt-template Governance tab, `/pstudio`
- * was renamed `/db-studio`, `/agents` (the Agent Catalog) retired with
- * `DepartmentAgent` itself, and `/ai-task-defaults` became the
+ * was renamed `/db-studio`, and `/ai-task-defaults` became the
  * platform-default scope of `/ai-platform`. Each keeps a redirect
  * page for ONE release so bookmarks and deep links survive. These specs lock
  * the exact targets: a typo'd or dropped redirect is a silent 404 for anyone
  * with the old URL saved.
  *
- * added the `/agents` case plus the two structural guards
- * below. shipped the `/agents` redirect but pinned nothing, so its
- * target was the one retirement in the console that could break silently.
+ * TASK-863 REMOVED the `/agents` case: the route is a real screen again (the
+ * first-class Agent entity), so it is neither retired nor a redirect.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -47,7 +45,6 @@ const RETIRED_ROUTES: ReadonlyArray<readonly [route: string, modulePath: string,
   // of the PromptTemplate surface onto its own route.
   ['/prompt-studio', '../prompt-studio/page', '/prompt-templates?tab=governance'],
   ['/pstudio', '../pstudio/page', '/db-studio'],
-  ['/agents', '../../(tenant)/agents/page', '/prompt-templates'],
   // a RENAME: the SYSTEM-tenant task-default screen became the
   // platform-default SCOPE of the unified AI Platform screen, at a new URL. The
   // stub lives in `(shared)` rather than `(global)` on purpose: the `(global)`
