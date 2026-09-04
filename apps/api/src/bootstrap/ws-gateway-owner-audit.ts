@@ -98,6 +98,18 @@ export const WS_OWNER_BOUND_GATEWAYS: Readonly<Record<string, WsGatewayOwnerReco
       'BEFORE the ticket is parsed, so a hostile origin never burns a ticket. Classified deliberately rather than ' +
       'left `pending`: the review was written before  landed, when this gateway had no origin check at all.',
   },
+  WorkflowWsGateway: {
+    ownerCheck: 'no-owned-session',
+    regressionSpec: 'apps/api/src/modules/streaming/__tests__/workflow-ws.gateway.owner-binding.test.ts',
+    note:
+      'TASK-864 `/ws/workflows`: every socket is its own read-only view of an existing run, the same frames as ' +
+      '`GET /workflows/{slug}/runs/{runId}/stream` — there is no server-side session for a second principal to adopt, ' +
+      'so an "owner check" would compare nothing. The authorisation is the CSWSH origin gate (runs BEFORE a ticket is ' +
+      'burned), the single-use `workflow_run:<runId>` stream ticket (minted bound to the caller tenant by ' +
+      'POST /auth/stream-ticket; a ticket for another run is refused), and the run lookup performed under the ' +
+      'TICKET tenant — a foreign or unknown run is one generic close, never a frame. The spec pins all three and ' +
+      'that a client-supplied runId cannot widen the ticket scope.',
+  },
   SttCompatGateway: {
     ownerCheck: 'compat-exempt',
     regressionSpec: 'apps/api/tests/e2e/stt-compat-switch-cross-tenant.spec.ts',
