@@ -24,14 +24,14 @@ endpoint for its own service-level knobs.
 | Layer                         | Persisted in                                         | Resolved by                                         | Consumed by                                              |
 | ----------------------------- | ---------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
 | Settings registry / catalog   | descriptor code + `GlobalSetting` (`global-kv` lane) | `EffectiveSettingsService` (registry-key addressed) | admin console (catalog), internal effective-config route |
-| Task → model selection        | `AiTaskDefault`                                      | `AiTaskDefaultService.getEffective`                 | gateway proxies to guardrail / nlp / text / harness       |
-| Provider location + auth      | `AiProviderConnection`                               | provider resolver (tenant → SYSTEM → env)           | gateway inference proxies                                |
-| Hyperparameters / concurrency | `AiRuntimeProfile`                                   | injection-time cascade                              | gateway inference proxies                                |
+| Task → model selection        | `AiRoutingPolicy` (elected `isDefault` row)          | `AiRoutingPolicyService.resolveDefault` (TASK-862)  | gateway proxies to guardrail / nlp / text / harness; guardrail's own SQL read |
+| Provider location + auth + ceilings | `AiProviderConnection`                          | `ProviderCredentialResolver` (tenant → SYSTEM, veto, entitlement gate) | gateway inference proxies, agents (TASK-863), workflow nodes |
+| Hyperparameters               | the Agent (TASK-863); connection CEILINGS live on `AiProviderConnection` | agent resolver / `runtimeProfiles` on the effective-config pull | Python services (pool limits), agents |
 | Model registry + discovery    | `AiModel` (+ live server enumeration)                | `AiModelDiscoveryService` (merge view)              | admin registration, pipeline / task references           |
 | Model source resolution       | `AiModel.sourceUri` / `localPath`                    | each service's `resolve_model_dir`                  | stt, guardrail, nlp, harness                             |
 | Model lifecycle / retention   | `global-kv` settings keys                            | internal effective-config route                     | in-process model caches (all services)                   |
 | Pipeline governance           | `AsrPipeline` (template lineage)                     | pipeline service (clone / resync)                   | stt pipeline reader                                      |
-| Per-tenant TTS spec           | `TenantTtsConfig` (+ BYO credential)                 | `TenantTtsConfigService`                            | gateway → tts (stateless)                                |
+| Per-tenant TTS spec (deprecated, TASK-862) | `TenantTtsConfig`                       | `TenantTtsConfigService`                            | gateway → tts (stateless) — replaced by the TTS Agent (TASK-863) |
 | External identity             | `TenantIdentityProvider` (+ federation)              | `idp-resolver`                                      | auth (OIDC login)                                        |
 | External tools                | `McpServer`                                          | harness at call time                                | harness MCP transport                                    |
 
@@ -70,7 +70,7 @@ max-scope filtering are the caller's responsibility.
 the registry-key-addressed read facade — "what is the effective value of key `K`
 for this context, and which tier set it?". It delegates to the existing per-tier
 resolvers (pipeline toggles via `ConfigResolver`, `models.*` via
-`AiTaskDefaultService`, KV lane via `AppSettingsService`) rather than
+`AiRoutingPolicyService.resolveDefault`, KV lane via `AppSettingsService`) rather than
 re-implementing data access, and **refuses `secret`-sensitivity keys** so a
 secret value can never leak through a config read. It returns the value plus the
 `sourceScope` that supplied it (audit/debug trace).
@@ -96,90 +96,102 @@ standard `_version` / `If-Match` OCC path).
 
 ---
 
-## 3. Task → model selection (`AiTaskDefault`)
+## 3. Task → model selection (`AiRoutingPolicy`)
 
-`AiTaskDefault` is the per-`(tenant, taskKey)` "default model for task X"
-selector — the generalization of `HarnessPolicy.textProvider/textModel` to
-non-pipeline AI tasks. `taskKey` examples: `guardrail.validate`, `nlp.ner`,
-`nlp.classification`, `text.*`, `harness.*`. `modelSlug` references `AiModel.slug`
-within `[tenant, SYSTEM]` scope (no FK — the house slug-reference convention).
+**TASK-862 finished the `AiTaskDefault` strangler.** The per-`(tenant, taskKey)`
+"default model for task X" is the ELECTED `AiRoutingPolicy` row (`isDefault =
+true`, at most one per selection — a DB-enforced partial unique index), which
+binds a catalogue model by FK (`modelId`) and, optionally, a provider connection
+by FK (`providerConnectionId`). `AiTaskDefault` is neither read nor written any
+more and is dropped in R3.
 
-Resolution (`AiTaskDefaultService.getEffective`): **tenant row → SYSTEM row →
-consuming service's env fallback**.
+Resolution — `AiRoutingPolicyService.resolveDefault(tenantId, taskKey)`:
+**tenant elected row → SYSTEM elected row → null**, widening only on ABSENCE.
+`getEffective` is the richer read for the router (match predicate, funded and
+gated fallback chain). `AiTaskDefaultService` survives one release as a FACADE
+over `resolveDefault` (reads) and the elected row (writes) so its ~17 DI
+consumers keep compiling while they are repointed.
 
-**Governance:** every task-key prefix (`guardrail.`, `nlp.`, `text.`, `harness.`)
-is **super-admin-only** — writes are gated by an `isSuperAdmin` service-layer
-guard (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
-`packages/applications/src/services/ai-task-default/constants.ts`). Tenants only
-_consume_ the SYSTEM-row platform default; no task key is tenant-admin editable
-and runtime resolution ignores per-tenant override rows. This mirrors the
-imperative privilege pattern documented in the API gateway rules — the
-permission decorator says `manage`, but the real gate is "super admin only".
+`apps/guardrail` — the one Python service with a sanctioned direct SQL read —
+selects `AiRoutingPolicy ⋈ AiModel` by `modelId` (tenant → SYSTEM, a DISABLED or
+switched-off tenant row is a VETO, fail-closed) and takes its judge tuning
+(`temperature` / `maxTokens` / `timeoutS`) off the winning row's `configJson`.
 
-The gateway's `ai-inference` proxy (user-plane `/ai/*` over Guardrail + NLP)
-resolves the effective task-default model, validates any caller-supplied model
-override against the registry, and forwards it alongside a resolved runtime
-profile.
-
----
-
-## 4. Provider location & BYO credentials (`AiProviderConnection`)
-
-`AiProviderConnection` records **where a serving provider lives and how to
-authenticate to it** — one row per `(tenant, provider)`, the SYSTEM row being the
-platform default. It generalizes the earlier per-tenant TTS credential model to
-all LLM providers. `provider` is a validated string (no Prisma enum, per the
-`AiModel.provider` convention): `ollama`, `lm-studio`, `azure`, `bedrock`,
-`built-in`, `sarvam`, `vllm`, `llama-cpp`. Provider-specific location columns:
-`baseUrl` (ollama / lm-studio / vllm / llama-cpp / azure endpoint), `region`
-(bedrock), `apiVersion` / `deploymentName` (azure), plus a validated `extraJson`.
-
-**Credential handling (data class 2 — per-tenant secret as ciphertext in a DB
-column):** `encryptedApiKey` is Vault-Transit ciphertext written through the
-shared secret-field utility; plaintext is never stored and **no read DTO ever
-returns it** (a `hasKey` boolean only). `keyVersion` tracks the Transit key
-generation for rotation.
-
-**Boundary:** tenant rows are allowed **only for cloud API providers** (azure,
-bedrock) — the service layer returns 403 otherwise; self-host engines
-(ollama / lm-studio / vllm / llama-cpp / built-in) are SYSTEM-only. This is a
-403 privilege boundary, not the 404-over-403 cross-tenant posture.
-
-**Resolution:** tenant row (enabled) → SYSTEM row → service env fallback.
-`AiProviderConnection` is a SYSTEM-shared read model (`SYSTEM_SHARED_READ_MODELS`):
-every tenant's resolver may read the SYSTEM catalog row, but the widening is
-`[caller, SYSTEM]` only and never exposes another tenant's BYO row.
-
-BYO cloud-credential admin flows live under the gateway's
-`ai-provider-connection` module (`apps/api/src/modules/ai-provider-connection/`).
+**Governance:** `nlp.*` / `harness.*` keys are super-admin-only to write and
+resolve SYSTEM-only; `text.*` and `guardrail.*` accept tenant writes, and
+`guardrail.*` carries the platform floor (a tenant write must name a SYSTEM
+catalogue model). The SYSTEM election is edited from the model registry's
+"platform default for task" action (TASK-860); tenant choice for agentic tasks
+moves to the Agent (TASK-863). There is no tenant screen for routing policies.
 
 ---
 
-## 5. Hyperparameters & concurrency (`AiRuntimeProfile`)
+## 4. Provider location, BYO credentials & ceilings (`AiProviderConnection`)
 
-`AiRuntimeProfile` holds hyperparameters, context budget and concurrency limits
-**per provider** (`modelSlug = ""`, the provider-level default) or **per model**
-(`modelSlug = AiModel.slug`). Numeric fields (`temperature`, `topP`, `maxTokens`,
-`contextLength`, `maxConcurrent`, `tpmLimit`, `rpmLimit`, `timeoutS`,
-`keepAliveSeconds`) are all nullable — null means "no opinion, fall through the
-cascade" — plus an engine-specific `extraJson` (`n_threads`, `n_gpu_layers`,
-`num_predict`, …).
+`AiProviderConnection` records **where a serving provider lives, how to
+authenticate to it, and how hard it may be driven** — one row per
+`(tenant, service, provider)`, the SYSTEM row being the platform default.
+`service` is the capability discriminator (`llm | stt | tts | embeddings |
+rerank | vector | model-registry`); `provider` is capability-scoped (`azure` is
+Azure OpenAI under `llm`, Azure Speech under `stt`). Location columns:
+`baseUrl`, `region`, `apiVersion`, `deploymentName`, plus a validated
+`extraJson`. **Ceilings** (TASK-862, moved here from the retired
+`AiRuntimeProfile`): `maxConcurrent`, `rpmLimit`, `tpmLimit`, `timeoutS` —
+nullable, a positive integer is a hard cap. The SYSTEM `llm` rows' ceilings are
+what the effective-config pull serves to `apps/text` as `runtimeProfiles`
+(provider-level, `modelSlug: ''`), so the provider pool keeps its limits.
 
-`modelSlug` uses an **empty-string sentinel** for the provider default rather
-than null, because Postgres treats NULLs as distinct in unique indexes (which
-would allow duplicate provider-default rows and break the compound-unique
-upsert).
+**Credential handling (data class 2):** `encryptedApiKey` is Vault-Transit
+ciphertext; plaintext is never stored and **no read DTO ever returns it**
+(`hasKey` only). `keyVersion` tracks the Transit key generation.
 
-This program keeps runtime profiles **super-admin-only and SYSTEM-tenant-only**
-(hyperparameters are a platform concern); `tenantId` is retained for the house
-template and forward compatibility.
+**Three states, per `(service, provider)`:** no row = no opinion, the platform
+default may serve (subject to `featurePlatformDefaultCredential`); enabled +
+keyed = the tenant's own credential wins and SYSTEM is not consulted;
+**disabled = a VETO** that blocks the platform key too and never falls through
+to another provider. Tenant rows are allowed **only for the cloud BYO providers
+listed per service** (`CLOUD_BYO_PROVIDERS`); self-host engines, `rerank` and
+`model-registry` are SYSTEM-only (403, a privilege boundary — not the
+404-over-403 cross-tenant posture).
 
-**Injection cascade** (highest → lowest precedence):
+**The resolver — `ProviderCredentialResolver.resolve(service, provider,
+tenantId)`** (TASK-862, exported from `@arcaai/applications`): returns
+`{ override, fundingTier, connectionId } | null`; throws
+`ProviderVetoedException` (409) on a disabled tenant row and
+`QuotaExceededException` (403) when the entitlement gate suppresses a cloud
+provider's SYSTEM tier; `null` = no row at either tier holds a credential.
+`fundingTier` is DERIVED from the row that supplied the credential and is what
+the usage ledger stamps `BYOK` vs `CLOUD` from — never a call-site stamp. The
+request fold (text/tts), the STT pull, the harness per-activity route and the
+Agent resolver (TASK-863) all stand on the same two-tier cascade.
 
-```
-explicit request params → AiTaskDefault.configJson → profile(modelSlug)
-                        → profile(provider default, "") → service env default
-```
+**Surface:** `admin/providers/:service/:provider` (GET/PUT/DELETE, OCC
+`If-Match`) plus `POST …/test` — an ephemeral probe that never persists (a real
+auth-only call where the vendor exposes one, a reachability smoke test
+otherwise; omitted fields fall back to the stored row so a write-only key can be
+re-tested). The console screen is `/ai-providers` (tier 20-29; the SYSTEM tier
+and the working tenant are a control on one screen). The `admin/ai-providers`
+alias and the `admin/{tts,stt}-config/credentials/**` facades were removed.
+
+---
+
+## 5. Hyperparameters & concurrency — retired `AiRuntimeProfile`
+
+`AiRuntimeProfile` was **dropped by TASK-862** (D-3). Its two halves went to
+their owners:
+
+- **connection-level ceilings** (`maxConcurrent`, `rpmLimit`, `tpmLimit`,
+  `timeoutS`) → `AiProviderConnection` (§4), per tier;
+- **generation hyper-parameters and engine ride-alongs** (`temperature`,
+  `topP`, `maxTokens`, `contextLength`, `keepAliveSeconds`, `extraJson` such as
+  gemma-4's `reasoning_effort`) → the Agent's parameters (TASK-863).
+
+`TextRequestEnrichmentService.applyTextRuntimeProfile` is a deprecated NO-OP
+until its call sites are removed; the TEXT-side generation floors stay in the
+settings registry (`text-generation.descriptors.ts`). Until TASK-863 lands, a
+TEXT request carries only the parameters its caller set — the gemma-4
+`reasoning_effort: none` extra that the retired seed row supplied must be
+re-seeded on the gemma-4 agent's parameters.
 
 ---
 

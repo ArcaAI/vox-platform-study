@@ -22,7 +22,7 @@ from guardrail.core.tenant_config import (
     TASK_KEY_GUARDRAIL_VALIDATE,
     TENANTLESS_PREFIX,
     AiModelRead,
-    AiTaskDefaultRead,
+    AiRoutingPolicyRead,
     GuardrailTenantConfig,
     TenantConfigResolver,
     TenantConfigUnavailableError,
@@ -582,16 +582,18 @@ async def test_db_metadata_without_deployment_leaves_it_unset() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Contract: the read targets the exact AiTaskDefault / AiModel tables+columns
+# Contract: the read targets the exact AiRoutingPolicy / AiModel tables+columns
 # ---------------------------------------------------------------------------
 
 
-def test_ai_task_default_read_maps_prisma_columns() -> None:
-    table = AiTaskDefaultRead.__table__
+def test_ai_routing_policy_read_maps_prisma_columns() -> None:
+    # TASK-862: the read targets the ELECTED `AiRoutingPolicy` row (FK `modelId`),
+    # not the retired `AiTaskDefault` projection.
+    table = AiRoutingPolicyRead.__table__
     assert table.schema == "core"
-    assert table.name == "AiTaskDefault"  # type: ignore[attr-defined]
+    assert table.name == "AiRoutingPolicy"  # type: ignore[attr-defined]
     colnames = {c.name for c in table.columns}
-    assert {"id", "tenantId", "taskKey", "modelSlug", "resourceStatus"} <= colnames
+    assert {"id", "tenantId", "taskKey", "modelId", "isDefault", "enabled", "status", "resourceStatus", "configJson"} <= colnames
 
 
 def test_ai_model_read_maps_prisma_columns() -> None:

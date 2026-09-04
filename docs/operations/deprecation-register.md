@@ -17,20 +17,20 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `TenantSttConfig` (+ `admin/stt-config/**`, `/ai-configuration` Speech tab) | TASK-861 | R2 | R4 | ASR Agent `fallback` block | planned |
 | `PipelinePolicy`, `PipelinePolicyChange` (+ `admin/harness/pipeline-policy`, `/harness/pipeline-policy`) | TASK-861 | R2 | R4 | node `enabled` flags on the assigned workflow (`WorkflowAssignment`) | planned |
 | `Tenant.transcriptionMode`, `Tenant.captureMode` | TASK-861 (OD-13) | R2 | R4 | — (local transcription no longer exists) | planned |
-| `AiTaskDefault` (table, `AiTaskDefaultService`, `admin/ai-task-defaults`, `features/ai-task-defaults`, `vox-node` admin resource) | TASK-862 | R1 | R3 | `AiRoutingPolicy` (non-agent task defaults) + `Agent.modelId` | planned |
-| `AiRuntimeProfile` (all layers, `/ai-runtime-profiles`) | TASK-862 | R1 | R3 | `Agent.parameters` (hyper-parameters) + `AiProviderConnection` ceilings | planned |
-| `TenantTtsConfig` (+ `admin/tts-config/**`, `/ai-configuration` Voice tab) | TASK-862 / 863 | R1 | R3 | TTS Agent + `AgentAssignment` | planned |
-| `AiRoutingPolicy.candidatesJson` | TASK-862 | R1 | R3 | candidate rows | planned |
+| `AiTaskDefault` (table, `AiTaskDefaultService`, `admin/ai-task-defaults`, `vox-node` admin resource) | TASK-862 | R1 | R3 | `AiRoutingPolicy.resolveDefault` (non-agent task defaults) + `Agent.modelId` | marked — service is a facade (no table reads/writes), routes carry `Deprecation` headers, `features/ai-task-defaults` already deleted; table drop + reader repoint in R3 |
+| `AiRuntimeProfile` (all layers, `/ai-runtime-profiles`) | TASK-862 | R1 (**removed outright** — deviation 2) | — | `Agent.parameters` (hyper-parameters) + `AiProviderConnection` ceilings | removed (`ResourceType.AiRuntimeProfile` enum member left in place) |
+| `TenantTtsConfig` (+ `admin/tts-config/**`, `/ai-configuration` Voice tab) | TASK-862 / 863 | R1 | R3 | TTS Agent + `AgentAssignment` | marked (`@deprecated` on service/interface, `Deprecation` headers on every `admin/tts-config` route; credential facade already removed) |
+| `AiRoutingPolicy.candidatesJson` | TASK-862 | R1 | R3 | candidate rows | planned (untouched by the TASK-862 wave — already `@deprecated` on the entity) |
 | `AiModel.downloadStatus`, `downloadedAt`, `fileSizeMb`; free-text `localPath`; `AiModelFormat` cloud pseudo-values (`CLOUD_API`, `AZURE_SPEECH`, `AZURE_FOUNDRY`, `SARVAM`, `OPENAI`); `AiModelSource.MLFLOW`, `GITHUB` | TASK-860 | R1 | R3 | `availability`, derived `localPath` from `bucketPrefix`, `deploymentKind` + `libraryName` | marked |
 | Customer-tenant clones of the model catalogue (`backfillCustomerTenantAiModels`) | TASK-860 | R1 (deleted — seed data) | — | SYSTEM-only catalogue with shared read | removed |
-| `ProviderReconciliationRun` + `provider-reconciler*` + `admin/usage/reconciliation` + `/ai-operations/reconciliation` | TASK-862 | R1 (**removed outright**, owner directive) | — | — | planned |
+| `ProviderReconciliationRun` + `provider-reconciler*` + `admin/usage/reconciliation` + `/ai-operations/reconciliation` | TASK-862 | R1 (**removed outright**, owner directive) | — | — | removed (route keeps a one-release redirect to `/ai-operations/consumption`) |
 
 ## API routes
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
 |---|---|---|---|---|---|
-| `admin/ai-providers/**` (llm-only alias) | TASK-862 | R1 | R3 | `admin/providers/:service/:provider` | planned |
-| `admin/tts-config/credentials/**`, `admin/stt-config/credentials/**` | TASK-862 | R1 | R3 | `admin/providers/**` + `POST …/test` | planned |
+| `admin/ai-providers/**` (llm-only alias) | TASK-862 | R1 (**removed** — no caller remained) | — | `admin/providers/:service/:provider` | removed |
+| `admin/tts-config/credentials/**`, `admin/stt-config/credentials/**` | TASK-862 | R1 (**removed** — console hooks were dead) | — | `admin/providers/**` + `POST …/test` | removed |
 | `POST admin/ai-models/discovery/register` | TASK-860 | R1 | R3 | registry inventory "register from bucket" | marked |
 | `pipelineId` on `POST audio/transcription-jobs/stream/session`, `POST …/transcribe`, `POST api/stt/start_session` | TASK-861 | R2 | R4 | `agentSlug` | planned |
 | `POST /workflows/:slug/invoke` (alias) | already deprecated in code | — | R3 | `POST /workflows/:slug/runs` | marked |
@@ -49,15 +49,15 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
 |---|---|---|---|---|---|
-| `/ai-platform` (hub) + `features/ai-platform` | TASK-862 | R1 (redirect) | R3 | `/ai-providers`, `/ai-models`, `/agents`, `/ai-services/*` | planned |
-| `/ai-task-defaults` redirect stub | TASK-862 | — | R1 | — | planned |
-| `/ai-runtime-profiles` | TASK-862 | R1 | R1 (no nav entry) | — | planned |
+| `/ai-platform` (hub) + `features/ai-platform` | TASK-862 | R1 (redirect) | R3 | `/ai-providers`, `/ai-models`, `/agents`, `/ai-services/*` | marked — `redirect('/ai-providers')` stub; feature folder deleted |
+| `/ai-task-defaults` redirect stub | TASK-862 | — | R1 | — | removed |
+| `/ai-runtime-profiles` | TASK-862 | R1 | R1 (no nav entry) | — | removed |
 | `/ai-configuration` (Speech & Voice) | TASK-861/862 | R2 (redirect) | R4 | `/agents` | planned |
-| `/ai-operations/reconciliation` | TASK-862 | R1 (redirect) | R3 | `/ai-operations/consumption` | planned |
+| `/ai-operations/reconciliation` | TASK-862 | R1 (redirect) | R3 | `/ai-operations/consumption` | marked — redirect stub |
 | `/audio/pipelines`, `features/audio-pipelines` | TASK-861 | R2 (redirect) | R4 | `/agents?task=speech-to-text` | planned |
 | `/harness/pipeline-policy`, `features/pipeline-policy` | TASK-861 | R2 (redirect) | R4 | workflow assignments | planned |
-| `features/tenant-stt-config`, `features/tenant-tts-config` | TASK-861/862 | R1–R2 | R3–R4 | agents | planned |
-| `/agents` redirect to `/prompt-templates` | TASK-863 | — | R1 (route becomes the Agents screen) | — | planned |
+| `features/tenant-stt-config`, `features/tenant-tts-config` | TASK-861/862 | R1–R2 | R3–R4 | agents | marked (TASK-862: dead credential hooks removed; `speech-and-voice-screen` relocated into `tenant-tts-config`, `@deprecated`) |
+| `/agents` redirect to `/prompt-templates` | TASK-863 | — | R1 (route becomes the Agents screen) | `/agents` Agents screen (`features/agents`); prompt-template components live under `features/prompt-templates` | removed |
 | `/prompt-studio`, `/pstudio` redirect stubs | pre-existing | — | R1 | — | marked |
 | `/ai-model-defaults` redirect stub | pre-existing | — | R1 | — | marked |
 
@@ -76,6 +76,6 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | Item | Ticket |
 |---|---|
 | `06-stt.ts` pipelines, `14-pipeline-policy.ts`, `23a-realtime-transcription-agent{,.generated}.ts`, regen script | TASK-861 |
-| `16-ai-task-default.ts`, `18-ai-runtime-profile.ts`, `19-tenant-tts-config.ts`, `llm:sarvam` connection row | TASK-862 |
+| `16-ai-task-default.ts` (replaced by `16-ai-routing-policy.ts`), `18-ai-runtime-profile.ts`, `llm:sarvam` connection row — DONE; `19-tenant-tts-config.ts` — with TASK-863 | TASK-862 |
 | 10 catalogue rows not in the owner's list; `RETIRED_AI_MODEL_SLUGS` ledger extended | TASK-860 |
 | `21`, `23`, `24` workflow seeds rewritten in `core.*` | TASK-864 |

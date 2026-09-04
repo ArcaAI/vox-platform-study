@@ -69,19 +69,21 @@ describe('AiTaskDefault SYSTEM seed', () => {
     'nlp.diagnosis': 'TEXT_CLASSIFICATION',
   };
 
+  // TASK-862: the SYSTEM task defaults are seeded as ELECTED `AiRoutingPolicy`
+  // rows (`16-ai-routing-policy.ts`); the retired `AiTaskDefault` seed is gone.
   const loadModule = async () =>
-    import('../16-ai-task-default') as Promise<{
-      SYSTEM_AI_TASK_DEFAULTS: Array<{
+    import('../16-ai-routing-policy') as Promise<{
+      SYSTEM_TASK_DEFAULT_ROUTING: Array<{
         id: string;
         tenantId: string;
         taskKey: string;
         modelSlug: string;
       }>;
-      seedAiTaskDefault: (client: unknown) => Promise<{ created: number; skipped: number }>;
+      seedAiRoutingPolicy: (client: unknown) => Promise<{ created: number; skipped: number; unresolved: number }>;
     }>;
 
   it('seeds exactly the twelve SYSTEM task defaults with deterministic ids', async () => {
-    const { SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
+    const { SYSTEM_TASK_DEFAULT_ROUTING: SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((r) => [r.taskKey, r]));
     expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(12);
     expect(byKey.get('guardrail.validate')?.modelSlug).toBe('granite-guardian-4.1-8b');
@@ -120,8 +122,8 @@ describe('AiTaskDefault SYSTEM seed', () => {
     expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(12);
   });
 
-  it('references catalogue slugs whose taskType matches the task key (or a retired slug, which fails closed)', async () => {
-    const { SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
+  it('references catalog slugs whose taskType matches the task key', async () => {
+    const { SYSTEM_TASK_DEFAULT_ROUTING: SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
       const model = bySlug(row.modelSlug);
       if (!model) {
@@ -137,40 +139,61 @@ describe('AiTaskDefault SYSTEM seed', () => {
     });
   });
 
-  it('is CREATE-ONLY: never overwrites an existing (tenant, taskKey) row', async () => {
-    const { seedAiTaskDefault } = await loadModule();
+  it('is CREATE-ONLY: never overwrites an existing elected (tenant, taskKey) default', async () => {
+    const { seedAiRoutingPolicy } = await loadModule();
     const client = {
-      aiTaskDefault: {
-        findFirst: vi.fn(async () => ({ id: 'existing', modelSlug: 'admin-chosen' })),
+      aiRoutingPolicy: {
+        findFirst: vi.fn(async () => ({ id: 'existing', modelId: 'admin-chosen' })),
         create: vi.fn(),
         update: vi.fn(),
       },
+      aiModel: { findFirst: vi.fn() },
     };
-    const result = await seedAiTaskDefault(client as never);
+    const result = await seedAiRoutingPolicy(client as never);
     expect(result.created).toBe(0);
     expect(result.skipped).toBe(12);
-    expect(client.aiTaskDefault.create).not.toHaveBeenCalled();
-    expect(client.aiTaskDefault.update).not.toHaveBeenCalled();
+    expect(client.aiRoutingPolicy.create).not.toHaveBeenCalled();
+    expect(client.aiRoutingPolicy.update).not.toHaveBeenCalled();
+    expect(client.aiModel.findFirst).not.toHaveBeenCalled();
   });
 
-  it('creates the missing rows on a cold seed (system user as creator)', async () => {
-    const { seedAiTaskDefault } = await loadModule();
+  it('elects the missing rows on a cold seed: ACTIVE, isDefault, bound to the SYSTEM model by FK, system user as creator', async () => {
+    const { seedAiRoutingPolicy } = await loadModule();
     const created: Array<{ data: Record<string, unknown> }> = [];
     const client = {
-      aiTaskDefault: {
+      aiRoutingPolicy: {
         findFirst: vi.fn(async () => null),
         create: vi.fn(async (args: { data: Record<string, unknown> }) => {
           created.push(args);
           return args.data;
         }),
       },
+      aiModel: { findFirst: vi.fn(async ({ where }: { where: { slug: string } }) => ({ id: `model:${where.slug}`, slug: where.slug })) },
     };
-    const result = await seedAiTaskDefault(client as never);
+    const result = await seedAiRoutingPolicy(client as never);
     expect(result.created).toBe(12);
+    expect(result.unresolved).toBe(0);
     created.forEach(({ data }) => {
       expect(data.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(data.createdBy).toBe(SYSTEM_USER_ID);
+      expect(data.isDefault).toBe(true);
+      expect(data.enabled).toBe(true);
+      expect(data.status).toBe('ACTIVE');
+      expect(String(data.modelId)).toMatch(/^model:/);
+      expect(data.taskKind).not.toBeNull();
     });
+  });
+
+  it('skips (fails closed) a default whose slug resolves to no ENABLED SYSTEM model', async () => {
+    const { seedAiRoutingPolicy } = await loadModule();
+    const client = {
+      aiRoutingPolicy: { findFirst: vi.fn(async () => null), create: vi.fn() },
+      aiModel: { findFirst: vi.fn(async () => null) },
+    };
+    const result = await seedAiRoutingPolicy(client as never);
+    expect(result.created).toBe(0);
+    expect(result.unresolved).toBe(12);
+    expect(client.aiRoutingPolicy.create).not.toHaveBeenCalled();
   });
 });
 

@@ -1,201 +1,93 @@
-/**
- * Agents & prompt-template administration (capabilities-matrix row 25). All
- * paths are gateway-relative under the /api/hope BFF proxy. Two routes are
- * optimistic-concurrency writes requiring If-Match: PATCH :id AND POST
- * :id/test/finalize (which persists lastTestScore/lastTestOutput once the test
- * stream completes — POST :id/test itself is a non-writing ack). The version
- * activate POST is server-driven (no If-Match). assign-department carries the
- * DEPARTMENT row's expectedVersion, so the dialog reads /admin/departments
- * first (that list also feeds the department filter/select).
- */
-
-import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
-import type { Paginated, WithEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag, type WithEtag } from '@/shared/api';
 import type {
-  AgentEvalRunList,
-  AssignDepartmentRequest,
-  CreateTemplateRequest,
+  Agent,
+  AgentAssignment,
+  AgentTask,
+  CreateAgentRequest,
   Department,
-  EvalGoldenCaseList,
-  EvalGoldenSetList,
-  EvalRunTrigger,
-  ListAgentEvalRunsParams,
-  ListEvalGoldenCasesParams,
-  ListEvalGoldenSetsParams,
-  ListTemplatesParams,
-  ListUsageRecordsParams,
-  PromptTemplate,
-  PromptTestAck,
-  PromptTestResult,
-  PromptUsageAnalytics,
-  PromptUsageRecord,
-  PromptUsageStats,
-  PromptVersion,
-  PromptVersionDiff,
-  TestTemplateRequest,
-  UpdateTemplateRequest,
+  InstructionTemplate,
+  NewAgentVersionRequest,
+  PublishAgentRequest,
+  RegistryModel,
+  UpdateAgentRequest,
+  UpsertAgentAssignmentRequest,
 } from './types';
 
-const BASE = 'admin/prompt-templates';
+const BASE = 'admin/agents';
+const ASSIGNMENTS = 'admin/agent-assignments';
 
-const templatePath = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
-
-/** NOTE: `page` is ONE-based on this endpoint (`page || 1` server-side). */
-export function listTemplates(params?: ListTemplatesParams): Promise<Paginated<PromptTemplate>> {
-  return getJson(BASE, params);
+export function listAgents(task?: AgentTask): Promise<Agent[]> {
+  return getJson(BASE, { ...(task ? { task } : {}), includeTemplates: 'true' });
 }
 
-export function createTemplate(body: CreateTemplateRequest): Promise<PromptTemplate> {
+/** Detail read keeping the ETag for the later If-Match PATCH. */
+export function getAgent(id: string): Promise<WithEtag<Agent>> {
+  return getWithEtag(`${BASE}/${encodeURIComponent(id)}`);
+}
+
+export function listAgentVersions(id: string): Promise<Agent[]> {
+  return getJson(`${BASE}/${encodeURIComponent(id)}/versions`);
+}
+
+export function createAgent(body: CreateAgentRequest): Promise<Agent> {
   return postJson(BASE, body);
 }
 
-/** Detail read keeping the ETag for the later PATCH / test run. */
-export function getTemplate(id: string): Promise<WithEtag<PromptTemplate>> {
-  return getWithEtag(templatePath(id));
-}
-
 /** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */
-export function updateTemplate(id: string, patch: UpdateTemplateRequest, etag: string): Promise<WithEtag<PromptTemplate>> {
-  return patchWithEtag(templatePath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+export function updateAgent(id: string, patch: UpdateAgentRequest, etag: string): Promise<WithEtag<Agent>> {
+  return patchWithEtag(`${BASE}/${encodeURIComponent(id)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
-/** Soft delete (the platform never hard-deletes). */
-export function deleteTemplate(id: string): Promise<PromptTemplate> {
-  return deleteJson(templatePath(id));
+export function deleteAgent(id: string): Promise<Agent> {
+  return deleteJson(`${BASE}/${encodeURIComponent(id)}`);
 }
 
-export function listVersions(id: string): Promise<PromptVersion[]> {
-  return getJson(`${templatePath(id)}/versions`);
+export function validateAgent(id: string): Promise<Agent> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/validate`, {});
 }
 
-export function getVersion(id: string, versionNumber: number): Promise<PromptVersion> {
-  return getJson(`${templatePath(id)}/versions/${versionNumber}`);
+export function publishAgent(id: string, body: PublishAgentRequest = {}): Promise<Agent> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/publish`, body);
 }
 
-/** Server-side field-level diff between two version numbers. */
-export function diffVersions(id: string, from: number, to: number): Promise<PromptVersionDiff> {
-  return getJson(`${templatePath(id)}/versions/${from}/diff/${to}`);
+export function newAgentVersion(id: string, body: NewAgentVersionRequest = {}): Promise<Agent> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/versions`, body);
 }
 
-/**
- * Rollback: the server re-reads the row version itself (no If-Match); a
- * concurrent edit between read and CAS write still surfaces as 412.
- */
-export function activateVersion(id: string, versionNumber: number): Promise<PromptTemplate> {
-  return postJson(`${templatePath(id)}/versions/${versionNumber}/activate`);
+export function deprecateAgent(id: string): Promise<Agent> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/deprecate`, {});
 }
 
-/**
- * Approve for clinical use — ported from the retired `/prompt-studio` feature;
- * the Governance tab is now the only surface for it.
- *
- * SUPER_ADMIN only, enforced SERVER-SIDE (imperative `isSuperAdmin` check in
- * the service, not a decorator — see the AUTH-NOTE on the route). If-Match is
- * REQUIRED: missing → 428, drift → 412, non-super-admin → 403. Idempotent —
- * approving an already-approved row returns it unchanged.
- */
-export async function approveTemplate(id: string, reason: string | undefined, etag: string): Promise<PromptTemplate> {
-  const response = await request<PromptTemplate>(`${templatePath(id)}/approve`, {
-    method: 'POST',
-    body: { expectedVersion: versionFromEtag(etag), ...(reason ? { reason } : {}) },
-    etag,
-  });
-  return response.data;
+export function listAgentAssignments(task?: AgentTask): Promise<AgentAssignment[]> {
+  return getJson(ASSIGNMENTS, task ? { task } : undefined);
 }
 
-/**
- * Test run — ACK ONLY (BUG-018). The endpoint returns immediately and writes
- * nothing, so it no longer requires If-Match: the OCC write moved to
- * `/test/finalize`, called once the SSE stream reports done.
- */
-export function testTemplate(id: string, body: TestTemplateRequest): Promise<PromptTestAck> {
-  return postJson(`${templatePath(id)}/test`, body);
+export function createAgentAssignment(body: UpsertAgentAssignmentRequest): Promise<AgentAssignment> {
+  return postJson(ASSIGNMENTS, body);
 }
 
-/**
- * Persists the score/output for a completed test run. This is the OCC write:
- * If-Match required (missing → 428, drift → 412), expectedVersion folded into
- * the body from the same ETag. The result carries the row's NEW version so the
- * caller can keep running without a re-fetch.
- */
-export async function finalizeTemplateTest(
-  id: string,
-  taskId: string,
-  etag: string,
-  // Echo of the `versionNumber` the run was STARTED with. Scoring reads the
-  // tested content/variables, so a pinned-version run must be finalized against
-  // the same snapshot — omitting it scores the run against the mutable draft.
-  versionNumber?: number,
-): Promise<PromptTestResult> {
-  const response = await request<PromptTestResult>(`${templatePath(id)}/test/finalize`, {
-    method: 'POST',
-    body: { taskId, expectedVersion: versionFromEtag(etag), ...(versionNumber !== undefined ? { versionNumber } : {}) },
-    etag,
-  });
-  return response.data;
+export function updateAgentAssignment(body: UpsertAgentAssignmentRequest, etag: string): Promise<WithEtag<AgentAssignment>> {
+  return patchWithEtag(ASSIGNMENTS, { ...body, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
-/** All-time per-template usage stats. */
-export function getUsageStats(id: string): Promise<PromptUsageStats> {
-  return getJson(`${templatePath(id)}/usage`);
+/** DELETE carries `If-Match` (the row version the client read) — a 428 without it. */
+export async function removeAgentAssignment(id: string, version: number, reason?: string): Promise<AgentAssignment> {
+  const result = await request<AgentAssignment>(`${ASSIGNMENTS}/${encodeURIComponent(id)}`, { method: 'DELETE', etag: `"${version}"`, params: reason ? { reason } : undefined });
+  return result.data;
 }
 
-/** Tenant usage aggregates by department/doctor/day; optionally per template. */
-export function getUsageAnalytics(promptTemplateId?: string): Promise<PromptUsageAnalytics> {
-  return getJson(`${BASE}/analytics/usage`, { promptTemplateId });
+/** Registry rows for the Model step. The registry feature owns the screen; this is a read-only picker feed. */
+export function listRegistryModels(): Promise<RegistryModel[]> {
+  return getJson('admin/ai-models');
 }
 
-/** Raw run rows, newest first. NOTE: `page` is ZERO-based here (default 0). */
-export function listUsageRecords(params?: ListUsageRecordsParams): Promise<Paginated<PromptUsageRecord>> {
-  return getJson(`${BASE}/usage-records`, params);
+/** The instruction library for the Instruction step (APPROVED templates only are bindable). */
+export async function listInstructionTemplates(): Promise<InstructionTemplate[]> {
+  const page = await getJson<{ data?: InstructionTemplate[] } | InstructionTemplate[]>('admin/prompt-templates', { limit: 200, page: 0 });
+  return Array.isArray(page) ? page : (page.data ?? []);
 }
 
-/** Assigns templates to a department's prompt slots (manage:Department). */
-export function assignDepartment(body: AssignDepartmentRequest): Promise<Department> {
-  return postJson(`${BASE}/assign-department`, body);
+export async function listDepartments(): Promise<Department[]> {
+  const page = await getJson<{ data?: Department[] } | Department[]>('admin/departments', { limit: 200, page: 0 });
+  return Array.isArray(page) ? page : (page.data ?? []);
 }
-
-/** Department directory for the assign dialog + filter (plain array). */
-export function listDepartments(): Promise<Department[]> {
-  return getJson('admin/departments');
-}
-
-// ---------------------------------------------------------------------------
-// Eval-gated promotion — golden-set picker + scoped eval-run read
-// + run-now for the Governance tab's Eval panel. Golden-set CRUD and the full
-// eval-runs grid stay on `/harness/observability` (one authoritative editor
-// per resource, rule 13) — this is a read-mostly, agent-scoped view.
-// ---------------------------------------------------------------------------
-
-const HARNESS_BASE = 'admin/harness';
-
-/** NOTE: `page` is ONE-based on this endpoint (unlike the platform's 0-based lists). */
-export function listEvalGoldenSets(params?: ListEvalGoldenSetsParams): Promise<EvalGoldenSetList> {
-  return getJson(`${HARNESS_BASE}/golden-sets`, params);
-}
-
-/** NOTE: `page` is ONE-based on this endpoint (unlike the platform's 0-based lists). */
-export function listAgentEvalRuns(params?: ListAgentEvalRunsParams): Promise<AgentEvalRunList> {
-  return getJson(`${HARNESS_BASE}/eval-runs`, params);
-}
-
-/**
- * A golden set's cases, PHI-safe metadata only — feeds the Test Bench's
- * "Golden case" example-data picker (POST :id/test `goldenCaseId`).
- */
-export function listEvalGoldenCases(goldenSetId: string, params?: ListEvalGoldenCasesParams): Promise<EvalGoldenCaseList> {
-  return getJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/cases`, params);
-}
-
-/** Synchronous run-now — tenant admins run their own sets; a SYSTEM set is super-admin-only. */
-export function runGoldenSetEval(goldenSetId: string): Promise<EvalRunTrigger> {
-  return postJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/run`);
-}
-
-// ---------------------------------------------------------------------------
-// Cross-tenant agent promotion lineage — a READ-only view of
-// promotions INTO the working tenant, filtered to one target agent for the
-// Lineage tab. Promotion itself (POST admin/agent-promotions) is out of this
-// ticket's scope; only the audit trail it writes is surfaced here.
-// ---------------------------------------------------------------------------
-

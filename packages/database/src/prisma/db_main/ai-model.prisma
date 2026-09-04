@@ -183,6 +183,10 @@ model AiModel {
   // Prisma's requirement that a relation be declared on both sides; nothing
   // reads it.
   routingPolicies AiRoutingPolicy[] @relation("AiRoutingPolicyModel")
+  // TASK-863 — `Agent.modelId` / `AgentModelFallback.modelId` are real FKs for
+  // the same reason; these back-relations exist only to satisfy Prisma.
+  agents         Agent[]              @relation("AgentModel")
+  agentFallbacks AgentModelFallback[] @relation("AgentFallbackModel")
 
   // Indexes
   @@unique([tenantId, slug], name: "AiModel_tenant_slug_unique")

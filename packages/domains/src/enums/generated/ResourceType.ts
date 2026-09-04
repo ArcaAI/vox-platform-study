@@ -146,4 +146,8 @@ export enum ResourceType {
   // `policyVersion` natural key), not a ResourceType of its own.
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   AiRoutingPolicy = 'AiRoutingPolicy',
+  // TASK-863 — first-class Agent + its per-scope assignment. Parity with
+  // audit.prisma; see resourceType.enum-parity.test.ts.
+  Agent = 'Agent',
+  AgentAssignment = 'AgentAssignment',
 }

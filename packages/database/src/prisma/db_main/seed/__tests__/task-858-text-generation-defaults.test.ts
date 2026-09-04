@@ -4,7 +4,8 @@
  *
  * ## Why the migration is tested here, as text
  *
- * `seedAiTaskDefault` is CREATE-ONLY: it never overwrites an existing
+ * `seedAiRoutingPolicy` (TASK-862 — the elected `AiRoutingPolicy` defaults that
+ * replaced `seedAiTaskDefault`) is CREATE-ONLY: it never overwrites an existing
  * `(tenantId, taskKey)` row, because the platform default is admin-tunable and
  * a re-seed must not clobber somebody's choice. That is right, and it means the
  * seed edit alone reaches ONLY a database that has never been seeded. Every
@@ -21,7 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { SYSTEM_AI_TASK_DEFAULTS } from '../16-ai-task-default';
+import { SYSTEM_TASK_DEFAULT_ROUTING } from '../16-ai-routing-policy';
 import { AUDIO_AI_MODELS } from '../ai-models/audio';
 import { LLM_AI_MODELS } from '../ai-models/llm';
 import { SYSTEM_TENANT_ID } from '../00-constants';
@@ -33,7 +34,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(HERE, '../../migrations');
 const MIGRATION_SUFFIX = '_task_858_text_defaults_gemma_e4b';
 
-const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((row) => [row.taskKey, row]));
+const byKey = new Map(SYSTEM_TASK_DEFAULT_ROUTING.map((row) => [row.taskKey, row]));
 
 describe(' D4 — the SYSTEM text-generation defaults', () => {
   it.each(TEXT_TASK_KEYS)('%s resolves to lms-gemma-4-e2b-it-qat', (taskKey) => {

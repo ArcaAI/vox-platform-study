@@ -57,8 +57,8 @@ describe('EffectiveConfigController', () => {
   });
 
   // Service-to-service requests arrive with an EMPTY CLS store (no user, no
-  // tenant), and the read subtree touches tenant-scoped models (AiRuntimeProfile
-  // via listProfiles). Without an explicit tenant context the tenant-scope
+  // tenant), and the read subtree touches tenant-scoped models (AiProviderConnection
+  // via listProfiles — TASK-862). Without an explicit tenant context the tenant-scope
   // Prisma extension throws ("tenant context required") and the route 500s for
   // every caller. The controller must therefore re-establish CLS around the
   // read, pinned to the SYSTEM tenant — the platform scope every effective-config

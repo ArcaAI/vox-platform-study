@@ -71,7 +71,7 @@ const LOCAL_NOISE_SUPPRESSION_MODELS = JSON.stringify([{ id: 'rnnoise', name: 'R
 // `text-provider-models` ux-constants key) was RETIRED: provider/model listings
 // now come from the AiModel registry (ENABLED rows grouped by `provider`), and
 // the platform text/summarization default lives on HarnessPolicy
-// (13-harness-policy.ts) + the AiTaskDefault table (16-ai-task-default.ts).
+// (13-harness-policy.ts) + the AiRoutingPolicy elected defaults (16-ai-routing-policy.ts, TASK-862).
 // =============================================================================
 
 // =============================================================================
