@@ -57,7 +57,7 @@ export class AdminAudioPipelineResource extends AdminResource {
   /**
    * Creating a PipelineResponse
    *
-   * DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `POST /api/v1/admin/audio/pipelines` — `AudioPipelineController.create`.
    */
@@ -74,7 +74,7 @@ export class AdminAudioPipelineResource extends AdminResource {
   /**
    * Deleting a PipelineResponse by id
    *
-   * DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `DELETE /api/v1/admin/audio/pipelines/{id}` — `AudioPipelineController.delete`.
    */
@@ -104,7 +104,7 @@ export class AdminAudioPipelineResource extends AdminResource {
   /**
    * Updating a PipelineResponse by id
    *
-   * Updates one AsrPipeline row. Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the row's `_version` column. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * Updates one AsrPipeline row. Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the row's `_version` column. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `PATCH /api/v1/admin/audio/pipelines/{id}` — `AudioPipelineController.update`.
    *
@@ -124,7 +124,7 @@ export class AdminAudioPipelineResource extends AdminResource {
   /**
    * Assign an ASR pipeline within its tenant
    *
-   * DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `POST /api/v1/admin/audio/pipelines/{id}/assign-tenant` — `AudioPipelineController.assignTenant`.
    */
@@ -158,7 +158,7 @@ export class AdminAudioPipelineResource extends AdminResource {
   /**
    * Set a pipeline as the tenant default
    *
-   * DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `POST /api/v1/admin/audio/pipelines/{id}/set-default` — `AudioPipelineController.setDefault`.
    */
@@ -251,7 +251,7 @@ export class AdminAudioPipelineResource extends AdminResource {
   /**
    * Creating a PipelineResponse
    *
-   * DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `POST /api/v1/admin/audio/pipelines/validate` — `AudioPipelineController.validateYaml`.
    */

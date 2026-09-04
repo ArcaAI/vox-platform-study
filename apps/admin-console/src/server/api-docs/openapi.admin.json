@@ -4907,6 +4907,10 @@
       },
       "CreateJobRequest": {
         "properties": {
+          "agentSlug": {
+            "description": "TASK-861 — the published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`). Ignored when `pipelineId` (deprecated) is sent.",
+            "type": "string"
+          },
           "agentVersionId": {
             "description": "TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.",
             "type": "string"
@@ -26861,7 +26865,7 @@
     "/api/v1/admin/ai-task-defaults": {
       "get": {
         "deprecated": true,
-        "description": "Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, guardrail.pii, guardrail.pii.spans, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, guardrail.pii, guardrail.pii.spans, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AiTaskDefaultAdminController_getEffective",
         "parameters": [
           {
@@ -26941,7 +26945,7 @@
     "/api/v1/admin/ai-task-defaults/options": {
       "get": {
         "deprecated": true,
-        "description": "ENABLED AiModel rows whose taskType is compatible with the key (guardrail.validate → GUARDRAIL, nlp.ner → TOKEN_CLASSIFICATION, nlp.classification → TEXT_CLASSIFICATION). Read via the SHARED-READ registry query (r2605 Finding E): visibility is [caller tenant, SYSTEM] de-duplicated by slug (tenant clone wins), so tenant admins get their picker options here — including the SYSTEM catalog — without needing the super-admin-only /admin/ai-models surface. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "ENABLED AiModel rows whose taskType is compatible with the key (guardrail.validate → GUARDRAIL, nlp.ner → TOKEN_CLASSIFICATION, nlp.classification → TEXT_CLASSIFICATION). Read via the SHARED-READ registry query (r2605 Finding E): visibility is [caller tenant, SYSTEM] de-duplicated by slug (tenant clone wins), so tenant admins get their picker options here — including the SYSTEM catalog — without needing the super-admin-only /admin/ai-models surface. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AiTaskDefaultAdminController_getOptions",
         "parameters": [
           {
@@ -27021,7 +27025,7 @@
     "/api/v1/admin/ai-task-defaults/row": {
       "get": {
         "deprecated": true,
-        "description": "Returns the tenant row, or a `version:0` placeholder when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`; the global ETagInterceptor stamps `ETag` from it). DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns the tenant row, or a `version:0` placeholder when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`; the global ETagInterceptor stamps `ETag` from it). DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AiTaskDefaultAdminController_getRow",
         "parameters": [
           {
@@ -27105,7 +27109,7 @@
       },
       "put": {
         "deprecated": true,
-        "description": "`modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. `If-Match` (RFC 7232) carries the version read from the prior GET — `\"0\"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for tenant admins). `guardrail.*` is tenant-admin configurable , but the slug must resolve to a SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `manage:AiTaskDefault`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "`modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. `If-Match` (RFC 7232) carries the version read from the prior GET — `\"0\"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for tenant admins). `guardrail.*` is tenant-admin configurable , but the slug must resolve to a SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `manage:AiTaskDefault`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AiTaskDefaultAdminController_upsertRow",
         "parameters": [
           {
@@ -28263,7 +28267,7 @@
       },
       "post": {
         "deprecated": true,
-        "description": "DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AudioPipelineController_create",
         "parameters": [],
         "requestBody": {
@@ -28444,7 +28448,7 @@
     "/api/v1/admin/audio/pipelines/validate": {
       "post": {
         "deprecated": true,
-        "description": "DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AudioPipelineController_validateYaml",
         "parameters": [],
         "requestBody": {
@@ -28500,7 +28504,7 @@
     "/api/v1/admin/audio/pipelines/{id}": {
       "delete": {
         "deprecated": true,
-        "description": "DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AudioPipelineController_delete",
         "parameters": [
           {
@@ -28616,7 +28620,7 @@
       },
       "patch": {
         "deprecated": true,
-        "description": "Updates one AsrPipeline row. Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the row's `_version` column. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Updates one AsrPipeline row. Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the row's `_version` column. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AudioPipelineController_update",
         "parameters": [
           {
@@ -28707,7 +28711,7 @@
     "/api/v1/admin/audio/pipelines/{id}/assign-tenant": {
       "post": {
         "deprecated": true,
-        "description": "DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AudioPipelineController_assignTenant",
         "parameters": [
           {
@@ -28848,7 +28852,7 @@
     "/api/v1/admin/audio/pipelines/{id}/set-default": {
       "post": {
         "deprecated": true,
-        "description": "DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:audio-pipeline:manage`).\n\n**Abilities** — `manage:AsrPipeline`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AudioPipelineController_setDefault",
         "parameters": [
           {
@@ -36196,7 +36200,7 @@
     "/api/v1/admin/harness/pipeline-policy": {
       "get": {
         "deprecated": true,
-        "description": "Reduces every toggle to a concrete boolean via the cascade (doctor → department → tenant → SYSTEM default → code default) and reports the winning tier per toggle in `trace`. Read-only; consumed by the realtime path. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:pipeline-policy:manage`).\n\n**Abilities** — `read:PipelinePolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Reduces every toggle to a concrete boolean via the cascade (doctor → department → tenant → SYSTEM default → code default) and reports the winning tier per toggle in `trace`. Read-only; consumed by the realtime path. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:pipeline-policy:manage`).\n\n**Abilities** — `read:PipelinePolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "PipelinePolicyAdminController_getEffective",
         "parameters": [
           {
@@ -36270,7 +36274,7 @@
     "/api/v1/admin/harness/pipeline-policy/row": {
       "get": {
         "deprecated": true,
-        "description": "Returns the row at the requested scope (TENANT default), or a `code-default` placeholder (version 0, all toggles null) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT`. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:pipeline-policy:manage`).\n\n**Abilities** — `read:PipelinePolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns the row at the requested scope (TENANT default), or a `code-default` placeholder (version 0, all toggles null) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT`. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:pipeline-policy:manage`).\n\n**Abilities** — `read:PipelinePolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "PipelinePolicyAdminController_getRow",
         "parameters": [
           {
@@ -36349,7 +36353,7 @@
       },
       "put": {
         "deprecated": true,
-        "description": "Pins/clears the supplied toggles at the requested scope (omit = unchanged, `null` = clear/inherit). The `If-Match` header (RFC 7232) is REQUIRED on an existing row and CAS'es against `_version` (drift → 412, missing → 428); every edit appends a WORM `PipelinePolicyChange` in the same transaction. A toggle pinned beyond its registered max scope (e.g. `harnessEnabled` at DOCTOR) is rejected with 400. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:pipeline-policy:manage`).\n\n**Abilities** — `manage:PipelinePolicy`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Pins/clears the supplied toggles at the requested scope (omit = unchanged, `null` = clear/inherit). The `If-Match` header (RFC 7232) is REQUIRED on an existing row and CAS'es against `_version` (drift → 412, missing → 428); every edit appends a WORM `PipelinePolicyChange` in the same transaction. A toggle pinned beyond its registered max scope (e.g. `harnessEnabled` at DOCTOR) is rejected with 400. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:pipeline-policy:manage`).\n\n**Abilities** — `manage:PipelinePolicy`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "PipelinePolicyAdminController_updateRow",
         "parameters": [
           {
@@ -46399,7 +46403,7 @@
     "/api/v1/admin/stt-config": {
       "get": {
         "deprecated": true,
-        "description": "Merges the tenant row over the SYSTEM-tenant platform default. Read-only; this is what the gateway reads on the session-create path. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Merges the tenant row over the SYSTEM-tenant platform default. Read-only; this is what the gateway reads on the session-create path. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantSttConfigAdminController_getEffective",
         "parameters": [
           {
@@ -46458,7 +46462,7 @@
     "/api/v1/admin/stt-config/fallback-candidates": {
       "get": {
         "deprecated": true,
-        "description": "The valid targets for the fallback pointer — the picker offers exactly these, so the PUT never rejects a selection. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The valid targets for the fallback pointer — the picker offers exactly these, so the PUT never rejects a selection. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantSttConfigAdminController_getFallbackCandidates",
         "parameters": [
           {
@@ -46520,7 +46524,7 @@
     "/api/v1/admin/stt-config/row": {
       "get": {
         "deprecated": true,
-        "description": "Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `read:TenantSttConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantSttConfigAdminController_getRow",
         "parameters": [
           {
@@ -46577,7 +46581,7 @@
       },
       "put": {
         "deprecated": true,
-        "description": "Upserts the fallback pipeline pointer + auto-switch knobs (omit = unchanged; `fallbackPipelineId: null` clears it). `If-Match` (RFC 7232) carries the version read from the prior GET — `\"0\"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). The fallback target is validated (tenant-visible, ENABLED, cloud-engine-backed). DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `manage:TenantSttConfig`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Upserts the fallback pipeline pointer + auto-switch knobs (omit = unchanged; `fallbackPipelineId: null` clears it). `If-Match` (RFC 7232) carries the version read from the prior GET — `\"0\"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). The fallback target is validated (tenant-visible, ENABLED, cloud-engine-backed). DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-stt-config:manage`).\n\n**Abilities** — `manage:TenantSttConfig`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantSttConfigAdminController_updateRow",
         "parameters": [
           {
@@ -49782,7 +49786,7 @@
     "/api/v1/admin/tts-config": {
       "get": {
         "deprecated": true,
-        "description": "Merges the tenant row over the SYSTEM-tenant platform default and clamps every value to the platform limits. Read-only; this is what the gateway injects into tts per request. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/agents (TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-tts-config:manage`).\n\n**Abilities** — `read:TenantTtsConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Merges the tenant row over the SYSTEM-tenant platform default and clamps every value to the platform limits. Read-only; this is what the gateway injects into tts per request. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/agents (TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-tts-config:manage`).\n\n**Abilities** — `read:TenantTtsConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantTtsConfigAdminController_getEffective",
         "parameters": [
           {
@@ -49841,7 +49845,7 @@
     "/api/v1/admin/tts-config/catalog": {
       "get": {
         "deprecated": true,
-        "description": "SYSTEM ENABLED TEXT_TO_SPEECH registry rows (code-constant fallback pre-seed). Tenant-agnostic: the catalog is the platform-wide universe voice bindings are validated against — no tenant scoping. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/agents (TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-tts-config:manage`).\n\n**Abilities** — `read:TenantTtsConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "SYSTEM ENABLED TEXT_TO_SPEECH registry rows (code-constant fallback pre-seed). Tenant-agnostic: the catalog is the platform-wide universe voice bindings are validated against — no tenant scoping. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/agents (TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-tts-config:manage`).\n\n**Abilities** — `read:TenantTtsConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantTtsConfigAdminController_getCatalog",
         "parameters": [],
         "responses": {
@@ -49890,7 +49894,7 @@
     "/api/v1/admin/tts-config/row": {
       "get": {
         "deprecated": true,
-        "description": "Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/agents (TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-tts-config:manage`).\n\n**Abilities** — `read:TenantTtsConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/agents (TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-tts-config:manage`).\n\n**Abilities** — `read:TenantTtsConfig`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantTtsConfigAdminController_getRow",
         "parameters": [
           {
@@ -49947,7 +49951,7 @@
       },
       "put": {
         "deprecated": true,
-        "description": "Upserts the supplied spec fields (omit = unchanged; null/empty = inherit). `If-Match` (RFC 7232) carries the version read from the prior GET — `\"0\"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). Every value is clamped to the platform limits by the resolver. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/agents (TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-tts-config:manage`).\n\n**Abilities** — `manage:TenantTtsConfig`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Upserts the supplied spec fields (omit = unchanged; null/empty = inherit). `If-Match` (RFC 7232) carries the version read from the prior GET — `\"0\"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). Every value is clamped to the platform limits by the resolver. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/agents (TASK-863)).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-tts-config:manage`).\n\n**Abilities** — `manage:TenantTtsConfig`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantTtsConfigAdminController_updateRow",
         "parameters": [
           {

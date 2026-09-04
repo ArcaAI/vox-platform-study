@@ -30,7 +30,7 @@ export class AdminTenantSttConfigResource extends AdminResource {
   /**
    * Resolve the effective STT fallback spec for a tenant (tenant row over the SYSTEM default)
    *
-   * Merges the tenant row over the SYSTEM-tenant platform default. Read-only; this is what the gateway reads on the session-create path. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * Merges the tenant row over the SYSTEM-tenant platform default. Read-only; this is what the gateway reads on the session-create path. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `GET /api/v1/admin/stt-config` — `TenantSttConfigAdminController.getEffective`.
    */
@@ -47,7 +47,7 @@ export class AdminTenantSttConfigResource extends AdminResource {
   /**
    * List the enabled, cloud-engine-backed pipelines a tenant may set as its fallback
    *
-   * The valid targets for the fallback pointer — the picker offers exactly these, so the PUT never rejects a selection. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * The valid targets for the fallback pointer — the picker offers exactly these, so the PUT never rejects a selection. DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `GET /api/v1/admin/stt-config/fallback-candidates` — `TenantSttConfigAdminController.getFallbackCandidates`.
    */
@@ -64,7 +64,7 @@ export class AdminTenantSttConfigResource extends AdminResource {
   /**
    * Get the raw, editable STT config row for a tenant
    *
-   * Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `GET /api/v1/admin/stt-config/row` — `TenantSttConfigAdminController.getRow`.
    */
@@ -81,7 +81,7 @@ export class AdminTenantSttConfigResource extends AdminResource {
   /**
    * Create or update the tenant STT fallback row under optimistic concurrency
    *
-   * Upserts the fallback pipeline pointer + auto-switch knobs (omit = unchanged; `fallbackPipelineId: null` clears it). `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). The fallback target is validated (tenant-visible, ENABLED, cloud-engine-backed). DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
+   * Upserts the fallback pipeline pointer + auto-switch knobs (omit = unchanged; `fallbackPipelineId: null` clears it). `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). The fallback target is validated (tenant-visible, ENABLED, cloud-engine-backed). DEPRECATED (TASK-861 - removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `PUT /api/v1/admin/stt-config/row` — `TenantSttConfigAdminController.updateRow`.
    *
