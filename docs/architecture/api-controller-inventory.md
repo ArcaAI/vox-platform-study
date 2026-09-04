@@ -147,7 +147,6 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | TenantAllowedOriginController            | `api/v1/admin/allowed-origins`                                             |    6 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:TenantAllowedOrigin                          | Wildcard origins SUPER_ADMIN in service.                                                                                                 |
 | TenantStorageConfigAdminController       | `api/v1/admin/tenants/storage/config`                                      |    6 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage\|update:Tenant; methods Can*:Storage         | Platform default routes SUPER_ADMIN in service.                                                                                          |
 | AiInferenceController                    | `api/v1/text-analyses`                                                     |    5 | JWT + API key                                | `ai:inference:write`                                                                    | @Authorize()                                        | Guardrail + NLP proxy.                                                                                                                   |
-| AiRuntimeProfileController               | `api/v1/admin/ai-runtime-profiles`                                         |    5 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:all                                          | SUPER_ADMIN / SYSTEM rows.                                                                                                               |
 | AuthSsoController                        | `api/v1/auth/sso`                                                          |    5 | Public                                       | n/a                                                                                     | none (@Public)                                      | OIDC + SAML start/callback/ACS. Throttled.                                                                                               |
 | KnowledgeController                      | `api/v1/admin/knowledge/documents`                                         |    5 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:KnowledgeDocument (chunks → read)            | Qdrant cleanup fail-closed on delete.                                                                                                    |
 | McpAdminController                       | `api/v1/admin/mcp-servers`                                                 |    5 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:McpServer                               | Writes SUPER_ADMIN-only in service.                                                                                                      |
@@ -158,12 +157,12 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | WorkflowTestFixtureController            | `api/v1/admin/workflow-test-fixtures`                                      |    5 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:WorkflowTestFixture                          |                                                                                                                                          |
 | WorkflowsController                      | `api/v1/workflows`                                                         |    5 | JWT + API key                                | workflow:definition:read / workflow:run:read\|write                                     | per-route WorkflowDefinition / WorkflowRun          | Hand-rolled SSE on run stream. Heavy throttle on invoke.                                                                                 |
 | AdminUsageController                     | `api/v1/admin/usage`                                                       |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:UsageAnalytics                               | top-tenants SUPER_ADMIN in service.                                                                                                      |
-| AiProviderConnectionController           | `api/v1/admin/ai-providers`                                                |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:GlobalSetting                           | Legacy LLM alias (service=llm).                                                                                                          |
-| AiTaskDefaultAdminController             | `api/v1/admin/ai-task-defaults`                                            |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:AiTaskDefault                           | Some keys SUPER_ADMIN in service.                                                                                                        |
+| AiTaskDefaultAdminController             | `api/v1/admin/ai-task-defaults`                                            |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:AiTaskDefault                           | DEPRECATED (TASK-862, R3) — facade over AiRoutingPolicy; `Deprecation` headers.                                                          |
 | MonitoringController                     | `api/v1/admin/monitoring`                                                  |    4 | JWT only                                     | forbidden                                                                               | CanAny manage:all \| read:TenantTelemetry           | Under /admin (rule P2). Throttle 300/60s.                                                                                                |
 | AdminHealthServicesController            | `api/v1/admin/health/services`                                             |    2 | JWT only                                     | forbidden                                                                               | CanAny manage:all \| read:TenantTelemetry           | Split off ApiHealthController (rule P2). Throttle 30/60s. Fans out 6 downstream probes.                                                  |
 | NotificationController                   | `api/v1/admin/notifications`                                               |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:Notification                                 | No create route.                                                                                                                         |
-| ProviderConnectionController             | `api/v1/admin/providers`                                                   |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:GlobalSetting                           | Same file as AiProviderConnectionController.                                                                                             |
+| ProviderConnectionController             | `api/v1/admin/providers`                                                   |    5 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:GlobalSetting                           | The one provider surface (TASK-862): + `POST :service/:provider/test`.                                                                    |
+| AiRoutingPolicyAdminController           | `api/v1/admin/routing-policies`                                            |   11 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:AiRoutingPolicy                              | Writes SUPER_ADMIN-only in service; `resolveDefault` is the task-default read (TASK-862).                                                 |
 | RateLimitAdminController                 | `api/v1/admin/rate-limit`                                                  |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:all                                          | SUPER_ADMIN policy editor.                                                                                                               |
 | SttCompatGateway                         | `/stt (no api/v1)`                                                         |    4 | API key (WS)                                 | WS headers apikey/api-key/x-api-key/x-internal-service-key, or query apiKey/api-key/key | n/a                                                 | Legacy v1. Session tenant must match key tenant.                                                                                         |
 | UserDepartmentsController                | `api/v1/admin/users`                                                       |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:User                                         | :id/departments assign/unassign.                                                                                                         |
@@ -801,10 +800,7 @@ Every live HTTP `@Controller` class. Paths include `/api/v1` except prefix-exclu
 - `GET /api/v1/admin/stt-config/row` — jwt read:TenantSttConfig — apikey yes — getRow
 - `PUT /api/v1/admin/stt-config/row` — jwt manage:TenantSttConfig — apikey yes — updateRow — extras: `@RequiresIfMatch`
 - `GET /api/v1/admin/stt-config/fallback-candidates` — jwt read:TenantSttConfig — apikey yes — getFallbackCandidates
-- `GET /api/v1/admin/stt-config/credentials` — jwt read:TenantSttConfig — apikey yes — getCredentials
-- `PUT /api/v1/admin/stt-config/credentials/:provider` — jwt manage:TenantSttConfig — apikey yes — setCredential — extras: `@RequiresIfMatch`
-- `DELETE /api/v1/admin/stt-config/credentials/:provider` — jwt manage:TenantSttConfig — apikey yes — removeCredential
-- `POST /api/v1/admin/stt-config/credentials/:provider/test` — jwt manage:TenantSttConfig — apikey yes — testCredential
+- _(TASK-862: the `credentials/**` facade — list / set / remove / test — was REMOVED; use `admin/providers/stt/:provider` and its `/test` route.)_
 
 ### WorkflowDefinitionController
 
@@ -911,9 +907,7 @@ Every live HTTP `@Controller` class. Paths include `/api/v1` except prefix-exclu
 - `GET /api/v1/admin/tts-config/row` — jwt read:TenantTtsConfig — apikey yes — getRow
 - `PUT /api/v1/admin/tts-config/row` — jwt manage:TenantTtsConfig — apikey yes — updateRow — extras: `@RequiresIfMatch`
 - `GET /api/v1/admin/tts-config/catalog` — jwt read:TenantTtsConfig — apikey yes — getCatalog
-- `GET /api/v1/admin/tts-config/credentials` — jwt read:TenantTtsConfig — apikey yes — getCredentials
-- `PUT /api/v1/admin/tts-config/credentials/:provider` — jwt manage:TenantTtsConfig — apikey yes — setCredential
-- `DELETE /api/v1/admin/tts-config/credentials/:provider` — jwt manage:TenantTtsConfig — apikey yes — removeCredential
+- _(TASK-862: the `credentials/**` facade was REMOVED; use `admin/providers/tts/:provider`. Every remaining route on this controller is DEPRECATED (`Deprecation` headers, removed in R3 with the TTS Agent).)_
 
 ### TextProxyController
 
@@ -1065,21 +1059,9 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 - `POST /api/v1/text-analyses/topic` — jwt `@Authorize()` — apikey no ForbidApiKey — `classifyTopic`
 - `POST /api/v1/text-analyses/intent` — jwt `@Authorize()` — apikey no ForbidApiKey — `classifyIntent`
 
-### AiRuntimeProfileController
+### AiRuntimeProfileController — REMOVED (TASK-862)
 
-- **File:** `src/modules/ai-runtime-profile/ai-runtime-profile.controller.ts`
-- **Prefix:** `admin/ai-runtime-profiles` → `api/v1/admin/ai-runtime-profiles`
-- **api_count:** 5
-- **Auth model:** JWT + API key
-- **API key:** `admin:ai-runtime-profile:manage`
-- **JWT / other:** manage:all
-- **Notes:** SUPER_ADMIN / SYSTEM rows.
-
-- `GET /api/v1/admin/ai-runtime-profiles` — jwt manage:all — apikey yes `admin:ai-runtime-profile:manage` — `list`
-- `GET /api/v1/admin/ai-runtime-profiles/row` — jwt manage:all — apikey yes `admin:ai-runtime-profile:manage` — `getRow`
-- `GET /api/v1/admin/ai-runtime-profiles/resolve` — jwt manage:all — apikey yes `admin:ai-runtime-profile:manage` — `resolve`
-- `PUT /api/v1/admin/ai-runtime-profiles/row` — jwt manage:all — apikey yes `admin:ai-runtime-profile:manage` — OCC — `upsert`
-- `DELETE /api/v1/admin/ai-runtime-profiles/row` — jwt manage:all — apikey yes `admin:ai-runtime-profile:manage` — `remove`
+`admin/ai-runtime-profiles/**` is gone with `AiRuntimeProfile`: connection ceilings moved onto `AiProviderConnection` (`admin/providers/**`), generation hyper-parameters onto the Agent (TASK-863).
 
 ### AuthSsoController
 
@@ -1223,22 +1205,13 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 - `GET /api/v1/admin/usage/cost-per-encounter` — jwt manage UsageAnalytics — apikey yes `admin:usage:manage` — `costPerEncounter`
 - `GET /api/v1/admin/usage/top-tenants` — same + SUPER_ADMIN in service — apikey yes `admin:usage:manage` — `topTenants`
 
-### AiProviderConnectionController
+### AiProviderConnectionController — REMOVED (TASK-862)
 
-- **File:** `src/modules/ai-provider-connection/ai-provider-connection.controller.ts`
-- **Prefix:** `admin/ai-providers` → `api/v1/admin/ai-providers`
-- **api_count:** 4
-- **Auth model:** JWT + API key
-- **API key:** `admin:ai-provider:manage`
-- **JWT / other:** read/manage:GlobalSetting
-- **Notes:** Legacy LLM alias (service=llm).
+The `admin/ai-providers/**` llm-only alias was deleted; every caller uses `admin/providers/llm/:provider` (`ProviderConnectionController`, below).
 
-- `GET /api/v1/admin/ai-providers` — jwt `CanRead(GlobalSetting)` — apikey yes `admin:ai-provider:manage` — `list`
-- `GET /api/v1/admin/ai-providers/:provider` — jwt `CanRead(GlobalSetting)` — apikey yes `admin:ai-provider:manage` — `getOne`
-- `PUT /api/v1/admin/ai-providers/:provider` — jwt `CanManage(GlobalSetting)` — apikey yes `admin:ai-provider:manage` — OCC — `upsert`
-- `DELETE /api/v1/admin/ai-providers/:provider` — jwt `CanManage(GlobalSetting)` — apikey yes `admin:ai-provider:manage` — `remove`
+### AiTaskDefaultAdminController — DEPRECATED (TASK-862, removed in R3)
 
-### AiTaskDefaultAdminController
+_Every route carries `Deprecation` headers. The service behind them is a facade over `AiRoutingPolicy` (no `AiTaskDefault` row is read or written any more)._
 
 - **File:** `src/modules/ai-task-default/ai-task-default-admin.controller.ts`
 - **Prefix:** `admin/ai-task-defaults` → `api/v1/admin/ai-task-defaults`
@@ -1287,16 +1260,37 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 
 - **File:** `src/modules/ai-provider-connection/ai-provider-connection.controller.ts`
 - **Prefix:** `admin/providers` → `api/v1/admin/providers`
-- **api_count:** 4
-- **Auth model:** JWT + API key
-- **API key:** `admin:ai-provider:manage`
+- **api_count:** 5
+- **Auth model:** JWT only (`@ForbidApiKey`; svc scope `svc:admin:ai-provider:manage`)
 - **JWT / other:** read/manage:GlobalSetting
-- **Notes:** Same file as AiProviderConnectionController.
+- **Notes:** THE provider surface (TASK-862): `(tenant, service, provider)` rows with BYO key, endpoint, ceilings and the three-state `enabled`; the console screen is `/ai-providers`.
 
-- `GET /api/v1/admin/providers/:service` — jwt `CanRead(GlobalSetting)` — apikey yes `admin:ai-provider:manage` — `list`
-- `GET /api/v1/admin/providers/:service/:provider` — jwt `CanRead(GlobalSetting)` — apikey yes `admin:ai-provider:manage` — `getOne`
-- `PUT /api/v1/admin/providers/:service/:provider` — jwt `CanManage(GlobalSetting)` — apikey yes `admin:ai-provider:manage` — OCC — `upsert`
-- `DELETE /api/v1/admin/providers/:service/:provider` — jwt `CanManage(GlobalSetting)` — apikey yes `admin:ai-provider:manage` — `remove`
+- `GET /api/v1/admin/providers/:service` — jwt `CanRead(GlobalSetting)` — `list`
+- `GET /api/v1/admin/providers/:service/:provider` — jwt `CanRead(GlobalSetting)` — `getOne`
+- `PUT /api/v1/admin/providers/:service/:provider` — jwt `CanManage(GlobalSetting)` — OCC — `upsert` (incl. ceilings `maxConcurrent`/`rpmLimit`/`tpmLimit`/`timeoutS`)
+- `DELETE /api/v1/admin/providers/:service/:provider` — jwt `CanManage(GlobalSetting)` — `remove`
+- `POST /api/v1/admin/providers/:service/:provider/test` — jwt `CanManage(GlobalSetting)` — `testConnection` (ephemeral probe; never persisted — TASK-862)
+
+### AiRoutingPolicyAdminController
+
+- **File:** `src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts`
+- **Prefix:** `admin/routing-policies` → `api/v1/admin/routing-policies`
+- **api_count:** 11
+- **Auth model:** JWT only (`@ForbidApiKey`)
+- **JWT / other:** class-level `CanManage(AiRoutingPolicy)`; writes are SUPER_ADMIN-only imperatively in the service (403 privilege boundary), reads resolve tenant → SYSTEM.
+- **Notes:** THE provider-configuration plane (TASK-862 D-2): one row = one `(tenant, taskKey)` configuration binding a connection + model by FK, with an elected `isDefault`. `AiRoutingPolicyService.resolveDefault` is the one "default model for a non-agent task" read; the SYSTEM election is written from the model registry (TASK-860). No tenant screen.
+
+- `GET /api/v1/admin/routing-policies` — `list`
+- `GET /api/v1/admin/routing-policies/effective` — `getEffective` (gated fallback chain)
+- `GET /api/v1/admin/routing-policies/export` — `export` (no credential material)
+- `GET /api/v1/admin/routing-policies/:id` — `getById`
+- `POST /api/v1/admin/routing-policies` — `create`
+- `PATCH /api/v1/admin/routing-policies/:id` — OCC — `update`
+- `POST /api/v1/admin/routing-policies/:id/activate` — `activate`
+- `POST /api/v1/admin/routing-policies/:id/default` — `setDefault` (atomic election)
+- `POST /api/v1/admin/routing-policies/:id/promote` — `promote` (copies no credential)
+- `POST /api/v1/admin/routing-policies/import` — `import`
+- `DELETE /api/v1/admin/routing-policies/:id` — `deleteById`
 
 ### RateLimitAdminController
 
@@ -2094,7 +2088,7 @@ Nine `@Sse()` handlers (always paired with `@Get`, counted as one HTTP handler e
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | HTTP `@Controller` classes             | **104**, all present in module `controllers: [...]` arrays                                                                                                                                                                                                                                                                                                     |
 | Live controller files                  | **102** under `apps/api/src`                                                                                                                                                                                                                                                                                                                                   |
-| Dual-class files (do not double-count) | `src/modules/ai-provider-connection/ai-provider-connection.controller.ts` → `ProviderConnectionController` (`admin/providers`) + `AiProviderConnectionController` (`admin/ai-providers`); `src/modules/consultation-context-schema/consultation-context-schema.controller.ts` → `ConsultationContextSchemaAdminController` + `MyTenantContextSchemaController` |
+| Dual-class files (do not double-count) | `src/modules/consultation-context-schema/consultation-context-schema.controller.ts` → `ConsultationContextSchemaAdminController` + `MyTenantContextSchemaController` |
 | Unused abstract                        | `BaseProxyController` in `src/shared/base-proxy.controller.ts` — no `@Controller()`, unused by live controllers, not registered                                                                                                                                                                                                                                |
 | HTTP/SSE handler sum                   | **605** (this document’s `api_count` column and per-controller bullets)                                                                                                                                                                                                                                                                                        |
 | `SttInternalController`                | **10** handlers (not 9): transcripts, streaming/usage, jobs start/progress/complete/fail/status, audio-records, media, provider-overrides                                                                                                                                                                                                                      |
