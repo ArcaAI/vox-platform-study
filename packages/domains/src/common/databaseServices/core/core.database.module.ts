@@ -7,6 +7,7 @@ import { AgentTrajectoryStepRepository } from '../../../repositories/generated/c
 import { AiModelRepository } from '../../../repositories/generated/core/AiModelRepository';
 import { AiPriceBookRepository } from '../../../repositories/generated/core/AiPriceBookRepository';
 import { AiProviderConnectionRepository } from '../../../repositories/generated/core/AiProviderConnectionRepository';
+import { WorkflowWebhookSecretRepository } from '../../../repositories/generated/core/WorkflowWebhookSecretRepository';
 import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRoutingPolicyRepository } from '../../../repositories/generated/core/AiRoutingPolicyRepository';
 import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
@@ -186,6 +187,8 @@ const repositories = [
   // Config-plane core — provider endpoints/credentials + runtime
   // hyperparameter profiles. Both are SYSTEM-shared read models.
   AiProviderConnectionRepository,
+  // TASK-864 — the inbound workflow webhook trigger's per-definition secret.
+  WorkflowWebhookSecretRepository,
   AiRuntimeProfileRepository,
   // The ordered N-way candidate chain per (tenant, taskKey, policyVersion)
   // Also a SYSTEM_SHARED_READ_MODEL — the SYSTEM row is the

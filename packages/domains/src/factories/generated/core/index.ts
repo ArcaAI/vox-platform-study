@@ -99,3 +99,4 @@ export * from './RateLimitRuleFactory';
 export * from './DocumentTemplateFactory';
 export * from './DocumentTemplateVersionFactory';
 export * from './AiRoutingPolicyFactory';
+export * from './WorkflowWebhookSecretFactory';

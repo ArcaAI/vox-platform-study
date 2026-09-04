@@ -108,7 +108,7 @@ export enum ResourceType {
   WorkflowDefinition = 'WorkflowDefinition',
   ConsentGrant = 'ConsentGrant',
   // Workflow test fixture. Ordinary CRUD, unlike sibling
-  // WorkflowRun (telemetry, no ResourceType) — parity with audit.prisma.
+  // WorkflowRun: see the TASK-864 entry at the end of this enum.
   WorkflowTestFixture = 'WorkflowTestFixture',
   // Tenant NLP task instructions — tenant-writable topic/intent
   // instruction content, deliberately separate from AiTaskDefault's
@@ -146,4 +146,10 @@ export enum ResourceType {
   // `policyVersion` natural key), not a ResourceType of its own.
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   AiRoutingPolicy = 'AiRoutingPolicy',
+  // TASK-864 (owner decision D-5) — the run read model emits ONE sys-event, on
+  // terminal status, so a run-completed webhook can fan out (PHI-free payload).
+  // Reverses the telemetry exemption. Parity with audit.prisma; see
+  // resourceType.enum-parity.test.ts. APPEND-ONLY (TASK-863 appends `Agent`,
+  // `AgentAssignment` in a sibling branch).
+  WorkflowRun = 'WorkflowRun',
 }

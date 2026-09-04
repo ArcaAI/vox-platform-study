@@ -105,3 +105,4 @@ export * from './WorkflowDefinitionModel';
 export * from './WorkflowInvariantRuleModel';
 export * from './WorkflowRunModel';
 export * from './WorkflowTestFixtureModel';
+export * from './WorkflowWebhookSecretModel';
