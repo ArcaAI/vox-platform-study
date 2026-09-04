@@ -46,7 +46,6 @@ import {
   IconRobot,
   IconRocket,
   IconRoute,
-  IconScale,
   IconSchema,
   IconServerBolt,
   IconServerCog,

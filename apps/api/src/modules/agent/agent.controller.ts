@@ -214,7 +214,7 @@ export class AgentController {
   async speech(@Param('slug') slug: string, @Body() body: AgentSpeechBody, @Res() res: Response): Promise<void> {
     const tenantId = this.requireTenant();
     const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_TO_SPEECH, agentSlug: slug });
-    const agentRequest = this.invocation.buildSpeechRequest(resolved, body ?? {});
+    const agentRequest = this.invocation.buildSpeechRequest(resolved, { ...(body ?? {}) });
 
     // The SAME tenant resolve the speech proxy applies (`tts-tenant-config.ts`), mapped onto
     // the agent's request: the agent decides voice/format/speed/model, the tenant decides
@@ -298,13 +298,13 @@ export class AgentController {
             idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
             occurredAt: new Date(),
             capability: AiCapability.TTS,
-            operation: 'agent.speech',
+            operation: 'tts.synthesize', // the frozen TTS operation; the agent identity rides on attributesJson
             provider: provider ?? 'none',
             model: resolved.compiledConfig.model.slug,
             deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
             ...(costBasis ? { costBasis } : {}),
             requestId,
-            attributesJson: { interrupted, agentSlug: resolved.slug, agentVersionId: resolved.agentVersionId },
+            attributesJson: { interrupted }, // allow-listed dimensions only (usage-attributes.ts); the agent identity is on the response headers
           },
           units: [{ unit: AiUsageUnit.CHARACTER, quantity: characters }],
         })
