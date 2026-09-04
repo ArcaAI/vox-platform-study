@@ -6,7 +6,8 @@
  * (`publishBlockedReason`, Task 14) — the client validator is never the gate.
  */
 import { Badge, Button, ToggleGroup, ToggleGroupItem } from '@arcaai/ui';
-import { IconArrowBackUp, IconArrowForwardUp, IconFlask } from '@tabler/icons-react';
+import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconFlask, IconLayoutDistributeHorizontal, IconUpload } from '@tabler/icons-react';
+import { useId, useRef } from 'react';
 import type { AutosaveState, WorkflowStudioViewMode } from '../store/types';
 
 const AUTOSAVE_LABEL: Record<AutosaveState, string> = {
@@ -65,6 +66,12 @@ export interface StudioToolbarProps {
    * `null`/absent in create-mode, where there is no server row to run yet.
    */
   sandboxDefinitionId?: string | null;
+  /** TASK-864 B1 — arrange the graph (layered, left to right). Absent = no button. */
+  onAutoLayout?: () => void;
+  /** TASK-864 B1 — hand the caller the graph JSON to save/copy. Absent = no button. */
+  onExport?: () => void;
+  /** TASK-864 B1 — receives the chosen file's text; the caller parses and refuses. Absent = no button. */
+  onImport?: (text: string) => void;
 }
 
 export function StudioToolbar({
@@ -82,8 +89,13 @@ export function StudioToolbar({
   onUndo,
   onRedo,
   sandboxDefinitionId,
+  onAutoLayout,
+  onExport,
+  onImport,
 }: StudioToolbarProps) {
   const sandboxBlockedReason = SANDBOX_BLOCKED_REASON[autosaveState] ?? null;
+  const importInputId = useId();
+  const importInputRef = useRef<HTMLInputElement>(null);
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <ToggleGroup
@@ -114,6 +126,40 @@ export function StudioToolbar({
               <IconArrowForwardUp aria-hidden="true" />
             </Button>
           </div>
+        ) : null}
+        {!readOnly && onAutoLayout ? (
+          <Button type="button" variant="outline" size="sm" onClick={onAutoLayout} title="Arrange the nodes in layers, left to right">
+            <IconLayoutDistributeHorizontal aria-hidden="true" />
+            Auto layout
+          </Button>
+        ) : null}
+        {onExport ? (
+          <Button type="button" variant="outline" size="sm" onClick={onExport} title="Download this graph as JSON">
+            <IconDownload aria-hidden="true" />
+            Export
+          </Button>
+        ) : null}
+        {!readOnly && onImport ? (
+          <>
+            <input
+              ref={importInputRef}
+              id={importInputId}
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              aria-label="Import graph JSON"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file) return;
+                void file.text().then(onImport);
+              }}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={() => importInputRef.current?.click()} title="Replace this graph with a JSON file (undoable)">
+              <IconUpload aria-hidden="true" />
+              Import
+            </Button>
+          </>
         ) : null}
         <Badge variant={autosaveState === 'conflict' || autosaveState === 'error' ? 'destructive' : 'outline'}>{AUTOSAVE_LABEL[autosaveState]}</Badge>
         {/* Offered on read-only (published) versions too — a published graph is the one most
