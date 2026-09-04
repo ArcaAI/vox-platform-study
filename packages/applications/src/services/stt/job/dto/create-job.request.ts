@@ -34,6 +34,15 @@ export class CreateJobRequest {
   pipelineId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'TASK-861 — the published ASR Agent to run the job, by slug. Absent = the tenant`s assigned ASR agent (the same cascade as `POST …/transcribe`). Ignored when `pipelineId` (deprecated) is sent.',
+  })
+  @IsString()
+  @IsOptional()
+  @IsNotEmpty()
+  agentSlug?: string;
+
+  @ApiPropertyOptional({
     description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
   })
   @IsString()
