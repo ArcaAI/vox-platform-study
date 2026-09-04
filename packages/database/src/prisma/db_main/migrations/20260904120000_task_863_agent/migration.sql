@@ -7,7 +7,6 @@
 -- precedent (20260817000100_task_734_...). `prisma migrate diff` will therefore
 -- show permanent drift for exactly those objects; that is expected.
 --
-◇ injected env (163) from ../../.env.dev // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
 -- CreateEnum
 CREATE TYPE "core"."AgentTask" AS ENUM ('SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_TO_SPEECH');
 
