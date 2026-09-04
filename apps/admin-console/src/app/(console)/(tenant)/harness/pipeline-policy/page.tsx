@@ -1,12 +1,11 @@
-import type { Metadata } from 'next';
-import { PipelinePolicyScreen } from '@/features/pipeline-policy/components/pipeline-policy-screen';
-
-export const metadata: Metadata = { title: 'Pipeline Policy (Post-Consultation)' };
+import { redirect } from 'next/navigation';
 
 /**
-* Frame 39 — post-consultation pipeline policy cascade (tier 30-49, working tenant). Governs the post-consultation
- * summarization/NER pipeline only — not the live consultation lane (F-23, item 7).
+ * TASK-861 — `/harness/pipeline-policy` is RETIRED. `PipelinePolicy` is deprecated
+ * (removed in R4); its toggles become `enabled` flags on the nodes of the workflow a
+ * department is assigned, edited on `/workflow-studio/assignments` (TASK-864). This
+ * redirect stub survives ONE release; delete the folder in R3.
  */
 export default function PipelinePolicyPage() {
-  return <PipelinePolicyScreen />;
+  redirect('/workflow-studio/assignments');
 }

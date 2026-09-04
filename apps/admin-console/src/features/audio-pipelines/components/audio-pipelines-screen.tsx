@@ -1,5 +1,7 @@
 'use client';
 
+// @deprecated TASK-861 — removed in R4. No route mounts this screen any more (`/audio/pipelines` redirects to `/agents?task=SPEECH_TO_TEXT`); kept, with its tests, for the deprecation window.
+
 import { useCallback, useMemo, useState } from 'react';
 import { IconFilterOff, IconPlus, IconRoute, IconStarFilled } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';

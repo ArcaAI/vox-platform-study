@@ -1,6 +1,9 @@
 /**
  * The retired console routes.
  *
+ * TASK-861 added `/audio/pipelines` → `/agents?task=SPEECH_TO_TEXT` and
+ * `/harness/pipeline-policy` → `/workflow-studio/assignments`.
+ *
  * `/prompt-studio` folded into the prompt-template Governance tab, `/pstudio`
  * was renamed `/db-studio`, `/ai-platform` dissolved into `/ai-providers`
  * (TASK-862) and `/ai-operations/reconciliation` was removed; `/agents`, once a
@@ -56,6 +59,11 @@ const RETIRED_ROUTES: ReadonlyArray<readonly [route: string, modulePath: string,
   // TASK-862 removed Provider Reconciliation outright; the URL forwards to the
   // consumption & cost dashboard for one release.
   ['/ai-operations/reconciliation', '../ai-operations/reconciliation/page', '/ai-operations/consumption'],
+  // TASK-861 retired the two pipeline screens: the ASR Agent replaces `AsrPipeline`
+  // and workflow assignments replace `PipelinePolicy`. Both stubs live in `(tenant)`
+  // (their audience is unchanged; the `(global)` layout would 404 a tenant admin).
+  ['/audio/pipelines', '../../(tenant)/audio/pipelines/page', '/agents?task=SPEECH_TO_TEXT'],
+  ['/harness/pipeline-policy', '../../(tenant)/harness/pipeline-policy/page', '/workflow-studio/assignments'],
 ];
 
 describe('retired route redirects', () => {

@@ -1,5 +1,7 @@
 'use client';
 
+// @deprecated TASK-861 — removed in R4. No route mounts this screen any more (`/harness/pipeline-policy` redirects to `/workflow-studio/assignments`); kept, with its tests, for the deprecation window.
+
 import { useState, type ReactNode } from 'react';
 import { IconAdjustmentsHorizontal, IconInfoCircle } from '@tabler/icons-react';
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs';

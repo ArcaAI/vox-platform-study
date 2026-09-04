@@ -12,7 +12,12 @@ export const TERMINAL_JOB_STATUSES: readonly TranscriptionJobStatus[] = ['COMPLE
 export interface TranscriptionJob {
   id: string;
   jobType: TranscriptionJobType;
-  pipelineId: string;
+  /** @deprecated TASK-861 — removed in R4. `null` on agent-keyed jobs; read `agentVersionId`. */
+  pipelineId: string | null;
+  /** TASK-861 — the ASR Agent VERSION that ran the job (rows are versions). */
+  agentVersionId?: string | null;
+  /** TASK-861 — the `ResolvedAsrSpec` snapshot the job ran on (never a credential). */
+  resolvedSpec?: unknown;
   consultationId?: string | null;
   contextItemId?: string | null;
   mediaId?: string | null;
