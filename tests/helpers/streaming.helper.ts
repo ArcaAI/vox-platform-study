@@ -53,18 +53,15 @@ import { DEFAULT_TENANT_KEY, loginUser, SEEDED_USERS } from './e2e.helper';
 export const STREAM_SAMPLE_RATE = 16000;
 
 /**
- * Default ASR pipeline for streaming e2e.
- *
- * Must be a pipeline the seeded `__GLOBAL__` (tenant `50000000-…0000`) callers
- * OWN — `createStreamSession` runs `assertPipelineOwnership` (a tenant-scoped
- * `pipelineService.getById`, 404-over-403). The SYSTEM-tenant `best-practice-*`
- * pipelines are NOT resolvable by a `__GLOBAL__` caller on this path, so we use
- * the `__GLOBAL__`-owned `turbo-whisper-large-v3` (id `…402`), whose ASR model
- * is `openai/whisper-large-v3-turbo` — the same Whisper-Turbo model as
- * `best-practice-realtime` and one that is cached on the offline test volume.
- * Override with `STREAM_E2E_PIPELINE_ID`.
+ * Optional explicit ASR pipeline for streaming e2e — the DEPRECATED path
+ * (TASK-861, removed in R4). UNSET by default: `06-stt.ts` seeds no
+ * `AsrPipeline` rows any more, so a session is minted with neither `pipelineId`
+ * nor `agentSlug` and the gateway resolves it through the caller's assigned ASR
+ * agent (`platform-transcription`, seeded by `25-agents.ts`, reached via the
+ * SYSTEM assignment cascade). Set `STREAM_E2E_PIPELINE_ID` only to exercise the
+ * deprecated `pipelineId` path against a pipeline the caller's tenant owns.
  */
-export const DEFAULT_STREAM_PIPELINE_ID = process.env.STREAM_E2E_PIPELINE_ID?.trim() || '81000000-0000-0000-0001-000000000402';
+export const DEFAULT_STREAM_PIPELINE_ID: string | undefined = process.env.STREAM_E2E_PIPELINE_ID?.trim() || undefined;
 
 /**
  * Committed 16 kHz mono PCM16 fixture (≈107 s real Malayalam speech). Override
@@ -169,7 +166,11 @@ export async function createStreamSession(
 
   const response = await request.post('/api/v1/audio/transcription-jobs/stream/session', {
     headers: { Authorization: `Bearer ${opts.token}` },
-    data: { pipelineId, sampleRate, ...(opts.consultationId ? { consultationId: opts.consultationId } : {}) },
+    data: {
+      ...(pipelineId ? { pipelineId } : {}),
+      sampleRate,
+      ...(opts.consultationId ? { consultationId: opts.consultationId } : {}),
+    },
   });
 
   const status = response.status();
@@ -178,7 +179,7 @@ export async function createStreamSession(
     return {
       ok: false,
       status,
-      reason: `POST stream/session → ${status}: ${body} (pipeline=${pipelineId}; is STT running + the pipeline owned by the caller?)`,
+      reason: `POST stream/session → ${status}: ${body} (pipeline=${pipelineId ?? 'assigned ASR agent'}; is STT running + the ASR agent resolvable for the caller?)`,
     };
   }
 

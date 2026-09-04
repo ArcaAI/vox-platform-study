@@ -17,6 +17,13 @@
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
+// TASK-861 (step 11 follow-up): the locked seeded template copies every probe in
+// this file relies on are no longer seeded — `06-stt.ts` writes no `AsrPipeline`
+// rows. The clone / lock / resync surface is deprecated (removed in R4) and has
+// no seed fixture left to run against, so the file is skipped as a whole and is
+// deleted together with the surface in R4.
+test.skip(true, 'TASK-861: seeded AsrPipeline template copies retired — deprecated pipeline surface, spec goes with the code in R4');
+
 const LOCK_MESSAGE = 'Template copies are read-only';
 const TEMPLATE_SLUG = 'production-whisper-large-v3-turbo-gguf';
 
