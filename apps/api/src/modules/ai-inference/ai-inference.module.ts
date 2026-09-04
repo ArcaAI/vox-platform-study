@@ -1,6 +1,5 @@
 import {
   AiModelServiceModule,
-  AiRuntimeProfileServiceModule,
   AiTaskDefaultServiceModule,
   TenantNlpTaskInstructionsServiceModule,
   UsageLedgerServiceModule,
@@ -28,13 +27,10 @@ import { SafetyCheckController } from './safety-check.controller';
  * resolve the tenant's topic/intent instruction content before proxying.
  */
 @Module({
-  // AiRuntimeProfileServiceModule supplies the hyperparameter
-  // profile resolver injected alongside `model_name`.
   imports: [
     HttpModule,
     AiTaskDefaultServiceModule,
     AiModelServiceModule,
-    AiRuntimeProfileServiceModule,
     UsageLedgerServiceModule,
     TenantNlpTaskInstructionsServiceModule,
   ],

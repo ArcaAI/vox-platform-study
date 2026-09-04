@@ -19,8 +19,8 @@ import { encryptSeedSecret, isSeedSecretEncryptionAvailable } from './phi-encryp
  *     platform-run engine's connection identity (env-tier per
  *     `09-infrastructure-devops.md`), carried here as the DECLARED source of
  *     truth — not a placeholder.
- *   - CLOUD-BYO providers (llm `azure`/`bedrock`/`openai`/`anthropic`/`vertex`/
- *     `sarvam`, plus all stt/tts cloud rows) stay `enabled: false`: a cloud
+ *   - CLOUD-BYO providers (llm `azure`/`bedrock`/`openai`/`anthropic`/`vertex`,
+ *     plus all stt/tts cloud rows) stay `enabled: false`: a cloud
  *     provider needs a tenant-supplied key, so an enabled-but-keyless cloud row
  *     must never serve. A tenant enables one by bringing its own credential.
  *
@@ -311,23 +311,6 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     keyVersion: null,
     apiKeyPlaintext: null,
     enabled: true,
-    metaData: null,
-  },
-  {
-    // Sarvam AI (cloud). NOTE: the public API is not PHI-safe — point at a
-    // VPC/on-prem host before enabling for patient data.
-    id: '87000000-0000-0000-0000-000000000006',
-    tenantId: SYSTEM_TENANT_ID,
-    service: 'llm',
-    provider: 'sarvam',
-    baseUrl: null,
-    region: null,
-    apiVersion: null,
-    deploymentName: null,
-    encryptedApiKey: null,
-    keyVersion: null,
-    apiKeyPlaintext: null,
-    enabled: false,
     metaData: null,
   },
   {

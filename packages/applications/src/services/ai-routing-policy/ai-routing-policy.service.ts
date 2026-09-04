@@ -27,8 +27,10 @@ import { IProviderConnectionService, ProviderService } from '../ai-provider-conn
 import {
   GenerationCapabilitySelector,
   IAiRoutingPolicyService,
+  ResolveDefaultOptions,
   ResolveRoutingOptions,
   ResolvedGenerationCapabilities,
+  ResolvedTaskDefault,
 } from './IAiRoutingPolicyService';
 import { AiRoutingPolicyDtoMapper } from './ai-routing-policy.dto.mapper';
 import { AiRoutingPolicyResponse, CreateAiRoutingPolicyRequest, EffectiveRoutingPolicyResponse, UpdateAiRoutingPolicyRequest } from './dto';
@@ -154,6 +156,34 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   async getById(id: string, tenantId: string): Promise<AiRoutingPolicyResponse> {
     this.assertSuperAdmin('read a routing policy');
     return AiRoutingPolicyDtoMapper.toResponse(await this.loadOwnedRow(id, tenantId));
+  }
+
+  /**
+   * TASK-862 — see the interface. The SAME tier rule as `getEffective` steps
+   * 1-3b (tenant on presence, SYSTEM on absence, `isDefault` outranks
+   * ordering) without the match predicate, the funding derivation or the
+   * fallback chain: a non-agent consumer (guardrail, NER defaults, the harness
+   * judge, embeddings) asks "which one", not "in what order".
+   *
+   * Not behind the super-admin gate: a tenant resolving what serves ITSELF is
+   * ordinary runtime work; the controllers that let one tenant address
+   * another already gate that (`resolveScopedTenantId`).
+   */
+  async resolveDefault(tenantId: string, taskKey: string, options: ResolveDefaultOptions = {}): Promise<ResolvedTaskDefault> {
+    this.assertKnownTaskKey(taskKey);
+    const tenantIds = options.systemOnly ? [SYSTEM_TENANT_ID] : options.noWiden || tenantId === SYSTEM_TENANT_ID ? [tenantId] : [tenantId, SYSTEM_TENANT_ID];
+    const rows = await this.readCandidateRows(tenantIds, taskKey);
+    const tenantRows = tenantId === SYSTEM_TENANT_ID ? [] : rows.filter((row) => row.tenantId === tenantId);
+    const systemRows = rows.filter((row) => row.tenantId === SYSTEM_TENANT_ID);
+    const tier = tenantRows.length > 0 ? tenantRows : systemRows;
+    const source: ResolvedTaskDefault['source'] = tenantRows.length > 0 ? 'tenant' : systemRows.length > 0 ? 'system' : null;
+    const policy = tier.find((row) => row.isDefault) ?? tier[0] ?? null;
+
+    // The FK names the catalogue row; a model the caller may not read, or one
+    // that is not ENABLED, is "no model" — the caller fails closed on null,
+    // exactly as it did on an unresolvable `AiTaskDefault.modelSlug`.
+    const model = policy?.modelId ? await this.aiModelRepository.findById(policy.modelId).catch(() => null) : null;
+    return { tenantId, taskKey, source, policy, model: model && model.resourceStatus === ResourceStatusType.ENABLED ? model : null };
   }
 
   /**

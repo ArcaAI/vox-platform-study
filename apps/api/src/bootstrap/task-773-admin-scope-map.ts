@@ -84,11 +84,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     controllerClass: 'RateLimitAdminController',
     adminScope: 'admin:rate-limit:manage',
   },
-  {
-    file: 'apps/api/src/modules/admin-usage/admin-reconciliation.controller.ts',
-    controllerClass: 'AdminReconciliationController',
-    adminScope: 'admin:usage:manage',
-  },
   { file: 'apps/api/src/modules/admin-usage/admin-usage.controller.ts', controllerClass: 'AdminUsageController', adminScope: 'admin:usage:manage' },
   {
     file: 'apps/api/src/modules/agent-promotion/agent-promotion.controller.ts',
@@ -119,16 +114,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     file: 'apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts',
     controllerClass: 'ProviderConnectionController',
     adminScope: 'admin:ai-provider:manage',
-  },
-  {
-    file: 'apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts',
-    controllerClass: 'AiProviderConnectionController',
-    adminScope: 'admin:ai-provider:manage',
-  },
-  {
-    file: 'apps/api/src/modules/ai-runtime-profile/ai-runtime-profile.controller.ts',
-    controllerClass: 'AiRuntimeProfileController',
-    adminScope: 'admin:ai-runtime-profile:manage',
   },
   {
     file: 'apps/api/src/modules/ai-service-admin/ai-service-admin.controller.ts',

@@ -47,6 +47,8 @@ export class AiTaskModelSummary {
 }
 
 /**
+ * @deprecated TASK-862 — removed in R3 (use `IAiRoutingPolicyService.resolveDefault`).
+ *
  * The RESOLVED default model for an AI task: tenant row over the
  * SYSTEM platform row; `source` names the winning tier (null = neither row
  * exists and the consuming service falls back to its env bootstrap default).

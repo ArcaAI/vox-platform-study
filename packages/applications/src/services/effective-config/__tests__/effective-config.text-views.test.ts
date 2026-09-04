@@ -14,7 +14,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 import type { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
-import type { IAiRuntimeProfileService } from '../../ai-runtime-profile/IAiRuntimeProfileService';
+import type { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 import { EffectiveConfigService } from '../effective-config.service';
 
 /** Key → the value the override lane reports; absent keys resolve code-default. */
@@ -33,7 +33,7 @@ function settingsStub(overrides: Record<string, unknown> = {}) {
 }
 
 function serviceWith(settings: EffectiveSettingsService): EffectiveConfigService {
-  const runtimeProfiles = { list: vi.fn(async () => []) } as unknown as IAiRuntimeProfileService;
+  const runtimeProfiles = { list: vi.fn(async () => []) } as unknown as IProviderConnectionService;
   return new EffectiveConfigService(settings, runtimeProfiles);
 }
 

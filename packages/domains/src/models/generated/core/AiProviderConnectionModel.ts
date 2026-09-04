@@ -18,6 +18,10 @@ export class AiProviderConnection extends BaseTenantDataModel {
   public keyVersion: number | null;
   public enabled: boolean;
   public extraJson: JsonValue | null;
+  public maxConcurrent: number | null;
+  public rpmLimit: number | null;
+  public tpmLimit: number | null;
+  public timeoutS: number | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -36,6 +40,10 @@ export class AiProviderConnection extends BaseTenantDataModel {
     this.keyVersion = data.keyVersion;
     this.enabled = data.enabled;
     this.extraJson = data.extraJson;
+    this.maxConcurrent = data.maxConcurrent;
+    this.rpmLimit = data.rpmLimit;
+    this.tpmLimit = data.tpmLimit;
+    this.timeoutS = data.timeoutS;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

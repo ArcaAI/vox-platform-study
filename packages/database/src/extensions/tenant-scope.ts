@@ -153,11 +153,6 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // SYSTEM-shared for reads — see the justification on the
   // SYSTEM_SHARED_READ_MODELS entry below.
   'AiProviderConnection',
-  // ai-runtime-profile.prisma (1) — config-plane core. Hyperparameter /
-  // context / concurrency profiles per (provider, modelSlug). SYSTEM-only rows
-  // (super-admin-only per owner expectation); tenantId is
-  // carried for the house template + forward compatibility.
-  'AiRuntimeProfile', // also a SYSTEM-shared read model (platform-default row, below)
   // ai-routing-policy.prisma (1) — config-plane core ( The
   // ORDERED N-way candidate chain per (tenant, taskKey, policyVersion): which
   // providers serve a task, in what order, and what may happen on failure.
@@ -230,10 +225,6 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AiUsageOutbox',
   'AiUsageRollupHourly',
   'AiUsageRollupDaily',
-  // SYSTEM-owned platform records (a vendor bills the platform, not a
-  // tenant). Scoped here so a customer tenant's reads can never surface
-  // aggregate platform vendor spend; super-admin reads go through the service.
-  'ProviderReconciliationRun',
   // The price book is the ONE exception in this group: its SYSTEM-tenant rows
   // are the platform rate card that every tenant's rater must read, so it is
   // also a SYSTEM-shared read model (below). Standard soft-delete + sys-events
@@ -435,10 +426,6 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // which had no SYSTEM row at all, so widening them would have bought
   // nothing.
   'AiProviderConnection',
-  // Hyperparameter/context/concurrency profiles. SYSTEM-only rows,
-  // read by every tenant's injection cascade at request time. No secrets on
-  // the model at all. READS widen to [caller, SYSTEM]; WRITES are NOT widened.
-  'AiRuntimeProfile',
   // The provider ROUTING policy ( The SYSTEM-tenant row is the
   // platform default candidate chain every tenant without its own row must
   // resolve — the identical "tenant row → SYSTEM row" shape as AiTaskDefault

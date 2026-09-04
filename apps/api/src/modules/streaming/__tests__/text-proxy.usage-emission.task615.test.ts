@@ -83,7 +83,6 @@ function build(usageLedger?: unknown) {
     undefined, // harnessPolicyService
     undefined, // aiModelService
     undefined, // aiTaskDefaultService
-    undefined, // aiRuntimeProfileService
     undefined, // aiProviderConnectionService
     (usageLedger ?? { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) }) as never,
   );

@@ -49,7 +49,6 @@ import { API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN, SKIP_AUTH_KEY } from '@arca
 import './third-party-public-routes';
 
 import { RateLimitAdminController } from '../modules/admin-rate-limit/rate-limit-admin.controller';
-import { AdminReconciliationController } from '../modules/admin-usage/admin-reconciliation.controller';
 import { AdminUsageController } from '../modules/admin-usage/admin-usage.controller';
 import { AgentPromotionController } from '../modules/agent-promotion/agent-promotion.controller';
 import { AgentTrajectoryController } from '../modules/agent-trajectory/agent-trajectory.controller';
@@ -57,8 +56,6 @@ import { AgenticAdminController } from '../modules/agentic-admin/agentic-admin.c
 import { AiModelAdminController } from '../modules/ai-model/ai-model-admin.controller';
 import { AiModelDiscoveryController } from '../modules/ai-model/ai-model-discovery.controller';
 import { ProviderConnectionController } from '../modules/ai-provider-connection/ai-provider-connection.controller';
-import { AiProviderConnectionController } from '../modules/ai-provider-connection/ai-provider-connection.controller';
-import { AiRuntimeProfileController } from '../modules/ai-runtime-profile/ai-runtime-profile.controller';
 import { AiServiceAdminController } from '../modules/ai-service-admin/ai-service-admin.controller';
 import { AiTaskDefaultAdminController } from '../modules/ai-task-default/ai-task-default-admin.controller';
 import { ApiKeyController } from '../modules/api-key/api-key.controller';
@@ -150,7 +147,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: AdminConsultationController, expect: 'FORBID' },
   { controller: AdminHealthServicesController, expect: 'FORBID' },
   { controller: AdminImpersonationController, expect: 'FORBID' },
-  { controller: AdminReconciliationController, expect: 'FORBID' },
   { controller: AdminTranscriptionJobController, expect: 'FORBID' },
   { controller: AdminUsageController, expect: 'FORBID' },
   { controller: AgentPromotionController, expect: 'FORBID' },
@@ -158,8 +154,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: AgenticAdminController, expect: 'FORBID' },
   { controller: AiModelAdminController, expect: 'FORBID' },
   { controller: AiModelDiscoveryController, expect: 'FORBID' },
-  { controller: AiProviderConnectionController, expect: 'FORBID' },
-  { controller: AiRuntimeProfileController, expect: 'FORBID' },
   { controller: AiServiceAdminController, expect: 'FORBID' },
   { controller: AiTaskDefaultAdminController, expect: 'FORBID' },
   { controller: ApiKeyController, expect: 'FORBID' },
