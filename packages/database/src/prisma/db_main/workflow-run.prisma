@@ -30,7 +30,12 @@
 //   - NO soft-delete lifecycle: a run row is an operational-history fact, not
 //     a manageable resource. No `resourceStatus` column; listed in
 //     MODELS_WITHOUT_SOFT_DELETE (packages/database/src/client.ts).
-//   - NO sys-events on write: same telemetry exemption as AgentTrajectoryStep
+//   - ONE sys-event, on TERMINAL status (TASK-864, owner decision D-5):
+//     `recordRunFinished` broadcasts `ResourceUpdated` against
+//     `ResourceType.WorkflowRun` with a PHI-free payload so a run-completed
+//     webhook can fan out. `recordRunStarted` still emits nothing. This
+//     REVERSES the exemption the next lines record; kept for the history.
+//   - (superseded) NO sys-events on write: same telemetry exemption as AgentTrajectoryStep
 // (recordRunStarted/recordRunFinished are the write contract
 //     dispatcher — or a future gateway controller — calls; see the ticket's
 // R2 and the Task 1 contract for the current wiring gap). Because it

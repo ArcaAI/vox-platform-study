@@ -26,6 +26,8 @@ import {
   NODE_CONFIG_SCHEMAS,
   NODE_PORTS,
   WORKFLOW_NODE_REGISTRY,
+  actionDelegateOf,
+  effectivePorts,
   type WorkflowNodePorts,
   type WorkflowPortDescriptor,
 } from '@arcaai/workflow-contract';
@@ -61,6 +63,28 @@ export const REALTIME_NODE_TYPES: ReadonlySet<string> = new Set(
     .filter((descriptor) => descriptor.lane === 'realtime')
     .map((descriptor) => descriptor.key),
 );
+
+/**
+ * TASK-864 A5 — lane membership is now a property of the INSTANCE, not only of the type.
+ *
+ * `core.agent` and `core.action` carry `execution.lane` in their own config (the registry's
+ * per-TYPE `lane` became node config for the `core` vocabulary — §3.3), so one summarizer can
+ * run live AND at finalization without two node types. A `core.action` inherits its delegate's
+ * lane when the instance says nothing: an `agent.ner` action is realtime because `agent.ner`
+ * is. The durable interpreter applies the SAME predicate (`_configured_realtime` in
+ * `workflow.py`), so exactly one runtime still executes any given node.
+ */
+export function isRealtimeNode(type: string, config?: Readonly<Record<string, unknown>>): boolean {
+  if (type === 'core.agent' || type === 'core.action') {
+    const execution = config?.execution;
+    const lane = typeof execution === 'object' && execution !== null ? (execution as { lane?: unknown }).lane : undefined;
+    if (lane === 'realtime') return true;
+    if (lane === 'durable') return false;
+    if (type === 'core.action') return actionDelegateOf(config)?.lane === 'realtime';
+    return false;
+  }
+  return REALTIME_NODE_TYPES.has(type);
+}
 
 // =============================================================================
 // Capabilities — the NARROW port the host service implements
@@ -422,6 +446,28 @@ function aliasHandler(type: string, delegate: RealtimeNodeHandler): RealtimeNode
   return Object.freeze({ type, inputs: ports.inputs, outputs: ports.outputs, run: (ctx: RealtimeNodeRunContext) => delegate.run(ctx) });
 }
 
+/**
+ * `core.agent` on the realtime lane (TASK-864 A5) — a TEXT_GENERATION agent producing the
+ * running note through the SAME `generateDocument` capability `consultation.realtimeSummary`
+ * uses. The agent itself (its instruction, model, guards) is resolved by the host service from
+ * `agentRef` (TASK-863 §3.4); this handler binds the declared ports and forwards the node's own
+ * config, exactly as the summary handler does. ASR/TTS agents are not realtime-lane nodes: the
+ * live transcript is the capture binding's product and speech is a durable artifact.
+ */
+class CoreAgentHandler implements RealtimeNodeHandler {
+  readonly type = 'core.agent';
+  readonly inputs = portsOf('core.agent').inputs;
+  readonly outputs = portsOf('core.agent').outputs;
+
+  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
+    const sourceText = boundText(ctx, 'in');
+    const context = ctx.bound.context;
+    const material = sourceText || (context !== undefined ? JSON.stringify(context) : '');
+    const result = await ctx.capabilities.generateDocument({ sourceText: material, tenantId: ctx.tenantId, config: ctx.config }, ctx.signal);
+    return { text: result.text, sections: result.sections, stats: result.stats, repaired: result.repaired };
+  }
+}
+
 const captureBinding = new CaptureBindingHandler();
 const extractEntities = new ExtractEntitiesHandler();
 
@@ -437,10 +483,36 @@ export const REALTIME_NODE_HANDLERS: Readonly<Record<string, RealtimeNodeHandler
   // Lane N — no alias either: `agent.important_findings` is the one catalogue entry with no
   // pipeline counterpart anywhere, because the capability did not exist before this ticket.
   'agent.important_findings': new ImportantFindingsHandler(),
+  // TASK-864 — the `core` vocabulary's realtime agent. `core.action` has no static entry: its
+  // handler is its DELEGATE's, resolved per instance by `realtimeHandlerFor`.
+  'core.agent': new CoreAgentHandler(),
 });
 
-export function realtimeHandlerFor(type: string): RealtimeNodeHandler | undefined {
+/**
+ * The handler for an INSTANCE (TASK-864 A5). A `core.action` resolves to the handler of the
+ * legacy node it delegates to, wrapped so its declared ports are the delegate's (the action IS
+ * the legacy node under a key). Every other type resolves by type, exactly as before.
+ */
+export function realtimeHandlerFor(type: string, config?: Readonly<Record<string, unknown>>): RealtimeNodeHandler | undefined {
+  if (type === 'core.action') {
+    const delegate = actionDelegateOf(config);
+    const handler = delegate ? REALTIME_NODE_HANDLERS[delegate.key] : undefined;
+    if (!delegate || !handler) return undefined;
+    const ports = effectivePorts('core.action', config);
+    return Object.freeze({
+      type: 'core.action',
+      inputs: ports.inputs,
+      outputs: ports.outputs,
+      run: (ctx: RealtimeNodeRunContext) => handler.run({ ...ctx, config: actionConfigOf(ctx.config) }),
+    });
+  }
   return REALTIME_NODE_HANDLERS[type];
+}
+
+/** The delegated action's OWN config (`config.action`), which is what the legacy handler reads. */
+function actionConfigOf(config: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  const action = config.action;
+  return typeof action === 'object' && action !== null && !Array.isArray(action) ? (action as Record<string, unknown>) : {};
 }
 
 /**
@@ -462,7 +534,15 @@ const REALTIME_ALIAS_OF: Readonly<Record<string, string>> = Object.freeze({
   'agent.ner': 'consultation.extractEntities',
 });
 
-export function canonicalRealtimeNodeType(type: string): string {
+export function canonicalRealtimeNodeType(type: string, config?: Readonly<Record<string, unknown>>): string {
+  // TASK-864: a `core.action` instance reads back as the legacy capability it delegates to, and
+  // a realtime `core.agent` as the running-note generator — so the flush projection that keys
+  // outcomes by canonical type keeps working for a graph authored in the `core` vocabulary.
+  if (type === 'core.action') {
+    const delegate = actionDelegateOf(config);
+    return delegate ? (REALTIME_ALIAS_OF[delegate.key] ?? delegate.key) : type;
+  }
+  if (type === 'core.agent') return 'consultation.realtimeSummary';
   return REALTIME_ALIAS_OF[type] ?? type;
 }
 

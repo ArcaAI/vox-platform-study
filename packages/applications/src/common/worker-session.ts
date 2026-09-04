@@ -40,7 +40,11 @@ export type WorkerSessionKind =
   | 'session-timeout-sweep'
   // Admin-triggered AiModel weight download: fetch from
   // HuggingFace/s3://, verify, publish into hope-models, write back the row.
-  | 'ai-model-download';
+  | 'ai-model-download'
+  // TASK-864: background watcher that records a workflow run's terminal
+  // status (and emits the run-completed sys-event) after the caller has
+  // disconnected. One context PER RUN — the watch is started per invoke.
+  | 'workflow-run-completion';
 
 /**
  * Init shape for `createWorkerSession`.

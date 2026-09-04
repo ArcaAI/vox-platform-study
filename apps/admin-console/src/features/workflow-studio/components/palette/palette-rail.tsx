@@ -19,6 +19,18 @@ import type { WorkflowNodeDescriptor } from '../../api/types';
 import { PaletteItem } from './palette-item';
 
 const UTILITY_GROUP_LABEL = 'Utility';
+/** The one authoring vocabulary (TASK-864) — always the first group, whatever the registry order. */
+const CORE_PALETTE_KEY = 'core';
+
+/**
+ * TASK-864 C1: a deprecated registry type is NOT offered for new nodes — it stays renderable in
+ * graphs that already use it (the canvas badges it), and its `replacedBy` names the core type
+ * to author instead. Hidden here rather than dropped from the registry so the deprecation window
+ * is a UI decision, not a wire-contract change.
+ */
+function authorable(descriptor: WorkflowNodeDescriptor): boolean {
+  return descriptor.deprecated !== true;
+}
 
 export interface PaletteRailProps {
   descriptors: WorkflowNodeDescriptor[];
@@ -31,7 +43,8 @@ export interface PaletteRailProps {
 
 function groupByPalette(descriptors: WorkflowNodeDescriptor[]): Map<string, WorkflowNodeDescriptor[]> {
   const groups = new Map<string, WorkflowNodeDescriptor[]>();
-  for (const descriptor of descriptors) {
+  const ordered = [...descriptors].sort((a, b) => Number(b.paletteKey === CORE_PALETTE_KEY) - Number(a.paletteKey === CORE_PALETTE_KEY));
+  for (const descriptor of ordered) {
     const key = descriptor.paletteKey ?? UTILITY_GROUP_LABEL;
     const bucket = groups.get(key) ?? [];
     bucket.push(descriptor);
@@ -49,7 +62,8 @@ function matchesQuery(descriptor: WorkflowNodeDescriptor, query: string): boolea
 export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNode }: PaletteRailProps) {
   const searchId = useId();
   const [query, setQuery] = useState('');
-  const filtered = useMemo(() => descriptors.filter((descriptor) => matchesQuery(descriptor, query)), [descriptors, query]);
+  const offered = useMemo(() => descriptors.filter(authorable), [descriptors]);
+  const filtered = useMemo(() => offered.filter((descriptor) => matchesQuery(descriptor, query)), [offered, query]);
 
   if (loading) {
     return (
@@ -61,7 +75,7 @@ export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNo
     );
   }
 
-  if (descriptors.length === 0) {
+  if (offered.length === 0) {
     return (
       <Empty>
         <EmptyMedia variant="icon">
@@ -86,7 +100,7 @@ export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNo
           <Input id={searchId} type="search" value={query} placeholder="Search node types" className="pl-8" onChange={(event) => setQuery(event.target.value)} />
         </div>
         <p aria-live="polite" className="text-muted-foreground text-xs">
-          {filtered.length} of {descriptors.length} node type{descriptors.length === 1 ? '' : 's'}
+          {filtered.length} of {offered.length} node type{offered.length === 1 ? '' : 's'}
         </p>
       </div>
       {filtered.length === 0 ? (

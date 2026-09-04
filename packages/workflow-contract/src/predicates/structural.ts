@@ -4,6 +4,7 @@
 import type { WorkflowGraph } from '../graph-model';
 import { reachableFrom, reachesAny, topologicalLevels } from '../graph-algorithms';
 import type { WorkflowEvaluationContext } from './context';
+import { selectIds } from './node-selector';
 import { isNonEmptyString, isPlainObject, type RawFinding } from './types';
 
 /**
@@ -26,8 +27,17 @@ import { isNonEmptyString, isPlainObject, type RawFinding } from './types';
  */
 export const BOUNDARY_CLASS = 'boundary';
 
+/**
+ * TASK-864 — a canvas ANNOTATION (`core.note`) is exempt for a stronger reason than a marker:
+ * it has no ports at all, so it can neither be reached nor reach anything, and `compile()`
+ * strips it before any stage exists. Reporting it as unreachable would make every commented
+ * graph unpublishable.
+ */
+export const ANNOTATION_CLASS = 'annotation';
+
 function isBoundary(nodeType: string, ctx: WorkflowEvaluationContext): boolean {
-  return ctx.registry.classesOf(nodeType).includes(BOUNDARY_CLASS);
+  const classes = ctx.registry.classesOf(nodeType);
+  return classes.includes(BOUNDARY_CLASS) || classes.includes(ANNOTATION_CLASS);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -47,20 +57,33 @@ export function acyclicConfigProblems(): string[] {
 // ---------------------------------------------------------------------------------------------
 // SINGLE_ENTRY
 // ---------------------------------------------------------------------------------------------
+/**
+ * `entryType` selects by exact type; `entryClass` (TASK-864) by registry class. The palette-
+ * agnostic bookend rules use the CLASS form (`entry` / `terminal`) so one rule admits both the
+ * legacy `core.start`/`core.end` markers and the `core` vocabulary's `core.trigger`/`core.output`.
+ */
 export interface SingleEntryConfig {
-  entryType: string;
+  entryType?: string;
+  entryClass?: string;
 }
-export function singleEntryEvaluate(graph: WorkflowGraph, config: SingleEntryConfig): RawFinding[] {
-  const matches = graph.nodes.filter((node) => node.type === config.entryType);
+function entrySelector(config: SingleEntryConfig): { nodeType?: string; nodeClass?: string } {
+  return { nodeType: config.entryType, nodeClass: config.entryClass };
+}
+function entryLabel(config: SingleEntryConfig): string {
+  return config.entryType !== undefined ? `type "${config.entryType}"` : `class "${config.entryClass}"`;
+}
+export function singleEntryEvaluate(graph: WorkflowGraph, ctx: WorkflowEvaluationContext, config: SingleEntryConfig): RawFinding[] {
+  const matches = selectIds(graph, ctx, entrySelector(config));
   if (matches.length !== 1) {
-    return [{ nodeId: null, message: `expected exactly one node of type "${config.entryType}", found ${matches.length}` }];
+    return [{ nodeId: null, message: `expected exactly one node of ${entryLabel(config)}, found ${matches.length}` }];
   }
   return [];
 }
 export function singleEntryConfigProblems(config: unknown): string[] {
-  if (!isPlainObject(config) || !isNonEmptyString(config.entryType)) {
-    return ['predicateConfig.entryType must be a non-empty string'];
-  }
+  if (!isPlainObject(config)) return ['predicateConfig.entryType must be a non-empty string'];
+  const hasType = isNonEmptyString(config.entryType);
+  const hasClass = isNonEmptyString(config.entryClass);
+  if (hasType === hasClass) return ['predicateConfig must declare exactly one of entryType / entryClass (non-empty strings)'];
   return [];
 }
 
@@ -68,17 +91,18 @@ export function singleEntryConfigProblems(config: unknown): string[] {
 // REACHABLE_FROM_ENTRY
 // ---------------------------------------------------------------------------------------------
 export interface ReachableFromEntryConfig {
-  entryType: string;
+  entryType?: string;
+  entryClass?: string;
 }
 export function reachableFromEntryEvaluate(graph: WorkflowGraph, ctx: WorkflowEvaluationContext, config: ReachableFromEntryConfig): RawFinding[] {
-  const entries = graph.nodes.filter((node) => node.type === config.entryType).map((node) => node.id);
+  const entries = selectIds(graph, ctx, entrySelector(config));
   const reachable = new Set<string>();
   for (const entry of entries) {
     for (const id of reachableFrom(graph, entry)) reachable.add(id);
   }
   return graph.nodes
     .filter((node) => !reachable.has(node.id) && !isBoundary(node.type, ctx))
-    .map((node) => ({ nodeId: node.id, message: `node "${node.id}" is not reachable from any "${config.entryType}" node` }));
+    .map((node) => ({ nodeId: node.id, message: `node "${node.id}" is not reachable from any entry node (${entryLabel(config)})` }));
 }
 export function reachableFromEntryConfigProblems(config: unknown): string[] {
   return singleEntryConfigProblems(config);
@@ -88,19 +112,22 @@ export function reachableFromEntryConfigProblems(config: unknown): string[] {
 // REACHES_TERMINAL
 // ---------------------------------------------------------------------------------------------
 export interface ReachesTerminalConfig {
-  terminalType: string;
+  terminalType?: string;
+  terminalClass?: string;
 }
 export function reachesTerminalEvaluate(graph: WorkflowGraph, ctx: WorkflowEvaluationContext, config: ReachesTerminalConfig): RawFinding[] {
-  const terminals = graph.nodes.filter((node) => node.type === config.terminalType).map((node) => node.id);
+  const terminals = selectIds(graph, ctx, { nodeType: config.terminalType, nodeClass: config.terminalClass });
+  const label = config.terminalType !== undefined ? `type "${config.terminalType}"` : `class "${config.terminalClass}"`;
   const canReach = reachesAny(graph, terminals);
   return graph.nodes
     .filter((node) => !canReach.has(node.id) && !isBoundary(node.type, ctx))
-    .map((node) => ({ nodeId: node.id, message: `node "${node.id}" does not reach any "${config.terminalType}" node (dead end)` }));
+    .map((node) => ({ nodeId: node.id, message: `node "${node.id}" does not reach any terminal node (${label}) (dead end)` }));
 }
 export function reachesTerminalConfigProblems(config: unknown): string[] {
-  if (!isPlainObject(config) || !isNonEmptyString(config.terminalType)) {
-    return ['predicateConfig.terminalType must be a non-empty string'];
-  }
+  if (!isPlainObject(config)) return ['predicateConfig.terminalType must be a non-empty string'];
+  const hasType = isNonEmptyString(config.terminalType);
+  const hasClass = isNonEmptyString(config.terminalClass);
+  if (hasType === hasClass) return ['predicateConfig must declare exactly one of terminalType / terminalClass (non-empty strings)'];
   return [];
 }
 

@@ -145,6 +145,15 @@ export interface WorkflowNodeDescriptor {
    * binding has a home; `undefined` on every node today — migrates the data onto it.
    */
   readonly evalGate?: WorkflowNodeEvalGate;
+  /**
+   * TASK-864 / TASK-859 §6 — the node type is DEPRECATED: it keeps compiling and executing for
+   * the two-release window, the Studio hides it from the palette rail (but still renders graphs
+   * that use it), and `replacedBy` names the `core.*` type that supersedes it. TS-only, like
+   * `classes`/`paletteKey`: the interpreter dispatches a deprecated type exactly as before.
+   */
+  readonly deprecated?: boolean;
+  /** The `core.*` node type (or `core.action` key) a deprecated type maps onto. */
+  readonly replacedBy?: string;
 }
 
 /** When a node runs — orthogonal to `lane`. */
@@ -182,6 +191,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.variable',
   }),
   passthrough: Object.freeze({
     key: 'passthrough',
@@ -199,6 +210,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.variable',
   }),
   // -------------------------------------------------------------------------------------------
   // Graph boundary markers (palette-agnostic). The four palette-independent structural rules
@@ -216,7 +229,9 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     key: 'core.start',
     implemented: true,
     activityName: 'interpreter.core_start',
-    classes: Object.freeze(['boundary']),
+    // `entry` (TASK-864): the palette-agnostic bookend rules select the graph entry by CLASS, so
+    // one rule admits this legacy marker and the `core` vocabulary's `core.trigger` alike.
+    classes: Object.freeze(['boundary', 'entry']),
     paletteKey: null,
     critical: false,
     externalWrite: false,
@@ -228,12 +243,14 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.trigger',
   }),
   'core.end': Object.freeze({
     key: 'core.end',
     implemented: true,
     activityName: 'interpreter.core_end',
-    classes: Object.freeze(['boundary']),
+    classes: Object.freeze(['boundary', 'terminal']),
     paletteKey: null,
     critical: false,
     externalWrite: false,
@@ -245,6 +262,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.output',
   }),
   // -------------------------------------------------------------------------------------------
   // Summarization palette — five node types, `paletteKey: 'summarization'`. `classes`
@@ -281,6 +300,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.trigger',
   }),
   'prompt.template_ref': Object.freeze({
     key: 'prompt.template_ref',
@@ -298,6 +319,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'generate.text': Object.freeze({
     key: 'generate.text',
@@ -315,6 +338,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'guardrail.check': Object.freeze({
     key: 'guardrail.check',
@@ -332,6 +357,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'output.deliver': Object.freeze({
     key: 'output.deliver',
@@ -349,6 +376,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.output',
   }),
   // -------------------------------------------------------------------------------------------
   // STT palette — eight node types, `paletteKey: 'stt'`. See
@@ -375,6 +404,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'stt.vad': Object.freeze({
     key: 'stt.vad',
@@ -392,6 +423,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'stt.noiseFilter': Object.freeze({
     key: 'stt.noiseFilter',
@@ -409,6 +442,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'stt.diarization': Object.freeze({
     key: 'stt.diarization',
@@ -426,6 +461,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'stt.languageDetection': Object.freeze({
     key: 'stt.languageDetection',
@@ -443,6 +480,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'stt.asrEngine': Object.freeze({
     key: 'stt.asrEngine',
@@ -460,6 +499,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'stt.transcriptOutput': Object.freeze({
     key: 'stt.transcriptOutput',
@@ -477,6 +518,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   // PLACEHOLDER — implemented:false, see palette.md. /phi-redactor is not landed.
   'stt.phiHop': Object.freeze({
@@ -495,6 +538,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   // -------------------------------------------------------------------------------------------
   // Consultation palette — all 13 node types.
@@ -530,6 +575,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.captureBinding': Object.freeze({
     key: 'consultation.captureBinding',
@@ -547,6 +594,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // externalWrite for the persist leg (persist_entities), not the extraction itself — see
   // node-types.md's `critical` rationale, third bullet.
@@ -566,6 +615,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.bindTerminology': Object.freeze({
     key: 'consultation.bindTerminology',
@@ -583,6 +634,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.phiHop': Object.freeze({
     key: 'consultation.phiHop',
@@ -600,6 +653,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.retrieveEvidence': Object.freeze({
     key: 'consultation.retrieveEvidence',
@@ -617,6 +672,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.assemblePrompt': Object.freeze({
     key: 'consultation.assemblePrompt',
@@ -634,6 +691,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.synthesize': Object.freeze({
     key: 'consultation.synthesize',
@@ -651,6 +710,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'consultation.sensors': Object.freeze({
     key: 'consultation.sensors',
@@ -668,6 +729,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.inferentialSensors': Object.freeze({
     key: 'consultation.inferentialSensors',
@@ -685,6 +748,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.persistDraft': Object.freeze({
     key: 'consultation.persistDraft',
@@ -702,6 +767,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.finalizeAssurance': Object.freeze({
     key: 'consultation.finalizeAssurance',
@@ -719,6 +786,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // The ONE durable human wait in this substrate (now implemented). The `gate`
   // class is load-bearing on BOTH sides: the compiler lifts a `gate`-classed node out of
@@ -742,6 +811,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.humanReview',
   }),
   // -------------------------------------------------------------------------------------------
   // R3's three missing capabilities (-W3). The owner's R3 asks ONE workflow to
@@ -775,6 +846,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.suggestions': Object.freeze({
     key: 'consultation.suggestions',
@@ -793,6 +866,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.proposeCorrections': Object.freeze({
     key: 'consultation.proposeCorrections',
@@ -815,6 +890,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // -------------------------------------------------------------------------------------------
   // The ENDPOINT STAGE — the ordered sequence that runs before a consultation session
@@ -859,6 +936,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'summary.finalize': Object.freeze({
     key: 'summary.finalize',
@@ -877,6 +956,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'feedback.capture': Object.freeze({
     key: 'feedback.capture',
@@ -898,6 +979,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // -------------------------------------------------------------------------------------------
   // The TARGET CATALOGUE (/DD-9) and the guards — lane A.
@@ -952,6 +1035,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze(['guard.phi']),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'agent.normalization': Object.freeze({
     key: 'agent.normalization',
@@ -969,6 +1054,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'agent.ner': Object.freeze({
     key: 'agent.ner',
@@ -988,6 +1075,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // Lane R (R1) — the GRAMMAR/SPELLING pass of the owner's live loop, and the catalogue's
   // realtime sibling of `consultation.proposeCorrections`.
@@ -1029,6 +1118,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // IMPORTANT FINDINGS, the capability the realtime lane audit recorded as
   // absent: "there is no red-flag / critical-value / allergy-alert / severity layer anywhere".
@@ -1090,6 +1181,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // DD-6 — pre-summarization is a NODE, fed from context supplied at runtime, running on-start.
   // It must stay NON-SIGNABLE: `isFinalSummary` excludes `PRE_SUMMARY`, locked by
@@ -1112,6 +1205,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze(['guard.groundedness']),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agent.summarization': Object.freeze({
     key: 'agent.summarization',
@@ -1129,6 +1224,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze(['guard.groundedness']),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agent.discharge_summary': Object.freeze({
     key: 'agent.discharge_summary',
@@ -1146,6 +1243,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze(['guard.groundedness']),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agent.retrieval': Object.freeze({
     key: 'agent.retrieval',
@@ -1163,6 +1262,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'agent.feedback': Object.freeze({
     key: 'agent.feedback',
@@ -1181,6 +1282,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // the DNA-redaction pass, migrated out of the resolver flag triple. The
   // department-agent VETO stays retired: this node redacts when the tenant placed it and (by
@@ -1201,6 +1304,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // ---- Guards -------------------------------------------------------------------------
   // `critical: false` on all three, matching the engines they delegate to
@@ -1223,6 +1328,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'guard.moderation': Object.freeze({
     key: 'guard.moderation',
@@ -1240,6 +1347,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'guard.groundedness': Object.freeze({
     key: 'guard.groundedness',
@@ -1257,6 +1366,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
 
   // ===========================================================================================
@@ -1319,6 +1430,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.trigger',
   }),
   'agentic.output': Object.freeze({
     key: 'agentic.output',
@@ -1336,6 +1449,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.output',
   }),
   'agentic.agent': Object.freeze({
     key: 'agentic.agent',
@@ -1358,6 +1473,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agentic.guardrail': Object.freeze({
     key: 'agentic.guardrail',
@@ -1375,6 +1492,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'agentic.data': Object.freeze({
     key: 'agentic.data',
@@ -1392,6 +1511,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.data',
   }),
   'agentic.loop': Object.freeze({
     key: 'agentic.loop',
@@ -1412,6 +1533,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.loop',
   }),
   'agentic.stt': Object.freeze({
     key: 'agentic.stt',
@@ -1429,6 +1552,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agentic.tts': Object.freeze({
     key: 'agentic.tts',
@@ -1442,6 +1567,234 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultMaxAttempts: 2,
     entitlementKey: null,
     trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
+  }),
+
+  // ===========================================================================================
+  // TASK-864 — the `core` vocabulary: ONE palette for every future graph.
+  //
+  // Trigger · Agent · Classify · Human review · Variable · If/Else · Loop · Note · Output are the
+  // owner's control vocabulary; `core.data` and `core.action` are the two platform-action node
+  // types (a deterministic reshape, and every remaining fixed-purpose clinical step keyed by
+  // `actionKey`). The four legacy palettes stay registered — a node type is a contract with every
+  // saved tenant graph — and are marked `deprecated` with a `replacedBy` pointer here.
+  //
+  // ## Classes that are LOAD-BEARING on the compiler and the interpreter
+  //
+  //  - `boundary` on trigger/output: the palette-agnostic reachability rules exempt markers.
+  //  - `router` on classify/condition: an edge leaving any handle other than `out`/`next` is a
+  //    BRANCH — the compiler records it as a `branchGuards` entry on the target, and the
+  //    interpreter SKIPS the target (`branch_not_taken`) unless that handle was taken.
+  //  - `review` on humanReview: the same branch treatment for `approved`/`rejected`/`timedOut`,
+  //    PLUS in-stage dispatch as a `ReviewGateWorkflow` child. Deliberately NOT `gate`: the
+  //    compiler lifts `gate`-classed nodes to the END of the walk, and a review must be able to
+  //    sit in the middle of a graph (`... -> Agent -> Human review -> Output`).
+  //  - `loop` on loop: nodes with `parentId = <loop id>` are its BODY, compiled into
+  //    `loops[].body` and run by `LoopWorkflow` one iteration per generation.
+  //  - `annotation` on note: stripped by `compile()`, never dispatched.
+  //
+  // ## `critical` / `externalWrite`
+  //
+  // `core.trigger` and `core.output` are `critical`: a payload that does not match the declared
+  // schema (`fail` mode) is a run that cannot honestly proceed or return. `core.output` and
+  // `core.humanReview` are `externalWrite` (a published result; a recorded human decision), so a
+  // sandbox run suppresses both. `core.action` is `externalWrite: false` on the TYPE and the
+  // interpreter resolves the DELEGATED action's own flags per instance (`ACTION_CATALOGUE`).
+  // ===========================================================================================
+  'core.trigger': Object.freeze({
+    key: 'core.trigger',
+    implemented: true,
+    activityName: 'interpreter.core_trigger',
+    classes: Object.freeze(['boundary', 'mandatory', 'entry']),
+    paletteKey: 'core',
+    critical: true,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.agent': Object.freeze({
+    key: 'core.agent',
+    implemented: true,
+    activityName: 'interpreter.core_agent',
+    // NOT `generation`-classed, deliberately. That class means "this NODE carries the prompt
+    // binding, the eval gate and the document-shape pin"; an Agent node carries none of them —
+    // its instruction, its model and its guards live on the published Agent row it references
+    // (TASK-863). It is also what keeps the anti-laundering rule intact: a generation-classed node
+    // may never emit `transcript`, and this node's `transcript` socket is live for an ASR agent.
+    classes: Object.freeze(['agent']),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 300,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.classify': Object.freeze({
+    key: 'core.classify',
+    implemented: true,
+    activityName: 'interpreter.core_classify',
+    classes: Object.freeze(['router']),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.humanReview': Object.freeze({
+    key: 'core.humanReview',
+    implemented: true,
+    activityName: 'interpreter.core_human_review',
+    classes: Object.freeze(['review']),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: true,
+    // The wait itself; `timeoutSeconds` on the node config is the review deadline.
+    defaultTimeoutSeconds: 3600,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.variable': Object.freeze({
+    key: 'core.variable',
+    implemented: true,
+    activityName: 'interpreter.core_variables',
+    classes: Object.freeze([]),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.condition': Object.freeze({
+    key: 'core.condition',
+    implemented: true,
+    activityName: 'interpreter.core_condition',
+    classes: Object.freeze(['router']),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.loop': Object.freeze({
+    key: 'core.loop',
+    implemented: true,
+    activityName: 'interpreter.core_loop',
+    classes: Object.freeze(['loop']),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: false,
+    // The whole `maxDurationSeconds` ceiling — the parent spends it as a workflow timer.
+    defaultTimeoutSeconds: 3600,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.note': Object.freeze({
+    key: 'core.note',
+    implemented: true,
+    activityName: 'interpreter.core_note',
+    classes: Object.freeze(['annotation']),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 1,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.output': Object.freeze({
+    key: 'core.output',
+    implemented: true,
+    activityName: 'interpreter.core_output',
+    classes: Object.freeze(['boundary', 'mandatory', 'terminal']),
+    paletteKey: 'core',
+    critical: true,
+    externalWrite: true,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.data': Object.freeze({
+    key: 'core.data',
+    implemented: true,
+    activityName: 'interpreter.core_data',
+    classes: Object.freeze([]),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'core.action': Object.freeze({
+    key: 'core.action',
+    implemented: true,
+    activityName: 'interpreter.core_action',
+    classes: Object.freeze(['action']),
+    paletteKey: 'core',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
     lane: 'durable',
     requires: Object.freeze([]),
     idempotent: true,
@@ -1493,6 +1846,24 @@ export const AGENTIC_NODE_TYPES: readonly string[] = Object.freeze(
     .filter((descriptor) => descriptor.paletteKey === AGENTIC_PALETTE_KEY)
     .map((descriptor) => descriptor.key),
 );
+
+/**
+ * TASK-864 — the `core` palette: the ONE vocabulary new graphs are authored in. Declared as a
+ * constant for the same three reasons `AGENTIC_PALETTE_KEY` is.
+ */
+export const CORE_PALETTE_KEY = 'core';
+
+/** The `core.*` node types, DERIVED from `paletteKey` rather than re-typed. */
+export const CORE_NODE_TYPES: readonly string[] = Object.freeze(
+  Object.values(WORKFLOW_NODE_REGISTRY)
+    .filter((descriptor) => descriptor.paletteKey === CORE_PALETTE_KEY)
+    .map((descriptor) => descriptor.key),
+);
+
+/** Whether a node type is marked deprecated (TASK-859 §6) — `false` for an unknown type. */
+export function isDeprecatedNodeType(nodeType: string): boolean {
+  return WORKFLOW_NODE_REGISTRY[nodeType]?.deprecated === true;
+}
 
 /** The registry-declared classes for a node type — `[]` for an unknown type (never throws;
  *  a caller checks `nodeInfo()`/`compile()` findings for "unknown type", not this). */

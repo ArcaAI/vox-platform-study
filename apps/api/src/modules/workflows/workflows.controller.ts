@@ -6,8 +6,9 @@ import {
   WorkflowRunResponseMode,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
+  type WorkflowSchemaDescription,
 } from '@arcaai/applications';
-import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Body, Query, Req, Res } from '@nestjs/common';
+import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Optional, Param, Post, Body, Query, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -15,6 +16,7 @@ import { CanCreate, CanList, CanRead, CanUpdate, RequiredScopes } from '../../de
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import type { RequestWithAuth } from '../../types/request-with-auth';
 import { deliverRun } from './deliver-run';
+import { WorkflowRunCompletionService } from './workflow-run-completion.service';
 import { WorkflowStreamService } from './workflow-stream.service';
 
 /**
@@ -41,6 +43,9 @@ export class WorkflowsController {
   constructor(
     @Inject(IWorkflowExposureService) private readonly workflowExposureService: IWorkflowExposureService,
     private readonly workflowStreamService: WorkflowStreamService,
+    // TASK-864 (G9) — optional so the existing unit fixtures construct unchanged; absent, a run's
+    // terminal status is reconciled on the next status read, exactly as before.
+    @Optional() private readonly runCompletion?: WorkflowRunCompletionService,
   ) {}
 
   @Get()
@@ -89,7 +94,12 @@ export class WorkflowsController {
     @Query('mode') mode?: WorkflowRunResponseMode,
     @Headers('Idempotency-Key') idempotencyKey?: string,
   ): Promise<WorkflowInvokeResponse | WorkflowRunStatusResponse | void> {
-    const started = await this.workflowExposureService.invoke(slug, dto, { idempotencyKey, apiKeyId: req.apiKey?.id });
+    // TASK-864 §3.4: `mode` reaches the service so it can be bounded by the definition's Output
+    // protocols BEFORE a run starts (400 naming the declared protocols), rather than starting a
+    // run and then failing to deliver it the way the caller asked.
+    const started = await this.workflowExposureService.invoke(slug, dto, { idempotencyKey, apiKeyId: req.apiKey?.id, mode });
+    // TASK-864 (G9): the terminal status is recorded by a background watcher, not by a reader.
+    this.runCompletion?.watch(req.user?.tenantId ?? req.tenantId ?? '', started.runId);
     return deliverRun(this.workflowStreamService, slug, started, res, mode);
   }
 
@@ -128,6 +138,19 @@ export class WorkflowsController {
     @Headers('Idempotency-Key') idempotencyKey?: string,
   ): Promise<WorkflowInvokeResponse> {
     return this.workflowExposureService.invoke(slug, dto, { idempotencyKey, apiKeyId: req.apiKey?.id });
+  }
+
+  @Get(':slug/schema')
+  @CanRead('WorkflowDefinition')
+  @RequiredScopes('workflow:definition:read')
+  @ApiOperation({
+    summary: 'The published definition`s generated contract: input/output component schemas, trigger kinds, protocols, admitted modes, and an AsyncAPI fragment for its run events (TASK-864).',
+  })
+  @ApiParam({ name: 'slug' })
+  @ApiResponse({ status: 200, description: 'The `WorkflowSchemaDescription` — what the developer portal renders per workflow.' })
+  @ApiResponse({ status: 404, description: 'Unknown, unpublished, cross-tenant, or non-exposable slug.' })
+  async getSchema(@Param('slug') slug: string): Promise<WorkflowSchemaDescription> {
+    return this.workflowExposureService.describe(slug);
   }
 
   @Get(':slug/runs/:runId')

@@ -23,7 +23,7 @@ function isPosition(value: unknown): value is Position {
 }
 
 function toGraphNode(node: GraphStoreNode): WorkflowGraphNode {
-  return { id: node.id, type: node.type, config: node.config, position: node.position };
+  return { id: node.id, type: node.type, config: node.config, position: node.position, ...(node.parentId ? { parentId: node.parentId } : {}) };
 }
 
 function fromGraphNode(node: WorkflowGraphNode): GraphStoreNode {
@@ -32,7 +32,7 @@ function fromGraphNode(node: WorkflowGraphNode): GraphStoreNode {
   // `classesOf`/`safetyClasses` come from the node registry, not the graph document — the
   // caller (the store's `hydrate` action, or a selector that joins against the registry query)
   // fills this in; a bare deserialization has no registry to consult, so it starts empty.
-  return { id: node.id, type: node.type, position, safetyClasses: [], config };
+  return { id: node.id, type: node.type, position, safetyClasses: [], config, ...(typeof node.parentId === 'string' ? { parentId: node.parentId } : {}) };
 }
 
 function toGraphEdge(edge: GraphStoreEdge): WorkflowGraphEdge {

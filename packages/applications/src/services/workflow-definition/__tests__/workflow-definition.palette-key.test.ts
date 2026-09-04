@@ -99,8 +99,15 @@ describe(' W1 — server-side paletteKey validation (C-5/D-5)', () => {
     // `EXPOSURE_ALLOWED_PALETTES` is deliberately NOT widened alongside it (see the assertion
     // below): a palette becomes AUTHORABLE by being registered, and becomes PUBLICLY INVOKABLE
     // only by an affirmative decision. An allow-list that grows by default is not an allow-list.
-    expect([...KNOWN_PALETTE_KEYS].sort()).toEqual(['agentic', 'consultation', 'stt', 'summarization']);
-    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['summarization']);
+    //
+    // TASK-864 added `core` — the node vocabulary (trigger/agent/classify/human-review/
+    // variable/if-else/loop/note/output) — the same way: registered, therefore authorable;
+    // still NOT publicly invokable until the exposure allow-list says so.
+    expect([...KNOWN_PALETTE_KEYS].sort()).toEqual(['agentic', 'consultation', 'core', 'stt', 'summarization']);
+    // TASK-864 A6 is that second affirmative decision for `core`: the exposure boundary became
+    // class-based and `core.output` declares the protocols a graph may be invoked over, so a
+    // core-vocabulary workflow is invokable — `consultation` and `stt` stay refused.
+    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['core', 'summarization']);
   });
 
   it.each(['summarisation', 'Summarization', 'stt ', 'clinical', ''])(

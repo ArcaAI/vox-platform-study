@@ -24,8 +24,8 @@
  */
 import { agenticNodeConfigProblems } from './agentic-contract';
 import type { AgenticGraphContext } from './agentic-contract';
+import { coreNodeConfigProblems, effectivePorts, loopBodyProblems } from './core-contract';
 import type { WorkflowGraph } from './graph-model';
-import { EMPTY_PORTS, NODE_PORTS } from './node-ports';
 import type { WorkflowNodeDescriptor } from './node-registry';
 import { WORKFLOW_NODE_REGISTRY } from './node-registry';
 import type { WorkflowPortDescriptor } from './port-model';
@@ -35,6 +35,14 @@ import { portPrimitiveSatisfies } from './port-model';
  *  test exercising a rule against a synthetic node type) without mutating the module registry. */
 export interface PortValidationOptions {
   readonly registry?: Readonly<Record<string, WorkflowNodeDescriptor>>;
+  /**
+   * TASK-864 — the two endpoint nodes' authored configs, for `isValidConnection`. The `core`
+   * routers fan out one handle per declared class/branch and `core.action` takes its delegate's
+   * ports, so a candidate edge on the canvas can only be judged against the INSTANCE. Absent, the
+   * static table is used (correct for every legacy type).
+   */
+  readonly fromNodeConfig?: Readonly<Record<string, unknown>>;
+  readonly toNodeConfig?: Readonly<Record<string, unknown>>;
 }
 
 function resolveRegistry(options?: PortValidationOptions): Readonly<Record<string, WorkflowNodeDescriptor>> {
@@ -44,9 +52,13 @@ function resolveRegistry(options?: PortValidationOptions): Readonly<Record<strin
 function portsOf(
   descriptor: WorkflowNodeDescriptor | undefined,
   nodeType: string,
+  config: Readonly<Record<string, unknown>> | undefined,
 ): { inputs: readonly WorkflowPortDescriptor[]; outputs: readonly WorkflowPortDescriptor[] } {
+  // A `core` node's sockets are per INSTANCE (`core-contract.ts`); an overlaid synthetic
+  // descriptor keeps its own declared ports.
+  if (nodeType.startsWith('core.')) return effectivePorts(nodeType, config);
   if (descriptor !== undefined) return { inputs: descriptor.inputs, outputs: descriptor.outputs };
-  return NODE_PORTS[nodeType] ?? EMPTY_PORTS;
+  return effectivePorts(nodeType, config);
 }
 
 function findPort(ports: readonly WorkflowPortDescriptor[], name: string): WorkflowPortDescriptor | undefined {
@@ -71,8 +83,8 @@ export function isValidConnection(
   const toDescriptor = registry[toNodeType];
   if (fromDescriptor === undefined || toDescriptor === undefined) return false;
 
-  const source = findPort(portsOf(fromDescriptor, fromNodeType).outputs, fromPort);
-  const target = findPort(portsOf(toDescriptor, toNodeType).inputs, toPort);
+  const source = findPort(portsOf(fromDescriptor, fromNodeType, options?.fromNodeConfig).outputs, fromPort);
+  const target = findPort(portsOf(toDescriptor, toNodeType, options?.toNodeConfig).inputs, toPort);
   if (source === undefined || target === undefined) return false;
 
   return portPrimitiveSatisfies(source.primitive, target.primitive);
@@ -91,8 +103,12 @@ export function workflowEdgePortProblems(graph: WorkflowGraph, options?: PortVal
   const problems: string[] = [];
 
   const nodeTypeById = new Map<string, string>();
+  const nodeConfigById = new Map<string, Readonly<Record<string, unknown>> | undefined>();
   for (const node of graph.nodes ?? []) {
-    if (typeof node?.id === 'string' && typeof node?.type === 'string') nodeTypeById.set(node.id, node.type);
+    if (typeof node?.id === 'string' && typeof node?.type === 'string') {
+      nodeTypeById.set(node.id, node.type);
+      nodeConfigById.set(node.id, node.config as Readonly<Record<string, unknown>> | undefined);
+    }
   }
 
   (graph.edges ?? []).forEach((edge, index) => {
@@ -122,8 +138,8 @@ export function workflowEdgePortProblems(graph: WorkflowGraph, options?: PortVal
       return;
     }
 
-    const fromPorts = portsOf(fromDescriptor, fromType);
-    const toPorts = portsOf(toDescriptor, toType);
+    const fromPorts = portsOf(fromDescriptor, fromType, nodeConfigById.get(edge.from));
+    const toPorts = portsOf(toDescriptor, toType, nodeConfigById.get(edge.to));
     const source = findPort(fromPorts.outputs, edge.fromPort);
     const target = findPort(toPorts.inputs, edge.toPort);
 
@@ -259,6 +275,19 @@ export function workflowPublishProblems(graph: WorkflowGraph, options?: PortVali
       ),
     );
   }
+
+  // TASK-864 — the `core` vocabulary's own publish checks: router handles unique and non-reserved,
+  // CEL conditions that parse and read only the declared context roots, loop bounds and modes,
+  // output protocols, action keys, and the loop-body wiring rules.
+  for (const node of nodes) {
+    if (typeof node?.id !== 'string' || typeof node?.type !== 'string') continue;
+    problems.push(
+      ...coreNodeConfigProblems({ id: node.id, type: node.type, config: node.config as Record<string, unknown> | undefined }).map(
+        (problem) => `/nodes: ${problem}`,
+      ),
+    );
+  }
+  problems.push(...loopBodyProblems(graph));
 
   const seenTypes = new Set<string>();
   for (const node of nodes) {

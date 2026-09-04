@@ -42,7 +42,7 @@
  * failing test, not a silent no-op at flush time.
  */
 import type { CompiledInputBinding, CompiledWorkflowConfig } from '@arcaai/workflow-contract';
-import { REALTIME_NODE_TYPES } from './realtime-node-registry';
+import { isRealtimeNode } from './realtime-node-registry';
 
 /** One executable node of the realtime lane, derived from a `CompiledNode`. */
 export interface RealtimeNode {
@@ -193,7 +193,9 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
   const admitted = new Set<string>();
   for (const stage of compiled.stages) {
     for (const node of stage.nodes ?? []) {
-      if (REALTIME_NODE_TYPES.has(node.type)) admitted.add(node.nodeId);
+      // TASK-864 A5: admission is per INSTANCE — a `core.agent`/`core.action` joins the lane by
+      // its own `execution.lane`, every legacy type by its descriptor's, as before.
+      if (isRealtimeNode(node.type, node.config)) admitted.add(node.nodeId);
     }
   }
   if (admitted.size === 0) return null;

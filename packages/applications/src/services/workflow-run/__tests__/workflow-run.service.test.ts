@@ -366,11 +366,14 @@ describe('WorkflowRunService', () => {
       );
     });
 
-    it('never emits a sys-event (telemetry exemption)', async () => {
+    it('emits exactly ONE sys-event, on the terminal status (TASK-864 D-5 reversed the exemption)', async () => {
       const { service, repository, eventEmitter } = buildDeps();
       repository.findByRunKey.mockResolvedValueOnce(buildRun());
       await service.recordRunFinished({ tenantId: TENANT, sessionId: SESSION_ID, runId: RUN_ID, status: 'COMPLETED' });
-      expect(eventEmitter.emit).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
+      const [, event] = eventEmitter.emit.mock.calls[0]!;
+      expect(event.resourceType).toBe('WorkflowRun');
+      expect(event.data.status).toBe('COMPLETED');
     });
   });
 });

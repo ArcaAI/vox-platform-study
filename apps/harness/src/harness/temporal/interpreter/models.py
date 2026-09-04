@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import TrajectoryContext
@@ -80,6 +80,12 @@ class NodeActivityInput(BaseModel):
     # cannot resolve a run id simply does not stream, which costs observability and nothing
     # else. Lanes B (binary audio) and C (debug canvas) both consume this.
     run_id: str = ""
+    # TASK-864 §3.2, additive-optional. The RUN CONTEXT `{trigger, vars, nodes}` the `core`
+    # vocabulary reads by path: CEL conditions (`core.condition`, `core.loop.until`), template
+    # variables (`{{vars.key}}` on `core.agent`) and the loop's `over` path. Built by the workflow
+    # from its own `_node_outputs` cache — pure derived state, replay-safe — and empty for every
+    # legacy node, so pre-existing fixtures are byte-identical.
+    run_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class NodeActivityResult(BaseModel):
@@ -96,6 +102,12 @@ class NodeActivityResult(BaseModel):
     status: Literal["SUCCEEDED", "DEGRADED", "SKIPPED"]
     reason: str | None = None
     output: dict[str, Any] | None = None
+    # TASK-864, additive-optional. The BRANCH HANDLE a router/review node took (`core.classify`:
+    # a class key or `otherwise`; `core.condition`: a branch key or `else`; `core.humanReview`:
+    # `approved` / `rejected` / `timedOut`). The workflow records it and dispatches a downstream
+    # node carrying a `branchGuards` entry only when one of its guards names a taken handle.
+    # `None` for every non-router node.
+    taken_handle: str | None = None
 
 
 class NodeResult(BaseModel):
@@ -565,3 +577,272 @@ class RunEventBatch(BaseModel):
     run_id: str
     tenant_id: str
     events: list[RunEventSpec] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# TASK-864 — the `core` vocabulary's payloads.
+# ---------------------------------------------------------------------------
+
+AgentTask = Literal["SPEECH_TO_TEXT", "TEXT_GENERATION", "TEXT_TO_SPEECH"]
+
+
+class ResolvedAgentModel(BaseModel):
+    """One registry model of a resolved agent (the primary, or a fallback) — TASK-860's
+    ``AiModelConfig`` projection as TASK-863 §3.4 materialises it. Every field is a REFERENCE or
+    a registry fact; nothing here is a credential."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    slug: str
+    provider: str | None = None
+    source_uri: str | None = Field(default=None, alias="sourceUri")
+    format: str | None = None
+    compute_type: str | None = Field(default=None, alias="computeType")
+    local_path: str | None = Field(default=None, alias="localPath")
+    checksum: str | None = None
+
+
+class ResolvedPrompt(BaseModel):
+    """``compiledConfig.resolvedPrompt`` — the instruction text the gateway already resolved: a
+    pinned, approved template version's content, or the inline system prompt. The activity
+    interpolates it; it never re-resolves a template itself."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    source: Literal["template", "inline"]
+    content: str
+    prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
+    prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
+
+
+def _registry_models(data: dict[str, Any]) -> list[dict[str, Any]]:
+    models = data.get("models")
+    return [m for m in models if isinstance(m, dict)] if isinstance(models, list) else []
+
+
+def _by_priority(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(rows, key=lambda row: (row.get("priority") is None, row.get("priority") or 0))
+
+
+class ResolvedAgent(BaseModel):
+    """The gateway's answer to ``GET /internal/agents/resolve`` — TASK-863's ``ResolvedAgent``
+    (``packages/types/src/agent.ts``), the ONE producer being ``AgentResolverService.resolve``.
+
+    On the wire the SELECTION lives under ``compiledConfig`` (``model`` / ``fallbacks`` /
+    ``instruction`` / ``resolvedPrompt`` / ``parameters`` / schemas) and the REGISTRY FACTS of
+    every model in the chain (``sourceUri``, ``localPath``, ``format``, ``computeType``,
+    ``checksum``) under ``models[]`` keyed by ``role``. The before-validator lifts both into the
+    flat ``model`` / ``fallbacks`` / ``instruction`` … fields the activities read, merging a
+    fallback's selection with its registry row by slug. A payload that already carries the flat
+    fields (older fixtures) validates unchanged.
+
+    ``extra="ignore"`` on purpose: the resolver may grow fields (availability detail, tools,
+    protocols) this activity has no use for, and a stricter mirror would fail a run over a field
+    it never reads. Nothing here is a credential except ``providerOverride`` — forwarded to the
+    Python service for ONE hop and never persisted.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    agent_id: str = Field(alias="agentId")
+    agent_version_id: str | None = Field(default=None, alias="agentVersionId")
+    slug: str
+    version_number: int = Field(alias="versionNumber")
+    task: AgentTask
+    #: The tenant that OWNS the resolved row (the caller's, or SYSTEM for a platform default).
+    tenant_id: str | None = Field(default=None, alias="tenantId")
+    #: How the row was chosen: `explicit` | `department` | `tenant` | `platform-default`.
+    source: str | None = None
+    instruction: dict[str, Any] | None = None
+    resolved_prompt: ResolvedPrompt | None = Field(default=None, alias="resolvedPrompt")
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    input_schema: dict[str, Any] | None = Field(default=None, alias="inputSchema")
+    output_schema: dict[str, Any] | None = Field(default=None, alias="outputSchema")
+    model: ResolvedAgentModel
+    fallbacks: list[ResolvedAgentModel] = Field(default_factory=list)
+    #: TASK-862's credential resolver output for a CLOUD provider — forwarded to ``apps/text``
+    #: as ``provider_overrides``; ``None`` for a self-hosted model. Never persisted.
+    provider_override: dict[str, Any] | None = Field(default=None, alias="providerOverride")
+    funding_tier: str | None = Field(default=None, alias="fundingTier")
+    compiled_config: dict[str, Any] | None = Field(default=None, alias="compiledConfig")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _lift_compiled_config(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        compiled = data.get("compiledConfig")
+        if not isinstance(compiled, dict):
+            return data
+        lifted: dict[str, Any] = dict(data)
+        for key in ("instruction", "resolvedPrompt", "parameters", "inputSchema", "outputSchema"):
+            if lifted.get(key) is None and compiled.get(key) is not None:
+                lifted[key] = compiled[key]
+
+        registry = _registry_models(data)
+        if lifted.get("model") is None:
+            raw_model = compiled.get("model")
+            selection: dict[str, Any] = raw_model if isinstance(raw_model, dict) else {}
+            primary = next((m for m in registry if m.get("role") == "primary"), {})
+            merged = {**selection, **{k: v for k, v in primary.items() if v is not None}}
+            if merged.get("slug"):
+                lifted["model"] = merged
+
+        if not lifted.get("fallbacks"):
+            selections = compiled.get("fallbacks")
+            selected = (
+                _by_priority([s for s in selections if isinstance(s, dict)])
+                if isinstance(selections, list)
+                else []
+            )
+            rows = _by_priority([m for m in registry if m.get("role") == "fallback"])
+            by_slug = {row.get("slug"): row for row in rows}
+            if selected:
+                lifted["fallbacks"] = [
+                    {**s, **{k: v for k, v in by_slug.get(s.get("slug"), {}).items() if v is not None}}
+                    for s in selected
+                ]
+            elif rows:
+                lifted["fallbacks"] = rows
+        return lifted
+
+
+class ResolvedClassificationModel(BaseModel):
+    """The gateway's answer to the registry-model resolve the ``core.classify`` activity needs:
+    the NLP service loads a model by ``sourceUri`` (its ``model_name``) and an optional
+    ``localPath`` — both registry facts, gateway-injected, never authored on a node."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    slug: str
+    task_type: str = Field(alias="taskType")
+    source_uri: str | None = Field(default=None, alias="sourceUri")
+    local_path: str | None = Field(default=None, alias="localPath")
+
+
+class ReviewGateInput(BaseModel):
+    """Input for ``ReviewGateWorkflow`` — the generic durable human wait behind
+    ``core.humanReview``. Carries the payload under review and the node's own config
+    (timeout, escalation); no consultation identity is required."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    node_id: str
+    tenant_id: str
+    workflow_version_id: str
+    review_type: str = "approval"
+    instructions: str | None = None
+    assign_role: str | None = None
+    timeout_seconds: int
+    escalation_after_seconds: int | None = None
+    max_escalations: int = 0
+    allow_edit: bool = False
+    payload: dict[str, Any] = Field(default_factory=dict)
+    trajectory: TrajectoryContext | None = None
+
+
+class ReviewDecisionSignal(BaseModel):
+    """The ``review`` signal payload. ``decision`` is the ONLY field that can mean approval, and
+    it is set from a real signal or not at all — a timeout never approves."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "rejected"]
+    reviewer_id: str | None = None
+    comment: str | None = None
+    edited_payload: dict[str, Any] | None = None
+
+
+class ReviewGateResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["approved", "rejected", "timedOut"]
+    reviewer_id: str | None = None
+    comment: str | None = None
+    edited_payload: dict[str, Any] | None = None
+    escalations: int = 0
+
+
+class CoreLoopBounds(BaseModel):
+    """Same four bounds as :class:`AgenticLoopBounds` (one schema, `AGENTIC_LOOP_BOUNDS_PROPERTY`)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    max_iterations: int = Field(alias="maxIterations")
+    max_duration_seconds: int = Field(alias="maxDurationSeconds")
+    max_total_tokens: int = Field(alias="maxTotalTokens")
+    no_progress_iterations: int = Field(default=2, alias="noProgressIterations")
+
+
+class CoreLoopState(BaseModel):
+    """Carried across ``continue_as_new`` — the loop's entire memory."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    iterations: int = 0
+    tokens_used: int = 0
+    no_progress_streak: int = 0
+    digest: str = ""
+    #: The collected per-iteration results (`collect` path applied), delivered on `done`.
+    collected: list[Any] = Field(default_factory=list)
+    #: The previous iteration's product — what a `while` loop's body sees on `each`.
+    carried: Any = None
+    body_failures: int = 0
+
+
+class CoreLoopInput(BaseModel):
+    """``LoopWorkflow``'s input and, via ``continue_as_new``, its own carry-forward."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    node_id: str
+    tenant_id: str
+    workflow_version_id: str
+    sandbox: bool = False
+    mode: Literal["foreach", "while"]
+    #: `foreach`: the array to iterate, already read off the run context by the parent.
+    items: list[Any] = Field(default_factory=list)
+    #: `while`: the CEL expression that ends the loop, re-evaluated after every iteration.
+    until: str | None = None
+    collect: str | None = None
+    bounds: CoreLoopBounds
+    #: The compiled BODY (`compiledConfig.loops[].body.stages`), verbatim.
+    body: dict[str, Any] = Field(default_factory=dict)
+    #: Nested loops' bodies, by loop node id, for a body that contains a loop.
+    nested: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    #: What the graph bound into the loop node's own `in` port.
+    seed_inputs: dict[str, Any] = Field(default_factory=dict)
+    run_payload: dict[str, Any] = Field(default_factory=dict)
+    #: The run context at loop start (`trigger`, `vars`, outer `nodes`) — the CEL `until` and
+    #: template variables inside the body read it.
+    run_context: dict[str, Any] = Field(default_factory=dict)
+    state: CoreLoopState = Field(default_factory=CoreLoopState)
+
+
+class CoreLoopResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str
+    stop_reason: LoopStopReason | Literal["items_exhausted", "until"]
+    iterations: int
+    tokens_used: int
+    result: Any = None
+    body_failures: int = 0
+
+
+class EvaluateExpressionInput(BaseModel):
+    """``interpreter.core_evaluate`` — evaluate ONE CEL condition against a run context."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expression: str
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvaluateExpressionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    taken: bool
+    error: str | None = None

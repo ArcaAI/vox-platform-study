@@ -27,6 +27,7 @@ import type {
   WorkflowAssignment,
   WorkflowDefinition,
   WorkflowNodeRegistry,
+  AgentOption,
 } from './types';
 
 const BASE = 'admin/workflow-definitions';
@@ -34,6 +35,8 @@ const NODES_PATH = 'admin/workflow-nodes';
 const PROMPT_TEMPLATES_PATH = 'admin/prompt-templates';
 const ASSIGNMENTS_BASE = 'admin/workflow-assignments';
 const DEPARTMENTS_PATH = 'admin/departments';
+/** TASK-863 §3.5 — admin plane; the Studio only LISTS here (the picker), never writes. */
+const AGENTS_PATH = 'admin/agents';
 
 const definitionPath = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
@@ -213,4 +216,14 @@ export function updateNodePrompt(id: string, nodeId: string, body: UpdateNodePro
  */
 export function listPromptTemplateVersions(promptTemplateId: string): Promise<PromptTemplateVersion[]> {
   return getJson(`${PROMPT_TEMPLATES_PATH}/${encodeURIComponent(promptTemplateId)}/versions`);
+}
+
+/**
+ * Published agents of one task for the `core.agent` picker (TASK-864 B1). Accepts either the
+ * paginated `{ data: [...] }` envelope or a bare array, so the picker keeps working whichever
+ * shape TASK-863's admin list settles on; a 404 (route not landed yet) is the caller's fallback.
+ */
+export async function listAgentOptions(task: string): Promise<AgentOption[]> {
+  const result = await getJson<Paginated<AgentOption> | AgentOption[]>(AGENTS_PATH, { task, status: 'PUBLISHED', limit: 200 });
+  return Array.isArray(result) ? result : result.data;
 }

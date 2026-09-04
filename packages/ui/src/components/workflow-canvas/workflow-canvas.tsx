@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import type { Connection, Edge, Node, NodeChange, NodeDimensionChange } from '@xyflow/react';
-import { Background, BackgroundVariant, ReactFlow, applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
+import { Background, BackgroundVariant, MiniMap, ReactFlow, applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { cn } from '@/lib/utils';
@@ -27,6 +27,37 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+/** Inner padding a group keeps around its children (matches `layout.ts`'s defaults). */
+const GROUP_PADDING = { x: 24, top: 56, bottom: 24 } as const;
+const GROUP_MIN = { width: 240, height: 120 } as const;
+
+/**
+ * A group's extent is DERIVED — the bounding box of its children's positions and measured
+ * sizes plus padding — never authored. So a loop body grows as nodes are added into it and no
+ * size ever has to be persisted or kept in sync.
+ */
+function groupSize(groupId: string, nodes: readonly WorkflowCanvasNode[], measured: Record<string, NodeDimensions>): NodeDimensions {
+  let right = 0;
+  let bottom = 0;
+  for (const child of nodes) {
+    if (child.parentId !== groupId) continue;
+    const size = measured[child.id] ?? { width: 180, height: 80 };
+    right = Math.max(right, child.position.x + size.width);
+    bottom = Math.max(bottom, child.position.y + size.height);
+  }
+  return {
+    width: Math.max(GROUP_MIN.width, right + GROUP_PADDING.x),
+    height: Math.max(GROUP_MIN.height, bottom + GROUP_PADDING.bottom),
+  };
+}
+
+/** React Flow requires a parent to precede its children in the array; groups float to the front. */
+function parentsFirst(nodes: readonly WorkflowCanvasNode[]): WorkflowCanvasNode[] {
+  const groups = nodes.filter((node) => node.kind === 'group');
+  if (groups.length === 0) return [...nodes];
+  return [...groups, ...nodes.filter((node) => node.kind !== 'group')];
+}
+
 function toXyNode(
   node: WorkflowCanvasNode,
   extra: {
@@ -36,12 +67,15 @@ function toXyNode(
     onDeleteRequest: WorkflowNodeData['onDeleteRequest'];
     overlay: WorkflowNodeData['overlay'];
     measured: NodeDimensions | undefined;
+    groupSize: NodeDimensions | undefined;
   },
 ): Node<WorkflowNodeData> {
   return {
     id: node.id,
     type: 'workflowNode',
     position: node.position,
+    ...(node.parentId ? { parentId: node.parentId, extent: 'parent' as const } : {}),
+    ...(extra.groupSize ? { style: { width: extra.groupSize.width, height: extra.groupSize.height } } : {}),
     // React Flow is CONTROLLED here, and `adoptUserNodes` re-reads `measured` off the user node
     // on every prop sync — a node object rebuilt without it reverts to `visibility: hidden` and
     // `fitView` never fires (nodesInitialized stays false). Measurement is viewport bookkeeping,
@@ -125,6 +159,7 @@ export function WorkflowCanvas({
   onSelect,
   onDeleteRequest,
   emptyState,
+  minimap = true,
   className,
   'aria-label': ariaLabel,
 }: WorkflowCanvasProps) {
@@ -135,7 +170,7 @@ export function WorkflowCanvas({
 
   const xyNodes = React.useMemo(
     () =>
-      nodes.map((node) =>
+      parentsFirst(nodes).map((node) =>
         toXyNode(node, {
           selected: node.id === selectedNodeId,
           readOnly,
@@ -143,6 +178,7 @@ export function WorkflowCanvas({
           onDeleteRequest,
           overlay,
           measured: measured[node.id],
+          groupSize: node.kind === 'group' ? groupSize(node.id, nodes, measured) : undefined,
         }),
       ),
     [nodes, selectedNodeId, readOnly, nodeTypes, onDeleteRequest, overlay, measured],
@@ -259,6 +295,9 @@ export function WorkflowCanvas({
       >
         <Background variant={BackgroundVariant.Dots} gap={16} />
         <CanvasControls showInteractive={!readOnly} />
+        {minimap && nodes.length > 0 ? (
+          <MiniMap position="bottom-right" pannable zoomable className="workflow-canvas-minimap" aria-label="Graph overview" />
+        ) : null}
       </ReactFlow>
       {emptyState && nodes.length === 0 ? (
         // Non-interactive overlay: the pane underneath stays pannable/zoomable and keeps its
