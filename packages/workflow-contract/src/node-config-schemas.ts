@@ -1578,6 +1578,9 @@ const KEY_PATTERN = '^[a-z0-9_]{2,48}$';
 /** A CEL expression (TASK-864 §3.2). Parse-checked at publish by `expressionProblems`. */
 const CEL_EXPRESSION_PROPERTY = Object.freeze({
   type: 'string',
+  // A JSON-Schema annotation (never asserted): the Studio's inspector renders `format: 'cel'`
+  // strings through its expression editor instead of a plain text box (TASK-864 B1).
+  format: 'cel',
   minLength: 1,
   maxLength: 2000,
   description:
