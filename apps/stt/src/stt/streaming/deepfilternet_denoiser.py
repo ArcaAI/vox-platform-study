@@ -26,6 +26,8 @@ from typing import Any, cast
 
 import numpy as np
 
+from ..core.exceptions import ModelLoadError
+
 logger = logging.getLogger(__name__)
 
 _DF_SR = 48000
@@ -60,25 +62,34 @@ class DeepFilterNet3StreamingDenoiser:
         self._output_queue: np.ndarray = _EMPTY_F32.copy()
 
     def initialize(self) -> bool:
-        """Load the DeepFilterNet3 model. Returns False if unavailable."""
+        """Load the DeepFilterNet3 model. FAILS CLOSED (TASK-860 R-5).
+
+        A pipeline that SELECTED ``deepfilternet3`` must never silently pass
+        un-denoised audio through because the ``deepfilternet`` package is
+        absent or its checkpoint failed to load — that is a wrong answer
+        delivered quietly. Raises ``ModelLoadError`` naming the engine and the
+        fix; returns ``True`` on success (the ``bool`` return is kept so the
+        RNNoise-shaped call site reads the same for both engines).
+        """
         try:
             from df.enhance import init_df
-
+        except ImportError as exc:
+            self._available = False
+            raise ModelLoadError(
+                "denoise engine 'deepfilternet3' was selected but the `deepfilternet` "
+                "package is not installed in this image — install it (numpy-2 "
+                "compatible build) or select `rnnoise`."
+            ) from exc
+        try:
             self._model, self._df_state, _, _ = init_df(default_model="DeepFilterNet3")
-            self._available = True
-            logger.info("DeepFilterNet3StreamingDenoiser initialized")
-            return True
-        except ImportError:
-            logger.warning("deepfilternet not installed -- denoise disabled")
+        except Exception as exc:
             self._available = False
-            return False
-        except Exception:
-            logger.error(
-                "DeepFilterNet3 initialization failed -- denoise disabled",
-                exc_info=True,
-            )
-            self._available = False
-            return False
+            raise ModelLoadError(
+                f"denoise engine 'deepfilternet3' failed to initialise its checkpoint: {exc}"
+            ) from exc
+        self._available = True
+        logger.info("DeepFilterNet3StreamingDenoiser initialized")
+        return True
 
     @property
     def in_fade_in(self) -> bool:

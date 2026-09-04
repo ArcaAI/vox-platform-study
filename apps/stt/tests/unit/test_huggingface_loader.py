@@ -165,7 +165,7 @@ class TestLoadByTaskMultimodalLLM:
         )
 
         with patch.dict("sys.modules", {"transformers": mock_tf}):
-            model, _, _, _, is_multimodal = loader._load_by_task(
+            model, _, _, _, is_multimodal, _ = loader._load_by_task(
                 model_source="google/gemma-4-E4B-it",
                 task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
                 device="cpu",
@@ -187,7 +187,7 @@ class TestLoadByTaskMultimodalLLM:
         )
 
         with patch.dict("sys.modules", {"transformers": mock_tf}):
-            model, _, _, _, is_multimodal = loader._load_by_task(
+            model, _, _, _, is_multimodal, _ = loader._load_by_task(
                 model_source="google/gemma-4-E4B-it",
                 task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
                 device="cuda",
@@ -209,7 +209,7 @@ class TestLoadByTaskMultimodalLLM:
         )
 
         with patch.dict("sys.modules", {"transformers": mock_tf}):
-            model, _, _, _, is_multimodal = loader._load_by_task(
+            model, _, _, _, is_multimodal, _ = loader._load_by_task(
                 model_source="unsloth/gemma-4-E2B-it",
                 task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
                 device="cpu",
@@ -253,7 +253,7 @@ class TestLoadByTaskMultimodalLLM:
         )
 
         with patch.dict("sys.modules", {"transformers": mock_tf}):
-            model, _, _, _, is_multimodal = loader._load_by_task(
+            model, _, _, _, is_multimodal, _ = loader._load_by_task(
                 model_source="openai/whisper-tiny",
                 task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
                 device="cpu",
@@ -292,7 +292,7 @@ class TestLoadByTaskMultimodalLLM:
         mock_tf.AutoConfig.from_pretrained.side_effect = Exception("Network error")
 
         with patch.dict("sys.modules", {"transformers": mock_tf}):
-            model, _, _, _, is_multimodal = loader._load_by_task(
+            model, _, _, _, is_multimodal, _ = loader._load_by_task(
                 model_source="openai/whisper-tiny",
                 task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
                 device="cpu",
@@ -315,7 +315,7 @@ class TestLoadByTaskMultimodalLLM:
             patch.object(
                 loader,
                 "_load_by_task",
-                return_value=(mock_multimodal_model, None, mock_processor, None, True),
+                return_value=(mock_multimodal_model, None, mock_processor, None, True, False),
             ),
             patch.object(loader, "_estimate_model_memory", return_value=4000),
             patch("stt.models.huggingface_loader.get_settings") as mock_settings,

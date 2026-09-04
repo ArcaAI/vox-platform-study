@@ -27,11 +27,28 @@ const MODEL: AiModel = {
   description: 'STT fallback',
   category: 'AUDIO',
   taskType: 'AUTOMATIC_SPEECH_RECOGNITION',
+  pipelineTag: 'automatic-speech-recognition',
   modelType: 'BASE_MODEL',
   source: 'HUGGINGFACE',
   sourceUri: 'openai/whisper-large-v4',
   sourceRevision: null,
   format: 'FASTER_WHISPER',
+  libraryName: 'faster-whisper',
+  servedBy: 'stt',
+  deploymentKind: 'SELF_HOSTED',
+  wireModelId: null,
+  license: 'mit',
+  gated: false,
+  baseModel: null,
+  languages: ['en'],
+  hfRevision: null,
+  bucketPrefix: null,
+  primaryObject: null,
+  manifestDigest: null,
+  availability: 'UNKNOWN',
+  availabilityCheckedAt: null,
+  availabilityDetail: null,
+  isPlatformDefaultFor: [],
   provider: 'built-in',
   architecture: 'whisper',
   memorySizeMb: 3096,
@@ -118,32 +135,45 @@ describe('ModelFormSheet', () => {
 // =============================================================================
 // Weight source (sourceUri / localPath): the two loading modes,
 // =============================================================================
-describe('ModelFormSheet — weight source (Mode U / Mode M)', () => {
-  it('disables Local path with a visible reason in register mode — the create DTO does not accept it', async () => {
+/** Open a Radix Select trigger and pick an option by its visible label (happy-dom pointer path). */
+async function selectOption(trigger: HTMLElement, optionName: string | RegExp) {
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  const option = await screen.findByRole('option', { name: optionName });
+  fireEvent.pointerUp(option, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  fireEvent.click(option);
+}
+
+describe('ModelFormSheet — registry identity + bucket identity (TASK-860)', () => {
+  it('has NO local-path field: localPath is derived by the gateway and shown read-only from the bucket prefix', async () => {
     stubFetch();
     renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
 
     const dialog = await screen.findByRole('dialog', { name: 'Register model' });
-    const localPath = within(dialog).getByLabelText(/local path/i) as HTMLInputElement;
-    expect(localPath.disabled).toBe(true);
-    const hintId = localPath.getAttribute('aria-describedby');
-    expect(hintId).toBeTruthy();
-    expect(within(dialog).getByText(/set a mount override/i)).toBeDefined();
+    expect(within(dialog).queryByLabelText(/local path/i)).toBeNull();
+    expect(within(dialog).getByTestId('derived-local-path').textContent).toMatch(/not published/i);
+
+    fireEvent.change(within(dialog).getByLabelText(/^bucket prefix/i), { target: { value: 'medical-ner/abc/' } });
+    expect(within(dialog).getByTestId('derived-local-path').textContent).toBe('/mnt/models-bucket/medical-ner/abc/');
+    fireEvent.change(within(dialog).getByLabelText(/^primary object/i), { target: { value: 'model.gguf' } });
+    expect(within(dialog).getByTestId('derived-local-path').textContent).toBe('/mnt/models-bucket/medical-ner/abc/model.gguf');
   });
 
-  it('enables Local path in edit mode, seeded from the loaded row', async () => {
+  it('offers the serving library / served-by / deployment facets, and the wire id only for a CLOUD row', async () => {
     stubFetch();
-    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
 
-    const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
-    await within(dialog).findByDisplayValue('Whisper Large v4');
-    const localPath = within(dialog).getByLabelText(/local path/i) as HTMLInputElement;
-    expect(localPath.disabled).toBe(false);
-    // MODEL.localPath is null -> the field seeds empty, not "null".
-    expect(localPath.value).toBe('');
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+    expect(within(dialog).getByLabelText(/^serving library/i)).toBeDefined();
+    expect(within(dialog).getByLabelText(/^served by/i)).toBeDefined();
+    const wireId = within(dialog).getByLabelText(/^wire model id/i) as HTMLInputElement;
+    expect(wireId.disabled).toBe(true);
+
+    await selectOption(within(dialog).getByLabelText(/^deployment/i), 'Cloud');
+    expect((within(dialog).getByLabelText(/^wire model id/i) as HTMLInputElement).disabled).toBe(false);
+    expect((within(dialog).getByLabelText(/^wire model id/i) as HTMLInputElement).required).toBe(true);
   });
 
-  it('always sends localPath on PATCH (including "" to clear a previously-set override)', async () => {
+  it('seeds the registry fields from the loaded row and sends them (never localPath) on PATCH', async () => {
     const calls: { method: string; body: unknown }[] = [];
     vi.stubGlobal(
       'fetch',
@@ -159,30 +189,23 @@ describe('ModelFormSheet — weight source (Mode U / Mode M)', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
     await within(dialog).findByDisplayValue('Whisper Large v4');
-    fireEvent.change(within(dialog).getByLabelText(/local path/i), { target: { value: '/mnt/models-bucket/whisper-large-v4/q4-0-451faffb5a16/' } });
+    expect((within(dialog).getByLabelText(/^licence/i) as HTMLInputElement).value).toBe('mit');
+    fireEvent.change(within(dialog).getByLabelText(/^bucket prefix/i), { target: { value: 'whisper-large-v4/q4-0-451faffb5a16/' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
-    const patch = calls.find((c) => c.method === 'PATCH')!;
-    expect((patch.body as { localPath: string }).localPath).toBe('/mnt/models-bucket/whisper-large-v4/q4-0-451faffb5a16/');
+    const patch = calls.find((c) => c.method === 'PATCH')!.body as Record<string, unknown>;
+    expect(patch).toMatchObject({ libraryName: 'faster-whisper', servedBy: 'stt', deploymentKind: 'SELF_HOSTED', license: 'mit', languages: ['en'], bucketPrefix: 'whisper-large-v4/q4-0-451faffb5a16/' });
+    expect(patch).not.toHaveProperty('localPath');
   });
 
-  it('explains Mode U (S3 URI) and Mode M (mount) and that <version> is content-derived, not typed by hand', async () => {
+  it('explains that the bucket prefix is normally written by Publish to bucket, and surfaces the S3 model-registry connection status', async () => {
     stubFetch();
     renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
 
     const dialog = await screen.findByRole('dialog', { name: 'Register model' });
-    expect(within(dialog).getByText(/mode u/i)).toBeDefined();
-    expect(within(dialog).getByText(/mode m/i)).toBeDefined();
-    expect(within(dialog).getByText(/content-derived/i)).toBeDefined();
-    expect(within(dialog).getByText(/q4-0-451faffb5a16/i)).toBeDefined();
-  });
-
-  it('surfaces the S3 model-registry connection status with a deep link, in both create and edit mode', async () => {
-    stubFetch();
-    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
-
-    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+    expect(within(dialog).getByText(/publish to bucket/i)).toBeDefined();
+    expect(within(dialog).getByText(/never typed by hand/i)).toBeDefined();
     expect(within(dialog).getByText(/s3 model registry connection/i)).toBeDefined();
     const link = within(dialog).getByRole('link', { name: /configure/i }) as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('/ai-platform?tab=providers&psvc=model-registry');
@@ -190,35 +213,32 @@ describe('ModelFormSheet — weight source (Mode U / Mode M)', () => {
 });
 
 // =============================================================================
-// The Download action lives in the edit drawer only (no create-time equivalent)
+// The Publish action lives in the edit drawer only (no create-time equivalent)
 // =============================================================================
-describe('ModelFormSheet — Download action placement', () => {
-  it('does NOT render the Download action in register mode — the model does not exist yet', async () => {
+describe('ModelFormSheet — Publish action placement', () => {
+  it('does NOT render the Publish action in register mode — the model does not exist yet', async () => {
     stubFetch();
     renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
 
     const dialog = await screen.findByRole('dialog', { name: 'Register model' });
-    expect(within(dialog).queryByRole('button', { name: /^download$/i })).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: /publish/i })).toBeNull();
   });
 
-  it('renders the Download action + current status in edit mode', async () => {
+  it('renders the Publish action + measured availability + legacy status in edit mode', async () => {
     stubFetch();
     renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
 
     const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
     await within(dialog).findByDisplayValue('Whisper Large v4');
-    // MODEL.downloadStatus is 'DOWNLOADED'.
+    // MODEL.downloadStatus is 'DOWNLOADED'; availability UNKNOWN (never inventoried).
     expect(within(dialog).getByText('Downloaded')).toBeDefined();
-    expect(within(dialog).getByRole('button', { name: /re-download/i })).toBeDefined();
+    expect(within(dialog).getByText('Not inventoried')).toBeDefined();
+    expect(within(dialog).getByRole('button', { name: /re-publish/i })).toBeDefined();
   });
 });
 
-// =============================================================================
-// Accessibility — both new surfaces (weight-source fields/help + the Download
-// panel) with 0 axe violations, in register mode and in edit mode.
-// =============================================================================
 describe('ModelFormSheet accessibility', () => {
-  it('has no axe violations in register mode (Local path disabled + help text)', async () => {
+  it('has no axe violations in register mode (registry fields + bucket help)', async () => {
     stubFetch();
     renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
     const dialog = await screen.findByRole('dialog', { name: 'Register model' });
@@ -226,7 +246,7 @@ describe('ModelFormSheet accessibility', () => {
     expect(await axe(dialog)).toHaveNoViolations();
   });
 
-  it('has no axe violations in edit mode (Local path enabled + the Download panel)', async () => {
+  it('has no axe violations in edit mode (registry fields + the Publish panel)', async () => {
     stubFetch();
     renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
     const dialog = await screen.findByRole('dialog', { name: 'Edit model' });

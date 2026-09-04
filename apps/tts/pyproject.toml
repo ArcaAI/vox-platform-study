@@ -86,11 +86,17 @@ kokoro = [
 ]
 
 # Indic Parler-TTS (Malayalam). NOT in the default image — it adds the
-# sentencepiece/accelerate tail on top of a much larger weight set, and
-# `parler-tts` itself installs from git (not on PyPI) so it is added in a
-# dedicated image build, never here: the shared `uv.lock` must stay resolvable.
-# `transformers` is pinned here as a direct requirement because indic_parler
-# uses it directly (it also arrives transitively via kokoro).
+# sentencepiece/accelerate tail on top of a much larger weight set, so it is
+# installed by the `[indic-parler]` image VARIANT
+# (`docker build --build-arg TTS_EXTRAS="--extra indic-parler"`).
+# `parler-tts` is not on PyPI and hard-pins `transformers==4.46.1`, which no
+# single workspace lock can satisfy next to nlp/stt's transformers floors —
+# so it is deliberately NOT a locked dependency: the Dockerfile's
+# `indic-parler` variant installs it with `uv pip install --no-deps` from the
+# git commit pinned there (TASK-860; the repo publishes no tags). The ai4bharat
+# weights are HF-gated — the publisher mirrors them into the bucket
+# (OD-7 licence acceptance). `transformers` is pinned here as a direct
+# requirement because indic_parler uses it directly.
 indic-parler = [
     "transformers>=4.46.1",
     "sentencepiece>=0.2.2",

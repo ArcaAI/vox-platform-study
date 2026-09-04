@@ -33,7 +33,7 @@ import { IProviderConnectionService } from '../ai-provider-connection/IProviderC
 import type { AiProviderConnectionResponse } from '../ai-provider-connection/dto';
 import { AI_TASK_KEYS, type AiTaskKey } from '../ai-task-default/constants';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
-import type { AiModelService } from '../stt/model/aiModel.service';
+import type { AiModelService } from '../ai-model/aiModel.service';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { MODEL_CACHE_SERVICES } from '../settings-registry/descriptors/service-runtime.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from '../settings-registry/registry';

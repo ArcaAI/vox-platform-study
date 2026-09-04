@@ -9,6 +9,7 @@ import { GatewayError } from '@/shared/api';
 import { formatBytes, formatRelativeTime } from '@/shared/format';
 import { useInvalidateAiModels, useModelDownloadStatus, useStartModelDownload } from '../api/hooks';
 import type { AiModel, AiModelDownloadStatus, ModelDownloadState as ModelDownloadDetail } from '../api/types';
+import { AvailabilityBadge } from './availability-badge';
 import { DownloadStatusBadge } from './download-status-badge';
 
 export interface UseModelDownloadResult {
@@ -41,8 +42,8 @@ export function useModelDownload(model: AiModel): UseModelDownloadResult {
 
   useEffect(() => {
     if (previousStatus.current === 'DOWNLOADING' && status !== 'DOWNLOADING') {
-      if (status === 'DOWNLOADED') toast.success(`${model.name} downloaded`);
-      else if (status === 'DOWNLOAD_FAILED') toast.error(poll.data?.error || `${model.name} failed to download`);
+      if (status === 'DOWNLOADED') toast.success(`${model.name} published to the bucket`);
+      else if (status === 'DOWNLOAD_FAILED') toast.error(poll.data?.error || `${model.name} failed to publish`);
       invalidateModels();
       setPolling(false);
     }
@@ -57,7 +58,7 @@ export function useModelDownload(model: AiModel): UseModelDownloadResult {
       onSuccess: () => setPolling(true),
       onError: (error) => {
         const alreadyInFlight = error instanceof GatewayError && error.status === 409;
-        toast.error(alreadyInFlight ? 'A download is already in progress for this model.' : error.message);
+        toast.error(alreadyInFlight ? 'A publish is already in progress for this model.' : error.message);
         // A 409 means one really IS running elsewhere — start polling so this view catches up.
         if (alreadyInFlight) setPolling(true);
       },
@@ -69,7 +70,7 @@ export function useModelDownload(model: AiModel): UseModelDownloadResult {
     detail: poll.data,
     start,
     isStarting: startMutation.isPending,
-    disabledReason: hasSource ? null : 'This model has no source URI or mounted path — add one above before downloading.',
+    disabledReason: hasSource ? null : 'This model has no source URI — add one above before publishing.',
   };
 }
 
@@ -84,14 +85,17 @@ export function useModelDownload(model: AiModel): UseModelDownloadResult {
 export function ModelDownloadPanel({ model }: { model: AiModel }) {
   const { status, detail, start, isStarting, disabledReason } = useModelDownload(model);
   const busy = status === 'DOWNLOADING' || isStarting;
-  const label = status === 'DOWNLOADED' ? 'Re-download' : status === 'DOWNLOAD_FAILED' ? 'Retry download' : 'Download';
+  const label = status === 'DOWNLOADED' ? 'Re-publish' : status === 'DOWNLOAD_FAILED' ? 'Retry publish' : 'Publish to bucket';
   const reasonId = 'model-download-disabled-reason';
 
   return (
     <div className="flex flex-col gap-3 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">Weights</span>
-        <DownloadStatusBadge status={status} />
+        <span className="text-sm font-medium">Weights in the bucket</span>
+        <span className="flex items-center gap-2">
+          <AvailabilityBadge availability={model.availability} checkedAt={model.availabilityCheckedAt} />
+          <DownloadStatusBadge status={status} />
+        </span>
       </div>
       {detail &&
       (detail.fileSizeMb != null || detail.sha256 || detail.localPath || detail.finishedAt || (status === 'DOWNLOAD_FAILED' && detail.error)) ? (
@@ -138,7 +142,7 @@ export function ModelDownloadPanel({ model }: { model: AiModel }) {
           className="self-start"
         >
           {busy ? <Spinner /> : <IconCloudDownload aria-hidden />}
-          {status === 'DOWNLOADING' ? 'Downloading…' : label}
+          {status === 'DOWNLOADING' ? 'Publishing…' : label}
         </Button>
         {/* Rule 11 : a disabled control must state its reason, visibly. */}
         {disabledReason ? (
