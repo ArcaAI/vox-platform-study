@@ -114,6 +114,15 @@ class CompiledInputBinding(BaseModel):
     to_port: str = Field(alias="toPort")
 
 
+class CompiledBranchGuard(BaseModel):
+    """TASK-864 — one branch a node is gated behind: the router/review node and the handle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_node_id: str = Field(alias="fromNodeId")
+    handle: str
+
+
 class CompiledNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -126,6 +135,9 @@ class CompiledNode(BaseModel):
     inputs: list[CompiledInputBinding] = Field(default_factory=list)
     on_error: Literal["fail", "degrade"] = Field(alias="onError")
     emits_trajectory: Literal[True] = Field(alias="emitsTrajectory")
+    #: TASK-864, additive-optional (the compiler OMITS it when empty, so legacy artifacts and
+    #: their checksums are untouched). Dispatched only when one guard's handle was taken.
+    branch_guards: list[CompiledBranchGuard] = Field(default_factory=list, alias="branchGuards")
 
 
 class CompiledStage(BaseModel):
@@ -133,6 +145,21 @@ class CompiledStage(BaseModel):
 
     stage_index: int = Field(alias="stageIndex")
     nodes: list[CompiledNode]
+
+
+class CompiledLoopBody(BaseModel):
+    """TASK-864 — a `core.loop`'s compiled body, walked once per iteration by `LoopWorkflow`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stages: list[CompiledStage]
+
+
+class CompiledLoop(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str = Field(alias="nodeId")
+    body: CompiledLoopBody
 
 
 class CompiledGate(BaseModel):
@@ -212,6 +239,8 @@ class CompiledWorkflowConfig(BaseModel):
     gates: list[CompiledGate]
     policy_bindings: CompiledPolicyBindings = Field(alias="policyBindings")
     caps: CompiledCaps
+    #: TASK-864, additive-optional — present only when the graph carries a `core.loop`.
+    loops: list[CompiledLoop] = Field(default_factory=list)
     checksum: str
 
 

@@ -20,7 +20,7 @@ import type { WorkflowGraph } from '../graph-model';
 import { workflowNodeClassLookup } from '../node-registry';
 import { evaluatePredicate } from '../predicates';
 import type { WorkflowEvaluationContext } from '../predicates/context';
-import { DRAFT_CONSULTATION_RULE_SET, DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
+import { DRAFT_CONSULTATION_RULE_SET, DRAFT_CORE_RULE_SET, DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
 import type { DraftWorkflowRule } from '../rule-catalogue';
 
 const GOLDEN_DIR = path.join(__dirname, 'golden');
@@ -40,14 +40,15 @@ const NODE_CLASSES: Record<string, readonly string[]> = {
   'cloud.route': ['cloudProviderRouting', 'activity'],
   // Mirrors the real registry: the two graph boundary markers, which the reachability
   // predicates exempt from a palette's own entry/terminal rule (predicates/structural.ts).
-  'core.start': ['boundary'],
-  'core.end': ['boundary'],
+  'core.start': ['boundary', 'entry'],
+  'core.end': ['boundary', 'terminal'],
 };
 
 const ALL_RULES: readonly DraftWorkflowRule[] = [
   ...DRAFT_SUMMARIZATION_RULE_SET,
   ...DRAFT_STT_RULE_SET,
   ...DRAFT_CONSULTATION_RULE_SET,
+  ...DRAFT_CORE_RULE_SET,
 ];
 
 /** One context per palette a rule can declare — STT's rules select purely by `nodeType`, so its

@@ -64,6 +64,9 @@
       "optional": true
     }
   },
+  "optionalDependencies": {
+    "elkjs": "^0.11.1"
+  },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@better-upload/client": "^3.0.19",

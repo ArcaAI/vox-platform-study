@@ -11,6 +11,7 @@ import { seedTenant, seedTenantFrontendConfig } from './05-tenant';
 import { seedTenantBucket } from './05a-tenant-bucket';
 import { provisionTenantBuckets } from './05b-tenant-bucket-provision';
 import { seedPlatformStorageConfig } from './05c-platform-storage-config';
+import { seedAiModelRegistry } from './06-ai-models';
 import { seedStt } from './06-stt';
 import { seedPromptTemplate } from './07-prompt-template';
 import { seedArcaaiClinicalTemplates } from './07b-arcaai-clinical-templates';
@@ -136,6 +137,10 @@ export const seed = async () => {
     await seedRole(client);
     console.log('');
     await seedDepartment(client);
+    console.log('');
+    // The SYSTEM-only AI model catalogue (TASK-860). Before seedStt: the
+    // pipeline seed still references models by slug until TASK-861.
+    await seedAiModelRegistry(client);
     console.log('');
     await seedStt(client);
     console.log('');

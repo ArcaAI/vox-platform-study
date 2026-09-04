@@ -265,6 +265,14 @@ export class TenantService extends BaseService implements ITenantService {
           sourceUri: src.sourceUri,
           sourceRevision: src.sourceRevision ?? undefined,
           format: src.format,
+          libraryName: src.libraryName,
+          servedBy: src.servedBy,
+          deploymentKind: src.deploymentKind,
+          wireModelId: src.wireModelId ?? undefined,
+          license: src.license ?? undefined,
+          gated: src.gated,
+          baseModel: src.baseModel ?? undefined,
+          languages: src.languages,
           // Carry the registry columns through the
           // clone; dropping them left every new tenant with NULL-provider
           // clones that SHADOW the SYSTEM values in the runtime-provider

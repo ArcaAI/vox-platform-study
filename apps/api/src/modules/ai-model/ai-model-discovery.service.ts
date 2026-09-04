@@ -213,6 +213,12 @@ export class AiModelDiscoveryService {
     };
   }
 
+  /**
+   * @deprecated TASK-860 — removed in R3. The controller refuses the route with
+   * 410; this method is retained only until the removal release. It also
+   * hard-codes `category: NLP` / `taskType: TEXT_GENERATION` for every engine
+   * row — the catalogue is the registration surface now.
+   */
   async register(dto: RegisterDiscoveredModelRequest) {
     const slug = dto.slug ?? normalizeModelSlug(dto.modelName);
     if (!slug) {

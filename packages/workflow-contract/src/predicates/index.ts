@@ -68,7 +68,7 @@ interface PredicateEntry {
 const PREDICATE_REGISTRY: Record<WorkflowRulePredicateType, PredicateEntry> = {
   ACYCLIC: { evaluate: (graph) => acyclicEvaluate(graph), configProblems: acyclicConfigProblems },
   SINGLE_ENTRY: {
-    evaluate: (graph, _ctx, config) => singleEntryEvaluate(graph, config as SingleEntryConfig),
+    evaluate: (graph, ctx, config) => singleEntryEvaluate(graph, ctx, config as SingleEntryConfig),
     configProblems: singleEntryConfigProblems,
   },
   REACHABLE_FROM_ENTRY: {

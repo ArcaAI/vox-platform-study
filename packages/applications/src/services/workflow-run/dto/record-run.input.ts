@@ -38,4 +38,8 @@ export interface RecordRunFinishedInput {
    * `null` clears it.
    */
   resultRef?: Record<string, unknown> | null;
+  /** TASK-864 — why the run ended (`cancelled_by_caller`, the interpreter's run status, …). PHI-free. */
+  terminalReason?: string | null;
+  /** TASK-864 — the consultation the run was bound to, when it was. An id, never content. */
+  consultationId?: string | null;
 }

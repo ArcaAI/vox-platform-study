@@ -73,6 +73,85 @@ export const ModelType = {
   QUANTIZED_MODEL: 'QUANTIZED_MODEL',
 } as const;
 
+// TASK-860 registry mirrors — again only the members a seed row uses.
+export const AiDeploymentKind = {
+  SELF_HOSTED: 'SELF_HOSTED',
+  CLOUD: 'CLOUD',
+} as const;
+
+export const AiModelAvailability = {
+  UNKNOWN: 'UNKNOWN',
+  NOT_APPLICABLE: 'NOT_APPLICABLE',
+} as const;
+
+export const AiTaskKind = {
+  TEXT_GENERATION: 'TEXT_GENERATION',
+  SPEECH_TO_TEXT: 'SPEECH_TO_TEXT',
+  TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
+  NAMED_ENTITY_RECOGNITION: 'NAMED_ENTITY_RECOGNITION',
+  CONTENT_SAFETY: 'CONTENT_SAFETY',
+  GROUNDEDNESS: 'GROUNDEDNESS',
+  PII_DETECTION: 'PII_DETECTION',
+} as const;
+
+/**
+ * The serving-library vocabulary (`AiModel.libraryName`) — the Hugging Face
+ * Hub's `library_name` facet, restricted to what this platform can actually
+ * load. A string column (not a Prisma enum) so a tenant BYO engine never needs
+ * a migration; the DTO validates with `@IsIn(AI_MODEL_LIBRARIES)`.
+ *
+ * MUST stay identical to `AI_MODEL_LIBRARIES` in
+ * `packages/applications/src/services/ai-model/constants.ts` — this package is
+ * a dependency leaf, so the two copies are pinned by
+ * `tests/contracts/ai-model-providers.contract.test.ts` rather than imported.
+ */
+export const AI_MODEL_LIBRARIES = [
+  // Self-hosted — apps/stt
+  'faster-whisper',
+  'whisper.cpp',
+  'ctranslate2',
+  'parakeet.cpp',
+  'nemo',
+  'onnxruntime',
+  'pyrnnoise',
+  'deepfilternet',
+  'speechbrain',
+  'pyannote-audio',
+  'cadence-punctuation',
+  // Self-hosted — apps/nlp / apps/tts / shared
+  'transformers',
+  'gliner2',
+  'llama.cpp',
+  'kokoro',
+  'parler-tts',
+  // Engine hosts (OpenAI-compatible `/v1`)
+  'lm-studio',
+  'ollama',
+  'vllm',
+  // Cloud vendors
+  'azure-speech',
+  'azure-foundry',
+  'azure-openai',
+  'openai',
+  'sarvam',
+  'bedrock',
+  'anthropic',
+  'vertex',
+] as const;
+
+export type AiModelLibrary = (typeof AI_MODEL_LIBRARIES)[number];
+
+/**
+ * The workload that executes a registry row (`AiModel.servedBy`). Cloud rows
+ * are GOVERNED by the gateway (credentials, cascade — TASK-862) and EXECUTED by
+ * the owning service, so they name that service, not the gateway.
+ *
+ * Mirrored in `packages/applications/.../ai-model/constants.ts`; same parity pin.
+ */
+export const AI_MODEL_SERVED_BY = ['stt', 'stt-worker', 'nlp', 'tts', 'tts-worker', 'lmstudio', 'text', 'gateway-proxy'] as const;
+
+export type AiModelServedBy = (typeof AI_MODEL_SERVED_BY)[number];
+
 /**
  * Canonical serving-provider identifiers. String column (not a
  * Prisma enum) to match `HarnessPolicy.textProvider` / the guardrail provider
@@ -314,6 +393,41 @@ export interface AiModelSeed {
  */
   localPath?: string | null;
   format: (typeof AiModelFormat)[keyof typeof AiModelFormat];
+  // ── TASK-860 registry identity ───────────────────────────────────────────
+  /** Serving library — the Hub's `library_name` facet; loader selection. */
+  libraryName: AiModelLibrary;
+  /** Workload that executes the row. */
+  servedBy: AiModelServedBy;
+  deploymentKind: (typeof AiDeploymentKind)[keyof typeof AiDeploymentKind];
+  /**
+   * Vendor wire id for CLOUD rows and the engine-host id for LM Studio rows.
+   * Today it EQUALS `sourceUri` on those rows: the Python cloud loaders and
+   * the TEXT router still read `source_uri` as the wire id, and re-pointing
+   * them is TASK-862's routing work. Once that lands, `sourceUri` becomes the
+   * Hub artifact (`metaData.hubArtifact` below) and this column is the only
+   * wire id.
+   */
+  wireModelId?: string;
+  /** Model-card licence identifier (Hub spelling: `apache-2.0`, `mit`, `gemma`, …). */
+  license?: string;
+  /** Hub gated / click-through repo — the publisher needs the SYSTEM token. */
+  gated?: boolean;
+  /** Upstream base checkpoint (`snakers4/silero-vad` for a mirror, the un-quantised repo for a GGUF). */
+  baseModel?: string;
+  /** ISO 639-1 codes, model-card order. */
+  languages?: string[];
+  /**
+   * Single file a single-file loader opens inside the published prefix
+   * (whisper.cpp `ggml-*.bin`, llama.cpp `*.gguf`). DELIBERATELY unset in the
+   * seed for the same reason `localPath` is: the publisher discovers the real
+   * filename from the repo listing and writes it back; a hand-typed name that
+   * drifts from the repo is worse than none.
+   */
+  primaryObject?: string;
+  /** Rows with nothing in the bucket (cloud, package-bundled weights) seed NOT_APPLICABLE. */
+  availability?: (typeof AiModelAvailability)[keyof typeof AiModelAvailability];
+  /** Platform-default election per task (README §3.6). At most one enabled row per task. */
+  isPlatformDefaultFor?: (typeof AiTaskKind)[keyof typeof AiTaskKind][];
   /** Canonical serving provider. */
   provider: AiModelProvider;
   /** Model architecture family (nullable — engines without one use null). */
@@ -332,6 +446,11 @@ export interface AiModelSeed {
    * that keep model ids and label sets out of Python.
  */
   metaData?: {
+    /**
+     * The Hub repo the PUBLISHER fetches for an LM Studio row, where
+     * `sourceUri` is still the engine-host wire id (see `wireModelId`).
+     */
+    hubArtifact?: string;
     voices?: TtsVoiceBinding[];
     azureDeployment?: string;
     ttsProvider?: string;

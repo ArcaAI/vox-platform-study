@@ -68,17 +68,19 @@ export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
     ruleId: 'WF-S-002',
     ruleClass: 'structural',
     predicateType: 'SINGLE_ENTRY',
-    predicateConfig: { entryType: 'core.start' },
+    // CLASS-based since TASK-864: `core.start` and `core.trigger` both carry `entry`, so one
+    // palette-agnostic rule admits the legacy marker and the `core` vocabulary's Trigger.
+    predicateConfig: { entryClass: 'entry' },
     severity: 'ERROR',
     paletteKey: null,
     registerRefs: [],
-    title: 'Exactly one core.start node.',
+    title: 'Exactly one entry node (core.start, or core.trigger).',
   }),
   rule({
     ruleId: 'WF-S-003',
     ruleClass: 'structural',
     predicateType: 'REACHABLE_FROM_ENTRY',
-    predicateConfig: { entryType: 'core.start' },
+    predicateConfig: { entryClass: 'entry' },
     severity: 'ERROR',
     paletteKey: null,
     registerRefs: [],
@@ -88,11 +90,11 @@ export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
     ruleId: 'WF-S-004',
     ruleClass: 'structural',
     predicateType: 'REACHES_TERMINAL',
-    predicateConfig: { terminalType: 'core.end' },
+    predicateConfig: { terminalClass: 'terminal' },
     severity: 'ERROR',
     paletteKey: null,
     registerRefs: [],
-    title: 'Every node reaches a core.end; no dead ends.',
+    title: 'Every node reaches a terminal node (core.end, or core.output); no dead ends.',
   }),
   rule({
     ruleId: 'WF-S-005',
@@ -118,7 +120,7 @@ export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
     ruleId: 'WF-S-007',
     ruleClass: 'structural',
     predicateType: 'REQUIRED_PATH_THROUGH',
-    predicateConfig: { fromType: 'core.start', toType: 'core.end', throughClass: 'mandatory' },
+    predicateConfig: { fromClass: 'entry', toClass: 'terminal', throughClass: 'mandatory' },
     severity: 'ERROR',
     paletteKey: null,
     registerRefs: ['INV-137', 'INV-155'],
@@ -385,6 +387,46 @@ export const DRAFT_STT_RULE_SET: readonly DraftWorkflowRule[] = [
     paletteKey: 'stt',
     registerRefs: [],
     title: 'Nothing routes audio to stt.transcriptOutput without passing through stt.asrEngine.',
+  }),
+] as const;
+
+/**
+ * TASK-864 — the `core` palette's own rule set. Deliberately SMALL: the owner's vocabulary is a
+ * control language, and its safety lives in the node contract (typed ports, branch guards, loop
+ * bounds, `coreNodeConfigProblems`) rather than in a mandatory-subgraph shape. The two rules
+ * here state the graph's boundaries — one Trigger, at least one Output — which the palette-
+ * agnostic `WF-S-*` bookends then reason over by class (`entry` / `terminal`).
+ */
+export const DRAFT_CORE_RULE_SET: readonly DraftWorkflowRule[] = [
+  rule({
+    ruleId: 'WF-CORE-001',
+    ruleClass: 'structural',
+    predicateType: 'SINGLE_ENTRY',
+    predicateConfig: { entryType: 'core.trigger' },
+    severity: 'ERROR',
+    paletteKey: 'core',
+    registerRefs: [],
+    title: 'Exactly one core.trigger node — the graph`s one entry point.',
+  }),
+  rule({
+    ruleId: 'WF-CORE-002',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_NODE_TYPE',
+    predicateConfig: { nodeType: 'core.output', minCount: 1 },
+    severity: 'ERROR',
+    paletteKey: 'core',
+    registerRefs: [],
+    title: 'At least one core.output node — a run must declare what it returns.',
+  }),
+  rule({
+    ruleId: 'WF-CORE-003',
+    ruleClass: 'structural',
+    predicateType: 'ORDERED_BEFORE',
+    predicateConfig: { beforeType: 'core.trigger', afterType: 'core.output' },
+    severity: 'ERROR',
+    paletteKey: 'core',
+    registerRefs: [],
+    title: 'core.output is never upstream of core.trigger — the boundaries are not inverted.',
   }),
 ] as const;
 

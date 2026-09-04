@@ -90,11 +90,13 @@ beforeEach(() => {
 
 describe('the two palette sets are pinned, and only one is wide', () => {
   it('leaves the unbound set exactly as C-8 left it', () => {
-    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['summarization']);
+    // TASK-864 widened both sets by `core`, whose real boundary is the CLASS-BASED rule
+    // (`clinicalWriteViolation`) — see `workflow-exposure.core-protocols.task864.test.ts`.
+    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['core', 'summarization']);
   });
 
   it('admits consultation ONLY on the consultation-bound set', () => {
-    expect([...CONSULTATION_BOUND_ALLOWED_PALETTES].sort()).toEqual(['consultation', 'summarization']);
+    expect([...CONSULTATION_BOUND_ALLOWED_PALETTES].sort()).toEqual(['consultation', 'core', 'summarization']);
     expect(EXPOSURE_ALLOWED_PALETTES.has('consultation')).toBe(false);
   });
 });

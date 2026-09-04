@@ -101,3 +101,4 @@ export * from './RateLimitRuleEntity';
 export * from './DocumentTemplateEntity';
 export * from './DocumentTemplateVersionEntity';
 export * from './AiRoutingPolicyEntity';
+export * from './WorkflowWebhookSecretEntity';

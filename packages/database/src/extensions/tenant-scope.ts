@@ -285,6 +285,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant's runs are never visible cross-tenant. Soft-delete EXEMPT (hard
   // retention, no resourceStatus column) — see MODELS_WITHOUT_SOFT_DELETE.
   'WorkflowRun',
+  // workflow-webhook.prisma (TASK-864) — the inbound webhook trigger's
+  // per-definition secret, keyed (tenantId, workflowSlug). Ordinary
+  // tenant-owned rows, NOT SYSTEM-shared: a signing key is never a platform
+  // default. Keeps soft delete.
+  'WorkflowWebhookSecret',
   // workflow-test-fixture.prisma — per-tenant saved synthetic Workbench
   // inputs. Ordinary tenant-owned rows, NOT SYSTEM-shared — a
   // tenant's fixtures are never visible cross-tenant. Keeps soft delete
