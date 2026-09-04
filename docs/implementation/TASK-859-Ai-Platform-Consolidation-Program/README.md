@@ -173,6 +173,14 @@ the merged primary (`14-multi-agent-worktrees.md` §5). Status on 2026-09-04:
 | TASK-861 Audio-pipeline retirement | **merged** | `74f7d975a` | steps 10 (palette descriptors already marked by 864; `implemented: false` / `WF-STT-*` / `stt_placeholder.py` residue) and 13 (artifacts) orchestrator-owned; step 7 covered by 860's fail-closed loaders; the pipeline half of `06-stt.ts` + `seedTenantSttConfig` still seeded (follow-up) |
 | TASK-865 SDK | **merged** | `f09d17113` | client AI off by default, `agentSlug` selection, `hope.agents.*` in vox-node; one pre-existing prettier warning in `useRoles.ts` left as found |
 
+Gateway boot defect found by the artifact emit and fixed on dev-2.2 (`b4eef13b2`): `AgentAdminModule`
+did not import `AgentAssignmentServiceModule` (TASK-863), so Nest could not resolve
+`IAgentAssignmentService` — `api:build` and the unit suites cannot see DI failures; the offline
+`route-manifest` emit is the local gate that does. All five artifacts regenerated from the fixed
+build: route-manifest 722 routes, openapi 497 paths, portal 642 admin / 195 business operations,
+vox-node admin 52 areas / 413 routes / 386 schemas; `openapi:check`, `portal:check`, `gen:admin:check`,
+`gen:model/entity/factory:check` all clean.
+
 Base regressions fixed on dev-2.2 along the way: three call-parenthesis typos from the cleanup
 commit (`9a933b360`); two TASK-862 constructor-slot drifts in tests (`f0e9031f7`, `86ff18952`).
 Orchestrator-owned steps still owed after 865: artifact regeneration (`api:route-manifest`,

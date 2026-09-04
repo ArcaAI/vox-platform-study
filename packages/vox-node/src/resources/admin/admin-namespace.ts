@@ -9,12 +9,12 @@
  */
 
 import type { Transport } from '../../core/transport';
+import { AdminAgentResource } from './agent';
 import { AdminAgentPromotionResource } from './agent-promotion';
 import { AdminAgentTrajectoryResource } from './agent-trajectory';
 import { AdminAgenticResource } from './agentic';
 import { AdminAiModelResource } from './ai-model';
 import { AdminAiProviderResource } from './ai-provider';
-import { AdminAiRuntimeProfileResource } from './ai-runtime-profile';
 import { AdminAiServiceResource } from './ai-service';
 import { AdminAiTaskDefaultResource } from './ai-task-default';
 import { AdminAllowedOriginResource } from './allowed-origin';
@@ -86,18 +86,18 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
  * See the barrel (`./index.ts`) for which decision closed each one.
  */
 export class AdminNamespace {
+  /** `svc:admin:agent:manage` — 15 routes. */
+  readonly agent: AdminAgentResource;
   /** `svc:admin:agent-promotion:manage` — 3 routes. */
   readonly agentPromotion: AdminAgentPromotionResource;
   /** `svc:admin:agent-trajectory:read` — 3 routes. */
   readonly agentTrajectory: AdminAgentTrajectoryResource;
   /** `svc:admin:agentic:manage` — 1 route. */
   readonly agentic: AdminAgenticResource;
-  /** `svc:admin:ai-model:manage` — 11 routes. */
+  /** `svc:admin:ai-model:manage` — 13 routes. */
   readonly aiModel: AdminAiModelResource;
-  /** `svc:admin:ai-provider:manage` — 8 routes. */
+  /** `svc:admin:ai-provider:manage` — 5 routes. */
   readonly aiProvider: AdminAiProviderResource;
-  /** `svc:admin:ai-runtime-profile:manage` — 5 routes. */
-  readonly aiRuntimeProfile: AdminAiRuntimeProfileResource;
   /** `svc:admin:ai-service:manage` — 7 routes. */
   readonly aiService: AdminAiServiceResource;
   /** `svc:admin:ai-task-default:manage` — 4 routes. */
@@ -170,19 +170,19 @@ export class AdminNamespace {
   readonly tenantIdpConfig: AdminTenantIdpConfigResource;
   /** `svc:admin:tenant-storage:manage` — 18 routes. */
   readonly tenantStorage: AdminTenantStorageResource;
-  /** `svc:admin:tenant-stt-config:manage` — 8 routes. */
+  /** `svc:admin:tenant-stt-config:manage` — 4 routes. */
   readonly tenantSttConfig: AdminTenantSttConfigResource;
-  /** `svc:admin:tenant-tts-config:manage` — 7 routes. */
+  /** `svc:admin:tenant-tts-config:manage` — 4 routes. */
   readonly tenantTtsConfig: AdminTenantTtsConfigResource;
   /** `svc:admin:transcription-job:read` — 3 routes. */
   readonly transcriptionJob: AdminTranscriptionJobResource;
-  /** `svc:admin:usage:manage` — 7 routes. */
+  /** `svc:admin:usage:manage` — 4 routes. */
   readonly usage: AdminUsageResource;
   /** `svc:admin:user:write` — 25 routes. */
   readonly user: AdminUserResource;
   /** `svc:webhook:event:write` — 7 routes. */
   readonly webhookEvent: AdminWebhookEventResource;
-  /** `svc:admin:workflow-definition:manage` — 21 routes. */
+  /** `svc:admin:workflow-definition:manage` — 22 routes. */
   readonly workflowDefinition: AdminWorkflowDefinitionResource;
   /** `svc:admin:workflow-node:read` — 1 route. */
   readonly workflowNode: AdminWorkflowNodeResource;
@@ -192,12 +192,12 @@ export class AdminNamespace {
   readonly workflowTestFixture: AdminWorkflowTestFixtureResource;
 
   constructor(transport: Transport) {
+    this.agent = new AdminAgentResource(transport);
     this.agentPromotion = new AdminAgentPromotionResource(transport);
     this.agentTrajectory = new AdminAgentTrajectoryResource(transport);
     this.agentic = new AdminAgenticResource(transport);
     this.aiModel = new AdminAiModelResource(transport);
     this.aiProvider = new AdminAiProviderResource(transport);
-    this.aiRuntimeProfile = new AdminAiRuntimeProfileResource(transport);
     this.aiService = new AdminAiServiceResource(transport);
     this.aiTaskDefault = new AdminAiTaskDefaultResource(transport);
     this.allowedOrigin = new AdminAllowedOriginResource(transport);

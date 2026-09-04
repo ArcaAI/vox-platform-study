@@ -8,17 +8,9 @@
  * any hand-edit.
  */
 
-import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
-import type {
-  EffectiveTtsConfigResponse,
-  SetTtsCredentialRequest,
-  TenantTtsConfigResponse,
-  TtsCredentialResponse,
-  TtsPlatformCatalogResponse,
-  UpdateTenantTtsConfigRequest,
-} from './schemas';
+import type { EffectiveTtsConfigResponse, TenantTtsConfigResponse, TtsPlatformCatalogResponse, UpdateTenantTtsConfigRequest } from './schemas';
 
 /**
  * `hope.admin.tenantTtsConfig` — the `svc:admin:tenant-tts-config:manage` administration area.
@@ -28,7 +20,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller TenantTtsConfigAdminController
- * (7 routes). Several controllers sharing one scope share one
+ * (4 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -38,7 +30,7 @@ export class AdminTenantTtsConfigResource extends AdminResource {
   /**
    * Resolve the effective TTS spec for a tenant (tenant row over the SYSTEM default, clamped)
    *
-   * Merges the tenant row over the SYSTEM-tenant platform default and clamps every value to the platform limits. Read-only; this is what the gateway injects into tts per request.
+   * Merges the tenant row over the SYSTEM-tenant platform default and clamps every value to the platform limits. Read-only; this is what the gateway injects into tts per request. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/agents (TASK-863)).
    *
    * `GET /api/v1/admin/tts-config` — `TenantTtsConfigAdminController.getEffective`.
    */
@@ -55,7 +47,7 @@ export class AdminTenantTtsConfigResource extends AdminResource {
   /**
    * Platform TTS catalog — providers + voices derived from the AiModel registry
    *
-   * SYSTEM ENABLED TEXT_TO_SPEECH registry rows (code-constant fallback pre-seed). Tenant-agnostic: the catalog is the platform-wide universe voice bindings are validated against — no tenant scoping.
+   * SYSTEM ENABLED TEXT_TO_SPEECH registry rows (code-constant fallback pre-seed). Tenant-agnostic: the catalog is the platform-wide universe voice bindings are validated against — no tenant scoping. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/agents (TASK-863)).
    *
    * `GET /api/v1/admin/tts-config/catalog` — `TenantTtsConfigAdminController.getCatalog`.
    */
@@ -69,61 +61,9 @@ export class AdminTenantTtsConfigResource extends AdminResource {
   }
 
   /**
-   * List a tenant's BYO provider credentials (masked — never the key)
-   *
-   * `GET /api/v1/admin/tts-config/credentials` — `TenantTtsConfigAdminController.getCredentials`.
-   */
-  getCredentials(options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<TtsCredentialResponse[]> {
-    return this.request<TtsCredentialResponse[]>({
-      method: 'GET',
-      path: 'admin/tts-config/credentials',
-      query: options.query,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Remove a tenant BYO provider credential
-   *
-   * `DELETE /api/v1/admin/tts-config/credentials/{provider}` — `TenantTtsConfigAdminController.removeCredential`.
-   */
-  removeCredential(provider: string, options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<unknown> {
-    return this.request<unknown>({
-      method: 'DELETE',
-      path: `admin/tts-config/credentials/${encodePathSegment(String(provider))}`,
-      query: options.query,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Set or rotate a tenant BYO provider key (write-only; Vault-encrypted at rest, never returned)
-   *
-   * Thin facade over the unified provider-connection plane (`IProviderConnectionService`, `service='tts'`). Not `If-Match`-gated at this route (mirrors the pre-unification contract): the current row version is read internally and used as the CAS token, so the caller can set/rotate a key without tracking a version.
-   *
-   * `PUT /api/v1/admin/tts-config/credentials/{provider}` — `TenantTtsConfigAdminController.setCredential`.
-   */
-  setCredential(
-    provider: string,
-    body: SetTtsCredentialRequest,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
-  ): Promise<TtsCredentialResponse> {
-    return this.request<TtsCredentialResponse>({
-      method: 'PUT',
-      path: `admin/tts-config/credentials/${encodePathSegment(String(provider))}`,
-      query: options.query,
-      body,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
    * Get the raw, editable TTS config row for a tenant
    *
-   * Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`).
+   * Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/agents (TASK-863)).
    *
    * `GET /api/v1/admin/tts-config/row` — `TenantTtsConfigAdminController.getRow`.
    */
@@ -140,7 +80,7 @@ export class AdminTenantTtsConfigResource extends AdminResource {
   /**
    * Create or update the tenant TTS config row under optimistic concurrency
    *
-   * Upserts the supplied spec fields (omit = unchanged; null/empty = inherit). `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). Every value is clamped to the platform limits by the resolver.
+   * Upserts the supplied spec fields (omit = unchanged; null/empty = inherit). `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). Every value is clamped to the platform limits by the resolver. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/agents (TASK-863)).
    *
    * `PUT /api/v1/admin/tts-config/row` — `TenantTtsConfigAdminController.updateRow`.
    *

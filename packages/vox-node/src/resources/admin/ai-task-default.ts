@@ -30,7 +30,7 @@ export class AdminAiTaskDefaultResource extends AdminResource {
   /**
    * Resolve the effective default model for one AI task key — or ALL keys when taskKey is omitted
    *
-   * Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, guardrail.pii, guardrail.pii.spans, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key.
+   * Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, guardrail.pii, guardrail.pii.spans, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/ai-routing-policies).
    *
    * `GET /api/v1/admin/ai-task-defaults` — `AiTaskDefaultAdminController.getEffective`.
    */
@@ -71,7 +71,7 @@ export class AdminAiTaskDefaultResource extends AdminResource {
   /**
    * List the registry models selectable as the default for one AI task key
    *
-   * ENABLED AiModel rows whose taskType is compatible with the key (guardrail.validate → GUARDRAIL, nlp.ner → TOKEN_CLASSIFICATION, nlp.classification → TEXT_CLASSIFICATION). Read via the SHARED-READ registry query (r2605 Finding E): visibility is [caller tenant, SYSTEM] de-duplicated by slug (tenant clone wins), so tenant admins get their picker options here — including the SYSTEM catalog — without needing the super-admin-only /admin/ai-models surface.
+   * ENABLED AiModel rows whose taskType is compatible with the key (guardrail.validate → GUARDRAIL, nlp.ner → TOKEN_CLASSIFICATION, nlp.classification → TEXT_CLASSIFICATION). Read via the SHARED-READ registry query (r2605 Finding E): visibility is [caller tenant, SYSTEM] de-duplicated by slug (tenant clone wins), so tenant admins get their picker options here — including the SYSTEM catalog — without needing the super-admin-only /admin/ai-models surface. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/ai-routing-policies).
    *
    * `GET /api/v1/admin/ai-task-defaults/options` — `AiTaskDefaultAdminController.getOptions`.
    */
@@ -111,7 +111,7 @@ export class AdminAiTaskDefaultResource extends AdminResource {
   /**
    * Get the raw, editable AiTaskDefault row for a (tenant, taskKey)
    *
-   * Returns the tenant row, or a `version:0` placeholder when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`; the global ETagInterceptor stamps `ETag` from it).
+   * Returns the tenant row, or a `version:0` placeholder when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`; the global ETagInterceptor stamps `ETag` from it). DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/ai-routing-policies).
    *
    * `GET /api/v1/admin/ai-task-defaults/row` — `AiTaskDefaultAdminController.getRow`.
    */
@@ -152,7 +152,7 @@ export class AdminAiTaskDefaultResource extends AdminResource {
   /**
    * Create or update the (tenant, taskKey) default-model row under optimistic concurrency
    *
-   * `modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for tenant admins). `guardrail.*` is tenant-admin configurable, but the slug must resolve to a SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise.
+   * `modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for tenant admins). `guardrail.*` is tenant-admin configurable , but the slug must resolve to a SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise. DEPRECATED (TASK-862 — removed in R3; use /api/v1/admin/ai-routing-policies).
    *
    * `PUT /api/v1/admin/ai-task-defaults/row` — `AiTaskDefaultAdminController.upsertRow`.
    *

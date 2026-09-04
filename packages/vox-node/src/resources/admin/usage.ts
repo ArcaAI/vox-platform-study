@@ -10,13 +10,7 @@
 
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions } from './admin-resource';
-import type {
-  CostPerEncounterResponse,
-  ProviderReconciliationRunResponse,
-  TopTenantsResponse,
-  UsageSummaryResponse,
-  UsageTimeseriesResponse,
-} from './schemas';
+import type { CostPerEncounterResponse, TopTenantsResponse, UsageSummaryResponse, UsageTimeseriesResponse } from './schemas';
 
 /**
  * `hope.admin.usage` — the `svc:admin:usage:manage` administration area.
@@ -25,8 +19,8 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers AdminReconciliationController, AdminUsageController
- * (7 routes). Several controllers sharing one scope share one
+ * Backed by controller AdminUsageController
+ * (4 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -42,55 +36,6 @@ export class AdminUsageResource extends AdminResource {
     return this.request<CostPerEncounterResponse>({
       method: 'GET',
       path: 'admin/usage/cost-per-encounter',
-      query: options.query,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Most recent run per provider — the status board.
-   *
-   * `GET /api/v1/admin/usage/reconciliation/latest` — `AdminReconciliationController.latest`.
-   */
-  latest(options: AdminRequestOptions = {}): Promise<ProviderReconciliationRunResponse[]> {
-    return this.request<ProviderReconciliationRunResponse[]>({
-      method: 'GET',
-      path: 'admin/usage/reconciliation/latest',
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Run the reconciliation sweep NOW against the last settled window, and record the attempts.
-   *
-   * Not a mutation of business data: the sweep only READS the ledger and each vendor report, then appends audit rows. It never writes to the ledger ( rule 5). Provided because the scheduled sweep ships OFF, so without it the audit trail stays empty until an operator enables the cron.
-   *
-   * `POST /api/v1/admin/usage/reconciliation/run` — `AdminReconciliationController.run`.
-   */
-  run(options: AdminRequestOptions = {}): Promise<unknown> {
-    return this.request<unknown>({
-      method: 'POST',
-      path: 'admin/usage/reconciliation/run',
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Provider-reconciliation runs, newest first. Includes SKIPPED and FAILED attempts — the gap is the point.
-   *
-   * Every attempt is recorded, not just successful comparisons: "not reconciled since March because the credential expired" is exactly what an audit asks about. Quantities are strings (Decimal columns); null means no comparison happened and is never 0.
-   *
-   * `GET /api/v1/admin/usage/reconciliation/runs` — `AdminReconciliationController.runs`.
-   */
-  runs(
-    options: AdminRequestOptions & { query?: { breachedOnly?: boolean; from?: string; limit?: number; provider?: string; to?: string } } = {},
-  ): Promise<ProviderReconciliationRunResponse[]> {
-    return this.request<ProviderReconciliationRunResponse[]>({
-      method: 'GET',
-      path: 'admin/usage/reconciliation/runs',
       query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,

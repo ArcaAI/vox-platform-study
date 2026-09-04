@@ -26,6 +26,7 @@ import type {
   UpsertWorkflowAssignmentRequest,
   WorkflowAssignmentResponse,
   WorkflowDefinitionResponse,
+  WorkflowWebhookSecretResponseDto,
 } from './schemas';
 
 /**
@@ -36,7 +37,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers WorkflowAssignmentController, WorkflowDefinitionController, WorkflowSandboxRunController
- * (21 routes). Several controllers sharing one scope share one
+ * (22 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -346,7 +347,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   /**
    * Compile the graph and publish this version
    *
-   * Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. `smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this tenant's data to that vendor. Public exposure does NOT restrict provider choice ( owner ruling, 2026-08-20): the tenant carries that risk.
+   * Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. `smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this tenant's data to that vendor. Public exposure does NOT restrict provider choice ( R-4 owner ruling, 2026-08-20): the tenant carries that risk.
    *
    * `POST /api/v1/admin/workflow-definitions/{id}/publish` — `WorkflowDefinitionController.publish`.
    */
@@ -385,6 +386,22 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
     return this.request<WorkflowDefinitionResponse[]>({
       method: 'GET',
       path: `admin/workflow-definitions/${encodePathSegment(String(id))}/versions`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Issue or rotate the inbound webhook secret for a workflow lineage (returned exactly once)
+   *
+   * Mints the HMAC secret external systems sign `POST /hooks/workflows/{hookId}` deliveries with, and the `hookUrl` they POST to. The raw secret is returned ONCE; only reversible ciphertext is persisted. Rotating invalidates the previous secret immediately. The Trigger node must declare the `webhook` kind for deliveries to be accepted.
+   *
+   * `POST /api/v1/admin/workflow-definitions/slug/{slug}/webhook-secret` — `WorkflowDefinitionController.rotateWebhookSecret`.
+   */
+  rotateWebhookSecret(slug: string, options: AdminRequestOptions = {}): Promise<WorkflowWebhookSecretResponseDto> {
+    return this.request<WorkflowWebhookSecretResponseDto>({
+      method: 'POST',
+      path: `admin/workflow-definitions/slug/${encodePathSegment(String(slug))}/webhook-secret`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
