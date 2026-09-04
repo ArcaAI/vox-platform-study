@@ -330,7 +330,23 @@ export class TranscriptionJobController {
   @Post()
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a transcription job' })
-  async create(@Body() dto: CreateJobRequest) {
+  async create(@Body() dto: CreateJobRequest, @Res({ passthrough: true }) res?: Response) {
+    // TASK-861 — the same resolution as `POST …/transcribe`: an explicit `pipelineId` keeps the
+    // deprecated path (with its headers); otherwise the agent path — explicit `agentSlug`, else the
+    // tenant's assigned ASR agent — keys the job to a `ResolvedAsrSpec`. The gateway never guesses.
+    if (dto.pipelineId) {
+      markPipelineIdDeprecated(res);
+      return this.jobService.create(dto);
+    }
+    if (!dto.agentVersionId) {
+      const resolved = await this.resolveAsrAgent(this.getTenantId(), dto.agentSlug);
+      const { agentSlug: _agentSlug, ...rest } = dto;
+      return this.jobService.create({
+        ...rest,
+        agentVersionId: resolved.spec.agent.versionId,
+        resolvedSpec: resolved.spec as unknown as Record<string, unknown>,
+      });
+    }
     return this.jobService.create(dto);
   }
 

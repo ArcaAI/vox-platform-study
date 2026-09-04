@@ -788,6 +788,21 @@ function mergeTenantIntoWhere(args: Record<string, unknown>, tenantId: string, m
 }
 
 /**
+ * A pinned `tenantId` on a SYSTEM-shared read is admissible when it names the caller, SYSTEM,
+ * or — as `{ in: [...] }` — any subset of that pair. The `in` form is exactly the widening this
+ * extension applies itself; repositories that read the two-tier cascade explicitly
+ * (`AiRoutingPolicyRepository.findCandidates`, TASK-862) pass it and must not be refused.
+ */
+function isWithinSharedReadPair(pinned: unknown, tenantId: string): boolean {
+  if (pinned === tenantId || pinned === SYSTEM_TENANT_ID) return true;
+  if (pinned && typeof pinned === 'object' && Array.isArray((pinned as { in?: unknown }).in)) {
+    const ids = (pinned as { in: unknown[] }).in;
+    return ids.length > 0 && ids.every((id) => id === tenantId || id === SYSTEM_TENANT_ID);
+  }
+  return false;
+}
+
+/**
  * Read-path tenant merge for SYSTEM-shared catalog models: widen the filter to
  * `tenantId IN [caller, SYSTEM]` so the caller resolves both its own rows and
  * the shared platform catalog. A caller may still pin an explicit `tenantId`,
@@ -797,7 +812,7 @@ function mergeTenantIntoWhere(args: Record<string, unknown>, tenantId: string, m
 function mergeSharedReadTenantIntoWhere(args: Record<string, unknown>, tenantId: string, model: string, op: string): void {
   const where = (args.where ?? {}) as Record<string, unknown>;
   if ('tenantId' in where && where.tenantId !== undefined) {
-    if (where.tenantId !== tenantId && where.tenantId !== SYSTEM_TENANT_ID) {
+    if (!isWithinSharedReadPair(where.tenantId, tenantId)) {
       throw new Error(
         `TenantScope: tenantId mismatch on ${model}.${op} — caller passed ${JSON.stringify(where.tenantId)} but context is ${JSON.stringify(tenantId)} (SYSTEM inheritance allows only [caller, SYSTEM])`,
       );

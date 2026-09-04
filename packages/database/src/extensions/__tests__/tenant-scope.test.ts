@@ -655,6 +655,28 @@ describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
     expect(query).toHaveBeenCalledWith({ where: { tenantId: SYSTEM_TENANT_ID } });
   });
 
+  it('allows `{ in: [...] }` subsets of [caller, SYSTEM] on a shared-read model (the two-tier cascade, pinned explicitly)', async () => {
+    // AiRoutingPolicyRepository.findCandidates (TASK-862) pins `tenantId: { in: [tenant, SYSTEM] }` — the
+    // same widening this extension applies — and a super admin's working tenant made it a 500.
+    for (const ids of [['tenant-A', SYSTEM_TENANT_ID], ['tenant-A'], [SYSTEM_TENANT_ID]]) {
+      const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+      const query = vi.fn().mockResolvedValue([]);
+      await config.query.$allModels.findMany({ model: 'AiRoutingPolicy', args: { where: { tenantId: { in: ids } } }, query });
+      expect(query).toHaveBeenCalledWith({ where: { tenantId: { in: ids } } });
+    }
+  });
+
+  it('rejects an `{ in: [...] }` that reaches outside [caller, SYSTEM] on a shared-read model', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    await expect(
+      config.query.$allModels.findMany({
+        model: 'AiRoutingPolicy',
+        args: { where: { tenantId: { in: ['tenant-A', 'tenant-B'] } } },
+        query: vi.fn(),
+      }),
+    ).rejects.toThrow(/tenantId mismatch/i);
+  });
+
   it('rejects an explicit foreign tenantId on a shared-read model', async () => {
     const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
 

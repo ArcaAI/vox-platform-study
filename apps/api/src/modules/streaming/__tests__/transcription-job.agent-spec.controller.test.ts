@@ -107,6 +107,44 @@ describe('createStreamSession — agent path', () => {
   });
 });
 
+describe('create (JSON) — agent path', () => {
+  it('no ids → the assignment cascade resolves the agent and the job is keyed to agentVersionId + resolvedSpec', async () => {
+    const { controller, m } = build();
+    m.jobService.create = vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' });
+    await controller.create({ mediaId: 'media-1' } as never);
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null });
+    expect(m.jobService.create).toHaveBeenCalledWith(expect.objectContaining({ mediaId: 'media-1', agentVersionId: 'agent-v-1', resolvedSpec: spec }));
+    expect(m.jobService.create.mock.calls[0][0]).not.toHaveProperty('agentSlug');
+    expect(m.jobService.create.mock.calls[0][0]).not.toHaveProperty('pipelineId');
+  });
+
+  it('an explicit agentSlug goes to the resolver and never reaches the service as a field', async () => {
+    const { controller, m } = build();
+    m.jobService.create = vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' });
+    await controller.create({ mediaId: 'media-1', agentSlug: 'platform-transcription' } as never);
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: 'platform-transcription', departmentId: null });
+    expect(m.jobService.create.mock.calls[0][0]).not.toHaveProperty('agentSlug');
+  });
+
+  it('the deprecated pipelineId path bypasses the resolver and answers with the Deprecation headers', async () => {
+    const { controller, m } = build();
+    m.jobService.create = vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' });
+    const r = { setHeader: vi.fn() };
+    await controller.create({ mediaId: 'media-1', pipelineId: 'pipe-1' } as never, r as never);
+    expect(m.asrResolver.resolve).not.toHaveBeenCalled();
+    expect(m.jobService.create).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipe-1' }));
+    expect(r.setHeader).toHaveBeenCalledWith('Deprecation', 'true');
+    expect(r.setHeader).toHaveBeenCalledWith('X-Deprecation-Notice', expect.stringMatching(/^[\x20-\x7e]*$/));
+  });
+
+  it('no ids and no resolver wired → 503, never a silent pipeline guess', async () => {
+    const { controller, m } = build(false);
+    m.jobService.create = vi.fn();
+    await expect(controller.create({ mediaId: 'media-1' } as never)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(m.jobService.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('transcribeFile — agent path', () => {
   const file = wavFixture(300);
 
