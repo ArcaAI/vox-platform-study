@@ -32,7 +32,6 @@ import {
   seedAiModels,
   shouldRetireAiModelSlug,
 } from '../06-ai-models';
-import { DEFAULT_ASR_PIPELINES } from '../06-stt';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../00-constants';
 
 // =============================================================================
@@ -260,15 +259,21 @@ describe('RETIRED_AI_MODEL_SLUGS ledger (TASK-860 extension)', () => {
     expect(RETIRED_AI_MODEL_SLUGS.filter((slug) => live.has(slug))).toEqual([]);
   });
 
-  it('still lets the pipeline-reference guard protect the whisper rows seeded pipelines reference (until TASK-861)', () => {
-    const yamls = DEFAULT_ASR_PIPELINES.map((p) => p.configYaml);
-    // Referenced by seeded pipeline YAML → the sweep must SKIP them.
-    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo-gguf', yamls)).toBe(false);
-    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo', yamls)).toBe(false);
+  it('no seeded YAML shields the legacy whisper rows any more (TASK-861 retired the pipeline seed) — only a live tenant-built row can', () => {
+    // `retireLegacyAiModels` feeds the guard every non-deleted `AsrPipeline.configYaml`
+    // it reads from the DB at seed time. `06-stt.ts` seeds none since TASK-861, so on a
+    // fresh DB the two whisper rows the old pipelines referenced retire with the ledger.
+    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo-gguf', [])).toBe(true);
+    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo', [])).toBe(true);
+    // A tenant-built pipeline that still references a slug keeps it alive — and the
+    // match is boundary-aware (`…-turbo-gguf` is not a reference to `…-turbo`).
+    const tenantBuilt = 'models:\n  asr: "whisper-large-v3-turbo-gguf"\n';
+    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo-gguf', [tenantBuilt])).toBe(false);
+    expect(shouldRetireAiModelSlug('whisper-large-v3-turbo', [tenantBuilt])).toBe(true);
     // Nothing references these → retired on the next seed.
-    expect(shouldRetireAiModelSlug('bedrock-claude-3.5-haiku', yamls)).toBe(true);
-    expect(shouldRetireAiModelSlug('nlp-doc-type-classifier', yamls)).toBe(true);
-    expect(shouldRetireAiModelSlug('indic-f5', yamls)).toBe(true);
+    expect(shouldRetireAiModelSlug('bedrock-claude-3.5-haiku', [tenantBuilt])).toBe(true);
+    expect(shouldRetireAiModelSlug('nlp-doc-type-classifier', [tenantBuilt])).toBe(true);
+    expect(shouldRetireAiModelSlug('indic-f5', [tenantBuilt])).toBe(true);
   });
 });
 

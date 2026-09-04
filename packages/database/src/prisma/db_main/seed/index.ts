@@ -138,10 +138,13 @@ export const seed = async () => {
     console.log('');
     await seedDepartment(client);
     console.log('');
-    // The SYSTEM-only AI model catalogue (TASK-860). Before seedStt: the
-    // pipeline seed still references models by slug until TASK-861.
+    // The SYSTEM-only AI model catalogue (TASK-860).
     await seedAiModelRegistry(client);
     console.log('');
+    // STT Global Settings only. The `AsrPipeline` seed half and the SYSTEM
+    // `TenantSttConfig` platform-default row are GONE (TASK-861, step 11): the
+    // deprecated tables get no rows; transcription is the `platform-transcription`
+    // ASR Agent (`25-agents.ts`), resolved by the gateway into a `ResolvedAsrSpec`.
     await seedStt(client);
     console.log('');
     // SYSTEM HarnessPolicy TEXT default (+ WORM audit).
@@ -165,13 +168,13 @@ export const seed = async () => {
     console.log('');
     // SYSTEM elected task defaults on `AiRoutingPolicy` (TASK-862 — replaces the
     // retired `AiTaskDefault` seed). CREATE-ONLY; needs the AiModel catalog
-    // (seedStt above) because the election binds the model by FK.
+    // (seedAiModelRegistry above) because the election binds the model by FK.
     await seedAiRoutingPolicy(client);
     console.log('');
     // SYSTEM TenantTtsConfig platform default (/ F1): built-in-first
     // TTS routing (kokoro / indic_parler) so an unconfigured tenant defaults to
     // a LOCAL engine, never a cloud vendor. CREATE-ONLY; needs the TTS AiModel
-    // catalog (seedStt above) and the reserved SYSTEM tenant (Phase 1).
+    // catalog (seedAiModelRegistry above) and the reserved SYSTEM tenant (Phase 1).
     await seedTenantTtsConfig(client);
     console.log('');
 
