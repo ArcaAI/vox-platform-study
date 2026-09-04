@@ -48,7 +48,13 @@ export interface WorkflowNodeDescriptor {
   /** The node `type` string authored on a graph node (`WorkflowGraphNode.type`). */
   readonly key: string;
   /** Mirrors `registry.py`'s `NodeSpec.implemented` — an unimplemented entry is an
-   *  OBSERVABLE, non-executable placeholder, never silently dropped. */
+   *  OBSERVABLE, non-executable placeholder, never silently dropped: `nodeInfo()` returns
+   *  `undefined` for it, so `compile()` refuses any graph that uses it (WF-C-002).
+   *  Cross-language rule (TASK-867): `implemented: false` HERE means NO `NodeSpec` in
+   *  `registry.py`. A Python spec cannot exist without a registered `@activity.defn` callable,
+   *  and the interpreter already treats "no spec" and "unimplemented spec" identically
+   *  (SKIPPED, `unsupported_node_type`), so an entry kept here only for its deprecation window
+   *  has no Python twin — `test_node_registry_parity.py` asserts exactly that. */
   readonly implemented: boolean;
   /** The Temporal-registered activity name (`registry.py`'s `activity_name`, e.g.
    *  `"interpreter.noop"`) — what the compiler stamps into `CompiledNode.activity`. */
@@ -150,6 +156,9 @@ export interface WorkflowNodeDescriptor {
    * the two-release window, the Studio hides it from the palette rail (but still renders graphs
    * that use it), and `replacedBy` names the `core.*` type that supersedes it. TS-only, like
    * `classes`/`paletteKey`: the interpreter dispatches a deprecated type exactly as before.
+   * The one exception is a type that is ALSO `implemented: false` (the retired `stt` palette,
+   * TASK-861 step 10 / TASK-867): `compile()` refuses it, so only already-published rows keep
+   * loading and rendering.
    */
   readonly deprecated?: boolean;
   /** The `core.*` node type (or `core.action` key) a deprecated type maps onto. */
@@ -380,17 +389,22 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     replacedBy: 'core.output',
   }),
   // -------------------------------------------------------------------------------------------
-  // STT palette — eight node types, `paletteKey: 'stt'`. See
-  // for the node table, `critical`
-  // rationale, and the `implemented: false` decision on `stt.phiHop` (a documented placeholder
-  // pending — `implemented: false` makes compile() refuse ANY graph that includes it,
-  // never a silent pass-through). `entitlementKey: null` on every entry — `featurePaletteStt`
-  // gating is wired at WorkflowDefinitionService.publish() via IEntitlementsService, not a
-  // registry-declared key (see palette.md's Entitlement gate section).
+  // STT palette — eight node types, `paletteKey: 'stt'` — RETIRED (TASK-861 step 10, closed by
+  // TASK-867 after TASK-864 C1 marked every entry `deprecated: true` / `replacedBy: 'core.agent'`).
+  // The palette compiled into the `AsrPipeline` table that TASK-861 retires, so all eight entries
+  // are now `implemented: false`: `nodeInfo()` returns `undefined` for them and `compile()` refuses
+  // any graph that uses them (WF-C-002) — a new or re-published `stt` graph cannot exist. The
+  // descriptors, config schemas and ports stay for the deprecation window (remove in R4) so
+  // already-published rows still load, validate and render in the Studio. NO Python twin exists
+  // any more: `registry.py` carries no `stt.*` spec and the worker serves no `interpreter.stt_*`
+  // activity (`nodes/stt_placeholder.py` was deleted) — `activityName` below is the historical
+  // name, asserted UNSERVED by `test_node_registry_parity.py`. `WF-STT-001..006` were deleted from
+  // the rule catalogue for the same reason. `entitlementKey: null` on every entry — the
+  // `featurePaletteStt` gate at WorkflowDefinitionService.publish() is unchanged for the window.
   // -------------------------------------------------------------------------------------------
   'stt.audioInput': Object.freeze({
     key: 'stt.audioInput',
-    implemented: true,
+    implemented: false,
     activityName: 'interpreter.stt_audio_input',
     classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'stt',
@@ -409,7 +423,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
   }),
   'stt.vad': Object.freeze({
     key: 'stt.vad',
-    implemented: true,
+    implemented: false,
     activityName: 'interpreter.stt_vad',
     classes: Object.freeze(['activity']),
     paletteKey: 'stt',
@@ -428,7 +442,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
   }),
   'stt.noiseFilter': Object.freeze({
     key: 'stt.noiseFilter',
-    implemented: true,
+    implemented: false,
     activityName: 'interpreter.stt_noise_filter',
     classes: Object.freeze(['activity']),
     paletteKey: 'stt',
@@ -447,7 +461,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
   }),
   'stt.diarization': Object.freeze({
     key: 'stt.diarization',
-    implemented: true,
+    implemented: false,
     activityName: 'interpreter.stt_diarization',
     classes: Object.freeze(['activity']),
     paletteKey: 'stt',
@@ -466,7 +480,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
   }),
   'stt.languageDetection': Object.freeze({
     key: 'stt.languageDetection',
-    implemented: true,
+    implemented: false,
     activityName: 'interpreter.stt_language_detection',
     classes: Object.freeze(['activity']),
     paletteKey: 'stt',
@@ -485,7 +499,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
   }),
   'stt.asrEngine': Object.freeze({
     key: 'stt.asrEngine',
-    implemented: true,
+    implemented: false,
     activityName: 'interpreter.stt_asr_engine',
     classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'stt',
@@ -504,7 +518,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
   }),
   'stt.transcriptOutput': Object.freeze({
     key: 'stt.transcriptOutput',
-    implemented: true,
+    implemented: false,
     activityName: 'interpreter.stt_transcript_output',
     classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'stt',
@@ -521,7 +535,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     deprecated: true,
     replacedBy: 'core.agent',
   }),
-  // PLACEHOLDER — implemented:false, see palette.md. /phi-redactor is not landed.
+  // Retired with the rest of the palette (preamble above); it was `implemented: false` from the
+  // start — /phi-redactor never landed.
   'stt.phiHop': Object.freeze({
     key: 'stt.phiHop',
     implemented: false,

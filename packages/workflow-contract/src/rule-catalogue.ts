@@ -316,79 +316,13 @@ export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
   }),
 ] as const;
 
-/**
- * The STT-palette's own mandatory-subgraph rule set. Structural-only.
- * Palette-scoped (`paletteKey: 'stt'`), so these never evaluate against a summarization (or any
- * other) palette's graph — `validate()`'s existing per-rule `paletteKey` filter already routes
- * each graph correctly.
- *
- * See for the full rationale,
- * including why `stt.phiHop` (registered `implemented: false` in `node-registry.ts`/`registry.py`)
- * needs no rule of its own here: an `implemented: false` node type makes `compile()` refuse ANY
- * graph containing it, a stronger gate than a validator rule could express.
+/*
+ * `DRAFT_STT_RULE_SET` (`WF-STT-001..006`) lived here until TASK-867 (the TASK-861 step-10
+ * follow-up): the `stt` palette is retired — every `stt.*` descriptor is `implemented: false`
+ * (`node-registry.ts`), so `compile()` refuses any graph the six palette-scoped rules could
+ * have evaluated. Rules that can never fire were deleted with their golden fixtures rather than
+ * kept as inert rows; the descriptors themselves stay for the deprecation window.
  */
-export const DRAFT_STT_RULE_SET: readonly DraftWorkflowRule[] = [
-  rule({
-    ruleId: 'WF-STT-001',
-    ruleClass: 'structural',
-    predicateType: 'SINGLE_ENTRY',
-    predicateConfig: { entryType: 'stt.audioInput' },
-    severity: 'ERROR',
-    paletteKey: 'stt',
-    registerRefs: [],
-    title: 'Exactly one stt.audioInput node (N-1, mandatory).',
-  }),
-  rule({
-    ruleId: 'WF-STT-002',
-    ruleClass: 'structural',
-    predicateType: 'SINGLE_ENTRY',
-    predicateConfig: { entryType: 'stt.transcriptOutput' },
-    severity: 'ERROR',
-    paletteKey: 'stt',
-    registerRefs: [],
-    title: 'Exactly one stt.transcriptOutput node (N-7, mandatory).',
-  }),
-  rule({
-    ruleId: 'WF-STT-003',
-    ruleClass: 'structural',
-    predicateType: 'REQUIRED_NODE_TYPE',
-    predicateConfig: { nodeType: 'stt.asrEngine', minCount: 1 },
-    severity: 'ERROR',
-    paletteKey: 'stt',
-    registerRefs: [],
-    title: 'An stt.asrEngine node is present (N-6, mandatory).',
-  }),
-  rule({
-    ruleId: 'WF-STT-004',
-    ruleClass: 'structural',
-    predicateType: 'ORDERED_BEFORE',
-    predicateConfig: { beforeType: 'stt.audioInput', afterType: 'stt.asrEngine' },
-    severity: 'ERROR',
-    paletteKey: 'stt',
-    registerRefs: [],
-    title: 'stt.audioInput is never downstream of stt.asrEngine — order not inverted.',
-  }),
-  rule({
-    ruleId: 'WF-STT-005',
-    ruleClass: 'structural',
-    predicateType: 'ORDERED_BEFORE',
-    predicateConfig: { beforeType: 'stt.asrEngine', afterType: 'stt.transcriptOutput' },
-    severity: 'ERROR',
-    paletteKey: 'stt',
-    registerRefs: [],
-    title: 'stt.asrEngine is never downstream of stt.transcriptOutput — transcription happens before delivery.',
-  }),
-  rule({
-    ruleId: 'WF-STT-006',
-    ruleClass: 'structural',
-    predicateType: 'REQUIRED_PATH_THROUGH',
-    predicateConfig: { fromType: 'stt.audioInput', toType: 'stt.transcriptOutput', throughType: 'stt.asrEngine' },
-    severity: 'ERROR',
-    paletteKey: 'stt',
-    registerRefs: [],
-    title: 'Nothing routes audio to stt.transcriptOutput without passing through stt.asrEngine.',
-  }),
-] as const;
 
 /**
  * TASK-864 — the `core` palette's own rule set. Deliberately SMALL: the owner's vocabulary is a
