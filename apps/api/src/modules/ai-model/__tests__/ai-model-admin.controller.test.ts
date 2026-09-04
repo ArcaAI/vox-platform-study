@@ -59,7 +59,7 @@ describe('AiModelAdminController delegation', () => {
       { id: 'm2', resourceStatus: 'DISABLED' },
     ]);
     const getAll = vi.fn().mockResolvedValue([]);
-    const controller = new AiModelAdminController({ getAllForAdmin, getAll } as never, {} as never);
+    const controller = new AiModelAdminController({ getAllForAdmin, getAll } as never, {} as never, {} as never);
 
     const result = await controller.fetchAll();
 
@@ -76,7 +76,7 @@ describe('AiModelAdminController delegation', () => {
       getBySlug: vi.fn().mockResolvedValue({ id: 'm1' }),
       delete: vi.fn().mockResolvedValue(undefined),
     } as never;
-    const controller = new AiModelAdminController(svc, {} as never);
+    const controller = new AiModelAdminController(svc, {} as never, {} as never);
 
     await controller.create({ name: 'x' } as never);
     await controller.fetchById('m1');
@@ -96,7 +96,7 @@ describe('AiModelAdminController delegation', () => {
 describe('AiModelAdminController update — OCC If-Match fold', () => {
   const build = () => {
     const update = vi.fn().mockResolvedValue({ id: 'm1', name: 'Updated', version: 8 });
-    return { controller: new AiModelAdminController({ update } as never, {} as never), update };
+    return { controller: new AiModelAdminController({ update } as never, {} as never, {} as never), update };
   };
 
   it('forwards the body unchanged when If-Match header is absent (body wins)', async () => {
@@ -137,7 +137,7 @@ describe('AiModelAdminController download route metadata', () => {
 describe('AiModelAdminController download delegation', () => {
   it('triggerDownload delegates to AiModelDownloadService.triggerDownload and returns its result verbatim', async () => {
     const triggerDownload = vi.fn().mockResolvedValue({ jobId: 'job-1', status: 'DOWNLOADING' });
-    const controller = new AiModelAdminController({} as never, { triggerDownload } as never);
+    const controller = new AiModelAdminController({} as never, { triggerDownload } as never, {} as never);
 
     const result = await controller.triggerDownload('m1');
 
@@ -155,7 +155,7 @@ describe('AiModelAdminController download delegation', () => {
       localPath: '/mnt/models-bucket/gemma4-e2b-it-qat/q4-0-451faffb5a16/',
       error: null,
     });
-    const controller = new AiModelAdminController({} as never, { getDownloadStatus } as never);
+    const controller = new AiModelAdminController({} as never, { getDownloadStatus } as never, {} as never);
 
     const result = await controller.getDownloadStatus('m1');
 

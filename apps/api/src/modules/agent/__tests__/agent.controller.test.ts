@@ -56,7 +56,7 @@ function make(overrides: Record<string, unknown> = {}) {
     resolveAsrPipelineId: vi.fn(async () => 'pipe-1'),
   };
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'u1' } : undefined)) };
-  const jobService = { createBatchJob: vi.fn(async () => ({ id: 'job-1', status: 'PENDING' })), failJob: vi.fn() };
+  const jobService = { createBatchJob: vi.fn(async (_input: unknown) => ({ id: 'job-1', status: 'PENDING' })), failJob: vi.fn() };
   const realtimeService = { dispatchDramatiqJob: vi.fn(async () => undefined) };
   const mediaService = { fetchById: vi.fn(async () => ({ id: 'media-1', uri: 's3://bucket/audio.wav' })) };
   // TASK-861 — the ASR resolution behind `transcriptions`.

@@ -24,6 +24,7 @@ const spec = {
 const mocks = () => ({
   jobService: {
     createBatchJob: vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' }),
+    create: vi.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' }),
     failJob: vi.fn(),
     getStatusCountsForOwner: vi.fn().mockResolvedValue({ queued: 0, processing: 0 }),
   },

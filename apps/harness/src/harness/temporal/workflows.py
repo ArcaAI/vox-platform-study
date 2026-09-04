@@ -745,7 +745,9 @@ class HarnessDocWorkflow:
         # AFTER an early draft delivery and runs as assurance-only (a delivered draft is
         # never silently regenerated in the early-delivery path — the regen-if-untouched
         # dynamics live in the post-delivery assurance path below).
-        use_optimistic = gate.optimistic_delivery_enabled and workflow.patched()
+        use_optimistic = gate.optimistic_delivery_enabled and workflow.patched(
+            "optimistic-delivery"
+        )
         regens_used = 0
         # Running token spend for this run, folded from RECORDED
         # ACTIVITY OUTPUTS (`generated.stats`). Deriving it this way is what keeps

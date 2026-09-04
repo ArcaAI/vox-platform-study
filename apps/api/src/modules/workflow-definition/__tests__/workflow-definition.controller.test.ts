@@ -36,7 +36,7 @@ function makeController() {
     clone: vi.fn().mockResolvedValue(definitionResponse({ id: 'def-2', slug: 'discharge_summary_copy' })),
     listTemplates: vi.fn().mockResolvedValue([definitionResponse({ id: 'sys-1', tenantId: '00000000-0000-0000-0000-000000000000', status: 'PUBLISHED' })]),
   };
-  const controller = new WorkflowDefinitionController(workflowDefinitionService as never);
+  const controller = new WorkflowDefinitionController(workflowDefinitionService as never, {} as never);
   return { controller, workflowDefinitionService };
 }
 
