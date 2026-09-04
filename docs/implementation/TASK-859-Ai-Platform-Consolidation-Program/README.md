@@ -170,7 +170,7 @@ the merged primary (`14-multi-agent-worktrees.md` §5). Status on 2026-09-04:
 | TASK-863 Agent entity | **merged** | `36b9d9dd1` | integration fixes `5e1b1c31d`, migration banner strip `d10ed047c` |
 | TASK-860 Model Registry | **merged** | `e8e24f9f2` | `uv.lock` re-resolved; `parler-tts` installs `--no-deps` in the `indic-parler` image variant |
 | TASK-864 Workflow Studio v2 | **merged** | `ac5d4068a` | harness `core.agent` reconciled with the merged 863 resolve contract; `harness:typecheck` clean apart from the base defect; step B2 seeds partial (Q-B2) |
-| TASK-861 Audio-pipeline retirement | in progress | — | 8 commits on `task-861-audio-pipeline-retirement`; steps 10 (deferred behind 864's palette deprecation) and 13 (artifacts, orchestrator) skipped by design |
+| TASK-861 Audio-pipeline retirement | **merged** | `74f7d975a` | steps 10 (palette descriptors already marked by 864; `implemented: false` / `WF-STT-*` / `stt_placeholder.py` residue) and 13 (artifacts) orchestrator-owned; step 7 covered by 860's fail-closed loaders; the pipeline half of `06-stt.ts` + `seedTenantSttConfig` still seeded (follow-up) |
 | TASK-865 SDK | ready, merges last | — | branch carries dev-2.2 through `86ff18952`; waits for 861 because the playground sends `agentSlug` |
 
 Base regressions fixed on dev-2.2 along the way: three call-parenthesis typos from the cleanup
