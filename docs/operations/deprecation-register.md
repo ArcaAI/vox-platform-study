@@ -57,7 +57,7 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `/audio/pipelines`, `features/audio-pipelines` | TASK-861 | R2 (redirect) | R4 | `/agents?task=speech-to-text` | planned |
 | `/harness/pipeline-policy`, `features/pipeline-policy` | TASK-861 | R2 (redirect) | R4 | workflow assignments | planned |
 | `features/tenant-stt-config`, `features/tenant-tts-config` | TASK-861/862 | R1–R2 | R3–R4 | agents | planned |
-| `/agents` redirect to `/prompt-templates` | TASK-863 | — | R1 (route becomes the Agents screen) | — | planned |
+| `/agents` redirect to `/prompt-templates` | TASK-863 | — | R1 (route becomes the Agents screen) | `/agents` Agents screen (`features/agents`); prompt-template components live under `features/prompt-templates` | removed |
 | `/prompt-studio`, `/pstudio` redirect stubs | pre-existing | — | R1 | — | marked |
 | `/ai-model-defaults` redirect stub | pre-existing | — | R1 | — | marked |
 
