@@ -144,7 +144,8 @@ export class WorkflowsController {
   @CanRead('WorkflowDefinition')
   @RequiredScopes('workflow:definition:read')
   @ApiOperation({
-    summary: 'The published definition`s generated contract: input/output component schemas, trigger kinds, protocols, admitted modes, and an AsyncAPI fragment for its run events (TASK-864).',
+    summary:
+      'The published definition`s generated contract: input/output component schemas, trigger kinds, protocols, admitted modes, and an AsyncAPI fragment for its run events (TASK-864).',
   })
   @ApiParam({ name: 'slug' })
   @ApiResponse({ status: 200, description: 'The `WorkflowSchemaDescription` — what the developer portal renders per workflow.' })

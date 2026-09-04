@@ -35,7 +35,7 @@
  *     freeze) so the desired bar is visible and cannot pass by accident.
  *
  * Live-stack requirement: needs STT behind the gateway; self-skips with an
- * explicit reason when unreachable. Prereqs + invocation: 
+ * explicit reason when unreachable. Prereqs + invocation:
  * (`RESET_DB=false E2E_WAIT_SERVICES=true`).
  */
 import { test, expect } from '@playwright/test';

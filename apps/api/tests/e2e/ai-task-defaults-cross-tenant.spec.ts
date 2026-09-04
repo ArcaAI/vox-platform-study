@@ -137,9 +137,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect([403, 404]).toContain(resp.status());
   });
 
-  test('tenant admin PUT on guardrail.validate for their OWN tenant → 200 (guardrail left the super-admin-only set)', async ({
-    request,
-  }) => {
+  test('tenant admin PUT on guardrail.validate for their OWN tenant → 200 (guardrail left the super-admin-only set)', async ({ request }) => {
     // Reverses the OLD "GOVERNANCE: tenant admin PUT on guardrail.validate …
     // → 403 (deliberate, not 404)" contract (owner directive 2026-07-17).
     // (owner decision 2026-08-16) makes guardrail.*

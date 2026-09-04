@@ -57,7 +57,7 @@ export interface RequestRateLimitResolution {
  * more than `auth/login`'s hardcoded 5/min without a redeploy — defeating the
  * point of a runtime-tunable surface.
  *
- * ## Bucket keying 
+ * ## Bucket keying
  *
  * A limit that resolved from ranks 1–3 is counted PER TENANT; one that resolved
  * from ranks 4–5 keeps the historical per-IP counting. Before this, every limit

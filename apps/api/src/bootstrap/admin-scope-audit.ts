@@ -219,8 +219,7 @@ export function auditAdminScopedControllers(controllers: ScopedController[] = AD
     const forbidden = reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [controller]);
     if (forbidden !== true) {
       offenders.push(
-        `${controller.name} is an /admin/* controller but carries no @ForbidApiKey() metadata. ` +
-          `Policy A2 : the admin plane is JWT-only.`,
+        `${controller.name} is an /admin/* controller but carries no @ForbidApiKey() metadata. ` + `Policy A2 : the admin plane is JWT-only.`,
       );
     }
 

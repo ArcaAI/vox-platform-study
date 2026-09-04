@@ -300,9 +300,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
     expect(res.status(), `test run → ${res.status()} (the run is not version-compared)`).not.toBe(412);
 
     if ([200, 201].includes(res.status())) return;
-    console.warn(
-      `[] prompt test run returned ${res.status()} — TEXT unavailable; the no-OCC-gate contract is verified. Body: ${await res.text()}`,
-    );
+    console.warn(`[] prompt test run returned ${res.status()} — TEXT unavailable; the no-OCC-gate contract is verified. Body: ${await res.text()}`);
   });
 
   // BUG-018 split the test run into TWO calls: this route now returns an ACK

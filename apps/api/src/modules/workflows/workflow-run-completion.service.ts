@@ -108,7 +108,14 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     }
   }
 
-  private async record(tenantId: string, runId: string, status: 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT', reason: string, endedAt: string, consultationId: string | null): Promise<void> {
+  private async record(
+    tenantId: string,
+    runId: string,
+    status: 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT',
+    reason: string,
+    endedAt: string,
+    consultationId: string | null,
+  ): Promise<void> {
     // A CLS context carrying the run's tenant: `broadcastSysEvent` stamps `tenantId` from CLS,
     // and the webhook matcher finds a tenant's subscriptions by it. Without this the event would
     // carry the SYSTEM tenant and fan out to no one — the same reason the delivery processor

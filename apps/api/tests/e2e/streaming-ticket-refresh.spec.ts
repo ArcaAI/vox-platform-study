@@ -19,7 +19,7 @@
  *
  * Live-stack requirement: session create forwards to STT, so the
  * live-session tests self-skip with an explicit reason when it is unreachable
- * (Playwright global setup treats STT as optional). 
+ * (Playwright global setup treats STT as optional).
  * for prereqs + invocation (`RESET_DB=false E2E_WAIT_SERVICES=true`).
  */
 import { test, expect } from '@playwright/test';

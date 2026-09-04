@@ -8,7 +8,13 @@ import { ClsService } from 'nestjs-cls';
 import type WebSocket from 'ws';
 import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
-import { RUN_EVENT_TRANSPORT, WORKFLOW_RUN_COMPLETED, buildWorkflowRunEventEnvelope, isTerminalRunStatus, runEventStreamKey } from '../workflows/workflow-run-event';
+import {
+  RUN_EVENT_TRANSPORT,
+  WORKFLOW_RUN_COMPLETED,
+  buildWorkflowRunEventEnvelope,
+  isTerminalRunStatus,
+  runEventStreamKey,
+} from '../workflows/workflow-run-event';
 
 /** One generic close for every handshake failure — no enumeration signal (the STT gateway's rule). */
 export const WORKFLOW_WS_CLOSE_AUTH_FAILED = 4401;
@@ -96,7 +102,10 @@ export class WorkflowWsGateway implements OnGatewayConnection, OnModuleDestroy {
       return reject('run not found for this ticket');
     }
 
-    this.send(client, { event: isTerminalRunStatus(snapshot.status) ? WORKFLOW_RUN_COMPLETED : 'workflow.run.progress', data: buildWorkflowRunEventEnvelope(stored.tenantId, snapshot) });
+    this.send(client, {
+      event: isTerminalRunStatus(snapshot.status) ? WORKFLOW_RUN_COMPLETED : 'workflow.run.progress',
+      data: buildWorkflowRunEventEnvelope(stored.tenantId, snapshot),
+    });
     if (isTerminalRunStatus(snapshot.status)) {
       client.close(1000, 'run completed');
       return;
