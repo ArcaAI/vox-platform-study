@@ -68,8 +68,7 @@ export class WorkflowNodeResponse {
 
   @ApiPropertyOptional({
     nullable: true,
-    description:
-      'TASK-864: a legacy type kept for the deprecation window — compile() still accepts it; the Studio hides it from the palette. `null` when the descriptor does not declare it.',
+    description: 'TASK-864: a legacy type kept for the deprecation window — compile() still accepts it; the Studio hides it from the palette. `null` when the descriptor does not declare it.',
   })
   deprecated?: boolean | null;
 
