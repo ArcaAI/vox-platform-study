@@ -100,7 +100,7 @@ async def test_widens_to_system_only_on_absence(monkeypatch) -> None:
 async def test_fails_closed_when_no_selection_exists(monkeypatch) -> None:
     conn = _FakeConn({})
     _install_fake_asyncpg(monkeypatch, conn)
-    with pytest.raises(sel.JudgeSelectionUnavailable, match="no ENABLED harness.judge"):
+    with pytest.raises(sel.JudgeSelectionUnavailable, match="no enabled, ACTIVE harness.judge"):
         await sel.resolve_eval_judge_selection(dsn="postgresql://u@h/db")
 
 
