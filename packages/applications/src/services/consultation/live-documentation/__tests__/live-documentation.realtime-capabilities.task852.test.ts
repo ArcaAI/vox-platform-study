@@ -121,7 +121,6 @@ const snapshot = (): FrozenLiveAgentSnapshot => ({
   stableUserPrefix: 'PREFIX.',
   systemPrompt: 'SYSTEM.',
   toolPlan: DEFAULT_LIVE_TOOL_PLAN,
-  liveLlm: null,
   frozenAt: '2026-08-28T00:00:00.000Z',
 });
 

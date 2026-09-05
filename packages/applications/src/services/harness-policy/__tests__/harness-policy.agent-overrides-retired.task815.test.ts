@@ -85,8 +85,10 @@ describe('OD-12 — the per-agent harnessOverrides tier is gone', () => {
     // The overlay's two `@Optional()` trailing dependencies — a consultation
     // repository (to find the department) and a department-agent repository (to
     // find its default agent) — were its ONLY reason to exist on this service.
-    // Constructing with eight arguments is what proves they left.
-    expect(HarnessPolicyService.length).toBe(8);
+    // Constructing with eight arguments is what proved they left. TASK-876 added a NINTH,
+    // `TextAgentResolverService` — the assigned-agent text selection seam, not a repository and
+    // not a per-agent override tier — so the pin is nine, with that one named here.
+    expect(HarnessPolicyService.length).toBe(9);
   });
 
   it('a consultationId no longer changes the resolved policy', async () => {

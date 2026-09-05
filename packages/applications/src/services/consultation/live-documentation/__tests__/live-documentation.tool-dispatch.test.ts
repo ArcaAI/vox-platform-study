@@ -88,7 +88,6 @@ function snapshot(toolPlan = DEFAULT_LIVE_TOOL_PLAN): FrozenLiveAgentSnapshot {
     stableUserPrefix: 'PREFIX.',
     systemPrompt: 'SYSTEM.',
     toolPlan,
-    liveLlm: null,
     frozenAt: '2026-08-08T00:00:00.000Z',
   };
 }

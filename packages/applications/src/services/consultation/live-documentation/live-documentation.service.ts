@@ -37,7 +37,8 @@ import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 //  — the ONE reader of a node's `llmBinding`, shared with the durable
 // interpreter's Python mirror (`nodes/_shared.py`'s `read_model_slug`).
-import { readLlmBindingFromConfig } from '../../workflow-definition/node-llm-binding';
+import { TextAgentResolverService } from '../../agent/text-agent-resolver.service';
+import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../agent/text-generation-spec';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
@@ -149,6 +150,37 @@ const LIVE_DOC_CONTEXT_TYPES = new Set<string>([ContextItemType.WORKNOTE, Contex
  * still exist — as a ROW in the catalog (`SOAP_NOTE_SHAPE`), compiled by the
  * same compiler as anyone else's shape.
  */
+/**
+ * TASK-876 — a `core.agent` node's per-node overrides (`config.overrides`): prompt variables
+ * and generation hyper-parameters within the agent's declared ranges. Malformed shapes read as
+ * empty — the authoring schema is where a bad shape is refused.
+ */
+interface NodeOverrides {
+  promptVariables: Record<string, unknown>;
+  generation: Record<string, unknown>;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function nodeOverrides(config: Readonly<Record<string, unknown>> | undefined): NodeOverrides {
+  const overrides = asRecord(config?.overrides);
+  return { promptVariables: asRecord(overrides.promptVariables), generation: asRecord(overrides.generation) };
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** `{{name}}` interpolation of an agent instruction — the same grammar `AgentInvocationService` and the harness `core.agent` apply. */
+function interpolatePrompt(content: string, variables: Record<string, unknown>): string {
+  return content.replace(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g, (match, key: string) => {
+    const value = variables[key];
+    return value === undefined || value === null ? match : String(value);
+  });
+}
+
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
   templateId: null,
   slug: SOAP_NOTE_SLUG,
@@ -657,6 +689,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `consultation:live-assist:{id}` channel the durable engine publishes to, folded by the same
     // service. A second transport for one payload is how two feeds come apart.
     @Optional() @Inject(HarnessLiveAssistService) private readonly liveAssist?: HarnessLiveAssistService,
+    // TASK-876 — resolves a `core.agent` node's `agentRef` (explicit slug + version pin, fail
+    // closed on drift) into the agent's model / instruction / parameters / fallback chain.
+    // Optional + trailing so every positional fixture keeps its arity; absent ⇒ a `core.agent`
+    // on the realtime lane degrades with a named reason (never the tenant default).
+    @Optional() @Inject(TextAgentResolverService) private readonly textAgents?: TextAgentResolverService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -879,7 +916,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       stableUserPrefix: LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
       systemPrompt: LIVE_DOCUMENT_SYSTEM_PROMPT,
       toolPlan: DEFAULT_LIVE_TOOL_PLAN,
-      liveLlm: null,
       frozenAt: new Date().toISOString(),
     };
   }
@@ -1501,7 +1537,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       promptTemplateId: snapshot.promptTemplateId,
       promptVersionNumber: snapshot.promptVersionNumber,
       resolvedFrom: snapshot.resolvedFrom,
-      ...(snapshot.liveLlm ? { liveLlm: snapshot.liveLlm } : {}),
       frozenAt: snapshot.frozenAt,
     };
   }
@@ -2279,6 +2314,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // IS `delta || transcript`, so the prompt bytes are identical to legacy —
         // parity by construction, not by coincidence.
         const promptText = ctx.buildPrompt(input.sourceText);
+        // TASK-876 — a `core.agent` node names the agent it runs. Resolved HERE (the host),
+        // once per call: explicit slug + version pin, FAIL CLOSED on drift or an unresolvable
+        // slug — the throw degrades the node with a named reason and nothing is generated on
+        // the tenant default in its place. A legacy summary node carries no ref and keeps the
+        // assigned-agent path inside `callText`.
+        const textAgent = input.agentRef
+          ? { spec: await this.resolveRealtimeAgent(input.agentRef, session.tenantId), overrides: nodeOverrides(input.config) }
+          : undefined;
         const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
           generate: async (corrective) => {
             const startedAt = Date.now();
@@ -2289,8 +2332,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               corrective,
               ctx.agent,
               ctx.template.compiled,
-              // the realtime node's own config, so its `llmBinding` reaches selection.
-              input.config,
+              textAgent,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
@@ -3206,6 +3248,20 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /** TASK-876 — the bound agent for a realtime `core.agent` node, or a throw the executor turns into a named degrade. */
+  private async resolveRealtimeAgent(agentRef: { slug: string; versionNumber?: number }, tenantId: string): Promise<ResolvedTextGenerationSpec> {
+    if (!this.textAgents) {
+      throw new Error(
+        `core.agent: agent '${agentRef.slug}' cannot be resolved — the TEXT_GENERATION agent resolver is not wired in this composition`,
+      );
+    }
+    return this.textAgents.resolve({
+      tenantId,
+      agentSlug: agentRef.slug,
+      ...(agentRef.versionNumber !== undefined ? { versionNumber: agentRef.versionNumber } : {}),
+    });
+  }
+
   private async callText(
     promptText: string,
     tenantId: string,
@@ -3215,39 +3271,46 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // the session's FROZEN compiled template. Defaulted to the
     // platform shape so non-DI/positional test fixtures keep their arity.
     compiled: CompiledDocumentTemplate = PLATFORM_TEMPLATE.compiled,
-    //  — the GRAPH node's own config, when a graph node made this call.
-    // Trailing and optional, so every legacy-flush caller keeps its arity and reads as unbound.
-    nodeConfig?: Readonly<Record<string, unknown>>,
+    // TASK-876 — a `core.agent` node's RESOLVED agent (primary + ordered fallback chain) and the
+    // node's own `overrides`. Trailing and optional, so every legacy-flush caller keeps its
+    // arity and generates on the tenant's ASSIGNED agent instead.
+    textAgent?: { spec: ResolvedTextGenerationSpec; overrides: NodeOverrides },
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
-    // TEXT is a stateless gateway with no model default. Resolve the
-    // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
-    // legacy LIVE_DOC_TEXT_PROVIDER/MODEL env); fall back to env only when the
-    // resolver is not wired (kept for non-DI construction paths).
-    //
-    // This is the LIVE tier: ask for the 'text.live' routing key so a
-    // super admin can point the low-latency running-note model at something smaller
-    // than the end-of-visit finalize model. Omitting the task argument defaults to
-    // 'finalize', which is what left `text.live` inert despite being seeded+registered.
-    //
-    // An agent's `llmOverrides.live` wins and is served FROZEN
-    // (resolved once at session start), so a live session's model can never
-    // drift mid-consultation. WITHOUT an override the per-flush tenant resolve
-    // below runs exactly as before, which is what keeps an admin re-point
-    // landing on the next flush for unconfigured tenants.
-    //
-    // When a GRAPH node made this call and that node carries an `llmBinding`,
-    // the binding SELECTS the model — fail-closed, per node. It sits below the frozen
-    // session-level override (which is what a resumed session was already generating with) and
-    // above the tenant `text.live` default. Unbound ⇒ the two lines below run exactly as before.
+    if (textAgent) {
+      // The candidates this call may run, in order: the primary, then — only when the tenant's
+      // per-agent HA toggle is ON (owner decision #4, default ON) — the resolved chain: the
+      // explicit fallback agent or the agent's own model chain, then the SYSTEM platform default.
+      const candidates = [textAgent.spec.primary, ...(textAgent.spec.fallback.autoSwitch ? textAgent.spec.fallback.chain : [])];
+      let lastError: unknown;
+      for (const candidate of candidates) {
+        try {
+          return await this.callTextCandidate(promptText, tenantId, candidate, textAgent.overrides, compiled, signal, corrective);
+        } catch (error) {
+          lastError = error;
+          // An aborted flush is not a provider outage — nothing to switch to.
+          if (signal?.aborted || candidate === candidates[candidates.length - 1]) break;
+          this.logger.warn({
+            message: 'Live TEXT call failed on the bound agent — switching to the next resolved fallback (autoSwitch on)',
+            tenantId,
+            agentSlug: candidate.agent.slug,
+            kind: candidate.kind,
+            provider: candidate.provider,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      throw lastError;
+    }
+
+    // TEXT is a stateless gateway with no model default. Since TASK-876 the tenant's ASSIGNED
+    // TEXT_GENERATION agent (`department → tenant → SYSTEM`) selects the model, through the ONE
+    // fail-closed seam every TS text caller shares (`resolveTextSelection`). The `live` task is
+    // telemetry (`task_key`), not a selector. Fall back to env only when the resolver is not
+    // wired (kept for non-DI construction paths).
     let provider = this.textProvider;
     let model = this.textModel;
-    let selectionSource: 'agent-override' | 'task-default' = 'task-default';
-    const nodeBinding = readLlmBindingFromConfig(nodeConfig);
-    if (agent?.liveLlm) {
-      ({ provider, model } = agent.liveLlm);
-      selectionSource = 'agent-override';
-    } else if (this.harnessPolicyService) {
-      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live', nodeBinding ?? undefined));
+    if (this.harnessPolicyService) {
+      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic sectioned object (parsed by parseDocumentJson); ollama ignores it so we
@@ -3273,6 +3336,74 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // of being forbidden to emit anything but a string.
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
     };
+    const stats = await this.postTextGenerate(payload, tenantId, signal);
+    // Stamp WHICH routing task served this flush (`text.live`, never `text.finalize` — this
+    // method is the live tier exclusively). TEXT itself has no notion of this key; it only
+    // echoes back the provider/model it actually ran, so the tier provenance is stamped here.
+    return {
+      text: stats.text,
+      // `selection_source` is additive telemetry: `task-default` = the tenant's assigned agent
+      // chose this model per flush (vs `agent` / `agent-fallback` for a bound `core.agent`).
+      stats: stats.stats ? { ...stats.stats, task_key: 'text.live', selection_source: 'task-default' } : null,
+      structured: includeResponseFormat,
+    };
+  }
+
+  /**
+   * TASK-876 — ONE TEXT call on ONE resolved candidate of a bound agent: the candidate's
+   * provider-native model, its resolved instruction interpolated with the agent's own
+   * variables and the node's `overrides.promptVariables` (node wins), and its generation
+   * hyper-parameters with the node's `overrides.generation` layered on top. The response
+   * format stays the session's compiled DOCUMENT schema — on this lane the agent writes the
+   * running note, so the document shape, not the agent's `responseFormat`, is the contract.
+   */
+  private async callTextCandidate(
+    promptText: string,
+    tenantId: string,
+    candidate: ResolvedTextCandidate,
+    overrides: NodeOverrides,
+    compiled: CompiledDocumentTemplate,
+    signal?: AbortSignal,
+    corrective?: string,
+  ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
+    const includeResponseFormat = candidate.provider.toLowerCase() !== 'ollama';
+    const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
+    const instruction = asRecord(candidate.instruction);
+    const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
+    const promptTemplate = candidate.resolvedPrompt?.content ?? (typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : null);
+    const payload = {
+      prompt: corrective ? `${promptText}${corrective}` : promptText,
+      system_prompt: promptTemplate ? interpolatePrompt(promptTemplate, variables) : LIVE_DOCUMENT_SYSTEM_PROMPT,
+      provider: candidate.provider,
+      model: candidate.model,
+      temperature: numberOrUndefined(generation.temperature),
+      max_tokens: numberOrUndefined(generation.maxTokens) ?? this.textMaxTokens,
+      top_p: numberOrUndefined(generation.topP),
+      stream: false as const,
+      response_format: includeResponseFormat ? compiled.responseFormat : undefined,
+    };
+    const result = await this.postTextGenerate(payload, tenantId, signal);
+    return {
+      text: result.text,
+      stats: result.stats
+        ? {
+            ...result.stats,
+            task_key: 'text.live',
+            selection_source: candidate.kind === 'primary' ? 'agent' : 'agent-fallback',
+            agent_slug: candidate.agent.slug,
+            funding_tier: candidate.fundingTier,
+          }
+        : null,
+      structured: includeResponseFormat,
+    };
+  }
+
+  /** The shared gateway→TEXT hop the two live generation paths make: enrichment, auth, tenant header, one POST. */
+  private async postTextGenerate(
+    payload: { provider?: string; model?: string; [key: string]: unknown },
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<{ text: string; stats: LiveSummaryStatsDto | null }> {
     // fold in the caller tenant's resolved provider credential
     // (`provider_overrides`) through the ONE shared implementation. Not
     // hand-rolled here: the resolver cascades tenant → SYSTEM and each entry's
@@ -3284,8 +3415,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // layer the platform admin's runtime profile (hyperparameters + engine
     // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
-    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload);
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload);
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
     // every environment where `TEXT_SERVICE_TOKEN` is non-empty — the live loop
@@ -3306,19 +3437,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
-    const stats = this.parseGenerationStats(response.data);
-    // Stamp WHICH AiTaskDefault routing key served this
-    // flush (`text.live`, never `text.finalize` — this method is the live tier
-    // exclusively, see the `resolveTextSelection(tenantId, 'live')` call above).
-    // TEXT itself has no notion of this key; it only echoes back the
-    // provider/model it actually ran, so the tier provenance is stamped here.
-    return {
-      text: mapTextGenerateResponse(response.data).summary,
-      // `selection_source` is additive telemetry: it says WHETHER the frozen
-      // agent override or the per-flush tenant default chose this model.
-      stats: stats ? { ...stats, task_key: 'text.live', selection_source: selectionSource } : null,
-      structured: includeResponseFormat,
-    };
+    return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
   }
 
   /**
@@ -3356,12 +3475,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const systemPrompt = await this.resolveCorrectionPrompt(config);
 
     // Same LIVE tier the running note uses, and fail-CLOSED the same way: provider/model
-    // SELECTION is never substituted with an env default. — and the node's own
-    // `llmBinding`, off the SAME `config` the prompt above came from, selects for this node.
+    // SELECTION is never substituted with an env default — the tenant's assigned
+    // TEXT_GENERATION agent selects (TASK-876; the node `llmBinding` is retired).
     let provider = this.textProvider;
     let model = this.textModel;
-    if (this.harnessPolicyService)
-      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live', readLlmBindingFromConfig(config) ?? undefined));
+    if (this.harnessPolicyService) ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     const payload = {
       // The entity spans are DETECTOR HINTS: they tell the model where a clinical term was found
@@ -3453,11 +3571,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const { sourceText, context, entities, tenantId, config } = input;
     const systemPrompt = await this.resolveGovernedNodePrompt(config, 'findings');
 
-    // same per-node selection as the grammar pass, off the same `config`.
+    // same selection as the grammar pass: the tenant's assigned TEXT_GENERATION agent.
     let provider = this.textProvider;
     let model = this.textModel;
-    if (this.harnessPolicyService)
-      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live', readLlmBindingFromConfig(config) ?? undefined));
+    if (this.harnessPolicyService) ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     const payload = {
       // The context the owner's sentence names, handed over as authored. Entity spans ride along

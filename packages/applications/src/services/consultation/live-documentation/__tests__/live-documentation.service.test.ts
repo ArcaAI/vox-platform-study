@@ -859,10 +859,8 @@ describe('LiveDocumentationService', () => {
       // Provider+model come from the policy cascade (keyed by the session tenant),
       // not LIVE_DOC_TEXT_PROVIDER/MODEL env. The live flush must ask
       // for the LIVE tier ('text.live'), not the default finalize tier.
-      // `undefined` is the third arg because no graph NODE made this call (legacy
-      // flush), so no `llmBinding` applies and the tenant `text.live` AiTaskDefault resolves
-      // exactly as it always did.
-      expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live', undefined);
+      // Two arguments (TASK-876): the retired node `llmBinding` never travels on the legacy flush.
+      expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live');
       const textCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
       const body = textCall[1] as { max_tokens?: number; provider?: string; model?: string; response_format?: { type?: string } };
       const config = textCall[2] as { timeout?: number };

@@ -97,7 +97,6 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
         stableUserPrefix: resolved.content,
         systemPrompt: await this.systemPromptFor(resolved.promptId),
         toolPlan: DEFAULT_LIVE_TOOL_PLAN,
-        liveLlm: null,
         frozenAt: new Date().toISOString(),
       };
     } catch (error) {
@@ -137,11 +136,6 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
         stableUserPrefix: version.content,
         systemPrompt: await this.systemPromptFor(lineage.promptTemplateId),
         toolPlan: DEFAULT_LIVE_TOOL_PLAN,
-        // The model pair was FROZEN at the original session start; re-using the
-        // recorded pair keeps a recovered session on the same model rather than
-        // re-deriving one that may since have changed. Written by sessions that
-        // predate; null for every new one.
-        liveLlm: lineage.liveLlm ?? null,
         frozenAt: lineage.frozenAt ?? new Date().toISOString(),
       };
     } catch (error) {
@@ -168,7 +162,6 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
       stableUserPrefix: LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
       systemPrompt: LIVE_DOCUMENT_SYSTEM_PROMPT,
       toolPlan: DEFAULT_LIVE_TOOL_PLAN,
-      liveLlm: null,
       frozenAt: new Date().toISOString(),
     };
   }
