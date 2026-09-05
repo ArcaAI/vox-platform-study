@@ -67,8 +67,8 @@ _NORMALIZER_MIN_PEAK = 0.05
 
 # Default minimum wall-clock interval between successive PARTIAL
 # emissions. Lowered from the legacy hardcoded 1.0 s so newly-spoken words
-# surface in near-real-time as a tentative tail; now a constructor default,
-# overridable via settings.streaming_partial_interval_s
+# surface in near-real-time as a tentative tail; a constructor default, overridden
+# per session by `ResolvedAsrSpec.streaming.partialIntervalMs`
 # (SessionManager._build_preprocessor_vad_kwargs). The commit policy stays
 # conservative — only the not-yet-committed tail's *visibility* changes.
 _PARTIAL_INTERVAL_S = 0.4

@@ -763,6 +763,15 @@ class InferenceConfig:
     # TASK-861 — the agent's LITERAL decoder prompt (ResolvedAsrSpec.instruction);
     # takes precedence over the template id above, which needs a DB read.
     initial_prompt_text: str | None = None
+    # TASK-877 — ResolvedAsrSpec.decoding.vadFilter. The streaming path already
+    # ran VAD in the preprocessor, so the default stays OFF; an agent that wants
+    # the engine's own VAD gate (long-form batch audio, mostly) asks for it.
+    vad_filter: bool = False
+    # TASK-877 / owner decision #9 — ResolvedAsrSpec.decoding.{chunkLengthSec,
+    # strideLengthSec}. `None` = no agent opinion, so the batch path keeps the
+    # platform `stt.transcription.*` values.
+    chunk_length_sec: float | None = None
+    stride_length_sec: tuple[int, int] | None = None
     # TASK-861 — agent hotwords (ResolvedAsrSpec.instruction.hotwords). Carried
     # for engines that accept them; not yet wired into every adapter.
     hotwords: list[str] = field(default_factory=list)
@@ -839,9 +848,17 @@ class StreamingConfig:
     - ``"none"`` (default): partials publish unchanged, no ``stable_chars``.
     - ``"local_agreement_2"``: partials carry the additive ``stable_chars``
       field marking the committed (stable) prefix.
+
+    TASK-877 — ``partial_interval_s`` and ``max_utterance_sec`` carry
+    ``ResolvedAsrSpec.streaming.{partialIntervalMs,maxUtteranceSec}`` for the
+    session. ``None`` means the agent said nothing, so the preprocessor's own
+    constructor default stands: the spec carries what the agent SAID and never
+    restates an engine default.
     """
 
     commit_policy: str = "none"
+    partial_interval_s: float | None = None
+    max_utterance_sec: int | None = None
 
 
 @dataclass

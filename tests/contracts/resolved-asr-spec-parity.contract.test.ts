@@ -61,6 +61,27 @@ describe('ResolvedAsrSpec parity — producer half', () => {
     }
   });
 
+  it('omits the additive TASK-877 fields rather than emitting null when the agent set none', () => {
+    // `apps/stt`'s mirror is `extra='forbid'`, so a key it has not learned yet is a
+    // contract drift. Omitting an unset optional — instead of writing `null` — is what
+    // lets the two halves ship in either order, and it is asserted here rather than
+    // left to the deep-equal above, which would pass just as happily on `null`.
+    const untouched = fixture.platformDefault as FixtureCase;
+    expect(untouched.expected.decoding).not.toHaveProperty('chunkLengthSec');
+    expect(untouched.expected.decoding).not.toHaveProperty('strideLengthSec');
+    expect(untouched.expected.streaming).not.toHaveProperty('semantic');
+    expect(untouched.expected.models).not.toHaveProperty('endpointing');
+
+    // …and carries them, in full, when it did.
+    const wired = fixture.agentOwnedStreamingBehaviour as FixtureCase;
+    expect(wired.expected.decoding.chunkLengthSec).toBe(20);
+    expect(wired.expected.decoding.strideLengthSec).toEqual([5, 3]);
+    expect(wired.expected.streaming.semantic).toEqual({ minSilenceMs: 240, maxSilenceMs: 600, confidenceThreshold: 0.9, minWords: 5 });
+    expect(wired.expected.streaming.endpointing).toBe('semantic');
+    expect(wired.expected.models.endpointing?.slug).toBe('smart-turn-v3');
+    expect(wired.expected.models.endpointing?.taskType).toBe(ASR_SPEC_ROLE_TASK_TYPE.endpointing);
+  });
+
   it('carries no credential material anywhere', () => {
     const json = JSON.stringify(fixture);
     // The INPUT deliberately carries a provider override; the EXPECTED specs must not.

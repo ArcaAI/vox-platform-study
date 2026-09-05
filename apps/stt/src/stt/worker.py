@@ -110,15 +110,11 @@ async def initialize_services() -> None:
     except Exception as e:
         logger.warning(f"Diarization service initialization failed (non-fatal): {e}")
 
-    # --- Punctuation: cadence model (needed for batch postprocessing) ---
-    try:
-        from stt.punctuation import service as punctuation_service
-
-        if await asyncio.to_thread(punctuation_service.initialize):
-            logger.info("Punctuation service initialized")
-    except Exception as e:
-        logger.warning(f"Punctuation service initialization failed (non-fatal): {e}")
-        logger.debug("Punctuation initialization error detail", exc_info=True)
+    # Punctuation is NOT warmed at boot: the model to load comes from a session's
+    # ResolvedAsrSpec (models.punctuation), which does not exist until an agent has
+    # been resolved. `punctuation.service.ensure_initialized` loads it lazily, per
+    # session, the same way the FastAPI lifespan already treats it (see
+    # `stt.main.lifespan` / `TestLifespanLazyModels`).
 
     logger.info("All worker services initialized successfully")
 

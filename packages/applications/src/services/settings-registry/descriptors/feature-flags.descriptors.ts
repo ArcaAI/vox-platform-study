@@ -146,14 +146,11 @@ const FLAGS: FlagSpec[] = [
     default: false,
     killSwitch: true,
   },
-  {
-    key: 'semanticEndpoint.enabled',
-    label: 'STT semantic endpointing',
-    description:
-      'Gates content-driven semantic end-of-utterance detection on the STT streaming hot path. NOTE the naming exception: the STT `Settings` class carries NO `env_prefix`, so this is the BARE `SEMANTIC_ENDPOINT_ENABLED`, not `STT_SEMANTIC_ENDPOINT_ENABLED` — one of the rule-1 violations (prefix must equal the service prefix) that a later rename has to fix. Default OFF until measured against the accuracy/latency scorecard.',
-    default: false,
-    killSwitch: true,
-  },
+  // `semanticEndpoint.enabled` (bare `SEMANTIC_ENDPOINT_ENABLED`) was here — the
+  // eighth duplicate of the `stt.semanticEndpoint.*` family. TASK-877 deleted its
+  // only reader, the `Settings.semantic_endpoint_enabled` field, so nothing reads
+  // this flag any more; removed completely rather than left dual-homed, same as
+  // the other seven (see `stt-runtime.descriptors.test.ts`).
   {
     key: 'harness.claimCheck.enabled',
     label: 'Harness claim-check offload',

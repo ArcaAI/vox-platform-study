@@ -135,14 +135,27 @@ def test_null_tuning_fields_keep_the_runtime_defaults() -> None:
 
 
 def test_fallback_core_maps_independently_with_a_distinct_runtime_key() -> None:
+    seen = 0
     for name in sorted(CASES):
         spec = ResolvedAsrSpec.model_validate(CASES[name]["expected"])
-        assert spec.fallback.spec is not None, name
+        if spec.fallback.spec is None:
+            # `kind: 'none'` is a legitimate resolution — nothing to switch to.
+            # `test_a_fallbackless_spec_declares_kind_none` locks that pairing.
+            continue
+        seen += 1
         fallback: AsrSpecCore = spec.fallback.spec
         assert fallback.runtime_key != spec.runtime_key
         fb_pipeline, fb_models = pipeline_spec_from_resolved(fallback)
         assert fb_pipeline.models.asr.slug == fallback.models.asr.slug
         assert fallback.models.asr.slug in fb_models
+    assert seen >= 2, "the fixture must keep covering both the model and agent fallback kinds"
+
+
+def test_a_fallbackless_spec_declares_kind_none() -> None:
+    """`spec: null` and `kind: 'none'` are one state, never two half-states."""
+    for name in sorted(CASES):
+        fallback = ResolvedAsrSpec.model_validate(CASES[name]["expected"]).fallback
+        assert (fallback.spec is None) == (fallback.kind == "none"), name
 
 
 def test_format_this_runtime_does_not_execute_fails_closed() -> None:
