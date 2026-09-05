@@ -24,7 +24,7 @@ const CONTROLLER_SOURCE = readFileSync(join(__dirname, '..', 'workflow-definitio
 
 function makeController() {
   const service = {
-    exportDefinition: vi.fn().mockResolvedValue({ kind: 'workflow-definition', schemaVersion: 1 }),
+    exportDefinition: vi.fn().mockResolvedValue({ kind: 'workflow', schemaVersion: 1 }),
     importDefinition: vi.fn().mockResolvedValue({ id: 'def-9' }),
     syncToTenants: vi.fn().mockResolvedValue({ slug: 'soap', sourceVersionNumber: 2, targets: [] }),
     promoteToSystem: vi.fn().mockResolvedValue({ promotionId: 'promo-1', published: true }),

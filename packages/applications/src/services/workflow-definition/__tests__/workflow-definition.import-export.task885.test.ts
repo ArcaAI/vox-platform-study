@@ -17,6 +17,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
+import { isPortableBundle, portableBundleProblems, PORTABLE_BUNDLE_SCHEMA_VERSION } from '@arcaai/workflow-contract';
 import { WorkflowDefinitionService } from '../workflow-definition.service';
 import type { WorkflowDefinitionBundle } from '../dto';
 
@@ -96,10 +97,10 @@ const entity = (overrides: Record<string, unknown> = {}) => ({
 
 const bundle = (overrides: Partial<WorkflowDefinitionBundle> = {}): WorkflowDefinitionBundle =>
   ({
-    kind: 'workflow-definition',
+    kind: 'workflow',
     schemaVersion: 1,
     exportedAt: '2026-09-06T00:00:00.000Z',
-    source: { tenantKind: 'tenant', slug: 'discharge_summary', versionNumber: 3 },
+    source: { tenantKind: 'tenant', slug: 'discharge_summary', version: 3 },
     payload: {
       name: 'Discharge Summary',
       description: 'The one we use',
@@ -153,9 +154,9 @@ describe('WorkflowDefinitionService — workflow import/export (TASK-885)', () =
 
       const result = await service.exportDefinition('def-1');
 
-      expect(result.kind).toBe('workflow-definition');
+      expect(result.kind).toBe('workflow');
       expect(result.schemaVersion).toBe(1);
-      expect(result.source).toEqual({ tenantKind: 'tenant', slug: 'discharge_summary', versionNumber: 3 });
+      expect(result.source).toEqual({ tenantKind: 'tenant', slug: 'discharge_summary', version: 3 });
       expect(result.payload.name).toBe('Discharge Summary');
       expect(result.payload.paletteKey).toBe('summarization');
 
@@ -179,6 +180,24 @@ describe('WorkflowDefinitionService — workflow import/export (TASK-885)', () =
       const result = await service.exportDefinition('def-1');
 
       expect(result.source.tenantKind).toBe('system');
+    });
+
+    // TASK-889 — the workflow bundle is now the SHARED envelope, so what proves it is the shared
+    // validator, not a second hand-rolled shape check. An export that this refuses is an export
+    // an importer of EITHER kind would refuse.
+    it('produces an envelope the shared portable-bundle validator accepts as a `workflow` bundle', async () => {
+      mockRepository.findById.mockResolvedValue(entity());
+      mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'tpl-1', name: 'Discharge Summary Prompt' });
+
+      const result = await service.exportDefinition('def-1');
+
+      expect(portableBundleProblems(result, { kind: 'workflow' })).toEqual([]);
+      expect(isPortableBundle(result, { kind: 'workflow' })).toBe(true);
+      expect(result.schemaVersion).toBe(PORTABLE_BUNDLE_SCHEMA_VERSION);
+      // …and an AGENT importer refuses it by shape, which is the whole point of a shared `kind`.
+      expect(portableBundleProblems(result, { kind: 'agent' })).toEqual([
+        { path: 'kind', message: 'This importer accepts `agent` bundles; this one is `workflow`.' },
+      ]);
     });
 
     it('is a 404 for another tenant’s id — never a 403', async () => {

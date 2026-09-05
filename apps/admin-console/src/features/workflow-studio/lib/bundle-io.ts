@@ -33,7 +33,7 @@ export function parseBundleJson(text: string): ParsedBundle {
     return { ok: false, reason: 'Not valid JSON.' };
   }
   if (!isRecord(parsed)) return { ok: false, reason: 'The document must be a JSON object.' };
-  if (parsed.kind !== 'workflow-definition') {
+  if (parsed.kind !== 'workflow') {
     // Names what it IS, so someone who picked an agent export or a bare graph export learns which.
     return { ok: false, reason: `This is not a workflow export (kind: ${JSON.stringify(parsed.kind ?? null)}).` };
   }
