@@ -175,6 +175,19 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TenantIdentityProvider',
   'FederatedIdentity',
   'TenantIdentityProviderDomain',
+  // guardrail-availability.prisma (1) — per-tenant guardrail AVAILABILITY
+  // (TASK-886): WHICH screening policies apply to a tenant. SYSTEM row = the
+  // platform default set; a tenant row wins on presence, and ABSENCE (or an
+  // empty selection) inherits SYSTEM — there is no "off".
+  //
+  // Deliberately NOT a SYSTEM_SHARED_READ_MODEL. The widening to SYSTEM is
+  // performed by the RESOLVERS — `GuardrailAvailabilityService.resolve` on the
+  // gateway and `TenantConfigResolver.resolve` in `apps/guardrail` — which
+  // must be able to tell "the tenant has a row" from "the tenant has none" in
+  // order to widen on ABSENCE ONLY. A shared read would fold both tiers into
+  // one result set and make that distinction unavailable, which is the same
+  // reason `ConsultationContextSchema` records for staying unshared.
+  'TenantGuardrailPolicy',
   // agent-trajectory.prisma (1) — ordered session trajectory.
   // Tenant-scoped ops telemetry (per-session step stream). NOT SYSTEM-shared —
   // a tenant's trajectory is never visible cross-tenant. It is soft-delete

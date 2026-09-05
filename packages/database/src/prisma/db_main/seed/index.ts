@@ -31,6 +31,7 @@ import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedEntitlements } from './15-entitlements';
 import { seedAiRoutingPolicy } from './16-ai-routing-policy';
+import { seedGuardrailAvailability } from './18-guardrail-availability';
 import { seedAiProviderConnection } from './17-ai-provider-connection';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedWorkflowDefinition } from './21-workflow-definition';
@@ -168,6 +169,11 @@ export const seed = async () => {
     // retired `AiTaskDefault` seed). CREATE-ONLY; needs the AiModel catalog
     // (seedAiModelRegistry above) because the election binds the model by FK.
     await seedAiRoutingPolicy(client);
+    console.log('');
+    // TASK-886 — the SYSTEM guardrail AVAILABILITY row: WHICH screening
+    // policies apply. Every tenant inherits it on absence, so a cold database
+    // screens with the full declared set from day 1. CREATE-ONLY.
+    await seedGuardrailAvailability(client);
     console.log('');
 
     // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)

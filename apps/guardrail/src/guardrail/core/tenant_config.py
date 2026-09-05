@@ -131,6 +131,16 @@ TASK_KEY_GUARDRAIL_SAFETY = "guardrail.safety"
 TASK_KEY_GUARDRAIL_PII = "guardrail.pii"
 TASK_KEY_GUARDRAIL_GROUNDEDNESS = "guardrail.groundedness"
 
+# AVAILABILITY (TASK-886) — WHICH declared screening policies apply to a tenant.
+#
+# A PSEUDO task key, deliberately: it names no `AiRoutingPolicy` row and joins no
+# `AiModel`. It rides this resolver's existing machinery — the same TTL cache,
+# the same `f"{task_key}::{tenant_id}"` key (rule 06 makes tenant-keying
+# MANDATORY), the same single-flight, the same `invalidate()` — instead of
+# growing a second cache beside it, which is how two caches for one plane drift
+# apart. `_load_from_db` routes it to `_load_availability`.
+TASK_KEY_GUARDRAIL_AVAILABILITY = "guardrail.availability"
+
 # Platform-wide rows live on the SYSTEM tenant (house rule: NULL-tenant is banned).
 SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
@@ -169,6 +179,10 @@ KEY_LABEL_TAXONOMY = "label-taxonomy"
 # resolved through the two-tier `request tenant → SYSTEM` cascade. See
 # `core/policy.py` for the governed key set and the per-key `failMode`.
 KEY_POLICY = "policy"
+#: The tenant's AVAILABILITY selection, JSON-encoded (TASK-886). Read from
+#: `core."TenantGuardrailPolicy"`, NOT from a registry row: availability says
+#: which CHECKS run, which is a different question from which MODEL runs.
+KEY_AVAILABILITY = "availability"
 #: The selected NLI checkpoint's ENTAILMENT CALIBRATION
 #: (`AiModel._metadata.entailment`). Distinct from `labelTaxonomy`: it declares
 #: which adapter the row expects and the score bounds that adapter's specific
@@ -307,6 +321,23 @@ class AiModelRead(_Base):
     source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
 
 
+class TenantGuardrailPolicyRead(_Base):
+    """Read-only mapping of ``core."TenantGuardrailPolicy"`` (TASK-886).
+
+    ONE row per tenant (``tenantId`` is unique); the SYSTEM tenant owns the
+    platform default set. ``policies`` is the selected set keyed by the check
+    names in ``services/screening.py``.
+    """
+
+    __tablename__ = "TenantGuardrailPolicy"
+    __table_args__ = {"schema": "core"}
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column("tenantId", String)
+    policies: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
+
+
 @dataclass(frozen=True)
 class GuardrailTenantConfig:
     """A resolved per-tenant guardrail config (any field may be ``None``)."""
@@ -325,6 +356,12 @@ class GuardrailTenantConfig:
     policy: dict[str, Any] | None = None
     #: `AiModel._metadata.entailment` — the selected NLI build's calibration.
     entailment: dict[str, Any] | None = None
+    #: The tenant's AVAILABILITY selection (TASK-886), or `None` when the
+    #: `guardrail.availability` pseudo task key was not the one resolved.
+    #: `None` and `{}` mean the same thing to `GuardrailAvailability.from_blob`
+    #: — "no opinion", which resolves the platform default set. There is no
+    #: value of this field that turns screening off.
+    availability: dict[str, Any] | None = None
     # The tenant the primary lookup targeted (request tenant or default tenant).
     source_tenant_id: str | None = None
     # Tuning off the winning row's ``configJson`` (TASK-862; formerly the
@@ -472,6 +509,7 @@ class TenantConfigResolver:
             label_taxonomy=_decode_taxonomy(keys.get(KEY_LABEL_TAXONOMY)),
             policy=_decode_taxonomy(keys.get(KEY_POLICY)),
             entailment=_decode_taxonomy(keys.get(KEY_ENTAILMENT)),
+            availability=_decode_taxonomy(keys.get(KEY_AVAILABILITY)),
             source_tenant_id=source,
             temperature=_as_float(keys.get(KEY_TEMPERATURE)),
             max_tokens=_as_int(keys.get(KEY_MAX_TOKENS)),
@@ -485,6 +523,24 @@ class TenantConfigResolver:
     # `resolve_model_source` / `resolve_model_source_by_slug` are GONE
     # Phase 6): weight STAGING moved to `apps/nlp` with the weights. Guardrail
     # forwards the registry's `localPath` verbatim and never materialises a file.
+
+    async def resolve_availability(self, tenant_id: str | None) -> Any:
+        """Resolve which screening policies apply to ``tenant_id`` (TASK-886).
+
+        Returns a :class:`~guardrail.core.availability.GuardrailAvailability`.
+        Widening is the SAME two tiers as everything else in this module —
+        request tenant → SYSTEM, on ABSENCE ONLY — because it goes through
+        :meth:`resolve`, which already implements it. An empty or all-disabled
+        row reads as absence at BOTH ends: `_load_availability` returns `{}` for
+        it (so `resolve` widens), and `GuardrailAvailability.from_blob` collapses
+        it again (so even a hand-written SYSTEM row cannot empty the gate).
+        """
+        from guardrail.core.availability import GuardrailAvailability
+
+        cfg = await self.resolve(tenant_id, TASK_KEY_GUARDRAIL_AVAILABILITY)
+        return GuardrailAvailability.from_blob(
+            cfg.availability, source_tenant_id=cfg.source_tenant_id
+        )
 
     async def resolve_model_id(
         self,
@@ -610,6 +666,12 @@ class TenantConfigResolver:
         """
         model_scope = [SYSTEM_TENANT_ID, tenant_id]
 
+        # AVAILABILITY (TASK-886) reads its OWN table — no routing row, no model
+        # join. Routed here so it inherits this resolver's cache, single-flight
+        # and invalidation rather than growing a parallel one.
+        if task_key == TASK_KEY_GUARDRAIL_AVAILABILITY:
+            return await self._load_availability(tenant_id)
+
         # `slug::<slug>` is a by-slug pseudo task key for weight
         # consumers that have no routing row (e.g. harness atomic-fact).
         if task_key.startswith(_SLUG_TASK_KEY_PREFIX):
@@ -721,6 +783,37 @@ class TenantConfigResolver:
             if isinstance(value, (int, float)) and not isinstance(value, bool):
                 tuning[key] = str(value)
         return tuning
+
+    async def _load_availability(self, tenant_id: str) -> dict[str, str]:
+        """Read ONE tenant's `TenantGuardrailPolicy` row (TASK-886).
+
+        Returns `{}` when the tenant has no ENABLED row **or** when its row
+        selects nothing — the two are the same statement ("no opinion"), and
+        returning `{}` for both is what makes `resolve()` widen to SYSTEM in
+        either case. That is the mechanism behind "there is no off": a row that
+        disables everything cannot be distinguished from an absent one, so it
+        can only ever mean "follow the platform".
+
+        A read that FAILS raises (via `_load_and_cache`) rather than returning
+        `{}`, exactly as the selection path does. The CALLER decides what an
+        unavailable availability means; `core/availability.py` documents why
+        that answer is the strictest set rather than a 503.
+        """
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TenantGuardrailPolicyRead.policies).where(
+                    TenantGuardrailPolicyRead.tenant_id == tenant_id,
+                    TenantGuardrailPolicyRead.resource_status == "ENABLED",
+                )
+            )
+            row = result.first()
+
+        policies = row[0] if row is not None else None
+        if not isinstance(policies, dict) or not policies:
+            return {}
+        if not any(isinstance(v, dict) and v.get("enabled") is True for v in policies.values()):
+            return {}
+        return {KEY_AVAILABILITY: json.dumps(policies)}
 
     async def _load_model_by_slug(
         self, slug: str, model_scope: list[str], tenant_id: str

@@ -162,7 +162,12 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // -1 (87): TASK-888 retired `TenantTtsConfig` — the speech path is
     // agent-first, so every field it carried lives on the TEXT_TO_SPEECH Agent
     // or an AiProviderConnection(service='tts') row.
-    expect(TENANT_SCOPED_MODELS.size).toBe(87);
+    // +1 (88): TASK-886 adds `TenantGuardrailPolicy` — per-tenant guardrail
+    // availability (WHICH screening policies apply). SYSTEM row = the platform
+    // default set. NOT SYSTEM-shared: both resolvers widen to SYSTEM on
+    // ABSENCE only, and a shared read would erase the absence signal they
+    // branch on.
+    expect(TENANT_SCOPED_MODELS.size).toBe(88);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

@@ -205,7 +205,12 @@ describe('boot-time /admin/* named-surface audit (collapsed to FORBID)', () => {
     expect(names).toContain('KnowledgeController');
     expect(names).toContain('WorkflowSandboxRunController');
     expect(names).toContain('ConsentGrantController');
-    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(62);
+    // 62 -> 63: TASK-886 adds `GuardrailAvailabilityController`
+    // (`admin/guardrail/availability`). Like every admin controller it is
+    // `@ForbidApiKey()`; it declares no service-account scope either, which is
+    // a deny-by-default 403 for both machine classes — the correct posture for a
+    // surface only a human super administrator may reach.
+    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(63);
   });
 
   it('throws when a listed controller loses its @ForbidApiKey() metadata', () => {

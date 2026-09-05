@@ -70,6 +70,12 @@ class ScreenResponse(BaseModel):
     checks: list[dict[str, Any]] = Field(default_factory=list)
     tenant_id: str
     policy_source_tenant_id: str | None = None
+    #: WHICH tier supplied the AVAILABILITY set — this tenant, or SYSTEM
+    #: (TASK-886). Distinct from `policy_source_tenant_id`: the policy blob rides
+    #: the selected model's registry row while the availability set is its own
+    #: row, so the two cascades can answer from different tiers and a verdict
+    #: needs both to be reconstructible.
+    availability_source_tenant_id: str | None = None
     sanitization: dict[str, Any] | None = None
     #: The delegated executor's OWN per-call usage for this screen, forwarded
     #: VERBATIM (TASK-878/G2). Same shape and same ride-back channel as the
@@ -95,6 +101,7 @@ def _to_response(decision: Any, **extra: Any) -> ScreenResponse:
         checks=payload["checks"],
         tenant_id=payload["tenantId"],
         policy_source_tenant_id=payload["policySourceTenantId"],
+        availability_source_tenant_id=payload["availabilitySourceTenantId"],
         sanitization=payload["sanitization"],
         usage_detail=payload["usageDetail"],
         **extra,
