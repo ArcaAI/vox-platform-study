@@ -88,7 +88,6 @@ from harness.temporal.interpreter.nodes._shared import (
     STATUS_ERROR,
     STATUS_OK,
     now,
-    read_model_slug,
     record_and_flush,
 )
 from harness.temporal.interpreter.nodes._soap import (
@@ -158,10 +157,10 @@ async def _resolve_selection(
     service's own fail-closed 422.
     """
     try:
-        #  — the node's own `llmBinding.modelSlug` outranks its `taskKey`. Read
-        # off the same `payload.config`; unbound ⇒ `None` ⇒ unchanged behaviour.
+        # TASK-876: the gateway overlays the tenant's ASSIGNED TEXT_GENERATION agent on the
+        # policy for this task key (the node `llmBinding` is retired).
         raw_policy = await _api_client(get_settings()).get_policy(
-            payload.tenant_id, task_key=task_key, model_slug=read_model_slug(payload.config)
+            payload.tenant_id, task_key=task_key
         )
     except ApiServiceError:
         return None, None, None, "policy_fetch_unreachable"

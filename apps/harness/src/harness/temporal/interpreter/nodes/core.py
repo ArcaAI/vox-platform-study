@@ -61,6 +61,12 @@ from harness.temporal.interpreter.nodes._shared import (
     record_and_flush,
     resolve_dotted_path,
 )
+from harness.temporal.interpreter.nodes._text_fallback import (
+    TextFallbackBlock,
+    candidate_as_resolved_agent,
+    read_text_fallback,
+    wire_provider,
+)
 from harness.temporal.interpreter.nodes.agentic import interpreter_agentic_data
 from harness.temporal.models import HarnessPolicy
 
@@ -443,8 +449,21 @@ def _system_prompt(
 
 
 async def _run_text_generation(
-    payload: NodeActivityInput, resolved: ResolvedAgent, started: Any
+    payload: NodeActivityInput,
+    resolved: ResolvedAgent,
+    started: Any,
+    fallback: TextFallbackBlock | None = None,
 ) -> NodeActivityResult:
+    """Generate on the resolved agent, switching along its GATEWAY-RESOLVED fallback chain.
+
+    TASK-876: ``fallback`` is the ``textFallback`` block of the resolve answer — the tenant's
+    per-agent HA toggle and the ordered candidates the gateway already resolved (explicit fallback
+    agent | the agent's own model chain, then the SYSTEM platform default), each with its own
+    provider, model, prompt, parameters and DERIVED funding. On a ``TextServiceError`` the next
+    candidate is tried while ``autoSwitch`` is on; the output names the row that SERVED
+    (``agent`` / ``selectionSource`` / ``fundingTier``), so metering follows it. Activity-level
+    semantics only — the workflow stays deterministic and sees one activity result.
+    """
     config = _config(payload)
     bound = _bound(payload)
     prompt_parts = _texts(bound.get("in"))
@@ -469,9 +488,9 @@ async def _run_text_generation(
         )
 
     settings = get_settings()
-    provider = resolved.model.provider
-    model = resolved.model.source_uri or resolved.model.slug
-    if not provider or not model:
+    if not wire_provider(resolved.model.provider) or not (
+        resolved.model.source_uri or resolved.model.slug
+    ):
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="no_text_selection"
         )
@@ -491,84 +510,104 @@ async def _run_text_generation(
             status="DEGRADED", reason=f"core.agent: effective policy fetch unreachable: {exc}"
         )
 
-    system_prompt = _system_prompt(resolved, config, _run_context(payload))
-    redactor = _phi_redactor()
-    try:
-        safe_prompt = ensure_egress_safe(
-            user_prompt,
-            provider=provider,
-            settings=settings,
-            phi_enabled=policy.phi_enabled,
-            phi_fail_closed=policy.phi_fail_closed,
-            redactor=redactor,
+    candidates: list[tuple[str, ResolvedAgent]] = [("agent", resolved)]
+    if fallback is not None and fallback.auto_switch:
+        candidates.extend(
+            ("agent-fallback", candidate_as_resolved_agent(candidate))
+            for candidate in fallback.chain
         )
-        safe_system = (
-            ensure_egress_safe(
-                system_prompt,
+
+    run_context = _run_context(payload)
+    redactor = _phi_redactor()
+    last_error: TextServiceError | None = None
+    for selection_source, candidate in candidates:
+        provider = wire_provider(candidate.model.provider)
+        model = candidate.model.source_uri or candidate.model.slug
+        if not provider or not model:
+            continue
+
+        system_prompt = _system_prompt(candidate, config, run_context)
+        try:
+            safe_prompt = ensure_egress_safe(
+                user_prompt,
                 provider=provider,
                 settings=settings,
                 phi_enabled=policy.phi_enabled,
                 phi_fail_closed=policy.phi_fail_closed,
                 redactor=redactor,
             )
-            if system_prompt
-            else None
-        )
-    except PhiEgressBlocked as exc:
-        await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
-        )
-        return NodeActivityResult(
-            status="DEGRADED", reason=f"core.agent: phi egress blocked: {exc}"
-        )
+            safe_system = (
+                ensure_egress_safe(
+                    system_prompt,
+                    provider=provider,
+                    settings=settings,
+                    phi_enabled=policy.phi_enabled,
+                    phi_fail_closed=policy.phi_fail_closed,
+                    redactor=redactor,
+                )
+                if system_prompt
+                else None
+            )
+        except PhiEgressBlocked as exc:
+            await record_and_flush(
+                payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
+            )
+            return NodeActivityResult(
+                status="DEGRADED", reason=f"core.agent: phi egress blocked: {exc}"
+            )
 
-    generation = _generation_params(resolved, config)
-    response_format = (
-        resolved.parameters.get("responseFormat") if isinstance(resolved.parameters, dict) else None
-    )
-    response_schema = (
-        resolved.parameters.get("responseSchema") if isinstance(resolved.parameters, dict) else None
-    )
-    wire_format: dict[str, Any] | None = None
-    if response_format == "json_schema" and isinstance(response_schema, dict):
-        wire_format = {"type": "json_schema", "json_schema": response_schema}
-    elif response_format == "json":
-        wire_format = {"type": "json_object"}
+        generation = _generation_params(candidate, config)
+        parameters = candidate.parameters if isinstance(candidate.parameters, dict) else {}
+        response_format = parameters.get("responseFormat")
+        response_schema = parameters.get("responseSchema")
+        wire_format: dict[str, Any] | None = None
+        if response_format == "json_schema" and isinstance(response_schema, dict):
+            wire_format = {"type": "json_schema", "json_schema": response_schema}
+        elif response_format == "json":
+            wire_format = {"type": "json_object"}
 
-    try:
-        result = await _text_client(settings).generate(
-            tenant_id=payload.tenant_id,
-            prompt=safe_prompt,
-            system_prompt=safe_system,
-            provider=provider,
-            model=model,
-            temperature=generation.get("temperature"),
-            max_tokens=generation.get("maxTokens"),
-            top_p=generation.get("topP"),
-            response_format=wire_format,
-        )
-    except TextServiceError as exc:
-        await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"
-        )
-        return NodeActivityResult(
-            status="DEGRADED", reason=f"core.agent: text generate failed: {exc}"
-        )
-
-    output: dict[str, Any] = {
-        "text": result.content,
-        "provider": result.provider or provider,
-        "model": result.model or model,
-        "usage": result.usage,
-        "agent": {"slug": resolved.slug, "versionNumber": resolved.version_number},
-    }
-    if wire_format is not None:
         try:
-            output["data"] = json.loads(result.content)
-        except (TypeError, ValueError):
-            output["data"] = None
-    await record_and_flush(payload, status=STATUS_OK, started=started)
-    return NodeActivityResult(status="SUCCEEDED", output=output)
+            result = await _text_client(settings).generate(
+                tenant_id=payload.tenant_id,
+                prompt=safe_prompt,
+                system_prompt=safe_system,
+                provider=provider,
+                model=model,
+                temperature=generation.get("temperature"),
+                max_tokens=generation.get("maxTokens"),
+                top_p=generation.get("topP"),
+                response_format=wire_format,
+            )
+        except TextServiceError as exc:
+            # A provider outage: switch to the next resolved candidate (a DIFFERENT engine —
+            # the after-send guard protects the SAME call from being re-issued, not the chain).
+            last_error = exc
+            continue
+
+        output: dict[str, Any] = {
+            "text": result.content,
+            "provider": result.provider or provider,
+            "model": result.model or model,
+            "usage": result.usage,
+            "agent": {"slug": candidate.slug, "versionNumber": candidate.version_number},
+            "selectionSource": selection_source,
+            "fundingTier": candidate.funding_tier,
+        }
+        if wire_format is not None:
+            try:
+                output["data"] = json.loads(result.content)
+            except (TypeError, ValueError):
+                output["data"] = None
+        await record_and_flush(payload, status=STATUS_OK, started=started)
+        return NodeActivityResult(status="SUCCEEDED", output=output)
+
+    await record_and_flush(
+        payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"
+    )
+    return NodeActivityResult(
+        status="DEGRADED",
+        reason=f"core.agent: text generate failed on every resolved candidate: {last_error}",
+    )
 
 
 async def _run_transcription(
@@ -753,7 +792,10 @@ async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResu
         )
 
     if resolved.task == "TEXT_GENERATION":
-        return await _run_text_generation(payload, resolved, started)
+        # TASK-876: the fallback chain rides on the resolve answer — read, never resolved here.
+        return await _run_text_generation(
+            payload, resolved, started, fallback=read_text_fallback(raw)
+        )
     if resolved.task == "SPEECH_TO_TEXT":
         return await _run_transcription(payload, resolved, started)
     return await _run_speech(payload, resolved, started)

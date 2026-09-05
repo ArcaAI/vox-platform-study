@@ -24,7 +24,6 @@ __all__ = [
     "STATUS_ERROR",
     "STATUS_OK",
     "now",
-    "read_model_slug",
     "record_and_flush",
     "resolve_dotted_path",
 ]
@@ -66,30 +65,3 @@ def resolve_dotted_path(root: dict[str, Any], path: str) -> Any:
             return MISSING
         current = current[segment]
     return current
-
-
-def read_model_slug(config: Any) -> str | None:
-    """(DD-10) — the node's OWN llmBinding.modelSlug, or None when unbound.
-
-    The Python mirror of ``packages/applications``' ``readLlmBindingFromConfig``, and it must stay
-    one: both read the SAME authored key off the SAME compiled node config, and the gateway
-    resolves the slug identically for either caller.
-
-    A node that declares no binding reads ``None``, and the caller then passes only its
-    ``taskKey`` — byte-identical to every run before this ticket. A MALFORMED binding also reads
-    ``None`` rather than raising: the authoring schema
-    (``@arcaai/workflow-contract``'s ``node-config-schemas.ts``) is where a bad shape is refused,
-    and an activity that raised here would fail a consultation over a field the validator already
-    had its chance at.
-
-    Note this is deliberately NOT where a missing model is decided: an UNRESOLVABLE slug fails
-    CLOSED at the gateway (a 400 from ``resolveBoundNodeSelection``), which the caller surfaces as
-    a named degrade. Only an ABSENT binding falls through to the task key.
-    """
-    if not isinstance(config, dict):
-        return None
-    binding = config.get("llmBinding")
-    if not isinstance(binding, dict):
-        return None
-    slug = binding.get("modelSlug")
-    return slug if isinstance(slug, str) and slug else None

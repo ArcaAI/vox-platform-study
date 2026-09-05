@@ -39,7 +39,6 @@ from harness.temporal.interpreter.nodes._llm_policy import (
     resolve_instruction,
     resolve_text_selection,
 )
-from harness.temporal.interpreter.nodes._shared import read_model_slug
 from harness.temporal.interpreter.nodes.consultation import interpreter_consultation_phi_hop
 from harness.temporal.interpreter.nodes.consultation_verify import interpreter_consultation_sensors
 from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
@@ -213,9 +212,7 @@ async def interpreter_guard_groundedness(payload: NodeActivityInput) -> NodeActi
     output: dict[str, Any] = dict(result.output or {})
 
     task_key = payload.config.get("taskKey") or "text.finalize"
-    judgement, error_code = await resolve_text_selection(
-        payload.tenant_id, task_key, read_model_slug(payload.config)
-    )
+    judgement, error_code = await resolve_text_selection(payload.tenant_id, task_key)
     if judgement is None:
         # Selection is fail-CLOSED: no judge, no policy verdicts — and the guard says so rather
         # than reporting the policies as satisfied.
