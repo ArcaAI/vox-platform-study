@@ -106,6 +106,7 @@ export * from './TenantAllowedOriginRepository';
 export * from './TenantBucketRepository';
 export * from './TenantEntitlementRepository';
 export * from './TenantFrontendConfigRepository';
+export * from './TenantGuardrailPolicyRepository';
 export * from './TenantIdentityProviderRepository';
 export * from './TenantIdentityProviderDomainRepository';
 export * from './TenantNlpTaskInstructionsRepository';

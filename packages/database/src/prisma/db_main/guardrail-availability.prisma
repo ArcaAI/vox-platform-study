@@ -1,0 +1,91 @@
+// ============================================================================
+// Per-Tenant Guardrail AVAILABILITY (TASK-886, owner decision #3)
+//
+// "Guardrail is built-in and platform-only. It gates every text-generation
+//  request before send and every response after receive, for built-in and BYO
+//  providers alike. No tenant admin manages any guardrail setting."
+//                    — TASK-870 §Requirement Analysis, target-model item 5
+//
+// AVAILABILITY IS POLICY SELECTION, NEVER GATE REMOVAL. This row says WHICH of
+// the declared screening policies apply to a tenant — it can never say "no
+// screening". A tenant with no row inherits the SYSTEM row's set; a tenant
+// whose row selects nothing ALSO inherits it (an empty selection is
+// indistinguishable from absence, deliberately: there is no "off").
+//
+//   TenantGuardrailPolicy — ONE row per tenant (tenantId @unique). The reserved
+//   SYSTEM tenant `00000000-0000-0000-0000-000000000000` owns the PLATFORM
+//   DEFAULT set. The runtime cascade is the same two tiers every other config
+//   plane uses — request tenant → SYSTEM, widening on ABSENCE ONLY. "Global"
+//   (`50000000-…`) is a CUSTOMER tenant and never appears in it
+//   (`.claude/rules/00-project-context.md` §"The two reserved tenants are NOT
+//   two config tiers").
+//
+// WHY ONE ROW PER TENANT AND NOT ONE PER (tenantId, taskKey):
+//
+//   1. The checks this row selects are NOT task keys. `guardrail.validate` /
+//      `.safety` / `.pii` / `.groundedness` are the SELECTION plane — which
+//      MODEL runs — and that plane is already owned by `AiRoutingPolicy`. The
+//      eight screening checks (`jailbreak_detection`, `prompt_safety`,
+//      `prompt_toxicity`, `response_safety`, `response_toxicity`,
+//      `response_refusal`, `pii_leak`, `containment_echo`) are declared in
+//      `apps/guardrail/src/guardrail/services/screening.py`, and SIX of them
+//      ride ONE delegated `classify` call under the single `guardrail.safety`
+//      task key. A (tenantId, taskKey) unique cannot even name them.
+//   2. `GuardrailPolicy` (`apps/guardrail/src/guardrail/core/policy.py`) — the
+//      plane this one sits beside — is likewise ONE blob resolved as a UNIT
+//      from ONE winning row. Selecting a set is a single decision; splitting it
+//      across rows would make "is this tenant's set narrower than SYSTEM's?" a
+//      multi-row diff instead of one comparison.
+//
+// The blob shape is `{ "<checkName>": { "enabled": bool, "<threshold>": num } }`.
+// The catalogue of legal check names and their threshold DIRECTION lives in
+// `packages/applications/src/services/guardrail-availability/policy-catalogue.ts`
+// and is pinned across both languages by
+// `apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json`.
+//
+// A threshold may only ever be TIGHTENED relative to the SYSTEM row: the write
+// lane REFUSES a loosening value with 403 (never a silent clamp — the admin is
+// told), and the runtime composes tenant-vs-platform in the strict direction so
+// a row written by any other means cannot loosen the gate either. Narrowing the
+// ENABLED SET is permitted — only a platform admin can do it, and it is the
+// whole point of the surface.
+//
+// This model is OCC-written (carries `_version`); its mapper strips `version`.
+// ============================================================================
+
+model TenantGuardrailPolicy {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields (one row per tenant; SYSTEM tenant = platform default)
+  tenantId String @unique
+
+  // core fields — the selected policy set. Keys are the check names declared in
+  // `screening.py`; each value carries `enabled` and, where the check has one,
+  // its strictness. `{}` (or a set with nothing enabled) means "no opinion" and
+  // resolves to the SYSTEM set — it is NOT an off switch.
+  policies Json @db.JsonB
+
+  // Free-text record of WHY this tenant's set differs from the platform
+  // default. Availability is a platform-admin act on a customer's safety
+  // posture, so the reason belongs next to the row a reviewer will read, not
+  // only in the audit event that recorded the write.
+  reason String?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing
+  @@index([tenantId], name: "TenantGuardrailPolicy_tenantId_idx")
+  @@schema("core")
+}

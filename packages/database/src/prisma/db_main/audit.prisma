@@ -397,5 +397,13 @@ enum ResourceType {
   // `Agent` / `AgentAssignment` to this same enum in a sibling branch.
   WorkflowRun
 
+  // TASK-886 — per-tenant guardrail AVAILABILITY (owner decision #3). WHICH of
+  // the declared screening policies apply to a tenant. Super-admin-only and
+  // platform-managed, so every write is a platform admin changing a CUSTOMER's
+  // safety posture — precisely the mutation a compliance reviewer must be able
+  // to enumerate, and the same argument `AiRoutingPolicy` records above.
+  // `GuardrailAvailabilityService` broadcasts on create and update.
+  TenantGuardrailPolicy
+
   @@schema("core")
 }

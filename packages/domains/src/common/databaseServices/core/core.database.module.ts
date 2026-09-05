@@ -79,6 +79,7 @@ import { TenantIdentityProviderDomainRepository } from '../../../repositories/ge
 import { TenantNlpTaskInstructionsRepository } from '../../../repositories/generated/core/TenantNlpTaskInstructionsRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
+import { TenantGuardrailPolicyRepository } from '../../../repositories/generated/core/TenantGuardrailPolicyRepository';
 import { TenantSttConfigRepository } from '../../../repositories/generated/core/TenantSttConfigRepository';
 import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
@@ -214,6 +215,10 @@ const repositories = [
   TenantBucketRepository,
   StorageAccessKeyRepository,
   TenantStorageConfigRepository,
+  // Per-tenant guardrail AVAILABILITY (TASK-886) — WHICH screening
+  // policies apply to a tenant. Platform-managed and super-admin-only; the
+  // SYSTEM row is the default set every tenant inherits on absence.
+  TenantGuardrailPolicyRepository,
   // Voice profile domain
   UserVoiceProfileRepository,
   // Per-tenant STT configuration (credential rows live in the unified
