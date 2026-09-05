@@ -70,7 +70,6 @@ function agentSnapshot(overrides: Partial<FrozenLiveAgentSnapshot> = {}): Frozen
     stableUserPrefix: 'CUSTOM SURGERY LIVE PREFIX.',
     systemPrompt: 'CUSTOM SURGERY SYSTEM PROMPT.',
     toolPlan: DEFAULT_LIVE_TOOL_PLAN,
-    liveLlm: null,
     frozenAt: '2026-08-08T00:00:00.000Z',
     ...overrides,
   };
@@ -190,27 +189,10 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     expect(calls[0].system_prompt).toBe('CUSTOM SURGERY SYSTEM PROMPT.');
   });
 
-  it('an agent llmOverrides.live selection is served FROZEN, bypassing the per-flush tenant resolve (RF-4)', async () => {
+  it('the legacy flush resolves the tenant`s ASSIGNED TEXT_GENERATION agent per flush (TASK-876: the frozen `liveLlm` tier is gone)', async () => {
     const calls: TextCall[] = [];
     const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
-    const resolver: Partial<ILiveAgentResolver> = {
-      resolveForSession: vi.fn().mockResolvedValue(agentSnapshot({ liveLlm: { provider: 'llama-cpp', model: 'fast-live-model' } })),
-    };
-    const service = buildService({ http: recordingHttpMock(calls), resolver, harnessPolicyService });
-    service.start({ consultationId: CID, tenantId: TENANT });
-    await settle();
-    service.ingestSegment(CID, { text: 'cough', isFinal: true, segmentId: 's1' });
-    await service.flush(CID);
-
-    expect(calls[0].provider).toBe('llama-cpp');
-    expect(calls[0].model).toBe('fast-live-model');
-    expect(harnessPolicyService.resolveTextSelection).not.toHaveBeenCalled();
-  });
-
-  it('with NO agent override the per-flush tenant AiTaskDefault resolve is preserved exactly', async () => {
-    const calls: TextCall[] = [];
-    const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
-    const resolver: Partial<ILiveAgentResolver> = { resolveForSession: vi.fn().mockResolvedValue(agentSnapshot({ liveLlm: null })) };
+    const resolver: Partial<ILiveAgentResolver> = { resolveForSession: vi.fn().mockResolvedValue(agentSnapshot()) };
     const service = buildService({ http: recordingHttpMock(calls), resolver, harnessPolicyService });
     service.start({ consultationId: CID, tenantId: TENANT });
     await settle();
@@ -220,11 +202,9 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     await service.flush(CID);
 
     expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledTimes(2);
-    // the third argument is the NODE's `llmBinding`. This is the LEGACY FLUSH path
-    // no graph node made this call — so it must be `undefined`, i.e. the tenant `text.live`
-    // AiTaskDefault, unchanged. Asserted rather than dropped: a binding appearing here would
-    // mean the flush had invented one.
-    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live', undefined);
+    // Exactly two arguments: the tenant and the informational `live` task. The retired node
+    // `llmBinding` (a third argument) must never reappear on the legacy flush.
+    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live');
     expect(calls[1].model).toBe('tenant-default');
   });
 });

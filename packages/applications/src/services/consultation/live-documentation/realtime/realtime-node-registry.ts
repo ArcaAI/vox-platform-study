@@ -100,21 +100,30 @@ export interface TranscribeResult {
   pipelineId: string | null;
 }
 
+/** A `core.agent` node's reference to the published Agent it runs (TASK-863 §3.4): a lineage slug and an optional version pin. */
+export interface RealtimeAgentRef {
+  slug: string;
+  versionNumber?: number;
+}
+
 export interface GenerateDocumentInput {
   /** The transcript this turn contributes, resolved from the node's declared `in` port. */
   sourceText: string;
   tenantId: string;
   /**
    * The node's OWN authored config, exactly as `ProposeCorrectionsInput` and
-   * `ExtractFindingsInput` already carry it.
-   *
-   * It carries this node's `llmBinding`, and `config` is the ONLY thing that
-   * distinguishes one instance of a node type from another — so without it a model binding
-   * authored on THIS `consultation.realtimeSummary` had no route to the call it governs.
-   * Optional so non-graph callers of the capability keep their arity; absent reads as "no
-   * binding", which is the tenant `text.live` default, unchanged.
+   * `ExtractFindingsInput` already carry it — `config` is the ONLY thing that distinguishes
+   * one instance of a node type from another (a `core.agent`'s `overrides` live here).
+   * Optional so non-graph callers of the capability keep their arity.
    */
   config?: Readonly<Record<string, unknown>>;
+  /**
+   * TASK-876 — the `core.agent` node's `agentRef`, which the HOST resolves (explicit slug +
+   * version pin, fail closed on drift, through `TextAgentResolverService`) into the model,
+   * instruction, parameters and fallback chain the call runs on. Absent = a legacy summary
+   * node: the tenant's ASSIGNED TEXT_GENERATION agent selects (`resolveTextSelection`).
+   */
+  agentRef?: RealtimeAgentRef;
 }
 
 export interface GenerateDocumentResult {
@@ -446,13 +455,25 @@ function aliasHandler(type: string, delegate: RealtimeNodeHandler): RealtimeNode
   return Object.freeze({ type, inputs: ports.inputs, outputs: ports.outputs, run: (ctx: RealtimeNodeRunContext) => delegate.run(ctx) });
 }
 
+/** The node's `agentRef`, or `null` when it names no slug. Malformed shapes read as absent — the authoring schema refuses them. */
+function readAgentRef(config: Readonly<Record<string, unknown>>): RealtimeAgentRef | null {
+  const ref = config.agentRef;
+  if (ref === null || typeof ref !== 'object' || Array.isArray(ref)) return null;
+  const { slug, versionNumber } = ref as Record<string, unknown>;
+  if (typeof slug !== 'string' || slug.length === 0) return null;
+  return Number.isInteger(versionNumber) && (versionNumber as number) >= 1 ? { slug, versionNumber: versionNumber as number } : { slug };
+}
+
 /**
  * `core.agent` on the realtime lane (TASK-864 A5) — a TEXT_GENERATION agent producing the
  * running note through the SAME `generateDocument` capability `consultation.realtimeSummary`
- * uses. The agent itself (its instruction, model, guards) is resolved by the host service from
- * `agentRef` (TASK-863 §3.4); this handler binds the declared ports and forwards the node's own
- * config, exactly as the summary handler does. ASR/TTS agents are not realtime-lane nodes: the
- * live transcript is the capture binding's product and speech is a durable artifact.
+ * uses. This handler binds the declared ports and hands the host the node's `agentRef`
+ * (TASK-876: slug + optional version pin) beside the node's own config; the HOST resolves the
+ * reference — explicit slug, fail closed on a drifted pin, exactly as the Temporal lane — into
+ * the agent's model, instruction, parameters and fallback chain. A node with no slug is a
+ * contract violation: it throws, the executor degrades it with a named reason, and nothing is
+ * ever generated on a substituted default. ASR/TTS agents are not realtime-lane nodes: the live
+ * transcript is the capture binding's product and speech is a durable artifact.
  */
 class CoreAgentHandler implements RealtimeNodeHandler {
   readonly type = 'core.agent';
@@ -460,10 +481,15 @@ class CoreAgentHandler implements RealtimeNodeHandler {
   readonly outputs = portsOf('core.agent').outputs;
 
   async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
+    const agentRef = readAgentRef(ctx.config);
+    if (!agentRef) throw new Error('core.agent: `agentRef.slug` is required');
     const sourceText = boundText(ctx, 'in');
     const context = ctx.bound.context;
     const material = sourceText || (context !== undefined ? JSON.stringify(context) : '');
-    const result = await ctx.capabilities.generateDocument({ sourceText: material, tenantId: ctx.tenantId, config: ctx.config }, ctx.signal);
+    const result = await ctx.capabilities.generateDocument(
+      { sourceText: material, tenantId: ctx.tenantId, config: ctx.config, agentRef },
+      ctx.signal,
+    );
     return { text: result.text, sections: result.sections, stats: result.stats, repaired: result.repaired };
   }
 }

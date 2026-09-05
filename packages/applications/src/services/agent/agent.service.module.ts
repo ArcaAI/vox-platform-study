@@ -26,7 +26,13 @@ import { IAgentService } from './IAgentService';
     AiProviderConnectionServiceModule,
     TextRequestServiceModule,
   ],
-  providers: [AgentService, AgentResolverService, TextAgentResolverService, AgentInvocationService, { provide: IAgentService, useExisting: AgentService }],
+  providers: [
+    AgentService,
+    AgentResolverService,
+    TextAgentResolverService,
+    AgentInvocationService,
+    { provide: IAgentService, useExisting: AgentService },
+  ],
   exports: [IAgentService, AgentService, AgentResolverService, TextAgentResolverService, AgentInvocationService],
 })
 export class AgentServiceModule {}
