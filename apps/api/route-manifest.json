@@ -3533,7 +3533,7 @@
       "path": "/api/v1/admin/guardrail/availability",
       "routePath": "/admin/guardrail/availability",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -3554,7 +3554,7 @@
       "path": "/api/v1/admin/guardrail/availability/{tenantId}",
       "routePath": "/admin/guardrail/availability/:tenantId",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -3575,7 +3575,7 @@
       "path": "/api/v1/admin/guardrail/availability/{tenantId}",
       "routePath": "/admin/guardrail/availability/:tenantId",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -3596,7 +3596,7 @@
       "path": "/api/v1/admin/guardrail/availability/catalogue",
       "routePath": "/admin/guardrail/availability/catalogue",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
