@@ -234,6 +234,8 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
       slug: 'platform-clinical',
       tenantId: SYSTEM_TENANT_ID,
       parameters: { fallback: { autoSwitch: false } },
+      // A DIFFERENT endpoint from the platform default, or the two would dedupe.
+      models: [model({ slug: 'lms-clinical', sourceUri: 'clinical-8b' })],
     });
     bySlug({ 'platform-clinical': systemOwned, 'platform-summarization': platformAgent() });
     const spec = await make().resolve({ tenantId: TENANT, agentSlug: 'platform-clinical' });
@@ -266,6 +268,24 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
     bySlug({ 'platform-summarization': platformAgent() }, agent({ parameters: { fallback: { agentSlug: 'platform-summarization' } } }));
     const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.fallback.chain.map((c) => [c.kind, c.agent.slug])).toEqual([['fallback-agent', 'platform-summarization']]);
+  });
+
+  it('a fallback agent bound to the SAME provider + model is deduped — a chain must not retry the dead endpoint', async () => {
+    // A DIFFERENT agent (different version id, different model slug) that nonetheless dispatches
+    // the same provider-native model to the same provider: identity is the ENDPOINT, not the row.
+    const twin = agent({
+      agentId: 'twin-1',
+      agentVersionId: 'twin-1',
+      slug: 'clinic-twin',
+      models: [model({ slug: 'a-different-registry-slug', provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' })],
+    });
+    bySlug({ 'clinic-twin': twin, 'platform-summarization': platformAgent() }, agent({ parameters: { fallback: { agentSlug: 'clinic-twin' } } }));
+    const spec = await make().resolve({ tenantId: TENANT });
+    expect(spec.primary.model).toBe('gemma-4-e2b-it-qat');
+    // The twin is dropped. The platform default names the same provider + model but is served by
+    // the PLATFORM's row (different funding, therefore a different credential and endpoint), so
+    // it survives — that is real HA, not a retry.
+    expect(spec.fallback.chain.map((c) => [c.kind, c.fundingTier])).toEqual([['platform-default', 'platform']]);
   });
 
   it('no SYSTEM assignment at all → the chain ends without a platform default (reported, never invented)', async () => {

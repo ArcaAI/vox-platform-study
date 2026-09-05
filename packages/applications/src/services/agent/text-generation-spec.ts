@@ -145,7 +145,31 @@ export function effectiveAutoSwitch(toggle: boolean, primaryFunding: AgentFundin
   return toggle || primaryFunding !== 'tenant';
 }
 
-/** Two candidates are the same runnable thing when they run the same agent version on the same model. */
+/**
+ * What a candidate actually DISPATCHES TO: provider, provider-native model, and the credential
+ * that reaches it (its funding tier, plus the one-hop override's endpoint fields). Two candidates
+ * sharing this key are the same endpoint, however different the agent rows behind them are.
+ *
+ * The credential is part of the key on purpose: a tenant's own Azure deployment and the
+ * platform's Azure account can name the same provider and the same model id and still be
+ * different endpoints with different quotas — falling back from one to the other is real HA, not
+ * a retry.
+ */
+function candidateEndpointKey(candidate: ResolvedTextCandidate): string {
+  const override = candidate.providerOverride;
+  return [candidate.provider, candidate.model, candidate.fundingTier, override?.base_url ?? '', override?.deployment_name ?? ''].join('::');
+}
+
+/**
+ * Two candidates are the same runnable thing when they would dispatch to the same ENDPOINT — not
+ * merely when they come from the same agent row.
+ *
+ * The chain exists to survive a provider outage, so a second agent that happens to bind the same
+ * provider + model id behind the same credential is a retry against the dead endpoint the walk is
+ * trying to escape. (The agent-version + model-slug equality is kept as a belt-and-braces case
+ * for a registry row that carries no provider.)
+ */
 export function sameCandidate(a: ResolvedTextCandidate, b: ResolvedTextCandidate): boolean {
+  if (candidateEndpointKey(a) === candidateEndpointKey(b)) return true;
   return a.agent.versionId === b.agent.versionId && a.modelSlug === b.modelSlug;
 }
