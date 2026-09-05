@@ -192,7 +192,6 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:transcription-job:read', // → read:AsrPipeline
   'svc:admin:tenant-stt-config:manage', // → manage:TenantSttConfig
   // Speech synthesis
-  'svc:admin:tenant-tts-config:manage', // → manage:TenantTtsConfig
   // Model + provider selection (tenant tier only — `ai-model`/`ai-service`/
   // `ai-runtime-profile` all imply `manage:all` and are excluded)
   'svc:admin:ai-provider:manage', // → manage:GlobalSetting

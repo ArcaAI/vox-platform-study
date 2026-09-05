@@ -32,7 +32,6 @@ import { seedHarnessPolicy } from './13-harness-policy';
 import { seedEntitlements } from './15-entitlements';
 import { seedAiRoutingPolicy } from './16-ai-routing-policy';
 import { seedAiProviderConnection } from './17-ai-provider-connection';
-import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedWorkflowDefinition } from './21-workflow-definition';
 import { seedArcaaiWorkflowAuthoring } from './23-arcaai-workflow-authoring';
@@ -169,12 +168,6 @@ export const seed = async () => {
     // retired `AiTaskDefault` seed). CREATE-ONLY; needs the AiModel catalog
     // (seedAiModelRegistry above) because the election binds the model by FK.
     await seedAiRoutingPolicy(client);
-    console.log('');
-    // SYSTEM TenantTtsConfig platform default (/ F1): built-in-first
-    // TTS routing (kokoro / indic_parler) so an unconfigured tenant defaults to
-    // a LOCAL engine, never a cloud vendor. CREATE-ONLY; needs the TTS AiModel
-    // catalog (seedAiModelRegistry above) and the reserved SYSTEM tenant (Phase 1).
-    await seedTenantTtsConfig(client);
     console.log('');
 
     // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)

@@ -31,8 +31,9 @@ export class WorkflowInvariantRuleRepository extends Repository<WorkflowInvarian
    * rows UNION the SYSTEM platform register, with palette-agnostic rows
    * (`paletteKey: null`, the structural class) always included.
    *
-   * Two explicit-`tenantId` reads rather than one `OR`, mirroring
-   * `PipelinePolicyRepository.findCascadeRows` / `findSystemDefault`: the
+   * Two explicit-`tenantId` reads rather than one `OR`, mirroring the
+   * `HarnessPolicy` cascade (`PipelinePolicy` was the exemplar named here until
+   * TASK-882 retired it): the
    * tenant-scope extension asserts an explicit `where.tenantId` equals the
    * caller's own context tenant unless the model is SYSTEM-shared, and the
    * SYSTEM rows live under a DIFFERENT tenant id. Keeping the two reads

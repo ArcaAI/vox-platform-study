@@ -43,6 +43,9 @@ export enum ResourceType {
   UserVoiceProfile = 'UserVoiceProfile',
   UserDepartment = 'UserDepartment',
   TenantFrontendConfig = 'TenantFrontendConfig',
+  // RETIRED (TASK-888): the `TenantTtsConfig` table is dropped and nothing emits
+  // this type. The member stays because a Postgres enum value cannot be dropped
+  // in place (audit.prisma keeps its twin); historical AuditLog rows still name it.
   TenantTtsConfig = 'TenantTtsConfig',
   TenantIdentityProvider = 'TenantIdentityProvider',
   FederatedIdentity = 'FederatedIdentity',

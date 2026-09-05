@@ -26,7 +26,7 @@
  * the same (tenantId, externalPatientId, purpose) is left untouched — the
  * DB's partial unique index (`ConsentGrant_tenant_patient_purpose_active_key`)
  * isn't expressible as a Prisma `@@unique`, so this checks first rather than
- * using a typed `upsert` (same posture as `seedTenantTtsConfig`).
+ * using a typed `upsert` (same posture as `seedTenantSttConfig`).
  */
 import type { CorePrismaClient } from '../../../client';
 import { ConsentGrantMethod, ConsentPurpose } from '../../../generated/core-prisma-client/client.js';
