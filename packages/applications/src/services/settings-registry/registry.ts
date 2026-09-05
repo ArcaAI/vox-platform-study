@@ -16,7 +16,6 @@ import { CONSULTATION_ENDPOINT_SETTINGS } from './descriptors/consultation-endpo
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
-import { GUARDRAIL_POLICY_SETTINGS } from './descriptors/guardrail-policy.descriptors';
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
@@ -62,11 +61,15 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...METERING_SETTINGS,
   // AI task-model defaults (guardrail/NLP/TEXT).
   ...MODEL_DEFAULT_SETTINGS,
-  // Guardrail POLICY (thresholds, judge/groundedness tuning, label
-  // taxonomies) — tenant → SYSTEM cascade, tighten-only floor on the
-  // verdict-deciding keys. Companion to MODEL_DEFAULT_SETTINGS' `models.guardrail.*`
-  // (which selects WHICH model runs; this selects HOW STRICT it is).
-  ...GUARDRAIL_POLICY_SETTINGS,
+  // `GUARDRAIL_POLICY_SETTINGS` (13 `guardrail.policy.*` keys) was here. Every
+  // one was UNREAD — nothing on any path resolved them — so they were removed
+  // by TASK-872 rather than left as a control surface an admin could set with
+  // no effect. Their CONCEPTS are not lost: the four thresholds and the four
+  // label taxonomies belong to the MODEL that produces the scores, so they ride
+  // `AiModel._metadata` (`policy` / `labelTaxonomy`) and are resolved by the
+  // same cascade that chose the model — a threshold calibrated for one
+  // checkpoint is meaningless against another. The two judge hyper-parameters
+  // and the judge timeout get their homes in wave 2; see the ticket README.
   // The tenant's VISIT-TYPE catalogue — the label set that
   // used to be a derived literal in nine places. `maxScope: 'tenant'`, so a
   // tenant defines its own and one with no opinion inherits the two shipped
@@ -158,24 +161,4 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...HARNESS_SENSOR_SETTINGS,
   HARNESS_CLAIM_CHECK_MIN_BYTES,
 
-  // ╔══════════════════════════════════════════════════════════════════════════╗
-  // ║ REGISTRATION POINT — storage config → DB + Vault ║
-  // ║ ║
-  // ║ Storage descriptors live in `descriptors/storage.descriptors.ts`. ║
-  // ║ To wire them in, add the import above and ONE line here: ║
-  // ║ ║
-  // ║ ...STORAGE_SETTINGS, ║
-  // ║ ║
-  // ║ CONTRACT ITS DESCRIPTORS MUST MEET: ║
-  // ║ • `failMode` is REQUIRED on every descriptor — the build fails without ║
-  // ║ it. Storage ENDPOINT/REGION/PATH-STYLE/PREFIX are tuning → ║
-  // ║ 'open-to-default'; anything `sensitivity: 'secret'` (a credentialsRef ║
-  // ║ target, a BYO tenant key) MUST be 'closed' — `register()` throws ║
-  // ║ otherwise, at module load. ║
-  // ║ • If a value is still read from `MINIO_*` env, declare ║
-  // ║ `tier: 'env'` + `targetTier: 'db-config'` rather than claiming the DB ║
-  // ║ tier early; flip `tier` and drop `targetTier` when the READER moves. ║
-  // ║ • env-tier descriptors use `editableBy: EDITABLE_BY_NONE`; a governance ║
-  // ║ test binds that both ways. ║
-  // ╚══════════════════════════════════════════════════════════════════════════╝
 ]);
