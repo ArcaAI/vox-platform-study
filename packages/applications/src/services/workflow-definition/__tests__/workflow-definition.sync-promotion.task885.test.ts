@@ -8,10 +8,13 @@
  * | `syncToTenants` | a multi-tenant admin, over tenants they ALREADY manage | a target they do not manage is a **404** — never a 403, so the route can never enumerate the deployment's tenants |
  * | `promoteToSystem` | the platform admin only | **403** — a privilege boundary (`05-nestjs-api.md` §Imperative Privilege Checks), not the 404-over-403 cross-tenant posture |
  *
- * Both run under an ELEVATED TENANT-LESS context for the mechanical reason
+ * `promoteToSystem` runs under an ELEVATED TENANT-LESS context for the mechanical reason
  * `AgentPromotionService` documents: with a pinned tenant the tenant-scope Prisma extension
  * forces the caller's `tenantId` into every read, which makes a cross-tenant read impossible
- * rather than merely unauthorized.
+ * rather than merely unauthorized. `syncToTenants` did too, until TASK-889 — which is why the
+ * customer admin owner #4 names could not reach it. It now NAMES the tenant of each step
+ * instead (`runInTenantContext`), so every read and write is fully scoped and no elevation is
+ * involved; see `agentPromotion/__tests__/membership-bounded-sync.task889.test.ts`.
  *
  * Written RED-first: every test in this file failed against `4db808607`, where `syncToTenants`
  * and `promoteToSystem` did not exist.
@@ -23,7 +26,17 @@ import { WorkflowDefinitionService } from '../workflow-definition.service';
 
 const GLOBAL = '50000000-0000-0000-0000-000000000000';
 
-const mockClsService = { get: vi.fn(), set: vi.fn() };
+const mockClsService = {
+  get: vi.fn(),
+  set: vi.fn(),
+  // TASK-889 — a sync runs each cross-tenant step under its OWN CLS store
+  // (`runInTenantContext`). This fixture pins one tenant through `get`, so `run` only has to
+  // invoke the step; that the step's tenant is the right one is proven against the REAL
+  // tenant-scope extension in `agentPromotion/__tests__/membership-bounded-sync.task889.test.ts`.
+  run: vi.fn((optionsOrCallback: unknown, maybeCallback?: unknown) =>
+    (typeof optionsOrCallback === 'function' ? optionsOrCallback : (maybeCallback as () => unknown))(),
+  ),
+};
 const mockEventEmitter = { emit: vi.fn() };
 
 const mockRepository = {
@@ -194,13 +207,19 @@ describe('WorkflowDefinitionService — sync among own tenants (TASK-885)', () =
     expect(mockRepository.create).not.toHaveBeenCalled();
   });
 
-  it('requires an elevated tenant-less context', async () => {
+  // TASK-889 — REVERSED, deliberately. This used to assert that a sync requires the elevated
+  // tenant-less context `promoteToSystem` requires, which locked out the person owner #4 names:
+  // a multi-tenant CUSTOMER admin. A sync is now a sequence of ordinary per-tenant steps, each
+  // named (`runInTenantContext`) and each separately authorised, so a pinned working tenant is
+  // no longer a refusal. The elevated gate stays on `promoteToSystem`, tested below.
+  it('lets a NON-elevated multi-tenant admin sync — a pinned working tenant is not a refusal', async () => {
     mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? 'tenant-a' : { id: 'admin-1', roles: ['TENANT_ADMIN'] }));
     service = construct();
 
-    await expect(service.syncToTenants('soap', { sourceTenantId: 'tenant-a', targetTenantIds: ['tenant-b'] })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    const result = await service.syncToTenants('soap', { sourceTenantId: 'tenant-a', targetTenantIds: ['tenant-b'] });
+
+    expect(result.targets.map((target) => target.tenantId)).toEqual(['tenant-b']);
+    expect(mockRepository.create.mock.calls[0][0].tenantId).toBe('tenant-b');
   });
 });
 

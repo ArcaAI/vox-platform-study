@@ -1,0 +1,124 @@
+/**
+ * TASK-889 — `runInTenantContext` against a REAL PostgreSQL, with the REAL extended client.
+ *
+ * ## SKIPPED, and the condition for unskipping it
+ *
+ * `describe.skip`. The test database on this branch still carries the PRE-WAVE schema: the
+ * wave-3a retirement migration and TASK-886's `TenantGuardrailPolicy` migration are authored and
+ * proven on a shadow database but NOT applied anywhere, and the orchestrator has not been cleared
+ * to reset the shared test DB (a reset mid-wave destroys whatever other lane is using it). Running
+ * this now would fail for reasons that have nothing to do with what it asserts.
+ *
+ * **Unskip when**: the test database has been reset onto the wave's schema
+ * (`pnpm setup:test` / `pnpm test:db:reset` + `pnpm test:db:seed`), i.e. the same gate the rest of
+ * `pnpm test:integration` waits on. Change `describe.skip` to `describe` — nothing else.
+ *
+ * ## What it adds over the unit proof
+ *
+ * `agentPromotion/__tests__/membership-bounded-sync.task889.test.ts` drives the real
+ * `applyTenantScopeExtension` over a STUB client, so it proves the ARGS each step produces: which
+ * tenant the extension injected, and which it asserted. What a stub cannot prove is that those
+ * args are ones Postgres accepts and answers correctly — that the row written under tenant B is
+ * readable as B, invisible as A, and that a step naming a tenant it is not standing in is refused
+ * by the extension before the statement is ever issued. That is this file's whole job.
+ *
+ * Prerequisites (identical to every other integration suite):
+ *   1. `pnpm infra:test:up`
+ *   2. `pnpm test:db:reset && pnpm test:db:seed`
+ *   3. `pnpm test:integration`
+ */
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import {
+  getExtendedPrismaClient,
+  // eslint-disable-next-line no-restricted-imports -- allow-list: integration test fixture (core.js §B.4); the arrange/assert reads must see BOTH tenants, which is exactly what the code under test may not do.
+  getPlatformAdminPrismaClient_Unscoped,
+  setTenantContextProvider,
+  type CorePrismaClient,
+} from '@arcaai/database';
+import { runInTenantContext } from '../../tenant-context';
+
+const TENANT_A = '50000000-0000-0000-0000-0000000889a1';
+const TENANT_B = '50000000-0000-0000-0000-0000000889b1';
+const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
+
+/**
+ * A stand-in for `ClsService` with the ONE behaviour `runInTenantContext` depends on: `run` opens
+ * a nested store inheriting the parent's, and unwinds on the way out. The REAL binding between
+ * CLS and Prisma is the tenant-context provider registered below — which is what makes this an
+ * integration test of the mechanism rather than of a mock.
+ */
+function makeClsStandIn(initial: Record<string, unknown>) {
+  const stack: Record<string, unknown>[] = [{ ...initial }];
+  const top = () => stack[stack.length - 1]!;
+  return {
+    service: {
+      get: (key?: string) => (key === undefined ? top() : top()[key]),
+      set: (key: string, value: unknown) => {
+        top()[key] = value;
+      },
+      run: async (optionsOrCallback: unknown, maybeCallback?: unknown) => {
+        const callback = (typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback) as () => Promise<unknown>;
+        stack.push({ ...top() });
+        try {
+          return await callback();
+        } finally {
+          stack.pop();
+        }
+      },
+    },
+    currentTenantId: () => top().tenantId as string | null | undefined,
+  };
+}
+
+describe.skip('runInTenantContext against a live database (TASK-889)', () => {
+  const cls = makeClsStandIn({ tenantId: TENANT_A, user: { id: SYSTEM_USER_ID, roles: ['TENANT_ADMIN'] } });
+  const scoped = getExtendedPrismaClient();
+  let unscoped: CorePrismaClient;
+
+  beforeAll(async () => {
+    unscoped = getPlatformAdminPrismaClient_Unscoped();
+    await unscoped.$connect();
+    setTenantContextProvider({ getTenantId: () => cls.currentTenantId(), isSuperAdmin: () => false });
+    for (const id of [TENANT_A, TENANT_B]) {
+      await unscoped.tenant.upsert({
+        where: { id },
+        update: {},
+        create: { id, name: `TASK-889 ${id.slice(-4)}`, code: `t889${id.slice(-4)}`, createdBy: SYSTEM_USER_ID },
+      });
+    }
+    await unscoped.department.deleteMany({ where: { tenantId: { in: [TENANT_A, TENANT_B] } } });
+  });
+
+  afterAll(async () => {
+    setTenantContextProvider(null);
+    await unscoped.department.deleteMany({ where: { tenantId: { in: [TENANT_A, TENANT_B] } } });
+    await unscoped.$disconnect();
+  });
+
+  it('writes into the NAMED tenant and reads it back there, while the caller stays pinned to their own', async () => {
+    // `Department` stands in for any tenant-scoped row a sync writes: the claim under test is the
+    // EXTENSION's, not any one model's.
+    const written = await runInTenantContext(cls.service as never, TENANT_B, () =>
+      scoped.department.create({ data: { tenantId: TENANT_B, name: 'Synced into B', createdBy: SYSTEM_USER_ID } }),
+    );
+
+    expect(written.tenantId).toBe(TENANT_B);
+
+    const readAsB = await runInTenantContext(cls.service as never, TENANT_B, () => scoped.department.findFirst({ where: { id: written.id } }));
+    expect(readAsB?.id).toBe(written.id);
+
+    // The caller's own context is untouched by the step, and cannot see B's row.
+    expect(cls.currentTenantId()).toBe(TENANT_A);
+    await expect(scoped.department.findFirst({ where: { id: written.id } })).resolves.toBeNull();
+  });
+
+  it('refuses a step that names one tenant while writing another — the boundary is enforced, not assumed', async () => {
+    await expect(
+      runInTenantContext(cls.service as never, TENANT_B, () =>
+        scoped.department.create({ data: { tenantId: TENANT_A, name: 'Wrong tenant', createdBy: SYSTEM_USER_ID } }),
+      ),
+    ).rejects.toThrow(/TenantScope: tenantId mismatch/);
+
+    await expect(unscoped.department.count({ where: { name: 'Wrong tenant' } })).resolves.toBe(0);
+  });
+});
