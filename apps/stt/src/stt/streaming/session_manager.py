@@ -67,6 +67,7 @@ from stt.streaming.schemas import (
 )
 from stt.streaming.semantic_endpointer import SemanticEndpointer
 from stt.streaming.session import StreamSession
+from stt.streaming.usage_segments import EngineUsageAccumulator
 
 logger = structlog.get_logger(__name__)
 
@@ -228,6 +229,13 @@ class SessionManager:
         # via `resolve_usage_attribution` — the same function batch completion
         # uses, so the two paths can never drift.
         self._session_asr_formats: dict[str, AiModelFormat] = {}
+        # TASK-874 — per-session ENGINE-TIME accounting. `_session_asr_formats`
+        # above is a single slot holding whichever engine loaded LAST, so on its
+        # own it bills a switched session entirely to the engine that finished.
+        # This records a span per live engine instead, and the teardown summary
+        # carries them as `segments` — one ledger row each, funding derived from
+        # the credential row that actually served that span.
+        self._session_usage_segments: dict[str, EngineUsageAccumulator] = {}
         self._publishers: dict[str, ResultPublisher] = {}
         self._preprocessors: dict[str, StreamingPreprocessor] = {}
         self._inference_workers: dict[str, StreamingInferenceWorker] = {}
@@ -1153,6 +1161,13 @@ class SessionManager:
             self._publishers[session_id] = publisher
             self._preprocessors[session_id] = preprocessor
             self._inference_workers[session_id] = inference_worker
+            # TASK-874 — open the first engine-time span on whatever
+            # `_assemble_session_runtime` actually loaded. That is the primary
+            # normally, and the FALLBACK on both create-time-fallback paths
+            # (user-selected `start_on`, or a primary that failed to load), so a
+            # session that opened on the fallback bills its whole first span to
+            # the fallback rather than to an engine that never ran.
+            self._start_usage_segments(session_id)
 
             # Per-session commit policy (off by default)
             commit_policy = self._make_commit_policy(pipeline_config)
@@ -1335,6 +1350,12 @@ class SessionManager:
                 # second update path: any divergence attributes utterances to
                 # the wrong engine, which is worse than no attribution.
                 worker._active_pipeline_id = pipeline_id
+            # TASK-874 — the engine-TIME span boundary belongs in this same
+            # synchronous body, and for the same reason: this is the instant the
+            # live engine changes. Placing it at the earlier `_load_asr_pipeline`
+            # stamp would close the outgoing engine's span for a fallback build
+            # that then raises and never takes over (selection is fail-closed).
+            self._advance_usage_segments(session_id)
 
         async def _publish(
             from_pipeline: str,
@@ -1376,6 +1397,39 @@ class SessionManager:
             publish_switch=_publish,
             **governance,
         )
+
+    def _session_audio_seconds(self, session_id: str) -> float:
+        """Decoded audio seconds ingested so far — the span boundary marker."""
+        session = self._sessions.get(session_id)
+        return session.total_duration_seconds if session is not None else 0.0
+
+    def _start_usage_segments(
+        self, session_id: str, asr_format: Any | None = None, **kwargs: Any
+    ) -> None:
+        """Open the first engine-time span for a session (TASK-874).
+
+        Defaults to whatever `_load_asr_pipeline` stamped — the single source of
+        truth for the live engine — so the caller never has to re-derive it.
+
+        A session with no resolved ASR format gets no accumulator: the teardown
+        summary then reports no engine and the gateway emits nothing, exactly as
+        it does today for a session that failed before load.
+        """
+        if asr_format is None:
+            asr_format = self._session_asr_formats.get(session_id)
+        if asr_format is None:
+            return
+        self._session_usage_segments[session_id] = EngineUsageAccumulator(
+            asr_format, audio_seconds=self._session_audio_seconds(session_id), **kwargs
+        )
+
+    def _advance_usage_segments(self, session_id: str) -> None:
+        """Close the live engine's span and open one on the engine now serving."""
+        accumulator = self._session_usage_segments.get(session_id)
+        asr_format = self._session_asr_formats.get(session_id)
+        if accumulator is None or asr_format is None:
+            return
+        accumulator.switch_to(asr_format, audio_seconds=self._session_audio_seconds(session_id))
 
     async def _build_fallback_asr_callable(
         self,
@@ -1535,6 +1589,7 @@ class SessionManager:
         # runs (see `_finalize_session_locked`), so dropping the tracking dict
         # here is safe cleanup, not a lost read.
         self._session_asr_formats.pop(session_id, None)
+        self._session_usage_segments.pop(session_id, None)
         # Drop the per-session finalize lock (a queued waiter
         # already holds its own reference and will no-op on the CLOSED guard).
         self._finalize_locks.pop(session_id, None)
@@ -3725,17 +3780,52 @@ class SessionManager:
         guessed, exactly like the batch path's ``resolve_usage_attribution``
         (which this reuses, so the two can never drift on the AZURE_SPEECH
         spelling trap or any other provider mapping).
+
+        ``segments`` is the TASK-874 per-engine breakdown: one entry per
+        ``(engine, deployment)`` pair that actually served, each with its own
+        audio and wall-clock seconds, so a session that failed over to the
+        platform fallback bills BOTH engines for the time each ran instead of
+        billing all of it to whichever finished. It is ADDITIVE — the scalars
+        above are unchanged, so an un-upgraded gateway meters exactly as before
+        — and its entries sum to ``audio_seconds``/``session_seconds`` exactly.
         """
         from stt.core.metrics import record_streaming_teardown
         from stt.transcription.batch_service import resolve_usage_attribution
 
+        overrides = self._provider_overrides.get(session.session_id)
         asr_format = self._session_asr_formats.get(session.session_id)
         engine: str | None = None
         deployment: str | None = None
         if asr_format is not None:
-            engine, deployment = resolve_usage_attribution(
-                asr_format, self._provider_overrides.get(session.session_id)
-            )
+            engine, deployment = resolve_usage_attribution(asr_format, overrides)
+
+        audio_seconds = session.total_duration_seconds
+        session_seconds = self._compute_session_seconds(session)
+        accumulator = self._session_usage_segments.get(session.session_id)
+        if accumulator is not None:
+            segments = [
+                segment.to_dict()
+                for segment in accumulator.close(
+                    audio_seconds=audio_seconds,
+                    total_audio_seconds=audio_seconds,
+                    total_session_seconds=session_seconds,
+                    resolve=lambda fmt: resolve_usage_attribution(fmt, overrides),
+                )
+            ]
+        elif engine is not None and deployment is not None:
+            # No accumulator: a RECOVERED session (crash restart), which builds
+            # no switch controller and so cannot change engines. One segment
+            # equal to the whole session is exact, not a degradation.
+            segments = [
+                {
+                    "engine": engine,
+                    "deployment": deployment,
+                    "audio_seconds": audio_seconds,
+                    "session_seconds": session_seconds,
+                }
+            ]
+        else:
+            segments = []
 
         # The streaming audio-duration histogram + real-time
         # factor the current-state review flagged as missing (batch has
@@ -3751,7 +3841,7 @@ class SessionManager:
             pipeline=session.pipeline_id,
             engine=engine or "unknown",
             status="closed",
-            audio_seconds=session.total_duration_seconds,
+            audio_seconds=audio_seconds,
             processing_seconds=processing_seconds,
         )
 
@@ -3765,10 +3855,11 @@ class SessionManager:
             # "now" only in the defensive case `close()` somehow left it unset
             # (should not happen; never worth blocking teardown over).
             "closed_at": session.metadata.closed_at or datetime.utcnow().isoformat(),
-            "audio_seconds": session.total_duration_seconds,
-            "session_seconds": self._compute_session_seconds(session),
+            "audio_seconds": audio_seconds,
+            "session_seconds": session_seconds,
             "engine": engine,
             "deployment": deployment,
+            "segments": segments,
             "language_mode": self._session_language_modes.get(session.session_id),
             "channel_count": self._session_channel_counts.get(session.session_id, 1),
         }
