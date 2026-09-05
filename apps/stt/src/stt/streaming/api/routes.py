@@ -142,6 +142,7 @@ async def create_streaming_session(
             consecutive_failure_threshold=request.consecutive_failure_threshold,
             channel_count=request.channel_count,
             resolved_spec=request.resolved_spec,
+            voice_profiles=request.voice_profiles,
         )
     except SessionManagerDrainingError as exc:
         # PLANNED scale-down — distinct from

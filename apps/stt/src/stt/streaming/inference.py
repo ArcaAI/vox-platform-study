@@ -847,15 +847,14 @@ class StreamingInferenceWorker:
             return None
 
         try:
-            # Honor the per-pipeline embedding service
-            # when the session assembly injected one; the settings singleton is
-            # only the fallback (the per-pipeline model previously reached only
-            # the segmentation-refinement path, not this primary extraction).
+            # TASK-887 — the session's own embedding service, or nothing. The settings
+            # singleton that used to stand in here embedded into a space no agent had
+            # chosen and no enrolled profile need live in; a session with embedding
+            # diarization on always carries one (`buildResolvedAsrSpec` refuses an agent
+            # that enables it without naming a model).
             emb_service = self._embedding_service
             if emb_service is None:
-                from stt.diarization.embedding_service import get_embedding_service
-
-                emb_service = get_embedding_service()
+                return None
             # Limit to first 5s for embedding quality
             max_samples = int(5.0 * utterance.sample_rate)
             samples = utterance.samples[:max_samples]

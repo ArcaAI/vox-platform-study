@@ -71,6 +71,42 @@ from .preprocessing import get_preprocessor
 logger = logging.getLogger(__name__)
 
 
+def _embedding_slug(pipeline_config: PipelineConfig | None) -> str | None:
+    """The registry SLUG of the job's speaker-embedding model, or ``None``.
+
+    TASK-887 — the slug is the identity a ``UserVoiceProfile.modelId`` is compared against,
+    so it decides which enrolled profiles belong to this job's vector space.
+    """
+    ref = getattr(getattr(pipeline_config, "spec", None), "models", None)
+    embedding = getattr(ref, "embedding", None) if ref is not None else None
+    slug = getattr(embedding, "slug", None) if embedding is not None else None
+    return str(slug) if slug else None
+
+
+def _embedding_model_id(
+    pipeline_config: PipelineConfig | None,
+    model_configs: dict[str, AiModelConfig] | None,
+) -> str | None:
+    """The LOADER id of the job's speaker-embedding model: INLINE hf id, else the slug's row.
+
+    TASK-880 closed this gap for streaming and left the batch path reading INLINE refs only,
+    while `pipeline_spec_from_resolved` emits a SLUG ref for every agent — so every agent job
+    silently fell through to the platform singleton. TASK-887 deleted that singleton, so the
+    slug branch is now the only way an agent job diarizes at all. The bundle already carries
+    the resolved row, so this adds no database read.
+    """
+    ref = getattr(getattr(pipeline_config, "spec", None), "models", None)
+    embedding = getattr(ref, "embedding", None) if ref is not None else None
+    if embedding is None:
+        return None
+    if getattr(embedding, "is_inline", False) and embedding.inline:
+        return str(embedding.inline.hf_model_id)
+    slug = getattr(embedding, "slug", None)
+    row = (model_configs or {}).get(slug) if slug else None
+    source_uri = getattr(row, "source_uri", None) if row is not None else None
+    return str(source_uri) if source_uri else None
+
+
 def _resolve_chunking(config: Any) -> tuple[float, int, int]:
     """``(chunk_length_s, stride_left, stride_right)`` for a batch inference run.
 
@@ -273,6 +309,7 @@ class BatchTranscriptionService:
         user_id: str | None = None,
         provider_overrides: dict[str, Any] | None = None,
         model_configs: dict[str, AiModelConfig] | None = None,
+        voice_profiles: list[dict[str, Any]] | None = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio file with optional speaker diarization.
@@ -298,6 +335,13 @@ class BatchTranscriptionService:
             consultation_id: Optional consultation context for diarization
             chunk_callback: Optional callback invoked after each sliding-window
                 chunk is transcribed, enabling near-real-time partial results.
+            user_id: Optional authenticated user ID. Kept on the worker→service contract;
+                since TASK-887 diarization labels come from the gateway-resolved
+                ``voice_profiles`` rather than from a user lookup performed here.
+            voice_profiles: TASK-887 — the end-user's ENROLLED voice profiles, already
+                filtered by the gateway to the agent's speaker-embedding model. Seeded on
+                the speaker tracker so a matched segment carries the enrolled label;
+                everything else stays ``Speaker N``.
 
         Returns:
             TranscriptionResult with timing metrics in metadata["timing"]
@@ -371,24 +415,18 @@ class BatchTranscriptionService:
                     from ..diarization.speaker_identifier import SpeakerIdentifier
                     from ..diarization.speaker_tracker import SpeakerTracker
 
-                    hf_model_id: str | None = None
-                    if pipeline_config.spec.models.embedding:
-                        diar_ref = pipeline_config.spec.models.embedding
-                        if diar_ref.is_inline and diar_ref.inline:
-                            hf_model_id = diar_ref.inline.hf_model_id
-
-                    if hf_model_id:
-                        logger.info(
-                            "[%s] Using pipeline diarization model: %s", job_id, hf_model_id
-                        )
-                        emb_service = create_embedding_service(
-                            hf_model_id=hf_model_id,
-                        )
-                        await emb_service.initialize()
-                    else:
-                        from ..diarization.embedding_service import get_embedding_service
-
-                        emb_service = get_embedding_service()
+                    embedding_slug = _embedding_slug(pipeline_config)
+                    hf_model_id = _embedding_model_id(pipeline_config, model_configs)
+                    if not hf_model_id:
+                        # TASK-887 — fail closed. The platform singleton that used to serve
+                        # here embedded into a space no agent had chosen, so its matches were
+                        # meaningless; `buildResolvedAsrSpec` refuses an agent that enables
+                        # embedding diarization without naming a model, so reaching this is a
+                        # deprecated-pipeline job.
+                        raise ValueError("no speaker-embedding model is bound to this job")
+                    logger.info("[%s] Using agent diarization model: %s", job_id, hf_model_id)
+                    emb_service = create_embedding_service(hf_model_id=hf_model_id)
+                    await emb_service.initialize()
 
                     seg_service = None
                     if spec.diarization.enable_segmentation_refinement:
@@ -412,13 +450,7 @@ class BatchTranscriptionService:
                         max_speakers=spec.diarization.max_speakers,
                         max_embeddings_per_speaker=spec.diarization.max_embeddings_per_speaker,
                     )
-                    if consultation_id or user_id:
-                        await self._preseed_speaker(
-                            tracker,
-                            consultation_id,
-                            tenant_id,
-                            user_id=user_id,
-                        )
+                    self._seed_voice_profiles(tracker, voice_profiles, embedding_slug, job_id)
                     inline_identifier = SpeakerIdentifier(
                         tracker=tracker,
                         embedding_service=emb_service,
@@ -607,7 +639,8 @@ class BatchTranscriptionService:
                         consultation_id,
                         spec.diarization,
                         pipeline_config,
-                        user_id=user_id,
+                        model_configs=model_configs,
+                        voice_profiles=voice_profiles,
                     )
                     if diarization_segments is not raw_result.segments:
                         self._attach_speaker_metadata_to_segments(
@@ -733,22 +766,24 @@ class BatchTranscriptionService:
                 except Exception:
                     logger.warning("[%s] Failed to unpin pipeline models", job_id, exc_info=True)
 
-    async def _preseed_speaker(
-        self,
+    @staticmethod
+    def _seed_voice_profiles(
         tracker: Any,
-        consultation_id: str | None,
-        tenant_id: str | None = None,
-        *,
-        user_id: str | None = None,
-    ) -> None:
-        from ..diarization.preseed import preseed_speaker
+        voice_profiles: list[dict[str, Any]] | None,
+        model_slug: str | None,
+        log_context: str | None,
+    ) -> dict[str, object]:
+        """Register the job's gateway-pushed voice profiles on ``tracker``.
 
-        await preseed_speaker(
-            tracker,
-            consultation_id,
-            tenant_id=tenant_id,
-            log_context=consultation_id,
-            user_id=user_id,
+        TASK-887 — replaced ``_preseed_speaker``, which read the consultation's doctor and
+        their embedding straight out of Postgres. The gateway resolves the profiles for the
+        job's user, filtered to the agent's embedding model, and pushes them on the Dramatiq
+        message; nothing here touches a database.
+        """
+        from ..diarization.preseed import seed_voice_profiles
+
+        return seed_voice_profiles(
+            tracker, voice_profiles, model_slug=model_slug, log_context=log_context
         )
 
     async def _run_diarization(
@@ -760,12 +795,14 @@ class BatchTranscriptionService:
         consultation_id: str | None,
         config: Any,
         pipeline_config: PipelineConfig | None = None,
-        user_id: str | None = None,
+        model_configs: dict[str, AiModelConfig] | None = None,
+        voice_profiles: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Run speaker diarization on transcription segments.
 
-        Uses the pipeline-defined diarization model when available,
-        otherwise falls back to the default singleton embedding service.
+        TASK-887 — the embedding model is the AGENT's (``ResolvedAsrSpec.models.embedding``),
+        resolved from the job's pre-resolved ``model_configs`` when the ref is a slug. There is
+        no singleton fallback: without a bound model there is no space to diarize in.
 
         Returns metadata dict with speaker info.
         """
@@ -773,23 +810,14 @@ class BatchTranscriptionService:
         from ..diarization.speaker_identifier import SpeakerIdentifier
         from ..diarization.speaker_tracker import SpeakerTracker
 
-        hf_model_id: str | None = None
-        if pipeline_config and pipeline_config.spec.models.embedding:
-            diar_ref = pipeline_config.spec.models.embedding
-            if diar_ref.is_inline and diar_ref.inline:
-                hf_model_id = diar_ref.inline.hf_model_id
-
-        if hf_model_id:
-            # Pipeline-specific embedding service
-            logger.info("Using pipeline diarization model: %s", hf_model_id)
-            emb_service = create_embedding_service(
-                hf_model_id=hf_model_id,
-            )
-            await emb_service.initialize()
-        else:
-            from ..diarization.embedding_service import get_embedding_service
-
-            emb_service = get_embedding_service()
+        embedding_slug = _embedding_slug(pipeline_config)
+        hf_model_id = _embedding_model_id(pipeline_config, model_configs)
+        if not hf_model_id:
+            logger.warning("No speaker-embedding model is bound; skipping diarization")
+            return {}
+        logger.info("Using agent diarization model: %s", hf_model_id)
+        emb_service = create_embedding_service(hf_model_id=hf_model_id)
+        await emb_service.initialize()
 
         seg_service = None
         if config.enable_segmentation_refinement:
@@ -814,13 +842,7 @@ class BatchTranscriptionService:
             max_speakers=config.max_speakers,
             max_embeddings_per_speaker=config.max_embeddings_per_speaker,
         )
-        if consultation_id or user_id:
-            await self._preseed_speaker(
-                tracker,
-                consultation_id,
-                tenant_id,
-                user_id=user_id,
-            )
+        self._seed_voice_profiles(tracker, voice_profiles, embedding_slug, consultation_id)
         identifier = SpeakerIdentifier(
             tracker=tracker,
             embedding_service=emb_service,

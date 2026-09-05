@@ -279,14 +279,39 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
             level: Object.freeze({ type: 'string', enum: Object.freeze(['off', 'low', 'medium', 'high']) }),
           }),
         }),
+        // TASK-887 (owner decision, target model item 8) — diarization is a DECLARED agent
+        // option, OFF by default. The agent names the speaker-embedding model, and that model
+        // IS the space enrolled `UserVoiceProfile` rows live in; there is no platform
+        // `stt.diarization.hfModelId` behind it any more. With `backend: 'embedding'` and
+        // `enabled: true`, `embeddingModelSlug` is REQUIRED in practice —
+        // `buildResolvedAsrSpec` refuses the spec (409 `ASR_AGENT_DIARIZATION_MODEL_MISSING`)
+        // rather than silently substituting one, because model SELECTION fails closed.
         diarization: Object.freeze({
           type: 'object',
           additionalProperties: false,
           properties: Object.freeze({
-            enabled: Object.freeze({ type: 'boolean' }),
-            backend: Object.freeze({ type: 'string', enum: Object.freeze(['embedding', 'sortformer']) }),
-            embeddingModelSlug: Object.freeze({ ...MODEL_SLUG_PROPERTY, description: 'Registry slug of a `SPEAKER_EMBEDDING` model.' }),
+            enabled: Object.freeze({ type: 'boolean', default: false }),
+            backend: Object.freeze({ type: 'string', enum: Object.freeze(['embedding', 'sortformer']), default: 'embedding' }),
+            embeddingModelSlug: Object.freeze({
+              ...MODEL_SLUG_PROPERTY,
+              // `modelTaskType` is an ANNOTATION, not a validation keyword: it tells an editor
+              // which registry rows are selectable here so the admin picks from the tenant's
+              // `SPEAKER_EMBEDDING` catalogue instead of typing a slug. Unknown keywords are
+              // ignored by `jsonSchemaValueProblems`, and it is not a property NAME, so
+              // `forbiddenSchemaKeyProblems` does not see it either.
+              modelTaskType: 'SPEAKER_EMBEDDING',
+              description:
+                'Registry slug of a `SPEAKER_EMBEDDING` model — the vector space this agent diarizes in AND the space its users enroll their voice profiles in. Required when diarization is enabled with the `embedding` backend.',
+            }),
             maxSpeakers: Object.freeze({ type: 'integer', minimum: 1, maximum: 16 }),
+            matchThreshold: Object.freeze({
+              type: 'number',
+              minimum: 0,
+              maximum: 1,
+              default: 0.6,
+              description:
+                'TASK-887 — cosine floor for attaching an ENROLLED voice profile\u2019s label to a segment, and the cross-sample consistency floor enrollment must clear. Replaces the platform key `stt.voiceProfile.minSimilarity`. Below it the segment is labelled generically (`Speaker N`); a real clinician name is never attached on a weak match. Optional; the runtime keeps its own default when absent.',
+            }),
           }),
         }),
         resample: Object.freeze({ type: 'boolean' }),

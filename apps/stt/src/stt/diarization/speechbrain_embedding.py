@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class SpeechBrainEmbeddingService(EmbeddingService):
     """Speaker embeddings via SpeechBrain EncoderClassifier."""
 
-    def __init__(self, hf_model_id: str | None = None) -> None:
+    def __init__(self, hf_model_id: str) -> None:
         super().__init__(hf_model_id)
         self._classifier: Any = None
 

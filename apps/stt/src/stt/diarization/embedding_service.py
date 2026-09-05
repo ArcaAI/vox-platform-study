@@ -6,8 +6,9 @@ Subclasses only implement model loading and raw inference dispatch.
 - ``PyannoteEmbeddingService``: see ``pyannote_embedding.py``
 - ``SpeechBrainEmbeddingService``: see ``speechbrain_embedding.py``
 
-Use ``create_embedding_service()`` to get the right implementation
-based on the HuggingFace model ID prefix.
+Use ``create_embedding_service(hf_model_id)`` to get the right implementation
+based on the HuggingFace model ID prefix. There is no singleton: the model is
+declared by the ASR agent (TASK-887), never by the process.
 """
 
 import asyncio
@@ -90,7 +91,7 @@ class EmbeddingService(ABC):
     Subclasses implement ``_load_model_sync`` and ``_run_inference_sync``.
     """
 
-    def __init__(self, hf_model_id: str | None = None) -> None:
+    def __init__(self, hf_model_id: str) -> None:
         self._hf_model_id = hf_model_id
         self._loaded = False
         self._lock = threading.Lock()
@@ -119,9 +120,18 @@ class EmbeddingService(ABC):
     def _do_load(self) -> None:
         if self._loaded:
             return
-        settings = get_settings()
-        model_id = self._hf_model_id or settings.diarization_hf_model_id
-        self._load_model_sync(model_id, settings)
+        # TASK-887 — the model is whatever the caller was HANDED: an agent's
+        # `models.embedding` for a session, or the model the gateway pushed with an
+        # enrollment request. There is no `settings.diarization_hf_model_id` to fall back
+        # to any more, and substituting one would silently embed into a space no enrolled
+        # profile lives in.
+        if not self._hf_model_id:
+            raise EmbeddingExtractionError(
+                "No speaker-embedding model was supplied. Diarization is a declared ASR-agent "
+                "option: the model comes from the agent's "
+                "`audioFrontEnd.diarization.embeddingModelSlug`."
+            )
+        self._load_model_sync(self._hf_model_id, get_settings())
         self._loaded = True
 
     @abstractmethod
@@ -256,37 +266,30 @@ class EmbeddingService(ABC):
 
 
 # ---------------------------------------------------------------------------
-# Factory + singleton
+# Factory
 # ---------------------------------------------------------------------------
 
 _SPEECHBRAIN_PREFIXES = ("speechbrain/",)
 
 
-def create_embedding_service(
-    hf_model_id: str | None = None,
-) -> EmbeddingService:
-    """Create the right EmbeddingService based on model ID prefix.
+def create_embedding_service(hf_model_id: str) -> EmbeddingService:
+    """Create the right EmbeddingService for ``hf_model_id``.
 
     - ``speechbrain/*`` -> ``SpeechBrainEmbeddingService``
     - anything else -> ``PyannoteEmbeddingService``
+
+    TASK-887 — ``hf_model_id`` is REQUIRED and there is no ``get_embedding_service()``
+    singleton behind it. A process-wide embedding model only made sense while the platform
+    declared ONE embedding space; the agent declares it now, per session, and an enrolled
+    ``UserVoiceProfile`` records the model that produced it. Every caller therefore holds a
+    model reference before it holds a service: the session manager caches one service per
+    ``ResolvedAsrSpec.models.embedding``, and the enrollment endpoint builds one from the
+    model the gateway pushed.
     """
-    if hf_model_id and hf_model_id.startswith("speechbrain/"):
+    if hf_model_id.startswith("speechbrain/"):
         from .speechbrain_embedding import SpeechBrainEmbeddingService
 
         return SpeechBrainEmbeddingService(hf_model_id=hf_model_id)
-    else:
-        from .pyannote_embedding import PyannoteEmbeddingService
+    from .pyannote_embedding import PyannoteEmbeddingService
 
-        return PyannoteEmbeddingService(hf_model_id=hf_model_id)
-
-
-_service: EmbeddingService | None = None
-
-
-def get_embedding_service() -> EmbeddingService:
-    """Get singleton embedding service (uses settings-based model)."""
-    global _service
-    if _service is None:
-        settings = get_settings()
-        _service = create_embedding_service(hf_model_id=settings.diarization_hf_model_id)
-    return _service
+    return PyannoteEmbeddingService(hf_model_id=hf_model_id)
