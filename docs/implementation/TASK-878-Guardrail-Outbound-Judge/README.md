@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Completed (lane; the merge into `dev-2.2` is the orchestrator's) |
 | **Type** | feature (safety) + refactor (configuration) |
 | **Program** | TASK-870 wave 2, lane C |
 | **Branch** | `task-878-guardrail-outbound-judge` (base `030df76b5` off `dev-2.2`) |
@@ -186,10 +186,271 @@ File order: `screening.py` → `external_nlp_client.py` + `safety_analyzer.py` �
 
 ## Implementation Summary
 
-_(filled on completion)_
+Three commits on top of `030df76b5`.
+
+| Commit | What |
+|---|---|
+| `12179b3f3` | Ticket opened: current-state evaluation, the G3 decision, the two-tier home for the judge values |
+| `4ca9bcd63` | The guardrail service: G1, G2, and both configuration moves |
+| `46cdd658f` | The descriptor + registry spread + its test, the seed row, and the two cross-service pins in `apps/text` |
+
+### G1 — `jailbreak_detection` on the outbound direction
+
+`services/screening.py:66-77` appends it to `OUTBOUND_TASKS`. Nothing else was
+needed: `_DECLARED_FAIL_MODES` (`:81-86`) already merges both task tuples, so the
+check inherits the fail-CLOSED posture, and `_classify` (`:199`) already sends the
+whole tuple in ONE delegated `classify`. Appended rather than prepended so
+`reasons[0]` — the label `apps/text` reports on a rejection — keeps naming
+`response_safety` for every rejection that already had it.
+
+A taxonomy that does not declare the task yields `skipped/not_in_taxonomy`, not a
+block (`screening.py:222-235`, pinned by
+`test_a_taxonomy_without_the_task_reports_skipped_rather_than_blocking`). So the
+change is inert until a tenant's `guardrail.safety` row declares the task — which
+the SYSTEM row already does, since the same name is `INBOUND_TASKS[0]`.
+
+### Cycle-safety evidence (the `text -> guardrail -> text` tripwire)
+
+Two independent layers, each with a test:
+
+1. **Guardrail's composition, statically and at runtime.** The check is a
+   classification dispatched through `Screener._classify` → `SafetyAnalyzer` →
+   `NlpGuardClient`. `test_the_outbound_jailbreak_check_is_a_classification_not_a_judgement`
+   asserts `services/screening.py` names none of `TextJudgeClient`,
+   `external_text_client`, `generate/internal/judge`, and that `_classify`'s only
+   executor is `self._analyzer.classify_tasks`;
+   `test_build_screener_binds_no_judge_client_for_the_jailbreak_check` builds a
+   real screener from a taxonomy that DOES declare `jailbreak_detection` and
+   asserts both bound clients are `NlpGuardClient` and neither is a
+   `TextJudgeClient`. (The pre-existing `test_task799_outbound_screen_boundary.py`
+   asserts the same boundary for the PHI-egress reason; these say it for the
+   cycle reason, on the task this ticket added.)
+2. **`apps/text`'s tripwire, unchanged and still first.**
+   `test_task878_guardrail_outbound.py::test_the_gate_raises_inside_a_judge_scope_before_calling_guardrail`
+   drives `gate_completion` inside `judge_scope()` with a client whose verdict
+   BLOCKS on `jailbreak_detection`, and asserts `GuardrailRecursionError` is
+   raised and `screen_output` was never awaited. The companion test proves the
+   tripwire is scoped, not a blanket disable.
+
+So the loop is broken twice: guardrail cannot reach `apps/text` from the outbound
+screen, and if a future change made it able to, the judge completion it produced
+would raise on the first request rather than close the cycle.
+
+### G2 — `usage_detail` on `ScreenResponse`
+
+| File | Change |
+|---|---|
+| `services/external_nlp_client.py:175-181,187-197,226-229` | `last_usage_detail` + `record_usage_detail`, and `_post` lifts `usage_detail` off any successful peer payload. VERBATIM, never re-derived; anything that is not a non-empty dict is ignored |
+| `services/safety_analyzer.py:145-159` | `usage_detail()` — the seam the screener reads, first non-empty of the two bound clients |
+| `services/screening.py:140-146,201-216,289` | `GuardrailDecision.usage_detail` (+ `to_dict()["usageDetail"]`), collected in `_finish`. Guarded: an analyzer without the seam, or one that raises, costs the caller its billing row and never its decision |
+| `api/endpoints/screen.py:74-83,98` | `ScreenResponse.usage_detail`, mapped in `_to_response` — so BOTH screen routes carry it |
+
+`apps/text` needed no change: `guardrail_usage_from_verdict` (`models/usage.py:366`)
+already prefers `raw.usage_detail`, and TASK-871's `gate_completion` already lifts
+it before the allow/deny branch. `test_task878_guardrail_outbound.py` pins the
+meeting point in both directions — an allowed screen returns the `UsageDetail` to
+the call site, a rejected one carries it on `OutputRejectedError.guardrail_usage`.
+
+**Stated plainly, and it is in the code comments too: the outbound screen meters
+nothing today.** Its executor is `apps/nlp`, which runs local weights and returns
+`{results, scores, model_version}`. The field is therefore `null` on today's
+outbound path — deliberately `null` and never `{}` or zeros. This is a wire
+channel with no current producer, not the declared-but-unread ADMIN CONTROL that
+`core/policy.py:86-95` and TASK-872 removed; the producer side is real and tested
+(`test_the_nlp_client_forwards_a_peer_usage_block_verbatim`), so any delegated
+executor that starts metering rides back with no further change on either side.
+
+### G3 — decision (b): the input gate stays on `/api/medical/validate`
+
+Recorded in full under §Design Decisions. In one line: **a nonce without an
+envelope makes `containment_echo` structurally always-pass**, which is a false
+green rather than an honest `skipped`, so option (a) is not a URL swap — it
+requires `apps/text` to send guardrail's `envelope` in place of its own prompt,
+and would additionally delete the medical-context gate and silence the input-side
+`guardrail_usage`. No code changed for G3; the prerequisite for revisiting it is
+"`apps/text` sends the envelope", not "`apps/text` sends a nonce".
+
+### B — the judge's three values
+
+| File | Change |
+|---|---|
+| `core/config.py:10-45` | `JudgePolicy.temperature` / `.max_tokens` / `.timeout_s` DELETED; the docstring records where each went and why `min_confidence`, `max_attempts`, `retry_backoff_s` and `max_input_chars` stay |
+| `core/policy.py:59-79,186-217,240-247` | `judgeTemperature` / `judgeMaxTokens` as fail-CLOSED `_SPECS` entries with bounds; `require_number` (the numeric twin of `require_criteria` — absence, wrong type and out-of-range all raise, because a fail-closed key has nothing to clamp toward); `judge_temperature` / `judge_max_tokens` accessors |
+| `services/external_text_client.py:117-127,155-157` | `temperature`, `max_tokens`, `timeout_s` are now REQUIRED keyword args, exactly like `criteria` and `tenant_id` and for the same reason: a client that cannot be built cannot render an unattributable verdict |
+| `core/tenant_config.py:843,856-869,896-906` | `build_judge_client` resolves both hyperparameters off the row's `_metadata.policy` and takes the platform `judge_timeout_s`. Precedence UNCHANGED — the winning `AiRoutingPolicy.configJson` tuning still wins where it carries one; what moved is what it falls back TO |
+| `core/effective_config.py:48-53,109-122` | `DEFAULT_JUDGE_TIMEOUT_S = 60.0` (one definition site, mirroring the descriptor's `default`) and `EffectiveConfigSnapshot.judge_timeout_s()` — a value that is not a positive number is treated as no opinion rather than obeyed |
+| `core/dependencies.py:169,195-223,345-353,375,430-450,652-656` | `resolve_judge_timeout_s` (never raises; a config-plane outage keeps the declared default, the posture `_groundedness_gate` already states) and its three call sites. `JudgePolicy.timeout_s` had TWO readers — the judge client AND `_nlp_client`'s fallback — and both now read this one key, because both are the same question |
+| `api/endpoints/medical.py:206-233` | `GET /medical/config` no longer reports the three moved values as process-wide facts; it reports WHERE each resolves, which is what an operator asking a process-wide route actually needs |
+| `descriptors/guardrail-judge.descriptors.ts` (new) + `registry.ts:19,80` | `guardrail.judge.timeoutSeconds` — `global-kv`, `system`, `globalOnly`, `open-to-default` at 60, `consumedBy: ['guardrail']`, category `Guardrail Policy`. Exactly ONE spread line added to `registry.ts` (plus its import), replacing the comment that reserved the slot |
+| `seed/ai-models/llm.ts:100-123` | The SYSTEM `granite-guardian-4.1-8b` row's `metaData.policy` gains `judgeTemperature: 0.05` and `judgeMaxTokens: 300` — the deleted literals transcribed verbatim, so the move changed no behaviour. Propagated by `seedAiModels`' full-column `update`, so an existing dev DB converges on `db:seed` |
+
+**Behaviour change, deliberate and fail-closed:** a `guardrail.validate` selection
+whose model row carries no `judgeTemperature` / `judgeMaxTokens` now makes
+`POST /api/medical/validate` answer **503** instead of judging at a hardcoded
+temperature. That is the declared posture for a `failMode: closed` key, it is the
+same 503 an unseeded `medicalValidationCriteria` already produced, and `db:seed`
+supplies both values for the platform default row.
+
+### Files changed
+
+`apps/guardrail`: `services/{screening,external_nlp_client,safety_analyzer,external_text_client}.py`,
+`api/endpoints/{screen,medical}.py`, `core/{config,policy,tenant_config,dependencies,effective_config}.py`;
+tests `test_task878_outbound_judge.py` (NEW, 32) plus fixture updates in
+`test_{fail_closed_safety_posture,medical_db_config,metrics_task386,task777_policy_plane,task799_lane_d_guardrail,tenant_config,tenant_config_runtime_profile,text_judge_delegation,usage_metering_task615}.py`.
+`apps/text`: `tests/unit/test_task878_guardrail_outbound.py` (NEW, 6) — **no production file changed**.
+`packages/applications`: `descriptors/guardrail-judge.descriptors.ts` (NEW),
+`__tests__/guardrail-judge.descriptors.test.ts` (NEW), `registry.ts` (one import + one spread).
+`packages/database`: `seed/ai-models/llm.ts`, `seed/__tests__/task-777-guardrail-policy-seed.test.ts`.
+
+### Disclosures
+
+- **`seed/ai-models/llm.ts`, not `seed/06-ai-models.ts` itself.** The lane owns
+  "`06-ai-models.ts` and its seed tests"; the guardian row lives in the
+  `ai-models/` split that file re-exports. No other wave-2 lane touches any seed.
+- **`apps/text` gained a test file and no production code.** The brief scoped the
+  three `apps/text` files "only as far as the nonce handshake requires", and G3
+  chose (b), so it required nothing. The new file exists because the two contracts
+  it pins — the judge tripwire and the usage ride-back — are only assertable from
+  this side.
+- **One pre-existing ruff finding fixed in passing**: a trailing space at
+  `core/policy.py` (`# groundedness `), present at base `030df76b5` and the ONLY
+  ruff error in `apps/guardrail` there. One character, no behaviour; fixed so this
+  lane's `guardrail:lint` gate is reportable rather than red-at-baseline.
+- **`injectionScreeningCriteria` is still declared with no reader** in
+  `core/policy.py:58`, exactly as before. It is out of this lane's scope and is
+  reported for the program rather than fixed: it is the same
+  declared-but-unread shape TASK-872 removed elsewhere, and the choice is either
+  to wire an inbound LLM second opinion or to drop the key.
+- Black: the two files this lane made newly unformatted were formatted. Three
+  files it edits (`core/tenant_config.py`, `services/safety_analyzer.py`,
+  `tests/test_tenant_config.py`) were ALREADY unformatted at base and were left as
+  found, along with the other seven pre-existing findings in `apps/guardrail`.
+
+### Verification evidence
+
+Worktree `hope-v2-task-878`, HEAD `46cdd658f`, base `030df76b5`.
+
+**Step 0 — the worktree source guard resolves IN THIS TREE** (rule 14 §4). Both
+Python suites carry `assert_source_tree` in their `conftest.py` and would abort
+with zero tests collected otherwise; the resolved paths, printed through
+`apps/guardrail/pyproject.toml`'s own `pythonpath`:
+
+```
+guardrail            -> /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-878/apps/guardrail/src/guardrail/__init__.py
+hope_env             -> /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-878/packages/py-env/src/hope_env/__init__.py
+hope_runtime_models  -> /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-878/packages/py-runtime-models/src/hope_runtime_models/__init__.py
+```
+
+**TDD — RED before GREEN.** `test_task878_outbound_judge.py` written first, against
+the base implementation:
+
+```
+27 failed, 5 passed in 0.50s
+```
+
+The 5 that passed are behaviour-preservation pins (the leading task order, both
+cycle-safety assertions, and the not-in-taxonomy skip), which is what they are for.
+After the implementation: `32 passed in 0.31s`.
+
+The six `apps/text` tests were GREEN on arrival and are declared as such: G3 chose
+option (b), so no `apps/text` production code changed. They are contract pins
+across the service boundary — they fail if either side drifts (guardrail dropping
+`usage_detail`, or `apps/text` losing the judge tripwire), which is the only place
+that contract can be asserted.
+
+**`pnpm guardrail:test`** — 426 baseline + 32 new:
+
+```
+============================= 458 passed in 10.39s =============================
+```
+
+**`pnpm guardrail:lint`** (ruff):
+
+```
+All checks passed!
+```
+
+**`pnpm guardrail:typecheck`** (mypy):
+
+```
+Success: no issues found in 44 source files
+```
+
+**`pnpm text:test`** — 1614 baseline + 6 new, exit 0:
+
+```
+=== 1620 passed, 4 skipped, 16 deselected, 12 warnings in 181.60s (0:03:01) ====
+```
+
+**`pnpm text:lint`** — the two KNOWN pre-existing findings, in files this lane did
+not touch, unchanged:
+
+```
+  --> apps/text/src/text/models/provider.py:47:71
+   --> apps/text/src/text/tests/unit/test_judge_route.py:469:26
+Found 2 errors.
+```
+
+**`pnpm text:typecheck`** (mypy):
+
+```
+Success: no issues found in 81 source files
+```
+
+**`pnpm --filter @arcaai/applications test`** — 659 files / 11519 baseline, +1 file
+and +6 tests (the descriptor test), exit 0:
+
+```
+ Test Files  660 passed | 1 skipped (661)
+      Tests  11525 passed | 4 skipped (11529)
+```
+
+**`pnpm --filter @arcaai/database test`** — 9 failures, ALL pre-existing at the
+base commit and none in this lane's files. Measured both ways rather than argued:
+
+```
+this branch (46cdd658f):   Test Files  3 failed | 76 passed (79)
+                                Tests  9 failed | 1761 passed (1770)
+
+base 030df76b5 (the two changed files checked out from base, then restored):
+                           Test Files  3 failed | 76 passed (79)
+                                Tests  9 failed | 1759 passed (1768)
+```
+
+Identical 3 files and 9 failures either way; the delta is exactly the +2 assertions
+this lane added. The failures are in `ai-model-registry-seed.test.ts`,
+`config-plane-seed.test.ts` and `task-863-agents.test.ts`, and concern a 36th
+catalogue row (`whisper-large-v3-turbo-q8_0`) against tests that assert "exactly
+35", an LM Studio `AiProviderConnection` pointing at `http://localhost:1234/v1`,
+and the TASK-863 agent specs — all present at base (`git show
+030df76b5:.../ai-models/audio.ts` contains that slug) and none of them touched
+here: this lane's `packages/database` diff adds two keys to ONE existing row's
+`metaData.policy` and adds no row.
+
+**`pnpm lint`** — RED, entirely on `@arcaai/api`, in three e2e spec files this lane
+does not touch (its diff contains zero `apps/api` paths):
+
+```
+@arcaai/api:lint: ✖ 70 problems (5 errors, 65 warnings)
+Failed:    @arcaai/api#lint
+```
+
+The five errors are prettier formatting in
+`tests/e2e/auth-throttle-per-endpoint.spec.ts` and
+`tests/e2e/shared-component-contracts.spec.ts`, plus an unused `loginDoctor` import
+in `tests/e2e/harness-gate.spec.ts`. Every other workspace passed, including
+`@arcaai/applications` (213 problems, **0 errors** — `eslint-plugin-only-warn`) and
+`@arcaai/domains`; the three files this lane adds or edits under
+`packages/applications` produce no finding at all.
+
+The workspaces this lane actually owns are green on their own gates
+(`guardrail:lint` clean, `applications` 0 errors), and `apps/api` is another
+lane's surface.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-05 | Ticket opened: current-state evaluation, the G3 decision (option b) and the two-tier home for the judge values recorded. |
+| 2026-09-05 | G1 + G2 + both configuration moves landed (`4ca9bcd63`), 32 guardrail tests RED→GREEN. |
+| 2026-09-05 | Descriptor + one registry spread + its test, the seeded judge policy, and the two cross-service pins in `apps/text` (`46cdd658f`). All gates run and pasted; status → Completed. |
