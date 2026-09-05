@@ -1061,7 +1061,30 @@ export class HarnessInternalService {
         // shape of `applyAssuranceBackfillWithCas` (fresh entity ⇒ fresh change tracking).
         const existingMeta = existingDraft ? await this.summaryMetaRepository.findByContextItem(contextItemId) : null;
         if (existingMeta) {
-          Object.assign(existingMeta, summaryMeta, { id: existingMeta.id, contextItemId });
+          // TASK-869 — field-by-field, NOT `Object.assign(existingMeta, summaryMeta, …)`.
+          // `BaseEntity.id` is getter-only, so copying a whole entity over another
+          // threw `TypeError: Cannot set property id of #<BaseEntity> which has only
+          // a getter` → 500 on EVERY adopted draft. The harness retried, the
+          // workflow failed, and the BullMQ job sat at PENDING — which read as a
+          // stalled queue rather than an unhandled write. Assigning the mutable
+          // fields explicitly also keeps `setProperty` change-tracking intact, which
+          // a bulk copy bypasses (`03-domain-layer.md`: never assign entity fields
+          // wholesale), so `updateWithVersion` persists a real change set.
+          existingMeta.modelName = summaryMeta.modelName;
+          existingMeta.promptVersion = summaryMeta.promptVersion;
+          existingMeta.entityFaithfulnessScore = summaryMeta.entityFaithfulnessScore;
+          existingMeta.coverageScore = summaryMeta.coverageScore;
+          existingMeta.ragTriadScore = summaryMeta.ragTriadScore;
+          existingMeta.citationsMap = summaryMeta.citationsMap;
+          existingMeta.guardrailDecisions = summaryMeta.guardrailDecisions;
+          existingMeta.gateDecision = summaryMeta.gateDecision;
+          existingMeta.assuranceCompletedAt = summaryMeta.assuranceCompletedAt;
+          existingMeta.redactionApplied = summaryMeta.redactionApplied;
+          existingMeta.redactionManifest = summaryMeta.redactionManifest;
+          existingMeta.preSummaryIds = summaryMeta.preSummaryIds;
+          existingMeta.sessionAgentId = summaryMeta.sessionAgentId;
+          existingMeta.sessionAgentPromptVersion = summaryMeta.sessionAgentPromptVersion;
+          existingMeta.generatedAt = summaryMeta.generatedAt;
           await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(existingMeta, this.secretsService!));
           await this.summaryMetaRepository.updateWithVersion(existingMeta.id, existingMeta, existingMeta.version ?? 1);
         } else {

@@ -135,6 +135,62 @@ The real fixme needs product code: `droppedPartialResults` / `droppedFinalResult
 
 ## 6. Implementation Summary
 
+**Result: 58 environment-gated skips → 5.** Managed e2e on the worktree:
+
+| | baseline | after |
+|---|---|---|
+| passed | 1132 | 1157+ |
+| skipped | 58 | 5 |
+| failed | 0 | 0 (one `fixme`, see below) |
+
+### What was actually wrong (none of it was "a missing flag")
+
+**Six `.env.test` variables silently defaulted to DEV ports or dev-only values.** Every
+one was commented out, so the test stack pointed at services that were not running:
+`API_GATEWAY_URL` (+ the guardrail/nlp/harness siblings) → 8868; `TEMPORAL_ADDRESS` → the dev
+Temporal; `HARNESS_TEXT/NLP/GUARDRAIL_BASE_URL` → 8862/8864/8863. `API_GATEWAY_KEY` was a random
+hex matching no ApiKey row, so STT's credential lookup 401'd and failed CLOSED.
+
+**The test infra had no Temporal at all**, so harness workflows had nothing to execute them.
+Added `temporal-test` (7333, dedicated databases) + `temporal-init-test`, which registers the
+`default` namespace AND the `HarnessTenantId` search attribute — `auto-setup` creates neither, and
+both fail silently (no namespace ⇒ the worker polls nothing and never recovers if started first;
+no attribute ⇒ the harness degrades to memo-only and jobs sit at PENDING). `worker` joined the
+managed service list.
+
+**Product defects found by tests that had never run:**
+
+| Defect | Fix |
+|---|---|
+| `HarnessServiceTokenGuard` accepted only the legacy `HARNESS_SERVICE_TOKEN` while the harness presents the shared `INTERNAL_ACCESS_TOKEN` — every worker callback 401'd and the workflow FAILED | guard accepts either, shared first, constant-time over all candidates |
+| `Object.assign(existingMeta, summaryMeta, { id })` over a getter-only `BaseEntity.id` → `TypeError` → 500 on EVERY adopted draft | explicit per-field assignment (also restores `setProperty` change tracking) |
+| Six routes returned 201 while `openapi.json` documents 200 (`prime`, `recording/start`, `recording/stop`, `close`, `reopen`, `summary/:ctx/approve`) — specs had been widened to `[200, 201]` in three files | `@HttpCode(HttpStatus.OK)` |
+| Platform rate-limit RULES never applied (login brute-force protection not firing) | **TASK-870** raised; e2e `fixme` against it |
+
+**Stale tests corrected:** `case 2/4` polled for `applyLegacySafetyFloor`, deleted with the legacy
+generator (a grep gate asserts zero references); `/escalate` vs the real `/escalation`; tenant KEY
+sent where the tenant UUID was required; two stateful describes not `serial`; a required
+`expectedVersion` never sent; `harness-gate` demanding four hand-set ids no seed can produce.
+
+**Test infra added:** an isolated gateway (`--isolated`, port 8969) with its own Playwright project
+for the two specs needing boot-time settings the shared gateway cannot have; a public whisper.cpp
+GGUF fixture (staged via `scripts/stage-e2e-stt-model.sh`, `localPath` env-driven) so STT sessions
+open without a Hub credential; one consolidated `HARNESS_E2E_FULL`.
+
+### Open, deliberately
+
+- **TASK-870** — rate-limit rules not applied. Product ticket; the e2e is its acceptance test.
+- **`task-704-generator-seam`** (`fixme`) — regenerates on a SEEDED consultation that sits at OPEN,
+  so the draft write is an illegal transition. Either the spec stages its subject like its siblings
+  or the product accepts it; owner notes TASK-704 is old and may be superseded.
+- **`harness-institutional-rag`** (3 skips) — needs seeded ingested knowledge chunks, not just ids.
+- **Compat summary truncation** — `finish_reason: length` at 256 tokens on `gemma-4-e2b-it-qat`;
+  per OD-4 no other model may be used, so this is a token-budget decision.
+- **Temporal namespace/attribute registration** is in compose; if CI ever runs this suite it needs
+  the same init container, not the manual commands.
+
+
+
 _Filled as waves land._
 
 - **L1 (done, 2026-09-05).** Deleted `apps/api/tests/e2e/pipeline-template-governance.spec.ts` (10 tests)
