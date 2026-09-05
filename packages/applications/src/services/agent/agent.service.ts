@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { createHash } from 'node:crypto';
@@ -13,7 +13,9 @@ import {
   AiModelEntity,
   AiModelRepository,
   CoreDatabaseService,
+  McpServerRepository,
   ModelTaskType,
+  PromptTemplateEntity,
   PromptTemplateRepository,
   PromptVersionRepository,
   ResourceStatusType,
@@ -34,12 +36,17 @@ import {
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
   agentConfigProblems,
+  agentTagProblems,
+  buildPortableBundle,
   canonicalJson,
+  portableBundleProblems,
   type AgentConfigView,
   type AgentModelView,
   type AgentProviderCapabilities,
 } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
+import { isSuperAdmin } from '../../common/tenant-guards';
+import { PolicyEngine } from '../../authorization/policy.engine';
 import { IActiveUserContext } from '../../interfaces';
 import { IAgentAssignmentService } from '../agent-assignment/IAgentAssignmentService';
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../agent-assignment/IAgentAssignmentService';
@@ -48,7 +55,30 @@ import type { IProviderConnectionService as IProviderConnectionServicePort } fro
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
 import { AgentDtoMapper } from './agent.dto.mapper';
 import { codeForConfigProblem, hasBlocking, type AgentFinding, type AgentValidationReport } from './agent-findings';
-import { AgentResponse, AgentSummaryResponse, CreateAgentRequest, NewAgentVersionRequest, PublishAgentRequest, UpdateAgentRequest } from './dto';
+import {
+  agentBundlePayloadProblems,
+  buildAgentBundlePayload,
+  instructionForImport,
+  readPromptTemplateRef,
+  toolServerIds,
+  EVAL_GATE_KEY,
+  PROMPT_TEMPLATE_ID_KEY,
+  PROMPT_VERSION_NUMBER_KEY,
+  type AgentBundlePayload,
+} from './agent-bundle';
+import {
+  AgentBundleResponse,
+  AgentResponse,
+  AgentSummaryResponse,
+  AgentSyncResponse,
+  CloneAgentRequest,
+  CreateAgentRequest,
+  ImportAgentRequest,
+  NewAgentVersionRequest,
+  PublishAgentRequest,
+  SyncAgentRequest,
+  UpdateAgentRequest,
+} from './dto';
 import { IAgentService } from './IAgentService';
 
 /**
@@ -98,6 +128,12 @@ export class AgentService extends BaseService implements IAgentService {
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnections?: IProviderConnectionServicePort,
     @Optional() private readonly promptTemplateRepository?: PromptTemplateRepository,
     @Optional() private readonly promptVersionRepository?: PromptVersionRepository,
+    // TASK-884. `PolicyEngine` is what makes "the caller holds manage:Agent in that OTHER
+    // tenant" answerable from a service — a route decorator expresses `action + subject` and
+    // cannot express "…and also over there" (the `AgentPromotionService` precedent).
+    // `McpServerRepository` re-checks tool bindings when a copy crosses a tenant boundary.
+    @Optional() private readonly policyEngine?: PolicyEngine,
+    @Optional() private readonly mcpServerRepository?: McpServerRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Agent);
   }
@@ -154,6 +190,7 @@ export class AgentService extends BaseService implements IAgentService {
 
   async create(dto: CreateAgentRequest): Promise<AgentResponse> {
     const tenantId = this.requireTenant();
+    this.assertTagGrammar(dto.tags);
     const model = await this.loadModelOrThrow(dto.modelId, tenantId);
     const fallbackModels = await this.loadFallbackModelsOrThrow(dto.fallbackModelIds ?? [], tenantId);
 
@@ -196,6 +233,7 @@ export class AgentService extends BaseService implements IAgentService {
   async update(id: string, dto: UpdateAgentRequest, expectedVersion?: number): Promise<AgentResponse> {
     const entity = await this.loadOwned(id);
     this.assertMutable(entity);
+    this.assertTagGrammar(dto.tags);
 
     const model = await this.loadModelOrThrow(dto.modelId ?? entity.modelId, entity.tenantId);
     const currentFallbacks = await this.fallbackRepository.findByAgentId(entity.id);
@@ -388,6 +426,528 @@ export class AgentService extends BaseService implements IAgentService {
       data: { action: 'deprecate', versionNumber: updated.versionNumber },
     });
     return this.respond(updated);
+  }
+
+  // ============================================================
+  // Portability — clone, export, import, sync (TASK-884)
+  // ============================================================
+  //
+  // Owner decisions #2 and #4 in one place, because they are one mechanism seen from four
+  // angles: take an agent version that already exists somewhere and land a DRAFT of it
+  // somewhere else, copying VALUES and re-resolving or REFUSING every reference.
+  //
+  // | Verb | Source | Target | Crosses a tenant boundary? |
+  // |---|---|---|---|
+  // | `clone` | a SYSTEM template, or any agent visible to the tenant | the caller's tenant (a SUPER_ADMIN may name another) | only for that super-admin case |
+  // | `exportBySlug` | the same | a JSON file | yes, potentially — so the bundle carries no id, no tenant and no credential |
+  // | `importBundle` | a JSON file | the caller's tenant | yes — every reference is re-resolved against what the CALLER can see |
+  // | `syncToTenants` | the caller's OWN agent | other tenants the caller manages | yes |
+  //
+  // Two rules govern the boundary crossings, and both are the `AgentPromotion` posture:
+  //
+  //  1. A MODEL travels by SLUG and is re-resolved in the target (its own row first, SYSTEM's
+  //     otherwise). Unresolvable ⇒ a 409 that NAMES the slug.
+  //  2. A TENANT-OWNED prompt template or MCP server does NOT travel. Its id is unreadable in
+  //     the target, and copying the row is a second deep-copy pipeline with its own governance
+  //     (that is what promotion is for). Refusing, with the binding named, is the honest
+  //     answer — and it is what stops a synced agent quietly losing its instruction.
+  //
+  // An `evalGate` never crosses: `goldenSetId` names a corpus of Vault-Transit-encrypted
+  // `GoldenCase` PHI. It survives a SAME-TENANT clone, where it is still valid.
+  //
+  // Everything lands as a DRAFT, never `isActive`. A copy must not silently become the agent
+  // that serves another tenant's live consultations.
+
+  async clone(slug: string, dto: CloneAgentRequest): Promise<AgentResponse> {
+    const callerTenantId = this.requireTenant();
+    const targetTenantId = dto.tenantId ?? callerTenantId;
+    if (targetTenantId !== callerTenantId && !isSuperAdmin(this.requestUser)) {
+      // A PRIVILEGE 403, not the 404-over-403 posture: the caller named a tenant explicitly and
+      // is being told the naming itself is above their level, which leaks nothing about whether
+      // that tenant exists.
+      throw new ForbiddenException('Cloning into another tenant is a platform-administrator action.');
+    }
+    this.assertTagGrammar(dto.tags);
+
+    const source = await this.resolveVisibleSource(slug, dto.sourceVersionNumber);
+    if (targetTenantId === source.tenantId && dto.newSlug === source.slug) {
+      throw new BadRequestException('A clone starts a NEW lineage; keeping the slug would be a new VERSION of the same one — use POST /admin/agents/{id}/versions for that.');
+    }
+
+    const { saved, fallbacks, warnings } = await this.copyInto(source, targetTenantId, {
+      slug: dto.newSlug,
+      name: dto.name ?? `${source.name} (copy)`,
+      description: dto.description ?? source.description ?? null,
+      tags: dto.tags,
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: {
+        action: 'clone',
+        slug: saved.slug,
+        versionNumber: saved.versionNumber,
+        // Both tenants travel in the payload: the event's own `tenantId` is CLS-sourced and
+        // names the CALLER's, which is not the tenant the row landed in for a super-admin clone.
+        sourceTenantId: source.tenantId,
+        targetTenantId,
+        sourceAgentId: source.id,
+        sourceSlug: source.slug,
+        sourceVersionNumber: source.versionNumber,
+        warnings,
+      },
+    });
+    return this.respondCopy(saved, fallbacks);
+  }
+
+  async exportBySlug(slug: string, versionNumber?: number): Promise<AgentBundleResponse> {
+    const source = await this.resolveVisibleSource(slug, versionNumber);
+    const model = await this.aiModelRepository.findByIdOrNull(source.modelId).catch(() => null);
+    if (!model) {
+      throw new ConflictException({
+        message: `Agent '${source.slug}' binds a model row that is no longer readable, so it cannot be exported by slug.`,
+        code: 'MODEL_NOT_RESOLVABLE',
+      });
+    }
+
+    const fallbackRows = await this.fallbackRepository.findByAgentId(source.id);
+    const fallbackModelSlugs: string[] = [];
+    for (const row of [...fallbackRows].sort((a, b) => a.priority - b.priority)) {
+      const fallbackModel = await this.aiModelRepository.findByIdOrNull(row.modelId).catch(() => null);
+      if (fallbackModel) fallbackModelSlugs.push(fallbackModel.slug);
+    }
+
+    const template = await this.loadBoundTemplate(source);
+    const payload = buildAgentBundlePayload({
+      slug: source.slug,
+      name: source.name,
+      description: source.description ?? null,
+      task: String(source.task),
+      modelSlug: model.slug,
+      fallbackModelSlugs,
+      instruction: source.instruction,
+      parameters: source.parameters,
+      inputSchema: source.inputSchema,
+      outputSchema: source.outputSchema,
+      tools: source.tools,
+      tags: source.tags ?? [],
+      boundTemplate: template ? { id: template.id, name: template.name, isSystemOwned: template.tenantId === SYSTEM_TENANT_ID } : null,
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: source.id,
+      data: { action: 'export', slug: source.slug, versionNumber: source.versionNumber },
+    });
+
+    // `tenantKind` is derived from the SYSTEM tenant alone. The Global tenant
+    // (`50000000-…`) is a CUSTOMER tenant, not a tier (rule 00), and naming its id in a runtime
+    // path is precisely the smell that rule exists to catch — so the server never derives
+    // `'global'`; the enum value exists for a client that already knows it is the playground.
+    const bundle = buildPortableBundle(
+      'agent',
+      { tenantKind: source.tenantId === SYSTEM_TENANT_ID ? 'system' : 'tenant', slug: source.slug, version: source.versionNumber },
+      payload,
+    );
+    return bundle as unknown as AgentBundleResponse;
+  }
+
+  async importBundle(dto: ImportAgentRequest): Promise<AgentResponse> {
+    const tenantId = this.requireTenant();
+
+    const envelopeProblems = portableBundleProblems(dto.bundle, { kind: 'agent' });
+    if (envelopeProblems.length > 0) {
+      throw new BadRequestException({ message: 'This is not a valid agent bundle.', code: 'BUNDLE_INVALID', findings: envelopeProblems });
+    }
+    const envelope = dto.bundle as unknown as { source: { slug: string; version: number }; payload: unknown };
+    const payloadProblems = agentBundlePayloadProblems(envelope.payload);
+    if (payloadProblems.length > 0) {
+      throw new BadRequestException({ message: 'The agent bundle payload is not valid.', code: 'BUNDLE_PAYLOAD_INVALID', findings: payloadProblems });
+    }
+    const payload = envelope.payload as AgentBundlePayload;
+
+    // ---- resolve every reference against what THIS tenant can see -------
+    const modelId = await this.resolveModelIdBySlugVisible(payload.modelSlug, tenantId);
+    const unresolvable: string[] = modelId === null ? [payload.modelSlug] : [];
+    const fallbackModelIds: string[] = [];
+    for (const slug of payload.fallbackModelSlugs ?? []) {
+      const resolved = await this.resolveModelIdBySlugVisible(slug, tenantId);
+      if (resolved === null) unresolvable.push(slug);
+      else fallbackModelIds.push(resolved);
+    }
+    if (unresolvable.length > 0) {
+      throw new ConflictException({
+        message: `This bundle names model(s) this tenant cannot see: ${[...new Set(unresolvable)].join(', ')}. Register them (or ask a platform administrator to) before importing.`,
+        code: 'MODEL_NOT_RESOLVABLE',
+      });
+    }
+
+    const warnings = [...(payload.notes ?? [])];
+    const instruction = await this.instructionForBundleImport(payload, tenantId);
+    await this.assertToolsVisible(payload.tools ?? null, tenantId);
+
+    const slug = dto.slug ?? payload.slug;
+    this.assertTagGrammar(payload.tags);
+
+    const view = this.viewOf(payload.task as AgentTask, { ...payload, instruction });
+    const model = await this.loadModelOrThrow(modelId as string, tenantId);
+    const fallbackModels = await this.loadFallbackModelsOrThrow(fallbackModelIds, tenantId);
+    this.throwIfBlocking(this.structuralFindings(view, model, fallbackModels), 'The imported agent configuration is not valid.');
+
+    const saved = await this.databaseService.baseClient.$transaction(async (tx) => {
+      const maxVersionNumber = await this.agentRepository.findMaxVersionNumber(tenantId, slug, tx);
+      const entity = AgentFactory.CreateAgent({
+        tenantId,
+        slug,
+        name: dto.name ?? payload.name,
+        description: payload.description ?? null,
+        task: payload.task as AgentTask,
+        versionNumber: maxVersionNumber + 1,
+        modelId: modelId as string,
+        instruction: (instruction ?? null) as JsonValue | null,
+        parameters: (payload.parameters ?? null) as JsonValue | null,
+        inputSchema: (payload.inputSchema ?? null) as JsonValue | null,
+        outputSchema: (payload.outputSchema ?? null) as JsonValue | null,
+        tools: (payload.tools ?? null) as JsonValue | null,
+        tags: payload.tags ?? [],
+        // A bundle carries no ROW id and no tenant id, so an import can only record the
+        // LINEAGE half of the provenance pair. That is the honest record: it says which
+        // lineage and version this came from, and does not invent a row it never saw.
+        sourceSlug: envelope.source.slug,
+        sourceVersionNumber: envelope.source.version,
+        createdBy: this.requestUserId ?? undefined,
+      });
+      entity.validate();
+      const created = await this.agentRepository.create(entity, tx);
+      await this.writeFallbacks(created, fallbackModels, tx);
+      return created;
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: { action: 'import', slug: saved.slug, versionNumber: saved.versionNumber, sourceSlug: envelope.source.slug, warnings },
+    });
+    return this.respond(saved);
+  }
+
+  async syncToTenants(slug: string, dto: SyncAgentRequest): Promise<AgentSyncResponse> {
+    const tenantId = this.requireTenant();
+    const userId = this.requestUserId;
+    if (!userId) throw new ForbiddenException('Syncing an agent requires an authenticated user.');
+
+    const source = await this.resolveOwnSource(slug, dto.sourceVersionNumber);
+    const targets = [...new Set(dto.targetTenantIds)];
+    if (targets.includes(tenantId)) {
+      throw new BadRequestException('A sync pushes an agent into OTHER tenants; the source tenant is already where it lives.');
+    }
+
+    // THE authorization control, and it runs before any target is read or written — so the
+    // 404 below is only ever observable by someone already entitled to observe it.
+    for (const target of targets) await this.assertManagesAgentsIn(userId, target);
+
+    // Reference gates that do not depend on the target, checked ONCE and before the write.
+    await this.assertPortableAcrossTenants(source);
+
+    const results = await this.databaseService.baseClient.$transaction(
+      async (tx) => {
+        const out: Array<{ tenantId: string; agentId: string; slug: string; versionNumber: number; warnings: string[] }> = [];
+        for (const target of targets) {
+          const { saved, warnings } = await this.writeCopy(source, target, { slug: source.slug, name: source.name, description: source.description ?? null }, tx);
+          out.push({ tenantId: target, agentId: saved.id, slug: saved.slug, versionNumber: saved.versionNumber, warnings });
+        }
+        return out;
+      },
+      // ONE transaction for every target: "half the tenants got the new agent" is a state no
+      // operator can reason about, and the alternative — per-target commits — makes a
+      // mid-sequence 409 permanent for the tenants already written.
+      { timeout: 30_000 },
+    );
+
+    for (const result of results) {
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: result.agentId,
+        data: {
+          action: 'sync',
+          sourceTenantId: tenantId,
+          targetTenantId: result.tenantId,
+          sourceAgentId: source.id,
+          slug: result.slug,
+          versionNumber: result.versionNumber,
+          reason: dto.reason ?? null,
+        },
+      });
+    }
+
+    return { sourceSlug: source.slug, sourceVersionNumber: source.versionNumber, targets: results };
+  }
+
+  // ------------------------------------------------------------
+  // Portability internals
+  // ------------------------------------------------------------
+
+  /** The `key:value` grammar owner decision #6 rests on; a bare key is refused, never trimmed away. */
+  private assertTagGrammar(tags?: readonly string[]): void {
+    if (tags === undefined) return;
+    const problems = agentTagProblems(tags);
+    if (problems.length > 0) {
+      throw new BadRequestException({ message: 'Agent tags must be `key:value` pairs.', code: 'TAG_GRAMMAR', findings: problems });
+    }
+  }
+
+  /**
+   * The version a clone/export starts from: the caller's OWN lineage (any status — a draft is
+   * clonable) or a SYSTEM template (PUBLISHED only, since a SYSTEM draft is unreleased platform
+   * work — the same line `newVersion` draws). Anything else is 404, cross-tenant included.
+   */
+  private async resolveVisibleSource(slug: string, versionNumber?: number): Promise<AgentEntity> {
+    const tenantId = this.requireTenant();
+    const own = await this.agentRepository.findAllVersionsBySlug(tenantId, slug);
+    if (own.length > 0) {
+      return this.pickVersion(own, slug, versionNumber);
+    }
+    const shared =
+      versionNumber !== undefined
+        ? await this.agentRepository.findPublishedVisibleBySlugVersion(tenantId, slug, versionNumber)
+        : await this.agentRepository.findPublishedActiveBySlug(tenantId, slug);
+    if (!shared) throw new NotFoundException('Agent not found');
+    return shared;
+  }
+
+  /** A sync pushes the caller's OWN agent; a SYSTEM template is already visible everywhere. */
+  private async resolveOwnSource(slug: string, versionNumber?: number): Promise<AgentEntity> {
+    const tenantId = this.requireTenant();
+    const own = await this.agentRepository.findAllVersionsBySlug(tenantId, slug);
+    if (own.length === 0) throw new NotFoundException('Agent not found');
+    return this.pickVersion(own, slug, versionNumber);
+  }
+
+  /** An explicit version, else the ACTIVE PUBLISHED row, else the newest — never a silent guess between them. */
+  private pickVersion(versions: AgentEntity[], slug: string, versionNumber?: number): AgentEntity {
+    if (versionNumber !== undefined) {
+      const match = versions.find((row) => row.versionNumber === versionNumber);
+      if (!match) throw new NotFoundException(`Agent '${slug}' has no version ${versionNumber}`);
+      return match;
+    }
+    return versions.find((row) => row.isActive && row.status === WorkflowDefinitionStatus.PUBLISHED) ?? versions[0];
+  }
+
+  private async loadBoundTemplate(entity: AgentEntity): Promise<PromptTemplateEntity | null> {
+    const templateId = asRecord(entity.instruction)?.[PROMPT_TEMPLATE_ID_KEY];
+    if (typeof templateId !== 'string' || templateId.length === 0 || !this.promptTemplateRepository) return null;
+    return this.promptTemplateRepository.findById(templateId).catch(() => null);
+  }
+
+  /** A model slug the CALLER's tenant can bind: its own row shadows SYSTEM's. `null` ⇒ the caller must be told which slug failed. */
+  private async resolveModelIdBySlugVisible(slug: string, tenantId: string): Promise<string | null> {
+    const own = await this.aiModelRepository.findBySlug(tenantId, slug).catch(() => null);
+    if (own) return own.id;
+    if (tenantId === SYSTEM_TENANT_ID) return null;
+    const platform = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug).catch(() => null);
+    return platform?.id ?? null;
+  }
+
+  /** The instruction an imported bundle stores: the ref resolved back to an id, or a 409 naming it. */
+  private async instructionForBundleImport(payload: AgentBundlePayload, tenantId: string): Promise<Record<string, unknown> | null> {
+    const ref = readPromptTemplateRef(payload.instruction);
+    if (!ref) return instructionForImport(payload.instruction, null);
+
+    if (ref.kind === 'system' && ref.id) {
+      const system = await this.promptTemplateRepository?.findById(ref.id).catch(() => null);
+      // Same row ⇒ the version pin still numbers a version that exists, so it survives.
+      if (system && system.tenantId === SYSTEM_TENANT_ID) return instructionForImport(payload.instruction, { templateId: system.id, keepVersionPin: true });
+    }
+
+    const own = await this.promptTemplateRepository?.findByName(tenantId, ref.name).catch(() => null);
+    if (!own) {
+      throw new ConflictException({
+        message: `This bundle binds the prompt template '${ref.name}', which this tenant does not have. Create it (or import the template first), then import the agent.`,
+        code: 'PROMPT_TEMPLATE_NOT_RESOLVABLE',
+      });
+    }
+    // A DIFFERENT row: its version lineage is its own, so the source's pin numbers a version
+    // that may not exist here. Dropping it follows the resolved template's approved version.
+    return instructionForImport(payload.instruction, { templateId: own.id, keepVersionPin: false });
+  }
+
+  /** Every tool binding must name a server this tenant can actually reach; a dangling one is a 409, never a silent drop. */
+  private async assertToolsVisible(tools: Array<Record<string, unknown>> | null, tenantId: string): Promise<void> {
+    const ids = toolServerIds(tools);
+    if (ids.length === 0 || !this.mcpServerRepository) return;
+    const missing: string[] = [];
+    for (const id of ids) {
+      const server = await this.mcpServerRepository.findEnabledById(id).catch(() => null);
+      if (!server || (server.tenantId !== tenantId && server.tenantId !== SYSTEM_TENANT_ID)) missing.push(id);
+    }
+    if (missing.length > 0) {
+      throw new ConflictException({
+        message: `This bundle binds MCP server(s) this tenant cannot reach: ${missing.join(', ')}. Configure them before importing.`,
+        code: 'MCP_SERVER_NOT_RESOLVABLE',
+      });
+    }
+  }
+
+  /**
+   * The two bindings that cannot cross a tenant boundary at all. Checked BEFORE the copy so a
+   * refusal costs nothing, and named so the fix is obvious: re-bind to a SYSTEM object, or use
+   * export/import and let the target bind its own.
+   */
+  private async assertPortableAcrossTenants(source: AgentEntity): Promise<void> {
+    const template = await this.loadBoundTemplate(source);
+    const boundId = asRecord(source.instruction)?.[PROMPT_TEMPLATE_ID_KEY];
+    if (typeof boundId === 'string' && boundId.length > 0 && (!template || template.tenantId !== SYSTEM_TENANT_ID)) {
+      throw new ConflictException({
+        message: `Agent '${source.slug}' binds a prompt template that is not SYSTEM-owned, so it cannot be resolved in another tenant. Re-bind it to a platform template, or export it and let the target tenant bind its own.`,
+        code: 'PROMPT_TEMPLATE_NOT_PORTABLE',
+      });
+    }
+
+    const ids = toolServerIds((Array.isArray(source.tools) ? source.tools : null) as Array<Record<string, unknown>> | null);
+    for (const id of ids) {
+      const server = await this.mcpServerRepository?.findEnabledById(id).catch(() => null);
+      if (!server || server.tenantId !== SYSTEM_TENANT_ID) {
+        throw new ConflictException({
+          message: `Agent '${source.slug}' binds MCP server ${id}, which is not part of the SYSTEM registry and therefore does not exist in another tenant.`,
+          code: 'MCP_SERVER_NOT_PORTABLE',
+        });
+      }
+    }
+  }
+
+  /**
+   * The caller must hold `manage:Agent` in the target.
+   *
+   * A customer tenant they do not manage is **404**: the tenant id space is not theirs to probe,
+   * so "you may not" and "there is no such tenant" must be one answer.
+   *
+   * SYSTEM is the exception, and deliberately so — its existence is not a secret (every tenant
+   * READS its templates through the shared-read cascade), so hiding it behind a 404 would
+   * conceal nothing and mislead the caller about why the push failed. It is a **403** naming the
+   * real rule: only a platform administrator manages the platform tier.
+   */
+  private async assertManagesAgentsIn(userId: string, targetTenantId: string): Promise<void> {
+    if (!this.policyEngine) {
+      // Fail CLOSED: without the engine there is no way to answer "does this caller manage that
+      // tenant?", and a cross-tenant write is not a thing to attempt on an unanswered question.
+      throw new ForbiddenException('Agent sync is unavailable: the authorization engine is not wired.');
+    }
+    const ability = await this.policyEngine.buildAbility({ userId, tenantId: targetTenantId }).catch(() => null);
+    if (ability?.can('manage', 'Agent')) return;
+    if (targetTenantId === SYSTEM_TENANT_ID) {
+      throw new ForbiddenException('Only a platform administrator manages the SYSTEM tier; publish into it through the promotion path.');
+    }
+    throw new NotFoundException(`Tenant ${targetTenantId} not found`);
+  }
+
+  /** Clone/sync body: resolve the references, then write the DRAFT. Own transaction unless one is supplied. */
+  private async copyInto(
+    source: AgentEntity,
+    targetTenantId: string,
+    overrides: { slug: string; name?: string; description?: string | null; tags?: string[] },
+  ): Promise<{ saved: AgentEntity; fallbacks: AgentModelFallbackEntity[]; warnings: string[] }> {
+    if (targetTenantId !== source.tenantId) await this.assertPortableAcrossTenants(source);
+    return this.databaseService.baseClient.$transaction(async (tx) => this.writeCopy(source, targetTenantId, overrides, tx));
+  }
+
+  private async writeCopy(
+    source: AgentEntity,
+    targetTenantId: string,
+    overrides: { slug: string; name?: string; description?: string | null; tags?: string[] },
+    tx: unknown,
+  ): Promise<{ saved: AgentEntity; fallbacks: AgentModelFallbackEntity[]; warnings: string[] }> {
+    const crossTenant = targetTenantId !== source.tenantId;
+    const warnings: string[] = [];
+
+    const modelId = await this.resolveModelIdForTarget(source.modelId, targetTenantId, tx);
+    const sourceFallbacks = [...(await this.fallbackRepository.findByAgentId(source.id))].sort((a, b) => a.priority - b.priority);
+    const fallbackModelIds: string[] = [];
+    for (const row of sourceFallbacks) fallbackModelIds.push(await this.resolveModelIdForTarget(row.modelId, targetTenantId, tx));
+
+    const instruction = { ...(asRecord(source.instruction) ?? {}) };
+    const hadInstruction = asRecord(source.instruction) !== undefined;
+    if (crossTenant && EVAL_GATE_KEY in instruction) {
+      delete instruction[EVAL_GATE_KEY];
+      warnings.push('The eval gate was not copied: a golden set is a corpus of encrypted patient data and its pointer never leaves the tenant. Bind one in the target tenant.');
+    }
+    if (crossTenant && typeof instruction[PROMPT_VERSION_NUMBER_KEY] === 'number' && !(PROMPT_TEMPLATE_ID_KEY in instruction)) {
+      delete instruction[PROMPT_VERSION_NUMBER_KEY];
+    }
+
+    const maxVersionNumber = await this.agentRepository.findMaxVersionNumber(targetTenantId, overrides.slug, tx);
+    const entity = AgentFactory.CreateAgent({
+      tenantId: targetTenantId,
+      slug: overrides.slug,
+      name: overrides.name ?? source.name,
+      description: overrides.description ?? source.description ?? null,
+      task: source.task,
+      versionNumber: maxVersionNumber + 1,
+      // `parentVersionId` stays NULL: it means "the previous version of THIS lineage", and a
+      // copy starts a different one. The provenance edge is the four `source*` columns.
+      modelId,
+      instruction: (hadInstruction ? instruction : null) as JsonValue | null,
+      parameters: source.parameters ?? null,
+      inputSchema: source.inputSchema ?? null,
+      outputSchema: source.outputSchema ?? null,
+      tools: source.tools ?? null,
+      tags: overrides.tags ?? source.tags ?? [],
+      sourceAgentId: source.id,
+      sourceTenantId: source.tenantId,
+      sourceSlug: source.slug,
+      sourceVersionNumber: source.versionNumber,
+      createdBy: this.requestUserId ?? undefined,
+    });
+    entity.validate();
+    const saved = await this.agentRepository.create(entity, tx);
+
+    const fallbacks: AgentModelFallbackEntity[] = [];
+    for (const [priority, id] of fallbackModelIds.entries()) {
+      const link = AgentModelFallbackFactory.CreateAgentModelFallback({
+        tenantId: targetTenantId,
+        agentId: saved.id,
+        priority,
+        modelId: id,
+        createdBy: this.requestUserId ?? undefined,
+      });
+      link.validate();
+      fallbacks.push(await this.fallbackRepository.create(link, tx));
+    }
+
+    return { saved, fallbacks, warnings };
+  }
+
+  /**
+   * The model row the TARGET tenant must bind. Same-tenant (or a SYSTEM row) keeps the id; a
+   * different tenant re-resolves BY SLUG — its own row first, SYSTEM's otherwise — and a slug
+   * that resolves to nothing is a 409 naming it, never a dangling `modelId`.
+   *
+   * The reads take `tx`, which is what makes the target-tenant filter explicit rather than the
+   * caller-scoped widening the extended client would apply.
+   */
+  private async resolveModelIdForTarget(modelId: string, targetTenantId: string, tx: unknown): Promise<string> {
+    const source = await this.aiModelRepository.findByIdOrNull(modelId, tx).catch(() => null);
+    if (!source) {
+      throw new ConflictException({ message: `The bound model row ${modelId} could not be read, so the copy would leave a dangling reference.`, code: 'MODEL_NOT_RESOLVABLE' });
+    }
+    if (source.tenantId === targetTenantId || source.tenantId === SYSTEM_TENANT_ID) return source.id;
+
+    const own = await this.aiModelRepository.findBySlug(targetTenantId, source.slug, tx).catch(() => null);
+    if (own) return own.id;
+    const platform = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, source.slug, tx).catch(() => null);
+    if (platform) return platform.id;
+    throw new ConflictException({
+      message: `Tenant ${targetTenantId} has no model registered as '${source.slug}', so the copy would leave a dangling reference. Register it there, or ask a platform administrator to publish it.`,
+      code: 'MODEL_NOT_RESOLVABLE',
+    });
+  }
+
+  /**
+   * A copy's response built from the rows the copy itself wrote, rather than re-reading them:
+   * a cross-tenant clone's fallback rows are plain tenant-scoped and invisible to the caller,
+   * so a re-read would report an empty chain that was in fact written.
+   */
+  private async respondCopy(entity: AgentEntity, fallbacks: AgentModelFallbackEntity[]): Promise<AgentResponse> {
+    const slugs = await this.modelSlugMap([entity.task]);
+    return AgentDtoMapper.toResponse(entity, fallbacks, slugs);
   }
 
   // ============================================================
@@ -722,7 +1282,7 @@ export class AgentService extends BaseService implements IAgentService {
     return models;
   }
 
-  private async writeFallbacks(agent: AgentEntity, models: readonly AiModelEntity[], tx: unknown): Promise<void> {
+  private async writeFallbacks(agent: AgentEntity, models: readonly { id: string }[], tx: unknown): Promise<void> {
     for (const [priority, model] of models.entries()) {
       const link = AgentModelFallbackFactory.CreateAgentModelFallback({
         tenantId: agent.tenantId,

@@ -12,6 +12,7 @@ export class AgentAssignment extends BaseTenantDataModel {
   public scopeId: string | null;
   public task: Enums.AgentTask;
   public agentSlug: string;
+  public selectorKey: string;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -22,6 +23,7 @@ export class AgentAssignment extends BaseTenantDataModel {
     this.scopeId = data.scopeId;
     this.task = data.task;
     this.agentSlug = data.agentSlug;
+    this.selectorKey = data.selectorKey;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

@@ -26,4 +26,10 @@ describe('PromptResolutionServiceModule', () => {
   it('imports CoreDatabaseModule so WorkflowDefinitionRepository is provided', () => {
     expect(MODULE_SOURCE).toMatch(/imports:\s*\[[^\]]*CoreDatabaseModule[^\]]*\]/);
   });
+
+  // TASK-884 — the tag-selected agent tier has the SAME silent failure mode: unwired, a request
+  // carrying `agentSelectorTags` resolves exactly like one that carried none, and nothing throws.
+  it('imports AgentAssignmentServiceModule so the @Optional tag-selected agent tier is actually provided', () => {
+    expect(MODULE_SOURCE).toMatch(/imports:\s*\[[^\]]*AgentAssignmentServiceModule[^\]]*\]/);
+  });
 });

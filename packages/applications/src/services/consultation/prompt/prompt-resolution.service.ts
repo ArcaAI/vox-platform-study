@@ -5,6 +5,12 @@
  * variables). The chain is SPLIT BY CAPABILITY, because pre-summary and
  * summary are not the same shape of prompt:
  *
+ *   Above ALL THREE chains sits one optional tier, consulted only when the request carries
+ *   `agentSelectorTags` AND a TAG-QUALIFIED `AgentAssignment` matched them (TASK-884, owner
+ *   decision #6): the selected agent's bound, APPROVED template. It is an ALIGNMENT, not a
+ *   condition — the tags choose an AGENT through the ordinary assignment cascade and the
+ *   prompt is whatever that agent already binds. See `resolveTagSelectedPrompt`.
+ *
  *   promptType ∈ { 'new-visit', 'revisit' } — the SUMMARY (clinical note)
  *   chain (highest priority first):
  *     Tier-0 (preferred) — the consulting doctor's preferred prompt template,
@@ -19,7 +25,8 @@
  *       none by design (DD-2 — a generation node binds its prompt statically).
  *       WHICH column is the platform's two-way slot map (`VisitTypeService.promptSlot`).
  *       (The tenant-configurable `(task, visitType)` binding tier that briefly sat above
- *       this one retired with TASK-882; `Agent.tags` replaces it — TASK-884.)
+ *       this one retired with TASK-882; TASK-884's tag-selected AGENT tier took its slot —
+ *       deliberately not its shape: no condition table, and no axis of its own.)
  *     Tier-2 (default) — `SYSTEM_DEFAULTS.promptId` (CATCHALL_SOAP).
  *
  *   promptType === 'pre-summary' — the PRE-SUMMARY chain:
@@ -78,6 +85,8 @@
 
 import { Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import {
+  AgentRepository,
+  AgentTask,
   DepartmentRepository,
   DepartmentEntity,
   PromptTemplateRepository,
@@ -91,6 +100,7 @@ import {
 } from '@arcaai/domains';
 import { WORKFLOW_NODE_REGISTRY, type WorkflowGraph, type WorkflowGraphNode } from '@arcaai/workflow-contract';
 
+import { IAgentAssignmentService } from '../../agent-assignment/IAgentAssignmentService';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 
@@ -296,6 +306,23 @@ export interface PromptResolutionParams {
    * When set and the template exists, it wins over the department/default tiers.
    */
   preferredPromptTemplateId?: string | null;
+
+  /**
+   * TASK-884 — the request's `key:value` AGENT TAGS (owner decision #6).
+   *
+   * This is what replaced the retired `(task, visitType) -> prompt` binding, and the
+   * difference matters: the old tier was a tenant-managed CONDITION table that mapped a
+   * request axis onto a prompt. This is not a condition — it is an ALIGNMENT. The tags
+   * select an AGENT through the ordinary `AgentAssignment` cascade, and the prompt is
+   * whatever that agent's instruction already binds.
+   *
+   * ABSENT (the default, and every existing call site) ⇒ nothing changes: the tier is not
+   * consulted at all and the three chains below run exactly as before. It only engages when
+   * a TAG-QUALIFIED assignment actually matched — a request whose tags matched only the
+   * tier's unqualified row resolves the ordinary way, because that row is the default the
+   * chains already express.
+   */
+  agentSelectorTags?: readonly string[];
 }
 
 // ============================================================================
@@ -504,6 +531,12 @@ export class PromptResolutionService {
     // unwired resolver serves the two shipped visit types, which maps the two
     // legacy `promptType` values onto exactly the columns they always read.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // TASK-884 — the tag-selected agent tier. `@Optional()` for the same reason as every
+    // dependency above it: unwired ⇒ the tier is simply absent, which is byte-identical to
+    // a request that carried no tags. A clinical generation path never throws because an
+    // optional selector could not be evaluated.
+    @Optional() @Inject(IAgentAssignmentService) private readonly agentAssignments?: IAgentAssignmentService,
+    @Optional() @Inject(AgentRepository) private readonly agentRepository?: AgentRepository,
   ) {}
 
   /**
@@ -545,19 +578,28 @@ export class PromptResolutionService {
     // --- the TASK axis, named once — `resolvedCapability`'s own three values ---
     const task = params.promptType === 'pre-summary' ? 'pre-summary' : params.promptType === 'live' ? 'live' : 'summary';
 
-    // TASK-884: Agent.tags resolution replaces the visit-type condition. A tenant-configured
-    // `(task, visitType) -> prompt` binding used to be consulted HERE, ahead of every chain
-    // (TASK-882 retired it with the `consultation.visitTypes` key — no tenant-managed
-    // conditions). When agent tags land, this is where a tag-selected agent's instruction
-    // enters the chains below.
+    // TASK-884 — the tag-selected AGENT tier, in the slot the retired `(task, visitType) ->
+    // prompt` binding used to occupy (TASK-882 removed that with `consultation.visitTypes`).
+    // It is deliberately NOT the same kind of thing: that was a tenant-managed CONDITION
+    // mapping a request axis onto a prompt; this selects an AGENT through the ordinary
+    // `AgentAssignment` cascade and then serves whatever instruction that agent already
+    // binds. There is no new condition table, and no department or visit-type axis anywhere
+    // in it — which is exactly what owner decision #6 asked for.
+    //
+    // It engages ONLY when the request carried tags AND a TAG-QUALIFIED assignment matched.
+    // A request with no tags — every existing call site — skips it entirely, and a request
+    // whose tags matched only the tier's unqualified row also skips it, because that row is
+    // the default the chains below already express.
+    const tagSelected = await this.resolveTagSelectedPrompt(params, department, trace);
 
     // --- promptId (capability chain) ---
     const resolvedPrompt =
-      params.promptType === 'pre-summary'
+      tagSelected ??
+      (params.promptType === 'pre-summary'
         ? await this.resolvePreSummaryPromptId(params, department, trace)
         : params.promptType === 'live'
           ? await this.resolveLivePromptId(params, department, trace)
-          : await this.resolveSummaryPromptId(params, department, trace);
+          : await this.resolveSummaryPromptId(params, department, trace));
 
     // --- contextVariables --- the department's own.
     const contextVariables = this.extractContextVariables(department);
@@ -600,6 +642,65 @@ export class PromptResolutionService {
     }
 
     return result;
+  }
+
+  /**
+   * TASK-884 — the prompt bound by the agent a TAG-QUALIFIED assignment selected, or `null`
+   * when that did not happen. `null` is the overwhelmingly common answer and means "run the
+   * chains exactly as before".
+   *
+   * Five things must all hold, and every one of them fails to `null` rather than throwing:
+   *   1. the request carried `agentSelectorTags`;
+   *   2. the cascade + repository are wired;
+   *   3. a tenant is known;
+   *   4. the assignment that matched carried a NON-EMPTY selector — a match on the tier's
+   *      unqualified row is the tier's ordinary default, which the chains below already serve;
+   *   5. the selected agent binds a template that is APPROVED and has a governed snapshot.
+   *
+   * (5) is the same governance every other tier answers to: an unapproved template is skipped
+   * so resolution falls through to the approved default, never served because an agent named it.
+   */
+  private async resolveTagSelectedPrompt(
+    params: PromptResolutionParams,
+    department: DepartmentEntity | null,
+    trace: PromptResolutionTrace,
+  ): Promise<ResolvedPromptId | null> {
+    const selectorTags = params.agentSelectorTags ?? [];
+    if (selectorTags.length === 0 || !this.agentAssignments || !this.agentRepository) return null;
+
+    const tenantId = params.tenantId ?? department?.tenantId ?? null;
+    if (!tenantId) return null;
+
+    try {
+      const resolved = await this.agentAssignments.resolve(tenantId, AgentTask.TEXT_GENERATION, params.departmentId ?? null, selectorTags);
+      if (!resolved.agentSlug || resolved.selector.length === 0) return null;
+
+      const agent = await this.agentRepository.findPublishedActiveBySlug(tenantId, resolved.agentSlug);
+      if (!agent) return null;
+
+      const instruction = agent.instruction as Record<string, unknown> | null | undefined;
+      const templateId = instruction && typeof instruction === 'object' ? instruction.promptTemplateId : undefined;
+      if (typeof templateId !== 'string' || templateId.length === 0) return null;
+      if (!(await this.isApprovedTemplate(templateId))) {
+        this.logger.warn({
+          message: 'Tag-selected agent binds a template that is not APPROVED — falling through to the ordinary chain',
+          tenantId,
+          agentSlug: resolved.agentSlug,
+          selector: resolved.selector,
+          templateId,
+        });
+        return null;
+      }
+
+      trace.agentId = agent.id;
+      trace.agentVersionNumber = agent.versionNumber;
+      return { promptId: templateId, tier: 'agent', agentId: agent.id, ...(await this.governedSnapshot(templateId)) };
+    } catch (error) {
+      // A selector is an OPTIONAL refinement. A failure to evaluate it must degrade to the
+      // ordinary chain, never take out a clinical generation call.
+      this.logger.warn({ message: 'Agent tag selection failed; falling through to the ordinary chain', error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
   }
 
   // =========================================================================

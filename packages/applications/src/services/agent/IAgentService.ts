@@ -1,5 +1,17 @@
 import { AgentTask } from '@arcaai/domains';
-import { AgentResponse, AgentSummaryResponse, CreateAgentRequest, NewAgentVersionRequest, PublishAgentRequest, UpdateAgentRequest } from './dto';
+import {
+  AgentBundleResponse,
+  AgentResponse,
+  AgentSummaryResponse,
+  AgentSyncResponse,
+  CloneAgentRequest,
+  CreateAgentRequest,
+  ImportAgentRequest,
+  NewAgentVersionRequest,
+  PublishAgentRequest,
+  SyncAgentRequest,
+  UpdateAgentRequest,
+} from './dto';
 
 export const IAgentService = Symbol('IAgentService');
 
@@ -23,6 +35,20 @@ export interface IAgentService {
   publish(id: string, dto: PublishAgentRequest): Promise<AgentResponse>;
   newVersion(sourceId: string, dto: NewAgentVersionRequest): Promise<AgentResponse>;
   deprecate(id: string): Promise<AgentResponse>;
+
+  /**
+   * TASK-884 portability (owner decisions #2 and #4). All four land a DRAFT, never an active
+   * version, and copy VALUES — a reference that is meaningless in the target is re-resolved or
+   * refused with a named 409, never written dangling.
+   */
+  /** Clone a SYSTEM template or any visible agent into a NEW lineage (a SUPER_ADMIN may name another tenant). */
+  clone(slug: string, dto: CloneAgentRequest): Promise<AgentResponse>;
+  /** The portable JSON bundle for one version: values only, models by slug, no credential, no server-owned column. */
+  exportBySlug(slug: string, versionNumber?: number): Promise<AgentBundleResponse>;
+  /** Import a bundle into the caller's tenant, re-resolving every reference against what that tenant can see. */
+  importBundle(dto: ImportAgentRequest): Promise<AgentResponse>;
+  /** Push one of the caller's own agents into other tenants the caller manages; an unmanaged target is 404. */
+  syncToTenants(slug: string, dto: SyncAgentRequest): Promise<AgentSyncResponse>;
 
   /** Business plane: the published, active agents visible to the tenant (one per slug), optionally by task. */
   listPublished(task?: AgentTask): Promise<AgentSummaryResponse[]>;

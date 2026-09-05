@@ -129,6 +129,8 @@ export interface AgentAssignment {
   scopeId: string | null;
   task: AgentTask;
   agentSlug: string;
+  /** TASK-884 — the canonical selector qualifying this assignment; empty = the tier's unqualified row. */
+  selectorTags: string[];
   createdAt: string;
   updatedAt: string;
   version: number;
@@ -139,8 +141,37 @@ export interface UpsertAgentAssignmentRequest {
   scopeId?: string | null;
   task: AgentTask;
   agentSlug: string;
+  /**
+   * TASK-884 — the `key:value` selector this assignment is qualified by. It is part of the
+   * row's IDENTITY, not one of its fields: changing it addresses a DIFFERENT assignment.
+   */
+  selectorTags?: string[];
   reason?: string;
   expectedVersion?: number;
+}
+
+/** TASK-884 — the portable bundle `GET admin/agents/{slug}/export` returns. */
+export interface AgentBundle {
+  kind: string;
+  schemaVersion: number;
+  exportedAt: string;
+  source: { tenantKind: 'system' | 'global' | 'tenant'; slug: string; version: number };
+  payload: Record<string, unknown> & { notes?: string[] };
+}
+
+export interface CloneAgentRequest {
+  newSlug: string;
+  name?: string;
+  description?: string;
+  sourceVersionNumber?: number;
+  tenantId?: string;
+  tags?: string[];
+}
+
+export interface ImportAgentRequest {
+  bundle: Record<string, unknown>;
+  slug?: string;
+  name?: string;
 }
 
 /** The registry rows the Model step lists (`GET admin/ai-models`, filtered client-side by task type). */

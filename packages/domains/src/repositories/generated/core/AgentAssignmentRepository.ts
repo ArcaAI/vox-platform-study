@@ -21,13 +21,45 @@ export class AgentAssignmentRepository extends Repository<AgentAssignmentEntity,
   }
 
   /**
-   * The single assignment row for one cascade tier, or `null` when that tier has
-   * no opinion (the COMMON case — an unset tier inherits). `tenantId` is passed
-   * explicitly and is a STRING (the caller's own id or SYSTEM), which the
-   * shared-read extension accepts.
+   * The UNQUALIFIED assignment row for one cascade tier, or `null` when that
+   * tier has no opinion (the COMMON case — an unset tier inherits). `tenantId`
+   * is passed explicitly and is a STRING (the caller's own id or SYSTEM), which
+   * the shared-read extension accepts.
+   *
+   * `selectorKey: ''` is part of the filter since TASK-884: a tier may now hold
+   * several rows, and without it this read would return whichever
+   * TAG-QUALIFIED row the database happened to order first — silently serving a
+   * specialty-scoped agent to a request that named no specialty. A caller that
+   * wants the whole tier asks `findAllForScope`.
    */
   async findForScope(tenantId: string, scope: PipelinePolicyScope, scopeId: string | null, task: AgentTask): Promise<AgentAssignmentEntity | null> {
-    return this.findFirstTolerant({ tenantId, scope, scopeId, task, resourceStatus: ResourceStatusType.ENABLED });
+    return this.findFirstTolerant({ tenantId, scope, scopeId, task, selectorKey: '', resourceStatus: ResourceStatusType.ENABLED });
+  }
+
+  /** One tier's rows — the unqualified one plus every tag-qualified variant (TASK-884). */
+  async findAllForScope(tenantId: string, scope: PipelinePolicyScope, scopeId: string | null, task: AgentTask): Promise<AgentAssignmentEntity[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw delegate shape isn't exposed through DomainModel typings.
+    const rows: AgentAssignment[] | null = await (this.db as any).findMany({
+      where: { tenantId, scope, scopeId, task, resourceStatus: ResourceStatusType.ENABLED },
+      orderBy: [{ selectorKey: 'desc' }],
+    });
+    const mapper = AgentAssignmentEntityMapper.getInstance();
+    return (rows ?? []).filter((row) => row.tenantId === tenantId).map((row) => mapper.toDomainEntity(row));
+  }
+
+  /**
+   * ONE tier row addressed by its full uniqueness key, selector included — what
+   * an upsert needs so a tag-qualified write never overwrites the unqualified
+   * row of the same tier.
+   */
+  async findForScopeSelector(
+    tenantId: string,
+    scope: PipelinePolicyScope,
+    scopeId: string | null,
+    task: AgentTask,
+    selectorKey: string,
+  ): Promise<AgentAssignmentEntity | null> {
+    return this.findFirstTolerant({ tenantId, scope, scopeId, task, selectorKey, resourceStatus: ResourceStatusType.ENABLED });
   }
 
   /** Every live assignment the caller holds (the matrix read), plus SYSTEM's platform defaults. */
