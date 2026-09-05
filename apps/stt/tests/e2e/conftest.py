@@ -1,6 +1,7 @@
 """E2E test fixtures using testcontainers and real monorepo infrastructure."""
 
 import asyncio
+import os
 from collections.abc import Generator
 from pathlib import Path
 
@@ -9,6 +10,12 @@ import pytest_asyncio
 
 # Directory containing real .wav audio fixtures
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+# Same pin as local/test Compose (`HOPE_POSTGRES_IMAGE`, default pg18-all).
+# Official postgres:*-alpine lacks pgvector/vectorscale.
+_HOPE_POSTGRES_IMAGE = os.environ.get(
+    "HOPE_POSTGRES_IMAGE", "timescale/timescaledb-ha:pg18-all"
+)
 
 
 def _service_auth_headers(app) -> dict[str, str]:
@@ -50,7 +57,7 @@ def postgres_container():
     try:
         from testcontainers.postgres import PostgresContainer
 
-        with PostgresContainer("postgres:15-alpine") as postgres:
+        with PostgresContainer(_HOPE_POSTGRES_IMAGE) as postgres:
             yield postgres
     except ImportError:
         pytest.skip("testcontainers not installed")

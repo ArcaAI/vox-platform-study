@@ -35,7 +35,7 @@ volumes:
 
 services:
   postgres:
-    image: timescale/timescaledb-ha:pg18-all
+    image: ${HOPE_POSTGRES_IMAGE:-timescale/timescaledb-ha:pg18-all}
     container_name: pgbv-postgres
     restart: unless-stopped
     environment:
@@ -59,7 +59,7 @@ services:
     ports:
       - '5532:5432'
     volumes:
-      - pg-data:/var/lib/postgresql
+      - pg-data:/home/postgres/pgdata
     networks: [pgbv-net]
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U hope_app -d hope']
