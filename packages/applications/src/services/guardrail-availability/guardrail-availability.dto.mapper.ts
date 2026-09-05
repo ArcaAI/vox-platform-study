@@ -3,7 +3,11 @@ import { GUARDRAIL_POLICY_CATALOGUE, type GuardrailPolicySelectionSet, type Reso
 import type { GuardrailAvailabilityResponse, GuardrailPolicyCatalogueEntryResponse } from './dto';
 
 export class GuardrailAvailabilityDtoMapper {
-  static toResponse(tenantId: string, row: TenantGuardrailPolicyEntity | null, effective: ResolvedGuardrailAvailability): GuardrailAvailabilityResponse {
+  static toResponse(
+    tenantId: string,
+    row: TenantGuardrailPolicyEntity | null,
+    effective: ResolvedGuardrailAvailability,
+  ): GuardrailAvailabilityResponse {
     return {
       tenantId,
       // A tenant with no row is represented as version 0 rather than 404: the

@@ -91,16 +91,18 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { count: rows.length } });
 
-    return rows
-      // SYSTEM first: it is the tier every other row is read against.
-      .sort((a, b) => (a.tenantId === SYSTEM_TENANT_ID ? -1 : b.tenantId === SYSTEM_TENANT_ID ? 1 : a.tenantId.localeCompare(b.tenantId)))
-      .map((row) =>
-        GuardrailAvailabilityDtoMapper.toResponse(
-          row.tenantId,
-          row,
-          resolveAvailability(GuardrailAvailabilityDtoMapper.asSelectionSet(row), systemPolicies, row.tenantId),
-        ),
-      );
+    return (
+      rows
+        // SYSTEM first: it is the tier every other row is read against.
+        .sort((a, b) => (a.tenantId === SYSTEM_TENANT_ID ? -1 : b.tenantId === SYSTEM_TENANT_ID ? 1 : a.tenantId.localeCompare(b.tenantId)))
+        .map((row) =>
+          GuardrailAvailabilityDtoMapper.toResponse(
+            row.tenantId,
+            row,
+            resolveAvailability(GuardrailAvailabilityDtoMapper.asSelectionSet(row), systemPolicies, row.tenantId),
+          ),
+        )
+    );
   }
 
   async getForTenant(tenantId: string): Promise<GuardrailAvailabilityResponse> {
@@ -135,7 +137,10 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
       assertSelectionTightensOnly(policies, GuardrailAvailabilityDtoMapper.asSelectionSet(systemRow) ?? {});
     }
 
-    const existing = tenantId === SYSTEM_TENANT_ID ? systemRow ?? (await this.repository.findByTenantId(SYSTEM_TENANT_ID)) : await this.repository.findByTenantId(tenantId);
+    const existing =
+      tenantId === SYSTEM_TENANT_ID
+        ? (systemRow ?? (await this.repository.findByTenantId(SYSTEM_TENANT_ID)))
+        : await this.repository.findByTenantId(tenantId);
 
     if (!existing) {
       if (request.expectedVersion !== 0) {

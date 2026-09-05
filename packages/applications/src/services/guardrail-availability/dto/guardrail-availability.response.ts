@@ -31,7 +31,7 @@ export class GuardrailAvailabilityResponse {
   })
   effectiveSourceTenantId!: string;
 
-  @ApiPropertyOptional({ description: 'Why this tenant\'s set differs from the platform default.', nullable: true })
+  @ApiPropertyOptional({ description: "Why this tenant's set differs from the platform default.", nullable: true })
   reason!: string | null;
 
   @ApiPropertyOptional({ description: 'ISO timestamp of the last write, or null when no row exists.', nullable: true })
