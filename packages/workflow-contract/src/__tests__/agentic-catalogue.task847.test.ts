@@ -127,9 +127,9 @@ describe('the agent node binds ONE provider configuration, by reference', () => 
   });
 
   it('does not declare `taskKey` at the top level, so no second model-selection source is folded in', () => {
-    // `withLlmBinding` attaches `llmBinding` to any schema declaring a top-level `taskKey`. The
-    // generic agent's ONE selection source is `providerConfigRef`; a second would make "bind to
-    // exactly one provider configuration" unenforceable.
+    // The generic agent's ONE selection source is `providerConfigRef`; a second would make "bind
+    // to exactly one provider configuration" unenforceable. (`llmBinding` itself is gone since
+    // TASK-882 — asserted for every node type in `task882-node-schemas.test.ts`.)
     const properties = propertiesOf('agentic.agent');
     expect(properties.taskKey).toBeUndefined();
     expect(properties.llmBinding).toBeUndefined();

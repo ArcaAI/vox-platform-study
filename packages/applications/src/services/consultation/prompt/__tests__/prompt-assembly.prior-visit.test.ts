@@ -20,7 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   PRIOR_VISIT_SUMMARY_MAX_CHARS,
   PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER,
-} from '../../../settings-registry/descriptors/agentic-revisit.descriptors';
+} from '../../harness/prior-visit-summary';
 
 const mockPromptResolutionService = { resolve: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn() };

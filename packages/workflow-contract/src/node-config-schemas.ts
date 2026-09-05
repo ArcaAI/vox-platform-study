@@ -680,6 +680,25 @@ const CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA: NodeConfigSchema = Object.freeze({
   },
 });
 
+/**
+ * TASK-882 — the re-visit CARRY-FORWARD decision, as a binding on the node that composes the
+ * prompt. It replaces the platform key `agentic.revisit.carryForwardEnabled`: whether a re-visit
+ * consultation carries its parent visit's most authoritative summary into the prompt is a
+ * property of the workflow that generates the note, so it is authored on the graph the
+ * consultation is assigned — the prompt-composition node here, `core.agent.overrides` in the
+ * `core` vocabulary — and read by `ConfigResolver.resolveRevisitCarryForwardEnabled`.
+ *
+ * DEFAULT OFF, and that is a clinical-safety decision rather than caution about the plumbing:
+ * carry-forward inherits the copy-paste / cloned-note risk profile (stale or unverified content
+ * propagating into a new encounter), so it must be an explicit opt-in per graph.
+ */
+const CARRY_FORWARD_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'boolean',
+  default: false,
+  description:
+    "Re-visit carry-forward. When true, a consultation with a parent visit carries the parent's most authoritative summary into this prompt as a labeled, non-authoritative prior that must be re-confirmed against the current transcript. Absent is OFF.",
+});
+
 const CONSULTATION_ASSEMBLE_PROMPT_SCHEMA: NodeConfigSchema = Object.freeze({
   title: 'consultation.assemblePrompt node config (N-7)',
   type: 'object',
@@ -693,6 +712,7 @@ const CONSULTATION_ASSEMBLE_PROMPT_SCHEMA: NodeConfigSchema = Object.freeze({
     template: { type: 'string', maxLength: 50000 },
     dnaStyleId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' },
     conversationLanguage: { type: 'string', minLength: 2, maxLength: 16 },
+    carryForward: CARRY_FORWARD_PROPERTY,
     onError: CONSULTATION_ON_ERROR,
   },
 });
@@ -1664,8 +1684,10 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
             'Values for the agent`s instruction-template variables. `{{vars.key}}` / `{{nodes.id.key}}` / `{{trigger.key}}` interpolate from the run context.',
         }),
         generation: GENERATION_HYPERPARAMETERS_PROPERTY,
+        carryForward: CARRY_FORWARD_PROPERTY,
       }),
-      description: 'Per-node overrides, limited to prompt variables and hyper-parameters within the agent`s declared ranges.',
+      description:
+        'Per-node overrides, limited to prompt variables, hyper-parameters within the agent`s declared ranges, and the re-visit carry-forward switch.',
     }),
     execution: Object.freeze({
       type: 'object',
@@ -2110,79 +2132,10 @@ const NODE_RUNTIME_PROPERTIES: Readonly<Record<string, NodeConfigSchema>> = Obje
   enabled: NODE_ENABLED_PROPERTY,
 });
 
-// ===========================================================================================
-// ADDENDUM 2 — DD-10's per-node LLM BINDING
-// ===========================================================================================
-//
-// `AiTaskDefault` semantics RELOCATE onto the node; they are not deleted. Today a generation
-// node says `taskKey: 'text.finalize'` and the runtime resolves the tenant's ONE
-// `AiTaskDefault` row for that key — so every finalize node in a tenant's graph is pinned to
-// the same model, and a tenant running both a summarization and a discharge-summary node
-// cannot give them different ones. That is the gap this closes, and it is the whole of it.
-//
-// ## The binding names a SLUG, and only a slug
-//
-// `AiTaskDefault` expresses exactly `(taskKey, modelSlug, configJson)`. `taskKey` is already a
-// node config key. `configJson` has no reader anywhere in either runtime (it is echoed into
-// `EffectiveAiTaskDefaultResponse` and read by nothing). What finally reaches `apps/text` —
-// `provider` and the provider-native model id — is DERIVED from the `AiModel` row the slug
-// names (`{provider, sourceUri}`, with the one `azure -> azure-openai` alias). So `modelSlug`
-// is the entire transferable selection, and each field a richer binding might add would be
-// either a hardcoded literal or a second source for something already modelled:
-//
-//   provider / model derived from the AiModel row; authoring them would bypass the
-//                         ENABLED check, the taskType match and the provider alias, and put an
-//                         engine name and a model id in tenant graph data
-//                         (`00-project-context.md` §Configuration Principles rule 1).
-//   contextLength already `AiRuntimeProfile.contextLength`, keyed by the very
-//                         `(provider, modelSlug)` pair this binding selects.
-//   maxTokens/temperature already declared as top-level keys on every generation schema here.
-//   promptInstruction already `promptTemplateId` + `promptVersionNumber` — an
-//                         APPROVED, version-pinned template, not free text on a node.
-//
-// A one-field object rather than a bare `modelSlug` key because the binding is the unit that
-// resolves or does not: `llmBinding` present means "this node selects for itself, fail closed
-// if the slug does not resolve"; absent means "resolve the tenant's `taskKey` default exactly
-// as today". A bare optional key cannot express that difference against a config object that
-// already carries a dozen unrelated optional keys.
-//
-// ## The SET is derived, for the reason ADDENDUM 1 gives
-//
-// Membership is "the schema declares `taskKey`" — which IS the marker for "this node's model
-// is selected per node through the AiTaskDefault cascade". Deriving it from that signal, and
-// folding the property in HERE, is what stops the next generation node someone registers being
-// silently unable to carry a binding. The sensor nodes correctly fall outside it: they call
-// `get_policy(tenant_id)` with no task key and take their model from the `HarnessPolicy`
-// columns, which is Phase 2's subject.
-//
-// NOT added to any schema's `required`, exactly like the prompt and document bindings: making
-// it required would invalidate every graph already published without one.
-
-/** DD-10 — the per-node model SELECTION, as one shared frozen object. */
-const LLM_BINDING_PROPERTY: NodeConfigSchema = Object.freeze({
-  type: 'object',
-  additionalProperties: false,
-  required: Object.freeze(['modelSlug']),
-  properties: Object.freeze({
-    modelSlug: Object.freeze({
-      type: 'string',
-      minLength: 1,
-      maxLength: 128,
-      description:
-        'DD-10 — the `AiModel.slug` this node generates with, resolved [tenant, SYSTEM] preferring tenant, exactly as an `AiTaskDefault` row is. A REFERENCE, never a provider name or a model id. Absent binding = the tenant`s `taskKey` default applies; a bound slug that does not resolve to an ENABLED model FAILS CLOSED rather than falling back to it.',
-    }),
-  }),
-  description: 'DD-10 — this node`s own model selection, overriding the tenant`s `taskKey` AiTaskDefault.',
-});
-
-/** The routing key whose presence marks a node type as selecting its own model. */
-const TASK_KEY_PROPERTY_NAME = 'taskKey';
-
-function withLlmBinding(schema: NodeConfigSchema): NodeConfigSchema {
-  const declared = (schema.properties ?? {}) as Record<string, NodeConfigSchema>;
-  if (declared[TASK_KEY_PROPERTY_NAME] === undefined || declared.llmBinding !== undefined) return schema;
-  return Object.freeze({ ...schema, properties: Object.freeze({ ...declared, llmBinding: LLM_BINDING_PROPERTY }) });
-}
+// The per-node `llmBinding` (DD-10) used to be folded in here by `withLlmBinding()` onto every
+// schema declaring `taskKey`. TASK-882 removed it: since TASK-876 the TEXT_GENERATION agent
+// selects the model and no runtime read the binding (`api_client.py`, `_llm_policy.py`), so the
+// property was a configuration promise nothing kept. Model selection is the agent's alone.
 
 /**
  * `consultation.hitlGate` is the ONE exclusion, and it is structural rather than a carve-out: it
@@ -2253,5 +2206,5 @@ function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfi
  * `GET /admin/workflow-nodes` serves, and what the Studio inspector compiles into fields.
  */
 export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
-  Object.fromEntries(Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withLlmBinding(withRuntimeProperties(key, schema))])),
+  Object.fromEntries(Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withRuntimeProperties(key, schema)])),
 );

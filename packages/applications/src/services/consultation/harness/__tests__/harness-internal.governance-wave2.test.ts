@@ -18,11 +18,7 @@ import { NotFoundException } from '@nestjs/common';
 import { ConsultationStatus, ResourceStatusType } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { HarnessInternalService } from '../harness-internal.service';
-import {
-  AGENTIC_REVISIT_CARRY_FORWARD_KEY,
-  PRIOR_VISIT_SUMMARY_MAX_CHARS,
-  PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER,
-} from '../../../settings-registry/descriptors/agentic-revisit.descriptors';
+import { PRIOR_VISIT_SUMMARY_MAX_CHARS, PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER } from '../prior-visit-summary';
 
 const TENANT = 'tenant-1';
 const CONSULTATION = 'consultation-1';
@@ -127,13 +123,11 @@ function build(fixtures: Fixtures = {}) {
   };
   const promptTemplateRepository = { findById: vi.fn().mockResolvedValue({ id: 'tpl-1', currentVersionNumber: 3 }) };
   const harnessAuditService = { append: vi.fn().mockResolvedValue({ id: 'audit-1' }) };
-  const effectiveSettings = {
-    resolveEffective: vi.fn(async (key: string) => ({
-      key,
-      tier: 'global-kv',
-      value: key === AGENTIC_REVISIT_CARRY_FORWARD_KEY ? (fixtures.carryForward ?? false) : undefined,
-      sourceScope: 'global-kv',
-    })),
+  // TASK-882: carry-forward is a binding on the assigned graph, read through ConfigResolver.
+  const configResolver = {
+    resolveRevisitCarryForwardEnabled: vi.fn(async () => fixtures.carryForward ?? false),
+    resolvePreferredPromptTemplateId: vi.fn(async () => null),
+    resolveEffectiveDnaStyleEnabled: vi.fn(async () => ({ effective: false, tenantEnabled: false, doctorToggle: null })),
   };
 
   const service = new HarnessInternalService(
@@ -148,17 +142,16 @@ function build(fixtures: Fixtures = {}) {
     undefined, // jobService
     undefined, // highlightRepository
     { publishComplete: vi.fn().mockResolvedValue({ ok: true }) } as never, // assuranceService
-    undefined, // configResolver
+    configResolver as never,
     undefined, // contextItemVersionRepository
     undefined, // secretsService
     undefined, // redisCache
     undefined, // transcriptSegmentRepository
     undefined, // harnessPolicyService
     undefined, // mcpServerRepository
-    effectiveSettings as never,
   );
 
-  return { service, contextItemRepository, consultationRepository, summaryMetaRepository, promptAssemblyService, effectiveSettings };
+  return { service, contextItemRepository, consultationRepository, summaryMetaRepository, promptAssemblyService, configResolver };
 }
 
 const assembleDto = { tenantId: TENANT, userId: 'user-1', conversationLanguage: 'en' } as never;

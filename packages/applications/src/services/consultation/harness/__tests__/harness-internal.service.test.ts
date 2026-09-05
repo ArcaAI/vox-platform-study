@@ -383,7 +383,6 @@ describe('HarnessInternalService', () => {
       transcriptSegmentRepository as any,
       policy as any,
       undefined, // mcpServerRepository
-      undefined, // effectiveSettings
       usageLedgerService as any,
     );
   };

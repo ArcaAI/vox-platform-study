@@ -94,9 +94,46 @@ const CONSULTATION_PALETTE_KEY = 'consultation';
 /** / DD-6 — the node type that carries the DNA-redaction pass. */
 const DNA_REDACTION_NODE_TYPE = 'agent.dna_redaction';
 
+/**
+ * TASK-882 — the node types whose config may carry the re-visit `carryForward` binding: the
+ * consultation palette's prompt-composition node (directly, or delegated through a
+ * `core.action`) and the `core` vocabulary's agent node (`overrides.carryForward`).
+ */
+const CARRY_FORWARD_PROMPT_NODE_TYPE = 'consultation.assemblePrompt';
+const CORE_AGENT_NODE_TYPE = 'core.agent';
+const CORE_ACTION_NODE_TYPE = 'core.action';
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
 function nodeConfigOf(node: WorkflowGraphNode | null | undefined): Record<string, unknown> {
-  const config = node?.config;
-  return typeof config === 'object' && config !== null && !Array.isArray(config) ? (config as Record<string, unknown>) : {};
+  return asRecord(node?.config);
+}
+
+/** `enabled: false` switches a node off without deleting it — both runtimes skip it, so does every read here. */
+function isEnabled(node: WorkflowGraphNode): boolean {
+  return nodeConfigOf(node).enabled !== false;
+}
+
+/** The effective type of a node — a `core.action`'s is the action it delegates to. */
+function effectiveTypeOf(node: WorkflowGraphNode): string {
+  if (node.type !== CORE_ACTION_NODE_TYPE) return node.type;
+  const actionKey = nodeConfigOf(node).actionKey;
+  return typeof actionKey === 'string' ? actionKey : node.type;
+}
+
+/** The config the effective type reads — a `core.action` carries the delegate's under `action`. */
+function effectiveConfigOf(node: WorkflowGraphNode): Record<string, unknown> {
+  const config = nodeConfigOf(node);
+  return node.type === CORE_ACTION_NODE_TYPE ? asRecord(config.action) : config;
+}
+
+/** Whether one node declares the re-visit carry-forward binding. */
+function declaresCarryForward(node: WorkflowGraphNode): boolean {
+  if (!isEnabled(node)) return false;
+  if (node.type === CORE_AGENT_NODE_TYPE) return asRecord(nodeConfigOf(node).overrides).carryForward === true;
+  return effectiveTypeOf(node) === CARRY_FORWARD_PROMPT_NODE_TYPE && effectiveConfigOf(node).carryForward === true;
 }
 
 @Injectable()
@@ -312,6 +349,22 @@ export class ConfigResolver {
   }
 
   /**
+   * TASK-882 — effective re-visit CARRY-FORWARD decision for a consultation context: whether the
+   * assigned consultation graph declares the `carryForward` binding on an ENABLED
+   * prompt-composition node (`consultation.assemblePrompt`, or a `core.action` delegating to
+   * it) or on a `core.agent`'s `overrides`.
+   *
+   * Fails SAFE toward OFF in every degraded case (unwired resolvers, no assignment, no graph,
+   * a thrown lookup). That direction is deliberate: carrying a PRIOR VISIT's content into a new
+   * note on the back of a failed governance read is a clinical-safety regression.
+   */
+  async resolveRevisitCarryForwardEnabled(ctx: ConfigResolutionContext): Promise<boolean> {
+    const graph = await this.resolveGoverningGraph(ctx, 'carry-forward');
+    if (!graph) return false;
+    return graph.nodes.some(declaresCarryForward);
+  }
+
+  /**
    * The tenant's ACTIVE `agent.dna_redaction` node, or `null` when the governing graph declares
    * none, or `undefined` when the workflow resolvers are not wired at all.
    *
@@ -321,17 +374,33 @@ export class ConfigResolver {
    * as `null` — fail-closed, per this feature's posture.
    */
   private async resolveDnaRedactionNode(ctx: ConfigResolutionContext): Promise<WorkflowGraphNode | null | undefined> {
+    const graph = await this.resolveGoverningGraph(ctx, 'DNA-redaction');
+    if (graph === undefined) return undefined;
+    if (graph === null) return null;
+    return graph.nodes.find((node) => node.type === DNA_REDACTION_NODE_TYPE && isEnabled(node)) ?? null;
+  }
+
+  /**
+   * The PUBLISHED graph governing this consultation context, resolved through the shared
+   * `department -> tenant -> platform default` assignment cascade (the same walk the realtime
+   * executor, `LoopConfigService` and the prompt chain make, so all of them agree on which
+   * graph governs).
+   *
+   * `undefined` = the workflow resolvers are not wired; `null` = wired, but no assignment, no
+   * published definition, no graph — or a lookup that THREW, which is reported as `null` so
+   * every caller fails closed.
+   */
+  private async resolveGoverningGraph(ctx: ConfigResolutionContext, purpose: string): Promise<WorkflowGraph | null | undefined> {
     if (!this.workflowAssignments || !this.workflowDefinitionRepository) return undefined;
     try {
       const assignment = await this.workflowAssignments.resolve(ctx.tenantId, CONSULTATION_PALETTE_KEY, ctx.departmentId ?? null);
       if (!assignment.workflowDefinitionSlug) return null;
       const definition = await this.workflowDefinitionRepository.findPublishedBySlug(ctx.tenantId, assignment.workflowDefinitionSlug);
       const graph = definition?.graph as unknown as WorkflowGraph | null | undefined;
-      if (!graph || !Array.isArray(graph.nodes)) return null;
-      return graph.nodes.find((node) => node.type === DNA_REDACTION_NODE_TYPE && nodeConfigOf(node).enabled !== false) ?? null;
+      return graph && Array.isArray(graph.nodes) ? graph : null;
     } catch (error) {
       this.logger.warn({
-        message: 'DNA-redaction node lookup failed — failing closed (redaction off)',
+        message: `Governing consultation graph lookup failed (${purpose}) — failing closed`,
         tenantId: ctx.tenantId,
         error: error instanceof Error ? error.message : String(error),
       });

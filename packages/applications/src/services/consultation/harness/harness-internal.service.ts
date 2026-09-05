@@ -37,12 +37,7 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
-import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
-import {
-  AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT,
-  AGENTIC_REVISIT_CARRY_FORWARD_KEY,
-  truncatePriorVisitSummary,
-} from '../../settings-registry/descriptors/agentic-revisit.descriptors';
+import { truncatePriorVisitSummary } from './prior-visit-summary';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
@@ -205,11 +200,6 @@ export class HarnessInternalService {
     // `resolveMcpToken`. Optional + trailing; absent ⇒ no token resolves (the
     // fail-closed default: nothing is callable).
     @Optional() @Inject(McpServerRepository) private readonly mcpServerRepository?: McpServerRepository,
-    // Governed read facade for the `agentic.*` control plane — today only
-    // `agentic.revisit.carryForwardEnabled` (F-18). Optional + trailing so
-    // existing positional unit fixtures keep their arity; absent ⇒ the code
-    // default (carry-forward OFF), which is also the fail-safe direction.
-    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
     // Injected but DELIBERATELY NEVER CALLED.
     // `persistDraft`'s `HarnessDraftRequest` carries no token fields, and
     // harness-originated LLM calls are already metered PER-STEP by the
@@ -411,30 +401,21 @@ export class HarnessInternalService {
   }
 
   /**
-   * Effective re-visit carry-forward decision (F-18).
-   *
-   * Fails SAFE toward OFF in every degraded case (no facade, unknown key,
-   * resolver outage, non-boolean value). That direction is deliberate and is the
-   * opposite of `resolveWarmStartEnabled`'s: warm-start degrades toward its
-   * configured value because losing it only costs quality, whereas carrying a
-   * PRIOR VISIT's content into a new note on the back of a failed governance read
-   * is a clinical-safety regression (SOTA
+   * Effective re-visit carry-forward decision (F-18) — TASK-882: the assigned consultation
+   * graph's `carryForward` binding (prompt-composition node or `core.agent.overrides`), read
+   * through `ConfigResolver`, which fails SAFE toward OFF in every degraded case. That direction
+   * is deliberate and is the opposite of `resolveWarmStartEnabled`'s: warm-start degrades toward
+   * its configured value because losing it only costs quality, whereas carrying a PRIOR VISIT's
+   * content into a new note on the back of a failed governance read is a clinical-safety
+   * regression. An unwired resolver (positional fixtures) is OFF too.
    */
-  private async resolveRevisitCarryForwardEnabled(tenantId: string): Promise<boolean> {
-    if (!this.effectiveSettings) {
-      return AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT;
-    }
-    try {
-      const resolved = await this.effectiveSettings.resolveEffective(AGENTIC_REVISIT_CARRY_FORWARD_KEY, { tenantId });
-      return resolved.value === true || resolved.value === 'true';
-    } catch (error) {
-      this.logger.warn({
-        message: 'agentic.revisit.carryForwardEnabled lookup failed — carry-forward stays OFF for this run',
-        tenantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT;
-    }
+  private async resolveRevisitCarryForwardEnabled(tenantId: string, consultation: ConsultationEntity | null | undefined): Promise<boolean> {
+    if (!this.configResolver) return false;
+    return this.configResolver.resolveRevisitCarryForwardEnabled({
+      tenantId,
+      departmentId: consultation?.departmentId ?? null,
+      doctorId: consultation?.doctorId ?? null,
+    });
   }
 
   /**
@@ -750,7 +731,7 @@ export class HarnessInternalService {
       // behave exactly as before. Short-circuited so neither case pays for the
       // governance read or the context query.
       const priorVisitSummary =
-        consultation?.parentConsultationId && (await this.resolveRevisitCarryForwardEnabled(tenantId))
+        consultation?.parentConsultationId && (await this.resolveRevisitCarryForwardEnabled(tenantId, consultation))
           ? await this.loadPriorVisitSummary(consultation.parentConsultationId, tenantId)
           : null;
 

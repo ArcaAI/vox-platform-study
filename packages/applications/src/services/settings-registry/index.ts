@@ -9,7 +9,6 @@ export * from './descriptors/pipeline.descriptors';
 export * from './descriptors/entitlements.descriptors';
 export * from './descriptors/agentic-context.descriptors';
 export * from './descriptors/agentic-eval.descriptors';
-export * from './descriptors/agentic-revisit.descriptors';
 export * from './descriptors/agentic-fewshot.descriptors';
 // Batch upload ceilings — the gateway reads `BATCH_TRANSCRIPTION_DEFAULTS` as
 // its fallback when the settings module is not wired.
