@@ -71,8 +71,7 @@ describe('TtsWsGateway — origin registry CSWSH guard (G-1)', () => {
       ticketService as never,
       config as never,
       undefined, // secretsService
-      undefined, // tenantTtsConfig
-      undefined, // providerConnectionService
+      undefined, // ttsAgentResolver
       undefined, // usageLedger
       undefined, // entitlementsService
       registry as never,

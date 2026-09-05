@@ -11,12 +11,11 @@ import {
   IConfigService,
   IEntitlementsService,
   IMediaService,
-  IProviderConnectionService,
-  ITenantTtsConfigService,
   IUsageLedgerService,
   SecretsService,
   TranscriptionJobService,
   TranscriptionRealtimeService,
+  TtsAgentResolverService,
   UsageIdempotencyKey,
 } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
@@ -45,7 +44,7 @@ import { ClsService } from 'nestjs-cls';
 import { RequiredScopes } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { classifyTtsProvider } from '../speech/tts-provider-classification';
-import { resolveTtsTenantConfig } from '../speech/tts-tenant-config';
+
 
 /** Plain interfaces (not class-validator DTOs) so the global pipe passes the body through; TIER 3 validation runs against the agent's own `inputSchema`. */
 export interface AgentInvocationBody {
@@ -108,8 +107,10 @@ export class AgentController {
     private readonly httpService: HttpService,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
-    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
+    // TASK-879 — the ONE TEXT_TO_SPEECH resolution. This route has ALREADY resolved the agent
+    // (that is what it is), so it calls `resolveFromAgent` rather than re-running the cascade:
+    // resolving twice could pick a different version between the two reads.
+    @Optional() private readonly ttsResolver?: TtsAgentResolverService,
     @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
     @Optional() private readonly jobService?: TranscriptionJobService,
@@ -220,9 +221,10 @@ export class AgentController {
     const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_TO_SPEECH, agentSlug: slug });
     const agentRequest = this.invocation.buildSpeechRequest(resolved, { ...(body ?? {}) });
 
-    // The SAME tenant resolve the speech proxy applies (`tts-tenant-config.ts`), mapped onto
-    // the agent's request: the agent decides voice/format/speed/model, the tenant decides
-    // routing chains, whitelist and BYO credentials.
+    // The SAME resolution the speech proxy applies (`tts-tenant-config.ts`), mapped onto the
+    // agent's request. Since TASK-879 the agent decides everything — voice, format, speed, model,
+    // engine chain — and the tenant's contribution is its connection rows (endpoints, regions,
+    // BYO credentials, the three-state `enabled`), which the resolver folds into the same spec.
     const forwardBody: Record<string, unknown> = {
       input: agentRequest.input,
       voice: agentRequest.voice,
@@ -230,25 +232,14 @@ export class AgentController {
       ...(agentRequest.response_format ? { response_format: agentRequest.response_format } : {}),
       ...(agentRequest.speed !== undefined ? { speed: agentRequest.speed } : {}),
     };
-    if (this.tenantTtsConfig) {
-      try {
-        const { eff, overrides } = await resolveTtsTenantConfig(tenantId, {
-          tenantTtsConfig: this.tenantTtsConfig,
-          providerConnectionService: this.providerConnectionService,
-        });
-        forwardBody.response_format = forwardBody.response_format ?? eff.defaultFormat;
-        forwardBody.speed = forwardBody.speed ?? eff.defaultSpeed;
-        forwardBody.routing_en = eff.routingEn;
-        forwardBody.routing_ml = eff.routingMl;
-        forwardBody.allowed_providers = eff.allowedProviders;
-        if (Object.keys(overrides).length > 0) forwardBody.provider_overrides = overrides;
-        if (eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0) forwardBody.voice_bindings = eff.voiceBindings;
-      } catch (err) {
-        this.logger.warn({
-          message: 'Tenant TTS config resolve failed; forwarding the agent request with service defaults',
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+    if (this.ttsResolver) {
+      // FAILS CLOSED: `apps/tts` refuses a request with no resolved spec, so an unresolvable
+      // agent must surface as the 404/409 it is rather than as an opaque downstream 503.
+      const { spec, providerOverrides } = await this.ttsResolver.resolveFromAgent(resolved, tenantId);
+      forwardBody.resolved_spec = spec;
+      forwardBody.response_format = forwardBody.response_format ?? spec.primary.parameters.format ?? undefined;
+      forwardBody.speed = forwardBody.speed ?? spec.primary.parameters.speed ?? undefined;
+      if (providerOverrides && Object.keys(providerOverrides).length > 0) forwardBody.provider_overrides = providerOverrides;
     }
 
     if (this.entitlementsService) {
@@ -256,7 +247,9 @@ export class AgentController {
     }
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream, text/event-stream' };
-    const serviceToken = this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    // The ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is the migration fallback only.
+    const serviceToken =
+      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
     if (serviceToken) headers['X-Service-Token'] = serviceToken;
 
     let upstream;
