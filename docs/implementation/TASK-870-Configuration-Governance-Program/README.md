@@ -68,8 +68,39 @@ Verified facts the lanes build on (file:line references point at `c364bb8ec`):
 - 46 descriptors are dead with no prerequisite (list: `REMOVE-DEAD`/`REMOVE-FALLBACK` rows with
   an empty `prerequisite` in the review's reconciled decisions). No seed writes any of them;
   no live DB row holds any of them.
-- `apps/text` has the `pythonpath` half of the worktree guard but not the `conftest.py`
-  `assert_source_tree` half (rule 14 §4); `apps/stt` has both.
+- `apps/text` had the `pythonpath` half of the worktree guard but not the `conftest.py`
+  `assert_source_tree` half (rule 14 §4); TASK-871 added it (and found two more packages —
+  `hope_otel`, `hope_async_contract` — resolving from the primary checkout until it did).
+
+### Corrections established during wave 1
+
+- **`text.serviceToken` and `tts.serviceToken` are NOT dead.** The review traced only the
+  Python side, where each service's `config.py` retired them; the gateway still fetches both
+  through `SecretsService` (`TEXT_SERVICE_TOKEN` at `base-proxy.controller.ts:68` and as the
+  fallback after `INTERNAL_ACCESS_TOKEN` in `text-proxy`/`text-compat`; `TTS_SERVICE_TOKEN`
+  at four `apps/api` sites). `vault-seed-secrets.sh` derives its key list from the
+  descriptors, so removing one silently breaks a Vault deployment. Both KEPT by TASK-872;
+  retiring the gateway readers in favour of the shared `internal.accessToken` is `apps/api`
+  work for a later wave. `nlp.serviceToken` was genuinely dead and is removed.
+- **The three `stt.streaming.{batchWaitMs,embeddingDevice,multiGpuStrategy}` descriptors are
+  removed, but their override branches at `apps/stt/src/stt/streaming/execution_profile.py:377-387`
+  survive as dead code** (the fields can now only hold their code default). Behaviour is
+  unchanged — those values never reached a consumer — but the branches belong to the wave-2
+  ASR lane that owns `apps/stt/streaming`.
+- **The five dead `models.*` task keys keep their `AI_TASK_KEYS` entries and seed rows**; only
+  the descriptors went (via a documented `UNCATALOGUED_TASK_KEYS` list). They are an OpenAPI
+  enum, a console catalogue, seed elections pinned by tests, and three recorded open owner
+  decisions — retiring them is the `models.*` family retirement in wave 2, with the
+  five-artifact regeneration.
+- **A behaviour change on fresh local setups, correct per the 2026-08-22 owner decision:**
+  removing `entitlements.enabledDefault` drops `ENTITLEMENTS_ENABLED_DEFAULT=false` from the
+  generated `.env.sample`, which `pnpm setup:dev` copies into `.env.dev`. That committed sample
+  had been forcing quota enforcement OFF on every new laptop against the decision that local
+  dev runs ON. Existing `.env.dev` files are untouched.
+- Registry size after wave 1 is **286**, not the 287 the plan implied: TASK-872 removed 55 —
+  the 46 with no prerequisite, the five dead `models.*`, the three judge keys that went with
+  `guardrail-policy.descriptors.ts`, and `nlp.serviceToken` — while keeping the two live
+  service tokens.
 
 ## Implementation Plan
 
@@ -123,7 +154,7 @@ consolidation.
 |---|---|---|---|---|
 | A | TASK-871 — post-receive guardrail gate | `9a8e2af0b` | `pnpm text:test` 1614 passed / 4 skipped (1587 baseline + 27 new); `pnpm text:typecheck` clean | removed |
 | C | TASK-873 — scope alignment, dead console folders, artifacts | `76686c60d` | applications 660 files / 11514 tests passed (a first run showed 13 files failing to load — a concurrent `api:build` rewriting `dist/`; clean re-run green); database 1767 passed; `api:build` clean; `api:openapi:check`, `api:portal:check`, `gen:admin:check` all no-drift; admin-console build + lint clean, 2269 tests; vox-node typecheck clean, 375 tests | removed |
-| B | TASK-872 — registry cleanup + routing veto | — | in flight — first agent stalled on the harness watchdog after three commits (`a0506a338` flips, `cb22d3b0a` veto, `759e62855` guardrail.policy removal) with twelve files mid-edit; a continuation agent resumed on that tree | `../hope-v2-task-872` |
+| B | TASK-872 — registry cleanup (341 → 286) + six `globalOnly` flips + routing-policy veto | `94a311e4d` | applications 659 files / 11519 tests; domains 161 files / 1919; database 79 / 1767; api 280 / 4211; applications lint 0 errors; repo lint 39/39; all three drift checks no-drift; `stt:test` 1 failed / 3181 passed (the pre-existing MinIO env test); `tts:test` 459; `guardrail:test` 426; `harness:test` 6 failed / 2091 and `nlp:test` 2 failed / 583 — both sets pre-existing: the merged wave-1 diff under `apps/harness/` is `.env.sample` plus one retention test fixture, and touches nothing under `apps/nlp/`, `apps/harness/src/harness/temporal/` or the replay fixtures. First agent stalled on the harness watchdog after three commits; a continuation resumed on that tree and finished (ten commits total). | removed |
 | D | TASK-874 — STT fallback funding per engine segment | `f8f7835a1` | `pnpm stt:test` 1 failed / 3193 passed / 210 errors — identical to the lane's baseline (the failure is the pre-existing `test_minio_credentials_default_to_empty`; the errors are integration tests with no test DB); `stt:lint` clean; `stt:typecheck` clean (140 files); applications 660 files / 11521 tests (+7 = the lane's new TS cases); api 280 files / 4211 tests; artifacts regenerated with zero diff (the usage callback is a doc-excluded internal route, so the DTO change never reached `openapi.json`); all three drift checks no-drift; vox-node typecheck clean, 375 tests | removed |
 
 Lane A chose design (d): gate the assembled completion at end-of-stream for SSE (published tokens
