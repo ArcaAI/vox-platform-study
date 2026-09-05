@@ -370,14 +370,21 @@ export class HarnessPolicyService {
    * ticket's to edit. Removing the query param is a follow-on for whoever owns
    * that module; nothing reads it here.
    *
-   * TASK-876: when `opts.taskKey` is supplied the tenant's ASSIGNED TEXT_GENERATION agent
-   * (`resolveTextSelection`) overlays `textProvider`/`textModel` on whichever policy row wins —
-   * the Python interpreter nodes (`generate.text`, `consultation.realtimeSummary`, the Lane N
-   * judgements) read their selection off exactly these two fields. FAIL-CLOSED: when no agent
-   * is assigned at any tier the two fields are NULLED, so the node degrades `no_text_selection`
-   * rather than generating on the legacy policy columns. `opts.modelSlug` (the retired
-   * `llmBinding`) is accepted for the wire and consulted by nothing. Without a taskKey the
-   * result is byte-identical to the prior behaviour (`core.agent` reads only the PHI flags).
+   * TASK-876: the tenant's ASSIGNED TEXT_GENERATION agent (`resolveTextSelection`) overlays
+   * `textProvider`/`textModel` on whichever policy row wins — the Python interpreter nodes
+   * (`generate.text`, `consultation.realtimeSummary`, the Lane N judgements) read their selection
+   * off exactly these two fields.
+   *
+   * The overlay is UNCONDITIONAL. It used to be gated on `opts.taskKey`, and that gate was a
+   * live selection hole: `AgentAssignment`'s key is `(scope, scopeId, task)` — it carries NO role
+   * dimension — so a task key never chose WHICH agent serves, while the DURABLE lane
+   * (`activities.fetch_policy` → `workflows.py`, which sends no task key) kept reading the
+   * RETIRED `HarnessPolicy.textProvider/textModel` columns straight into `GenerateInput`.
+   *
+   * FAIL-CLOSED: when no agent is assigned at any tier both fields are NULLED and the miss is
+   * logged as a configuration error, so the node degrades `no_text_selection` — the legacy
+   * columns are never served as a selection again. `opts.modelSlug` (the retired `llmBinding`)
+   * is accepted for the wire and consulted by nothing.
    */
   async getEffectivePolicy(
     tenantId?: string,
@@ -385,12 +392,10 @@ export class HarnessPolicyService {
   ): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
-    const taskSelection = opts?.taskKey ? await this.resolveTextSelectionOrNull(tid) : undefined;
+    const taskSelection = await this.resolveTextSelectionOrNull(tid);
     const applyTaskSelection = (resp: HarnessPolicyResponse): HarnessPolicyResponse => {
-      if (taskSelection !== undefined) {
-        resp.textProvider = taskSelection?.provider ?? null;
-        resp.textModel = taskSelection?.model ?? null;
-      }
+      resp.textProvider = taskSelection?.provider ?? null;
+      resp.textModel = taskSelection?.model ?? null;
       return resp;
     };
 
@@ -522,14 +527,20 @@ export class HarnessPolicyService {
     }
   }
 
-  /** `resolveTextSelection` for the `getEffectivePolicy` overlay: `null` = nothing assigned (fail closed at the node); a veto still propagates. */
+  /**
+   * `resolveTextSelection` for the `getEffectivePolicy` overlay: `null` = nothing assigned, which
+   * NULLS both fields so the Python node degrades `no_text_selection`. Logged at ERROR — with no
+   * agent at the department, tenant OR SYSTEM tier the platform is misconfigured, and the one
+   * thing that must never happen instead is the retired `HarnessPolicy` columns passing through
+   * as a selection. A veto (or any non-`BadRequestException`) still propagates.
+   */
   private async resolveTextSelectionOrNull(tenantId: string): Promise<{ provider: string; model: string } | null> {
     try {
       return await this.resolveTextSelection(tenantId);
     } catch (error) {
       if (error instanceof BadRequestException) {
-        this.logger.warn({
-          message: 'No assigned TEXT_GENERATION agent for the effective-policy overlay — text selection nulled (fail closed)',
+        this.logger.error({
+          message: 'No assigned TEXT_GENERATION agent for the effective-policy overlay — text selection nulled (configuration error, fail closed)',
           tenantId,
           error: error.message,
         });
