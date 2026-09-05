@@ -25,7 +25,6 @@ function resolved(over: Partial<ResolvedPipelineToggles> = {}): ResolvedPipeline
 
 function serviceWith(
   toggles: ResolvedPipelineToggles,
-  aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
   // Backs the global-kv lane. Omitted ⇒ no stored row at any scope, so
   // global-kv keys resolve to their descriptor default.
   //
@@ -47,7 +46,7 @@ function serviceWith(
         },
       } as any)
     : undefined;
-  return new EffectiveSettingsService(configResolver, aiTaskDefaults as any, tenantSettings as any);
+  return new EffectiveSettingsService(configResolver, tenantSettings as any);
 }
 
 const CTX = { tenantId: 'tnt-1', departmentId: 'dep-1', doctorId: null };
@@ -102,7 +101,7 @@ describe('EffectiveSettingsService', () => {
     // (`tenant` | `system` | `code-default`) — the same vocabulary the pipeline
     // branch above already uses, and what observability of fallbacks asks for.
     it('reports a stored platform row with sourceScope system', async () => {
-      const svc = serviceWith(resolved(), undefined, { platform: { 'agentic.context.liveDelta.maxChars': 9000 } });
+      const svc = serviceWith(resolved(), { platform: { 'agentic.context.liveDelta.maxChars': 9000 } });
 
       await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
         key: 'agentic.context.liveDelta.maxChars',
@@ -113,7 +112,7 @@ describe('EffectiveSettingsService', () => {
     });
 
     it('reports a TENANT override ahead of the platform row', async () => {
-      const svc = serviceWith(resolved(), undefined, {
+      const svc = serviceWith(resolved(), {
         platform: { 'rateLimit.maxRequests': 100 },
         tenant: { 'tnt-1': { 'rateLimit.maxRequests': 10 } },
       });
@@ -132,7 +131,7 @@ describe('EffectiveSettingsService', () => {
     });
 
     it('falls back to the descriptor default with sourceScope code-default', async () => {
-      const svc = serviceWith(resolved(), undefined, { platform: {} });
+      const svc = serviceWith(resolved(), { platform: {} });
 
       await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
         key: 'agentic.context.liveDelta.maxChars',
@@ -168,53 +167,14 @@ describe('EffectiveSettingsService', () => {
     });
   });
 
-  // Models.* keys delegate to AiTaskDefaultService.getEffective
-  // (never re-implementing data access).
-  describe('models.* branch', () => {
-    it('delegates models.<taskKey> to AiTaskDefaultService and threads the winning tier through', async () => {
-      const getEffective = vi.fn(async () => ({
-        tenantId: 'tnt-1',
-        taskKey: 'nlp.ner',
-        modelSlug: 'medical-ner',
-        source: 'system' as const,
-        configJson: null,
-        model: null,
-      }));
-      const svc = serviceWith(resolved(), { getEffective });
-
-      await expect(svc.resolveEffective('models.nlp.ner', CTX)).resolves.toEqual({
-        key: 'models.nlp.ner',
-        tier: 'db-config',
-        value: 'medical-ner',
-        sourceScope: 'system',
-      });
-      expect(getEffective).toHaveBeenCalledWith('nlp.ner', 'tnt-1');
-    });
-
-    // An UNRESOLVED model selection now FAILS
-    // CLOSED. This test previously asserted `{ value: null, sourceScope: 'none' }`
-    // — i.e. it locked in exactly the silent fail-open that is forbidden: a caller
-    // reading "the effective model" got a null that is indistinguishable from a
-    // deliberately-null value. `models.*` descriptors declare `failMode: 'closed'`,
-    // so the facade raises instead of inventing an answer.
-    it('FAILS CLOSED when the selection is unconfigured (source null)', async () => {
-      const getEffective = vi.fn(async () => ({
-        tenantId: 'tnt-1',
-        taskKey: 'guardrail.validate',
-        modelSlug: null,
-        source: null,
-        configJson: null,
-        model: null,
-      }));
-      const svc = serviceWith(resolved(), { getEffective });
-
-      await expect(svc.resolveEffective('models.guardrail.validate', CTX)).rejects.toBeInstanceOf(ArgumentInvalidException);
-      await expect(svc.resolveEffective('models.guardrail.validate', CTX)).rejects.toThrow(/fail(s|ing)? closed|could not be resolved/i);
-    });
-
-    it('throws when no AiTaskDefaultService is wired', async () => {
+  // TASK-881 — the `models.*` lane is GONE with the `AiTaskDefault` facade.
+  // Model SELECTION is not a setting: it resolves through
+  // `AiRoutingPolicyService.resolveDefault`, and a `models.<taskKey>` read is
+  // an unknown key like any other (never a lane that quietly answers null).
+  describe('models.* (retired)', () => {
+    it.each(['models.nlp.ner', 'models.guardrail.validate', 'models.harness.judge', 'models.text.live'])('%s is an unknown key', async (key) => {
       const svc = serviceWith(resolved());
-      await expect(svc.resolveEffective('models.nlp.ner', CTX)).rejects.toThrow(/no effective resolver/i);
+      await expect(svc.resolveEffective(key, CTX)).rejects.toThrow(/unknown setting 'models\./);
     });
   });
 
@@ -222,7 +182,7 @@ describe('EffectiveSettingsService', () => {
   describe('failMode', () => {
     it('open-to-default: an unset global-kv tuning knob resolves to the descriptor default', async () => {
       const appSettings = { getValueWithDefault: vi.fn(() => null) };
-      const svc = serviceWith(resolved(), undefined, appSettings);
+      const svc = serviceWith(resolved(), appSettings);
 
       // `rate-limit.enabled` is a tuning/protection flag → open-to-default.
       await expect(svc.resolveEffective('rate-limit.enabled', CTX)).resolves.toMatchObject({
@@ -231,25 +191,9 @@ describe('EffectiveSettingsService', () => {
       });
     });
 
-    it('closed: an unresolved value raises instead of substituting a default', async () => {
-      const getEffective = vi.fn(async () => ({
-        tenantId: 'tnt-1',
-        taskKey: 'text.live',
-        modelSlug: null,
-        source: null,
-        configJson: null,
-        model: null,
-      }));
-      const svc = serviceWith(resolved(), { getEffective });
-      await expect(svc.resolveEffective('models.text.live', CTX)).rejects.toBeInstanceOf(ArgumentInvalidException);
-    });
-
-    it('closed does NOT swallow a backend error — transport failures still propagate', async () => {
-      const getEffective = vi.fn(async () => {
-        throw new Error('db unreachable');
-      });
-      const svc = serviceWith(resolved(), { getEffective });
-      await expect(svc.resolveEffective('models.text.live', CTX)).rejects.toThrow(/db unreachable/);
-    });
+    // The `closed` half of this contract is pinned on the db-config lane in
+    // `effective-settings.db-config.test.ts` (an unresolved value raises; a
+    // backend error propagates). It used to be exercised here through the
+    // `models.*` lane, which TASK-881 retired with the `AiTaskDefault` facade.
   });
 });

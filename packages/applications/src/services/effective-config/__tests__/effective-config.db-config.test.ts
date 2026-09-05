@@ -45,7 +45,6 @@ function pullService(rows: TenantStorageConfigEntity[]): EffectiveConfigService 
   const settings = new EffectiveSettingsService(
     {} as unknown as ConfigResolver,
     undefined,
-    undefined,
     new PlatformStorageSettingsResolver(repo, appSettings),
   );
   return new EffectiveConfigService(settings);

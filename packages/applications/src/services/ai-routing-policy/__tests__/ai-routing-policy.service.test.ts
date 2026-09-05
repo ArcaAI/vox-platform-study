@@ -55,7 +55,7 @@ const GLOBAL_CUSTOMER_TENANT = '50000000-0000-0000-0000-000000000000';
 function makeConfig(overrides: Record<string, any> = {}) {
   const row = AiRoutingPolicyFactory.CreateAiRoutingPolicy({
     tenantId: overrides.tenantId ?? TENANT,
-    taskKey: overrides.taskKey ?? 'text.finalize',
+    taskKey: overrides.taskKey ?? 'harness.judge',
     providerConnectionId: overrides.connectionRef === null ? null : `conn:${overrides.connectionRef ?? 'azure'}`,
     modelId: `model:${overrides.model ?? 'gpt-4o'}`,
     residency: overrides.residency ?? 'AZURE_US',
@@ -170,14 +170,14 @@ describe('getEffective — the cascade is request tenant → SYSTEM, and nothing
     const { svc } = makeService({
       rows: [makeConfig({ tenantId: TENANT, connectionRef: 'tenant-vllm', isDefault: true }), makeConfig({ tenantId: SYSTEM_TENANT_ID, isDefault: true })],
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.source).toBe('tenant');
     expect(result.primary?.connectionRef).toBe('tenant-vllm');
   });
 
   it('widens to SYSTEM only on ABSENCE of a tenant configuration', async () => {
     const { svc } = makeService({ rows: [makeConfig({ tenantId: SYSTEM_TENANT_ID, connectionRef: 'platform-vllm', isDefault: true })] });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.source).toBe('system');
     expect(result.primary?.connectionRef).toBe('platform-vllm');
   });
@@ -190,21 +190,21 @@ describe('getEffective — the cascade is request tenant → SYSTEM, and nothing
       rows: [makeConfig({ tenantId: TENANT, isDefault: true }), makeConfig({ tenantId: SYSTEM_TENANT_ID, connectionRef: 'platform-vllm', isDefault: true })],
       connectionSource: null,
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.source).toBe('tenant');
     expect(result.rejection?.code).toBe('no_eligible_candidate');
   });
 
   it('reports no policy when neither tier has one', async () => {
     const { svc } = makeService({ rows: [] });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.source).toBeNull();
     expect(result.rejection?.code).toBe('no_policy');
   });
 
   it('asks the persistence layer for EXACTLY [requestTenant, SYSTEM] — never a third id', async () => {
     const { svc, repo } = makeService({ rows: [] });
-    await svc.getEffective(TENANT, 'text.finalize');
+    await svc.getEffective(TENANT, 'harness.judge');
     const [tenantIds] = repo.findCandidates.mock.calls[0];
     expect(tenantIds).toEqual([TENANT, SYSTEM_TENANT_ID]);
     expect(tenantIds).toHaveLength(2);
@@ -217,7 +217,7 @@ describe('getEffective — the cascade is request tenant → SYSTEM, and nothing
     const { svc, repo } = makeService({
       rows: [makeConfig({ tenantId: GLOBAL_CUSTOMER_TENANT, connectionRef: 'playground-provider', isDefault: true })],
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.source).toBeNull();
     expect(result.rejection?.code).toBe('no_policy');
     expect(JSON.stringify(result)).not.toContain('playground-provider');
@@ -233,7 +233,7 @@ describe('getEffective — the cascade is request tenant → SYSTEM, and nothing
     const { svc, repo } = makeService({
       rows: [makeConfig({ tenantId: GLOBAL_CUSTOMER_TENANT, isDefault: true }), makeConfig({ tenantId: SYSTEM_TENANT_ID, isDefault: true })],
     });
-    await svc.getEffective(TENANT, 'text.finalize');
+    await svc.getEffective(TENANT, 'harness.judge');
     const everyArgument = JSON.stringify([...repo.findCandidates.mock.calls, ...repo.findAll.mock.calls]);
     expect(everyArgument).not.toContain(GLOBAL_CUSTOMER_TENANT);
   });
@@ -245,14 +245,14 @@ describe('getEffective — the cascade is request tenant → SYSTEM, and nothing
       clsTenantId: GLOBAL_CUSTOMER_TENANT,
       rows: [makeConfig({ tenantId: GLOBAL_CUSTOMER_TENANT, connectionRef: 'playground-provider', isDefault: true })],
     });
-    const result = await svc.getEffective(GLOBAL_CUSTOMER_TENANT, 'text.finalize');
+    const result = await svc.getEffective(GLOBAL_CUSTOMER_TENANT, 'harness.judge');
     expect(result.source).toBe('tenant');
     expect(result.primary?.connectionRef).toBe('playground-provider');
   });
 
   it('requires super admin to resolve for a tenant other than the caller own', async () => {
     const { svc } = makeService({ roles: [], clsTenantId: TENANT, rows: [] });
-    await expect(svc.getEffective(OTHER_TENANT, 'text.finalize')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.getEffective(OTHER_TENANT, 'harness.judge')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects an unknown task key', async () => {
@@ -271,7 +271,7 @@ describe('getEffective — the ELECTED default outranks ordering ', () => {
         makeConfig({ tenantId: TENANT, connectionRef: 'the-elected-one', priority: 99, isDefault: true }),
       ],
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.primary?.connectionRef).toBe('the-elected-one');
   });
 
@@ -282,7 +282,7 @@ describe('getEffective — the ELECTED default outranks ordering ', () => {
         makeConfig({ tenantId: TENANT, connectionRef: 'earlier', priority: 1, isDefault: false }),
       ],
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     // LOWER priority serves first — `priority` is the chain POSITION at this
     // grain, replacing the old candidate `rank`.
     expect(result.primary?.connectionRef).toBe('earlier');
@@ -295,7 +295,7 @@ describe('getEffective — the ELECTED default outranks ordering ', () => {
         makeConfig({ tenantId: TENANT, connectionRef: 'live', priority: 1, isDefault: true }),
       ],
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.primary?.connectionRef).toBe('live');
     expect(JSON.stringify(result)).not.toContain('parked');
   });
@@ -309,7 +309,7 @@ describe('getEffective — most-specific match wins', () => {
         makeConfig({ tenantId: TENANT, policyVersion: 2, matchJson: { models: ['gpt-4o-class'] }, connectionRef: 'narrow' }),
       ],
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize', { model: 'gpt-4o-class' });
+    const result = await svc.getEffective(TENANT, 'harness.judge', { model: 'gpt-4o-class' });
     expect(result.primary?.connectionRef).toBe('narrow');
   });
 
@@ -325,7 +325,7 @@ describe('getEffective — most-specific match wins', () => {
         makeConfig({ tenantId: TENANT, policyVersion: 2, priority: 0, connectionRef: 'first-in-chain' }),
       ],
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.primary?.connectionRef).toBe('first-in-chain');
   });
 
@@ -338,7 +338,7 @@ describe('getEffective — most-specific match wins', () => {
         makeConfig({ tenantId: TENANT, policyVersion: 2, matchJson: { metadata: { phi: 'true' } }, connectionRef: 'phi-only' }),
       ],
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.primary?.connectionRef).toBe('catch-all');
   });
 });
@@ -346,15 +346,15 @@ describe('getEffective — most-specific match wins', () => {
 describe('getEffective — funding is DERIVED, and the chain is gated', () => {
   it('labels a SYSTEM-supplied credential CLOUD and a tenant-supplied one BYOK', async () => {
     const platform = makeService({ rows: [makeConfig({ tenantId: TENANT, isDefault: true })], connectionSource: 'system' });
-    expect((await platform.svc.getEffective(TENANT, 'text.finalize')).primary?.funding).toBe('CLOUD');
+    expect((await platform.svc.getEffective(TENANT, 'harness.judge')).primary?.funding).toBe('CLOUD');
 
     const byok = makeService({ rows: [makeConfig({ tenantId: TENANT, isDefault: true })], connectionSource: 'tenant' });
-    expect((await byok.svc.getEffective(TENANT, 'text.finalize')).primary?.funding).toBe('BYOK');
+    expect((await byok.svc.getEffective(TENANT, 'harness.judge')).primary?.funding).toBe('BYOK');
   });
 
   it('never stamps funding from the configuration row — it reads the CONNECTION cascade', async () => {
     const { svc, connections } = makeService({ rows: [makeConfig({ tenantId: TENANT, isDefault: true })], connectionSource: 'system' });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     // A SYSTEM-supplied credential on a TENANT-owned configuration row still
     // meters CLOUD. If funding were read off the row this would say BYOK.
     expect(result.source).toBe('tenant');
@@ -368,10 +368,10 @@ describe('getEffective — funding is DERIVED, and the chain is gated', () => {
     // closed, in the tenant tier AND in the platform tier — never fall through
     // to "some other provider will do".
     const tenantTier = makeService({ rows: [makeConfig({ tenantId: TENANT, isDefault: true })], connectionSource: null });
-    expect((await tenantTier.svc.getEffective(TENANT, 'text.finalize')).rejection?.code).toBe('no_eligible_candidate');
+    expect((await tenantTier.svc.getEffective(TENANT, 'harness.judge')).rejection?.code).toBe('no_eligible_candidate');
 
     const systemTier = makeService({ rows: [makeConfig({ tenantId: SYSTEM_TENANT_ID, isDefault: true })], connectionSource: null });
-    expect((await systemTier.svc.getEffective(TENANT, 'text.finalize')).rejection?.code).toBe('no_eligible_candidate');
+    expect((await systemTier.svc.getEffective(TENANT, 'harness.judge')).rejection?.code).toBe('no_eligible_candidate');
   });
 
   it('serves a configuration that has NO provider connection at all', async () => {
@@ -396,7 +396,7 @@ describe('getEffective — funding is DERIVED, and the chain is gated', () => {
         { connectionRef: 'openai' },
       ]),
     });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.fallbackChain.map((c) => c.connectionRef)).toEqual(['bedrock']);
     expect(result.rejectedCandidates).toEqual([
       expect.objectContaining({ connectionRef: 'openai', reason: RoutingHopRejection.FallbackDepthExceeded }),
@@ -405,7 +405,7 @@ describe('getEffective — funding is DERIVED, and the chain is gated', () => {
 
   it('has NO fallback chain at all when the elected row declares no fallback contract', async () => {
     const { svc } = makeService({ rows: makeChain({ tenantId: TENANT }, [{ connectionRef: 'azure' }, { connectionRef: 'bedrock' }]) });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.fallbackChain).toEqual([]);
   });
 
@@ -413,12 +413,12 @@ describe('getEffective — funding is DERIVED, and the chain is gated', () => {
     const { svc } = makeService({
       rows: [makeConfig({ tenantId: TENANT, isDefault: true, fallbackJson: { maxDepth: 1, requireBaaCovered: false } })],
     });
-    expect((await svc.getEffective(TENANT, 'text.finalize')).relaxedGates).toEqual(['requireBaaCovered']);
+    expect((await svc.getEffective(TENANT, 'harness.judge')).relaxedGates).toEqual(['requireBaaCovered']);
   });
 
   it('refuses to serve a configuration whose kill switch is engaged', async () => {
     const { svc } = makeService({ rows: [makeConfig({ tenantId: TENANT, isDefault: true, killSwitch: true })] });
-    const result = await svc.getEffective(TENANT, 'text.finalize');
+    const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.rejection?.code).toBe('kill_switch_engaged');
     expect(result.primary).toBeNull();
   });
@@ -429,13 +429,13 @@ describe('getEffective — explicit provider is honoured, STRICT by default', ()
 
   it('serves the provider the caller named', async () => {
     const { svc } = makeService({ rows: makeChain({ tenantId: TENANT, fallbackJson: { maxDepth: 2 } }, two) });
-    const result = await svc.getEffective(TENANT, 'text.finalize', { explicitProvider: 'bedrock' });
+    const result = await svc.getEffective(TENANT, 'harness.judge', { explicitProvider: 'bedrock' });
     expect(result.primary?.connectionRef).toBe('bedrock');
   });
 
   it('returns provider_unavailable — never a substitution — when the named provider is down', async () => {
     const { svc } = makeService({ rows: makeChain({ tenantId: TENANT, fallbackJson: { maxDepth: 2 } }, two) });
-    const result = await svc.getEffective(TENANT, 'text.finalize', { explicitProvider: 'bedrock', unhealthyProviders: ['bedrock'] });
+    const result = await svc.getEffective(TENANT, 'harness.judge', { explicitProvider: 'bedrock', unhealthyProviders: ['bedrock'] });
     expect(result.rejection?.code).toBe('provider_unavailable');
     expect(result.rejection?.retryable).toBe(true);
     expect(result.primary).toBeNull();
@@ -444,7 +444,7 @@ describe('getEffective — explicit provider is honoured, STRICT by default', ()
 
   it('closes the fallback chain entirely under STRICT even when the named provider IS healthy', async () => {
     const { svc } = makeService({ rows: makeChain({ tenantId: TENANT, fallbackJson: { maxDepth: 2 } }, two) });
-    const result = await svc.getEffective(TENANT, 'text.finalize', { explicitProvider: 'azure' });
+    const result = await svc.getEffective(TENANT, 'harness.judge', { explicitProvider: 'azure' });
     expect(result.fallbackChain).toEqual([]);
     expect(result.rejectedCandidates).toEqual([
       expect.objectContaining({ connectionRef: 'bedrock', reason: RoutingHopRejection.ExplicitProviderStrict }),
@@ -453,10 +453,10 @@ describe('getEffective — explicit provider is honoured, STRICT by default', ()
 
   it('opens the chain under STRICT_UNLESS_OPTED_IN only when the request opts in', async () => {
     const shared = { tenantId: TENANT, fallbackJson: { maxDepth: 2 }, explicitProviderMode: AiExplicitProviderMode.STRICT_UNLESS_OPTED_IN };
-    const closed = await makeService({ rows: makeChain(shared, two) }).svc.getEffective(TENANT, 'text.finalize', { explicitProvider: 'azure' });
+    const closed = await makeService({ rows: makeChain(shared, two) }).svc.getEffective(TENANT, 'harness.judge', { explicitProvider: 'azure' });
     expect(closed.fallbackChain).toEqual([]);
 
-    const opened = await makeService({ rows: makeChain(shared, two) }).svc.getEffective(TENANT, 'text.finalize', {
+    const opened = await makeService({ rows: makeChain(shared, two) }).svc.getEffective(TENANT, 'harness.judge', {
       explicitProvider: 'azure',
       allowFallbacks: true,
     });
@@ -468,7 +468,7 @@ describe('getEffective — explicit provider is honoured, STRICT by default', ()
       { connectionRef: 'azure' },
       { connectionRef: 'bedrock', residency: 'AWS_EU' },
     ]);
-    const result = await makeService({ rows }).svc.getEffective(TENANT, 'text.finalize', { explicitProvider: 'azure', allowFallbacks: true });
+    const result = await makeService({ rows }).svc.getEffective(TENANT, 'harness.judge', { explicitProvider: 'azure', allowFallbacks: true });
     expect(result.fallbackChain).toEqual([]);
     expect(result.rejectedCandidates).toEqual([
       expect.objectContaining({ connectionRef: 'bedrock', reason: RoutingHopRejection.ResidencyClassMismatch }),
@@ -477,7 +477,7 @@ describe('getEffective — explicit provider is honoured, STRICT by default', ()
 
   it('reports provider_not_in_policy for a provider no configuration lists', async () => {
     const { svc } = makeService({ rows: makeChain({ tenantId: TENANT }, two) });
-    const result = await svc.getEffective(TENANT, 'text.finalize', { explicitProvider: 'never-heard-of-it' });
+    const result = await svc.getEffective(TENANT, 'harness.judge', { explicitProvider: 'never-heard-of-it' });
     expect(result.rejection?.code).toBe('provider_not_in_policy');
   });
 });
@@ -493,7 +493,7 @@ describe('setDefault — the ELECTION is atomic ', () => {
     await svc.setDefault(row.id, TENANT, row.version);
 
     expect(unitOfWork.runInTransaction).toHaveBeenCalledTimes(1);
-    expect(repo.clearDefaultFor).toHaveBeenCalledWith(TENANT, 'text.finalize', row.id, tx, 'u1');
+    expect(repo.clearDefaultFor).toHaveBeenCalledWith(TENANT, 'harness.judge', row.id, tx, 'u1');
     expect(repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, row.version, tx);
     // Order is load-bearing: clearing AFTER setting would put two rows at
     // `isDefault = true` at the moment the partial unique index is checked.
@@ -645,7 +645,7 @@ describe('export / import — no secret is recoverable from the artifact ', () =
       notice: 'x',
       configurations: [
         {
-          taskKey: 'text.finalize',
+          taskKey: 'harness.judge',
           taskKind: null,
           displayName: 'Azure GPT-4o',
           connection: { service: 'llm', provider: 'azure' },
@@ -685,7 +685,7 @@ describe('export / import — no secret is recoverable from the artifact ', () =
       notice: 'x',
       configurations: [
         {
-          taskKey: 'text.finalize',
+          taskKey: 'harness.judge',
           taskKind: null,
           displayName: null,
           connection: null,
@@ -718,7 +718,7 @@ describe('export / import — no secret is recoverable from the artifact ', () =
 });
 
 describe('writes — super admin only (403), cross-tenant id (404)', () => {
-  const dto = { taskKey: 'text.finalize', modelId: 'model:gpt-4o' };
+  const dto = { taskKey: 'harness.judge', modelId: 'model:gpt-4o' };
 
   it.each([
     ['create', (s: AiRoutingPolicyService) => s.create(TENANT, dto as any)],
@@ -747,7 +747,7 @@ describe('writes — super admin only (403), cross-tenant id (404)', () => {
 });
 
 describe('create', () => {
-  const body = { taskKey: 'text.finalize', modelId: 'model:gpt-4o', providerConnectionId: 'conn:azure' };
+  const body = { taskKey: 'harness.judge', modelId: 'model:gpt-4o', providerConnectionId: 'conn:azure' };
 
   it('builds the entity through the FACTORY and persists it as a DRAFT', async () => {
     const spy = vi.spyOn(AiRoutingPolicyFactory, 'CreateAiRoutingPolicy');
@@ -786,19 +786,19 @@ describe('create', () => {
     const [type, payload] = emitter.emit.mock.calls[0];
     expect(type).toBe(SysEventType.ResourceCreated);
     expect(payload.data.before).toBeNull();
-    expect(payload.data.after).toMatchObject({ taskKey: 'text.finalize', status: AiRoutingPolicyStatus.DRAFT });
+    expect(payload.data.after).toMatchObject({ taskKey: 'harness.judge', status: AiRoutingPolicyStatus.DRAFT });
   });
 
   it('refuses a configuration that names no model at all', async () => {
     const { svc } = makeService({ rows: [] });
-    await expect(svc.create(TENANT, { taskKey: 'text.finalize' } as any)).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(svc.create(TENANT, { taskKey: 'harness.judge' } as any)).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('still refuses a legacy candidate list where nothing survives parsing', async () => {
     const { svc } = makeService({ rows: [] });
     // `baaCovered` missing — the BAA gate reads it, so it is never defaulted.
     await expect(
-      svc.create(TENANT, { taskKey: 'text.finalize', candidates: [{ connectionRef: 'azure', model: 'gpt-4o', residency: 'AZURE_US' }] } as any),
+      svc.create(TENANT, { taskKey: 'harness.judge', candidates: [{ connectionRef: 'azure', model: 'gpt-4o', residency: 'AZURE_US' }] } as any),
     ).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
