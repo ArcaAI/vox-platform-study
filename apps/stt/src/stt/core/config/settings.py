@@ -674,31 +674,6 @@ class Settings(BaseSettings):
             "0 = auto-detect from ExecutionProfile based on hardware."
         ),
     )
-    streaming_batch_wait_ms: int = Field(
-        validation_alias=moved_alias("streaming_batch_wait_ms"),
-        default=0,
-        description=(
-            "Maximum time (ms) the batch scheduler waits before dispatching "
-            "an incomplete batch. 0 = auto-detect from ExecutionProfile."
-        ),
-    )
-    streaming_embedding_device: str = Field(
-        validation_alias=moved_alias("streaming_embedding_device"),
-        default="auto",
-        description=(
-            "Device for speaker embedding extraction during streaming. "
-            "'auto' selects based on hardware profile (e.g. cuda:1, cpu, mps)."
-        ),
-    )
-    streaming_multi_gpu_strategy: str = Field(
-        validation_alias=moved_alias("streaming_multi_gpu_strategy"),
-        default="auto",
-        description=(
-            "Multi-GPU strategy for streaming: 'auto' (detect), 'replicate' "
-            "(same model on each GPU), 'split' (ASR on GPU 0, embeddings on "
-            "GPU 1), or 'none' (single GPU / CPU)."
-        ),
-    )
     streaming_session_persist_interval_s: float = Field(
         validation_alias=moved_alias("streaming_session_persist_interval_s"),
         default=5.0,
@@ -870,79 +845,15 @@ class Settings(BaseSettings):
             "visibly rephrasing the partial. env STREAMING_PARTIAL_WINDOW_S"
         ),
     )
-    streaming_partial_interval_s: float = Field(
-        validation_alias=moved_alias("streaming_partial_interval_s"),
-        default=0.4,
-        description=(
-            "Minimum wall-clock interval (seconds) between successive PARTIAL "
-            "transcript emissions for a live utterance. Lowered "
-            "from the legacy hardcoded 1.0 s so newly-spoken words surface in "
-            "near-real-time as a tentative tail; the LocalAgreement-2 commit "
-            "policy still governs when a word is *committed* (unchanged). The "
-            "streaming_partial_window_s tail bound and the 0.5 s minimum-"
-            "buffered-audio floor are unaffected. The Settings class has NO "
-            "env_prefix, so the env var is the bare STREAMING_PARTIAL_INTERVAL_S."
-        ),
-    )
-    # -------------------------------------------------------------------------
-    # Semantic endpointing — content-driven end-of-utterance.
-    # The Settings class has NO env_prefix, so these are the bare uppercased
-    # env names (e.g. SEMANTIC_ENDPOINT_ENABLED), NOT STT_*.
-    # -------------------------------------------------------------------------
-    semantic_endpoint_enabled: bool = Field(
-        validation_alias=moved_alias("semantic_endpoint_enabled"),
-        default=False,
-        description=(
-            "Enable content-driven semantic end-of-utterance detection on the "
-            "streaming hot path. Default OFF — the preprocessor "
-            "keeps the fixed Silero-VAD silence offset until this is enabled and "
-            "measured against the accuracy/latency scorecard. Env: SEMANTIC_ENDPOINT_ENABLED."
-        ),
-    )
-    semantic_endpoint_min_silence_ms: int = Field(
-        validation_alias=moved_alias("semantic_endpoint_min_silence_ms"),
-        default=200,
-        description=(
-            "Trailing-silence floor (ms) before a semantic early cut is allowed "
-            "(target-min EOU latency, 160–500 ms band). Kept below the fixed "
-            "VAD backstop so a semantic cut is genuinely earlier."
-        ),
-    )
-    semantic_endpoint_max_silence_ms: int = Field(
-        validation_alias=moved_alias("semantic_endpoint_max_silence_ms"),
-        default=500,
-        description=(
-            "Target-max EOU latency band (ms) — informational; the fixed VAD "
-            "silence offset remains the true upper bound / backstop."
-        ),
-    )
-    semantic_endpoint_confidence_threshold: float = Field(
-        validation_alias=moved_alias("semantic_endpoint_confidence_threshold"),
-        default=0.85,
-        description=(
-            "Minimum decision confidence (0–1) to cut a final early. Raise it if "
-            "measurement shows early cuts truncating clinical content (measure-"
-            "first; the fixed backstop always still fires)."
-        ),
-    )
-    semantic_endpoint_min_words: int = Field(
-        validation_alias=moved_alias("semantic_endpoint_min_words"),
-        default=3,
-        description=(
-            "Minimum running-hypothesis word count before a semantic early cut; "
-            "tiny fragments defer to the fixed silence timer."
-        ),
-    )
-    semantic_endpoint_model_id: str = Field(
-        validation_alias=moved_alias("semantic_endpoint_model_id"),
-        default="",
-        description=(
-            "OPTIONAL self-hosted turn/EOU model id. Empty = model-free "
-            "heuristic only. A staged model can endpoint on unpunctuated complete "
-            "text; an un-staged id degrades to the heuristic (no cloud vendor "
-            "ever — track guardrail)."
-        ),
-    )
+    # TASK-877 — the six `semantic_endpoint_*` fields and
+    # `streaming_partial_interval_s` lived here. Every one duplicated a concept the
+    # ASR AGENT owns, so they are deleted rather than dual-homed: endpointing mode,
+    # its four tuning knobs, the end-of-utterance model and the partial cadence all
+    # arrive per session on `ResolvedAsrSpec`. The three
+    # `streaming_{batch_wait_ms,embedding_device,multi_gpu_strategy}` fields went
+    # with them — TASK-872 removed their descriptors, and this ticket removed the
+    # `execution_profile._apply_settings_overrides` branches that were their only
+    # readers, so they could hold nothing but their own code default.
     streaming_result_stream_expire_s: int = Field(
         validation_alias=moved_alias("streaming_result_stream_expire_s"),
         default=3600,

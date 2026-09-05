@@ -174,16 +174,14 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "streaming_extra_filler_patterns": "stt.streaming.extraFillerPatterns",
     "streaming_punctuation_timeout_s": "stt.streaming.punctuationTimeoutS",
     "streaming_partial_window_s": "stt.streaming.partialWindowS",
-    "streaming_partial_interval_s": "stt.streaming.partialIntervalS",
     "streaming_result_stream_expire_s": "stt.streaming.resultStreamExpireS",
     "streaming_session_metadata_expire_s": "stt.streaming.sessionMetadataExpireS",
-    # ── semantic endpointing ─────────────────────────────────────────────────
-    "semantic_endpoint_enabled": "stt.semanticEndpoint.enabled",
-    "semantic_endpoint_min_silence_ms": "stt.semanticEndpoint.minSilenceMs",
-    "semantic_endpoint_max_silence_ms": "stt.semanticEndpoint.maxSilenceMs",
-    "semantic_endpoint_confidence_threshold": "stt.semanticEndpoint.confidenceThreshold",
-    "semantic_endpoint_min_words": "stt.semanticEndpoint.minWords",
-    "semantic_endpoint_model_id": "stt.semanticEndpoint.modelId",
+    # `streaming_partial_interval_s` and the six `semantic_endpoint_*` keys were
+    # mapped here until TASK-877. Both families duplicated AGENT concepts, so they
+    # are deleted rather than dual-homed: the partial cadence, the endpointing mode,
+    # its four tuning knobs and the end-of-utterance model all arrive per session on
+    # `ResolvedAsrSpec` (`streaming.{partialIntervalMs,endpointing,semantic}` and the
+    # `endpointing` model role).
     # ── real-time event publishing ───────────────────────────────────────────
     "pubsub_channel_prefix": "stt.pubsub.channelPrefix",
     "pubsub_enabled": "stt.pubsub.enabled",

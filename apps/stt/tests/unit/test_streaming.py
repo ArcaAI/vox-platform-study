@@ -540,35 +540,17 @@ class TestExecutionProfile:
         settings = MagicMock()
         settings.streaming_max_concurrent = 42
         settings.streaming_max_batch_size = 0
-        settings.streaming_batch_wait_ms = 0
-        settings.streaming_embedding_device = "auto"
-        settings.streaming_multi_gpu_strategy = "auto"
 
         overridden = _apply_settings_overrides(profile, settings)
         assert overridden.max_concurrent_streams == 42
         # Other fields should be unchanged
         assert overridden.asr_device == profile.asr_device
 
-    def test_settings_override_all_fields(self):
-        from stt.streaming.execution_profile import (
-            _apply_settings_overrides,
-            _build_cpu_profile,
-        )
-
-        profile = _build_cpu_profile()
-        settings = MagicMock()
-        settings.streaming_max_concurrent = 10
-        settings.streaming_max_batch_size = 16
-        settings.streaming_batch_wait_ms = 500
-        settings.streaming_embedding_device = "cuda:1"
-        settings.streaming_multi_gpu_strategy = "split"
-
-        overridden = _apply_settings_overrides(profile, settings)
-        assert overridden.max_concurrent_streams == 10
-        assert overridden.asr_max_batch_size == 16
-        assert overridden.batch_scheduler_max_wait_ms == 500
-        assert overridden.embedding_device == "cuda:1"
-        assert overridden.multi_gpu_strategy == "split"
+    # `test_settings_override_all_fields` was here. It asserted the
+    # `batch_scheduler_max_wait_ms` / `embedding_device` / `multi_gpu_strategy`
+    # override branches, which TASK-877 deleted as dead code (TASK-872 had already
+    # removed the three descriptors that were their only way to hold a non-default
+    # value). The two surviving overrides are covered by the tests either side.
 
     def test_settings_override_no_changes(self):
         from stt.streaming.execution_profile import (
@@ -580,9 +562,6 @@ class TestExecutionProfile:
         settings = MagicMock()
         settings.streaming_max_concurrent = 0
         settings.streaming_max_batch_size = 0
-        settings.streaming_batch_wait_ms = 0
-        settings.streaming_embedding_device = "auto"
-        settings.streaming_multi_gpu_strategy = "auto"
 
         overridden = _apply_settings_overrides(profile, settings)
         assert overridden is profile  # no changes, same object returned
@@ -597,9 +576,6 @@ class TestExecutionProfile:
         settings = MagicMock()
         settings.streaming_max_concurrent = 0
         settings.streaming_max_batch_size = 0
-        settings.streaming_batch_wait_ms = 0
-        settings.streaming_embedding_device = "auto"
-        settings.streaming_multi_gpu_strategy = "auto"
         mock_settings.return_value = settings
 
         profile = detect_execution_profile()
@@ -618,9 +594,6 @@ class TestExecutionProfile:
         settings = MagicMock()
         settings.streaming_max_concurrent = 0
         settings.streaming_max_batch_size = 0
-        settings.streaming_batch_wait_ms = 0
-        settings.streaming_embedding_device = "auto"
-        settings.streaming_multi_gpu_strategy = "auto"
         mock_settings.return_value = settings
 
         profile = detect_execution_profile()
@@ -1481,9 +1454,6 @@ class TestStreamingSettings:
         s = Settings()
         assert s.streaming_max_concurrent == 0
         assert s.streaming_max_batch_size == 0
-        assert s.streaming_batch_wait_ms == 0
-        assert s.streaming_embedding_device == "auto"
-        assert s.streaming_multi_gpu_strategy == "auto"
         assert s.streaming_session_persist_interval_s == 5.0
         assert s.streaming_session_timeout_s == 60
         assert s.streaming_reaper_interval_s == 300
@@ -1519,11 +1489,9 @@ class TestStreamingSettings:
 
         monkeypatch.setenv("LOG_LEVEL", "INFO")
         monkeypatch.setenv("STREAMING_MAX_CONCURRENT", "42")
-        monkeypatch.setenv("STREAMING_EMBEDDING_DEVICE", "cuda:1")
         monkeypatch.setenv("STREAMING_INFERENCE_STOP_TIMEOUT_S", "12.5")
         s = Settings()
         assert s.streaming_max_concurrent == 0
-        assert s.streaming_embedding_device == "auto"
         assert s.streaming_inference_stop_timeout_s == 30.0
 
     def test_the_control_plane_overrides_the_streaming_knobs(self, monkeypatch):
@@ -1551,7 +1519,6 @@ class TestStreamingSettings:
         )
         assert s.streaming_max_concurrent == 42
         assert s.streaming_inference_stop_timeout_s == 12.5
-        # `stt.streaming.embeddingDevice` was asserted here until TASK-872
-        # removed it: device placement comes from the hardware execution
-        # profile, so the key reached no reader. The bootstrap field remains.
-        assert s.streaming_embedding_device == "auto"
+        # `stt.streaming.embeddingDevice` was asserted here until TASK-872 removed
+        # the descriptor; TASK-877 removed the orphaned `streaming_embedding_device`
+        # field itself, along with the override branch that was its only reader.

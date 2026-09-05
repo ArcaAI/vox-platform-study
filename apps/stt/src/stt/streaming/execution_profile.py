@@ -361,8 +361,8 @@ def detect_execution_profile() -> ExecutionProfile:
 def _apply_settings_overrides(profile: ExecutionProfile, settings: object) -> ExecutionProfile:
     """Override auto-detected profile values with explicit settings.
 
-    Only non-zero / non-``auto`` values in ``Settings`` take effect,
-    allowing selective overrides while keeping auto-detected defaults.
+    Only non-zero values in ``Settings`` take effect, allowing selective overrides
+    while keeping auto-detected defaults.
     """
     overrides: dict[str, object] = {}
 
@@ -374,17 +374,13 @@ def _apply_settings_overrides(profile: ExecutionProfile, settings: object) -> Ex
     if max_batch > 0:
         overrides["asr_max_batch_size"] = max_batch
 
-    batch_wait = getattr(settings, "streaming_batch_wait_ms", 0)
-    if batch_wait > 0:
-        overrides["batch_scheduler_max_wait_ms"] = batch_wait
-
-    embed_dev = getattr(settings, "streaming_embedding_device", "auto")
-    if embed_dev and embed_dev.lower() != "auto":
-        overrides["embedding_device"] = embed_dev
-
-    multi_gpu = getattr(settings, "streaming_multi_gpu_strategy", "auto")
-    if multi_gpu and multi_gpu.lower() != "auto":
-        overrides["multi_gpu_strategy"] = multi_gpu
+    # TASK-877 — the `batch_scheduler_max_wait_ms`, `embedding_device` and
+    # `multi_gpu_strategy` override branches were here. TASK-872 deleted the three
+    # descriptors that fed them (`stt.streaming.{batchWaitMs,embeddingDevice,
+    # multiGpuStrategy}`), leaving fields that could only ever hold their own code
+    # default — so the branches were dead code that read a value nobody could set.
+    # Batch timing and device placement come from the detected hardware profile;
+    # the embedding model itself comes from `ResolvedAsrSpec.models.embedding`.
 
     if not overrides:
         return profile

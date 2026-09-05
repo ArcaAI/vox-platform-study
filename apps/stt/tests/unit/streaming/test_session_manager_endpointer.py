@@ -1,7 +1,13 @@
 """SessionManager ↔ semantic-endpointer wiring.
 
 Proves the endpointer is built + threaded per session, gated OFF by default, and
-overridable per pipeline — mirroring the ``_make_commit_policy`` gating.
+driven by the session's own spec — mirroring the ``_make_commit_policy`` gating.
+
+TASK-877 removed the two tests that enabled it by setting
+``_semantic_endpoint_enabled``. That attribute was the cached
+``stt.semanticEndpoint.enabled`` platform key, which is deleted: an agent's
+``streaming.endpointing`` choice is the only thing that turns endpointing on, and
+``test_task877_session_wiring.py`` asserts that a stale attribute cannot override it.
 """
 
 from __future__ import annotations
@@ -32,13 +38,6 @@ def test_make_endpointer_disabled_by_default(session_manager) -> None:
     assert session_manager._make_endpointer(None) is None
 
 
-def test_make_endpointer_enabled_via_settings(session_manager) -> None:
-    session_manager._semantic_endpoint_enabled = True
-    ep = session_manager._make_endpointer(None)
-    assert isinstance(ep, SemanticEndpointer)
-    assert ep.enabled is True
-
-
 def test_build_preprocessor_vad_kwargs_includes_endpointer(session_manager) -> None:
     kwargs = session_manager._build_preprocessor_vad_kwargs(None)
     assert "endpointer" in kwargs
@@ -47,8 +46,10 @@ def test_build_preprocessor_vad_kwargs_includes_endpointer(session_manager) -> N
 
 
 def test_build_preprocessor_vad_kwargs_threads_enabled_endpointer(session_manager) -> None:
-    session_manager._semantic_endpoint_enabled = True
-    kwargs = session_manager._build_preprocessor_vad_kwargs(None)
+    """A spec that asked for semantic endpointing threads a real endpointer."""
+    pipeline = MagicMock()
+    pipeline.preprocessing = PreprocessingConfig(endpoint=EndpointConfig(enabled=True))
+    kwargs = session_manager._build_preprocessor_vad_kwargs(pipeline)
     assert isinstance(kwargs["endpointer"], SemanticEndpointer)
 
 
