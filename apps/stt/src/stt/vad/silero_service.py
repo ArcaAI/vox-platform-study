@@ -285,8 +285,9 @@ class SileroVADService:
             return Path(cached_path)
         except ImportError:
             raise RuntimeError(
-                "huggingface_hub is required to auto-download Silero VAD. "
-                "Install it or set VAD_MODEL_PATH to a local file."
+                "huggingface_hub is required to auto-download Silero VAD. Install it, "
+                "or stage the weights and set `localPath` on the AiModel "
+                "(VOICE_ACTIVITY_DETECTION) row the agent binds."
             ) from None
 
     @staticmethod
