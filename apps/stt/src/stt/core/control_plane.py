@@ -143,8 +143,11 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "torch_num_interop_threads": "stt.runtime.torchNumInteropThreads",
     # ── batch transcription geometry ─────────────────────────────────────────
     "transcription_timeout_seconds": "stt.transcription.timeoutSeconds",
-    "transcription_chunk_length_s": "stt.transcription.chunkLengthS",
-    "transcription_stride_length_s": "stt.transcription.strideLengthS",
+    # `transcription_chunk_length_s` and `transcription_stride_length_s` were mapped
+    # here until TASK-880. Both are the AGENT's
+    # `decoding.{chunkLengthSec,strideLengthSec}` (TASK-877, owner decision #9); the
+    # engine defaults they carried now live on `InferenceConfig`, where every other
+    # engine default lives.
     "segment_merge_gap_threshold_s": "stt.segmentMerge.gapThresholdS",
     # ── gateway call budget ──────────────────────────────────────────────────
     # The gateway URL and key stay in env (bootstrap transport — they are how

@@ -37,7 +37,8 @@ def merge_vad_segments(
     Args:
         segments: VAD segments (may include non-speech markers).
         max_duration_s: Maximum duration of a merged segment.  Should
-            match ``transcription_chunk_length_s`` (default 15s).
+            match ``InferenceConfig.chunk_length_sec`` (default 15s; the agent's
+            ``decoding.chunkLengthSec`` when it sets one).
         gap_threshold_s: Maximum gap (seconds) between segments that
             allows merging.  Set to 0 to disable merging.
 

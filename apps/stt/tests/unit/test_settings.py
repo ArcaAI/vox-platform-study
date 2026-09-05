@@ -81,13 +81,24 @@ class TestSettings:
             assert settings.worker_max_retries == 3
 
     def test_transcription_defaults(self):
-        """Test transcription default configuration."""
+        """Test transcription default configuration.
+
+        TASK-880 — `transcription_chunk_length_s` / `_stride_length_s` were asserted
+        here. Chunking is the agent's (`decoding.{chunkLengthSec,strideLengthSec}`) and
+        the engine defaults moved to `InferenceConfig`; the job timeout stays, because a
+        batch worker's wall-clock budget is a property of this process.
+        """
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
 
             assert settings.transcription_timeout_seconds == 600
-            assert settings.transcription_chunk_length_s == 15
-            assert settings.transcription_stride_length_s == "4,2"
+            assert "transcription_chunk_length_s" not in Settings.model_fields
+            assert "transcription_stride_length_s" not in Settings.model_fields
+
+            from stt.pipeline.dto import InferenceConfig
+
+            assert InferenceConfig().chunk_length_sec == 15.0
+            assert InferenceConfig().stride_length_sec == (4, 2)
 
     def test_byok_credentials_are_not_settings_fields(self):
         """Sarvam / OpenAI / Azure-Speech subscription keys are BYOK-only
