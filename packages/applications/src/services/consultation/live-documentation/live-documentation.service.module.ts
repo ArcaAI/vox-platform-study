@@ -14,7 +14,7 @@ import { EntitlementsServiceModule } from '../../entitlements/entitlements.servi
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
-import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
+import { AiRoutingPolicyServiceModule } from '../../ai-routing-policy/ai-routing-policy.service.module';
 import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolution.service.module';
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
@@ -70,8 +70,8 @@ import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.s
     // EffectiveSettingsService so `agentic.context.*` is governed by the control
     // plane's settings registry rather than by constructor-frozen env values.
     EffectiveSettingsModule,
-    // nlp.ner model-injection resolver for the live-plane NLP call.
-    AiTaskDefaultServiceModule,
+    // nlp.ner routing election for the live-plane NLP call (`resolveNerModelInjection`).
+    AiRoutingPolicyServiceModule,
     // Resolves the @Optional ILiveAgentResolver port so a session
     // freezes its governed agent (prompt bytes + tool plan + LLM override) at
     // start(). Absent ⇒ the service falls open to the in-code constants.

@@ -39,7 +39,7 @@ function buildService(opts: { contextItemRepository?: unknown; transcriptSegment
     undefined, // configResolver
     undefined, // entitlements
     undefined, // trajectoryService
-    undefined, // aiTaskDefaultService
+    undefined, // routingPolicies
     opts.transcriptSegmentRepository as never,
   );
 

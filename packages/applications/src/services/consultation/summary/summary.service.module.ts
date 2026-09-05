@@ -12,7 +12,7 @@ import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
-import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
+import { AiRoutingPolicyServiceModule } from '../../ai-routing-policy/ai-routing-policy.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 import { BillingServiceModule } from '../../billing/billing.service.module';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
@@ -28,7 +28,7 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
   // HarnessGatewayServiceModule (Lane G) supplies the outbound sign-off signal.
   // HarnessPolicyServiceModule supplies the TEXT-selection resolver.
   // EntitlementsServiceModule supplies the monthlySummaries meter.
-  // AiTaskDefaultServiceModule supplies the nlp.ner model-injection resolver
+  // AiRoutingPolicyServiceModule supplies the nlp.ner routing election the NER injection resolves
   // for extractEntities.
   // UsageLedgerServiceModule supplies IUsageLedgerService: WS-D uses it so a
   // generated summary's token consumption is recorded in the same
@@ -52,7 +52,7 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // Resolves the @Optional IAgentTrajectoryService emitter
     // dep so a summary generation records its LLM_CALL trajectory step.
     AgentTrajectoryServiceModule,
-    AiTaskDefaultServiceModule,
+    AiRoutingPolicyServiceModule,
     UsageLedgerServiceModule,
     // BillingServiceModule supplies IBillingService for the optional
     // spend-limit precheck on LLM generation (402).

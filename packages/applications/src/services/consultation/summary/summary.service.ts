@@ -68,7 +68,7 @@ import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
 import { buildNerUsageEvent } from '../shared/nerUsageEvent';
 import { collectCitedSegmentIds } from '../lib/transcript-segments';
 import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
-import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
+import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { IPhiRedactor } from '../../gate-edit-mining/IPhiRedactor';
 import { IGateEditMiningQueue } from '../../gate-edit-mining/IGateEditMiningQueue';
@@ -218,11 +218,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     // production DI (SummaryServiceModule) supplies it. Fire-and-forget: a
     // trajectory failure never rolls back the (delivered) summary.
     @Optional() @Inject(IAgentTrajectoryService) private readonly trajectoryService?: IAgentTrajectoryService,
-    // Resolves the effective `nlp.ner` AiTaskDefault model for injection into
-    // the synchronous extractEntities NLP call. Optional +
-    // trailing so existing positional test fixtures keep compiling; absent ⇒
-    // posts without `model_name`, i.e. today's behavior (fail-open).
-    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // Resolves the SYSTEM `nlp.ner` routing election for injection into the
+    // synchronous extractEntities NLP call (`resolveNerModelInjection`).
+    // Optional + trailing so existing positional test fixtures keep compiling;
+    // absent ⇒ the NER hop is refused with a 503 naming the key (fail-closed).
+    @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
     // Resolves the cited-segment evidence rows for getSummaryProvenance
     // Optional + trailing so existing positional test
     // fixtures keep compiling; absent ⇒ citedSegments: [] (best-effort).
@@ -1939,13 +1939,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     modelUsed: string;
   }> {
     try {
-      // Inject the effective `nlp.ner` AiTaskDefault model
+      // Inject the SYSTEM `nlp.ner` routing election's model
       // (mirrors AiInferenceController's playground mapping) so a global
       // admin's re-point governs this synchronous clinical NER path too, not
       // just the playground. Fail-CLOSED: an unresolved key throws a 503 naming
       // `nlp.ner` here, rather than posting without `model_name` and taking the
       // same 503 back from NLP one hop later, attributed to the wrong thing.
-      const modelSelection = await resolveNerModelInjection(this.aiTaskDefaultService, this.clsService, this.logger);
+      const modelSelection = await resolveNerModelInjection(this.routingPolicies, this.clsService, this.logger);
       // /738: this call sent NO headers object at all — neither the
       // service token (so it only ever worked against an NLP with the empty-token
       // dev bypass) nor the tenant. NLP delegates tenant-scoped classification on

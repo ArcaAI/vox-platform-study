@@ -35,12 +35,12 @@ const CLINICAL_TAXONOMY = {
 
 function serviceReturning(metadata: unknown) {
   return {
-    getEffective: vi.fn().mockResolvedValue({
+    resolveDefault: vi.fn().mockResolvedValue({
       tenantId: SYSTEM_TENANT_ID,
       taskKey: NLP_NER_TASK_KEY,
       modelSlug: 'medical-ner',
       source: 'system',
-      model: { sourceUri: 'blaze999/Medical-NER', slug: 'medical-ner', provider: 'built-in', metadata },
+      model: { sourceUri: 'blaze999/Medical-NER', slug: 'medical-ner', provider: 'built-in', metaData: metadata },
     }),
   };
 }
@@ -100,6 +100,6 @@ describe('resolveNerModelInjection — clinical taxonomy', () => {
 
     expect(cls.run).toHaveBeenCalledTimes(1);
     expect(cls.set).toHaveBeenCalledWith('tenantId', SYSTEM_TENANT_ID);
-    expect(service.getEffective).toHaveBeenCalledWith(NLP_NER_TASK_KEY, SYSTEM_TENANT_ID);
+    expect(service.resolveDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID, NLP_NER_TASK_KEY, { systemOnly: true });
   });
 });
