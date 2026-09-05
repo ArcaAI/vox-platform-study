@@ -17,7 +17,10 @@ import type { ResolvedAgent, ResolvedAgentModel } from '@arcaai/types';
 import { ProviderVetoedException } from '../../ai-provider-connection/provider-vetoed.exception';
 import { TextAgentResolverService } from '../text-agent-resolver.service';
 
-const TENANT = '50000000-0000-0000-0000-000000000000';
+// A plain customer tenant. NOT `50000000-…` ("Global"): that is a RESERVED id — the
+// platform-admin playground tenant — and a cascade test whose caller is a reserved tenant
+// cannot show that the cascade is `request tenant → SYSTEM` and nothing else.
+const TENANT = '7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91';
 
 const model = (over: Partial<ResolvedAgentModel> = {}): ResolvedAgentModel => ({
   role: 'primary',
