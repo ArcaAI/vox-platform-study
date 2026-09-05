@@ -34,6 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from guardrail.core.availability import PLATFORM_DEFAULT_AVAILABILITY, GuardrailAvailability
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
 from guardrail.core.metrics import record_screening_decision
@@ -56,6 +57,13 @@ OUTCOME_PASS: Final = "pass"
 OUTCOME_FLAG: Final = "flag"
 OUTCOME_UNDETERMINED: Final = "undetermined"
 OUTCOME_SKIPPED: Final = "skipped"
+
+#: The reason recorded on a check the tenant's AVAILABILITY set does not select
+#: (TASK-886). It is deliberately a `skipped` OUTCOME with a named reason rather
+#: than an omission: a de-selected check must stay on the record, or a dashboard
+#: reads "not run" as "passed" and nobody can tell a narrowed tenant from a
+#: broken one.
+REASON_NOT_SELECTED: Final = "not_selected_for_tenant"
 
 FAIL_CLOSED: Final = "closed"
 
@@ -136,6 +144,12 @@ class GuardrailDecision:
     checks: list[CheckOutcome] = field(default_factory=list)
     #: The tier that supplied the policy — request tenant, or SYSTEM.
     policy_source_tenant_id: str | None = None
+    #: The tier that supplied the AVAILABILITY set — request tenant, or SYSTEM
+    #: (TASK-886). DISTINCT from `policy_source_tenant_id`: the policy blob rides
+    #: the selected model's registry row, the availability set is its own row, and
+    #: the two cascades can legitimately answer from different tiers. A screening
+    #: decision must name BOTH or it cannot be reconstructed.
+    availability_source_tenant_id: str | None = None
     sanitization: SanitizationReport | None = None
     #: The delegated executor's OWN per-call usage, forwarded VERBATIM (TASK-878/G2).
     #: Guardrail is a peer service with no gateway in front of it, so riding back on
@@ -158,6 +172,7 @@ class GuardrailDecision:
         return {
             "tenantId": self.tenant_id,
             "policySourceTenantId": self.policy_source_tenant_id,
+            "availabilitySourceTenantId": self.availability_source_tenant_id,
             "direction": self.direction,
             "decision": self.decision,
             "reasons": self.reasons,
@@ -180,6 +195,7 @@ class Screener:
         policy_source_tenant_id: str | None = None,
         max_untrusted_chars: int | None = None,
         pii_leak_min_score: float = 0.5,
+        availability: GuardrailAvailability | None = None,
     ) -> None:
         if not (tenant_id or "").strip():
             # Same construction-time invariant as the peer clients: a screening
@@ -189,7 +205,12 @@ class Screener:
         self.tenant_id = tenant_id
         self.policy_source_tenant_id = policy_source_tenant_id
         self._max_untrusted_chars = max_untrusted_chars
-        self._pii_leak_min_score = pii_leak_min_score
+        # AVAILABILITY (TASK-886). The default is the FULL declared set, not an
+        # empty one: an un-wired screener must screen everything, never nothing.
+        self._availability = availability or PLATFORM_DEFAULT_AVAILABILITY
+        # The tenant's threshold may only TIGHTEN the model row's value. Composed
+        # once here so no call site can compose it the other way round.
+        self._pii_leak_min_score = self._availability.tighten("pii_leak", pii_leak_min_score)
 
     # -- helpers ------------------------------------------------------------
 
@@ -220,10 +241,42 @@ class Screener:
             return str(getter(check) or "")
         return ""
 
+    def _not_selected(self, name: str) -> CheckOutcome:
+        """A check this tenant's availability set does not select (TASK-886)."""
+        return CheckOutcome(
+            name=name,
+            outcome=OUTCOME_SKIPPED,
+            fail_mode=_DECLARED_FAIL_MODES[name],
+            model=self._model(name),
+            reason=REASON_NOT_SELECTED,
+        )
+
     async def _classify(self, task_names: tuple[str, ...], text: str) -> list[CheckOutcome]:
-        """Run the moderation tasks; an outage marks EVERY task undetermined."""
+        """Run the SELECTED moderation tasks; an outage marks every one undetermined.
+
+        Only the tasks this tenant's availability set selects are sent to the
+        delegated classifier — the de-selected ones cost no peer call — but every
+        declared name still appears in the returned list, in the caller's order,
+        so `reasons[0]` keeps naming the same check and a de-selected check is
+        visibly `skipped` rather than absent.
+
+        When NOTHING is selected for a direction the classifier is not called at
+        all, and the gate still composes a verdict from the skipped record. That
+        is a platform admin's explicit, audited narrowing — never a tenant's, and
+        never a silent one.
+        """
+        selected = self._availability.selected(task_names)
+        if not selected:
+            logger.info(
+                "guardrail.screen.no_selected_checks",
+                tenant_id=self.tenant_id,
+                availability_source_tenant_id=self._availability.source_tenant_id,
+                tasks=list(task_names),
+            )
+            return [self._not_selected(name) for name in task_names]
+
         try:
-            results = await self._analyzer.classify_tasks(task_names, text)
+            results = await self._analyzer.classify_tasks(selected, text)
         except GuardrailUndeterminedError as exc:
             logger.warning(
                 "guardrail.screen.undetermined",
@@ -238,12 +291,17 @@ class Screener:
                     model=self._model(name),
                     reason=exc.reason,
                 )
+                if name in selected
+                else self._not_selected(name)
                 for name in task_names
             ]
 
         benign = self._benign()
         outcomes: list[CheckOutcome] = []
         for name in task_names:
+            if name not in selected:
+                outcomes.append(self._not_selected(name))
+                continue
             value = results.get(name)
             if value is None:
                 # The taxonomy simply does not declare this task — it did not run,
@@ -285,6 +343,7 @@ class Screener:
             decision=DECISION_BLOCK if blocked else DECISION_ALLOW,
             checks=checks,
             policy_source_tenant_id=self.policy_source_tenant_id,
+            availability_source_tenant_id=self._availability.source_tenant_id,
             sanitization=report,
             usage_detail=self._usage_detail(),
         )
@@ -340,6 +399,8 @@ class Screener:
         is worse than no check, because a dashboard reads it as green.
         """
         name = "pii_leak"
+        if not self._availability.is_enabled(name):
+            return self._not_selected(name)
         if source_context is None or not source_context.strip():
             return CheckOutcome(
                 name=name,
@@ -383,6 +444,8 @@ class Screener:
     def _check_containment_echo(self, response: str, nonce: str | None) -> CheckOutcome:
         """A response repeating the containment token means the boundary failed (T6)."""
         name = "containment_echo"
+        if not self._availability.is_enabled(name):
+            return self._not_selected(name)
         if not nonce:
             return CheckOutcome(
                 name=name,
