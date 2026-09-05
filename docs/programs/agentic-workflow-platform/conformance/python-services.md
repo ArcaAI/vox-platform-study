@@ -238,12 +238,15 @@ voice ids, two locales and eleven provider voice names (`en-IN-NeerjaNeural`, `a
 `GET /voices`. Bindings can be merged per request (`router.py:84-107`), but **the voice-id namespace
 itself cannot be changed without a code deploy** — a tenant cannot add a voice.
 
-**WebSocket auth can be bypassed.** `ServiceAuthMiddleware` is a `BaseHTTPMiddleware`
-(`api/middleware/auth.py:33`) and never sees WebSocket scope. WS auth is `stream_ws.py:100-105`,
-which reads **only `settings.service_token`** — *not* `settings.accepted_service_tokens`
-(`core/config.py:180-194`). Under D-D, a deployment that sets only `INTERNAL_ACCESS_TOKEN` and
-drops the legacy `TTS_SERVICE_TOKEN` hits `if not token: return True` (`stream_ws.py:102-103`) —
-**the WS synthesis surface is fully open while HTTP is protected.**
+**WebSocket auth could be bypassed — CLOSED (TASK-879/880).** `ServiceAuthMiddleware` is a
+`BaseHTTPMiddleware` (`api/middleware/auth.py:33`) and never sees WebSocket scope, so
+`stream_ws.py`'s own gate is the only one on that endpoint. It used to read **only
+`settings.service_token`** — *not* `settings.accepted_service_tokens` — so a deployment that did
+what owner decision D-D says (set `INTERNAL_ACCESS_TOKEN`, drop the legacy `TTS_SERVICE_TOKEN`)
+hit `if not token: return True` and **the WS synthesis surface was fully open while HTTP stayed
+protected**. `_authorized` (`stream_ws.py:70`) now applies exactly what the middleware applies —
+`accepted_service_tokens`, with the dev bypass explicit — and `TTS_SERVICE_TOKEN` is retired
+outright, so there is no legacy field left to read by mistake.
 
 ### 2.4 `nlp` — delegation is exemplary; four of seven capabilities are not real
 

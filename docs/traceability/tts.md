@@ -38,22 +38,28 @@ BYO provider keys are Vault-Transit ciphertext at rest, decrypted only at inject
 | Console | consumed by the playground (`apps/admin-console` playground surfaces) |
 | Tests | unit(api): `speech/__tests__/speech-proxy.controller.test.ts`, `speech/__tests__/tts-ws.gateway.test.ts`; e2e: `speech-proxy-auth.spec.ts` |
 
-### T3 — Per-tenant TTS config + BYO provider credentials
+### T3 — Per-tenant TTS selection + BYO provider credentials
+
+RETIRED as a config surface of its own. `TenantTtsProviderCredential` was folded
+into `AiProviderConnection(service='tts')` (TASK-862), and `TenantTtsConfig` — the
+per-tenant spec row, its service, its `admin/tts-config` routes, its
+`admin:tenant-tts-config:manage` scope and its console feature — was dropped
+outright by TASK-888 once TASK-879 had made the speech path agent-first.
 
 | Field | Value |
 |---|---|
 | App / service | `apps/api` + Vault (BYO key encryption) |
-| Key modules | `apps/api/src/modules/tenant-tts-config` (`tenant-tts-config-admin.controller.ts`, `tenant-tts-config.module.ts`); `packages/applications/src/services/tenant-tts-config` (`TenantTtsConfigService` — `getEffective`/`getRow`/`upsertRow`/`getPlatformCatalog`/`getCredentials`/`setCredential`/`removeCredential`) |
-| Prisma models | `TenantTtsConfig` (one row per tenant, `tenantId @unique`; SYSTEM-tenant row = platform default), `TenantTtsProviderCredential` (per-(tenant, provider) BYO key — Vault-Transit ciphertext `encryptedApiKey` + `keyVersion`; `@@unique([tenantId, provider])`). Both in `db_main/tenant-tts-config.prisma`. `TenantTtsProviderCredential` is deliberately **non-OCC** (no `_version` strip) per rule 03 |
-| Key API endpoints | `@Controller('admin/tts-config')`: `GET ''` (resolved effective spec), `GET row`, `PUT row` (create/CAS under `If-Match`; `@RequiresIfMatch()`, drift → 412, missing → 428), `GET catalog` (platform providers+voices from the `AiModel` registry), `GET credentials` (masked), `PUT credentials/:provider` (write-only key, Vault-encrypted, never returned), `DELETE credentials/:provider` (204) |
-| Auth | `@Authorize()` class-level; per-route `read`/`manage` `TenantTtsConfig`. Tenant admins pinned to CLS tenant; super-admins act cross-tenant (incl. SYSTEM platform default) via `?tenantId=` |
-| Console | `apps/admin-console` feature `tenant-tts-config` (`tenant-tts-config-screen.tsx`, `tts-config-form.tsx`, `tts-credentials-tab.tsx`, `voice-bindings-editor.tsx`); route `/tts-config` (tier 30–49, tenant-scoped) |
-| Tests | unit(app): `tenant-tts-config/__tests__/tenant-tts-config.service.test.ts`, `tenant-tts-config/__tests__/platform-limits.test.ts`; unit(api): `tenant-tts-config/__tests__/tenant-tts-config-admin.controller.test.ts`; unit(console): `tenant-tts-config/components/__tests__/tenant-tts-config-screen.test.tsx`; e2e: `—` (no dedicated TTS-config e2e spec; live-DB / Vault-live BYO round-trips are env-gated) |
+| Key modules | `packages/applications/src/services/agent/tts-agent-resolver.service.ts` + `tts-spec.ts` (resolve the tenant's TEXT_TO_SPEECH `Agent` through the `AgentAssignment` cascade and build a `ResolvedTtsSpec`); `packages/applications/src/services/ai-provider-connection` (the credential fold) |
+| Prisma models | `Agent` / `AgentModelFallback` / `AgentAssignment` (the selection), `AiModel` (`_metadata.voices`, `artifacts`), `AiProviderConnection` (`service='tts'`, Vault-Transit `encryptedApiKey` + `keyVersion`) |
+| Key API endpoints | the agent surface (`admin/agents/**`) and `admin/providers/**`; there is no `admin/tts-config` any more |
+| Auth | `@CanManage('Agent')` on the agent surface; provider connections carry their own two 403 boundaries (see `development-patterns-and-standards.md` §BYO provider credentials) |
+| Console | `/agents?task=TEXT_TO_SPEECH` and `/ai-providers`; `/ai-configuration`'s Voice tab is now only the way through to them |
+| Tests | unit(app): `agent/__tests__/tts-agent-resolver.service.test.ts`; contract: `tests/contracts/resolved-tts-spec-parity.contract.test.ts` + `resolved-tts-spec.fixture.json`; unit(api): `speech/__tests__/speech-proxy.controller.test.ts` |
 
 ## Honest notes / gaps
 
-- **No TTS-config e2e.** T3 has unit coverage at service / controller / console layers but no `apps/api/tests/e2e` spec exercising the tenant-config CRUD or BYO-credential round-trip against a live DB + Vault. These round-trips are env-gated (live-DB e2e, Vault-live BYO, browser-WS).
-- **The audit's "test / directory-credentials / sync" routes are NOT on `tenant-tts-config`.** An earlier audit attributed those to this module; the code has no such routes here. Those routes exist on `tenant-idp-config` and are recorded in [`auth-identity.md`](./auth-identity.md) (capability I3).
+- **No TTS BYO-credential e2e.** T3 has unit and contract coverage but no `apps/api/tests/e2e` spec exercising a BYO-credential round-trip against a live DB + Vault. These round-trips are env-gated (live-DB e2e, Vault-live BYO, browser-WS).
+- **The audit's "test / directory-credentials / sync" routes were never on `tenant-tts-config`.** An earlier audit attributed those to that module; they live on `tenant-idp-config` and are recorded in [`auth-identity.md`](./auth-identity.md) (capability I3).
 - **Infra/creds-gated verification** (Docker/k3s deploy, live Azure key, GPU local weights, human-audio quality, live Azure text-stream) is tracked with the TTS service rollout work, not here.
 
-Last verified: 2026-07-22
+Last verified: 2026-09-06 (T3 rewritten for the agent-first speech path)

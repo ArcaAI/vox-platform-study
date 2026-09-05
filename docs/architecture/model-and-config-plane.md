@@ -31,7 +31,6 @@ endpoint for its own service-level knobs.
 | Model source resolution       | `AiModel.sourceUri` / `localPath`                    | each service's `resolve_model_dir`                  | stt, guardrail, nlp, harness                             |
 | Model lifecycle / retention   | `global-kv` settings keys                            | internal effective-config route                     | in-process model caches (all services)                   |
 | Pipeline governance           | `AsrPipeline` (template lineage)                     | pipeline service (clone / resync)                   | stt pipeline reader                                      |
-| Per-tenant TTS spec (deprecated, TASK-862) | `TenantTtsConfig`                       | `TenantTtsConfigService`                            | gateway → tts (stateless) — replaced by the TTS Agent (TASK-863) |
 | External identity             | `TenantIdentityProvider` (+ federation)              | `idp-resolver`                                      | auth (OIDC login)                                        |
 | External tools                | `McpServer`                                          | harness at call time                                | harness MCP transport                                    |
 
@@ -347,11 +346,11 @@ The `[tenantId, templateLocked]` index backs the per-tenant locked-copy sweep.
 
 ## 9. Adjacent plane surfaces
 
-- **Per-tenant TTS** (`TenantTtsConfig` + `TenantTtsProviderCredential`): one
-  DB-backed, tenant-admin-editable TTS spec per tenant (SYSTEM row = platform
-  default; null/`[]` inherits; every value clamped to `PLATFORM_TTS_LIMITS`),
-  resolved by the gateway and injected into the stateless tts service. BYO
-  provider keys are Vault-Transit ciphertext and are **not** SYSTEM-shared.
+- **Per-tenant TTS**: RETIRED (TASK-879/888). There is no per-tenant TTS spec
+  row any more. The gateway resolves the tenant's TEXT_TO_SPEECH `Agent` per
+  request and pushes a `ResolvedTtsSpec` to the stateless tts service; BYO
+  provider keys live on `AiProviderConnection(service='tts')` with every other
+  vendor credential.
 - **External identity** (`TenantIdentityProvider` + `FederatedIdentity` +
   `TenantIdentityProviderDomain`): per-tenant OIDC federation (v1); client
   secret + directory credentials are Vault-Transit refs. Home-realm discovery
