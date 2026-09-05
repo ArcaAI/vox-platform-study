@@ -51,9 +51,14 @@ Verified facts the lanes build on (file:line references point at `c364bb8ec`):
   moderation gate in `apps/text` and runs once, on the request (`:435`). Both `stream.py`
   routes are `GET` replay endpoints over a generation only `POST /generate` can start, so
   input is gated on every path and output on none.
-- `asr-agent-resolver.service.ts:169-178` resolves one `fundingTier` per session, first-wins
-  from the primary; `record_streaming_usage` (`session_manager.py:4293`) never consults
-  `active_engine`. A BYO session that switches to the platform fallback is billed as BYOK.
+- STT streaming attributed a whole session to ONE engine — and, as TASK-874 established, to
+  whichever engine was loaded LAST (`_session_asr_formats`), not the primary as first recorded
+  here. A BYO session that failed over billed every minute as platform `CLOUD`; one that switched
+  back hid the platform's fallback minutes inside `BYOK`. Both directions mis-billed. Separately,
+  `asr-agent-resolver.service.ts:169-178` resolved one `fundingTier` per session first-wins — a
+  latent trap with no consumer yet. TASK-874 replaced both with per-engine usage segments
+  anchored to the session totals (`Σ segments == audio_seconds`), additive on the wire and
+  backward-compatible in both directions.
 - `AiRoutingPolicyRepository.findCandidates` (`:93-100`) hard-filters `resourceStatus: ENABLED`
   + `enabled: true`; `resolveDefault` (`ai-routing-policy.service.ts:176-179`) widens to SYSTEM
   on an empty tenant tier. Guardrail (`tenant_config.py:198,517`) treats DISABLED as a veto.
