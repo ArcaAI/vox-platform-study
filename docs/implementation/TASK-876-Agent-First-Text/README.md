@@ -227,6 +227,10 @@ preserved: declared-and-absent → ERROR (publish refused), absent set / unresol
 | `text.live.fallback` / `text.finalize.fallback` descriptors + `AI_TASK_KEYS` entries | `settings-registry/descriptors/model-defaults.descriptors.ts:116`, `ai-task-default/constants.ts` | not this lane's files; no reader remains after this lane (the `AiTaskDefault` table drop is orchestrator-owned) |
 | `HarnessPolicy.textProvider/textModel` columns and DTO fields | Prisma + `harness-policy/dto` | Prisma is orchestrator-owned; the columns are no longer a selection source |
 | Same-provider fallback skip in `summary.service.ts` / `text-compat` | those consumers | recorded above; not this lane's files |
+| An invalidation channel for agent publish / `AgentAssignment` writes | `AgentService.publish`, the assignment writer | `TextAgentResolverService`'s spec cache (review item 6) is TTL-ONLY because none exists: `app-settings:invalidate` carries `GlobalSetting` writes and `arca:secrets:invalidate` secret rotations, and neither is published by those writers. The 15 s TTL is therefore the whole propagation bound, for a rotated cloud credential too |
+| `departmentId` on the remaining text call sites | `text-proxy.controller.ts`, `text-compat.controller.ts`, `dna-writing-style.processor.ts`, the live legacy flush, `getEffectivePolicy`'s overlay | the seam now takes a department (review item 4) and `SummaryService` passes the consultation's. The rest hold NO consultation, and `getEffectivePolicy` is reached with a consultation ID but no repository to turn it into a department — they pass null, which starts the cascade at the tenant tier. Threading it needs a consultation read those call sites do not have |
+| The three inert `GET /internal/harness/policy` query parameters | `apps/api/src/modules/consultation/harness-internal.controller.ts` | `consultationId`, `taskKey` and `modelSlug` are now ALL inert (`_opts` in `getEffectivePolicy`); removing the wire parameters belongs to that module's owner |
+| `text.test` `AiTaskDefault` key + `models.text.test` descriptor | `ai-task-default/constants.ts`, `settings-registry/descriptors/model-defaults.descriptors.ts` | no reader remains after review item 5; the row/descriptor retirement is orchestrator-owned |
 
 ### Gates
 
@@ -244,6 +248,17 @@ these suites ran, so the numbers below are the orchestrator's re-run, not the ag
 | `pnpm --filter @arcaai/api typecheck` / `test` | clean; 280 files / 4213 tests passed (2 files, 4 tests skipped) |
 | `pnpm harness:test` (provenance-guarded, from this tree) | 6 failed / 2084 passed — the six are the pre-existing `[TMPRL1100] NondeterminismError` replay failures on the task-355 fixtures (`test_gating_consolidation_replay` ×2, `test_replay_compat` ×4), byte-identical to the wave-1 baseline set; the drop from 2091 passed reconciles exactly: `test_llm_binding_task816.py` (19 collected cases) deleted, `test_core_agent_text_fallback_task876.py` (12) added, `test_core_agent_resolution.py` unchanged at 9 → net −7 |
 
+Re-run after the review round (2026-09-05):
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/workflow-contract test` | 35 files / 1492 tests passed |
+| `pnpm --filter @arcaai/applications test` | 661 files / 11559 tests passed (1 file, 4 tests skipped) |
+| `pnpm --filter @arcaai/applications lint` | 0 errors, 213 warnings (the pre-existing prettier/only-warn set — unchanged count) |
+| `pnpm --filter @arcaai/api typecheck` / `test` | clean; 280 files / 4219 tests passed (2 files, 4 tests skipped) |
+| `pnpm harness:test` | 6 failed / 2099 passed — the SAME six pre-existing replay failures. +15 on the baseline 2084: `test_core_agent_text_fallback_task876.py` 12 → 17 (the derived-tier attribution case, the `read_text_primary` tolerance case, and `TestActivityBudget` ×3) and the new `test_generate_text_fallback_task876.py` (10). No test removed. |
+| `pnpm harness:lint` / `pnpm harness:typecheck` | ruff clean; mypy "no issues found in 148 source files" |
+
 ## Change History
 
 | Date | Change |
@@ -256,3 +271,21 @@ these suites ran, so the numbers below are the orchestrator's re-run, not the ag
 | 2026-09-05 | `d79e02c6a` reverted two prettier-only touches outside the change. |
 | 2026-09-05 | `d59ae8a13` loosened the internal-controller mock typing so `apps/api` typecheck stays clean. |
 | 2026-09-05 | Orchestrator: branch rebased onto `dev-2.2` `094d639f4` (clean, 7/7); hashes above remapped; gate evidence filled from the re-run on the rebased tree. |
+
+### Review round (2026-09-05) — thirteen findings closed on the branch
+
+| Date | Change |
+|---|---|
+| 2026-09-05 | `50c3454d2` **(1a, BLOCKER)** the assigned-agent overlay on `getEffectivePolicy` is UNCONDITIONAL. The `opts.taskKey` gate was a live selection hole: `AgentAssignment` has no role dimension, and the DURABLE lane (`fetch_policy` → `workflows.py`) sends no task key — so it kept reading the retired `HarnessPolicy.textProvider/textModel` columns into `GenerateInput`. No agent at any tier now NULLS both fields and logs a configuration error. |
+| 2026-09-05 | `1c315a6fb` **(11)** the resolver cascade test calls from a plain customer tenant, not the reserved `50000000-…` playground id. |
+| 2026-09-05 | `92e26168a` **(2, BLOCKER)** the fallback toggle is FUNDING-GATED at the resolver chokepoint: `ResolvedTextFallback.autoSwitch` is the EFFECTIVE value (`effectiveAutoSwitch`), so a tenant may disable platform HA only for a primary it funds. Consumers read it verbatim. |
+| 2026-09-05 | `a9a443e61` **(3, MAJOR)** `/internal/agents/resolve` ships `textPrimary` beside `textFallback`; `core.py` attributes the primary attempt from its DERIVED tier. `ResolvedAgent.fundingTier` is set only for a cloud BYO override, so a self-hosted platform primary metered `null` while its own fallback metered `platform`. |
+| 2026-09-05 | `327a7413a` **(8)** the chain walk respects the ACTIVITY BUDGET: `_text_fallback` gains `chain_candidates` + `ActivityBudget`, and `core.agent` returns DEGRADED (`text_budget_exhausted`) rather than raising — a raise is what makes Temporal re-run from the primary and re-bill. |
+| 2026-09-05 | `8bfc8bb69` **(1b, BLOCKER)** the DURABLE workflow falls back along the resolved chain: the worker policy route composes `textFallback`, `HarnessPolicy.text_fallback` carries it raw, the workflow snapshots it into `GenerateInput.text_fallback` (defaulted ⇒ replay-safe), and `generate` walks it with the SAME walker. PHI egress is re-screened per candidate; a fallback takes its own idempotency-key suffix; an exhausted budget fails NON-retryably. |
+| 2026-09-05 | `7f1ad7974` **(4, MAJOR)** the DEPARTMENT tier is reachable: the three seam methods take `departmentId`, and `SummaryService` passes the consultation's on both finalize paths. |
+| 2026-09-05 | `fd8206d53` **(6, MAJOR)** a 15 s, `tenantId`-leading spec cache with single-flight on `TextAgentResolverService.resolve` (the live lane resolved ~10 round trips per flush, at four call sites). TTL-only — see "Left for others". |
+| 2026-09-05 | `e0c1ad100` **(5, MAJOR)** the prompt test bench resolves through the assigned agent instead of the retired `text.test` `AiTaskDefault` key; the now-dead `IAiTaskDefaultService` injection goes with it. |
+| 2026-09-05 | `a79e60576` **(10)** chain identity is the ENDPOINT (provider + model + the credential that reaches it), not the agent row — a twin agent no longer retries the dead endpoint. |
+| 2026-09-05 | `c270ef2dc` **(7)** `switchAfterConsecutiveFailures` removed from the TEXT_GENERATION block (schema, spec type, Python model, tests). Both text lanes are per-call; it stays on SPEECH_TO_TEXT, whose session manager counts. |
+| 2026-09-05 | `49d921837` **(12, 13)** the resolved candidate's own `providerOverride` is authoritative for its request (the shared enrichment no longer recomputes it from the CLS tenant and re-funds a platform-served call as BYOK); `selection_source: 'task-default'` → `'assigned-agent'`. |
+| 2026-09-05 | `42385cb21` **(9)** the publish clamp honours a pinned `agentRef.versionNumber` via `AgentRepository.findPublishedVisibleBySlugVersion`, and labels the finding with it. |

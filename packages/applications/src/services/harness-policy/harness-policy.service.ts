@@ -384,12 +384,18 @@ export class HarnessPolicyService {
    *
    * FAIL-CLOSED: when no agent is assigned at any tier both fields are NULLED and the miss is
    * logged as a configuration error, so the node degrades `no_text_selection` — the legacy
-   * columns are never served as a selection again. `opts.modelSlug` (the retired `llmBinding`)
-   * is accepted for the wire and consulted by nothing.
+   * columns are never served as a selection again.
+   *
+   * EVERY field of `_opts` is now inert — hence the underscore. `consultationId` stopped
+   * selecting with the retired per-agent overlay, `taskKey` with the gate above, and `modelSlug`
+   * with the node `llmBinding`. The parameter survives because
+   * `harness-internal.controller.ts` threads all three from a wire route this ticket does not
+   * own; removing the query parameters is a follow-on for that module.
    */
   async getEffectivePolicy(
     tenantId?: string,
-    opts?: { consultationId?: string; taskKey?: string; /** @deprecated TASK-876 — inert; the node's `llmBinding` is retired. */ modelSlug?: string },
+    /** @deprecated TASK-876 — every field is accepted for the wire and consulted by nothing. */
+    _opts?: { consultationId?: string; taskKey?: string; modelSlug?: string },
   ): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
