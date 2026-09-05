@@ -789,6 +789,10 @@ function toResponse(e: HarnessPolicyEntity, source: HarnessPolicySource): Harnes
     // SYSTEM `harness.judge` routing election; null here (not a policy-row field).
     judgeProvider: null,
     judgeModel: null,
+    // text selection is overlaid by `getEffectivePolicy` from the assigned TEXT_GENERATION
+    // agent (TASK-876); the policy row carries no text columns since TASK-881.
+    textProvider: null,
+    textModel: null,
     // overlaid by `getEffectivePolicy` from the SYSTEM-shared registry.
     mcpServers: [],
     tokenBudgetPerRun: null,
@@ -808,7 +812,9 @@ function codeDefaultResponse(tenantId: string): HarnessPolicyResponse {
     tenantId,
     source: 'code-default',
     ...(HARNESS_POLICY_DEFAULTS as unknown as HarnessPolicyKnobs),
-    // see `toResponse`: judge selection + MCP registry are overlaid by the caller.
+    // see `toResponse`: judge, text and MCP selections are overlaid by the caller.
+    textProvider: null,
+    textModel: null,
     judgeProvider: null,
     judgeModel: null,
     mcpServers: [],
