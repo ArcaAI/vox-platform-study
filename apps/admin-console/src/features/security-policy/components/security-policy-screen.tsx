@@ -12,10 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { ErrorState } from '@/shared/state/error-state';
+import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
+import { GuardrailAvailabilityTab } from './guardrail-availability-tab';
 import { useSecurityPolicy, useUpdateSecurityPolicy } from '../api/hooks';
 import type { SecretEncoding, SecurityPolicy, UpdateSecurityPolicyRequest } from '../api/types';
 
@@ -101,10 +104,15 @@ export function SecurityPolicyScreen() {
   const query = useSecurityPolicy();
   const mutation = useUpdateSecurityPolicy();
   const [draft, setDraft] = useState<Draft | null>(null);
+  // TASK-886 — the screen now hosts TWO platform-security surfaces. The active
+  // tab is controlled (not `defaultValue`) because the pinned header's actions
+  // belong to the credential form alone: a "Save policy" button pinned above the
+  // guardrail panel would act on a form the reader cannot see.
+  const [tab, setTab] = useState<'credentials' | 'guardrail'>('credentials');
 
   if (query.isError) {
     return (
-      <ScreenTemplate header={<PageHeader title="Credential policy" />}>
+      <ScreenTemplate header={<PageHeader title="Security policy" />}>
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
       </ScreenTemplate>
     );
@@ -140,192 +148,231 @@ export function SecurityPolicyScreen() {
     });
   }
 
+  const onCredentials = tab === 'credentials';
+
   return (
-    <ScreenTemplate
-      header={
-        <PageHeader
-          title="Credential policy"
-          meta={
-            <>
-              <span>Platform-wide. Applies to every tenant.</span>
-              <Badge variant="outline" className="font-mono text-xs">
-                security.password.* · security.secret.*
-              </Badge>
-            </>
-          }
-          actions={
-            <>
-              <Button type="button" variant="outline" disabled={!dirty || mutation.isPending} onClick={() => setDraft(null)}>
-                <IconRefresh aria-hidden />
-                Discard changes
-              </Button>
-              <Button type="submit" form={`${uid}-form`} disabled={!dirty || mutation.isPending}>
-                {mutation.isPending ? <Spinner /> : null}
-                Save policy
-              </Button>
-            </>
-          }
-        />
-      }
-      footer={
-        <StatusFooter
-          start={
-            mutation.isPending
-              ? 'Saving…'
-              : dirty
-                ? `${Object.keys(body).length} unsaved change${Object.keys(body).length === 1 ? '' : 's'}`
-                : 'No unsaved changes'
-          }
-          end={
-            policy ? (
-              <span className="font-mono">
-                secret entropy {policy.bounds.minByteLength}–{policy.bounds.maxByteLength} bytes
-              </span>
-            ) : null
-          }
-        />
-      }
-    >
-      {!policy || !current ? (
-        <SecurityPolicySkeleton />
-      ) : (
-        <form id={`${uid}-form`} onSubmit={handleSubmit} className="flex flex-col gap-6">
-          <Card className="gap-4 p-4" aria-labelledby={`${uid}-password-title`}>
-            <div className="flex flex-col gap-1">
-              <h2 id={`${uid}-password-title`} className="flex items-center gap-2 text-sm font-medium">
-                <IconLock className="size-4" aria-hidden />
-                Passwords
-              </h2>
-              <p className="text-muted-foreground text-xs">
-                Enforced on every path that sets a password — admin temporary password, self-service reset, registration.
-              </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${uid}-min-length`}>Minimum length</Label>
-                <Input
-                  id={`${uid}-min-length`}
-                  type="number"
-                  inputMode="numeric"
-                  min={PASSWORD_MIN_FLOOR}
-                  max={PASSWORD_MIN_CEILING}
-                  required
-                  value={current.passwordMinLength}
-                  aria-describedby={`${uid}-min-length-hint`}
-                  onChange={(event) => set('passwordMinLength', event.target.value)}
-                />
-                <p id={`${uid}-min-length-hint`} className="text-muted-foreground text-xs">
-                  {PASSWORD_MIN_FLOOR}–{PASSWORD_MIN_CEILING} characters. Maximum length is fixed at {policy.password.maxLength} (a hashing bound, not
-                  policy).
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${uid}-max-age`}>Rotation window (days)</Label>
-                <Input
-                  id={`${uid}-max-age`}
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  max={MAX_AGE_CEILING}
-                  required
-                  value={current.passwordMaxAgeDays}
-                  aria-describedby={`${uid}-max-age-hint`}
-                  onChange={(event) => set('passwordMaxAgeDays', event.target.value)}
-                />
-                <p id={`${uid}-max-age-hint`} className="text-muted-foreground text-xs">
-                  0 disables rotation. When set, login warns and never blocks; users with no recorded change date are never expired.
-                </p>
-              </div>
-            </div>
-
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-muted-foreground text-xs font-medium">Required character classes</legend>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {CHARACTER_CLASSES.map(({ field, label, hint }) => (
-                  <div key={field} className="flex items-start justify-between gap-3 rounded-md border p-3">
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <Label htmlFor={`${uid}-${field}`} className="text-sm">
-                        {label}
-                      </Label>
-                      <p className="text-muted-foreground text-xs">{hint}</p>
-                    </div>
-                    <Switch
-                      id={`${uid}-${field}`}
-                      checked={current[field]}
-                      onCheckedChange={(checked) => set(field, checked)}
-                      aria-describedby={`${uid}-password-title`}
-                    />
-                  </div>
-                ))}
-              </div>
-            </fieldset>
-          </Card>
-
-          <Card className="gap-4 p-4" aria-labelledby={`${uid}-secret-title`}>
-            <div className="flex flex-col gap-1">
-              <h2 id={`${uid}-secret-title`} className="flex items-center gap-2 text-sm font-medium">
-                <IconKey className="size-4" aria-hidden />
-                Issued machine credentials
-              </h2>
-              <p className="text-muted-foreground text-xs">
-                Applies to the NEXT issuance only — credentials already handed out keep working, so tightening this is a prompt to rotate, never a
-                retroactive revocation.
-              </p>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {policy.bounds.governedSurfaces.map((surface) => (
-                  <Badge key={surface} variant="secondary" className="font-mono text-xs">
-                    {surface}
+    /* Tabs wrap the template so the list can live in the pinned `tabs` region
+       while the panels are the scrolling content (rule 11 §Screen Template). */
+    <Tabs value={tab} onValueChange={(value) => setTab(value as 'credentials' | 'guardrail')}>
+      <ScreenTemplate
+        header={
+          <PageHeader
+            title="Security policy"
+            meta={
+              onCredentials ? (
+                <>
+                  <span>Platform-wide. Applies to every tenant.</span>
+                  <Badge variant="outline" className="font-mono text-xs">
+                    security.password.* · security.secret.*
                   </Badge>
-                ))}
-              </div>
-            </div>
+                </>
+              ) : (
+                <>
+                  <span>Platform-managed. Selects which safety policies apply to the working tenant.</span>
+                  <Badge variant="outline" className="font-mono text-xs">
+                    admin/guardrail/availability
+                  </Badge>
+                </>
+              )
+            }
+            actions={
+              onCredentials ? (
+                <>
+                  <Button type="button" variant="outline" disabled={!dirty || mutation.isPending} onClick={() => setDraft(null)}>
+                    <IconRefresh aria-hidden />
+                    Discard changes
+                  </Button>
+                  <Button type="submit" form={`${uid}-form`} disabled={!dirty || mutation.isPending}>
+                    {mutation.isPending ? <Spinner /> : null}
+                    Save policy
+                  </Button>
+                </>
+              ) : null
+            }
+          />
+        }
+        tabs={
+          <TabsList variant="line">
+            <TabsTrigger value="credentials">Credential policy</TabsTrigger>
+            <TabsTrigger value="guardrail">Guardrail availability</TabsTrigger>
+          </TabsList>
+        }
+        footer={
+          <StatusFooter
+            start={
+              !onCredentials
+                ? 'Guardrail always gates — availability selects which policies apply'
+                : mutation.isPending
+                  ? 'Saving…'
+                  : dirty
+                    ? `${Object.keys(body).length} unsaved change${Object.keys(body).length === 1 ? '' : 's'}`
+                    : 'No unsaved changes'
+            }
+            end={
+              onCredentials && policy ? (
+                <span className="font-mono">
+                  secret entropy {policy.bounds.minByteLength}–{policy.bounds.maxByteLength} bytes
+                </span>
+              ) : null
+            }
+          />
+        }
+      >
+        <TabsContent value="guardrail">
+          {/* Tier sub-pattern (rule 13 §Routing): a `(global)` screen may wrap
+              `WorkingTenantGate`. The TIER answers who may open the screen
+              (SUPER_ADMIN); the gate answers whose rows this panel reads. */}
+          <WorkingTenantGate
+            title="Guardrail availability"
+            meta={<span>GET/PUT admin/guardrail/availability/:tenantId · SUPER_ADMIN only</span>}
+            description="Guardrail availability is per tenant. Pick a working tenant from the switcher in the top bar to see which safety policies apply to it."
+          >
+            <GuardrailAvailabilityTab />
+          </WorkingTenantGate>
+        </TabsContent>
+        <TabsContent value="credentials">
+          {!policy || !current ? (
+            <SecurityPolicySkeleton />
+          ) : (
+            <form id={`${uid}-form`} onSubmit={handleSubmit} className="flex flex-col gap-6">
+              <Card className="gap-4 p-4" aria-labelledby={`${uid}-password-title`}>
+                <div className="flex flex-col gap-1">
+                  <h2 id={`${uid}-password-title`} className="flex items-center gap-2 text-sm font-medium">
+                    <IconLock className="size-4" aria-hidden />
+                    Passwords
+                  </h2>
+                  <p className="text-muted-foreground text-xs">
+                    Enforced on every path that sets a password — admin temporary password, self-service reset, registration.
+                  </p>
+                </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${uid}-byte-length`}>Entropy (bytes)</Label>
-                <Input
-                  id={`${uid}-byte-length`}
-                  type="number"
-                  inputMode="numeric"
-                  min={policy.bounds.minByteLength}
-                  max={policy.bounds.maxByteLength}
-                  required
-                  value={current.secretByteLength}
-                  aria-describedby={`${uid}-byte-length-hint`}
-                  onChange={(event) => set('secretByteLength', event.target.value)}
-                />
-                <p id={`${uid}-byte-length-hint`} className="text-muted-foreground text-xs">
-                  {policy.bounds.minByteLength}–{policy.bounds.maxByteLength} bytes of randomness ({policy.bounds.minByteLength * 8}–
-                  {policy.bounds.maxByteLength * 8} bits) — not characters. The floor is enforced in code, so a lower value is raised rather than
-                  accepted.
-                </p>
-              </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`${uid}-min-length`}>Minimum length</Label>
+                    <Input
+                      id={`${uid}-min-length`}
+                      type="number"
+                      inputMode="numeric"
+                      min={PASSWORD_MIN_FLOOR}
+                      max={PASSWORD_MIN_CEILING}
+                      required
+                      value={current.passwordMinLength}
+                      aria-describedby={`${uid}-min-length-hint`}
+                      onChange={(event) => set('passwordMinLength', event.target.value)}
+                    />
+                    <p id={`${uid}-min-length-hint`} className="text-muted-foreground text-xs">
+                      {PASSWORD_MIN_FLOOR}–{PASSWORD_MIN_CEILING} characters. Maximum length is fixed at {policy.password.maxLength} (a hashing bound,
+                      not policy).
+                    </p>
+                  </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${uid}-encoding`}>Alphabet</Label>
-                <Select value={current.secretEncoding} onValueChange={(value) => set('secretEncoding', value as SecretEncoding)}>
-                  <SelectTrigger id={`${uid}-encoding`} className="w-full" aria-describedby={`${uid}-encoding-hint`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hex">hex — 4 bits per character</SelectItem>
-                    <SelectItem value="base64url">base64url — 6 bits per character, ~33% shorter</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p id={`${uid}-encoding-hint`} className="text-muted-foreground text-xs">
-                  Ignored where the credential format pins its own alphabet:{' '}
-                  {Object.entries(policy.bounds.pinnedEncodings)
-                    .map(([surface, encoding]) => `${surface} is always ${encoding}`)
-                    .join(', ')}
-                  .
-                </p>
-              </div>
-            </div>
-          </Card>
-        </form>
-      )}
-    </ScreenTemplate>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`${uid}-max-age`}>Rotation window (days)</Label>
+                    <Input
+                      id={`${uid}-max-age`}
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={MAX_AGE_CEILING}
+                      required
+                      value={current.passwordMaxAgeDays}
+                      aria-describedby={`${uid}-max-age-hint`}
+                      onChange={(event) => set('passwordMaxAgeDays', event.target.value)}
+                    />
+                    <p id={`${uid}-max-age-hint`} className="text-muted-foreground text-xs">
+                      0 disables rotation. When set, login warns and never blocks; users with no recorded change date are never expired.
+                    </p>
+                  </div>
+                </div>
+
+                <fieldset className="flex flex-col gap-3">
+                  <legend className="text-muted-foreground text-xs font-medium">Required character classes</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {CHARACTER_CLASSES.map(({ field, label, hint }) => (
+                      <div key={field} className="flex items-start justify-between gap-3 rounded-md border p-3">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <Label htmlFor={`${uid}-${field}`} className="text-sm">
+                            {label}
+                          </Label>
+                          <p className="text-muted-foreground text-xs">{hint}</p>
+                        </div>
+                        <Switch
+                          id={`${uid}-${field}`}
+                          checked={current[field]}
+                          onCheckedChange={(checked) => set(field, checked)}
+                          aria-describedby={`${uid}-password-title`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+              </Card>
+
+              <Card className="gap-4 p-4" aria-labelledby={`${uid}-secret-title`}>
+                <div className="flex flex-col gap-1">
+                  <h2 id={`${uid}-secret-title`} className="flex items-center gap-2 text-sm font-medium">
+                    <IconKey className="size-4" aria-hidden />
+                    Issued machine credentials
+                  </h2>
+                  <p className="text-muted-foreground text-xs">
+                    Applies to the NEXT issuance only — credentials already handed out keep working, so tightening this is a prompt to rotate, never a
+                    retroactive revocation.
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {policy.bounds.governedSurfaces.map((surface) => (
+                      <Badge key={surface} variant="secondary" className="font-mono text-xs">
+                        {surface}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`${uid}-byte-length`}>Entropy (bytes)</Label>
+                    <Input
+                      id={`${uid}-byte-length`}
+                      type="number"
+                      inputMode="numeric"
+                      min={policy.bounds.minByteLength}
+                      max={policy.bounds.maxByteLength}
+                      required
+                      value={current.secretByteLength}
+                      aria-describedby={`${uid}-byte-length-hint`}
+                      onChange={(event) => set('secretByteLength', event.target.value)}
+                    />
+                    <p id={`${uid}-byte-length-hint`} className="text-muted-foreground text-xs">
+                      {policy.bounds.minByteLength}–{policy.bounds.maxByteLength} bytes of randomness ({policy.bounds.minByteLength * 8}–
+                      {policy.bounds.maxByteLength * 8} bits) — not characters. The floor is enforced in code, so a lower value is raised rather than
+                      accepted.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`${uid}-encoding`}>Alphabet</Label>
+                    <Select value={current.secretEncoding} onValueChange={(value) => set('secretEncoding', value as SecretEncoding)}>
+                      <SelectTrigger id={`${uid}-encoding`} className="w-full" aria-describedby={`${uid}-encoding-hint`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hex">hex — 4 bits per character</SelectItem>
+                        <SelectItem value="base64url">base64url — 6 bits per character, ~33% shorter</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p id={`${uid}-encoding-hint`} className="text-muted-foreground text-xs">
+                      Ignored where the credential format pins its own alphabet:{' '}
+                      {Object.entries(policy.bounds.pinnedEncodings)
+                        .map(([surface, encoding]) => `${surface} is always ${encoding}`)
+                        .join(', ')}
+                      .
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            </form>
+          )}
+        </TabsContent>
+      </ScreenTemplate>
+    </Tabs>
   );
 }
