@@ -38,10 +38,10 @@ __all__ = [
     "wire_provider",
 ]
 
-#: The contract defaults (`AGENT_FALLBACK_DEFAULTS` in `@arcaai/workflow-contract`), mirrored for an
-#: answer that predates the block — never a second source of truth for a block that carries them.
+#: The contract default (`AGENT_FALLBACK_DEFAULTS.autoSwitch` in `@arcaai/workflow-contract`),
+#: mirrored for an answer that predates the block — never a second source of truth for a block
+#: that carries it.
 _DEFAULT_AUTO_SWITCH = True
-_DEFAULT_SWITCH_AFTER = 2
 
 
 def wire_provider(provider: str | None) -> str | None:
@@ -82,10 +82,12 @@ class TextFallbackCandidate(BaseModel):
 class TextFallbackBlock(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
+    #: The EFFECTIVE switch decision — the gateway funding-gates it (a tenant may disable
+    #: platform HA only for a primary it funds), so nothing here re-derives funding.
     auto_switch: bool = Field(default=_DEFAULT_AUTO_SWITCH, alias="autoSwitch")
-    switch_after_consecutive_failures: int = Field(
-        default=_DEFAULT_SWITCH_AFTER, alias="switchAfterConsecutiveFailures"
-    )
+    #: No `switchAfterConsecutiveFailures`: both TEXT lanes are per-call and switch on the FIRST
+    #: failure, so a threshold would have no reader. It stays on the ASR block, whose session
+    #: manager does count across calls.
     chain: list[TextFallbackCandidate] = Field(default_factory=list)
 
 
@@ -93,7 +95,7 @@ def read_text_fallback(raw: Any) -> TextFallbackBlock:
     """The ``textFallback`` block of a raw resolve answer, with the contract defaults applied.
 
     Tolerant on purpose: an answer without the block (an older gateway, or a non-text agent)
-    reads as "ON, threshold 2, nothing to switch to"; a malformed candidate is dropped rather
+    reads as "ON, nothing to switch to"; a malformed candidate is dropped rather
     than failing the run — the gateway's own validation is where a bad shape is refused, and a
     node that degraded over a fallback it could not parse would be resilience configuration
     blocking the primary.

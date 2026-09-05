@@ -157,7 +157,9 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
     bySlug({ 'platform-summarization': platformAgent() }, agent());
     const spec = await make().resolve({ tenantId: TENANT });
     expect(assignments.resolve).toHaveBeenCalledWith(SYSTEM_TENANT_ID, AgentTask.TEXT_GENERATION, null);
-    expect(spec.fallback).toMatchObject({ autoSwitch: true, switchAfterConsecutiveFailures: 2 });
+    expect(spec.fallback).toMatchObject({ autoSwitch: true });
+    // The TEXT block declares no `switchAfterConsecutiveFailures` — both text lanes are per-call.
+    expect(spec.fallback).not.toHaveProperty('switchAfterConsecutiveFailures');
     expect(spec.fallback.chain.map((c) => [c.kind, c.agent.slug])).toEqual([['platform-default', 'platform-summarization']]);
     // The platform agent resolves VISIBLE TO THE TENANT (it is a SYSTEM row), never as a cross-tenant read.
     expect(agents.resolve).toHaveBeenCalledWith({
@@ -185,12 +187,12 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
       models: [model({ slug: 'backup-model', sourceUri: 'backup' })],
     });
     const primary = agent({
-      parameters: { fallback: { agentSlug: 'clinic-backup', autoSwitch: true, switchAfterConsecutiveFailures: 3 } },
+      parameters: { fallback: { agentSlug: 'clinic-backup', autoSwitch: true } },
       models: [model(), model({ role: 'fallback', priority: 0, slug: 'own-fallback', sourceUri: 'own-fallback' })],
     });
     bySlug({ 'clinic-backup': backup, 'platform-summarization': platformAgent() }, primary);
     const spec = await make().resolve({ tenantId: TENANT });
-    expect(spec.fallback).toMatchObject({ autoSwitch: true, switchAfterConsecutiveFailures: 3 });
+    expect(spec.fallback).toMatchObject({ autoSwitch: true });
     expect(spec.fallback.chain.map((c) => [c.kind, c.agent.slug, c.modelSlug])).toEqual([
       ['fallback-agent', 'clinic-backup', 'backup-model'],
       ['platform-default', 'platform-summarization', 'lms-gemma-4-e2b-it-qat'],

@@ -210,11 +210,7 @@ export class TextAgentResolverService {
       schemaVersion: RESOLVED_TEXT_SPEC_SCHEMA_VERSION,
       agent,
       primary,
-      fallback: {
-        autoSwitch: effectiveAutoSwitch(governance.autoSwitch, primary.fundingTier),
-        switchAfterConsecutiveFailures: governance.switchAfterConsecutiveFailures,
-        chain,
-      },
+      fallback: { autoSwitch: effectiveAutoSwitch(governance.autoSwitch, primary.fundingTier), chain },
     };
   }
 

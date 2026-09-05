@@ -26,7 +26,7 @@ function make() {
   const resolver = { resolve: vi.fn(async (input: unknown): Promise<unknown> => ({ input })) };
   const textAgents = {
     resolveFromAgent: vi.fn(
-      async (): Promise<unknown> => ({ primary: { kind: 'primary', fundingTier: 'platform' }, fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 2, chain: [] } }),
+      async (): Promise<unknown> => ({ primary: { kind: 'primary', fundingTier: 'platform' }, fallback: { autoSwitch: true, chain: [] } }),
     ),
   };
   const cls = fakeCls();
@@ -72,7 +72,7 @@ describe('AgentInternalController', () => {
     // cloud BYO override), so the DERIVED tier must travel on `textPrimary` or the primary
     // attempt meters `null` while its own fallback meters `platform`.
     const primary = { kind: 'primary', agent: { slug: 'clinic-summarizer' }, provider: 'lm-studio', model: 'gemma', fundingTier: 'platform' };
-    textAgents.resolveFromAgent.mockResolvedValueOnce({ primary, fallback: { autoSwitch: false, switchAfterConsecutiveFailures: 3, chain } });
+    textAgents.resolveFromAgent.mockResolvedValueOnce({ primary, fallback: { autoSwitch: false, chain } });
 
     const answer = (await controller.resolve(undefined, undefined, 'clinic-summarizer', undefined, 't1')) as unknown as Record<string, unknown>;
 
@@ -81,7 +81,7 @@ describe('AgentInternalController', () => {
     expect(answer).toMatchObject({
       slug: 'clinic-summarizer',
       textPrimary: primary,
-      textFallback: { autoSwitch: false, switchAfterConsecutiveFailures: 3, chain },
+      textFallback: { autoSwitch: false, chain },
     });
   });
 

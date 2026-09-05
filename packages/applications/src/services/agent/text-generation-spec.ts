@@ -51,8 +51,15 @@ export interface ResolvedTextFallback {
    * the primary and stops"; `true` means "walk the chain".
    */
   autoSwitch: boolean;
-  switchAfterConsecutiveFailures: number;
-  /** Ordered: explicit fallback agent | the agent's own model chain, then the platform default. */
+  /**
+   * Ordered: explicit fallback agent | the agent's own model chain, then the platform default.
+   *
+   * There is no `switchAfterConsecutiveFailures` here, and that is deliberate: both TEXT lanes
+   * are per-call (the live flush, and the `core.agent` / `generate` activities) and switch on the
+   * FIRST failure of the call they are in, keeping no cross-call state a threshold could count.
+   * A threshold belongs to a SESSION-scoped runtime — which is what the ASR block has and this
+   * one does not. Owner rule: no dead knobs.
+   */
   chain: ResolvedTextCandidate[];
 }
 

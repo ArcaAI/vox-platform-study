@@ -257,7 +257,7 @@ class TestGuardsOnTheWalk:
 
         class _Spent:
             @classmethod
-            def for_activity(cls, _per_call: float) -> "_Spent":
+            def for_activity(cls, _per_call: float) -> _Spent:
                 return cls()
 
             @property

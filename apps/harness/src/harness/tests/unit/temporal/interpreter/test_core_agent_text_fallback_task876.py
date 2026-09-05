@@ -132,7 +132,6 @@ def _wire(
         ),
         "textFallback": {
             "autoSwitch": auto_switch,
-            "switchAfterConsecutiveFailures": 2,
             "chain": [_candidate()] if chain is None else chain,
         },
     }
@@ -211,7 +210,6 @@ class TestReadTextFallback:
     def test_parses_the_wire_block(self) -> None:
         block = read_text_fallback(_wire(auto_switch=False))
         assert block.auto_switch is False
-        assert block.switch_after_consecutive_failures == 2
         assert [c.agent.slug for c in block.chain] == ["platform-summarization"]
         assert block.chain[0].provider == "lm-studio"
         assert block.chain[0].model == "gemma-4-e2b-it-qat"
@@ -224,7 +222,6 @@ class TestReadTextFallback:
         del wire["textFallback"]
         block = read_text_fallback(wire)
         assert block.auto_switch is True
-        assert block.switch_after_consecutive_failures == 2
         assert block.chain == []
 
     def test_a_malformed_block_reads_as_defaults_with_no_chain(self) -> None:
@@ -400,7 +397,7 @@ class TestActivityBudget:
 
         class _Spent:
             @classmethod
-            def for_activity(cls, _per_call: float) -> "_Spent":
+            def for_activity(cls, _per_call: float) -> _Spent:
                 return cls()
 
             def allows_another(self) -> bool:
