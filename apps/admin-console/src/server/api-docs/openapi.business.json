@@ -8584,6 +8584,89 @@
         ],
         "type": "object"
       },
+      "GuardrailAvailabilityResponse": {
+        "properties": {
+          "effective": {
+            "additionalProperties": true,
+            "description": "What ACTUALLY applies to this tenant after the two-tier `request tenant → SYSTEM` cascade.",
+            "type": "object"
+          },
+          "effectiveSourceTenantId": {
+            "description": "WHICH tier supplied `effective` — this tenant, or the reserved SYSTEM tenant `00000000-…`. Every screening decision records the same value so a verdict stays attributable.",
+            "type": "string"
+          },
+          "policies": {
+            "additionalProperties": true,
+            "description": "This tenant's OWN selection, keyed by policy id (`{}` when it has none). An empty — or all-disabled — selection is NOT an off switch: it inherits the SYSTEM set.",
+            "type": "object"
+          },
+          "reason": {
+            "description": "Why this tenant's set differs from the platform default.",
+            "nullable": true,
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "The tenant this availability row governs.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "ISO timestamp of the last write, or null when no row exists.",
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedBy": {
+            "description": "Id of the platform admin who last wrote this row.",
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "description": "Optimistic-concurrency version. `0` means the tenant has NO row yet — send `If-Match: \"0\"` to create one. A tenant with no row inherits the SYSTEM set.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantId",
+          "version",
+          "policies",
+          "effective",
+          "effectiveSourceTenantId"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyCatalogueEntryResponse": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "directions": {
+            "description": "Which screening direction(s) the check runs on.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "The check name, as declared in `screening.py`.",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "threshold": {
+            "additionalProperties": true,
+            "description": "The strictness field this policy accepts, and which direction TIGHTENS it. Absent ⇒ the policy is on/off only.",
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "directions"
+        ],
+        "type": "object"
+      },
       "HarnessAuditEventResponse": {
         "properties": {
           "action": {
@@ -19463,6 +19546,27 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "UpdateGuardrailAvailabilityRequest": {
+        "properties": {
+          "expectedVersion": {
+            "description": "Version read from the prior GET. Normally supplied by `If-Match` (`\"0\"` creates the row); the header wins when both are present.",
+            "type": "number"
+          },
+          "policies": {
+            "additionalProperties": true,
+            "description": "Selected policies, keyed by policy id: `{ \"pii_leak\": { \"enabled\": true, \"minScore\": 0.2 } }`. Unknown ids are REFUSED (400). An empty object means \"no opinion\" and inherits the SYSTEM set — it is not an off switch.",
+            "type": "object"
+          },
+          "reason": {
+            "description": "Why this tenant's set differs from the platform default.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policies"
+        ],
         "type": "object"
       },
       "UpdateHarnessPolicyRequest": {
