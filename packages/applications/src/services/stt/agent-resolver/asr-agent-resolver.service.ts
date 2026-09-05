@@ -22,7 +22,16 @@ export interface ResolvedAsrSession {
   spec: ResolvedAsrSpec;
   /** Decrypted BYO/platform cloud credentials keyed by provider — in-memory only, never persisted with the job. */
   providerOverrides?: SttProviderOverrides;
-  /** Which tier supplied the PRIMARY engine's credential — decides BYOK vs CLOUD metering. */
+  /**
+   * Which tier supplied the PRIMARY engine's credential (`undefined` when the
+   * primary is self-hosted or has no credential at either tier).
+   *
+   * TASK-874 — this is the PRIMARY's alone and must never be stamped on a ledger
+   * row for the whole session: a session can fail over to the platform fallback
+   * mid-flight, and the engine that SERVED each span decides its funding. The
+   * per-engine truth is `providerOverrides[provider].funding`, which `apps/stt`
+   * reads under the key the loader actually used to bill engine-time.
+   */
   fundingTier?: ProviderFunding;
 }
 
@@ -45,8 +54,9 @@ const rec = (value: unknown): Record<string, unknown> =>
  *     become a runnable spec (no primary model) FAILS CLOSED with a 409;
  *  4. every cloud engine in the chain gets its credential from TASK-862's
  *     `ProviderCredentialResolver` (`stt`, provider, tenant) as `provider_overrides`
- *     — the wire entry `apps/stt` already consumes — with the funding tier derived
- *     from the row that served. A veto / entitlement refusal propagates (fail
+ *     — the wire entry `apps/stt` already consumes — with each engine's funding
+ *     tier derived from the row that served IT (TASK-874: the fallback's funding
+ *     is its own, and is what bills the fallback's engine-time). A veto / entitlement refusal propagates (fail
  *     closed); "no credential anywhere" simply yields no entry (the runtime then
  *     proceeds on platform env creds, exactly as the retired
  *     `TenantSttConfig.resolveProviderOverrides` path did).
@@ -150,8 +160,16 @@ export class AsrAgentResolverService {
   }
 
   /**
-   * One credential per distinct cloud provider in the chain (primary first, so
-   * the funding tier reported is the PRIMARY engine's).
+   * One credential per distinct cloud provider in the chain — the primary's AND
+   * the fallback's, each with the funding DERIVED from the row that served it.
+   *
+   * TASK-874 — both entries matter, because fallback to the platform default is
+   * a metered HA capability: `apps/stt` bills engine-time by looking each served
+   * engine's own entry up. `fundingTier` is therefore resolved from the PRIMARY
+   * engine's provider SPECIFICALLY, not first-resolved-wins over the chain. The
+   * old `??=` reported the FALLBACK's tier under the primary's name for the
+   * commonest HA shape — a self-hosted primary with a cloud fallback contributes
+   * no provider of its own, so the fallback was simply first in the list.
    */
   private async resolveCredentials(
     spec: ResolvedAsrSpec,
@@ -159,23 +177,24 @@ export class AsrAgentResolverService {
     fallbackAgent: ResolvedAgent | null,
     tenantId: string,
   ): Promise<{ providerOverrides?: SttProviderOverrides; fundingTier?: ProviderFunding }> {
+    const primaryProvider = spec.models.asr.provider;
     const providers: string[] = [];
-    for (const provider of [spec.models.asr.provider, spec.fallback.spec?.models.asr.provider ?? null]) {
+    for (const provider of [primaryProvider, spec.fallback.spec?.models.asr.provider ?? null]) {
       if (provider && isCloudByoProvider('stt', provider) && !providers.includes(provider)) providers.push(provider);
     }
     if (providers.length === 0) return {};
 
     const overrides: SttProviderOverrides = {};
-    let fundingTier: ProviderFunding | undefined;
     for (const provider of providers) {
       const entry = this.credentials
         ? await this.credentials.resolve('stt', provider, tenantId).then((binding) => binding?.override ?? null)
         : (this.overrideFromAgents(provider, agent, fallbackAgent) ?? null);
       if (!entry) continue;
       overrides[provider] = entry;
-      fundingTier ??= entry.funding;
     }
-    return Object.keys(overrides).length > 0 ? { providerOverrides: overrides, fundingTier } : {};
+    if (Object.keys(overrides).length === 0) return {};
+    const fundingTier = primaryProvider ? overrides[primaryProvider]?.funding : undefined;
+    return { providerOverrides: overrides, ...(fundingTier ? { fundingTier } : {}) };
   }
 
   /** Fallback when TASK-862's resolver is not wired: the override the agent resolver already derived. */

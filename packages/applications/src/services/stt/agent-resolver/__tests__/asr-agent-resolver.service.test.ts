@@ -14,7 +14,10 @@ import { ProviderVetoedException } from '../../../ai-provider-connection/provide
 import { AsrAgentResolverService } from '../asr-agent-resolver.service';
 
 const FIXTURE_PATH = resolve(__dirname, '../../../../../../../tests/contracts/resolved-asr-spec.fixture.json');
-const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8')) as Record<string, { input: { agent: ResolvedAgent; fallbackAgent: ResolvedAgent | null } }>;
+const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8')) as Record<
+  string,
+  { input: { agent: ResolvedAgent; fallbackAgent: ResolvedAgent | null } }
+>;
 const platformAgent = fixture.platformDefault.input.agent;
 const cloudAgent = fixture.cloudWithAgentFallback.input.agent;
 const cloudFallbackAgent = fixture.cloudWithAgentFallback.input.fallbackAgent as ResolvedAgent;
@@ -34,7 +37,12 @@ describe('AsrAgentResolverService.resolve — selection', () => {
   it('explicit slug → resolves a SPEECH_TO_TEXT agent by slug and returns its spec (runtimeKey = agent version id)', async () => {
     agents.resolve.mockResolvedValueOnce({ ...platformAgent, source: 'explicit' });
     const { spec } = await make().resolve({ tenantId: TENANT, agentSlug: 'platform-transcription' });
-    expect(agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'platform-transcription', departmentId: null });
+    expect(agents.resolve).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      task: AgentTask.SPEECH_TO_TEXT,
+      agentSlug: 'platform-transcription',
+      departmentId: null,
+    });
     expect(spec.runtimeKey).toBe(platformAgent.agentVersionId);
     expect(spec.agent.source).toBe('explicit');
     expect(spec.models.asr.slug).toBe('arcaai-whisper-large-ml-en-gguf');
@@ -62,7 +70,12 @@ describe('AsrAgentResolverService.resolve — fallback', () => {
   it('parameters.fallback.agentSlug → the fallback agent is resolved by slug (same tenant scope) and embedded as kind=agent', async () => {
     agents.resolve.mockResolvedValueOnce(cloudAgent).mockResolvedValueOnce(cloudFallbackAgent);
     const { spec } = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-azure-transcription' });
-    expect(agents.resolve).toHaveBeenNthCalledWith(2, { tenantId: TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'platform-transcription', departmentId: null });
+    expect(agents.resolve).toHaveBeenNthCalledWith(2, {
+      tenantId: TENANT,
+      task: AgentTask.SPEECH_TO_TEXT,
+      agentSlug: 'platform-transcription',
+      departmentId: null,
+    });
     expect(spec.fallback.kind).toBe('agent');
     expect(spec.fallback.spec?.runtimeKey).toBe(cloudFallbackAgent.agentVersionId);
     expect(spec.fallback.autoSwitch).toBe(false);
@@ -88,7 +101,11 @@ describe('AsrAgentResolverService.resolve — fallback', () => {
 describe('AsrAgentResolverService.resolve — cloud credentials (TASK-862 ProviderCredentialResolver)', () => {
   it('a cloud primary → provider_overrides[provider] from the (stt, provider, tenant) resolver + funding tier; the spec itself stays credential-free', async () => {
     agents.resolve.mockResolvedValueOnce(cloudAgent).mockResolvedValueOnce(cloudFallbackAgent);
-    credentials.resolve.mockResolvedValueOnce({ override: { api_key: 'k-azure', funding: 'tenant', region: 'eastus' }, fundingTier: 'tenant', connectionId: 'conn-1' });
+    credentials.resolve.mockResolvedValueOnce({
+      override: { api_key: 'k-azure', funding: 'tenant', region: 'eastus' },
+      fundingTier: 'tenant',
+      connectionId: 'conn-1',
+    });
     const result = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-azure-transcription' });
     expect(credentials.resolve).toHaveBeenCalledWith('stt', 'azure-speech', TENANT);
     expect(result.providerOverrides).toEqual({ 'azure-speech': { api_key: 'k-azure', funding: 'tenant', region: 'eastus' } });
@@ -115,6 +132,66 @@ describe('AsrAgentResolverService.resolve — cloud credentials (TASK-862 Provid
     agents.resolve.mockResolvedValueOnce(cloudAgent).mockResolvedValueOnce(cloudFallbackAgent);
     credentials.resolve.mockRejectedValueOnce(new ProviderVetoedException('stt', 'azure-speech', TENANT));
     await expect(make().resolve({ tenantId: TENANT, agentSlug: 'clinic-azure-transcription' })).rejects.toBeInstanceOf(ProviderVetoedException);
+  });
+
+  // TASK-874 — the funding of the engine that SERVED decides BYOK vs CLOUD, and
+  // fallback to the platform default is a metered platform HA capability. The
+  // per-engine truth is `providerOverrides[provider].funding`; the `fundingTier`
+  // scalar is the PRIMARY engine's alone and must never be a first-resolved-wins
+  // stand-in for whichever engine happened to contribute a credential.
+  it('local primary + cloud PLATFORM fallback → the fallback’s platform funding rides on its own override entry, and fundingTier stays undefined (the primary has no credential)', async () => {
+    const localPrimaryWithCloudFallback = {
+      ...platformAgent,
+      compiledConfig: {
+        ...platformAgent.compiledConfig,
+        parameters: {
+          ...platformAgent.compiledConfig.parameters,
+          fallback: { agentSlug: 'clinic-azure-transcription', autoSwitch: true, switchAfterConsecutiveFailures: 2 },
+        },
+      },
+    } as ResolvedAgent;
+    agents.resolve.mockResolvedValueOnce(localPrimaryWithCloudFallback).mockResolvedValueOnce(cloudAgent);
+    credentials.resolve.mockResolvedValueOnce({
+      override: { api_key: 'k-platform', funding: 'platform', region: 'eastus' },
+      fundingTier: 'platform',
+      connectionId: 'conn-sys',
+    });
+
+    const result = await make().resolve({ tenantId: TENANT });
+
+    expect(credentials.resolve).toHaveBeenCalledExactlyOnceWith('stt', 'azure-speech', TENANT);
+    expect(result.providerOverrides?.['azure-speech']?.funding).toBe('platform');
+    // The primary is a self-hosted engine: it has no credential and therefore no
+    // funding tier. Reporting the fallback's tier here is the mis-billing trap.
+    expect(result.fundingTier).toBeUndefined();
+  });
+
+  it('cloud BYO primary + cloud PLATFORM fallback → each engine carries its OWN derived funding, and fundingTier is the primary’s', async () => {
+    const sarvamFallbackAgent = {
+      ...cloudAgent,
+      slug: 'platform-sarvam-transcription',
+      agentVersionId: '0199a861-0000-7000-8000-000000000021',
+      models: cloudAgent.models.map((m) =>
+        m.role === 'primary' ? { ...m, slug: 'sarvam-saarika-v2', format: 'SARVAM', provider: 'sarvam', sourceUri: 'sarvam://saarika' } : m,
+      ),
+      compiledConfig: { ...cloudAgent.compiledConfig, parameters: { ...cloudAgent.compiledConfig.parameters, fallback: {} } },
+    } as ResolvedAgent;
+    agents.resolve.mockResolvedValueOnce(cloudAgent).mockResolvedValueOnce(sarvamFallbackAgent);
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) =>
+      provider === 'azure-speech'
+        ? { override: { api_key: 'k-azure', funding: 'tenant', region: 'eastus' }, fundingTier: 'tenant', connectionId: 'conn-byo' }
+        : {
+            override: { api_key: 'k-sarvam', funding: 'platform', base_url: 'https://api.sarvam.ai' },
+            fundingTier: 'platform',
+            connectionId: 'conn-sys',
+          },
+    );
+
+    const result = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-azure-transcription' });
+
+    expect(result.providerOverrides?.['azure-speech']?.funding).toBe('tenant');
+    expect(result.providerOverrides?.['sarvam']?.funding).toBe('platform');
+    expect(result.fundingTier).toBe('tenant');
   });
 
   it('without the credential resolver wired, the agent resolver’s own providerOverride is used', async () => {
