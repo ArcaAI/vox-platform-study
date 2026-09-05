@@ -367,7 +367,7 @@ describe('SummaryService', () => {
 
       await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
 
-      expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
     });
 
     it('lets a caller-supplied model win over the resolved default', async () => {

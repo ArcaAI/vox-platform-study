@@ -91,12 +91,12 @@ beforeEach(() => {
 describe('resolveTextSelection — the assigned TEXT_GENERATION agent is the ONE selection seam', () => {
   it('returns the resolved primary {provider, model} for the caller tenant', async () => {
     await expect(makeService().resolveTextSelection(TENANT, 'live')).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
   });
 
   it('falls back to the CLS tenant when the caller passes none (the no-arg callers)', async () => {
     await makeService().resolveTextSelection();
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
   });
 
   it('the routing task no longer SELECTS — live, finalize and test resolve the same assigned agent (AgentAssignment has no role dimension)', async () => {
@@ -166,6 +166,24 @@ describe('resolveTextFallbackSelection — the resolved chain, gated by the per-
 // TASK-876 — the DURABLE documentation workflow had no fallback at all: the realtime lane and
 // the harness `core.agent` activity walked the resolved chain while `HarnessDocWorkflow` got only
 // `textProvider`/`textModel`. The worker policy route composes this onto its own answer.
+describe('the DEPARTMENT tier of the cascade is reachable', () => {
+  // The seam called `resolve({ tenantId })` unconditionally, so a department-scoped
+  // `AgentAssignment` could never win however it was configured.
+  it('threads the caller`s department into the assignment cascade', async () => {
+    await makeService().resolveTextSelection(TENANT, 'finalize', 'dept-1');
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: 'dept-1' });
+    await makeService().resolveTextFallbackSelection(TENANT, 'finalize', 'dept-1');
+    expect(textAgents.resolve).toHaveBeenLastCalledWith({ tenantId: TENANT, departmentId: 'dept-1' });
+    await makeService().resolveTextFallbackChain(TENANT, 'dept-1');
+    expect(textAgents.resolve).toHaveBeenLastCalledWith({ tenantId: TENANT, departmentId: 'dept-1' });
+  });
+
+  it('passes null — never a fabricated department — when the call site has none', async () => {
+    await makeService().resolveTextSelection(TENANT);
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
+  });
+});
+
 describe('resolveTextFallbackChain — the worker lane gets the whole resolved chain', () => {
   it('returns the resolved fallback block (governance + ordered chain) for the worker read', async () => {
     const chain = await makeService().resolveTextFallbackChain(TENANT);
@@ -195,7 +213,7 @@ describe('getEffectivePolicy — the assigned-agent overlay is UNCONDITIONAL (th
     const resp = await makeService().getEffectivePolicy(TENANT, { taskKey: 'text.live' });
     expect(resp.textProvider).toBe('lm-studio');
     expect(resp.textModel).toBe('gemma-4-e2b-it-qat');
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
   });
 
   it('with a taskKey and NO assigned agent, the columns are NULLED so the Python node degrades `no_text_selection` (fail closed)', async () => {
@@ -223,7 +241,7 @@ describe('getEffectivePolicy — the assigned-agent overlay is UNCONDITIONAL (th
     const resp = await makeService().getEffectivePolicy(TENANT);
     expect(resp.textProvider).toBe('lm-studio');
     expect(resp.textModel).toBe('gemma-4-e2b-it-qat');
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
   });
 
   it('WITHOUT a taskKey and no agent anywhere, the columns are NULLED (a configuration error, never a silent pass-through)', async () => {

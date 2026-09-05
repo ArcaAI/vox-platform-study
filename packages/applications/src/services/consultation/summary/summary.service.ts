@@ -135,6 +135,12 @@ interface TextCallPayload {
    * `text.finalize` AiTaskDefault; the A4 fallback retry stays tenant-configured.
    */
   agentLlm?: { provider: string; model: string } | null;
+  /**
+   * TASK-876 — the consultation's department, so the assigned-agent cascade can start at the
+   * DEPARTMENT tier (`department → tenant → SYSTEM`) instead of always at the tenant's. Both
+   * call sites have the consultation row in hand; `null` when it has no department.
+   */
+  departmentId?: string | null;
 }
 
 /**
@@ -428,6 +434,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     const textResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
+      departmentId: consultation.departmentId,
       context: {
         dnaStyleId: request.dnaStyleId,
         summaryType: 'pre-summary',
@@ -677,6 +684,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // whose agent named no override already used. Nothing is being failed
       // open here: there is no longer a selection that can fail.
       agentLlm: null,
+      departmentId: consultation.departmentId,
       context: {
         dnaStyleId: effectiveDnaStyleId,
         template: request.template,
@@ -1618,7 +1626,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       // live session's agent) → tenant `text.finalize` AiTaskDefault. The A4
       // fallback retry below stays TENANT-configured either way — an agent
       // override names the primary, never the fallback.
-      const { provider, model } = payload.agentLlm ?? (await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize'));
+      const { provider, model } =
+        payload.agentLlm ?? (await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', payload.departmentId ?? null));
       options = { textProvider: provider, textModel: model, ...payload.options };
     }
 
@@ -1626,7 +1635,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       return await this.executeTextGenerate(payload, options);
     } catch (primaryError) {
       if (tenantId && this.harnessPolicyService && this.isTextFallbackEligible(primaryError)) {
-        const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
+        const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize', payload.departmentId ?? null);
         const primaryProvider = (options as Record<string, unknown> | undefined)?.textProvider;
         if (fallback && fallback.provider !== primaryProvider) {
           const fallbackOptions = { ...options, textProvider: fallback.provider, textModel: fallback.model };
