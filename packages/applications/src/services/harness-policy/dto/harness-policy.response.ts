@@ -55,10 +55,16 @@ export class HarnessPolicyResponse {
   // overlaid by `getEffectivePolicy`; never a stored column (both were dropped
   // by TASK-881) and never accepted on the PATCH body. Null ⇒ no agent is
   // assigned at any tier and the harness degrades `no_text_selection`.
-  @ApiPropertyOptional({ description: 'TEXT generation provider id, derived from the assigned TEXT_GENERATION agent (null = no agent assigned).', nullable: true })
+  @ApiPropertyOptional({
+    description: 'TEXT generation provider id, derived from the assigned TEXT_GENERATION agent (null = no agent assigned).',
+    nullable: true,
+  })
   textProvider: string | null;
 
-  @ApiPropertyOptional({ description: 'TEXT generation model id, derived from the assigned TEXT_GENERATION agent (null = no agent assigned).', nullable: true })
+  @ApiPropertyOptional({
+    description: 'TEXT generation model id, derived from the assigned TEXT_GENERATION agent (null = no agent assigned).',
+    nullable: true,
+  })
   textModel: string | null;
 
   // ── LLM-as-judge selection (resolved from the SYSTEM-only
