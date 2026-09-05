@@ -107,15 +107,10 @@ describe('AgenticInstructionsService.getEffectiveInstructions', () => {
   it('resolves the prompt tier and exposes template/promptId/resolvedFrom', async () => {
     const { service, promptResolutionService } = makeService();
     const out = await service.getEffectiveInstructions('t1', { departmentId: 'dep-1', promptType: 'new-patient' });
-    // `visitTypeKey` is passed alongside `promptType` so the inventory reports
-    // the tier a `(task, visitType)` binding would serve — it is derived from
-    // the tenant's catalogue, so with no catalogue it is the shipped initial
-    // visit type.
     expect(promptResolutionService.resolve).toHaveBeenCalledWith({
       tenantId: 't1',
       departmentId: 'dep-1',
       promptType: 'new-patient',
-      visitTypeKey: 'new-visit',
     });
     expect(out.promptTier.template).toBe('SOAP');
     expect(out.promptTier.promptId).toBe('71000000-0000-0000-0000-000000000036');

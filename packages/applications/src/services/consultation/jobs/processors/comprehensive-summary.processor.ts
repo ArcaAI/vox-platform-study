@@ -551,15 +551,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
   }
 
   /**
-   * The consultation's visit type, resolved through the TENANT's catalogue
-   * (`consultation.visitTypes`, tenant → SYSTEM).
-   *
-   * `parentConsultationId` is still the consultation's own follow-up signal —
-   * that rule has not changed. What changed is that WHICH visit type the signal
-   * selects, and what that type is called, is tenant-configured data rather
-   * than a literal repeated at each call site. An unwired
-   * resolver serves the two shipped types, so the answer is byte-identical to
-   * the ternary this replaces.
+   * The consultation's visit type — one of the platform's two, selected by the
+   * consultation's own follow-up signal (`parentConsultationId`) through the one
+   * vocabulary every caller shares rather than a literal repeated at each call site.
    */
   private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null }): VisitTypeDefinition {
     return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(consultation.tenantId ?? null, {

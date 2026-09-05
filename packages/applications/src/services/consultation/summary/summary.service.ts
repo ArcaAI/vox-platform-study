@@ -414,16 +414,10 @@ export class SummaryService extends BaseService implements ISummaryService {
       // Native callers resolve the department-free fork;
       // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
       preSummaryVariant: 'dept-free',
-      // v1 `{visit_type}`. `parentConsultationId` is still the consultation's
-      // own follow-up signal, but the LABEL is the tenant's now: it comes from
-      // `consultation.visitTypes` (tenant → SYSTEM), not from a literal that
+      // v1 `{visit_type}`. `parentConsultationId` is the consultation's own follow-up
+      // signal; the LABEL comes from the platform's visit types, not from a literal that
       // disagreed with the one the summary path used for the same concept.
       visitType: this.visitType(consultation).label,
-      // The same visit type as an IDENTIFIER, so `(pre-summary, visitType)` can
-      // select this tenant's own pre-summary instructions and context
-      // composition (owner directive, 2026-08-29). No binding configured ⇒ the
-      // chain resolves exactly as it did.
-      visitTypeKey: this.visitType(consultation).key,
       transcript: content,
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,
@@ -1977,15 +1971,9 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * The consultation's visit type, resolved through the TENANT's catalogue
-   * (`consultation.visitTypes`, tenant → SYSTEM).
-   *
-   * `parentConsultationId` is still the consultation's own follow-up signal —
-   * that rule has not changed. What changed is that WHICH visit type the signal
-   * selects, and what that type is called, is tenant-configured data rather
-   * than a literal repeated at each call site. An unwired
-   * resolver serves the two shipped types, so the answer is byte-identical to
-   * the ternary this replaces.
+   * The consultation's visit type — one of the platform's two, selected by the
+   * consultation's own follow-up signal (`parentConsultationId`) through the one
+   * vocabulary every caller shares rather than a literal repeated at each call site.
    */
   private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null }): VisitTypeDefinition {
     return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(consultation.tenantId ?? null, {
