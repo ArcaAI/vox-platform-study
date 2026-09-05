@@ -12,11 +12,6 @@ export class TenantFrontendConfigDtoMapper {
     return {
       id: entity.id,
       tenantId: entity.tenantId as string,
-      asrModel: entity.asrModel ?? null,
-      noiseCancel: entity.noiseCancel,
-      vad: entity.vad,
-      voiceEnrollment: entity.voiceEnrollment,
-      diarization: entity.diarization,
       captureRawAudio: entity.captureRawAudio,
       platformRawCaptureCapable,
       transcriptionMode: entity.transcriptionMode,

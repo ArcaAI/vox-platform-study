@@ -76,29 +76,6 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.interactiveInference.queueMaxDepth': 64,
   'nlp.interactiveInference.queueMaxWaitSeconds': 2,
 
-  // ── nlp log sinks ──────────────────────────────────────
-  // Nine file/rotation knobs that were bare `os.getenv` reads scattered through
-  // `nlp/core/logging.py`. `LOG_LEVEL` and `LOG_FILE_PATH` stay in env: the
-  // level is what an operator reaches for FIRST during an incident (no
-  // control-plane round trip), and the path is a host fact about where the
-  // container's writable volume is mounted.
-  //
-  // `fileJsonFormat` and `consoleJsonFormat` differ ON PURPOSE — a file is
-  // machine-read by a log backend, a console is human-read in `nlp:dev`. They
-  // previously carried these same opposite defaults thirty lines apart with
-  // nothing saying why, which read as a bug.
-  'nlp.logging.fileEnabled': false,
-  'nlp.logging.fileMaxSize': '10m',
-  'nlp.logging.fileMaxFiles': 1000,
-  'nlp.logging.fileSeparateError': false,
-  'nlp.logging.consoleEnabled': true,
-  'nlp.logging.fileJsonFormat': true,
-  'nlp.logging.consoleJsonFormat': false,
-  'nlp.logging.rotationWhen': 'midnight',
-  'nlp.logging.rotationInterval': 1,
-  'nlp.logging.rotationBackupCount': 30,
-  'nlp.logging.useDailyRotation': true,
-
   // ── the remaining in-process caches ───────────────────────────
   // The `<svc>.modelCache.<knob>` grammar originally served stt only,
   // leaving guardrail/harness/tts as explicitly reserved subsets. This
@@ -323,55 +300,6 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
     description:
       "The interactive lane's declared SLO. Past it the verdict would arrive too late to gate " +
       'anything, so a 503 the caller can fail closed on beats a stale 200 already acted upon.',
-  },
-
-  // ── nlp log sinks ───────────────────────────────────────────────────────
-  'nlp.logging.fileEnabled': {
-    label: 'NLP file logging enabled',
-    description: 'Write logs to a rotating file sink in addition to the console.',
-  },
-  'nlp.logging.fileMaxSize': {
-    label: 'NLP log file size cap',
-    description: 'Size at which a log file rotates, e.g. `10m`, `500k`, `1g`.',
-  },
-  'nlp.logging.fileMaxFiles': {
-    label: 'NLP log file count cap',
-    description: 'Maximum rotated size-based log files retained.',
-  },
-  'nlp.logging.fileSeparateError': {
-    label: 'NLP separate error log',
-    description: 'Write ERROR and above to their own file alongside the combined log.',
-  },
-  'nlp.logging.consoleEnabled': {
-    label: 'NLP console logging enabled',
-    description: 'Emit logs on stdout. Off only for deployments that ship exclusively from files.',
-  },
-  'nlp.logging.fileJsonFormat': {
-    label: 'NLP file logs as JSON',
-    description:
-      'Default ON — a file is machine-read by a log backend. Deliberately the OPPOSITE default ' +
-      'from the console switch below; the two sinks have different readers.',
-  },
-  'nlp.logging.consoleJsonFormat': {
-    label: 'NLP console logs as JSON',
-    description:
-      'Default OFF — a console is human-read during local development. See the file switch above ' + 'for why the two defaults differ on purpose.',
-  },
-  'nlp.logging.rotationWhen': {
-    label: 'NLP log rotation trigger',
-    description: 'Time-based rotation trigger, in Python `TimedRotatingFileHandler` terms.',
-  },
-  'nlp.logging.rotationInterval': {
-    label: 'NLP log rotation interval',
-    description: 'Number of `rotationWhen` units between rotations.',
-  },
-  'nlp.logging.rotationBackupCount': {
-    label: 'NLP log retention (files)',
-    description: "How many rotated log files to keep — the service's local log retention window.",
-  },
-  'nlp.logging.useDailyRotation': {
-    label: 'NLP daily log rotation',
-    description: 'Rotate on a schedule rather than purely on size.',
   },
 
   'guardrail.groundedness.enabled': {

@@ -111,16 +111,17 @@ model PlanEntitlement {
   monthlyEmbeddingTokens   BigInt?
 
   // feature toggles
-  featureDnaReports       Boolean @default(false)
-  featureVoiceEnrollment  Boolean @default(false)
-  featureMonitoringAccess Boolean @default(false)
+  //
+  // Every flag here is ENFORCING. TASK-883 removed the three that were not
+  // (`featureDnaReports`, `featureVoiceEnrollment`, `featureMonitoringAccess`):
+  // they resolved into the capability snapshot, were rendered by three console
+  // badges, and were consulted by no gate — a plan column that changed nothing.
+  // A new flag on this model must name the call site that reads it.
 
   // May this plan's tenants consume the PLATFORM-DEFAULT
   // (SYSTEM-tenant) provider credential when they have no key of their own?
-  //
-  // Unlike its three neighbours this flag is ENFORCING, not display-only: it
-  // decides whether the provider-credential cascade may reach the SYSTEM tier,
-  // i.e. whether the platform spends its own money serving this tenant.
+  // It decides whether the provider-credential cascade may reach the SYSTEM
+  // tier, i.e. whether the platform spends its own money serving this tenant.
   //
   // `false` on all four seeded plans. Granting it plan-wide on PRO or
   // ENTERPRISE would hand every tenant on that plan a platform-funded cloud
@@ -129,9 +130,9 @@ model PlanEntitlement {
   featurePlatformDefaultCredential Boolean @default(false)
 
   // May this plan's tenants publish an `stt`-palette `WorkflowDefinition`
-  // ? Display-only, checked once at publish time — `true` on every
-  // seeded plan: STT pipeline authoring is a core platform capability, not a
-  // premium add-on, unlike featureDnaReports/featureVoiceEnrollment.
+  // ? Checked once at publish time (never at runtime) — `true` on
+  // every seeded plan: STT pipeline authoring is a core platform capability,
+  // not a premium add-on.
   featurePaletteStt Boolean @default(true)
 
   // Does this plan include the harness AGENTIC LOOP ? Enforcing, not
@@ -226,9 +227,10 @@ model TenantEntitlement {
   monthlySpendLimitMicros BigInt?
 
   // feature overrides (null = inherit)
-  featureDnaReports       Boolean?
-  featureVoiceEnrollment  Boolean?
-  featureMonitoringAccess Boolean?
+  //
+  // TASK-883 removed the three display-only overrides that mirrored the
+  // retired `PlanEntitlement` columns: an override of a base that no longer
+  // exists is not a smaller change, it is an incoherent one.
 
   // The per-tenant platform-default-credential grant, and the
   // ONLY way it is ever granted (no plan carries it — OD-7). Tri-state:

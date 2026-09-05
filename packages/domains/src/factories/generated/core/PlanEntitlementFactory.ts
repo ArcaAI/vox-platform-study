@@ -26,9 +26,6 @@ export interface CreatePlanEntitlementProps extends BaseEntityFactoryCreateProps
   monthlyTtsCharacters?: IPlanEntitlementEntity['monthlyTtsCharacters'];
   monthlyNlpTextUnits?: IPlanEntitlementEntity['monthlyNlpTextUnits'];
   monthlyEmbeddingTokens?: IPlanEntitlementEntity['monthlyEmbeddingTokens'];
-  featureDnaReports?: IPlanEntitlementEntity['featureDnaReports'];
-  featureVoiceEnrollment?: IPlanEntitlementEntity['featureVoiceEnrollment'];
-  featureMonitoringAccess?: IPlanEntitlementEntity['featureMonitoringAccess'];
   featurePlatformDefaultCredential?: IPlanEntitlementEntity['featurePlatformDefaultCredential'];
   featurePaletteStt?: IPlanEntitlementEntity['featurePaletteStt'];
   featureAgenticLoop?: IPlanEntitlementEntity['featureAgenticLoop'];
@@ -72,9 +69,6 @@ export class PlanEntitlementFactory {
       monthlyTtsCharacters: props.monthlyTtsCharacters ?? null,
       monthlyNlpTextUnits: props.monthlyNlpTextUnits ?? null,
       monthlyEmbeddingTokens: props.monthlyEmbeddingTokens ?? null,
-      featureDnaReports: props.featureDnaReports ?? false,
-      featureVoiceEnrollment: props.featureVoiceEnrollment ?? false,
-      featureMonitoringAccess: props.featureMonitoringAccess ?? false,
       // Fail-CLOSED default — a plan never grants the platform-default
       // credential unless someone says so explicitly.
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? false,

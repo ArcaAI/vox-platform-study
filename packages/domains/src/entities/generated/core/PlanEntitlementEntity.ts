@@ -29,9 +29,6 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   monthlyTtsCharacters?: bigint | null;
   monthlyNlpTextUnits?: bigint | null;
   monthlyEmbeddingTokens?: bigint | null;
-  featureDnaReports: boolean;
-  featureVoiceEnrollment: boolean;
-  featureMonitoringAccess: boolean;
   featurePlatformDefaultCredential: boolean;
   featurePaletteStt: boolean;
   featureAgenticLoop: boolean;
@@ -62,9 +59,6 @@ export class PlanEntitlementEntity extends BaseEntity {
   private _monthlyTtsCharacters?: IPlanEntitlementEntity['monthlyTtsCharacters'];
   private _monthlyNlpTextUnits?: IPlanEntitlementEntity['monthlyNlpTextUnits'];
   private _monthlyEmbeddingTokens?: IPlanEntitlementEntity['monthlyEmbeddingTokens'];
-  private _featureDnaReports: IPlanEntitlementEntity['featureDnaReports'];
-  private _featureVoiceEnrollment: IPlanEntitlementEntity['featureVoiceEnrollment'];
-  private _featureMonitoringAccess: IPlanEntitlementEntity['featureMonitoringAccess'];
   private _featurePlatformDefaultCredential: IPlanEntitlementEntity['featurePlatformDefaultCredential'];
   private _featurePaletteStt: IPlanEntitlementEntity['featurePaletteStt'];
   private _featureAgenticLoop: IPlanEntitlementEntity['featureAgenticLoop'];
@@ -93,9 +87,6 @@ export class PlanEntitlementEntity extends BaseEntity {
     this._monthlyTtsCharacters = init.monthlyTtsCharacters;
     this._monthlyNlpTextUnits = init.monthlyNlpTextUnits;
     this._monthlyEmbeddingTokens = init.monthlyEmbeddingTokens;
-    this._featureDnaReports = init.featureDnaReports;
-    this._featureVoiceEnrollment = init.featureVoiceEnrollment;
-    this._featureMonitoringAccess = init.featureMonitoringAccess;
     this._featurePlatformDefaultCredential = init.featurePlatformDefaultCredential;
     this._featurePaletteStt = init.featurePaletteStt;
     this._featureAgenticLoop = init.featureAgenticLoop;
@@ -247,30 +238,6 @@ export class PlanEntitlementEntity extends BaseEntity {
 
   set monthlyEmbeddingTokens(value: IPlanEntitlementEntity['monthlyEmbeddingTokens']) {
     this.setProperty('monthlyEmbeddingTokens', value);
-  }
-
-  get featureDnaReports(): IPlanEntitlementEntity['featureDnaReports'] {
-    return this._featureDnaReports;
-  }
-
-  set featureDnaReports(value: IPlanEntitlementEntity['featureDnaReports']) {
-    this.setProperty('featureDnaReports', value);
-  }
-
-  get featureVoiceEnrollment(): IPlanEntitlementEntity['featureVoiceEnrollment'] {
-    return this._featureVoiceEnrollment;
-  }
-
-  set featureVoiceEnrollment(value: IPlanEntitlementEntity['featureVoiceEnrollment']) {
-    this.setProperty('featureVoiceEnrollment', value);
-  }
-
-  get featureMonitoringAccess(): IPlanEntitlementEntity['featureMonitoringAccess'] {
-    return this._featureMonitoringAccess;
-  }
-
-  set featureMonitoringAccess(value: IPlanEntitlementEntity['featureMonitoringAccess']) {
-    this.setProperty('featureMonitoringAccess', value);
   }
 
   get featurePlatformDefaultCredential(): IPlanEntitlementEntity['featurePlatformDefaultCredential'] {

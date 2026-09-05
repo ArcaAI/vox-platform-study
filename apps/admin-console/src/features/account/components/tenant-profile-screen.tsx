@@ -19,7 +19,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useSession } from '@/shared/auth';
-import type { CapabilityUsageRow, EntitlementCapabilities } from '@/features/entitlements/api/types';
+import type { CapabilityUsageRow } from '@/features/entitlements/api/types';
 import type { TenantPlan } from '@/features/tenants/api/types';
 import { useMyEntitlements, useMyTenant } from '../api/hooks';
 import { TenantSettingsTab } from './tenant-settings-tab';
@@ -47,11 +47,18 @@ const CAPABILITY_LABELS: Record<string, string> = {
   monthlySummaries: 'Summaries',
 };
 
-const FEATURE_LABELS: { key: keyof EntitlementCapabilities['features']; label: string }[] = [
-  { key: 'dnaReports', label: 'DNA reports' },
-  { key: 'voiceEnrollment', label: 'Voice enrollment' },
-  { key: 'monitoringAccess', label: 'Monitoring access' },
-];
+/**
+ * Display names for the resolved capability keys. Rendered key-driven off the
+ * payload rather than from a fixed list: TASK-883 retired three capabilities
+ * (`dnaReports` / `voiceEnrollment` / `monitoringAccess` — display-only, gating
+ * nothing), and the response DTO under-declares others it actually carries, so
+ * an unknown key shows as itself instead of silently disappearing.
+ */
+const FEATURE_LABELS: Record<string, string> = {
+  platformDefaultCredential: 'Platform-default credential',
+  paletteStt: 'STT palette',
+  agenticLoop: 'Agentic loop',
+};
 
 const ALL_TABS = [
   { value: 'organization', label: 'Organization' },
@@ -173,11 +180,11 @@ function PlanUsagePanel() {
         <Card className="gap-3 p-4">
           <h3 className="text-sm font-medium">Features</h3>
           <dl className="flex flex-col gap-2">
-            {FEATURE_LABELS.map((feature) => (
-              <div key={feature.key} className="flex flex-wrap items-center justify-between gap-2">
-                <dt className="text-muted-foreground text-sm">{feature.label}</dt>
+            {Object.entries(capabilities.features).map(([key, enabled]) => (
+              <div key={key} className="flex flex-wrap items-center justify-between gap-2">
+                <dt className="text-muted-foreground text-sm">{FEATURE_LABELS[key] ?? key}</dt>
                 <dd>
-                  {capabilities.features[feature.key] ? (
+                  {enabled ? (
                     <StatusBadge label="Enabled" colorRole="success" icon={<StatusDot colorRole="success" size="sm" />} />
                   ) : (
                     <StatusBadge label="Disabled" colorRole="neutral" icon={<StatusDot colorRole="neutral" size="sm" />} />

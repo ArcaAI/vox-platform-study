@@ -79,7 +79,7 @@ const createMockClsService = () => ({
 });
 
 const createMockSecrets = () => ({
-  getSecretSync: vi.fn((key: string) => (key === 'TEXT_SERVICE_TOKEN' ? 'svc-token-123' : undefined)),
+  getSecretSync: vi.fn((key: string) => (key === 'INTERNAL_ACCESS_TOKEN' ? 'svc-token-123' : undefined)),
 });
 const createMockHarnessPolicy = () => ({
   resolveTextSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'gemma-4' })),

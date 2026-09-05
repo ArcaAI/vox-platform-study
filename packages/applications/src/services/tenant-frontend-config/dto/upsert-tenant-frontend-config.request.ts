@@ -1,10 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsInt, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsObject, IsOptional, Min } from 'class-validator';
 import { CaptureMode, TranscriptionMode } from '@arcaai/domains';
 import { FrontendPipelineConfigJson } from './frontend-pipeline-config';
 
 /**
- * Create-or-update the tenant's frontend audio-pipeline defaults.
+ * Create-or-update the tenant's frontend CAPTURE policy.
+ *
+ * The global `ValidationPipe` runs `forbidNonWhitelisted`, so a stale caller
+ * still sending a retired client-AI toggle (`noiseCancel`, `vad`, …) gets a
+ * 400 naming the field rather than a silent no-op.
  *
  * Every field is optional: on first save the tenant config is created from the
  * provided fields (missing booleans default to `false`); on subsequent saves
@@ -13,32 +17,6 @@ import { FrontendPipelineConfigJson } from './frontend-pipeline-config';
  * it); it is ignored on the initial create.
  */
 export class UpsertTenantFrontendConfigRequest {
-  @ApiPropertyOptional({ description: 'Default ASR model slug/id for the tenant' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  asrModel?: string | null;
-
-  @ApiPropertyOptional({ description: 'Enable browser noise cancellation by default' })
-  @IsOptional()
-  @IsBoolean()
-  noiseCancel?: boolean;
-
-  @ApiPropertyOptional({ description: 'Enable voice-activity detection by default' })
-  @IsOptional()
-  @IsBoolean()
-  vad?: boolean;
-
-  @ApiPropertyOptional({ description: 'Enable voice enrollment by default' })
-  @IsOptional()
-  @IsBoolean()
-  voiceEnrollment?: boolean;
-
-  @ApiPropertyOptional({ description: 'Enable speaker diarization by default' })
-  @IsOptional()
-  @IsBoolean()
-  diarization?: boolean;
-
   // Tenant toggle for local raw-stream dual-capture. Honored only
   // when the platform capability (`enable-local-raw-capture` GlobalSetting) is
   // ON; the SDK-facing enablement is the server-computed AND of the two.

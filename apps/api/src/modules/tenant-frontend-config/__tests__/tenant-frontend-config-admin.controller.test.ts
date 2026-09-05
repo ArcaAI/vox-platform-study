@@ -31,7 +31,7 @@ describe('TenantFrontendConfigAdminController', () => {
 
   describe('upsert', () => {
     it('delegates the body unchanged when no If-Match header is present (create path)', async () => {
-      const body = { asrModel: 'whisper-large-v3', noiseCancel: true };
+      const body = { captureRawAudio: true };
       mockService.upsert.mockResolvedValue({ id: 'c1', ...body, version: 1 });
       const result = await controller.upsert(body as any, undefined, undefined);
       expect(result).toMatchObject({ id: 'c1' });
@@ -39,10 +39,10 @@ describe('TenantFrontendConfigAdminController', () => {
     });
 
     it('folds the If-Match version into expectedVersion (update path), header wins over body', async () => {
-      const body = { vad: false, expectedVersion: 1 };
+      const body = { captureRawAudio: false, expectedVersion: 1 };
       mockService.upsert.mockResolvedValue({ id: 'c1', version: 8 });
       await controller.upsert(body as any, 7, 't-2');
-      expect(mockService.upsert).toHaveBeenCalledWith({ vad: false, expectedVersion: 7 }, 't-2');
+      expect(mockService.upsert).toHaveBeenCalledWith({ captureRawAudio: false, expectedVersion: 7 }, 't-2');
     });
 
     // The new audio-console fields ride the existing

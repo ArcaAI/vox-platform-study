@@ -188,48 +188,6 @@ class EffectiveConfigSnapshot:
 
         return served
 
-    def logging(self) -> dict[str, Any]:
-        """File/rotation sink knobs with an opinion ( lane D).
-
-        `LOG_LEVEL` and `LOG_FILE_PATH` are deliberately NOT here: the level is
-        what an operator reaches for first during an incident (env, effective
-        immediately, no control-plane round trip), and the path is a host fact
-        about where this container's writable volume is mounted.
-        """
-        booleans = {
-            "file_enabled": "nlp.logging.fileEnabled",
-            "file_separate_error": "nlp.logging.fileSeparateError",
-            "console_enabled": "nlp.logging.consoleEnabled",
-            "file_json_format": "nlp.logging.fileJsonFormat",
-            "console_json_format": "nlp.logging.consoleJsonFormat",
-            "use_daily_rotation": "nlp.logging.useDailyRotation",
-        }
-        numbers = {
-            "file_max_files": "nlp.logging.fileMaxFiles",
-            "rotation_interval": "nlp.logging.rotationInterval",
-            "rotation_backup_count": "nlp.logging.rotationBackupCount",
-        }
-        strings = {
-            "file_max_size": "nlp.logging.fileMaxSize",
-            "rotation_when": "nlp.logging.rotationWhen",
-        }
-
-        served: dict[str, Any] = {}
-        for field_name, key in booleans.items():
-            value = self.setting(key)
-            # STRICTLY a bool — a truthy `"false"` string must not flip a sink.
-            if isinstance(value, bool):
-                served[field_name] = value
-        for field_name, key in numbers.items():
-            value = _positive_int(self.setting(key))
-            if value is not None:
-                served[field_name] = value
-        for field_name, key in strings.items():
-            value = self.setting(key)
-            if isinstance(value, str) and value.strip():
-                served[field_name] = value.strip()
-        return served
-
 
 def _positive_int(value: Any) -> int | None:
     # `bool` is an `int` subclass — exclude it, or `True` would become 1.

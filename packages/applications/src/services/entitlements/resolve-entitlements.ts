@@ -54,24 +54,23 @@ export interface ResolvedLimits {
   monthlyEmbeddingTokens: number | null;
 }
 
+/**
+ * The resolved feature capabilities. Every one is ENFORCED at a named call
+ * site: TASK-883 retired `dnaReports` / `voiceEnrollment` / `monitoringAccess`,
+ * which resolved here, were rendered by three console badges, and were consulted
+ * by nothing that decided anything. A capability added here must name its gate.
+ */
 export interface ResolvedFeatures {
-  dnaReports: boolean;
-  voiceEnrollment: boolean;
-  monitoringAccess: boolean;
   /**
    * May this tenant's provider-credential cascade reach the
    * SYSTEM (platform-funded) tier when it holds no key of its own?
    *
-   * The first ENFORCED boolean entitlement in the system: its three neighbours
-   * are display-only (read by `getCapabilities`, the SDK and the console, and
-   * by nothing that decides anything). This one gates platform SPEND, which is
-   * why it is also the only feature that resolves `false` for a null-plan
-   * tenant — see {@link UNGATED_ENTITLEMENTS}.
+   * It gates platform SPEND, which is why it is the only feature that resolves
+   * `false` for a null-plan tenant — see {@link UNGATED_ENTITLEMENTS}.
    */
   platformDefaultCredential: boolean;
   /**
-   * May this tenant publish an `stt`-palette `WorkflowDefinition` ? Display-only like
-   * `dnaReports`/`voiceEnrollment`/`monitoringAccess` — checked once, at
+   * May this tenant publish an `stt`-palette `WorkflowDefinition` ? Checked once, at
    * `WorkflowDefinitionService.publish()`, never at runtime (an already-published workflow keeps
    * running its compiled `AsrPipeline` even if this flips off later — "in-flight runs pin their
    * version" per design.md's Data Flow section). Deliberately `true` on every seeded plan
@@ -139,9 +138,6 @@ export interface PlanEntitlementInput {
   monthlyTtsCharacters?: number | bigint | null;
   monthlyNlpTextUnits?: number | bigint | null;
   monthlyEmbeddingTokens?: number | bigint | null;
-  featureDnaReports?: boolean;
-  featureVoiceEnrollment?: boolean;
-  featureMonitoringAccess?: boolean;
   featurePlatformDefaultCredential?: boolean;
   /**
    * No DB column yet — see `ResolvedFeatures.paletteStt`'s doc comment. Always
@@ -181,9 +177,6 @@ export interface TenantEntitlementOverrideInput {
   monthlyTtsCharacters?: number | bigint | null;
   monthlyNlpTextUnits?: number | bigint | null;
   monthlyEmbeddingTokens?: number | bigint | null;
-  featureDnaReports?: boolean | null;
-  featureVoiceEnrollment?: boolean | null;
-  featureMonitoringAccess?: boolean | null;
   featurePlatformDefaultCredential?: boolean | null;
   /** No DB column yet — see `PlanEntitlementInput.featurePaletteStt`. */
   featurePaletteStt?: boolean | null;
@@ -233,8 +226,8 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
    * `__tests__/resolve-entitlements.test.ts`.
    */
   /*
-   * `agenticLoop` is `true` here, on the DISPLAY-flag side of the
-   * asymmetry above, and deliberately so despite being enforced. A null-plan
+   * `agenticLoop` is `true` here, on the permissive side of the asymmetry
+   * above, and deliberately so despite being enforced. A null-plan
    * tenant has no subscription to read an answer out of, and D-A (owner
    * decisions, 2026-08-17) requires the loop ENABLED for day-1 rather than
    * parked behind a flag. The thing it gates is orchestration quality, not
@@ -242,9 +235,6 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
    * and the platform emergency stop remains available either way.
    */
   features: {
-    dnaReports: true,
-    voiceEnrollment: true,
-    monitoringAccess: true,
     platformDefaultCredential: false,
     paletteStt: true,
     agenticLoop: true,
@@ -323,9 +313,6 @@ export function resolveEntitlements(
     monthlyTtsCharacters: pick(toNum(planRow?.monthlyTtsCharacters), seeded.monthlyTtsCharacters),
     monthlyNlpTextUnits: pick(toNum(planRow?.monthlyNlpTextUnits), seeded.monthlyNlpTextUnits),
     monthlyEmbeddingTokens: pick(toNum(planRow?.monthlyEmbeddingTokens), seeded.monthlyEmbeddingTokens),
-    featureDnaReports: pick(planRow?.featureDnaReports, seeded.featureDnaReports),
-    featureVoiceEnrollment: pick(planRow?.featureVoiceEnrollment, seeded.featureVoiceEnrollment),
-    featureMonitoringAccess: pick(planRow?.featureMonitoringAccess, seeded.featureMonitoringAccess),
     featurePlatformDefaultCredential: pick(planRow?.featurePlatformDefaultCredential, seeded.featurePlatformDefaultCredential),
     featurePaletteStt: pick(planRow?.featurePaletteStt, seeded.featurePaletteStt),
     featureAgenticLoop: pick(planRow?.featureAgenticLoop, seeded.featureAgenticLoop),
@@ -359,9 +346,6 @@ export function resolveEntitlements(
       monthlyEmbeddingTokens: pick(toNum(override?.monthlyEmbeddingTokens), base.monthlyEmbeddingTokens),
     },
     features: {
-      dnaReports: pick(override?.featureDnaReports, base.featureDnaReports),
-      voiceEnrollment: pick(override?.featureVoiceEnrollment, base.featureVoiceEnrollment),
-      monitoringAccess: pick(override?.featureMonitoringAccess, base.featureMonitoringAccess),
       platformDefaultCredential: pick(override?.featurePlatformDefaultCredential, base.featurePlatformDefaultCredential),
       paletteStt: pick(override?.featurePaletteStt, base.featurePaletteStt),
       agenticLoop: pick(override?.featureAgenticLoop, base.featureAgenticLoop),

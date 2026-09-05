@@ -59,11 +59,9 @@ describe('UpsertTenantFrontendConfigRequest — audio fields', () => {
     });
   });
 
-  it('accepts a full valid payload alongside the legacy fields', async () => {
+  it('accepts a full valid payload', async () => {
     expect(
       await validateDto({
-        asrModel: 'whisper-large-v3',
-        noiseCancel: true,
         captureRawAudio: true,
         transcriptionMode: TranscriptionMode.LOCAL,
         transcriptionModeLocked: true,

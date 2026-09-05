@@ -23,9 +23,6 @@ interface EntitlementLimits {
 export interface PlanEntitlement extends EntitlementLimits {
   id: string;
   plan: TenantPlan;
-  featureDnaReports: boolean;
-  featureVoiceEnrollment: boolean;
-  featureMonitoringAccess: boolean;
   modelTier: string;
   rateLimitTier: string;
   version: number;
@@ -33,9 +30,6 @@ export interface PlanEntitlement extends EntitlementLimits {
 
 /** PATCH /admin/entitlements/plans/:plan — OCC via body expectedVersion only. */
 export interface UpdatePlanEntitlementRequest extends EntitlementLimits {
-  featureDnaReports?: boolean;
-  featureVoiceEnrollment?: boolean;
-  featureMonitoringAccess?: boolean;
   modelTier?: string;
   rateLimitTier?: string;
   expectedVersion: number;
@@ -49,7 +43,8 @@ export interface EntitlementCapabilities {
   enforcementEnabled: boolean;
   quantities: CapabilityUsageRow[];
   meters: CapabilityUsageRow[];
-  features: { dnaReports: boolean; voiceEnrollment: boolean; monitoringAccess: boolean };
+  /** Resolved feature capabilities. Enforcing flags only since TASK-883. */
+  features: Record<string, boolean>;
   modelTier: string;
   rateLimitTier: string;
   rateLimitPerMinute?: number | null;
@@ -77,9 +72,6 @@ export interface TrialInfo {
 export interface TenantEntitlement extends EntitlementLimits {
   id: string;
   tenantId: string;
-  featureDnaReports?: boolean | null;
-  featureVoiceEnrollment?: boolean | null;
-  featureMonitoringAccess?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
@@ -87,9 +79,6 @@ export interface TenantEntitlement extends EntitlementLimits {
 }
 
 export interface UpsertTenantEntitlementRequest extends EntitlementLimits {
-  featureDnaReports?: boolean | null;
-  featureVoiceEnrollment?: boolean | null;
-  featureMonitoringAccess?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;

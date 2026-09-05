@@ -73,12 +73,16 @@ export const seedTenant = async (client: CorePrismaClient) => {
 // ============================================================================
 // Tenant Frontend Config
 //
-// One row per tenant describing the DEFAULT frontend audio-processing pipeline
-// applied to all of a tenant's users. No seed previously created any rows, so
-// the SDK had no per-tenant frontend baseline. We seed conservative defaults
-// for the Global/SEED tenant and each customer tenant; `configJson` is left as
-// an empty object for admins to extend. Idempotent: upsert by the unique
-// `tenantId`.
+// One row per tenant describing the DEFAULT frontend CAPTURE policy applied to
+// all of a tenant's users. No seed previously created any rows, so the SDK had
+// no per-tenant frontend baseline. We seed conservative defaults for the
+// Global/SEED tenant and each customer tenant; `configJson` is left as an empty
+// object for admins to extend. Idempotent: upsert by the unique `tenantId`.
+//
+// TASK-883 removed the client-AI columns these rows used to carry
+// (`asrModel` / `noiseCancel` / `vad` / `voiceEnrollment` / `diarization`):
+// the browser never runs a model, so a seeded `vad: true` was instructing a
+// stage that no longer exists.
 //
 // Exported for testing purposes.
 // ============================================================================
@@ -86,11 +90,6 @@ export const seedTenant = async (client: CorePrismaClient) => {
 export const TENANT_FRONTEND_CONFIGS = [
   {
     tenantId: SEED_TENANT_ID,
-    asrModel: null,
-    noiseCancel: false,
-    vad: true,
-    voiceEnrollment: false,
-    diarization: false,
     // Backend is the default realtime transcription
     // pipeline for the Global tenant, and it is LOCKED so an impersonated
     // doctor's per-user `workflowMode` cannot fall back to the browser-local
@@ -108,11 +107,6 @@ export const TENANT_FRONTEND_CONFIGS = [
   },
   {
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    asrModel: null,
-    noiseCancel: false,
-    vad: true,
-    voiceEnrollment: false,
-    diarization: false,
     // ArcaAI is a production-ready day-1 tenant and mirrors the Global tenant's
     // realtime posture exactly: BACKEND is the default transcription pipeline and
     // it is LOCKED so an impersonated doctor's per-user `workflowMode` cannot fall
