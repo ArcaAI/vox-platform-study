@@ -1,7 +1,7 @@
 /**
  * / D-24 — the two policy WORM change logs are soft-delete exempt.
  *
- * `HarnessPolicyChange` and `PipelinePolicyChange` are identity-only, append-only WORM tables:
+ * `HarnessPolicyChange` is an identity-only, append-only WORM table (`PipelinePolicyChange` was its twin until TASK-882):
  * their Prisma models declare "Identity only — NO `_version` / `_metadata` / `updatedAt` /
  * `resourceStatus`", and the migration that introduces each one `REVOKE`s UPDATE and DELETE from
  * the application role. That is the SAME shape as `WorkflowAssignmentChange` and
@@ -47,7 +47,7 @@ vi.mock('../env.js', () => ({}));
 
 import { applySoftDeleteFilter, MODELS_WITHOUT_SOFT_DELETE, modelHasSoftDelete } from '../client';
 
-const WORM_CHANGE_LOGS = ['HarnessPolicyChange', 'PipelinePolicyChange'] as const;
+const WORM_CHANGE_LOGS = ['HarnessPolicyChange'] as const;
 const FILTERED_OPERATIONS = ['findMany', 'findFirst', 'count', 'aggregate', 'groupBy'] as const;
 
 /** Mirrors the real extension handler in `client.ts` (same shape the sibling suite simulates). */

@@ -36,8 +36,6 @@ export * from './NotificationEntity';
 export * from './PasswordResetTokenEntity';
 export * from './PermissionEntity';
 export * from './PlanEntitlementEntity';
-export * from './PipelinePolicyChangeEntity';
-export * from './PipelinePolicyEntity';
 export * from './PromptTemplateEntity';
 export * from './PromptUsageRecordEntity';
 export * from './PromptVersionEntity';

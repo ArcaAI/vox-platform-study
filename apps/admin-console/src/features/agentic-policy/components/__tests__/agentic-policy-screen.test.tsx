@@ -63,7 +63,7 @@ const CATALOG: SettingCatalog = {
       description: 'Max tokens fed to the agentic loop.',
     },
     {
-      key: 'pipeline.harnessEnabled',
+      key: 'platform.example.flag',
       tier: 'platform',
       dataType: 'boolean',
       sensitivity: 'internal',
@@ -215,7 +215,7 @@ describe('AgenticPolicyScreen', () => {
     expect(table).toBeDefined();
     expect(screen.getByText('agentic.context.maxTokens')).toBeDefined();
     // Pipeline row is a different category and must not leak in.
-    expect(screen.queryByText('pipeline.harnessEnabled')).toBeNull();
+    expect(screen.queryByText('platform.example.flag')).toBeNull();
   });
 
   it('gates a non-elevated session behind the super-admins-only empty state', async () => {

@@ -117,6 +117,8 @@ class TestNodeRegistryParity:
             # lane A — the target catalogue and the guards.
             "agent.discharge_summary",
             "agent.dna_redaction",
+            # TASK-882 -- the DNA writing-style gate.
+            "agent.dna_style",
             "agent.feedback",
             # Lane R (R1) — the realtime grammar/spelling pass.
             "agent.grammar",
@@ -178,7 +180,10 @@ class TestNodeRegistryParity:
             "guard.moderation",
             "guard.phi",
             "guardrail.check",
+            # TASK-882 -- the two endpoint stages that had no node type.
+            "harness.finalize",
             "input.context_binding",
+            "livedoc.stop",
             "noop",
             "output.deliver",
             "passthrough",

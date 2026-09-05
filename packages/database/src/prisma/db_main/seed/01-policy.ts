@@ -204,13 +204,6 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
-      // Realtime-pipeline toggle cascade — tenant admins
-      // manage their own tenant's PipelinePolicy rows (auto-summary / auto-NER
-      // / harness-vs-legacy routing). A SEPARATE subject from HarnessPolicy so
-      // realtime-toggle admin stays decoupled from harness-gating admin. `manage`
-      // implies `read` (used by the GET routes). Tenant-scoped; the controller
-      // pins every read/write to the caller's tenant.
-      { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
       // The MCP registry and the agent-trajectory read
       // plane no longer borrow `manage:HarnessPolicy`; these explicit
       // grants preserve exactly the access this role had before the
@@ -610,9 +603,6 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'read', subject: 'HarnessAudit' },
       // Manage (was read): golden-set curation.
       { action: 'manage', subject: 'HarnessEval' },
-      // Platform-wide realtime-pipeline cascade admin
-      // (incl. the SYSTEM-tenant global-default row). `manage` implies `read`.
-      { action: 'manage', subject: 'PipelinePolicy' },
       // Dedicated subjects for the MCP registry and the
       // agent-trajectory read plane (previously reached via
       // `manage:HarnessPolicy`). Unconditional at platform scope.
@@ -637,9 +627,6 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
       // Manage (was read): golden-set curation.
       { action: 'manage', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
-      // Tenant-scoped realtime-pipeline cascade admin.
-      // `manage` implies `read`; the controller pins every op to the tenant.
-      { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
       // Dedicated subjects for the MCP registry and the
       // agent-trajectory read plane (previously reached via
       // `manage:HarnessPolicy`). Tenant-scoped; MCP writes stay

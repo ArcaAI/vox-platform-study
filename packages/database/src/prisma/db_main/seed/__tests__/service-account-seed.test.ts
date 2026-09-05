@@ -90,7 +90,6 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   'svc:admin:ai-provider:manage': [['manage', 'GlobalSetting']],
   'svc:admin:settings:manage': [['manage', 'GlobalSetting']],
   'svc:admin:nlp-task-instructions:manage': [['manage', 'TenantNlpTaskInstructions']],
-  'svc:admin:pipeline-policy:manage': [['manage', 'PipelinePolicy']],
   'svc:admin:allowed-origin:manage': [['manage', 'TenantAllowedOrigin']],
   'svc:admin:tenant-frontend-config:manage': [['update', 'Tenant']],
   'svc:admin:tenant-idp-config:manage': [['manage', 'TenantIdentityProvider']],

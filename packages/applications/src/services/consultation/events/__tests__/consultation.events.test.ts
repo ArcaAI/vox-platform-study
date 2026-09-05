@@ -333,10 +333,6 @@ describe('DEFAULT_PIPELINE_CONFIG', () => {
     expect(DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled).toBe(true);
   });
 
-  it('should have autoNerEnabled set to true', () => {
-    expect(DEFAULT_PIPELINE_CONFIG.autoNerEnabled).toBe(true);
-  });
-
   it('should have haltOnFailure set to false', () => {
     expect(DEFAULT_PIPELINE_CONFIG.haltOnFailure).toBe(false);
   });
@@ -351,13 +347,11 @@ describe('DEFAULT_PIPELINE_CONFIG', () => {
     const config: ConsultationPipelineConfig = DEFAULT_PIPELINE_CONFIG;
     expect(config).toBeDefined();
     expect(typeof config.autoSummaryEnabled).toBe('boolean');
-    expect(typeof config.autoNerEnabled).toBe('boolean');
   });
 
   it('should be immutable at runtime (frozen or const-like)', () => {
     const original = { ...DEFAULT_PIPELINE_CONFIG };
     expect(DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled).toBe(original.autoSummaryEnabled);
-    expect(DEFAULT_PIPELINE_CONFIG.autoNerEnabled).toBe(original.autoNerEnabled);
     expect(DEFAULT_PIPELINE_CONFIG.haltOnFailure).toBe(original.haltOnFailure);
   });
 });
@@ -366,7 +360,6 @@ describe('ConsultationPipelineConfig', () => {
   it('should accept a fully specified config', () => {
     const config: ConsultationPipelineConfig = {
       autoSummaryEnabled: true,
-      autoNerEnabled: false,
       dnaStyleId: 'style_DNA_doctor_department_cardiology_cp',
       summaryTemplate: 'SOAP',
       includeSharedContext: true,
@@ -374,7 +367,6 @@ describe('ConsultationPipelineConfig', () => {
     };
 
     expect(config.autoSummaryEnabled).toBe(true);
-    expect(config.autoNerEnabled).toBe(false);
     expect(config.dnaStyleId).toBe('style_DNA_doctor_department_cardiology_cp');
     expect(config.summaryTemplate).toBe('SOAP');
     expect(config.includeSharedContext).toBe(true);
@@ -384,11 +376,9 @@ describe('ConsultationPipelineConfig', () => {
   it('should accept a minimal config with only required fields', () => {
     const config: ConsultationPipelineConfig = {
       autoSummaryEnabled: false,
-      autoNerEnabled: false,
     };
 
     expect(config.autoSummaryEnabled).toBe(false);
-    expect(config.autoNerEnabled).toBe(false);
     expect(config.dnaStyleId).toBeUndefined();
     expect(config.summaryTemplate).toBeUndefined();
     expect(config.includeSharedContext).toBeUndefined();

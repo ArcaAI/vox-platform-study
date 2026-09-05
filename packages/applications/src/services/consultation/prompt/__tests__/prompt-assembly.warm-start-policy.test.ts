@@ -1,19 +1,16 @@
 /**
- * PromptAssemblyService — effective `warmStartEnabled` precedence.
+ * PromptAssemblyService — effective `warmStartEnabled` is the `HarnessPolicy` column, alone.
  *
- * `HarnessPolicy.warmStartEnabled` was fully WRITE-plumbed — DTO, response,
- * SUPER_ADMIN gate, admin-console knob, even parsed into the Python dataclass —
- * and then read by NOTHING. The real switch was the process-wide env var
- * `HARNESS_WARM_START_ENABLED`, cached at CONSTRUCTION, so a super admin toggling
- * the console knob changed nothing and could never vary per tenant.
+ * TASK-882: `harness.warmStartEnabled` (`HARNESS_WARM_START_ENABLED`) was an env DUPLICATE of the
+ * SUPER_ADMIN_ONLY `HarnessPolicy.warmStartEnabled` column — the env var survived only as the
+ * fallback for a null policy value. It is gone: the column is the one source, a null column is
+ * the code default (OFF), and there is no env branch to fall back to.
  *
  * The contract this pins:
- *   1. the effective POLICY value wins over the env var, both directions
- *   2. a null policy value falls back to env — so an untouched deployment behaves
- *      byte-for-byte as it did before (program risk rule)
- *   3. resolution is PER-CALL: a policy change is picked up with no redeploy and
- *      no service reconstruction (the construction-time cache is gone)
- *   4. a policy-resolution failure degrades to env rather than throwing
+ *   1. the effective POLICY value decides, both directions
+ *   2. a null policy value is the code default — OFF — never an env read
+ *   3. resolution is PER-CALL: a policy change is picked up with no redeploy
+ *   4. a policy-resolution failure degrades to OFF rather than throwing
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -35,23 +32,19 @@ function createTemplate() {
   };
 }
 
-async function buildService(opts: { env?: boolean; policy?: boolean | null; policyThrows?: boolean } = {}) {
+async function buildService(opts: { policy?: boolean | null; policyThrows?: boolean; unwired?: boolean } = {}) {
   const { PromptAssemblyService } = await import('../prompt-assembly.service');
-  const configService = {
-    get: vi.fn((key: string) => (key === 'HARNESS_WARM_START_ENABLED' ? (opts.env ? 'true' : undefined) : undefined)),
-  };
   const getEffectivePolicy = vi.fn(async () => {
     if (opts.policyThrows) throw new Error('policy backend unavailable');
     return { warmStartEnabled: opts.policy ?? null };
   });
-  const harnessPolicyService = { getEffectivePolicy };
+  const harnessPolicyService = opts.unwired ? undefined : { getEffectivePolicy };
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : undefined)) };
 
   const service = new PromptAssemblyService(
     mockPromptResolutionService as never,
     mockPromptTemplateRepository as never,
     mockDnaWritingStyleRepository as never,
-    configService as never,
     harnessPolicyService as never,
     cls as never,
   );
@@ -70,7 +63,7 @@ const assembleWithPriorDraft = (service: { assemble: (p: unknown) => Promise<{ u
 /** Warm start is ON iff the prior-draft block reached the user prompt. */
 const warmStarted = (assembled: { userPrompt: string }) => assembled.userPrompt.includes(PRIOR_DRAFT);
 
-describe('PromptAssemblyService — effective warmStartEnabled', () => {
+describe('PromptAssemblyService — effective warmStartEnabled (HarnessPolicy column only)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPromptResolutionService.resolve.mockResolvedValue({ promptId: 'template-warm', resolvedFrom: 'default' });
@@ -78,26 +71,28 @@ describe('PromptAssemblyService — effective warmStartEnabled', () => {
     mockDnaWritingStyleRepository.findById.mockResolvedValue(null);
   });
 
-  it('policy=false beats env=true → warm start OFF', async () => {
-    const { service } = await buildService({ env: true, policy: false });
+  it('policy=false → warm start OFF', async () => {
+    const { service } = await buildService({ policy: false });
     expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
   });
 
-  it('policy=true beats env unset → warm start ON', async () => {
-    const { service } = await buildService({ env: false, policy: true });
+  it('policy=true → warm start ON', async () => {
+    const { service } = await buildService({ policy: true });
     expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(true);
   });
 
-  it('policy=null falls back to env (untouched deployments behave exactly as before)', async () => {
-    const envOn = await buildService({ env: true, policy: null });
-    expect(warmStarted(await assembleWithPriorDraft(envOn.service as never))).toBe(true);
+  it('policy=null is the code default (OFF) — there is no env fallback any more', async () => {
+    const { service } = await buildService({ policy: null });
+    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
+  });
 
-    const envOff = await buildService({ env: false, policy: null });
-    expect(warmStarted(await assembleWithPriorDraft(envOff.service as never))).toBe(false);
+  it('an unwired policy service is the code default (OFF)', async () => {
+    const { service } = await buildService({ unwired: true });
+    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
   });
 
   it('resolves PER CALL — a policy flip takes effect with no reconstruction', async () => {
-    const { service, getEffectivePolicy } = await buildService({ env: false, policy: false });
+    const { service, getEffectivePolicy } = await buildService({ policy: false });
 
     expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
 
@@ -109,13 +104,13 @@ describe('PromptAssemblyService — effective warmStartEnabled', () => {
   });
 
   it('resolves the policy for the calling tenant', async () => {
-    const { service, getEffectivePolicy } = await buildService({ env: false, policy: true });
+    const { service, getEffectivePolicy } = await buildService({ policy: true });
     await assembleWithPriorDraft(service as never);
     expect(getEffectivePolicy).toHaveBeenCalledWith(TENANT);
   });
 
-  it('degrades to env when the policy lookup fails (never blocks assembly)', async () => {
-    const { service } = await buildService({ env: true, policyThrows: true });
-    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(true);
+  it('degrades to OFF when the policy lookup fails (never blocks assembly, never reads env)', async () => {
+    const { service } = await buildService({ policyThrows: true });
+    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
   });
 });

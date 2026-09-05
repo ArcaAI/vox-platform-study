@@ -343,6 +343,11 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // the TENANT gate is the presence of this node in the published graph, and the DOCTOR's
   // own DNA opt-in still applies. The retired `DepartmentAgent` veto stays retired.
   { id: 'n_dna', type: 'agent.dna_redaction', config: { requireDoctorOptIn: true, onError: 'degrade' } },
+  // TASK-882 — the DNA WRITING-STYLE gate as a node. Its presence (enabled) is what lets a
+  // doctor's learned writing style reach prompt assembly; the doctor's own opt-out is a
+  // per-user preference the gateway honours. Ordering-only, on the branch that rejoins at
+  // prompt assembly — it applies nothing itself and carries no data.
+  { id: 'n_dna_style', type: 'agent.dna_style', config: { onError: 'degrade' } },
   // The POLICY-DRIVEN grounding pass over the redacted note.
   //
   // Distinct from `n_sensors` rather than a duplicate of it: the sensors node runs the
@@ -495,6 +500,10 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       // WF-S-004 / WF-CONS-004: every node must REACH the `consultation.hitlGate` terminal, so the
       // guarded branch rejoins the chain rather than dead-ending.
       ['n_ground_presum', 'next', 'n_prompt', 'after'],
+      // TASK-882 — the DNA writing-style gate sits between the PHI hop and prompt assembly,
+      // where the gateway reads it. Ordering only, same shape as the pre-summary branch.
+      ['n_phi', 'next', 'n_dna_style', 'after'],
+      ['n_dna_style', 'next', 'n_prompt', 'after'],
       ['n_evidence', 'out', 'n_prompt', 'in'],
       ['n_prompt', 'out', 'n_synth', 'in'],
       // `document ⊑ text`: the correction pass proposes over any clinical text, including a

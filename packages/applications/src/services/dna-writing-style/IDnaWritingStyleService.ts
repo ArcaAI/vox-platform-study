@@ -53,7 +53,7 @@ export abstract class IDnaWritingStyleService {
   /**
    * Read the caller doctor's DNA on/off settings
    * (effective = tenant AND doctor, plus the tenant gate + DOCTOR-row OCC
-   * version). Storage is the Phase-5 DOCTOR-scope `PipelinePolicy.dnaStyleEnabled`.
+   * version). Storage is the doctor's `UserSettings` preference (`dna` / `styleEnabled`, TASK-882).
    */
   abstract getDnaSettings(doctorId: string): Promise<DnaSettingsResponse>;
   /**

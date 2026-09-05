@@ -93,8 +93,6 @@ import { AgentTrajectoryModule } from './modules/agent-trajectory/agent-trajecto
 // Phase 3A item 6 — read-only agentic instruction inventory (/admin/agentic/*).
 import { AgenticAdminModule } from './modules/agentic-admin/agentic-admin.module';
 import { McpAdminModule } from './modules/mcp-admin/mcp-admin.module';
-// realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
-import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipeline-policy-admin.module';
 import { TenantTtsConfigModule } from './modules/tenant-tts-config/tenant-tts-config.module';
 // tenant-scoped STT fallback + BYOK admin surface (/admin/stt-config).
 import { TenantSttConfigModule } from './modules/tenant-stt-config/tenant-stt-config.module';
@@ -514,8 +512,6 @@ const featureModules: any[] = [
   AgenticAdminModule,
   // /admin/mcp-servers/* (MCP external-tools registry; super-admin CRUD + registry read).
   McpAdminModule,
-  // /admin/harness/pipeline-policy (realtime-toggle cascade admin).
-  PipelinePolicyAdminModule,
   // /admin/tts-config (per-tenant TTS spec + BYO provider credentials).
   TenantTtsConfigModule,
   TenantSttConfigModule,

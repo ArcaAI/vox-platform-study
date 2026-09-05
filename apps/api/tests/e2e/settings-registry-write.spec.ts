@@ -62,8 +62,8 @@ test.describe('settings registry write lane', () => {
   });
 
   test('400s an unwritable tier', async ({ request }) => {
-    // `pipeline.*` is tier `db-config` — it keeps its dedicated service.
-    const res = await request.put('/api/v1/admin/settings/registry/pipeline.harnessEnabled', {
+    // `storage.platformDefault.*` is tier `db-config` — it keeps its dedicated service.
+    const res = await request.put('/api/v1/admin/settings/registry/storage.platformDefault.endpoint', {
       headers: auth(),
       data: { value: true },
     });

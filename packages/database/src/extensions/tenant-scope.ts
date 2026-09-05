@@ -126,9 +126,6 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // knowledge.prisma (2) — institutional RAG corpus
   'KnowledgeDocument',
   'KnowledgeChunk',
-  // pipeline-policy.prisma (2) — realtime-cascade policy.
-  'PipelinePolicy', // also a SYSTEM-shared read model (global-default row, below)
-  'PipelinePolicyChange', // append-only WORM change log (no soft-delete)
   // tenant-tts-config.prisma (1) — per-tenant TTS config. The former
   // per-(tenant,provider) BYO-credential model, TenantTtsProviderCredential,
   // was DROPPED in — those rows now live in the unified
@@ -395,11 +392,6 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // but never mutate the SYSTEM-owned global default (only a platform admin can,
   // through the dedicated global-default service path).
   'HarnessPolicy',
-  // The realtime-cascade GLOBAL-DEFAULT policy row is owned
-  // by the SYSTEM tenant and read by every tenant's ConfigResolver cascade
-  // (doctor→department→tenant→SYSTEM default). READS widen to [caller, SYSTEM];
-  // WRITES are NOT widened (only a platform admin mutates the SYSTEM default).
-  'PipelinePolicy',
   // The per-tenant TTS PLATFORM-DEFAULT row is owned by the SYSTEM
   // tenant and read by every tenant's resolveForTenant (tenant row merged over
   // the SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened
@@ -538,11 +530,11 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // `WorkflowValidatorService` must read them (merged with its own
   // additions) to validate ANY graph, the same "every tenant must resolve
   // the SYSTEM row to function at all" shape as `HarnessPolicy`/
-  // `PipelinePolicy` above — without widening, a tenant validating its own
+  // `HarnessPolicy` above — without widening, a tenant validating its own
   // graph would see only the rules IT authored (or none), silently
   // under-enforcing the platform's own safety rules. READS widen to
   // [caller, SYSTEM] (`findApplicable()` issues two explicit-tenantId reads,
-  // mirroring `PipelinePolicyRepository.findSystemDefault`); WRITES are NOT
+  // mirroring `HarnessPolicyRepository`'s SYSTEM-default read); WRITES are NOT
   // widened — a tenant can read but never mutate a SYSTEM-owned rule row
   // (the one-way-strictness rule enforced in the service).
   'WorkflowInvariantRule',

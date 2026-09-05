@@ -100,6 +100,7 @@ ACTION_KEYS: tuple[str, ...] = (
     "agent.retrieval",
     "agent.feedback",
     "agent.dna_redaction",
+    "agent.dna_style",
     "guard.phi",
     "guard.moderation",
     "guard.groundedness",
@@ -108,6 +109,9 @@ ACTION_KEYS: tuple[str, ...] = (
     "session.timeout",
     "summary.finalize",
     "feedback.capture",
+    # TASK-882 — the whole endpoint stage is authorable through `core.action`.
+    "livedoc.stop",
+    "harness.finalize",
     "prompt.template_ref",
 )
 

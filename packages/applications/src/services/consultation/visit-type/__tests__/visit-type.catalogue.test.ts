@@ -1,35 +1,24 @@
 /**
- * The VISIT-TYPE CATALOGUE — the pure half.
+ * The VISIT-TYPE vocabulary — the pure half.
  *
- * Owner ruling: "Visit type is tenant-admin defined and
- * controlled. Two defaults ship: New patient (new visit, new referral) and
- * Revisit (follow-up same-day, review same-day, revisit same-day)."
- *
- * The KEYS and LABELS were settled separately on 2026-08-29 ("new-visit: new
- * patient, new visit, new referral" / "revisit: here is follow-up or revisit in
- * the same day") — see the last describe block, which owns that vocabulary and
- * the retired-key compatibility the rename depends on.
- *
- * These tests pin the two things a literal could never give us: that the
- * SHIPPED default is exactly the owner's two types, and that a tenant's own
- * catalogue is refused when it would make resolution ambiguous or silently
- * mis-select a clinical prompt.
+ * Two visit types ship: New visit (new patient, new referral) and Revisit (follow-up same-day,
+ * review same-day, revisit same-day). The KEYS and LABELS were settled on 2026-08-29 — see the
+ * last describe block, which owns that vocabulary and the retired-key compatibility the rename
+ * depends on. TASK-882 made them the ONLY two (the tenant catalogue key and its write-lane
+ * validator retired), so what is pinned here is the vocabulary and the three pure selections.
  */
 import { describe, expect, it } from 'vitest';
 import {
   CONSULTATION_VISIT_TYPES_DEFAULT,
-  CONSULTATION_VISIT_TYPES_KEY,
   matchVisitType,
   normalizeVisitTypeToken,
   promptSlotFor,
   selectVisitType,
-  visitTypeCatalogueProblem,
   type VisitTypeDefinition,
 } from '../visit-type.catalogue';
 
 describe('the shipped default catalogue', () => {
   it('is the owner’s two visit types, in order, at the SYSTEM tier', () => {
-    expect(CONSULTATION_VISIT_TYPES_KEY).toBe('consultation.visitTypes');
     expect(CONSULTATION_VISIT_TYPES_DEFAULT.map((v) => v.key)).toEqual(['new-visit', 'revisit']);
     expect(CONSULTATION_VISIT_TYPES_DEFAULT.map((v) => v.label)).toEqual(['New visit', 'Revisit']);
   });
@@ -56,9 +45,6 @@ describe('the shipped default catalogue', () => {
     expect(matchVisitType(CONSULTATION_VISIT_TYPES_DEFAULT, 'revisit')?.key).toBe('revisit');
   });
 
-  it('assembles cleanly through its own validator', () => {
-    expect(visitTypeCatalogueProblem(CONSULTATION_VISIT_TYPES_DEFAULT)).toBeUndefined();
-  });
 });
 
 describe('normalizeVisitTypeToken', () => {
@@ -113,39 +99,6 @@ describe('promptSlotFor — the department column a visit type selects', () => {
     expect(promptSlotFor(CONSULTATION_VISIT_TYPES_DEFAULT, 'pre-summary')).toBe('new-patient');
     expect(promptSlotFor(CONSULTATION_VISIT_TYPES_DEFAULT, 'live')).toBe('new-patient');
     expect(promptSlotFor(CONSULTATION_VISIT_TYPES_DEFAULT, undefined)).toBe('new-patient');
-  });
-});
-
-describe('visitTypeCatalogueProblem — what a tenant may NOT save', () => {
-  const ok: VisitTypeDefinition = { key: 'x', label: 'X', aliases: [], promptSlot: 'new-patient' };
-
-  it('refuses an empty catalogue — a tenant with no visit types has no prompt selection', () => {
-    expect(visitTypeCatalogueProblem([])).toMatch(/at least one/i);
-  });
-
-  it('refuses anything that is not an array of well-formed entries', () => {
-    expect(visitTypeCatalogueProblem({})).toMatch(/array/i);
-    expect(visitTypeCatalogueProblem([{ key: '', label: 'X', aliases: [], promptSlot: 'new-patient' }])).toMatch(/key/i);
-    expect(visitTypeCatalogueProblem([{ key: 'x', label: '', aliases: [], promptSlot: 'new-patient' }])).toMatch(/label/i);
-    expect(visitTypeCatalogueProblem([{ key: 'x', label: 'X', aliases: [], promptSlot: 'nope' }])).toMatch(/promptSlot/i);
-  });
-
-  it('ACCEPTS an alias that merely repeats its own entry’s key — redundant is not ambiguous', () => {
-    expect(
-      visitTypeCatalogueProblem([
-        { key: 'new-visit', label: 'New patient', aliases: ['new_visit'], promptSlot: 'new-patient' },
-        { key: 'revisit', label: 'Revisit', aliases: [], promptSlot: 'revisit' },
-      ]),
-    ).toBeUndefined();
-  });
-
-  it('refuses a duplicate key, and an alias that collides with another entry', () => {
-    expect(visitTypeCatalogueProblem([ok, { ...ok, label: 'X2' }])).toMatch(/more than once|duplicate/i);
-    expect(visitTypeCatalogueProblem([ok, { key: 'y', label: 'Y', aliases: ['X'], promptSlot: 'revisit' }])).toMatch(/ambiguous|collide/i);
-  });
-
-  it('refuses a catalogue with no entry for a prompt slot — a follow-up would silently get the new-patient prompt', () => {
-    expect(visitTypeCatalogueProblem([ok])).toMatch(/revisit/);
   });
 });
 

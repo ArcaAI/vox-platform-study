@@ -182,7 +182,6 @@ describe('clinician edit -> mined exemplar -> assembled prompt', () => {
       { resolve: vi.fn().mockResolvedValue({ promptId: null, content: 'Summarize the transcript.', resolvedFrom: 'default' }) } as never,
       { findById: vi.fn().mockResolvedValue(null) } as never,
       { findById: vi.fn().mockResolvedValue(null) } as never,
-      { get: vi.fn() } as never,
       { getEffectivePolicy: vi.fn().mockResolvedValue({ warmStartEnabled: false }) } as never,
       cls() as never,
       // The SAME mining service instance — its read half, unmocked.

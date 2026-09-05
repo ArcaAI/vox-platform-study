@@ -374,24 +374,13 @@ export class HarnessInternalController {
     required: false,
     description: 'Optional — resolve textProvider/textModel from the AiTaskDefault row for this task key (e.g. `text.live`).',
   })
-  //  — the executing node's OWN `config.llmBinding.modelSlug`. It OUTRANKS
-  // `taskKey`: a node that names a model has stated something no tenant-level row can, which is
-  // the whole point of moving selection onto the graph. Unlike `taskKey` it is fail-CLOSED — a
-  // slug that resolves to no ENABLED model 400s rather than quietly serving the task default,
-  // because an explicitly-bound node generating on a different model is exactly the silent
-  // substitution `09-infrastructure-devops.md` §Configuration Tiers forbids. Omitted ⇒
-  // byte-identical prior behaviour.
-  @ApiQuery({
-    name: 'modelSlug',
-    required: false,
-    description:
-      "Optional — the executing workflow node's `llmBinding.modelSlug`. Outranks `taskKey`; fails closed when it resolves to no ENABLED model.",
-  })
+  // `modelSlug` (the executing node's `llmBinding.modelSlug`) used to be a third query parameter
+  // here. TASK-882 removed it from the wire: the node `llmBinding` is gone from the schemas and
+  // `getEffectivePolicy` has consulted none of these options since TASK-876.
   async getEffectivePolicy(
     @Query('tenantId') tenantId?: string,
     @Query('consultationId') consultationId?: string,
     @Query('taskKey') taskKey?: string,
-    @Query('modelSlug') modelSlug?: string,
   ): Promise<HarnessPolicyResponse & { textFallback: ResolvedTextFallback | null }> {
     if (!tenantId) {
       throw new BadRequestException('tenantId query parameter is required');
@@ -415,7 +404,7 @@ export class HarnessInternalController {
       // controller is `@ApiExcludeController()`, so the extra field is not part of the documented
       // surface. `null` ⇒ nothing to switch to; the run keeps the primary alone.
       const [policy, textFallback] = await Promise.all([
-        this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId, taskKey, modelSlug }),
+        this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId, taskKey }),
         this.harnessPolicyService.resolveTextFallbackChain(tenantId),
       ]);
       return { ...policy, textFallback };

@@ -47,7 +47,6 @@ async function buildService(opts: { exemplars?: unknown[]; throws?: boolean; wir
     mockPromptResolutionService as never,
     mockPromptTemplateRepository as never,
     mockDnaWritingStyleRepository as never,
-    { get: vi.fn() } as never,
     { getEffectivePolicy: vi.fn().mockResolvedValue({ warmStartEnabled: false }) } as never,
     { get: vi.fn() } as never,
     (opts.wired ?? true) ? ({ retrieveExemplars } as never) : undefined,

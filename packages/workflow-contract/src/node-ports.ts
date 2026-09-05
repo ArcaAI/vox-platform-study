@@ -341,6 +341,9 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   // consultation, which is why the edge is optional.
   'summary.finalize': ports([port('in', 'document', false, true), AFTER], [NEXT]),
   'feedback.capture': ports([port('in', 'edits', false, true), AFTER], [NEXT]),
+  // TASK-882 — the two endpoint stages that had no node type; ordering-only, like session.timeout.
+  'livedoc.stop': ports([AFTER], [NEXT]),
+  'harness.finalize': ports([AFTER], [NEXT]),
 
   // -------------------------------------------------------------------------------------------
   // The TARGET CATALOGUE (/DD-9) and the guards — lane A.
@@ -423,6 +426,8 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   // Document in, redacted document out. The type is preserved for the same reason `stt.phiHop`'s
   // is: a redacted note is still a note, so everything downstream of it stays wireable.
   'agent.dna_redaction': ports([port('in', 'document', true, false), AFTER], [port('out', 'document', true, true, { outputKey: 'text' }), NEXT]),
+  // TASK-882 — the DNA writing-style gate; ordering-only (the style is applied at prompt assembly).
+  'agent.dna_style': ports([AFTER], [NEXT]),
 
   // -------------------------------------------------------------------------------------------
   // Guards. A guard's product is a VERDICT — that is what makes it a guard rather than a

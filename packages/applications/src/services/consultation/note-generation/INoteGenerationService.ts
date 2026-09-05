@@ -5,7 +5,7 @@ import { ConsultationPipelineConfig } from '../events/consultation.events';
  * Generator Entry-Point Seam.
  *
  * The single seam every note-generation entry point routes through.
- * `harnessEnabled` is read in exactly one runtime location:
+ * The generator decision is made in exactly one runtime location:
  * `NoteGenerationService.generate` (enforced by the grep-gate test in
  * `__tests__/harness-enabled-single-reader.grep-gate.test.ts`).
  */
@@ -17,8 +17,7 @@ export interface INoteGenerationService {
    *   1. Resolve the consultation's pipeline config (`resolveConfig`).
    *   2. If the trigger has no harness equivalent (PRE_SUMMARY /
    *      COMPREHENSIVE_SUMMARY) → `{ generator: 'legacy', reason: 'harness-not-supported-for-trigger' }`.
-   *   3. If `config.harnessEnabled` is false → `{ generator: 'legacy', reason: 'harnessEnabled-false' }`.
-   *   4. Otherwise → start the harness document workflow and return
+   *   3. Otherwise → start the harness document workflow and return
    *      `{ generator: 'harness', harnessJobId }`.
    *
    * The harness-start call is NOT optional-chained: a missing

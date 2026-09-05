@@ -18,8 +18,13 @@ import { describe, expect, it } from 'vitest';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 import { nodeDescriptorContractProblems } from '../port-validation';
 
-/** The endpoint stage's three node types, in the order the default sequence runs them. */
-const ENDPOINT_KEYS = ['session.timeout', 'summary.finalize', 'feedback.capture'] as const;
+/**
+ * The endpoint stage's FIVE node types, in the order the default sequence runs them. TASK-882
+ * added `livedoc.stop` and `harness.finalize` so the whole stage can be declared on a graph —
+ * membership is node presence, order is edge order — instead of the retired
+ * `consultation.endpoint.actions` setting.
+ */
+const ENDPOINT_KEYS = ['livedoc.stop', 'session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture'] as const;
 
 describe('endpoint-stage node types', () => {
   it.each(ENDPOINT_KEYS)('%s is registered', (key) => {
@@ -43,14 +48,16 @@ describe('endpoint-stage node types', () => {
     expect(descriptor.implemented).toBe(true);
   });
 
-  it('summary.finalize and feedback.capture declare externalWrite; session.timeout does too', () => {
-    // All three WRITE. `summary.finalize` locks every document , `feedback.capture`
-    // promotes an accepted correction onto the transcript , and `session.timeout` stamps
-    // the consultation's endpoint disposition. `externalWrite` is also what makes the
+  it('every endpoint node that touches a real record declares externalWrite; harness.finalize alone does not', () => {
+    // `summary.finalize` locks every document, `feedback.capture` promotes an accepted correction
+    // onto the transcript, `session.timeout` stamps the consultation's endpoint disposition and
+    // `livedoc.stop` closes a live audio session. `externalWrite` is also what makes the
     // interpreter suppress them on a SANDBOX run, which is the property that matters most here:
-    // a sandbox must never lock a real clinician's note.
+    // a sandbox must never lock a real clinician's note. `harness.finalize` is the one exception:
+    // inside an interpreter run the graph IS the document workflow, so the node is an ordering
+    // marker that writes nothing — the loop, not the activity, starts the child (TASK-882).
     for (const key of ENDPOINT_KEYS) {
-      expect(WORKFLOW_NODE_REGISTRY[key].externalWrite, `${key}.externalWrite`).toBe(true);
+      expect(WORKFLOW_NODE_REGISTRY[key].externalWrite, `${key}.externalWrite`).toBe(key !== 'harness.finalize');
     }
   });
 

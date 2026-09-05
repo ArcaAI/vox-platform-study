@@ -10,9 +10,10 @@
  * Previously declared in `services/departmentAgent/constants.ts` as
  * `AGENT_ACTION_KEYS`. It moved here with the retirement of `DepartmentAgent`
  * the vocabulary describes the LOOP, not the agent row that used to
- * carry the two levers over it. Per the retirement's coupling table, the keys
- * and their validators travel with the endpoint sequence, which is the surface
- * that still consumes them (`endpoint-sequence.ts`).
+ * carry the two levers over it. TASK-882 retired the levers' last consumer
+ * (the endpoint sequence is now read off the assigned graph), so the two-list
+ * overlap validator went with them; the vocabulary itself stays the Python
+ * mirror's contract.
  *
  * The NAME changed from `AGENT_ACTION_KEYS` to `LOOP_ACTION_KEYS` and the
  * CONTENT did not: the list is byte-identical to the one the Python mirror
@@ -26,10 +27,8 @@ export const LOOP_ACTION_KEYS = [
   'nlp.extract_entities',
   'harness.finalize',
   'client.emit',
-  // the ENDPOINT STAGE. Part of this vocabulary, and not merely of the endpoint
-  // sequence setting, because the endpoint resolver's EXTEND/VETO levers are expressed in these
-  // keys. The endpoint resolver only accepts endpoint-eligible keys, so widening the vocabulary
-  // here never widens the endpoint stage on its own.
+  // the ENDPOINT STAGE — the same strings as the endpoint node types in
+  // `@arcaai/workflow-contract`, so the loop dispatches exactly what a graph declares.
   'session.timeout',
   'summary.finalize',
   'feedback.capture',
@@ -60,14 +59,3 @@ export function actionListProblems(value: unknown[], field: string): string[] {
   return problems;
 }
 
-/**
- * The one cross-field rule of a two-list compliance envelope: an action cannot
- * be both mandatory and forbidden at once.
- */
-export function actionOverlapProblems(always: unknown[] | undefined | null, never: unknown[] | undefined | null): string[] {
-  if (!always || !never) return [];
-  const alwaysSet = new Set(always.filter((v): v is string => typeof v === 'string'));
-  const overlap = never.filter((v): v is string => typeof v === 'string' && alwaysSet.has(v));
-  if (overlap.length === 0) return [];
-  return [`the following action(s) appear in both alwaysActions and neverActions: ${overlap.join(', ')}`];
-}

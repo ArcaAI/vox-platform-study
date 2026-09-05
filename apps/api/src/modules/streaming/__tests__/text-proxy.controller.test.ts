@@ -1116,10 +1116,9 @@ describe('TextProxyController', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    // row 3: the route no longer enforces a hardcoded
-    // `['new_visit', 'referral']` list — it refuses what the CALLER TENANT's
-    // `consultation.visitTypes` catalogue does not name. A garbage value is
-    // still a 400; a tenant's own visit type no longer is.
+    // The route no longer enforces a hardcoded `['new_visit', 'referral']`
+    // list — it refuses what the platform's visit-type vocabulary does not
+    // name (key or alias). A garbage value is still a 400.
     it('should reject a visit_type the tenant’s catalogue does not name', async () => {
       await expect(
         controller.generateAssembled({

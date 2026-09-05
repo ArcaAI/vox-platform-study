@@ -43,6 +43,7 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         // lane A — the target catalogue and the guards.
         'agent.discharge_summary',
         'agent.dna_redaction',
+        'agent.dna_style',
         'agent.feedback',
         'agent.grammar',
         'agent.important_findings',
@@ -83,7 +84,10 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'feedback.capture',
         'generate.text',
         'guardrail.check',
+        // TASK-882 — the two endpoint stages that had no node type.
+        'harness.finalize',
         'input.context_binding',
+        'livedoc.stop',
         'noop',
         'output.deliver',
         'prompt.template_ref',

@@ -49,6 +49,8 @@ from harness.temporal.interpreter.nodes.consultation_compose import (
 )
 from harness.temporal.interpreter.nodes.consultation_endpoint import (
     interpreter_feedback_capture,
+    interpreter_harness_finalize,
+    interpreter_livedoc_stop,
     interpreter_session_timeout,
     interpreter_summary_finalize,
 )
@@ -227,6 +229,9 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_session_timeout,
     interpreter_summary_finalize,
     interpreter_feedback_capture,
+    # TASK-882 — the two endpoint stages that had no node type.
+    interpreter_livedoc_stop,
+    interpreter_harness_finalize,
     # The TARGET CATALOGUE (/DD-9) and the guards — lane A.
     # Spread from the module's own list rather than re-typed here, because this list and
     # `registry.py`'s NODE_REGISTRY are two SEPARATE hand-maintained lists (see the note above)

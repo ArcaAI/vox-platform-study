@@ -49,7 +49,6 @@ export * from './effective-config';
 // MCP external-tools registry admin (super-admin CRUD + registry reads).
 export * from './mcp-server';
 // Editable realtime-pipeline policy (cascade admin surface).
-export * from './pipeline-policy';
 // Read-only observability projections (audit/eval/gate-queue).
 export * from './harness-observability';
 // ordered session trajectory (ingest + read + retention prune).

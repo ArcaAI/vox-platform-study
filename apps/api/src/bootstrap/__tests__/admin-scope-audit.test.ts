@@ -197,13 +197,14 @@ describe('boot-time /admin/* named-surface audit (collapsed to FORBID)', () => {
   // (`admin/ai-providers`, the llm-only alias of `admin/providers`).
   // 66 -> 65: TASK-862 deleted `AiRuntimeProfileController` with `AiRuntimeProfile`.
   // 65 -> 64: TASK-881 deleted `AiTaskDefaultAdminController` with the `AiTaskDefault` facade.
-  it('covers all 64 admin-prefixed controllers, including the three the  list missed', () => {
+  // 64 -> 63: TASK-882 deleted `PipelinePolicyAdminController` with `PipelinePolicy`.
+  it('covers all 63 admin-prefixed controllers, including the three the  list missed', () => {
     const names = ADMIN_SCOPED_CONTROLLERS.map((c) => c.controller.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain('KnowledgeController');
     expect(names).toContain('WorkflowSandboxRunController');
     expect(names).toContain('ConsentGrantController');
-    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(64);
+    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(63);
   });
 
   it('throws when a listed controller loses its @ForbidApiKey() metadata', () => {

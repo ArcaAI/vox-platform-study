@@ -36,12 +36,14 @@ export const HARNESS_SUPPORTED_TRIGGERS: ReadonlySet<GenerationTrigger> = new Se
   GenerationTrigger.SUMMARY_REGENERATE,
 ]);
 
-/** Why the seam fell back to the legacy generator. */
+/**
+ * Why the seam fell back to the legacy generator. TASK-882: `'harnessEnabled-false'` is gone
+ * with `pipeline.harnessEnabled` — `false` routed to a generator that no longer existed, so it
+ * had no valid meaning; every harness-supported trigger now routes to the harness.
+ */
 export type GenerationFallbackReason =
   /** The trigger has no harness workflow today (PRE_SUMMARY / COMPREHENSIVE_SUMMARY). */
-  | 'harness-not-supported-for-trigger'
-  /** The trigger supports harness, but the resolved config has harnessEnabled=false. */
-  | 'harnessEnabled-false';
+  'harness-not-supported-for-trigger';
 
 export interface GenerationDecisionHarness {
   generator: 'harness';
@@ -66,7 +68,7 @@ export type GenerationDecision = GenerationDecisionHarness | GenerationDecisionL
 /**
  * Params for `NoteGenerationService.generate()`. Trigger-specific request
  * assembly (transcript loading, DNA-redaction resolution) stays with the
- * caller and is passed through here — the seam only owns the harnessEnabled
+ * caller and is passed through here — the seam only owns the generator
  * decision, not every side effect of building the harness start context.
  */
 export interface GenerateParams {

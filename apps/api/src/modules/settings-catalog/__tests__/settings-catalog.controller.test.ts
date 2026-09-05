@@ -17,14 +17,14 @@ describe('SettingsCatalogController.getCatalog', () => {
   it('a super-admin sees SUPER_ADMIN-only entries (the entitlements kill-switch)', () => {
     const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     expect(res.items.some((i) => i.key === 'entitlements.enabled')).toBe(true);
-    expect(res.items.some((i) => i.key === 'pipeline.autoSummaryEnabled')).toBe(true);
+    expect(res.items.some((i) => i.key === 'rateLimit.maxRequests')).toBe(true);
   });
 
   it('a tenant admin does NOT see global-only entries but keeps tenant-editable ones', () => {
     const res = controllerFor({ roles: ['TENANT_ADMIN'], tenantId: 't1' }).getCatalog();
     expect(res.items.some((i) => i.key === 'entitlements.enabled')).toBe(false);
     expect(res.items.every((i) => !i.globalOnly)).toBe(true);
-    expect(res.items.some((i) => i.key === 'pipeline.autoSummaryEnabled')).toBe(true);
+    expect(res.items.some((i) => i.key === 'rateLimit.maxRequests')).toBe(true);
     // Specimen changed twice: `tts.credential.azure` went with the `db-secret` tier (TASK-872),
     // then `tts.defaultVoiceEn` went with the per-tenant tts settings surface (TASK-879 — a
     // tenant's default voice is `Agent.parameters.voice` now). `rateLimit.maxRequests` is one of
@@ -56,13 +56,13 @@ describe('SettingsCatalogController.getEffective', () => {
   });
 
   it('resolves the scoped tenant and delegates to EffectiveSettingsService', async () => {
-    const resolveEffective = vi.fn(async () => ({ key: 'pipeline.harnessEnabled', tier: 'db-config', value: true, sourceScope: 'department' }));
+    const resolveEffective = vi.fn(async () => ({ key: 'harness.loop.emergencyStop', tier: 'global-kv', value: true, sourceScope: 'department' }));
     // super-admin passes ?tenantId= explicitly
     const controller = controllerFor({ roles: ['SUPER_ADMIN'] }, { resolveEffective });
-    const res = await controller.getEffective('pipeline.harnessEnabled', 'tnt-9', 'dep-1');
+    const res = await controller.getEffective('harness.loop.emergencyStop', 'tnt-9', 'dep-1');
 
-    expect(res).toEqual({ key: 'pipeline.harnessEnabled', tier: 'db-config', value: true, sourceScope: 'department' });
-    expect(resolveEffective).toHaveBeenCalledWith('pipeline.harnessEnabled', {
+    expect(res).toEqual({ key: 'harness.loop.emergencyStop', tier: 'global-kv', value: true, sourceScope: 'department' });
+    expect(resolveEffective).toHaveBeenCalledWith('harness.loop.emergencyStop', {
       tenantId: 'tnt-9',
       departmentId: 'dep-1',
       doctorId: null,
@@ -70,11 +70,11 @@ describe('SettingsCatalogController.getEffective', () => {
   });
 
   it('pins a tenant-bound caller to its CLS tenant (ignores an absent query tenant)', async () => {
-    const resolveEffective = vi.fn(async () => ({ key: 'pipeline.autoNerEnabled', tier: 'db-config', value: false, sourceScope: 'tenant' }));
+    const resolveEffective = vi.fn(async () => ({ key: 'consultation.ocr.enabled', tier: 'global-kv', value: false, sourceScope: 'tenant' }));
     const controller = controllerFor({ roles: ['TENANT_ADMIN'], tenantId: 'tnt-self' }, { resolveEffective }, 'tnt-self');
-    await controller.getEffective('pipeline.autoNerEnabled');
+    await controller.getEffective('consultation.ocr.enabled');
 
-    expect(resolveEffective).toHaveBeenCalledWith('pipeline.autoNerEnabled', {
+    expect(resolveEffective).toHaveBeenCalledWith('consultation.ocr.enabled', {
       tenantId: 'tnt-self',
       departmentId: null,
       doctorId: null,
