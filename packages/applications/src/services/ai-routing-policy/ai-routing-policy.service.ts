@@ -187,7 +187,11 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    */
   async resolveDefault(tenantId: string, taskKey: string, options: ResolveDefaultOptions = {}): Promise<ResolvedTaskDefault> {
     this.assertKnownTaskKey(taskKey);
-    const tenantIds = options.systemOnly ? [SYSTEM_TENANT_ID] : options.noWiden || tenantId === SYSTEM_TENANT_ID ? [tenantId] : [tenantId, SYSTEM_TENANT_ID];
+    const tenantIds = options.systemOnly
+      ? [SYSTEM_TENANT_ID]
+      : options.noWiden || tenantId === SYSTEM_TENANT_ID
+        ? [tenantId]
+        : [tenantId, SYSTEM_TENANT_ID];
     // TASK-872 — read PARKED rows too, so the three states stay distinguishable
     // (see `isLiveRow` and `assertNotVetoed`). Rows that are not live are
     // filtered out immediately below; nothing parked can ever be SELECTED here.
@@ -955,11 +959,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    * promoted, a soft-deleted row is gone, and a parked candidate is one an
    * administrator switched off without destroying.
    */
-  private async readCandidateRows(
-    tenantIds: string[],
-    taskKey: string,
-    options: { includeParked?: boolean } = {},
-  ): Promise<AiRoutingPolicyEntity[]> {
+  private async readCandidateRows(tenantIds: string[], taskKey: string, options: { includeParked?: boolean } = {}): Promise<AiRoutingPolicyEntity[]> {
     const tx = this.crossTenantReadLane(tenantIds);
     return this.aiRoutingPolicyRepository.findCandidates(tenantIds, taskKey, tx, options);
   }
