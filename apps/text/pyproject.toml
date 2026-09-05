@@ -181,7 +181,9 @@ minversion = "9.0"
 # PRIMARY checkout and the suite reported green for code it had not touched.
 pythonpath = [
     "src",
+    "../../packages/py-async-contract/src",
     "../../packages/py-env/src",
+    "../../packages/py-otel/src",
     "../../packages/py-runtime-models/src",
     "../../scripts/pytest-support",
 ]
