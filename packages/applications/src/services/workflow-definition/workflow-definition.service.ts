@@ -39,7 +39,15 @@ import type {
   WorkflowValidationReport,
 } from '@arcaai/workflow-contract';
 import { createHash } from 'node:crypto';
-import { assertEqualTenants, BaseService, FetchResponse, isSuperAdmin, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
+import {
+  assertEqualTenants,
+  BaseService,
+  FetchResponse,
+  isSuperAdmin,
+  PaginatedQuery,
+  withFormattedCountProps,
+  withFormattedPaginatedProps,
+} from '../../common';
 import { PolicyEngine } from '../../authorization/policy.engine';
 // TASK-885 — CONSUMED, never modified: `agentPromotion/**` is lane F's (TASK-884). The
 // Global -> SYSTEM path is the existing cross-tenant promotion plus a publish, not a second
@@ -76,7 +84,11 @@ import {
 } from './dto';
 import { collectGenerationBindings, type NodeGenerationBindingRef } from './node-generation-binding';
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
-import { WORKFLOW_DEFINITION_BUNDLE_KIND, WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION, type PortableSourceTenantKind } from './portable-bundle.contract';
+import {
+  WORKFLOW_DEFINITION_BUNDLE_KIND,
+  WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION,
+  type PortableSourceTenantKind,
+} from './portable-bundle.contract';
 import {
   collectPortableReferences,
   collectRowReferences,
@@ -684,10 +696,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * definition that fails at run time, so absence is an unresolved reference exactly like a
    * missing prompt template.
    */
-  private async resolveBundleReferences(
-    graph: WorkflowGraph,
-    tenantId: string,
-  ): Promise<{ graph: WorkflowGraph; unresolved: PortableReference[] }> {
+  private async resolveBundleReferences(graph: WorkflowGraph, tenantId: string): Promise<{ graph: WorkflowGraph; unresolved: PortableReference[] }> {
     const references = collectPortableReferences(graph);
 
     const idByKey = new Map<string, string>();
@@ -985,7 +994,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    */
   private assertElevatedTenantlessContext(action: string): void {
     if (this.tenantId) {
-      throw new ForbiddenException(`${action} crosses a tenant boundary and requires an elevated tenant-less context; clear the working tenant and retry.`);
+      throw new ForbiddenException(
+        `${action} crosses a tenant boundary and requires an elevated tenant-less context; clear the working tenant and retry.`,
+      );
     }
     if (!isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException(`${action} requires an elevated tenant-less context.`);

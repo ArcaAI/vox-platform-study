@@ -121,8 +121,8 @@ export function ImportDefinitionDialog({ open, onOpenChange, onConfirm, confirmi
           <DialogHeader>
             <DialogTitle>Import a workflow</DialogTitle>
             <DialogDescription>
-              Imports a workflow exported from any tenant as a new draft here. Its prompt templates, document templates, agents and models are
-              matched to yours by name — the import is refused, naming them, if any are missing.
+              Imports a workflow exported from any tenant as a new draft here. Its prompt templates, document templates, agents and models are matched
+              to yours by name — the import is refused, naming them, if any are missing.
             </DialogDescription>
           </DialogHeader>
 

@@ -33,10 +33,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { describe, expect, it } from 'vitest';
 import { WorkflowAssignmentService } from '../workflow-assignment.service';
 
-const TENANT_SERVICE_SOURCE = readFileSync(
-  join(__dirname, '..', '..', 'tenant', 'tenant.service.ts'),
-  'utf8',
-);
+const TENANT_SERVICE_SOURCE = readFileSync(join(__dirname, '..', '..', 'tenant', 'tenant.service.ts'), 'utf8');
 
 describe('TASK-885 — a new tenant refers to the SYSTEM template, it does not receive a copy', () => {
   it('tenant provisioning writes NO WorkflowDefinition', () => {

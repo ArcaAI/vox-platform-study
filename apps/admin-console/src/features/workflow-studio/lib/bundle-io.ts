@@ -37,11 +37,13 @@ export function parseBundleJson(text: string): ParsedBundle {
     // Names what it IS, so someone who picked an agent export or a bare graph export learns which.
     return { ok: false, reason: `This is not a workflow export (kind: ${JSON.stringify(parsed.kind ?? null)}).` };
   }
-  if (parsed.schemaVersion !== 1) return { ok: false, reason: `Unsupported bundle version ${JSON.stringify(parsed.schemaVersion ?? null)} — expected 1.` };
+  if (parsed.schemaVersion !== 1)
+    return { ok: false, reason: `Unsupported bundle version ${JSON.stringify(parsed.schemaVersion ?? null)} — expected 1.` };
   const payload = parsed.payload;
   if (!isRecord(payload)) return { ok: false, reason: 'The bundle has no payload.' };
   if (typeof payload.name !== 'string' || payload.name.length === 0) return { ok: false, reason: 'The bundle payload has no name.' };
-  if (typeof payload.paletteKey !== 'string' || payload.paletteKey.length === 0) return { ok: false, reason: 'The bundle payload has no paletteKey.' };
+  if (typeof payload.paletteKey !== 'string' || payload.paletteKey.length === 0)
+    return { ok: false, reason: 'The bundle payload has no paletteKey.' };
   if (!isRecord(payload.graph)) return { ok: false, reason: 'The bundle payload has no graph.' };
 
   return { ok: true, bundle: parsed as unknown as WorkflowDefinitionBundle };

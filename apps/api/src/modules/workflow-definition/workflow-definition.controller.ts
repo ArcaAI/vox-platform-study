@@ -114,8 +114,14 @@ export class WorkflowDefinitionController {
       '`maxWorkflowDefinitions` quota exactly as create does.',
   })
   @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
-  @ApiResponse({ status: 400, description: 'Not a workflow bundle, an unimplemented schemaVersion, an unknown palette, or a graph that fails the shape/engine gate.' })
-  @ApiResponse({ status: 409, description: 'Unresolvable references (`WORKFLOW_IMPORT_UNRESOLVED_REFERENCES`), a targetSlug already in use, or the quota.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Not a workflow bundle, an unimplemented schemaVersion, an unknown palette, or a graph that fails the shape/engine gate.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Unresolvable references (`WORKFLOW_IMPORT_UNRESOLVED_REFERENCES`), a targetSlug already in use, or the quota.',
+  })
   async import(@Body() request: ImportWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.importDefinition(request);
   }

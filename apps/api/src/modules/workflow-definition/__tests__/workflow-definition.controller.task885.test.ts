@@ -80,7 +80,10 @@ describe('WorkflowDefinitionController — TASK-885 routes', () => {
       expect(operation?.summary, method).toBeTruthy();
       expect(operation?.description, method).toBeTruthy();
       const responses = Reflect.getMetadata('swagger/apiResponse', proto[method]) as Record<string, unknown>;
-      expect(Object.keys(responses ?? {}).some((status) => Number(status) >= 400 && Number(status) < 500), method).toBe(true);
+      expect(
+        Object.keys(responses ?? {}).some((status) => Number(status) >= 400 && Number(status) < 500),
+        method,
+      ).toBe(true);
     }
   });
 });

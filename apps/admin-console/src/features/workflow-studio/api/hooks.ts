@@ -56,7 +56,7 @@ export function useWorkflowDefinitionVersions(id: string) {
 }
 
 /**
-* The code-owned node registry — effectively static, but still a network read (never a
+ * The code-owned node registry — effectively static, but still a network read (never a
  * hard-coded palette; "zero hard-coded node types").
  */
 export function useWorkflowNodeRegistry() {
@@ -69,8 +69,8 @@ export function usePromptTemplateOptions() {
 }
 
 /**
-* the platform template library. Platform-release cadence, so it is worth a
- *  staleTime; `enabled` lets the clone dialog defer the read until it is actually opened. 
+ * the platform template library. Platform-release cadence, so it is worth a
+ *  staleTime; `enabled` lets the clone dialog defer the read until it is actually opened.
  */
 export function useWorkflowTemplates(enabled = true) {
   return useQuery({ queryKey: workflowStudioKeys.templates(), queryFn: listWorkflowTemplates, staleTime: 5 * 60 * 1000, enabled });
@@ -87,8 +87,8 @@ export function useCreateWorkflowDefinition() {
 }
 
 /**
-* clone into a NEW lineage. Invalidates the whole namespace like every other
- *  mutation here: the clone adds a row to the tenant's definition list. 
+ * clone into a NEW lineage. Invalidates the whole namespace like every other
+ *  mutation here: the clone adds a row to the tenant's definition list.
  */
 export function useCloneWorkflowDefinition() {
   const invalidate = useInvalidateWorkflowStudio();
@@ -207,14 +207,19 @@ export function useUpdateNodePrompt() {
   });
 }
 
-
 // ===========================================================================
 // (D-10) — the ordered consultation endpoint sequence
 // ===========================================================================
 
 /** The `core.agent` picker's options (TASK-864 B1). Retries are off: a 404 means the agent surface is not there yet, and the picker falls back to a slug box. */
 export function useAgentOptions(task: string, enabled = true) {
-  return useQuery({ queryKey: workflowStudioKeys.agentOptions(task), queryFn: () => listAgentOptions(task), enabled, retry: false, staleTime: 60_000 });
+  return useQuery({
+    queryKey: workflowStudioKeys.agentOptions(task),
+    queryFn: () => listAgentOptions(task),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  });
 }
 
 /**

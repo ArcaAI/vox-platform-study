@@ -41,7 +41,8 @@ export class SyncWorkflowDefinitionRequest {
   targetTenantIds: string[];
 
   @ApiPropertyOptional({
-    description: 'Which immutable version to sync. Defaults to the source tenant’s ACTIVE PUBLISHED version — never simply the newest, which may be an unfinished draft.',
+    description:
+      'Which immutable version to sync. Defaults to the source tenant’s ACTIVE PUBLISHED version — never simply the newest, which may be an unfinished draft.',
     minimum: 1,
   })
   @IsOptional()
