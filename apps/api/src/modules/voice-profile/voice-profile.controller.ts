@@ -12,15 +12,16 @@ import {
   ParseFilePipe,
   Patch,
   Post,
+  Query,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { TenantOwnedResource } from '../../common';
 import { Authorize, ForbidApiKey } from '../../decorators';
-import { EnrollBodyDto, VoiceProfileResponse } from './dto';
+import { EnrollBodyDto, VoiceProfileEnrollmentTargetResponse, VoiceProfileResponse } from './dto';
 
 const MAX_AUDIO_SIZE = 10 * 1024 * 1024; // 10 MB per file
 const MAX_FILES = 3;
@@ -79,9 +80,30 @@ export class VoiceProfileController {
       userId,
       audioBuffers: files.map((f) => f.buffer),
       label: body.label,
+      // TASK-887 — the agent decides the embedding model, and therefore the space the
+      // profile lands in. Absent ⇒ the tenant's assigned ASR agent, resolved by the same
+      // cascade a session uses (404-over-403 for another tenant's agent).
+      agentSlug: body.agentSlug,
     });
 
     return VoiceProfileResponse.fromEntity(entity);
+  }
+
+  @Get('enrollment-target')
+  @Authorize(['read', 'UserVoiceProfile'])
+  @ApiOperation({
+    summary: 'The embedding model a new enrollment would use',
+    description:
+      'TASK-887 — resolves the SPEECH_TO_TEXT agent (explicit `agentSlug`, else the tenant’s assigned one) and ' +
+      'reports the SPEAKER_EMBEDDING model it declares. A profile whose `modelId` differs from this will never be ' +
+      'matched by that agent, so a client uses this to prompt a re-enrollment.',
+  })
+  @ApiQuery({ name: 'agentSlug', required: false, type: String })
+  @ApiResponse({ status: 200, description: 'The enrollment target', type: VoiceProfileEnrollmentTargetResponse })
+  @ApiResponse({ status: 400, description: 'The agent declares no speaker-embedding model, so nothing could match an enrollment.' })
+  @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
+  async enrollmentTarget(@Query('agentSlug') agentSlug?: string): Promise<VoiceProfileEnrollmentTargetResponse> {
+    return VoiceProfileEnrollmentTargetResponse.from(await this.voiceProfileService.enrollmentTarget(agentSlug));
   }
 
   @Get()

@@ -10,19 +10,24 @@ import { BaseService, SERVICE_TOKEN_HEADER, TENANTLESS, TENANT_ID_HEADER, resolv
 import { IActiveUserContext } from '../../../interfaces';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
-import { IVoiceProfileService } from './IVoiceProfileService';
-import { EnrollVoiceProfileRequest } from './dto';
+import { AsrAgentResolverService } from '../../stt/agent-resolver';
+import { IVoiceProfileService, RuntimeVoiceProfile } from './IVoiceProfileService';
+import { EnrollVoiceProfileRequest, VoiceProfileEnrollmentTarget } from './dto';
 
 interface ExtractionResponse {
   embedding: number[];
   model_id: string;
+  model_slug: string;
 }
 
-// Must match the ``vector(N)`` dimension of ``core."UserVoiceProfile"."embedding"``
-// in the Prisma migration. Changing this requires a coordinated DB migration
-// AND a matching change to ``EXPECTED_EMBEDDING_DIM`` in
-// ``apps/stt/src/stt/voice_profile/extraction_service.py``.
-const EXPECTED_EMBEDDING_DIM = 256;
+/**
+ * TASK-887 — there is deliberately NO expected embedding dimension here any more.
+ *
+ * `UserVoiceProfile.embedding` is a dimension-agnostic pgvector `vector` and each row records
+ * the model that produced it, so width is a property of the model the agent named. The gateway
+ * used to compare the returned vector against a hardcoded 256 and reject anything else, which
+ * is precisely the single platform embedding space the owner removed.
+ */
 
 @Injectable()
 export class VoiceProfileService extends BaseService implements IVoiceProfileService {
@@ -37,29 +42,14 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
     // Optional + trailing so existing positional constructions keep compiling.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-887 — the one resolution that decides which embedding model an enrollment lands in.
+    @Optional() private readonly asrResolver?: AsrAgentResolverService,
   ) {
     super(eventEmitter, clsService, ResourceType.UserVoiceProfile);
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
   }
 
   async enroll(request: EnrollVoiceProfileRequest): Promise<UserVoiceProfileEntity> {
-    const extraction = await this.extractEmbeddings(request.audioBuffers);
-
-    if (extraction.embedding.length !== EXPECTED_EMBEDDING_DIM) {
-      this.logger.warn({
-        message: 'Voice profile embedding dimension mismatch',
-        received: extraction.embedding.length,
-        expected: EXPECTED_EMBEDDING_DIM,
-        modelId: extraction.model_id,
-      });
-      throw new BadRequestException(
-        `Embedding dimension mismatch: STT-v2 model '${extraction.model_id}' returned ` +
-          `${extraction.embedding.length}-d but database expects ${EXPECTED_EMBEDDING_DIM}-d. ` +
-          `Set DIARIZATION_HF_MODEL_ID to a ${EXPECTED_EMBEDDING_DIM}-d model ` +
-          `(e.g. 'pyannote/wespeaker-voxceleb-resnet34-LM').`,
-      );
-    }
-
     // A voice profile is biometric PHI stamped with its enrollment
     // tenant; reads (incl. the STT-v2 diarization preseed) are tenant-scoped.
     // Tenant attribution is a security boundary: it comes from CLS only.
@@ -68,12 +58,20 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       throw new BadRequestException('Voice profile enrollment requires a tenant context');
     }
 
+    // TASK-887 — the AGENT names the space. Resolving it BEFORE any audio leaves the gateway
+    // means an unusable enrollment is refused with a 404/409 that says why, instead of after
+    // the user has recorded three samples.
+    const target = await this.enrollmentTarget(request.agentSlug);
+    const extraction = await this.extractEmbeddings(request.audioBuffers, target);
+
     const entity = UserVoiceProfileFactory.CreateUserVoiceProfile({
       tenantId,
       userId: request.userId,
       isActive: false,
       label: request.label,
-      modelId: extraction.model_id,
+      // The SLUG the agent declared — the identity a session compares against — echoed by
+      // apps/stt so what is stored is exactly what was asked for, never what it substituted.
+      modelId: extraction.model_slug || target.modelId,
       createdBy: this.requestUser?.id,
     });
 
@@ -100,6 +98,58 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
 
   async listByUserId(userId: string): Promise<UserVoiceProfileEntity[]> {
     return this.voiceProfileRepository.findAllByUserId(userId);
+  }
+
+  /**
+   * TASK-887 — the embedding model a new enrollment would use.
+   *
+   * Resolution is the SAME one a session performs (`AsrAgentResolverService`): explicit slug,
+   * else the `AgentAssignment` cascade, with 404-over-403 for an agent that is not this
+   * tenant's. That is the point — enrolling against a different resolution than the one that
+   * will match you is how a profile silently becomes unusable.
+   */
+  async enrollmentTarget(agentSlug?: string): Promise<VoiceProfileEnrollmentTarget> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Voice profile enrollment requires a tenant context');
+    }
+    if (!this.asrResolver) {
+      throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
+    }
+    const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null });
+    const embedding = spec.models.embedding;
+    if (!embedding) {
+      // The agent declares no speaker-embedding model, so there is no space to enrol INTO.
+      // (`buildResolvedAsrSpec` already refuses an agent that enables embedding diarization
+      // without one, so reaching here means diarization is simply off for this agent.)
+      throw new BadRequestException(
+        `Agent '${spec.agent.slug}' declares no speaker-embedding model, so a voice profile enrolled for it ` +
+          `could never be matched. Set \`audioFrontEnd.diarization.embeddingModelSlug\` on the agent first.`,
+      );
+    }
+    return {
+      agentSlug: spec.agent.slug,
+      modelId: embedding.slug,
+      modelSourceUri: embedding.sourceUri,
+      diarizationEnabled: spec.audioFrontEnd.diarization.enabled,
+      matchThreshold: spec.audioFrontEnd.diarization.matchThreshold ?? null,
+    };
+  }
+
+  async listForRuntime(userId: string, tenantId: string, modelId: string): Promise<RuntimeVoiceProfile[]> {
+    if (!userId || !tenantId || !modelId) return [];
+    try {
+      const rows = await this.voiceProfileRepository.findActiveEmbeddingsForUser(userId, tenantId, modelId);
+      return rows.map((row) => ({ profile_id: row.id, label: row.label, model_id: row.modelId, embedding: row.embedding }));
+    } catch (error: unknown) {
+      // Never fatal: without profiles the session diarizes with generic `Speaker N` labels,
+      // which is a degraded transcript, not a broken one.
+      this.logger.warn({
+        message: 'Voice profile resolution for the ASR runtime failed; continuing with generic speaker labels',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
   }
 
   async activate(profileId: EntityId): Promise<void> {
@@ -150,13 +200,20 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     return profile;
   }
 
-  private async extractEmbeddings(audioBuffers: Buffer[]): Promise<ExtractionResponse> {
+  private async extractEmbeddings(audioBuffers: Buffer[], target: VoiceProfileEnrollmentTarget): Promise<ExtractionResponse> {
     const formData = new FormData();
     for (let i = 0; i < audioBuffers.length; i++) {
       const uint8 = new Uint8Array(audioBuffers[i]);
       const blob = new Blob([uint8], { type: 'audio/wav' });
       formData.append('files', blob, `sample-${i}.wav`);
     }
+    // TASK-887 — the model the AGENT declared travels with the samples. `apps/stt` holds no
+    // platform embedding model any more: it loads what it is told, echoes the slug back, and
+    // refuses the request otherwise. The threshold is the agent's too — sample consistency and
+    // speaker matching are the same confidence question, asked at enrollment and at runtime.
+    formData.append('model_slug', target.modelId);
+    formData.append('model_source_uri', target.modelSourceUri);
+    if (target.matchThreshold !== null) formData.append('min_similarity', String(target.matchThreshold));
 
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`. `apps/stt` now runs
     // `ServiceAuthMiddleware` and `/internal/voice-profile/extract` is NOT in its

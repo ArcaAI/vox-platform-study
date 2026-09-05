@@ -11,7 +11,7 @@ export class UserVoiceProfile extends BaseTenantDataModel {
   public userId: string;
   public isActive: boolean;
   public label: string | null;
-  public modelId: string | null;
+  public modelId: string;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;

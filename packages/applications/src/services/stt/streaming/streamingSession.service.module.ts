@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '../../baseServices/_meta/config';
 import { UsageLedgerServiceModule } from '../../usageLedger';
+import { VoiceProfileServiceModule } from '../../user/voiceProfile/voiceProfile.service.module';
 import { StreamingSessionService } from './streamingSession.service';
 import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
 
@@ -29,6 +30,9 @@ import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
     }),
     ConfigModule,
     UsageLedgerServiceModule,
+    // TASK-887 — `IVoiceProfileService.listForRuntime` supplies the enrolled profiles the
+    // session pushes to apps/stt so diarization can label a matched speaker.
+    VoiceProfileServiceModule,
   ],
   providers: [StreamingSessionService, StreamingAudioBridgeService],
   exports: [StreamingSessionService, StreamingAudioBridgeService],

@@ -5,6 +5,7 @@ import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaa
 import { IConfigService } from '../../baseServices/_meta/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
+import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IStreamingSessionService } from './IStreamingSessionService';
 import {
@@ -66,6 +67,10 @@ export class StreamingSessionService implements IStreamingSessionService {
     // secrets service means an EMPTY token — sent anyway, and rejected by stt,
     // rather than the hop silently downgrading to unauthenticated HTTP.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-887 — resolves the session user's ENROLLED voice profiles for the agent's
+    // embedding model. Optional and trailing like the three above: without it a session
+    // still opens and diarizes, with generic `Speaker N` labels.
+    @Optional() @Inject(IVoiceProfileService) private readonly voiceProfileService?: IVoiceProfileService,
   ) {
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
     this.logger.log({
@@ -82,6 +87,22 @@ export class StreamingSessionService implements IStreamingSessionService {
    * so the legacy key is passed only to satisfy the shared resolver's signature
    * and never resolves to anything).
    */
+  /**
+   * TASK-887 — the session user's ENROLLED voice profiles, filtered to the agent's
+   * speaker-embedding model.
+   *
+   * Nothing is resolved unless the session will actually use them: diarization on, an
+   * embedding model bound, and a user to attribute. A profile from another model is not
+   * fetched at all — the model is a WHERE clause, not a post-filter — because comparing
+   * vectors across embedding spaces is meaningless rather than merely inaccurate.
+   */
+  private async resolveVoiceProfiles(dto: CreateStreamingSessionRequest): Promise<RuntimeVoiceProfile[]> {
+    const spec = dto.resolvedSpec;
+    const modelId = spec?.models.embedding?.slug;
+    if (!this.voiceProfileService || !dto.userId || !spec?.audioFrontEnd.diarization.enabled || !modelId) return [];
+    return this.voiceProfileService.listForRuntime(dto.userId, dto.tenantId, modelId);
+  }
+
   private async sttHeaders(tenantId: string | null | undefined, tenantlessReason: TenantlessReason): Promise<Record<string, string>> {
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     return internalServiceHeaders({ serviceToken, tenantId, tenantlessReason });
@@ -153,6 +174,7 @@ export class StreamingSessionService implements IStreamingSessionService {
    * @returns Session status, or null if at capacity (503)
    */
   async createSession(dto: CreateStreamingSessionRequest): Promise<StreamingSessionStatus | null> {
+    const voiceProfiles = await this.resolveVoiceProfiles(dto);
     try {
       const { data } = await firstValueFrom(
         this.httpService.post<StreamingSessionStatus>(
@@ -184,6 +206,10 @@ export class StreamingSessionService implements IStreamingSessionService {
             // TASK-861 — the gateway-resolved ASR spec. `null` (not absent) on the
             // deprecated pipeline path so apps/stt can tell the two apart.
             resolved_spec: dto.resolvedSpec ?? null,
+            // TASK-887 — the end-user's enrolled profiles for THIS agent's embedding model.
+            // Resolved here, not in `apps/stt`: the runtime holds no database connection on
+            // the agent path, and only the gateway knows the session's user and tenant.
+            voice_profiles: voiceProfiles.length > 0 ? voiceProfiles : null,
             // Tenant governance for the FAILURE-DRIVEN auto switch.
             // Both are real `TenantSttConfig` settings that were resolved by the
             // gateway and then dropped here, so STT's EngineSwitchController
