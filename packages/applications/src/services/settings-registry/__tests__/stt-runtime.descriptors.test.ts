@@ -109,6 +109,24 @@ describe('STT_RUNTIME_SETTINGS', () => {
     expect(HOPE_SETTINGS_REGISTRY.has('semanticEndpoint.enabled')).toBe(false);
   });
 
+  /**
+   * TASK-880 — the twelve keys that moved to the agent, the model row or the provider
+   * connection. Each is asserted ABSENT from the whole registry, not just from this file:
+   * the owner's rule is that a redundant key from the old architecture is removed
+   * COMPLETELY, and a re-declaration under any other descriptor file would be the
+   * dual-homing this checks for.
+   */
+  const MOVED_AWAY_TASK_880: ReadonlyArray<[key: string, newHome: string]> = [
+    ['stt.whisperCpp.consultationPromptEnabled', "the agent's instruction.initialPrompt"],
+    ['stt.whisperCpp.maxAudioSeconds', 'AiModel._metadata.asr.maxDecodeWindowSec'],
+    ['stt.streaming.partialWindowS', 'AiModel._metadata.asr.partialWindowSec'],
+  ];
+
+  it.each(MOVED_AWAY_TASK_880)('%s is gone from the registry entirely (now: %s)', (key) => {
+    expect(HOPE_SETTINGS_REGISTRY.has(key)).toBe(false);
+    expect(STT_RUNTIME_SETTINGS.map((d) => d.key)).not.toContain(key);
+  });
+
   it('leaves the storage keys to the db-config cascade rather than re-declaring them here', () => {
     // `STORAGE_PROVIDER` / `AZURE_STORAGE_*` belong in the
     // `storage.platformDefault.*` cascade — a `TenantStorageConfig` row, which

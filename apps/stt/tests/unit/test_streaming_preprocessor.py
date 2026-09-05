@@ -1040,10 +1040,13 @@ class TestPartialEmission:
         if partials:
             assert len(finals[0].samples) > max(len(p.samples) for p in partials)
 
-    def test_partial_window_default_is_8s(self):
-        """Default window matches the settings default (8 s)."""
+    def test_partial_window_default_is_6s(self):
+        """TASK-880 — the constructor default is the window every session actually ran
+        on: `stt.streaming.partialWindowS` defaulted to 6 s and was passed on every
+        session, so the old 8.0 here was dead. A model row that declares no
+        `_metadata.asr.partialWindowSec` now gets this."""
         pp = StreamingPreprocessor(session_id="s1")
-        assert pp._partial_window_s == pytest.approx(8.0)
+        assert pp._partial_window_s == pytest.approx(6.0)
 
     @pytest.mark.asyncio
     async def test_partial_shares_utterance_index_with_final(self):

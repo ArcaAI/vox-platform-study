@@ -151,27 +151,16 @@ const KNOBS: Record<string, SttKnob> = {
     description: 'CPU threads used for whisper.cpp inference.',
     category: 'STT Engines',
   },
-  'stt.whisperCpp.maxAudioSeconds': {
-    dataType: 'number',
-    default: 7.0,
-    label: 'whisper.cpp max audio per decode (s)',
-    description:
-      'Longest audio fed to whisper.cpp in one decode. The ml-en code-switch fine-tune is accurate ' +
-      'to ~6-7s and truncates or garbles beyond it, so longer utterances are split at silence ' +
-      'troughs, decoded independently and stitched. 0 disables chunking.',
-    category: 'STT Engines',
-  },
-  'stt.whisperCpp.consultationPromptEnabled': {
-    dataType: 'boolean',
-    default: false,
-    label: 'whisper.cpp consultation prompt',
-    description:
-      'Whether the whisper.cpp adapter prepends its language-derived clinical-consultation ' +
-      'initial_prompt (exemplar prior context, not an instruction). Default OFF — measured to ' +
-      'inject spurious tokens and break grapheme clusters on the ml-en fine-tune. Turn on only ' +
-      'where an eval shows it helps.',
-    category: 'STT Engines',
-  },
+  // TASK-880 removed `stt.whisperCpp.maxAudioSeconds` and
+  // `stt.whisperCpp.consultationPromptEnabled`.
+  //
+  // The first is the MODEL's decode window, not the box's: it applied one number to every
+  // whisper.cpp row, including rows with a 30s context that never needed splitting. It is
+  // `AiModel._metadata.asr.maxDecodeWindowSec`, so a fallback chain decodes on its own
+  // window. The second gated two HARDCODED consultation lines the adapter prepended — but
+  // WHAT prior context a decode gets is the agent's `instruction.initialPrompt`, which
+  // already reached the adapter by another route, so the flag could only ever add a second
+  // platform-authored prompt in front of the agent's own.
 
   // ── VAD (Silero v5) ──────────────────────────────────────────────────────
   'stt.vad.modelPath': {
@@ -490,16 +479,10 @@ const KNOBS: Record<string, SttKnob> = {
       '(0.3-0.5s recommended). Applies only when the punctuation model resolves to cadence-fast.',
     category: 'STT Streaming',
   },
-  'stt.streaming.partialWindowS': {
-    dataType: 'number',
-    default: 6.0,
-    label: 'Partial decode tail window (s)',
-    description:
-      'Tail window of the current utterance decoded for PARTIAL transcripts. Set to the whisper.cpp ' +
-      'force-emit window (~6s) so the last partial and the final decode the SAME audio — decoding is ' +
-      'deterministic, so matched windows converge and the final stops visibly rephrasing the partial.',
-    category: 'STT Streaming',
-  },
+  // TASK-880 removed `stt.streaming.partialWindowS`. Its own description said to set it to
+  // "the whisper.cpp force-emit window" — i.e. it was a property of the ASR MODEL, applied
+  // as one number to every engine on the box. It is now
+  // `AiModel._metadata.asr.partialWindowSec`, carried per chain on the spec.
   'stt.streaming.resultStreamExpireS': {
     dataType: 'number',
     default: 3600,

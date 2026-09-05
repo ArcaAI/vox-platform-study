@@ -117,8 +117,12 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "parakeet_cpp_library_path": "stt.parakeetCpp.libraryPath",
     "parakeet_cpp_num_threads": "stt.parakeetCpp.numThreads",
     "whisper_cpp_num_threads": "stt.whisperCpp.numThreads",
-    "whisper_cpp_max_audio_seconds": "stt.whisperCpp.maxAudioSeconds",
-    "whisper_cpp_consultation_prompt_enabled": "stt.whisperCpp.consultationPromptEnabled",
+    # `whisper_cpp_max_audio_seconds` and `whisper_cpp_consultation_prompt_enabled`
+    # were mapped here until TASK-880. The first is the MODEL's decode window
+    # (`AiModel._metadata.asr.maxDecodeWindowSec`, carried per chain on the spec), not one
+    # number for every whisper.cpp row on the box; the second gated two HARDCODED
+    # consultation lines, while WHAT prior context a decode gets is the agent's
+    # `instruction.initialPrompt` — which already reached the adapter by another route.
     # ── VAD (Silero v5) ──────────────────────────────────────────────────────
     "vad_model_path": "stt.vad.modelPath",
     # `vad_threshold`, `vad_min_speech_duration_ms` and
@@ -173,7 +177,9 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "streaming_audio_trim_interval_s": "stt.streaming.audioTrimIntervalS",
     "streaming_extra_filler_patterns": "stt.streaming.extraFillerPatterns",
     "streaming_punctuation_timeout_s": "stt.streaming.punctuationTimeoutS",
-    "streaming_partial_window_s": "stt.streaming.partialWindowS",
+    # `streaming_partial_window_s` was mapped here until TASK-880. Its own description
+    # said to set it to "the whisper.cpp force-emit window", which makes it a property of
+    # the ASR MODEL: it is now `AiModel._metadata.asr.partialWindowSec`.
     "streaming_result_stream_expire_s": "stt.streaming.resultStreamExpireS",
     "streaming_session_metadata_expire_s": "stt.streaming.sessionMetadataExpireS",
     # `streaming_partial_interval_s` and the six `semantic_endpoint_*` keys were
