@@ -138,16 +138,29 @@ class TestGroundednessGateRidesTheControlPlane:
 class TestJudgeTuningHasOneSourceEach:
     """D.2b — the declared-but-unread duplicates are gone."""
 
-    @pytest.mark.parametrize("dead", ["judgeTemperature", "judgeMaxInputChars"])
+    @pytest.mark.parametrize("dead", ["judgeMaxInputChars"])
     def test_the_dead_policy_keys_are_no_longer_declared(self, dead: str) -> None:
         """Declared and unread is worse than absent: it advertises a knob that
         cannot move the value, so an admin who sets it sees no effect and no error.
 
-        `temperature` is served by `AiRuntimeProfile.temperature`; `max_input_chars`
-        by `JudgePolicy`. Neither ever consulted these."""
+        `max_input_chars` is served by `JudgePolicy` and never consulted this.
+
+        `judgeTemperature` used to be in this list for the same reason and is NOT
+        any more: TASK-878 brought it back as a fail-CLOSED key WITH its reader
+        (`build_judge_client`) in the same change, which is precisely the
+        difference between a governed key and a decorative one. It is still
+        absent from the TUNING surface — `number()` below still refuses it,
+        because a fail-closed key has no default to fall back to."""
         assert GuardrailPolicy.fail_mode(dead) == "closed", f"{dead} is still a declared tuning key"
         with pytest.raises(KeyError):
             GuardrailPolicy({}).number(dead)
+
+    def test_the_revived_judge_temperature_is_governed_not_decorative(self) -> None:
+        """The property that made the first attempt a defect, stated as a test."""
+        assert "judgeTemperature" in GuardrailPolicy.DECLARED_KEYS
+        with pytest.raises(KeyError):
+            GuardrailPolicy({}).number("judgeTemperature")  # not a TUNING key
+        assert GuardrailPolicy.from_blob({"judgeTemperature": 0.1}).judge_temperature == 0.1
 
     def test_the_surviving_judge_default_has_exactly_one_literal(self) -> None:
         """`judgeMinConfidence`'s default is DERIVED from `JudgePolicy`, not a

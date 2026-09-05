@@ -45,6 +45,13 @@ CONFIG_INVALIDATION_CHANNEL = "arca:config:invalidate"
 DEFAULT_TIMEOUT_S = 5.0
 _JITTER_FRACTION = 0.10
 
+#: The declared default of `guardrail.judge.timeoutSeconds` — the peer-call budget
+#: for one delegated judgement (guardrail → `apps/text`), and the fallback bound
+#: for the nlp peer. ONE definition site, mirrored by the descriptor's `default`
+#: in `settings-registry/descriptors/guardrail-judge.descriptors.ts`; the value is
+#: `JudgePolicy.timeout_s`'s former literal, so registering it changed nothing.
+DEFAULT_JUDGE_TIMEOUT_S = 60.0
+
 
 @dataclass(frozen=True)
 class EffectiveConfigSnapshot:
@@ -98,6 +105,21 @@ class EffectiveConfigSnapshot:
         if not isinstance(entry, dict):
             return None
         return entry.get("value")
+
+    def judge_timeout_s(self) -> float:
+        """The delegated judgement's per-call budget, control plane over default.
+
+        `failMode: open-to-default` governs an ABSENT value, so a fetch failure, an
+        absent key or an explicit null all keep the declared default. A value that
+        is not a positive number is treated as no opinion rather than obeyed: zero
+        or negative would make every judgement fail instantly, which is a safety
+        plane taken down by a typo in an admin form.
+        """
+        value = self.setting("guardrail.judge.timeoutSeconds")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return DEFAULT_JUDGE_TIMEOUT_S
+        as_float = float(value)
+        return as_float if as_float > 0 else DEFAULT_JUDGE_TIMEOUT_S
 
     def groundedness(self) -> dict[str, Any]:
         """The groundedness gate's platform-scope knobs, for keys with an opinion.

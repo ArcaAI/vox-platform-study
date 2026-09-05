@@ -112,11 +112,18 @@ class TextJudgeClient:
         model: str,
         tenant_id: str,
         criteria: str,
+        # REQUIRED, like `criteria` and `tenant_id` above and for the same reason
+        # (TASK-878): each is configuration with no code default, so a client that
+        # cannot be built is a client that cannot render a verdict nobody can
+        # attribute. `temperature` / `max_tokens` come from the selected model
+        # row's `_metadata.policy` (fail-CLOSED); `timeout_s` from the platform
+        # `guardrail.judge.timeoutSeconds`. Both are resolved by
+        # `core/tenant_config.build_judge_client`, the one production call site.
+        temperature: float,
+        max_tokens: int,
+        timeout_s: float,
         policy: JudgePolicy | None = None,
         min_confidence: float | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        timeout_s: float | None = None,
         max_attempts: int | None = None,
         provider_overrides: dict[str, Any] | None = None,
         breaker: CircuitBreaker | None = None,
@@ -152,9 +159,9 @@ class TextJudgeClient:
         self.provider = provider
         self.model = model
         self.tenant_id = resolved_tenant
-        self.temperature = self.policy.temperature if temperature is None else temperature
-        self.max_tokens = self.policy.max_tokens if max_tokens is None else max_tokens
-        self.timeout_s = self.policy.timeout_s if timeout_s is None else timeout_s
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.timeout_s = timeout_s
         self.max_attempts = self.policy.max_attempts if max_attempts is None else max_attempts
         self.provider_overrides = provider_overrides
         self.breaker = breaker

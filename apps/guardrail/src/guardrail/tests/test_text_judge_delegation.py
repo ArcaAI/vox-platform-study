@@ -104,6 +104,11 @@ def _client(http_client: Any, **overrides: Any) -> TextJudgeClient:
         "tenant_id": "11111111-1111-1111-1111-111111111111",
         # Criteria is CONFIG — the client refuses to construct without it.
         "criteria": "you are a medical context validator",
+        # So are these three, since TASK-878: the model row supplies the two
+        # hyperparameters (fail-closed) and the control plane the peer budget.
+        "temperature": 0.05,
+        "max_tokens": 300,
+        "timeout_s": 60.0,
     }
     kwargs.update(overrides)
     return TextJudgeClient(**kwargs)

@@ -29,8 +29,17 @@ def settings() -> Settings:
 
 # the criteria that decides the verdict is CONFIG (policy key
 # `medicalValidationCriteria`, failMode=closed) with no code default, so the
-# resolved config must carry one before a judge can be built at all.
-_POLICY = {"medicalValidationCriteria": "you are a medical context validator"}
+# resolved config must carry one before a judge can be built at all. TASK-878 put
+# the judge's temperature and max-tokens on the SAME footing: they are
+# model-coupled, so they live on the selected row's `_metadata.policy`, fail
+# CLOSED, and are what an absent profile field now falls back to.
+_POLICY_TEMPERATURE = 0.05
+_POLICY_MAX_TOKENS = 300
+_POLICY = {
+    "medicalValidationCriteria": "you are a medical context validator",
+    "judgeTemperature": _POLICY_TEMPERATURE,
+    "judgeMaxTokens": _POLICY_MAX_TOKENS,
+}
 
 
 def _judge(settings: Settings, cfg: GuardrailTenantConfig):
@@ -48,11 +57,16 @@ class TestProfileFieldsAreOptional:
         assert cfg.timeout_s is None
 
     def test_judge_keeps_policy_values_when_no_profile_exists(self, settings: Settings) -> None:
+        """ "Policy values" now means the MODEL ROW's, not `JudgePolicy` literals —
+        the contract this suite pins (optional fields, absent tuning changes
+        nothing) is unchanged; what an absent field falls back TO moved."""
+        from guardrail.core.effective_config import DEFAULT_JUDGE_TIMEOUT_S
+
         client = _judge(settings, GuardrailTenantConfig(model="m"))
 
-        assert client.temperature == settings.judge.temperature
-        assert client.max_tokens == settings.judge.max_tokens
-        assert client.timeout_s == settings.judge.timeout_s
+        assert client.temperature == _POLICY_TEMPERATURE
+        assert client.max_tokens == _POLICY_MAX_TOKENS
+        assert client.timeout_s == DEFAULT_JUDGE_TIMEOUT_S
 
 
 class TestProfileApplication:
@@ -77,7 +91,7 @@ class TestProfileApplication:
         client = _judge(settings, GuardrailTenantConfig(model="m", temperature=0.2))
 
         assert client.temperature == 0.2
-        assert client.max_tokens == settings.judge.max_tokens, "unserved keys keep policy values"
+        assert client.max_tokens == _POLICY_MAX_TOKENS, "unserved keys keep policy values"
 
     def test_model_override_still_applies_alongside_a_profile(self, settings: Settings) -> None:
         client = _judge(settings, GuardrailTenantConfig(model="the-model", temperature=0.2))
