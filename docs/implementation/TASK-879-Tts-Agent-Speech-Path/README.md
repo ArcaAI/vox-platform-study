@@ -249,17 +249,24 @@ $ pnpm --filter @arcaai/admin-console test
 
 **Reconciled counts.**
 
-* `tts:test` 459 → 412. −47 = two deleted files (`test_task799_tts_enable_flags.py` 26 cases,
-  `test_voice_bindings_override.py` 23) minus the 2 new parity cases they overlap with, plus 13
-  cases added across `test_resolved_spec_parity.py` (10), `test_config.py` (+1),
-  `test_parler_provider.py` (+1), `test_keyless_readiness_task642.py` (net 0), and the router file
-  (26 → 32 with the absent-engine and keyless-cloud classes). Net −47.
-* `applications` 11795 (from 11559 at the wave-2 close) = +18 pure-builder, +13 resolver, +20
-  removal-assertion, +8 contract-parity, minus the deleted 8-case engine-flag parity file, plus
-  the rest of `dev-2.2`'s own drift since that measurement.
-* `apps/api` 4207 (from 4214) = the speech/agent suites rebuilt around the resolver: the four
-  removed `TenantTtsConfig` fold cases and one stale override assertion, against five new ones.
-* `admin-console` 2270 (from 2269) = +1 (the read-only Voice-tab assertion), −0.
+* `tts:test` 459 → 412 (−47). Two files were DELETED because the behaviour they pinned no longer
+  exists: `test_task799_tts_enable_flags.py` (8 test functions, four of them parametrized over the
+  five engines — the half-migrated env/control-plane precedence rule) and
+  `test_voice_bindings_override.py` (12, the gateway-injected voice-binding merge). Their
+  parametrised expansion is the bulk of the −47. Against that, `test_resolved_spec_parity.py` is
+  new (10 collected) and the changed files are net +11 test functions — chiefly `test_router.py`
+  25 → 32 (the absent-engine and keyless-cloud classes) and `test_task799_control_plane.py`
+  23 → 25.
+* `applications` 11795. This lane ADDS 59 cases across four suites — 18 pure-builder, 13 resolver,
+  20 removal-assertion, 8 contract-parity — and removes the 8-case
+  `tts-engine-flag-seed-parity.test.ts`, so +51 net. The wave-2 close recorded 11559 on its own
+  merged tree; the remainder is `dev-2.2`'s drift between that measurement and this lane's base
+  (`4923cac40`), which was not separately measured here.
+* `apps/api` 4214 → 4207. The speech and agent suites were rebuilt around the resolver: the
+  `TenantTtsConfig` fold cases (voice-binding injection ×2, provider-override injection ×2, the
+  fail-open case ×2 across the proxy and the socket) and one stale override assertion went;
+  five agent-shaped cases replaced them.
+* `admin-console` 2269 → 2270 = +1 (the read-only Voice-tab assertion).
 * `database` 8 failed = EXACTLY the pre-existing set the program README attributes to TASK-869's
   36th catalogue row (`ai-model-registry-seed.test.ts` ×4, `task-863-agents.test.ts` ×4). No
   assertion in either file touches a row this lane changed.
