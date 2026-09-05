@@ -109,3 +109,19 @@ def resolve_posture(platform: GuardrailPosture, tenant: Any | None) -> Guardrail
             include_reasoning if isinstance(include_reasoning, bool) else platform.include_reasoning
         ),
     )
+
+
+def platform_moderation_enabled(app_state: Any) -> bool:
+    """Whether the control plane says moderation is on.
+
+    Read from live state rather than from settings: the switch moved off env
+    onto the PULL channel, so a platform admin turning moderation on for a
+    clinical deployment takes effect on the next request, not the next restart.
+
+    Shared by BOTH halves of the gate — the input gate in
+    `api/endpoints/generate.py` and the output gate in `services/output_gate.py`
+    — so the enforce-posture-with-unwired-client case fails closed identically
+    on each side.
+    """
+    posture = getattr(app_state, "guardrail_posture", None)
+    return bool(getattr(posture, "enabled", False))

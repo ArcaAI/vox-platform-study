@@ -51,6 +51,7 @@ from text.core.exceptions import (
 from text.core.exceptions import (
     QueueFullError as DomainQueueFullError,
 )
+from text.core.guardrail_posture import platform_moderation_enabled
 from text.core.logging import get_logger
 from text.core.metrics import (
     ACTIVE_GENERATIONS,
@@ -95,6 +96,12 @@ from text.services.external_guardrail import (
 )
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
 from text.services.judge_guard import assert_not_in_judge_scope
+from text.services.output_gate import (
+    OutputRejectedError,
+    assemble_completion,
+    gate_completion,
+    source_context_of,
+)
 from text.services.pool_health import PoolHealthTracker
 from text.services.pool_router import resolve_pool_route
 from text.services.provider_queue import ProviderQueue, QueueFullError
@@ -153,11 +160,13 @@ async def _apply_guardrail_gate(
     tenant_id: str | None,
     app_state: Any,
 ) -> UsageDetail | None:
-    """Run the medical-content moderation gate; return guardrail's own usage.
+    """Run the INPUT half of the moderation gate; return guardrail's own usage.
 
-    Extracted verbatim from the ``/generate`` body so there is exactly ONE
-    moderation gate in this service and one place to assert it is not being
-    reached from the internal judge lane. Behaviour is unchanged: a genuine
+    Extracted verbatim from the ``/generate`` body so there is exactly one
+    input gate in this service and one place to assert it is not being
+    reached from the internal judge lane. The OUTPUT half — the post-receive
+    check on the completion (TASK-871) — is `services/output_gate.gate_completion`,
+    which mirrors these branches and this tripwire. Behaviour is unchanged: a genuine
     content rejection is a 422, a sustained outage is a retryable 503, a
     malformed verdict fails closed, and the enforce-posture-with-unwired-client
     case fails closed too. The dev/CI bypass (client absent or disabled) is
@@ -289,15 +298,10 @@ async def _resolve_stream_idempotency(
     return str(prior.get("generation_id") or generation_id)
 
 
-def _platform_moderation_enabled(app_state: Any) -> bool:
-    """Whether the control plane says moderation is on.
-
-    Read from live state rather than from settings: the switch moved off env
-    onto the PULL channel, so a platform admin turning moderation on for a
-    clinical deployment takes effect on the next request, not the next restart.
-    """
-    posture = getattr(app_state, "guardrail_posture", None)
-    return bool(getattr(posture, "enabled", False))
+# Shared with the output gate (`core/guardrail_posture.py`) so both halves fail
+# closed identically when the posture enforces and no client is wired. Kept
+# under its private name here for the call site above.
+_platform_moderation_enabled = platform_moderation_enabled
 
 
 def _get_provider_timeout(runtime_timeouts: dict[str, int], provider_name: str) -> float:
@@ -557,6 +561,10 @@ async def generate(
                     request_id=ctx.get("request_id", "unknown"),
                     byok=_used_byok_credential(request_body),
                     policy=resolve_generation_policy(app_state, x_tenant_id),
+                    # The post-receive gate (TASK-871) runs inside the producer,
+                    # on the assembled completion, before the terminal frame.
+                    guardrail_client=guardrail_client,
+                    app_state=app_state,
                 ),
                 provider=request_body.provider,
             )
@@ -681,6 +689,24 @@ async def generate(
 
         latency_ms = int((time.monotonic() - start) * 1000)
         prompt_tokens, completion_tokens, total_tokens = _extract_usage(gen_result)
+
+        # Post-receive guardrail gate (TASK-871): the completion is screened
+        # BEFORE the task is marked completed, audited, returned or cached, so
+        # a rejected completion never reaches a persisted or returned state.
+        # Raises `OutputRejectedError`, handled by its own arm below (422/503,
+        # no breaker failure). Its return value is guardrail's own usage for the
+        # output check; the response carries one `guardrail_usage` slot, which
+        # stays the input verdict's — guardrail's outbound screen reports no
+        # usage yet, so there is nothing to fold in until it does.
+        await gate_completion(
+            guardrail_client,
+            completion=assemble_completion(content, reasoning),
+            source_context=source_context_of(request_body),
+            tenant_id=x_tenant_id,
+            tenant_policy=request_body.guardrail_policy,
+            app_state=app_state,
+            where="generate.post_receive_gate",
+        )
 
         # assemble normalized GenerationStats and thread it onto
         # the response. STRICTLY best-effort — a stats-mapping failure must never
@@ -851,6 +877,48 @@ async def generate(
             f"Generation timed out after {timeout_s}s for provider '{request_body.provider}'.",
             provider=request_body.provider,
         ) from None
+    except OutputRejectedError as rejected:
+        # The completion was received and REFUSED by the post-receive gate.
+        # Not provider unhealth: no circuit-breaker failure, no 502. The task is
+        # FAILED with a `guardrail_rejected:` error so the record distinguishes
+        # a rejection from a provider failure, the audit event carries the real
+        # (billed) token totals under `status="rejected"`, and nothing is cached.
+        # Same status split as the input gate: 422 content, 503 outage.
+        latency_ms = int((time.monotonic() - start) * 1000)
+        logger.warning(
+            "generation.rejected_by_guardrail",
+            task_id=task.task_id,
+            provider=request_body.provider,
+            code=rejected.code,
+            reason=rejected.reason,
+            retryable=rejected.retryable,
+        )
+        await task_manager.update_task(
+            task.task_id, status=TaskStatus.FAILED, error=rejected.task_error
+        )
+        GENERATION_ERRORS.labels(
+            provider=request_body.provider, model=model, error_type="guardrail_rejected"
+        ).inc()
+        GENERATION_TOTAL.labels(
+            provider=request_body.provider, model=model, status="rejected"
+        ).inc()
+        generation_audit.log_generation(
+            GenerationAuditEvent(
+                request_id=ctx.get("request_id", "unknown"),
+                timestamp=datetime.now(UTC).isoformat(),
+                provider=request_body.provider,
+                model=model,
+                status="rejected",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                latency_ms=latency_ms,
+                finish_reason="guardrail_rejected",
+                error=rejected.task_error,
+                tenant_id=x_tenant_id,
+            )
+        )
+        raise HTTPException(status_code=rejected.status_code, detail=rejected.detail) from None
     except ProviderCredentialsError:
         # A missing BYOK credential is a platform-CONFIG gap, not a
         # provider health failure — do NOT record a circuit-breaker failure (it
