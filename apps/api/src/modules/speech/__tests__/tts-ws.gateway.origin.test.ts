@@ -202,9 +202,7 @@ describe('TtsWsGateway — origin registry CSWSH guard (G-1)', () => {
     await gateway.handleConnection(client as never, buildReq('https://evil.example.com') as never);
 
     const messages = warnSpy.mock.calls.map((args) => args[0]);
-    expect(
-      messages.find((m) => typeof m === 'object' && m !== null && (m as { reason?: string }).reason === 'origin_registry_miss'),
-    ).toBeDefined();
+    expect(messages.find((m) => typeof m === 'object' && m !== null && (m as { reason?: string }).reason === 'origin_registry_miss')).toBeDefined();
     expect(
       messages.find((m) => typeof m === 'object' && m !== null && (m as { reason?: string }).reason === 'origin_registry_unavailable'),
     ).toBeUndefined();

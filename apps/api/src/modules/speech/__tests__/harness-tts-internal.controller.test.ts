@@ -91,15 +91,7 @@ const build = (over: Partial<Record<string, unknown>> = {}) => {
     entitlements: createEntitlements(),
     ...over,
   } as any;
-  const controller = new HarnessTtsInternalController(
-    deps.http,
-    deps.config,
-    deps.cls,
-    deps.secrets,
-    deps.resolver,
-    deps.ledger,
-    deps.entitlements,
-  );
+  const controller = new HarnessTtsInternalController(deps.http, deps.config, deps.cls, deps.secrets, deps.resolver, deps.ledger, deps.entitlements);
   return { controller, deps };
 };
 

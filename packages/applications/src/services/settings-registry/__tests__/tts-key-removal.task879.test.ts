@@ -40,7 +40,14 @@ const MOVED: Record<string, string> = {
 };
 
 /** What a `tts.*` key may still legitimately be. */
-const KEPT = ['tts.indicParler.device', 'tts.indicF5.device', 'tts.limits.maxInputChars', 'tts.warmupEnabled', 'tts.modelCache.ttlSeconds', 'tts.serviceToken'];
+const KEPT = [
+  'tts.indicParler.device',
+  'tts.indicF5.device',
+  'tts.limits.maxInputChars',
+  'tts.warmupEnabled',
+  'tts.modelCache.ttlSeconds',
+  'tts.serviceToken',
+];
 
 describe('TASK-879 — the tts.* registry surface after the move', () => {
   it.each(Object.entries(MOVED))('%s is absent (now: %s)', (key) => {

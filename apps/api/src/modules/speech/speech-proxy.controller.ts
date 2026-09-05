@@ -109,7 +109,7 @@ export class SpeechProxyController {
     @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
   ) {}
 
-/**
+  /**
    * Resolve the caller tenant's TEXT_TO_SPEECH agent and fold it into the forwarded body.
    *
    * The RESOLVE is shared with the WS-duplex gateway and the harness's internal synthesis route
@@ -134,7 +134,7 @@ export class SpeechProxyController {
       ...forwarded,
       // The agent's own parameters are the defaults; a caller that named one keeps it.
       response_format: forwarded.response_format ?? ((spec.primary.parameters.format ?? undefined) as 'pcm' | 'wav' | 'mp3' | undefined),
-      speed: forwarded.speed ?? (spec.primary.parameters.speed ?? undefined),
+      speed: forwarded.speed ?? spec.primary.parameters.speed ?? undefined,
       resolved_spec: spec,
       ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
     };
@@ -154,8 +154,7 @@ export class SpeechProxyController {
    */
   private getForwardHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const serviceToken =
-      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }

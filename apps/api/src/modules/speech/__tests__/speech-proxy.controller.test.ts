@@ -154,11 +154,23 @@ describe('SpeechProxyController', () => {
   describe('POST /speech/synthesize — resolved-agent injection', () => {
     const SPEC = {
       schemaVersion: 1,
-      agent: { slug: 'platform-tts', versionId: 'a1', versionNumber: 1, tenantId: '00000000-0000-0000-0000-000000000000', source: 'platform-default' },
+      agent: {
+        slug: 'platform-tts',
+        versionId: 'a1',
+        versionNumber: 1,
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        source: 'platform-default',
+      },
       primary: {
         kind: 'primary',
         runtimeKey: 'a1',
-        agent: { slug: 'platform-tts', versionId: 'a1', versionNumber: 1, tenantId: '00000000-0000-0000-0000-000000000000', source: 'platform-default' },
+        agent: {
+          slug: 'platform-tts',
+          versionId: 'a1',
+          versionNumber: 1,
+          tenantId: '00000000-0000-0000-0000-000000000000',
+          source: 'platform-default',
+        },
         model: {
           role: 'primary',
           slug: 'kokoro',
@@ -403,7 +415,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'azure',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();
@@ -421,7 +439,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'azure',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();
@@ -437,7 +461,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'azure',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();
@@ -455,7 +485,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'kokoro', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();
@@ -474,7 +510,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'kokoro', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();

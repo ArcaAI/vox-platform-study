@@ -6,7 +6,10 @@ import { readAgentFallbackGovernance } from '@arcaai/workflow-contract';
 import { IAgentAssignmentService } from '../agent-assignment/IAgentAssignmentService';
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../agent-assignment/IAgentAssignmentService';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
-import type { IProviderConnectionService as IProviderConnectionServicePort, ProviderOverrides } from '../ai-provider-connection/IProviderConnectionService';
+import type {
+  IProviderConnectionService as IProviderConnectionServicePort,
+  ProviderOverrides,
+} from '../ai-provider-connection/IProviderConnectionService';
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
 import { ProviderCredentialResolver } from '../ai-provider-connection/provider-credential-resolver';
 import { ProviderVetoedException } from '../ai-provider-connection/provider-vetoed.exception';
@@ -207,8 +210,7 @@ export class TtsAgentResolverService {
     }
 
     const connection = engine ? await this.connectionFor(engine, tenantId) : null;
-    const fundingTier: AgentFundingTier =
-      overrides[engine ?? '']?.funding ?? (connection ? connection.funding : fundingOfAgentRow(agent));
+    const fundingTier: AgentFundingTier = overrides[engine ?? '']?.funding ?? (connection ? connection.funding : fundingOfAgentRow(agent));
 
     return { agent, model, kind, metaData, connection, fundingTier };
   }
