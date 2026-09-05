@@ -35,6 +35,7 @@ from harness.temporal.interpreter.nodes import guards as guards_mod
 from harness.temporal.interpreter.nodes import text_generate as text_generate_mod
 from harness.temporal.interpreter.nodes._text_fallback import (
     read_text_fallback,
+    read_text_primary,
     wire_provider,
 )
 
@@ -109,7 +110,24 @@ def _wire(
                 "tenantId": _TENANT,
             }
         ],
-        "fundingTier": "tenant",
+        # NOT a hand-stamped funding tier: the gateway populates `ResolvedAgent.fundingTier`
+        # only when TASK-862's credential resolver returned a CLOUD override. The attribution
+        # the activity must use is the DERIVED one on `textPrimary`, so leave this null and let
+        # the test prove the primary is attributed from the wire's own derived value.
+        "textPrimary": _candidate(
+            kind="primary",
+            agent={
+                "slug": "clinic-summarizer",
+                "versionId": "agent-1",
+                "versionNumber": 3,
+                "tenantId": _TENANT,
+                "source": "tenant",
+            },
+            modelSlug="az-gpt",
+            provider="azure-openai",
+            model="gpt-5.4-mini",
+            fundingTier="tenant",
+        ),
         "textFallback": {
             "autoSwitch": auto_switch,
             "switchAfterConsecutiveFailures": 2,
@@ -263,6 +281,48 @@ class TestFallbackOnPrimaryFailure:
         assert result.output["agent"] == {"slug": "clinic-summarizer", "versionNumber": 3}
         assert result.output["selectionSource"] == "agent"
         assert result.output["fundingTier"] == "tenant"
+
+    @pytest.mark.asyncio
+    async def test_the_primary_is_attributed_from_the_wire_derived_tier_not_the_agent_field(
+        self, harness
+    ) -> None:
+        """A SELF-HOSTED PLATFORM primary. `ResolvedAgent.fundingTier` is populated only for a
+        cloud BYO override, so it is absent here; the attribution must come from the DERIVED
+        `textPrimary.fundingTier`, or the same call meters `null` on the primary and
+        `"platform"` on its own fallback."""
+        wire = _wire()
+        wire["tenantId"] = _SYSTEM
+        wire["source"] = "platform-default"
+        wire["models"][0].update({"provider": "lm-studio", "sourceUri": "gemma-4-e2b-it-qat"})
+        wire["compiledConfig"]["model"]["provider"] = "lm-studio"
+        wire["textPrimary"] = _candidate(
+            kind="primary",
+            agent={
+                "slug": "clinic-summarizer",
+                "versionId": "agent-1",
+                "versionNumber": 3,
+                "tenantId": _SYSTEM,
+                "source": "platform-default",
+            },
+            fundingTier="platform",
+        )
+        assert "fundingTier" not in wire
+        text = harness(wire, failing=set())
+
+        result = await core.interpreter_core_agent(_payload())
+
+        assert result.status == "SUCCEEDED"
+        assert len(text.calls) == 1
+        assert result.output is not None
+        assert result.output["selectionSource"] == "agent"
+        assert result.output["fundingTier"] == "platform"
+
+    def test_read_text_primary_is_tolerant_of_an_older_answer(self) -> None:
+        assert read_text_primary(_wire()) is not None
+        wire = _wire()
+        del wire["textPrimary"]
+        assert read_text_primary(wire) is None
+        assert read_text_primary(_wire(textPrimary="nope")) is None
 
     @pytest.mark.asyncio
     async def test_auto_switch_off_degrades_after_one_call(self, harness) -> None:

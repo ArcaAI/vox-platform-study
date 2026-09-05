@@ -63,8 +63,10 @@ from harness.temporal.interpreter.nodes._shared import (
 )
 from harness.temporal.interpreter.nodes._text_fallback import (
     TextFallbackBlock,
+    TextFallbackCandidate,
     candidate_as_resolved_agent,
     read_text_fallback,
+    read_text_primary,
     wire_provider,
 )
 from harness.temporal.interpreter.nodes.agentic import interpreter_agentic_data
@@ -453,6 +455,7 @@ async def _run_text_generation(
     resolved: ResolvedAgent,
     started: Any,
     fallback: TextFallbackBlock | None = None,
+    primary: TextFallbackCandidate | None = None,
 ) -> NodeActivityResult:
     """Generate on the resolved agent, switching along its GATEWAY-RESOLVED fallback chain.
 
@@ -463,6 +466,12 @@ async def _run_text_generation(
     candidate is tried while ``autoSwitch`` is on; the output names the row that SERVED
     (``agent`` / ``selectionSource`` / ``fundingTier``), so metering follows it. Activity-level
     semantics only — the workflow stays deterministic and sees one activity result.
+
+    ``primary`` is the resolve answer's ``textPrimary`` — the PRIMARY candidate with the funding
+    tier the gateway DERIVED from the row that serves it. It is what makes the primary attempt
+    attributable on the same rule as every fallback: bare ``ResolvedAgent.fundingTier`` is set
+    only for a cloud BYO override, so without it a self-hosted platform primary emits
+    ``fundingTier: null`` while its own fallback emits ``"platform"``.
     """
     config = _config(payload)
     bound = _bound(payload)
@@ -510,7 +519,14 @@ async def _run_text_generation(
             status="DEGRADED", reason=f"core.agent: effective policy fetch unreachable: {exc}"
         )
 
-    candidates: list[tuple[str, ResolvedAgent]] = [("agent", resolved)]
+    # The PRIMARY carries the gateway-derived funding tier when the answer shipped one; the
+    # agent row is otherwise unchanged (same model, prompt, parameters).
+    primary_agent = (
+        resolved
+        if primary is None
+        else resolved.model_copy(update={"funding_tier": primary.funding_tier})
+    )
+    candidates: list[tuple[str, ResolvedAgent]] = [("agent", primary_agent)]
     if fallback is not None and fallback.auto_switch:
         candidates.extend(
             ("agent-fallback", candidate_as_resolved_agent(candidate))
@@ -794,7 +810,11 @@ async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResu
     if resolved.task == "TEXT_GENERATION":
         # TASK-876: the fallback chain rides on the resolve answer — read, never resolved here.
         return await _run_text_generation(
-            payload, resolved, started, fallback=read_text_fallback(raw)
+            payload,
+            resolved,
+            started,
+            fallback=read_text_fallback(raw),
+            primary=read_text_primary(raw),
         )
     if resolved.task == "SPEECH_TO_TEXT":
         return await _run_transcription(payload, resolved, started)

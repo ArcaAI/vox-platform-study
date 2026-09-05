@@ -401,11 +401,13 @@ class ApiClient:
             headers: X-Service-Token, X-Tenant-Id
             200 -> ResolvedAgent JSON (`packages/types/src/agent.ts`, mirrored by
                    `interpreter/models.py::ResolvedAgent`). TASK-876: a TEXT_GENERATION
-                   answer additionally carries ``textFallback`` — the agent's fallback
-                   governance and the ORDERED, gateway-resolved chain (explicit fallback
-                   agent | own model chain, then the SYSTEM platform default), read by
-                   ``nodes/_text_fallback.py`` so `core.agent` switches without a second
-                   resolution
+                   answer additionally carries ``textPrimary`` — the PRIMARY candidate with
+                   its DERIVED funding tier (bare ``fundingTier`` is set only for a cloud
+                   BYO override, so it cannot attribute a self-hosted platform primary) —
+                   and ``textFallback``, the agent's fallback governance plus the ORDERED,
+                   gateway-resolved chain (explicit fallback agent | own model chain, then
+                   the SYSTEM platform default), both read by ``nodes/_text_fallback.py`` so
+                   `core.agent` switches without a second resolution
             400 -> neither `task` nor `agentSlug` given, or header/query tenant disagreement
             404 -> unknown / unpublished / foreign slug (one answer, 404-over-403)
 

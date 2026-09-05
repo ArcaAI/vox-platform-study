@@ -66,10 +66,16 @@ export interface ResolvedTextGenerationSpec {
 
 /**
  * What the internal resolve route returns for a TEXT_GENERATION agent: the TASK-863 shape plus
- * the fallback block, so the harness `core.agent` activity can walk the chain without a second
- * resolution (`api_client.py`).
+ * the PRIMARY candidate and the fallback block, so the harness `core.agent` activity can walk the
+ * chain without a second resolution (`api_client.py`).
+ *
+ * `textPrimary` exists because `ResolvedAgent.fundingTier` is set ONLY for a cloud BYO override —
+ * a self-hosted platform primary carries `null` there, while its own fallback candidates carry a
+ * DERIVED tier. Shipping the primary as a candidate makes both ends of the chain attributable by
+ * the same rule (`row.tenantId === SYSTEM_TENANT_ID`), so metering cannot disagree with itself
+ * between the primary attempt and the fallback attempt of one call.
  */
-export type ResolvedTextGenerationAgent = ResolvedAgent & { textFallback: ResolvedTextFallback };
+export type ResolvedTextGenerationAgent = ResolvedAgent & { textPrimary: ResolvedTextCandidate; textFallback: ResolvedTextFallback };
 
 /** The catalog seeds `azure`; apps/text registers `azure-openai`. The connection plane stays keyed by `azure`. */
 export function textWireProvider(provider: string): string {

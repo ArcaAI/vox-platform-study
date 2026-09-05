@@ -22,11 +22,14 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
  * tenant so the tenant-scope extension widens reads to [tenant, SYSTEM] exactly as it would
  * for a user request — never to SYSTEM alone, never to every tenant.
  *
- * TASK-876: a TEXT_GENERATION answer additionally carries `textFallback` — the agent's resolved
- * fallback governance and ORDERED chain (explicit fallback agent | its own model chain, then the
- * SYSTEM platform default), funding derived per candidate — built from the SAME resolved agent
- * (`TextAgentResolverService.resolveFromAgent`, no second resolution), so the harness
- * `core.agent` activity can switch on primary failure without another round trip.
+ * TASK-876: a TEXT_GENERATION answer additionally carries `textPrimary` + `textFallback` — the
+ * resolved PRIMARY candidate, and the agent's fallback governance and ORDERED chain (explicit
+ * fallback agent | its own model chain, then the SYSTEM platform default), funding DERIVED per
+ * candidate — built from the SAME resolved agent (`TextAgentResolverService.resolveFromAgent`, no
+ * second resolution), so the harness `core.agent` activity can switch on primary failure without
+ * another round trip. `textPrimary` is what makes the PRIMARY attempt attributable: bare
+ * `ResolvedAgent.fundingTier` is populated only for a cloud BYO override, so a self-hosted
+ * platform primary would otherwise meter as `null` while its own fallback metered `platform`.
  */
 @ApiExcludeController()
 @ApiTags('internal-agents')
@@ -71,7 +74,7 @@ export class AgentInternalController {
       });
       if (resolved.task !== AgentTask.TEXT_GENERATION) return resolved;
       const spec = await this.textAgents.resolveFromAgent(resolved, tenantId);
-      return { ...resolved, textFallback: spec.fallback };
+      return { ...resolved, textPrimary: spec.primary, textFallback: spec.fallback };
     });
   }
 }

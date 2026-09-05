@@ -30,6 +30,7 @@ __all__ = [
     "TextFallbackCandidate",
     "candidate_as_resolved_agent",
     "read_text_fallback",
+    "read_text_primary",
     "wire_provider",
 ]
 
@@ -112,6 +113,27 @@ def read_text_fallback(raw: Any) -> TextFallbackBlock:
         parsed = TextFallbackBlock()
     parsed.chain = candidates
     return parsed
+
+
+def read_text_primary(raw: Any) -> TextFallbackCandidate | None:
+    """The ``textPrimary`` candidate of a raw resolve answer, or ``None``.
+
+    The primary's funding tier is DERIVED by the gateway from the row that serves it, exactly as
+    every chain candidate's is. Bare ``ResolvedAgent.fundingTier`` is not that: it is populated
+    only when TASK-862's credential resolver returned a CLOUD override, so a self-hosted
+    PLATFORM primary reports ``None`` there while its own fallback reports ``"platform"`` — the
+    same call metering two different ways depending on which candidate served. Reading the
+    primary from here removes that split.
+
+    ``None`` (an older gateway, or a non-text agent) leaves the previous attribution in place.
+    """
+    block = raw.get("textPrimary") if isinstance(raw, dict) else None
+    if not isinstance(block, dict):
+        return None
+    try:
+        return TextFallbackCandidate.model_validate(block)
+    except ValueError:
+        return None
 
 
 def candidate_as_resolved_agent(candidate: TextFallbackCandidate) -> ResolvedAgent:
