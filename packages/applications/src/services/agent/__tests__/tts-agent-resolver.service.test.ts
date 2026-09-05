@@ -79,7 +79,9 @@ const META: Record<string, unknown> = {
 
 function harness(over: { agents?: unknown; connections?: unknown; credentials?: unknown; assignment?: string | null } = {}) {
   const agents = { resolve: vi.fn() } as { resolve: ReturnType<typeof vi.fn> };
-  const assignments = { resolve: vi.fn().mockResolvedValue({ agentSlug: over.assignment === undefined ? 'platform-tts' : over.assignment, source: 'tenant' }) };
+  const assignments = {
+    resolve: vi.fn().mockResolvedValue({ agentSlug: over.assignment === undefined ? 'platform-tts' : over.assignment, source: 'tenant' }),
+  };
   const aiModelRepository = {
     findBySlug: vi.fn(async (_tenantId: string, slug: string) => (META[slug] ? { metaData: META[slug] } : null)),
   };
@@ -204,7 +206,12 @@ describe('TtsAgentResolverService — the fallback chain', () => {
 
   it('prefers an explicit fallback AGENT over the model chain', async () => {
     const h = harness();
-    const other = agent({ agentId: 'a2', agentVersionId: 'a2', slug: 'backup-voice', models: [model({ slug: 'sarvam-bulbul', provider: 'sarvam', sourceUri: 'bulbul:v3' })] });
+    const other = agent({
+      agentId: 'a2',
+      agentVersionId: 'a2',
+      slug: 'backup-voice',
+      models: [model({ slug: 'sarvam-bulbul', provider: 'sarvam', sourceUri: 'bulbul:v3' })],
+    });
     const a = azurePrimary({
       parameters: { voice: 'en-IN-NeerjaNeural', fallback: { agentSlug: 'backup-voice', autoSwitch: true } },
       models: [
@@ -212,7 +219,9 @@ describe('TtsAgentResolverService — the fallback chain', () => {
         model({ role: 'fallback', slug: 'kokoro', provider: 'built-in', priority: 0 }),
       ],
     });
-    h.agents.resolve.mockImplementation(async ({ agentSlug }: { agentSlug: string | null }) => (agentSlug === 'backup-voice' ? other : platformAgent()));
+    h.agents.resolve.mockImplementation(async ({ agentSlug }: { agentSlug: string | null }) =>
+      agentSlug === 'backup-voice' ? other : platformAgent(),
+    );
     h.credentials.resolve.mockResolvedValue({ override: { api_key: 'k', funding: 'platform' }, fundingTier: 'platform', connectionId: 'c1' });
 
     // The agent's OWN model chain (kokoro) is not consulted at all when it names a fallback agent.
@@ -242,7 +251,8 @@ describe('TtsAgentResolverService — the fallback chain', () => {
 });
 
 describe('TtsAgentResolverService — cloud credentials', () => {
-  const cloudAgent = () => agent({ models: [model({ slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://neural-voices', format: 'AZURE_SPEECH' })] });
+  const cloudAgent = () =>
+    agent({ models: [model({ slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://neural-voices', format: 'AZURE_SPEECH' })] });
 
   it('propagates a veto on the PRIMARY — fail closed, never another tier', async () => {
     const h = harness({ credentials: { resolve: vi.fn().mockRejectedValue(new ProviderVetoedException('tts', 'azure', TENANT)) } });
@@ -252,7 +262,10 @@ describe('TtsAgentResolverService — cloud credentials', () => {
   it('drops only the candidate when a FALLBACK`s credential is refused', async () => {
     const h = harness();
     const a = agent({
-      models: [model({ slug: 'sarvam-bulbul', provider: 'sarvam', sourceUri: 'bulbul:v3' }), model({ role: 'fallback', slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://x', priority: 0 })],
+      models: [
+        model({ slug: 'sarvam-bulbul', provider: 'sarvam', sourceUri: 'bulbul:v3' }),
+        model({ role: 'fallback', slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://x', priority: 0 }),
+      ],
     });
     h.agents.resolve.mockResolvedValue(platformAgent());
     h.credentials.resolve.mockImplementation(async (_s: string, provider: string) => {
@@ -271,7 +284,14 @@ describe('TtsAgentResolverService — cloud credentials', () => {
     // so the chain drops it — and the key must not ride the wire for an engine nothing routes to.
     const a = agent({ models: [model({ slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://neural-voices' })] });
     h.agents.resolve.mockResolvedValue(
-      agent({ agentId: 'p', agentVersionId: 'p', slug: 'platform-tts', tenantId: SYSTEM_TENANT_ID, source: 'platform-default', models: [model({ slug: 'kokoro' })] }),
+      agent({
+        agentId: 'p',
+        agentVersionId: 'p',
+        slug: 'platform-tts',
+        tenantId: SYSTEM_TENANT_ID,
+        source: 'platform-default',
+        models: [model({ slug: 'kokoro' })],
+      }),
     );
     h.credentials.resolve.mockResolvedValue({ override: { api_key: 'k', funding: 'platform' }, fundingTier: 'platform', connectionId: 'c1' });
     const { spec, providerOverrides } = await h.service.resolveFromAgent(a, TENANT);

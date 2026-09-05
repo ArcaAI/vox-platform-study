@@ -44,8 +44,7 @@ class HarnessSynthesizeSpeechRequest {
   text: string;
 
   @ApiPropertyOptional({
-    description:
-      'Voice identifier within the resolved agent`s bound model catalogue. Omitted ⇒ the agent`s own configured voice.',
+    description: 'Voice identifier within the resolved agent`s bound model catalogue. Omitted ⇒ the agent`s own configured voice.',
   })
   @IsOptional()
   @IsString()
@@ -53,8 +52,7 @@ class HarnessSynthesizeSpeechRequest {
   voice?: string;
 
   @ApiPropertyOptional({
-    description:
-      'An explicit TEXT_TO_SPEECH agent (lineage slug). Omitted ⇒ the tenant → department → SYSTEM AgentAssignment cascade decides.',
+    description: 'An explicit TEXT_TO_SPEECH agent (lineage slug). Omitted ⇒ the tenant → department → SYSTEM AgentAssignment cascade decides.',
   })
   @IsOptional()
   @IsString()
@@ -232,9 +230,7 @@ export class HarnessTtsInternalController {
       // The node's own config wins over the agent's parameters; the agent supplies what the node
       // left unsaid.
       ...(dto.format || spec.primary.parameters.format ? { response_format: dto.format ?? spec.primary.parameters.format } : {}),
-      ...(dto.speed !== undefined || spec.primary.parameters.speed !== null
-        ? { speed: dto.speed ?? spec.primary.parameters.speed }
-        : {}),
+      ...(dto.speed !== undefined || spec.primary.parameters.speed !== null ? { speed: dto.speed ?? spec.primary.parameters.speed } : {}),
       resolved_spec: spec,
       ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
     };
@@ -243,8 +239,7 @@ export class HarnessTtsInternalController {
   /** The ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is the migration fallback only. */
   private forwardHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream' };
-    const serviceToken =
-      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }

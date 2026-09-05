@@ -146,11 +146,23 @@ describe('TtsWsGateway', () => {
   describe('init-frame agent enrichment', () => {
     const SPEC = {
       schemaVersion: 1,
-      agent: { slug: 'platform-tts', versionId: 'a1', versionNumber: 1, tenantId: '00000000-0000-0000-0000-000000000000', source: 'platform-default' },
+      agent: {
+        slug: 'platform-tts',
+        versionId: 'a1',
+        versionNumber: 1,
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        source: 'platform-default',
+      },
       primary: {
         kind: 'primary',
         runtimeKey: 'a1',
-        agent: { slug: 'platform-tts', versionId: 'a1', versionNumber: 1, tenantId: '00000000-0000-0000-0000-000000000000', source: 'platform-default' },
+        agent: {
+          slug: 'platform-tts',
+          versionId: 'a1',
+          versionNumber: 1,
+          tenantId: '00000000-0000-0000-0000-000000000000',
+          source: 'platform-default',
+        },
         model: {
           role: 'primary',
           slug: 'kokoro',
@@ -286,9 +298,7 @@ describe('TtsWsGateway', () => {
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
       upstream.emit('open');
 
-      const usageFrame = Buffer.from(
-        JSON.stringify({ type: 'usage', characters: 10, audioSeconds: 0.2, interrupted: false, provider: 'azure' }),
-      );
+      const usageFrame = Buffer.from(JSON.stringify({ type: 'usage', characters: 10, audioSeconds: 0.2, interrupted: false, provider: 'azure' }));
       upstream.emit('message', usageFrame, false);
 
       expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);

@@ -95,7 +95,9 @@ describe('SpeechProxyController — TTS character quota pre-flight', () => {
     const entitlements = {
       assertMeterQuota: vi
         .fn()
-        .mockRejectedValue(new QuotaExceededException('over allowance', { capability: 'monthlyTtsCharacters', limit: 10, used: 10, requested: 5, tenantId: 't1' })),
+        .mockRejectedValue(
+          new QuotaExceededException('over allowance', { capability: 'monthlyTtsCharacters', limit: 10, used: 10, requested: 5, tenantId: 't1' }),
+        ),
     };
     const { controller, http } = buildController({ entitlements });
     const res = makeRes();

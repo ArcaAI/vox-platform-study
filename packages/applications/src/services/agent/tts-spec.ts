@@ -196,13 +196,9 @@ export function toTtsCandidate(source: TtsCandidateSource): ResolvedTtsCandidate
  */
 function candidateEndpointKey(candidate: ResolvedTtsCandidate): string {
   const connection = candidate.connection;
-  return [
-    candidate.model.provider ?? '',
-    candidate.model.sourceUri,
-    candidate.fundingTier,
-    connection?.baseUrl ?? '',
-    connection?.region ?? '',
-  ].join('::');
+  return [candidate.model.provider ?? '', candidate.model.sourceUri, candidate.fundingTier, connection?.baseUrl ?? '', connection?.region ?? ''].join(
+    '::',
+  );
 }
 
 export function sameTtsCandidate(a: ResolvedTtsCandidate, b: ResolvedTtsCandidate): boolean {

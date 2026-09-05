@@ -45,7 +45,6 @@ import { RequiredScopes } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { classifyTtsProvider } from '../speech/tts-provider-classification';
 
-
 /** Plain interfaces (not class-validator DTOs) so the global pipe passes the body through; TIER 3 validation runs against the agent's own `inputSchema`. */
 export interface AgentInvocationBody {
   text?: string;
@@ -248,8 +247,7 @@ export class AgentController {
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream, text/event-stream' };
     // The ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is the migration fallback only.
-    const serviceToken =
-      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
     if (serviceToken) headers['X-Service-Token'] = serviceToken;
 
     let upstream;

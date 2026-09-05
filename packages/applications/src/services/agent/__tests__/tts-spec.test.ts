@@ -70,7 +70,13 @@ const agent = (over: Partial<ResolvedAgent> & { parameters?: Record<string, unkn
   };
 };
 
-const KOKORO_META = { ttsProvider: 'kokoro', voices: [{ id: 'af_heart', locale: 'en-US' }, { id: 'am_adam', locale: 'en-US' }] };
+const KOKORO_META = {
+  ttsProvider: 'kokoro',
+  voices: [
+    { id: 'af_heart', locale: 'en-US' },
+    { id: 'am_adam', locale: 'en-US' },
+  ],
+};
 
 describe('ttsEngineProvider — the documented catalogue cascade', () => {
   it('prefers `_metadata.ttsProvider` for a built-in engine', () => {
@@ -141,7 +147,11 @@ describe('ttsParametersOf', () => {
 describe('primaryTtsModelOf / fallbackTtsModelsOf', () => {
   it('orders the model chain by priority', () => {
     const a = agent({
-      models: [model(), model({ role: 'fallback', slug: 'azure-neural-voices', priority: 1 }), model({ role: 'fallback', slug: 'sarvam-bulbul', priority: 0 })],
+      models: [
+        model(),
+        model({ role: 'fallback', slug: 'azure-neural-voices', priority: 1 }),
+        model({ role: 'fallback', slug: 'sarvam-bulbul', priority: 0 }),
+      ],
     });
     expect(primaryTtsModelOf(a)?.slug).toBe('kokoro');
     expect(fallbackTtsModelsOf(a).map((m) => m.slug)).toEqual(['sarvam-bulbul', 'azure-neural-voices']);
