@@ -403,7 +403,12 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     wireModelId: 'azure://speech-to-text',
     languages: ['en', 'ml'],
     availability: AiModelAvailability.NOT_APPLICABLE,
-    provider: 'azure',
+    // TASK-888 — `azure-speech`, not `azure`: the `stt` plane's BYO vocabulary
+    // (`CLOUD_BYO_PROVIDERS.stt`), the SYSTEM `AiProviderConnection` row and
+    // `azure_speech_loader.override_key` all spell it this way, and
+    // `AsrAgentResolverService.resolveCredentials` gates a streaming session's
+    // credential on THIS value.
+    provider: 'azure-speech',
     architecture: null,
     memorySizeMb: 0,
     computeType: 'cloud',
@@ -433,7 +438,9 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     wireModelId: 'mai-transcribe-1.5',
     languages: ['en'],
     availability: AiModelAvailability.NOT_APPLICABLE,
-    provider: 'azure',
+    // TASK-888 — its own vendor id, separate from `azure-speech` for the same
+    // reason its connection row is (data residency on a PREVIEW service).
+    provider: 'azure-foundry',
     architecture: null,
     memorySizeMb: 0,
     computeType: 'cloud',
