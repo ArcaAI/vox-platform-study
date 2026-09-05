@@ -98,3 +98,4 @@ export * from './DocumentTemplateFactory';
 export * from './DocumentTemplateVersionFactory';
 export * from './AiRoutingPolicyFactory';
 export * from './WorkflowWebhookSecretFactory';
+export * from './TenantGuardrailPolicyFactory';

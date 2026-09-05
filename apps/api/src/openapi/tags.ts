@@ -277,6 +277,13 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
   },
   { name: 'admin-global-settings', displayName: 'Global Settings', plane: 'admin', description: 'Platform-wide non-secret knobs (global-kv tier).' },
   {
+    name: 'admin-guardrail-availability',
+    displayName: 'Guardrail Availability',
+    plane: 'admin',
+    description:
+      'Which safety policies apply to a tenant. Platform-managed and SUPER_ADMIN-only: availability SELECTS policies, it never disables the gate — every request is still screened before send and every response after receive.',
+  },
+  {
     name: 'admin-harness',
     displayName: 'Clinical Documentation Harness',
     plane: 'admin',

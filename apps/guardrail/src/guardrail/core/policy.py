@@ -55,7 +55,19 @@ class _KeySpec:
 _SPECS: Final[dict[str, _KeySpec]] = {
     # --- verdict-deciding criteria (FAIL-CLOSED, no default by construction) ---
     "medicalValidationCriteria": _KeySpec(FAIL_CLOSED),
-    "injectionScreeningCriteria": _KeySpec(FAIL_CLOSED),
+    #
+    # `injectionScreeningCriteria` was declared here with NO READER — reserved
+    # for "a future LLM-judge second opinion on the inbound path" that never
+    # arrived. TASK-886 REMOVED it rather than authoring criteria text for a
+    # check nothing resolves.
+    #
+    # The distinction that decides it is the one the seed already records for
+    # the judge hyperparameters: a fail-closed key WITHOUT a reader is unreviewed
+    # policy that advertises a control an admin cannot move, while a fail-closed
+    # key without a seeded value is at least an honest, visible 503. The first is
+    # worse, and it is the shape TASK-886's own catalogue rule now forbids
+    # (`core/availability.py` §Membership rule). If an inbound LLM-judge lane is
+    # ever built, it re-declares this key IN THE SAME CHANGE as its reader.
     # --- judge hyperparameters (FAIL-CLOSED, no default by construction) ---
     #
     # They were `JudgePolicy.temperature = 0.05` and `.max_tokens = 300` — a

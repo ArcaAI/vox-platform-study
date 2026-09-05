@@ -51,7 +51,12 @@ describe('SYSTEM granite-guardian-4.1-8b row carries the guardrail policy blob',
     expect(row.metaData?.policy?.medicalValidationCriteria).toBe(RECOVERED_MEDICAL_VALIDATION_CRITERIA);
   });
 
-  it('does not seed injectionScreeningCriteria (declared in core/policy.py but unused by any call site)', () => {
+  // TASK-886 removed `injectionScreeningCriteria` from `core/policy.py::_SPECS`
+  // outright — it had no reader anywhere, and a fail-closed key that cannot move
+  // anything is worse than an absent one. It was never seeded; this assertion
+  // stays so a re-introduction has to come with its reader and a deliberate
+  // decision, rather than arriving quietly in a seed blob.
+  it('does not seed injectionScreeningCriteria (removed from core/policy.py by TASK-886)', () => {
     const row = findGraniteRow();
     expect(row.metaData?.policy?.injectionScreeningCriteria).toBeUndefined();
   });

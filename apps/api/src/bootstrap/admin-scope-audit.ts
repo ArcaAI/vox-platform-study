@@ -70,6 +70,7 @@ import { DepartmentController } from '../modules/department/department.controlle
 import { DnaWritingStyleAdminController } from '../modules/dna-writing-style/dna-writing-style-admin.controller';
 import { EntitlementsAdminController } from '../modules/entitlements/entitlements-admin.controller';
 import { GlobalSettingController } from '../modules/global-setting/global-setting.controller';
+import { GuardrailAvailabilityController } from '../modules/guardrail-availability/guardrail-availability.controller';
 import { HarnessAdminController } from '../modules/harness-admin/harness-admin.controller';
 import { KnowledgeController } from '../modules/knowledge/knowledge.controller';
 import { AdminHealthServicesController } from '../modules/health/admin-health-services.controller';
@@ -163,6 +164,7 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: DnaWritingStyleAdminController, expect: 'FORBID' },
   { controller: EntitlementsAdminController, expect: 'FORBID' },
   { controller: GlobalSettingController, expect: 'FORBID' },
+  { controller: GuardrailAvailabilityController, expect: 'FORBID' },
   { controller: HarnessAdminController, expect: 'FORBID' },
   { controller: KnowledgeController, expect: 'FORBID' },
   { controller: McpAdminController, expect: 'FORBID' },

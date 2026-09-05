@@ -65,7 +65,12 @@ describe('SecurityPolicyScreen', () => {
     stubFetch(() => Response.json(POLICY));
     renderWithProviders(<SecurityPolicyScreen />);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Credential policy' })).toBeDefined();
+    // TASK-886 — the screen now hosts two platform-security surfaces, so the h1
+    // names the screen and the tabs name the surfaces. The credential tab is the
+    // default, so everything below it is unchanged.
+    expect(screen.getByRole('heading', { level: 1, name: 'Security policy' })).toBeDefined();
+    expect(screen.getByRole('tab', { name: 'Credential policy' })).toBeDefined();
+    expect(screen.getByRole('tab', { name: 'Guardrail availability' })).toBeDefined();
     expect(((await screen.findByLabelText('Minimum length')) as HTMLInputElement).value).toBe('12');
     expect((screen.getByLabelText('Rotation window (days)') as HTMLInputElement).value).toBe('0');
     expect((screen.getByLabelText('Entropy (bytes)') as HTMLInputElement).value).toBe('32');
