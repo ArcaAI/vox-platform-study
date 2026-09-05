@@ -422,16 +422,10 @@ class TestAzureSpeechFullFlowMocked:
             ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
         )
 
-        # Ensure no credentials in env AND override get_settings so
-        # pydantic-settings cannot read credentials from the .env file.
-        fake_settings = MagicMock()
-        fake_settings.azure_speech_key = None
-        fake_settings.azure_speech_region = None
-
-        with (
-            patch.dict(os.environ, {}, clear=True),
-            patch("stt.models.azure_speech_loader.get_settings", return_value=fake_settings),
-        ):
+        # TASK-880 — no settings patch is needed (or possible): the loader reads no
+        # `Settings` at all, so with no `provider_overrides` entry there is neither a
+        # credential nor a region from anywhere.
+        with patch.dict(os.environ, {}, clear=True):
             get_settings.cache_clear()
             loader = AzureSpeechLoader()
 
