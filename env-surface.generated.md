@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 119 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 23 |
-| Python declared fields | 358 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 407 |
-| `turbo.json#globalEnv` entries | 533 |
+| Python declared fields | 351 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 400 |
+| `turbo.json#globalEnv` entries | 529 |
 
 ## Variables — the TypeScript platform surface
 
@@ -270,7 +270,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_HOST` | `apps/harness` | no | no | `0.0.0.0` | commented | — |
 | `HARNESS_INTERNAL_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_ANCHORED` | `apps/harness` | no | no | `false` | commented | — |
-| `HARNESS_JUDGE_AZURE_API_KEY__ENV_REMOVED` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_AZURE_API_VERSION` | `apps/harness` | no | no | `2024-12-01-preview` | commented | — |
 | `HARNESS_JUDGE_AZURE_DEPLOYMENT` | `apps/harness` | no | no | `` | commented | — |
 | `HARNESS_JUDGE_AZURE_ENDPOINT` | `apps/harness` | no | no | `` | commented | — |
@@ -280,7 +279,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_JUDGE_MAX_RETRIES` | `apps/harness` | no | no | `2` | commented | — |
 | `HARNESS_JUDGE_MAX_TOKENS` | `apps/harness` | no | no | `8192` | commented | — |
 | `HARNESS_JUDGE_MODEL` | `apps/harness` | no | no | `gemma-4-e2b-it-qat` | commented | — |
-| `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY__ENV_REMOVED` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL` | `apps/harness` | no | no | `http://localhost:1234/v1` | commented | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT` | `apps/harness` | no | no | `json_object` | live | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_ORGANIZATION` | `apps/harness` | no | no | — | commented | — |
@@ -327,7 +325,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_RETRIEVAL_EMBEDDINGS_MODEL` | `apps/harness` | no | no | `text-embedding-bge-m3` | commented | — |
 | `HARNESS_RETRIEVAL_EMBEDDINGS_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_RETRIEVAL_ENABLED` | `apps/harness` | no | no | `false` | commented | — |
-| `HARNESS_RETRIEVAL_QDRANT_API_KEY__ENV_REMOVED` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_RETRIEVAL_QDRANT_TIMEOUT_S` | `apps/harness` | no | no | `10` | commented | — |
 | `HARNESS_RETRIEVAL_QDRANT_URL` | `apps/harness` | no | no | `http://localhost:6333` | commented | — |
 | `HARNESS_RETRIEVAL_RERANKER_BASE_URL` | `apps/harness` | no | no | `http://localhost:8870` | commented | — |
@@ -351,7 +348,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_TEXT_TIMEOUT_S` | `apps/harness` | no | no | `120` | commented | — |
 | `HF_HOME` | `apps/nlp` | no | no | `` | live | `NLP_HF_HOME` |
 | `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `<home>/.cache/huggingface/hub` | commented | — |
-| `HUGGINGFACE_TOKEN__ENV_REMOVED` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/nlp` | no | yes | `CHANGE_ME` | live | `NLP_INTERNAL_ACCESS_TOKEN` |
@@ -468,9 +464,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `STT_DEBUG` | `apps/stt` | no | no | `false` | commented | `DEBUG` |
 | `STT_HOST` | `apps/stt` | no | no | `0.0.0.0` | commented | `HOST` |
 | `STT_LOG_LEVEL` | `apps/stt` | no | no | `INFO` | commented | `LOG_LEVEL` |
-| `STT_MODEL_S3_ACCESS_KEY__ENV_REMOVED` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
-| `STT_MODEL_S3_ENDPOINT__ENV_REMOVED` | `apps/stt` | no | no | — | commented | — |
-| `STT_MODEL_S3_SECRET_KEY__ENV_REMOVED` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `STT_MODEL_S3_SECURE` | `apps/stt` | no | no | `true` | commented | — |
 | `STT_OTEL_SERVICE_NAME` | `apps/stt` | no | no | `stt` | commented | `OTEL_SERVICE_NAME` |
 | `STT_PORT` | `apps/stt` | no | no | `8861` | commented | `PORT` |

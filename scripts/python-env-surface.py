@@ -66,7 +66,7 @@ MANIFEST = ROOT / "scripts" / "generated" / "python-env-surface.json"
 #: The shape of a CLOSED env path: a `validation_alias` pointed at a name nothing
 #: can set, so a BYOK-only credential has no environment fallback. Matched by
 #: shape rather than by one ticket's number — see the use site for why.
-_ENV_REMOVED_TOMBSTONE = re.compile(r"__ENV_REMOVED_TASK_\d+$")
+_ENV_REMOVED_TOMBSTONE = re.compile(r"__ENV_REMOVED(?:_TASK_\d+)?$")
 
 
 @dataclass(frozen=True)
