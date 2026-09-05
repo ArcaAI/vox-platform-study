@@ -76,6 +76,10 @@ const MODEL_SLUG_PROPERTY = Object.freeze({
 
 const ROW_ID_PROPERTY = Object.freeze({ type: 'string', minLength: 1, maxLength: 64 });
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 const GENERATION_PROPERTY: NodeConfigSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
@@ -136,6 +140,71 @@ export const AGENT_TOOLS_SCHEMA: NodeConfigSchema = Object.freeze({
   description: 'Tools this agent may call, as (server, tool) REFERENCES. TEXT_GENERATION only.',
 });
 
+/**
+ * TASK-876 — fallback governance, declared ONCE on the contract.
+ *
+ * Fallback is a platform HA capability (TASK-870 owner decision #4): every agent falls back on
+ * outage, ON by default, to the platform default (the SYSTEM-assigned agent of the same task),
+ * metered as platform-funded; the toggle is per agent node. These two defaults used to be
+ * re-typed as literals by each runtime builder (`ASR_SPEC_FALLBACK_DEFAULTS` in
+ * `build-resolved-asr-spec.ts`) — they are now read from here.
+ */
+export const AGENT_FALLBACK_DEFAULTS = Object.freeze({ autoSwitch: true, switchAfterConsecutiveFailures: 2 });
+
+export interface AgentFallbackGovernance {
+  /** Another agent of the SAME task (lineage slug) to switch to; `null` ⇒ the agent's own model chain, then the platform default. */
+  readonly agentSlug: string | null;
+  readonly autoSwitch: boolean;
+  readonly switchAfterConsecutiveFailures: number;
+}
+
+/**
+ * The `parameters.fallback` block with the declared defaults applied. Tolerant: a malformed
+ * block reads as the defaults — the JSON Schema is where a bad shape is refused, and a runtime
+ * that threw here would fail a consultation over a field the validator already screened.
+ */
+export function readAgentFallbackGovernance(parameters: unknown): AgentFallbackGovernance {
+  const block = isPlainObject(parameters) && isPlainObject(parameters.fallback) ? parameters.fallback : {};
+  const slug = block.agentSlug;
+  const threshold = block.switchAfterConsecutiveFailures;
+  return {
+    agentSlug: typeof slug === 'string' && slug.length > 0 ? slug : null,
+    autoSwitch: typeof block.autoSwitch === 'boolean' ? block.autoSwitch : AGENT_FALLBACK_DEFAULTS.autoSwitch,
+    switchAfterConsecutiveFailures:
+      Number.isInteger(threshold) && (threshold as number) >= 1 ? (threshold as number) : AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
+  };
+}
+
+/** The SAME shape on every task that has a fallback chain; only the description names the task. */
+function fallbackProperty(task: AgentTask): NodeConfigSchema {
+  return Object.freeze({
+    type: 'object',
+    additionalProperties: false,
+    properties: Object.freeze({
+      agentSlug: Object.freeze({
+        type: 'string',
+        minLength: 2,
+        maxLength: 80,
+        pattern: '^[a-z0-9][a-z0-9-]{1,79}$',
+        description: `Another ${task} agent (lineage slug) to switch to. Absent ⇒ this agent\`s own model fallback chain, then the platform default.`,
+      }),
+      autoSwitch: Object.freeze({
+        type: 'boolean',
+        default: AGENT_FALLBACK_DEFAULTS.autoSwitch,
+        description: 'The per-agent HA toggle: switch to the fallback chain on primary failure. ON by default (platform HA capability).',
+      }),
+      switchAfterConsecutiveFailures: Object.freeze({
+        type: 'integer',
+        minimum: 1,
+        maximum: 20,
+        default: AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
+      }),
+    }),
+    description:
+      'Fallback governance. Where the chain leads is a REFERENCE (an agent slug) or the agent`s own model chain; the platform default always terminates it.',
+  });
+}
+
 // =============================================================================================
 // Parameter schemas per task (§3.2)
 // =============================================================================================
@@ -157,6 +226,7 @@ const TEXT_GENERATION_PARAMETERS: NodeConfigSchema = Object.freeze({
       description: 'Conversation memory is DEFERRED (open question 3): day-1 runtimes accept only `none`.',
     }),
     guards: GUARDS_PROPERTY,
+    fallback: fallbackProperty('TEXT_GENERATION'),
   }),
 });
 
@@ -213,6 +283,18 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
         beamSize: Object.freeze({ type: 'integer', minimum: 1, maximum: 10 }),
         temperature: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
         vadFilter: Object.freeze({ type: 'boolean' }),
+        chunkLengthSec: Object.freeze({
+          type: 'number',
+          minimum: 1,
+          maximum: 60,
+          description: 'TASK-877 (owner decision #9) — batch chunk length in seconds. Optional; the runtime keeps its own default when absent.',
+        }),
+        strideLengthSec: Object.freeze({
+          type: 'number',
+          minimum: 0,
+          maximum: 30,
+          description: 'TASK-877 (owner decision #9) — overlap between consecutive chunks in seconds. Optional.',
+        }),
       }),
     }),
     postProcessing: Object.freeze({
@@ -239,22 +321,24 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
         partialIntervalMs: Object.freeze({ type: 'integer', minimum: 100, maximum: 5000 }),
         endpointing: Object.freeze({ type: 'string', enum: Object.freeze(['fixed', 'semantic']) }),
         maxUtteranceSec: Object.freeze({ type: 'integer', minimum: 1, maximum: 600 }),
-      }),
-    }),
-    fallback: Object.freeze({
-      type: 'object',
-      additionalProperties: false,
-      properties: Object.freeze({
-        agentSlug: Object.freeze({
-          type: 'string',
-          minLength: 2,
-          maxLength: 80,
-          description: 'Another SPEECH_TO_TEXT agent (lineage slug) to switch to.',
+        semantic: Object.freeze({
+          type: 'object',
+          additionalProperties: false,
+          properties: Object.freeze({
+            modelSlug: Object.freeze({
+              ...MODEL_SLUG_PROPERTY,
+              description: 'Registry slug of the end-of-utterance model — the `endpointing` role of the resolved ASR spec (TASK-877).',
+            }),
+            minSilenceMs: Object.freeze({ type: 'integer', minimum: 0, maximum: 10000 }),
+            maxSilenceMs: Object.freeze({ type: 'integer', minimum: 0, maximum: 30000 }),
+            confidenceThreshold: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
+            minWords: Object.freeze({ type: 'integer', minimum: 0, maximum: 64 }),
+          }),
+          description: 'Semantic endpointing tuning (`streaming.endpointing: semantic`). Optional; the runtime keeps its own defaults when absent.',
         }),
-        autoSwitch: Object.freeze({ type: 'boolean' }),
-        switchAfterConsecutiveFailures: Object.freeze({ type: 'integer', minimum: 1, maximum: 20 }),
       }),
     }),
+    fallback: fallbackProperty('SPEECH_TO_TEXT'),
   }),
 });
 
@@ -278,6 +362,13 @@ const TEXT_TO_SPEECH_PARAMETERS: NodeConfigSchema = Object.freeze({
     ssml: Object.freeze({ type: 'boolean', description: 'Capability-gated: refused at publish unless the bound provider declares SSML support.' }),
   }),
 });
+
+/**
+ * TASK-876/877 — where the ASR spec references the end-of-utterance model. The agent resolver
+ * materialises it as the `endpointing` role once `ResolvedAgentModelRole` (`@arcaai/types`)
+ * carries that member; the path itself is contract, so it lives beside the schema.
+ */
+export const ASR_ENDPOINTING_MODEL_SLUG_PATH: readonly string[] = Object.freeze(['streaming', 'semantic', 'modelSlug']);
 
 export const AGENT_PARAMETER_SCHEMAS: Readonly<Record<AgentTask, NodeConfigSchema>> = Object.freeze({
   SPEECH_TO_TEXT: SPEECH_TO_TEXT_PARAMETERS,
@@ -473,10 +564,6 @@ export interface AgentConfigProblem {
   readonly severity: 'ERROR' | 'WARNING';
   readonly path: string;
   readonly message: string;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Walk a JSON value for FORBIDDEN property names (exact, case-insensitive) — the agent-side form of rule 16. */
