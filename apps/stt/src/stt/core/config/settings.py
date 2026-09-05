@@ -464,29 +464,11 @@ class Settings(BaseSettings):
         default=8,
         description="CPU threads for whisper.cpp inference",
     )
-    whisper_cpp_max_audio_seconds: float = Field(
-        validation_alias=moved_alias("whisper_cpp_max_audio_seconds"),
-        default=7.0,
-        description=(
-            "Max audio length (s) fed to whisper.cpp in one decode. The ml-en "
-            "code-switch fine-tune is accurate up to ~6-7s but truncates/garbles "
-            "on longer audio (VAD does not segment continuous clinical speech), so "
-            "longer utterances are split into <=this-many-second chunks at silence "
-            "troughs, decoded independently, and stitched. 0 disables chunking. "
-            "env WHISPER_CPP_MAX_AUDIO_SECONDS"
-        ),
-    )
-    whisper_cpp_consultation_prompt_enabled: bool = Field(
-        validation_alias=moved_alias("whisper_cpp_consultation_prompt_enabled"),
-        default=False,
-        description=(
-            "Whether the whisper.cpp adapter prepends its language-derived "
-            "clinical-consultation initial_prompt (exemplar prior-context, not an "
-            "instruction). Default OFF — measured to inject spurious tokens and "
-            "break grapheme clusters on the ml-en code-switch fine-tune. Toggle on "
-            "only if an eval shows it helps. env WHISPER_CPP_CONSULTATION_PROMPT_ENABLED"
-        ),
-    )
+    # TASK-880 — `whisper_cpp_max_audio_seconds` and
+    # `whisper_cpp_consultation_prompt_enabled` lived here. The decode window belongs to
+    # the MODEL (`AiModel._metadata.asr.maxDecodeWindowSec` -> `InferenceConfig`), and the
+    # prompt belongs to the AGENT (`instruction.initialPrompt`, which already reached the
+    # adapter through `compose_prompt`). Neither is a property of this process.
 
     # VAD — Silero v5 ONNX
     vad_model_path: str | None = Field(
@@ -834,17 +816,9 @@ class Settings(BaseSettings):
             "model resolves to 'cadence-fast'."
         ),
     )
-    streaming_partial_window_s: float = Field(
-        validation_alias=moved_alias("streaming_partial_window_s"),
-        default=6.0,
-        description=(
-            "Tail window (seconds) of the current utterance decoded for "
-            "PARTIAL transcripts. Set to the whisper.cpp force-emit window (~6 s) "
-            "so the last partial and the final decode the SAME audio — decoding is "
-            "deterministic, so matched windows converge and the final stops "
-            "visibly rephrasing the partial. env STREAMING_PARTIAL_WINDOW_S"
-        ),
-    )
+    # TASK-880 — `streaming_partial_window_s` lived here. Its description named the
+    # whisper.cpp force-emit window, which makes it a MODEL property:
+    # `AiModel._metadata.asr.partialWindowSec` -> `StreamingConfig.partial_window_s`.
     # TASK-877 — the six `semantic_endpoint_*` fields and
     # `streaming_partial_interval_s` lived here. Every one duplicated a concept the
     # ASR AGENT owns, so they are deleted rather than dual-homed: endpointing mode,

@@ -305,7 +305,10 @@ class SessionManager:
                 1, int(_settings.streaming_transcript_outbox_max_attempts)
             )
             self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
-            self._partial_window_s = float(getattr(_settings, "streaming_partial_window_s", 8.0))
+            # TASK-880 — the partial decode WINDOW was cached here from
+            # `stt.streaming.partialWindowS`, one number per process for every engine.
+            # It is the ASR row's force-emit window, so it now arrives per session on
+            # `ResolvedAsrSpec.models.asr.metadata.partialWindowSec`.
             # TASK-877 — the partial-emit cadence and the whole semantic-endpoint
             # family used to be cached here from `stt.streaming.partialIntervalS`
             # and `stt.semanticEndpoint.*`. Both are per-session AGENT concepts, so
@@ -327,7 +330,6 @@ class SessionManager:
             self._transcript_persist_backoff_s = 0.5
             self._transcript_outbox_max_attempts = 10
             self._snapshot_interval_s = 30.0
-            self._partial_window_s = 8.0
             self._audio_trim_interval_s = 30.0
             # Semantic endpointing defaults (OFF).
 
@@ -412,18 +414,24 @@ class SessionManager:
           the hardware profile (500 ms on every profile) instead of the
           preprocessor's legacy hardcoded 700 ms (shaves ~200 ms off
           every final's latency floor).
-        - The partial decode window is settings-driven and always wired.
         - TASK-877 — the partial-emit cadence and the utterance cap come from the
           SESSION's ``ResolvedAsrSpec`` (``streaming.{partialIntervalMs,maxUtteranceSec}``).
           The platform key ``stt.streaming.partialIntervalS`` is deleted: it
           duplicated an agent concept, and a per-session cadence cannot be a
           per-process setting. When the agent says nothing the kwarg is OMITTED so
           the preprocessor's own default stands — never restated here.
+        - TASK-880 — the partial decode WINDOW follows the same rule, sourced from the
+          ASR MODEL row (``models.asr.metadata.partialWindowSec`` →
+          ``StreamingConfig.partial_window_s``) rather than the deleted platform key
+          ``stt.streaming.partialWindowS``. It should match the engine's force-emit
+          window so the last partial and the final decode the SAME audio, and that is a
+          property of the model, not of the box.
         """
-        kwargs: dict[str, Any] = {
-            "partial_window_s": self._partial_window_s,
-        }
+        kwargs: dict[str, Any] = {}
         spec_streaming = getattr(pipeline_config, "streaming", None) if pipeline_config else None
+        partial_window_s = getattr(spec_streaming, "partial_window_s", None)
+        if isinstance(partial_window_s, (int, float)) and not isinstance(partial_window_s, bool):
+            kwargs["partial_window_s"] = float(partial_window_s)
         partial_interval_s = getattr(spec_streaming, "partial_interval_s", None)
         if isinstance(partial_interval_s, (int, float)) and not isinstance(
             partial_interval_s, bool
