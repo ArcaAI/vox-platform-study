@@ -55,6 +55,13 @@ const authGet = (request: APIRequestContext, path: string, token: string, params
 
 const ids = (page: CursorPage): string[] => page.data.map((r) => r.id);
 
+/**
+ * Upper bound that isolates the SEEDED audit fixtures (`10-audit-log.ts` stamps
+ * them at 2026-02-20 and earlier) from every row the live suite writes, which
+ * carries a NOW timestamp. 15 rows sit under it and always will.
+ */
+const SEEDED_AUDIT_WINDOW_END = '2026-03-01T00:00:00.000Z';
+
 test.describe('shared-component contracts (D7 cursor pagination)', () => {
   let token: string;
 
@@ -119,13 +126,28 @@ test.describe('shared-component contracts (D7 cursor pagination)', () => {
     // Walk the keyset to the end (bounded so a large cross-tenant trail can't
     // hang the suite). The invariant under test is the terminal contract:
     // hasMore=false ⇔ nextCursor=null.
-    const MAX_PAGES = 50;
-    const LIMIT = 50;
+    //
+    // TASK-869 — bounded by `to`, and that is load-bearing, not tidying.
+    //
+    // Unfiltered, this walks the WHOLE cross-tenant trail, which every one of the
+    // ~1150 other e2e tests grows as it runs (each mutation broadcasts a sys-event
+    // that lands here). The terminal page drifted out of reach and the test skipped
+    // itself — silently trading a contract assertion for a row count. Measured on a
+    // working stack: 8693 rows total.
+    //
+    // `action=LOGIN` was the obvious scope and is WRONG: every spec logs in, so
+    // LOGIN grows with the suite too (that fix failed on its first real run).
+    // The only class of row the suite cannot add to is the PAST: live rows are
+    // stamped NOW, so an upper bound just after the seeded fixtures isolates
+    // exactly them — 15 rows, forever. A small limit keeps the walk multi-page,
+    // so this still exercises paging and not just a single terminal page.
+    const MAX_PAGES = 20;
+    const LIMIT = 5;
     let cursor: string | null = null;
     let reachedEnd = false;
 
     for (let i = 0; i < MAX_PAGES; i++) {
-      const params: Record<string, string> = { limit: String(LIMIT) };
+      const params: Record<string, string> = { limit: String(LIMIT), to: SEEDED_AUDIT_WINDOW_END };
       if (cursor) params.cursor = cursor;
       const page = (await (await authGet(request, CURSOR_PATH, token, params)).json()) as CursorPage;
 
@@ -140,8 +162,7 @@ test.describe('shared-component contracts (D7 cursor pagination)', () => {
       cursor = page.nextCursor;
     }
 
-    test.skip(!reachedEnd, `audit trail exceeds ${MAX_PAGES * LIMIT} rows — terminal page not reached in the bounded walk`);
-    expect(reachedEnd).toBe(true);
+    expect(reachedEnd, `the seeded audit window (<= ${SEEDED_AUDIT_WINDOW_END}) exceeded ${MAX_PAGES * LIMIT} rows — did a test start back-dating rows?`).toBe(true);
   });
 
   // --- Negative / robustness -------------------------------------------------

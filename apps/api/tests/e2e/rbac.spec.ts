@@ -264,25 +264,33 @@ test.describe('RBAC Controllers', () => {
 
     test.describe('PUT /rbac/roles/:id', () => {
       test('should update role description', async ({ request }) => {
-        if (!rbacEndpointsAvailable || !superAdminToken || testRoleIds.length === 0) {
+        if (!rbacEndpointsAvailable || !superAdminToken) {
           test.skip();
           return;
         }
 
-        const roleId = testRoleIds[0];
-        const newDescription = `Updated description ${Date.now()}`;
+        // TASK-869: create the subject here instead of borrowing `testRoleIds[0]`
+        // from a SIBLING test. That coupling made this test self-skip for reasons
+        // that had nothing to do with the contract — a filtered run, a retry, or
+        // the create test tolerating its own 403 all left the array empty, and the
+        // skip read as "no seeded role" rather than "we never ran the creator".
+        // A test that owns its fixture states its own preconditions.
+        const created = await request.post('/api/v1/admin/rbac/roles', {
+          headers: { Authorization: `Bearer ${superAdminToken}` },
+          data: { name: `test-role-update-${Date.now()}`, description: 'E2E update subject' },
+        });
+        expect(created.status(), 'a super admin holds manage:Role (system-full-access) — a 403 here is the finding').toBe(201);
+        const roleId = (await created.json()).id as string;
+        testRoleIds.push(roleId);
 
+        const newDescription = `Updated description ${Date.now()}`;
         const response = await request.put(`/api/v1/admin/rbac/roles/${roleId}`, {
           headers: { Authorization: `Bearer ${superAdminToken}` },
           data: { description: newDescription },
         });
 
-        if (response.status() === 200) {
-          const body = await response.json();
-          expect(body.description).toBe(newDescription);
-        } else {
-          expect([200, 403, 404]).toContain(response.status());
-        }
+        expect(response.status()).toBe(200);
+        expect((await response.json()).description).toBe(newDescription);
       });
 
       test('should allow updating system role description but not rename', async ({ request }) => {

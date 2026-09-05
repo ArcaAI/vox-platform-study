@@ -43,6 +43,24 @@ import { encryptSeedSecret, isSeedSecretEncryptionAvailable } from './phi-encryp
  */
 
 /**
+ * Where LM Studio actually listens, for the environment being seeded.
+ *
+ * The default is the k3s Service name, which is the truth in the cluster and a
+ * dead name anywhere else: on a laptop the services run natively and
+ * `hope-lmstudio` does not resolve, so `apps/text` answers every generate with
+ * a connection error and every LLM-dependent e2e test skips. That was the
+ * standing state of the test stack until TASK-869.
+ *
+ * This is a SEED-TIME input, not runtime config: the row it writes stays the
+ * `db-config` source of truth an admin edits afterwards, and the seed is
+ * create-only, so an existing endpoint is never clobbered. Same shape as
+ * `platformStorageEndpoint()` / `process.env.MINIO_ENDPOINT` in `05b`/`05c`.
+ */
+function lmStudioBaseUrl(): string {
+  return (process.env.SEED_LMSTUDIO_BASE_URL ?? '').trim() || 'http://hope-lmstudio:1234/v1';
+}
+
+/**
  * ## Why a keyless row is not enough ( Round 4, lane B)
  *
  * There are TWO ways a connection row reaches a consumer, and they have
@@ -254,7 +272,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
     provider: 'lm-studio',
-    baseUrl: 'http://hope-lmstudio:1234/v1',
+    baseUrl: lmStudioBaseUrl(),
     region: null,
     apiVersion: null,
     deploymentName: null,
