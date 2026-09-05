@@ -123,8 +123,8 @@ consolidation.
 |---|---|---|---|---|
 | A | TASK-871 — post-receive guardrail gate | `9a8e2af0b` | `pnpm text:test` 1614 passed / 4 skipped (1587 baseline + 27 new); `pnpm text:typecheck` clean | removed |
 | C | TASK-873 — scope alignment, dead console folders, artifacts | `76686c60d` | applications 660 files / 11514 tests passed (a first run showed 13 files failing to load — a concurrent `api:build` rewriting `dist/`; clean re-run green); database 1767 passed; `api:build` clean; `api:openapi:check`, `api:portal:check`, `gen:admin:check` all no-drift; admin-console build + lint clean, 2269 tests; vox-node typecheck clean, 375 tests | removed |
-| B | TASK-872 — registry cleanup + routing veto | — | in flight | `../hope-v2-task-872` |
-| D | TASK-874 — STT fallback funding | — | in flight (first attempt stalled before any change; re-spawned on the clean tree) | `../hope-v2-task-874` |
+| B | TASK-872 — registry cleanup + routing veto | — | in flight — first agent stalled on the harness watchdog after three commits (`a0506a338` flips, `cb22d3b0a` veto, `759e62855` guardrail.policy removal) with twelve files mid-edit; a continuation agent resumed on that tree | `../hope-v2-task-872` |
+| D | TASK-874 — STT fallback funding per engine segment | `f8f7835a1` | `pnpm stt:test` 1 failed / 3193 passed / 210 errors — identical to the lane's baseline (the failure is the pre-existing `test_minio_credentials_default_to_empty`; the errors are integration tests with no test DB); `stt:lint` clean; `stt:typecheck` clean (140 files); applications 660 files / 11521 tests (+7 = the lane's new TS cases); api 280 files / 4211 tests; artifacts regenerated with zero diff (the usage callback is a doc-excluded internal route, so the DTO change never reached `openapi.json`); all three drift checks no-drift; vox-node typecheck clean, 375 tests | removed |
 
 Lane A chose design (d): gate the assembled completion at end-of-stream for SSE (published tokens
 cannot be recalled; buffering would kill time-to-first-token) and buffer-then-gate on the
