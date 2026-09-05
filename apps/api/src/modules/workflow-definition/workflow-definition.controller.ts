@@ -162,6 +162,12 @@ export class WorkflowDefinitionController {
   // `WorkflowDefinitionService.syncToTenants`, before any read. Note the deliberate asymmetry it
   // implements: the SOURCE failing is a 403 (a privilege the caller claimed), a TARGET failing is
   // a 404 (so a list of tenant ids can never be used to discover which tenants exist).
+  //
+  // TASK-889: this route does NOT require an elevated tenant-less context, and must not be made
+  // to. That gate belongs to `promote-to-system` — a PLATFORM action into the SYSTEM tier. A
+  // sync is a sequence of ordinary per-tenant steps a customer admin is separately entitled to,
+  // each one run under the tenant it names (`runInTenantContext`), so it is reachable by the
+  // multi-tenant customer admin owner decision #4 describes.
   @Post('slug/:slug/sync')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -172,12 +178,13 @@ export class WorkflowDefinitionController {
       'tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: ' +
       'copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a ' +
       'reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. ' +
-      'Requires an elevated tenant-less context.',
+      'No platform elevation is needed: each step runs under the tenant it acts on, and only after that tenant’s ' +
+      '`manage` check has passed.',
   })
   @ApiParam({ name: 'slug', description: 'WorkflowDefinition slug (the lineage key) in the source tenant' })
   @ApiResponse({ status: 200, type: WorkflowSyncResponse })
   @ApiResponse({ status: 400, description: 'A target equals the source, or the source graph references rows that no longer resolve.' })
-  @ApiResponse({ status: 403, description: 'No manage rights on the source tenant, or the context is not elevated and tenant-less.' })
+  @ApiResponse({ status: 403, description: 'No `manage:WorkflowDefinition` on the source tenant.' })
   @ApiResponse({ status: 404, description: 'A target tenant the caller does not manage, or no such source version.' })
   @ApiResponse({ status: 409, description: 'A target cannot resolve a reference (`WORKFLOW_SYNC_UNRESOLVED_REFERENCES`).' })
   async sync(@Param('slug') slug: string, @Body() request: SyncWorkflowDefinitionRequest): Promise<WorkflowSyncResponse> {

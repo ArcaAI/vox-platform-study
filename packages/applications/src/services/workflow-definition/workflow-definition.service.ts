@@ -57,6 +57,10 @@ import { PolicyEngine } from '../../authorization/policy.engine';
 // implementation of promotion.
 import { IAgentPromotionService } from '../agentPromotion/IAgentPromotionService';
 import type { IAgentPromotionService as IAgentPromotionServicePort } from '../agentPromotion/IAgentPromotionService';
+// TASK-889 — the membership-bounded cross-tenant step (the counterpart to that service's
+// ELEVATED one). Imported from the file, not the folder barrel, to keep this lane's dependency
+// on `agentPromotion/**` exactly what lane G declared: the promotion port, plus this.
+import { runInTenantContext } from '../agentPromotion/tenant-context';
 import { EvalPromotionGateService } from '../eval/eval-promotion-gate.service';
 import { IActiveUserContext } from '../../interfaces';
 import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
@@ -793,9 +797,21 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * A target that already has the lineage gets the NEXT version of it, DRAFT and inactive. That
    * is what makes this a sync rather than a clone: the slug is the workflow's identity, and one
    * admin must never silently re-point another tenant's live consultations.
+   *
+   * ## TASK-889 — how a NON-elevated caller reaches the data
+   *
+   * This used to require the elevated tenant-less context `promoteToSystem` requires, which made
+   * it unreachable for the very person owner #4 names: a multi-tenant CUSTOMER admin is not a
+   * platform admin and must not be made one to copy their own workflow between their own
+   * tenants. The gate is gone; what replaces it is not a widening but a NARROWING —
+   * `runInTenantContext` runs each step under the ONE tenant that step means, so the
+   * tenant-scope extension filters and asserts it exactly as it would an ordinary request. The
+   * source read is pinned to the source, each target's resolve / validate / write to that
+   * target, and nothing runs under a tenant that has not just passed the `manage` check above.
+   * A super admin gains from this too: even elevated, each step is PINNED rather than passed
+   * through, so a sync can never read the whole estate by accident.
    */
   async syncToTenants(slug: string, dto: SyncWorkflowDefinitionRequest): Promise<WorkflowSyncResponse> {
-    this.assertElevatedTenantlessContext('Syncing a workflow');
     const userId = this.requestUserId;
     if (!userId) throw new ForbiddenException('Syncing a workflow requires an authenticated user');
     if (!this.policyEngine) throw new Error('WorkflowDefinitionService.syncToTenants requires PolicyEngine (misconfiguration).');
@@ -816,10 +832,18 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       }
     }
 
-    // ---- The exact immutable source version --------------------------------
-    const source = await this.resolveVersionForTenant(dto.sourceTenantId, slug, dto.versionNumber);
-    const sourceGraph = this.parseGraphOrThrow(source.graph as unknown as Record<string, unknown>);
-    const portable = toPortableGraph(sourceGraph, await this.resolveRowReferenceKeys(collectRowReferences(sourceGraph), dto.sourceTenantId));
+    // ---- The exact immutable source version, read AS the source tenant ------
+    // Both reads here are the SOURCE's: the version row, and the catalogue rows its graph binds
+    // by id. Pinning the step is what lets a caller whose working tenant is some OTHER tenant
+    // they manage read it at all — and what stops an elevated caller reading it unfiltered.
+    const { source, portable } = await runInTenantContext(this.clsService, dto.sourceTenantId, async () => {
+      const version = await this.resolveVersionForTenant(dto.sourceTenantId, slug, dto.versionNumber);
+      const graph = this.parseGraphOrThrow(version.graph as unknown as Record<string, unknown>);
+      return {
+        source: version,
+        portable: toPortableGraph(graph, await this.resolveRowReferenceKeys(collectRowReferences(graph), dto.sourceTenantId)),
+      };
+    });
     if (portable.unresolved.length > 0) {
       throw new BadRequestException({
         message: 'This workflow references rows that no longer resolve in the source tenant, so it cannot be synced without losing them.',
@@ -833,16 +857,26 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const unresolved: { tenantId: string; references: PortableReference[] }[] = [];
 
     for (const targetTenantId of targets) {
-      const resolved = await this.resolveBundleReferences(portable.graph, targetTenantId);
-      if (resolved.unresolved.length > 0) {
-        unresolved.push({ tenantId: targetTenantId, references: resolved.unresolved });
+      // Both of these read the TARGET's catalogue — its prompt templates, its agents, its models,
+      // its validation rules. Under the caller's own pinned tenant they would have answered for
+      // the WRONG tenant (or thrown `TenantScope: tenantId mismatch`), which is precisely what
+      // made this path super-admin-only before TASK-889.
+      const outcome = await runInTenantContext(this.clsService, targetTenantId, async () => {
+        const resolved = await this.resolveBundleReferences(portable.graph, targetTenantId);
+        if (resolved.unresolved.length > 0) return { unresolved: resolved.unresolved };
+        return { resolved: resolved.graph, report: await this.validateGraph(resolved.graph, source.paletteKey, targetTenantId) };
+      });
+      if (outcome.unresolved) {
+        unresolved.push({ tenantId: targetTenantId, references: outcome.unresolved });
         continue;
       }
-      const report = await this.validateGraph(resolved.graph, source.paletteKey, targetTenantId);
-      if (reportIsShapeBroken(report)) {
-        throw new BadRequestException({ message: `The workflow graph is not valid for tenant ${targetTenantId}.`, findings: report.findings });
+      if (reportIsShapeBroken(outcome.report!)) {
+        throw new BadRequestException({
+          message: `The workflow graph is not valid for tenant ${targetTenantId}.`,
+          findings: outcome.report!.findings,
+        });
       }
-      prepared.push({ tenantId: targetTenantId, graph: resolved.graph, report });
+      prepared.push({ tenantId: targetTenantId, graph: outcome.resolved!, report: outcome.report! });
     }
 
     if (unresolved.length > 0) {
@@ -857,30 +891,36 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const written = await this.databaseService.baseClient.$transaction(async (tx) => {
       const rows: WorkflowSyncTargetResponse[] = [];
       for (const target of prepared) {
-        const maxVersionNumber = await this.workflowDefinitionRepository.findMaxVersionNumber(target.tenantId, slug, tx);
-        const entity = WorkflowDefinitionFactory.CreateDefinition({
-          tenantId: target.tenantId,
-          slug,
-          name: source.name,
-          description: source.description ?? null,
-          paletteKey: source.paletteKey,
-          versionNumber: maxVersionNumber + 1,
-          parentVersionId: null,
-          graph: target.graph as unknown as JsonValue,
-          graphChecksum: graphChecksum(target.graph),
-          validationReport: target.report as unknown as JsonValue,
-          validatedAt: new Date(),
-          createdBy: this.requestUserId ?? undefined,
-        });
-        this.compileGraphOrThrow(entity, target.graph, null);
-        const saved = await this.workflowDefinitionRepository.create(entity, tx);
-        rows.push({
-          tenantId: target.tenantId,
-          workflowDefinitionId: saved.id,
-          slug: saved.slug,
-          versionNumber: saved.versionNumber,
-          findings: target.report.findings.map((finding) => `${finding.ruleId}: ${finding.message}`),
-        });
+        // The write, too, names its tenant — see `runInTenantContext` for why the TRANSACTION
+        // itself stays on the unscoped client (version minting must see soft-deleted rows).
+        rows.push(
+          await runInTenantContext(this.clsService, target.tenantId, async () => {
+            const maxVersionNumber = await this.workflowDefinitionRepository.findMaxVersionNumber(target.tenantId, slug, tx);
+            const entity = WorkflowDefinitionFactory.CreateDefinition({
+              tenantId: target.tenantId,
+              slug,
+              name: source.name,
+              description: source.description ?? null,
+              paletteKey: source.paletteKey,
+              versionNumber: maxVersionNumber + 1,
+              parentVersionId: null,
+              graph: target.graph as unknown as JsonValue,
+              graphChecksum: graphChecksum(target.graph),
+              validationReport: target.report as unknown as JsonValue,
+              validatedAt: new Date(),
+              createdBy: this.requestUserId ?? undefined,
+            });
+            this.compileGraphOrThrow(entity, target.graph, null);
+            const saved = await this.workflowDefinitionRepository.create(entity, tx);
+            return {
+              tenantId: target.tenantId,
+              workflowDefinitionId: saved.id,
+              slug: saved.slug,
+              versionNumber: saved.versionNumber,
+              findings: target.report.findings.map((finding) => `${finding.ruleId}: ${finding.message}`),
+            };
+          }),
+        );
       }
       return rows;
     });
@@ -1001,8 +1041,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * turns a raw `TenantScope: tenantId mismatch` 500, or a silently empty read taken for a 404,
    * into an actionable 403.
    *
-   * This is NOT the authorization control on either caller; see `managesWorkflowDefinitions`
-   * (sync) and the super-admin check in `promoteToSystem`.
+   * This is NOT the authorization control; see the super-admin check in `promoteToSystem`.
+   *
+   * TASK-889: `syncToTenants` no longer calls this. Promotion is a PLATFORM action into the
+   * SYSTEM tier and legitimately needs the unfiltered client; a sync is a sequence of ordinary
+   * per-tenant steps a customer admin is separately entitled to, and it names its tenant per
+   * step instead (`runInTenantContext`). Do not re-attach it to a membership-bounded caller.
    */
   private assertElevatedTenantlessContext(action: string): void {
     if (this.tenantId) {
