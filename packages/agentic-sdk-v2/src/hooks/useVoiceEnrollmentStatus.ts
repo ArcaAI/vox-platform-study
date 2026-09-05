@@ -20,9 +20,28 @@ import { useVoiceEmbedding, type VoiceProfile } from './useVoiceEmbedding';
 import { extractArray } from '../utils/responseUtils';
 import { VOICE_EMBEDDING_ENDPOINTS } from '../core/constants';
 
+export interface UseVoiceEnrollmentStatusOptions {
+  /**
+   * TASK-887 — the `AiModel` slug of the speaker-embedding model the agent the user will
+   * transcribe with declares (`useVoiceEmbedding().enrollmentTarget()`).
+   *
+   * A profile is only ever matched by an agent bound to the model that embedded it, so a
+   * profile from another model is INVISIBLE to this agent rather than merely less accurate —
+   * which is why "enrolled" and "enrolled for THIS agent" are different questions.
+   */
+  modelId?: string;
+}
+
 export interface UseVoiceEnrollmentStatusReturn {
   /** True iff the user has at least one profile with `isActive === true`. */
   hasActive: boolean;
+  /**
+   * True when the user HAS an active profile but none of them were embedded by `modelId` —
+   * the "re-enroll for this agent" state. Always false when no `modelId` was supplied (the
+   * question cannot be asked) and when the user has nothing enrolled at all (that is
+   * `!hasActive`, a different prompt).
+   */
+  needsReenrollment: boolean;
   /** True while the initial `list()` is in-flight. */
   isLoading: boolean;
   /** Current cached profiles for the user. */
@@ -69,8 +88,9 @@ export function createVoiceEnrollmentChecker(apiClient: { get: <T = unknown>(end
   };
 }
 
-export function useVoiceEnrollmentStatus(): UseVoiceEnrollmentStatusReturn {
+export function useVoiceEnrollmentStatus(options?: UseVoiceEnrollmentStatusOptions): UseVoiceEnrollmentStatusReturn {
   const { profiles, isLoading, list } = useVoiceEmbedding();
+  const modelId = options?.modelId;
 
   const refresh = useCallback(() => {
     void list();
@@ -81,6 +101,10 @@ export function useVoiceEnrollmentStatus(): UseVoiceEnrollmentStatusReturn {
   }, [refresh]);
 
   const hasActive = useMemo(() => profiles.some((p) => p.isActive === true), [profiles]);
+  const needsReenrollment = useMemo(
+    () => Boolean(modelId) && hasActive && !profiles.some((p) => p.isActive === true && p.modelId === modelId),
+    [profiles, hasActive, modelId],
+  );
 
-  return { hasActive, isLoading, profiles };
+  return { hasActive, needsReenrollment, isLoading, profiles };
 }

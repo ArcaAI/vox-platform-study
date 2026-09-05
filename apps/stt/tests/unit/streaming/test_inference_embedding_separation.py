@@ -6,7 +6,7 @@ Tests:
 - process_utterance full pipeline order: embed -> asr -> diarize -> punctuate
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
@@ -77,21 +77,33 @@ class TestExtractEmbedding:
         mock_emb_service = MagicMock()
         mock_emb_service.extract_from_samples = AsyncMock(return_value=mock_embedding)
 
+        # TASK-887 — the session's OWN embedding service, injected at assembly from the
+        # agent's `models.embedding`. There is no platform singleton to fall back on.
+        worker = StreamingInferenceWorker(
+            result_publisher=None,
+            asr_pipeline=None,
+            tenant_id="t1",
+            diarization_config=MagicMock(enabled=True, min_segment_duration_s=0.5),
+            embedding_service=mock_emb_service,
+        )
+        utt = _make_utterance(duration_s=2.0)
+
+        result = await worker._extract_embedding(utt)
+
+        assert result is mock_embedding
+
+    @pytest.mark.asyncio
+    async def test_extract_embedding_returns_none_without_a_session_embedding_service(self):
+        """No agent-declared model ⇒ no extraction, rather than a platform substitute that
+        would embed into a space no enrolled profile lives in."""
         worker = StreamingInferenceWorker(
             result_publisher=None,
             asr_pipeline=None,
             tenant_id="t1",
             diarization_config=MagicMock(enabled=True, min_segment_duration_s=0.5),
         )
-        utt = _make_utterance(duration_s=2.0)
 
-        with patch(
-            "stt.diarization.embedding_service.get_embedding_service",
-            return_value=mock_emb_service,
-        ):
-            result = await worker._extract_embedding(utt)
-
-        assert result is mock_embedding
+        assert await worker._extract_embedding(_make_utterance(duration_s=2.0)) is None
 
 
 class TestIdentifyWithEmbedding:

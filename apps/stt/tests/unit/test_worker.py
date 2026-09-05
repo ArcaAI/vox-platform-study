@@ -137,38 +137,44 @@ class TestWorkerNewServiceInitialization:
                 mock_vad.initialize.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_initialize_services_calls_diarization_init(self):
-        """Test that initialize_services initializes diarization service."""
+    async def test_boot_never_warms_a_diarization_embedding_model(self):
+        """TASK-887 — diarization is NOT warmed at boot, and cannot be.
+
+        The worker used to warm `get_embedding_service()`, the process-wide singleton fed by
+        `stt.diarization.hfModelId`. Diarization is now a declared ASR-agent option: the
+        speaker-embedding model comes from the job's `ResolvedAsrSpec.models.embedding`, which
+        does not exist until an agent has been resolved — process boot has no spec. The batch
+        service builds the service per job, exactly like punctuation.
+        """
+        import stt.diarization.embedding_service as embedding_service
+
+        assert not hasattr(embedding_service, "get_embedding_service")
+
         with patch("stt.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
-
-            mock_embedding = MagicMock()
-            mock_embedding.initialize = AsyncMock()
+            mock_vad = MagicMock()
+            mock_vad.initialize = AsyncMock()
 
             with (
                 patch("stt.core.database.connection.initialize_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
-                patch("stt.vad.silero_service.get_vad_service", side_effect=Exception("skip")),
-                patch(
-                    "stt.diarization.embedding_service.get_embedding_service",
-                    return_value=mock_embedding,
-                ),
+                patch("stt.vad.silero_service.get_vad_service", return_value=mock_vad),
+                patch("stt.diarization.embedding_service.create_embedding_service") as mock_create,
             ):
-
                 from stt.worker import initialize_services
 
                 await initialize_services()
 
-                mock_embedding.initialize.assert_called_once()
+                # VAD still warms — its model is a single self-hosted detector, not an
+                # agent-selected one — while nothing constructs an embedding service.
+                mock_vad.initialize.assert_called_once()
+                mock_create.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_initialize_services_vad_failure_nonfatal(self):
         """Test that VAD initialization failure doesn't block other services."""
         with patch("stt.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
-
-            mock_embedding = MagicMock()
-            mock_embedding.initialize = AsyncMock()
 
             with (
                 patch("stt.core.database.connection.initialize_database", new_callable=AsyncMock),
@@ -177,18 +183,11 @@ class TestWorkerNewServiceInitialization:
                     "stt.vad.silero_service.get_vad_service",
                     side_effect=RuntimeError("VAD init failed"),
                 ),
-                patch(
-                    "stt.diarization.embedding_service.get_embedding_service",
-                    return_value=mock_embedding,
-                ),
             ):
-
                 from stt.worker import initialize_services
 
                 # Should NOT raise
                 await initialize_services()
-                # Diarization should still have been called
-                mock_embedding.initialize.assert_called_once()
 
 
 class TestWorkerPunctuationLogging:
@@ -218,10 +217,6 @@ class TestWorkerPunctuationLogging:
                     new_callable=AsyncMock,
                 ),
                 patch("stt.vad.silero_service.get_vad_service", return_value=mock_vad),
-                patch(
-                    "stt.diarization.embedding_service.get_embedding_service",
-                    return_value=mock_embedding,
-                ),
                 patch("stt.worker.logger") as mock_logger,
             ):
                 yield mock_logger
@@ -266,13 +261,7 @@ class TestWorkerNewServiceCleanup:
                 patch("stt.core.database.connection.close_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.close_minio", new_callable=AsyncMock),
                 patch("stt.vad.silero_service.get_vad_service", return_value=mock_vad),
-                patch("stt.diarization.embedding_service.get_embedding_service") as mock_emb,
             ):
-
-                mock_emb_instance = MagicMock()
-                mock_emb_instance.shutdown = AsyncMock()
-                mock_emb.return_value = mock_emb_instance
-
                 from stt.worker import cleanup_services
 
                 await cleanup_services()
@@ -292,16 +281,13 @@ class TestWorkerNewServiceCleanup:
                     "stt.vad.silero_service.get_vad_service",
                     side_effect=RuntimeError("VAD error"),
                 ),
-                patch("stt.diarization.embedding_service.get_embedding_service") as mock_emb,
+                patch("stt.core.database.connection.close_database", new_callable=AsyncMock) as mock_close_db,
             ):
-
-                mock_emb_instance = MagicMock()
-                mock_emb_instance.shutdown = AsyncMock()
-                mock_emb.return_value = mock_emb_instance
-
                 from stt.worker import cleanup_services
 
                 # Should NOT raise
                 await cleanup_services()
-                # Other cleanups should still have been called
-                mock_emb_instance.shutdown.assert_called_once()
+                # Other cleanups should still have been called. TASK-887 — there is no
+                # embedding singleton left to shut down: services live on the SessionManager's
+                # per-model cache and die with it.
+                mock_close_db.assert_awaited()

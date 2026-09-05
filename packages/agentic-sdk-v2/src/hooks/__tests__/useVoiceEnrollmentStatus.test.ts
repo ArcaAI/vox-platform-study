@@ -120,4 +120,59 @@ describe('useVoiceEnrollmentStatus', () => {
       expect(await checker.checkHasActiveProfile()).toBe(false);
     });
   });
+
+  /**
+   * TASK-887 — "enrolled" and "enrolled FOR THIS AGENT" are different questions.
+   *
+   * A profile lives in the space of the model that embedded it, and matching only ever
+   * compares profiles from the same model — so a profile from another model is INVISIBLE to
+   * this agent, not merely less accurate. That is the re-enroll prompt.
+   */
+  describe('needsReenrollment', () => {
+    const withProfiles = async (profiles: unknown[], modelId?: string) => {
+      mockStore.apiClient.get.mockResolvedValue(profiles);
+      const { result } = renderHook(() => useVoiceEnrollmentStatus(modelId ? { modelId } : undefined));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      return result;
+    };
+
+    it('is true when the active profile was embedded by a DIFFERENT model', async () => {
+      const result = await withProfiles([{ id: 'p-1', isActive: true, modelId: 'ecapa-tdnn-voxceleb' }], 'wespeaker-voxceleb-resnet34');
+
+      expect(result.current.hasActive).toBe(true);
+      expect(result.current.needsReenrollment).toBe(true);
+    });
+
+    it('is false when an active profile is already in this agent’s space', async () => {
+      const result = await withProfiles([{ id: 'p-1', isActive: true, modelId: 'wespeaker-voxceleb-resnet34' }], 'wespeaker-voxceleb-resnet34');
+
+      expect(result.current.needsReenrollment).toBe(false);
+    });
+
+    it('is false with nothing enrolled at all — that is `!hasActive`, a different prompt', async () => {
+      const result = await withProfiles([], 'wespeaker-voxceleb-resnet34');
+
+      expect(result.current.hasActive).toBe(false);
+      expect(result.current.needsReenrollment).toBe(false);
+    });
+
+    it('is false when no model was supplied — the question cannot be asked', async () => {
+      const result = await withProfiles([{ id: 'p-1', isActive: true, modelId: 'ecapa-tdnn-voxceleb' }]);
+
+      expect(result.current.hasActive).toBe(true);
+      expect(result.current.needsReenrollment).toBe(false);
+    });
+
+    it('ignores INACTIVE profiles in this agent’s space — only an active one counts', async () => {
+      const result = await withProfiles(
+        [
+          { id: 'p-old', isActive: true, modelId: 'ecapa-tdnn-voxceleb' },
+          { id: 'p-new', isActive: false, modelId: 'wespeaker-voxceleb-resnet34' },
+        ],
+        'wespeaker-voxceleb-resnet34',
+      );
+
+      expect(result.current.needsReenrollment).toBe(true);
+    });
+  });
 });
