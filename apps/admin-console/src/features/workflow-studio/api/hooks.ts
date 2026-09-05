@@ -13,7 +13,9 @@ import {
   createWorkflowDefinition,
   deleteWorkflowAssignment,
   deleteWorkflowDefinition,
+  exportWorkflowDefinition,
   getWorkflowDefinition,
+  importWorkflowDefinition,
   listDepartmentOptions,
   listNodePromptBindings,
   listPromptTemplateOptions,
@@ -34,6 +36,7 @@ import { workflowStudioKeys } from './keys';
 import type {
   CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
+  ImportWorkflowDefinitionRequest,
   PublishWorkflowDefinitionRequest,
   UpdateNodePromptRequest,
   UpsertWorkflowAssignmentRequest,
@@ -212,4 +215,25 @@ export function useUpdateNodePrompt() {
 /** The `core.agent` picker's options (TASK-864 B1). Retries are off: a 404 means the agent surface is not there yet, and the picker falls back to a slug box. */
 export function useAgentOptions(task: string, enabled = true) {
   return useQuery({ queryKey: workflowStudioKeys.agentOptions(task), queryFn: () => listAgentOptions(task), enabled, retry: false, staleTime: 60_000 });
+}
+
+/**
+ * TASK-885 — export one definition as a portable bundle.
+ *
+ * A MUTATION, not a query, even though the route is a GET: it is a user-initiated action whose
+ * result is downloaded once and never re-read, so caching it would only create a way to save a
+ * stale file. (`useQuery` with `enabled:false` + `refetch` would be the same thing wearing a
+ * query's clothes.)
+ */
+export function useExportWorkflowDefinition() {
+  return useMutation({ mutationFn: (id: string) => exportWorkflowDefinition(id) });
+}
+
+/** TASK-885 — import a bundle as a new draft lineage; invalidates the whole studio namespace. */
+export function useImportWorkflowDefinition() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ImportWorkflowDefinitionRequest) => importWorkflowDefinition(body),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: workflowStudioKeys.root }),
+  });
 }

@@ -29,10 +29,11 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { useAutosave, useStudioShortcuts, useUnsavedChangesGuard } from '../hooks';
-import { useCreateWorkflowDefinition } from '../api';
+import { useCreateWorkflowDefinition, useExportWorkflowDefinition } from '../api';
 import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/client';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
 import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
+import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
 import { actionKeyOf, effectiveNodePorts } from '../lib/core-ports';
 import { humanizeKey } from '../lib/schema-form';
 import {
@@ -134,6 +135,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const [metadataDirty, setMetadataDirty] = useState(false);
   const readOnly = definition.status === 'PUBLISHED' || definition.status === 'DEPRECATED';
   const createNewVersion = useCreateWorkflowDefinition();
+  // TASK-885 — the portable-bundle export of the SERVER's stored version (see handleExportBundle).
+  const exportBundle = useExportWorkflowDefinition();
 
   // Keyed once per registry fetch, not per hydrate — the inspector needs it live for whichever
   // node is currently selected, not just at hydration time.
@@ -313,6 +316,24 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     downloadText(GRAPH_EXPORT_FILENAME(definition.slug, definition.versionNumber), exportGraphJson(current, currentEdges));
     toast.success('Graph exported.');
   }
+  /**
+   * TASK-885 (owner #4) — download the whole definition as a portable bundle.
+   *
+   * Exports the SERVER's stored version, not the editor buffer: the bundle names a
+   * `(slug, versionNumber)` as its provenance, and a file that claims to be v3 while carrying
+   * unsaved edits would be a lie an importer has no way to detect. The graph export above is the
+   * one that follows the canvas.
+   */
+  async function handleExportBundle() {
+    try {
+      const bundle = await exportBundle.mutateAsync(definition.id);
+      downloadJson(BUNDLE_EXPORT_FILENAME(definition.slug, definition.versionNumber), bundle);
+      toast.success('Workflow bundle exported.');
+    } catch (cause) {
+      // The gateway's own message names the nodes whose bindings no longer resolve.
+      toast.error(cause instanceof Error ? cause.message : 'Failed to export the workflow bundle.');
+    }
+  }
   function handleImport(text: string) {
     const parsed = parseGraphJson(text);
     if (!parsed.ok) {
@@ -428,6 +449,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           onAutoLayout={() => void handleAutoLayout()}
           onExport={handleExport}
           onImport={handleImport}
+          onExportBundle={() => void handleExportBundle()}
+          exportingBundle={exportBundle.isPending}
         />
       }
       footer={
