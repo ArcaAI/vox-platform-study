@@ -40,11 +40,21 @@ describe(' R6 — guardrail PII task keys', () => {
     }
   });
 
-  it('generate globalOnly, fail-closed descriptors so the console gates them', () => {
-    for (const k of PII_KEYS) {
-      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(`models.${k}`);
-      expect(d.globalOnly, k).toBe(true);
-      expect(d.failMode, k).toBe('closed');
-    }
+  it('generate a globalOnly, fail-closed descriptor for the key guardrail resolves', () => {
+    const d = HOPE_SETTINGS_REGISTRY.getOrThrow('models.guardrail.pii');
+    expect(d.globalOnly).toBe(true);
+    expect(d.failMode).toBe('closed');
+  });
+
+  // TASK-872 removed the `models.*` descriptor(s) for this key: no request
+  // path resolves it, so cataloguing it offered a SELECTION control with
+  // nothing on the other end. The task key itself is unchanged — it stays
+  // `AiRoutingPolicy` vocabulary with its own admin route and seed posture —
+  // so the assertion flips to the descriptor's ABSENCE.
+  // Here the evidence is direct: guardrail's `core/dependencies.py` resolves
+  // `TASK_KEY_GUARDRAIL_PII` ("guardrail.pii") and nothing anywhere resolves
+  // the `.spans` variant.
+  it('catalogue NO descriptor for guardrail.pii.spans — nothing resolves it', () => {
+    expect(HOPE_SETTINGS_REGISTRY.has('models.guardrail.pii.spans')).toBe(false);
   });
 });

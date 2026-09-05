@@ -168,7 +168,11 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // Identity resolves the tenant's own `TenantIdentityProvider.encryptedSecretRef`.
     'api.gatewayKey': 'API_GATEWAY_KEY',
     'text.serviceToken': 'TEXT_SERVICE_TOKEN',
-    'nlp.serviceToken': 'NLP_SERVICE_TOKEN',
+    // `nlp.serviceToken` was here until TASK-872: no gateway call site asks for
+    // `NLP_SERVICE_TOKEN` and no `apps/nlp` pydantic field carries it, so the
+    // descriptor seeded a Vault path nothing reads. Its `text` / `tts` siblings
+    // stay — `vault-kv-coverage.test.ts` proved both names are still fetched
+    // through `SecretsService`.
     'guardrail.serviceToken': 'GUARDRAIL_SERVICE_TOKEN',
     'harness.serviceToken': 'HARNESS_SERVICE_TOKEN',
     'tts.serviceToken': 'TTS_SERVICE_TOKEN',
@@ -249,16 +253,19 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'rateLimit.windowMs': 'RATE_LIMIT_WINDOW_MS',
     'registration.selfSignupEnabled': 'REGISTRATION_SELF_SIGNUP_ENABLED',
     'workflowExposure.enabled': 'WORKFLOW_EXPOSURE_ENABLED',
-    'entitlements.enabledDefault': 'ENTITLEMENTS_ENABLED_DEFAULT',
-    // Seed-time-only default for the metering reconcile
-    // sweep, mirroring entitlements.enabledDefault exactly (see
-    // metering.descriptors.ts).
-    'metering.reconcile.enabledDefault': 'METERING_RECONCILE_ENABLED_DEFAULT',
+    // `entitlements.enabledDefault` and `metering.reconcile.enabledDefault`
+    // were here — the two seed-time-only companions. TASK-872 deleted both
+    // descriptors: `seed/15-entitlements.ts` reads the host env directly, so
+    // the variables still work as overrides and stay in `turbo.json#globalEnv`
+    // via that read, but nothing running reads a descriptor for them.
     // NOTE: `TENANT_IDP_ENABLED` is deliberately ABSENT — it has no reader
     // anywhere in the repo despite an `.env.sample` comment claiming one.
     // See `feature-flags.descriptors.ts` for the evidence.
     'semanticEndpoint.enabled': 'SEMANTIC_ENDPOINT_ENABLED',
-    'guardrailV2.groundedness.enabled': 'GUARDRAIL_V2_GROUNDEDNESS_ENABLED',
+    // `guardrailV2.groundedness.enabled` was here. Removed by TASK-872: no
+    // pydantic field carries `GUARDRAIL_V2_GROUNDEDNESS_ENABLED` any more (the
+    // live gate is `guardrail.groundedness.enabled`, tier `global-kv`, served
+    // on the pull route), so this line asserted a name with no reader.
     'liveDoc.groundedness.enabled': 'LIVE_DOC_GROUNDEDNESS_ENABLED',
     // `text.externalGuardrail.enabled` is no longer env-tier: lane B
     // deleted `TEXT_EXTERNAL_GUARDRAIL_ENABLED` and made it a `global-kv`

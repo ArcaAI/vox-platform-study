@@ -26,29 +26,20 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     description: 'Master kill-switch for quota/feature enforcement (ships OFF; every check is a no-op until enabled).',
     default: false,
   },
-  ...(
-    [
-      ['featureDnaReports', 'DNA reports', 'Access to DNA writing-style reports.'],
-      ['featureVoiceEnrollment', 'Voice enrollment', 'Access to speaker voice enrollment.'],
-      ['featureMonitoringAccess', 'Monitoring access', 'Access to the monitoring surfaces.'],
-    ] as const
-  ).map<SettingDescriptor>(([key, label, description]) => ({
-    key: `entitlements.${key}`,
-    tier: 'entitlement',
-    dataType: 'boolean',
-    sensitivity: 'internal',
-    // Plan-level default is platform-wide; a per-tenant override is still tenant-scoped.
-    maxScope: 'tenant',
-    editableBy: 'PlanEntitlement',
-    globalOnly: true,
-    // Entitlements are a CEILING, not a cascade level: an absent
-    // plan flag means "no grant", which the enforcement path already reads as
-    // the descriptor default. Not a selection, so not fail-closed.
-    failMode: 'open-to-default',
-    category: 'Plan',
-    label,
-    description,
-  })),
+  /*
+   * `entitlements.featureDnaReports`, `.featureVoiceEnrollment` and
+   * `.featureMonitoringAccess` were generated here from a three-row table.
+   * TASK-872 removed them.
+   *
+   * The FLAGS are alive and unaffected — they are real `PlanEntitlement` /
+   * `TenantEntitlement` columns, resolved by `resolve-entitlements.ts` and
+   * edited through the entitlements admin surface. What was dead was their
+   * presence in THIS registry: the `entitlement` tier has no resolution lane
+   * (`EffectiveSettingsService` throws for it) and no write lane, so the three
+   * descriptors could only ever appear in the catalog listing as controls that
+   * answer nothing. Cataloguing a plan ceiling as a setting also blurs the rule
+   * that entitlements BOUND what a tenant may set and never supply a value.
+   */
   /*
    * Declared separately from the three above, not folded into the
    * `.map`, because ONE field differs and that field is the whole point.
@@ -79,34 +70,16 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     default: false,
   },
   /*
-   * (D2, tighten-only) — the guardrail model-selection
-   * entitlement ceiling. `failMode: 'closed'` for the same reason as
-   * `featurePlatformDefaultCredential` above: this decides whether a tenant
-   * may pick its OWN safety-plane model rather than inheriting the SYSTEM
-   * default, so an unresolved value must raise, never silently grant.
+   * `entitlements.featureGuardrailModelSelection` was declared here (D2,
+   * tighten-only) as a CATALOGUED-BUT-NOT-ENFORCED ceiling. TASK-872 removed
+   * the descriptor.
    *
-   * CATALOGUED, NOT YET ENFORCED. `AiTaskDefaultService.upsertRow` enforces
-   * only the platform-approved-list half of D2's floor today (a `guardrail.*`
-   * binding must name a SYSTEM-tenant `AiModel` row); it does not yet gate on
-   * this entitlement. Wiring it requires a `PlanEntitlement`/
-   * `TenantEntitlement` column addition (`packages/database` migration +
-   * `resolve-entitlements.ts`/`entitlements.constants.ts` + the
-   * `plan-matrix-parity.test.ts` seed/constant pair), which is outside this
-   * ticket's file scope
+   * Nothing read it. Enforcement of D2's floor is the platform-approved-list
+   * half in `AiTaskDefaultService.upsertRow` (a `guardrail.*` binding must name
+   * a SYSTEM-tenant `AiModel` row), which does not consult this key; wiring the
+   * entitlement half needs a `PlanEntitlement` / `TenantEntitlement` COLUMN
+   * that does not exist. A descriptor for a column that has not been added is a
+   * promise the registry cannot keep — the intent belongs in the ticket that
+   * adds the column, not in the live catalog.
    */
-  {
-    key: 'entitlements.featureGuardrailModelSelection',
-    tier: 'entitlement',
-    dataType: 'boolean',
-    sensitivity: 'internal',
-    maxScope: 'tenant',
-    editableBy: 'PlanEntitlement',
-    globalOnly: true,
-    failMode: 'closed',
-    category: 'Plan',
-    label: 'Guardrail model selection',
-    description:
-      'Whether the tenant may select its own guardrail (safety-plane) model from the platform-approved catalog, instead of inheriting the SYSTEM default. Granted per tenant, never by plan tier. NOT YET ENFORCED — pending DB wiring.',
-    default: false,
-  },
 ];

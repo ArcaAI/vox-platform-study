@@ -171,7 +171,9 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
       'models.guardrail.safety',
       'models.guardrail.groundedness',
       'models.nlp.ner',
-      'models.nlp.classification',
+      // `models.nlp.classification` was in this list until TASK-872 removed the
+      // descriptor — the seed calls its SYSTEM election "an explicitly DISABLED
+      // placeholder … (fails closed)", so no route resolves it.
       'models.nlp.diagnosis',
       'models.text.live',
       'models.text.finalize',

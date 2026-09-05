@@ -81,9 +81,14 @@ describe('EffectiveSettingsService', () => {
   // plan feature-flag matrix). `entitlements.enabled` USED to land here too,
   // because no global-kv lane existed; it now resolves (see the global-kv
   // describe block below).
+  // Specimen changed in TASK-872: `entitlements.featureDnaReports` was one of
+  // the three plan feature-flag descriptors removed there.
+  // `entitlements.featurePlatformDefaultCredential` is the surviving
+  // `entitlement`-tier key and reaches the same fallthrough — the tier has no
+  // lane at all, so `failMode` never enters into it.
   it('throws for a non-secret key whose tier has no registered resolver', async () => {
     const svc = serviceWith(resolved());
-    await expect(svc.resolveEffective('entitlements.featureDnaReports', CTX)).rejects.toThrow(/no effective resolver/i);
+    await expect(svc.resolveEffective('entitlements.featurePlatformDefaultCredential', CTX)).rejects.toThrow(/no effective resolver/i);
   });
 
   // The global-kv override lane. Before this,
