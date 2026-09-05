@@ -372,12 +372,6 @@ class ApiClient:
                 and the ``overridesSource`` provenance field is gone from the response.
                 The parameter is kept because the gateway route still accepts it.
 
-                when task_key is supplied the gateway resolves
-                ``textProvider``/``textModel`` from the ``AiTaskDefault`` row for THAT key
-                (tenant → SYSTEM) instead of serving the ``HarnessPolicy`` columns. This is
-                what makes a workflow node's ``config.taskKey`` actually select a model;
-                without it every node resolved the same one. Omitted ⇒ unchanged behaviour.
-
                 TASK-876: with a ``task_key`` the gateway overlays the tenant's ASSIGNED
                 TEXT_GENERATION agent (`department -> tenant -> SYSTEM`) — the key no longer
                 selects a model of its own, and the former ``model_slug`` (the node's

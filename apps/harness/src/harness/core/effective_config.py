@@ -105,7 +105,7 @@ class EffectiveConfigSnapshot:
         """Model slug → where that model's weights come from (F-16).
 
         The gateway serves `modelWeights[<slug>] = {sourceUri, localPath,
-        checksum}` for the models this service's `AiTaskDefault` rows select.
+        checksum}` for the models this service's `AiRoutingPolicy` rows select.
         `models/source_resolver.py` was coded against this block before it
         existed on either side of the wire; this accessor is the Python half.
 

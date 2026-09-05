@@ -228,9 +228,9 @@ class TestTextGenerate:
         assert captured["provider"] == "lm-studio"
         assert captured["model"] == "some-model"
         assert "the source text" in captured["prompt"]
-        # D-1: the task key is threaded to the gateway so the AiTaskDefault row
-        # for THAT key selects the model. Before it was validated and
-        # then dropped, so every node resolved the same model.
+        # D-1: the task key is threaded to the gateway rather than validated and
+        # dropped. It names the capability; since TASK-876 the model itself comes
+        # from the tenant's assigned TEXT_GENERATION agent.
         assert captured_policy_args["task_key"] == "text.finalize"
 
     @pytest.mark.asyncio

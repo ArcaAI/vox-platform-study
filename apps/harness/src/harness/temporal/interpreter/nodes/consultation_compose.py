@@ -188,7 +188,7 @@ async def interpreter_consultation_synthesize(payload: NodeActivityInput) -> Nod
 
     Delegates verbatim to ``interpreter_text_generate`` (N-3 of the summarization palette) rather
     than carrying a second copy of the same flow. That activity already implements exactly what
-    row 7b asks for — config.taskKey → get_policy → tenant→SYSTEM AiTaskDefault
+    row 7b asks for — config.taskKey → get_policy → the assigned ``TEXT_GENERATION`` agent's
     provider/model selection → fail-closed PHI egress screen → direct ``TextClient`` call — and
     it is generic over ``bound_inputs``, so it composes with this palette's upstream nodes
     unchanged. Passing ``payload`` straight through keeps the trajectory step, the node id and
