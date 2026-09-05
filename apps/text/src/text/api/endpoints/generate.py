@@ -690,6 +690,15 @@ async def generate(
         latency_ms = int((time.monotonic() - start) * 1000)
         prompt_tokens, completion_tokens, total_tokens = _extract_usage(gen_result)
 
+        # The provider's work is done: hand its concurrency permit back BEFORE
+        # the post-receive gate below. That gate is a network call with the
+        # guardrail's own retry ceiling, and holding a provider slot across it
+        # would let a guardrail outage shrink provider capacity for every other
+        # request — the same starvation C-5 closes across retry backoff.
+        if holds_permit:
+            _drop_permit()
+            holds_permit = False
+
         # Post-receive guardrail gate (TASK-871): the completion is screened
         # BEFORE the task is marked completed, audited, returned or cached, so
         # a rejected completion never reaches a persisted or returned state.
