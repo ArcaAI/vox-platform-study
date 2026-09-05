@@ -44,7 +44,12 @@ def _wire_863(**overrides: Any) -> dict[str, Any]:
         "compiledConfig": {
             "task": "TEXT_GENERATION",
             "service": "llm",
-            "model": {"id": "m-1", "slug": "gpt-x", "provider": "openai", "taskType": "text-generation"},
+            "model": {
+                "id": "m-1",
+                "slug": "gpt-x",
+                "provider": "openai",
+                "taskType": "text-generation",
+            },
             "fallbacks": [
                 {"priority": 1, "id": "m-3", "slug": "qwen-small", "provider": None},
                 {"priority": 0, "id": "m-2", "slug": "llama-local", "provider": None},
@@ -104,13 +109,20 @@ class TestResolvedAgentMirror:
         assert resolved.fallbacks[0].local_path == "/models/llama-local"
         assert resolved.fallbacks[0].source_uri == "meta-llama/Llama-3.2-3B"
         assert resolved.fallbacks[1].source_uri is None
-        assert resolved.instruction == {"systemPrompt": "Raw {{name}}", "variables": {"name": "Raw"}}
+        assert resolved.instruction == {
+            "systemPrompt": "Raw {{name}}",
+            "variables": {"name": "Raw"},
+        }
         assert resolved.resolved_prompt is not None
         assert resolved.resolved_prompt.content == "Resolved {{name}}"
         assert resolved.parameters == {"generation": {"temperature": 0.2}}
         assert resolved.input_schema == {"type": "object"}
         assert resolved.output_schema == {"type": "string"}
-        assert resolved.provider_override == {"provider": "openai", "api_key": "k", "funding": "tenant"}
+        assert resolved.provider_override == {
+            "provider": "openai",
+            "api_key": "k",
+            "funding": "tenant",
+        }
         assert resolved.funding_tier == "tenant"
         assert resolved.tenant_id == _TENANT
         assert resolved.source == "tenant"
@@ -232,7 +244,11 @@ class TestVersionPin:
         seen: list[ResolvedAgent] = []
 
         async def _generate(
-            _payload: NodeActivityInput, resolved: ResolvedAgent, _started: Any
+            _payload: NodeActivityInput,
+            resolved: ResolvedAgent,
+            _started: Any,
+            fallback: Any = None,
+            primary: Any = None,
         ) -> NodeActivityResult:
             seen.append(resolved)
             return NodeActivityResult(status="SUCCEEDED", output={"ok": True})
@@ -242,7 +258,9 @@ class TestVersionPin:
         pinned = await core.interpreter_core_agent(
             _payload(agentRef={"slug": "discharge-writer", "versionNumber": 3})
         )
-        unpinned = await core.interpreter_core_agent(_payload(agentRef={"slug": "discharge-writer"}))
+        unpinned = await core.interpreter_core_agent(
+            _payload(agentRef={"slug": "discharge-writer"})
+        )
 
         assert pinned.status == "SUCCEEDED" and unpinned.status == "SUCCEEDED"
         assert [r.version_number for r in seen] == [3, 3]

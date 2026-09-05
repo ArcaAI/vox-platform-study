@@ -367,6 +367,13 @@ class HarnessPolicy(BaseModel):
     # SYSTEM-shared registry rows the workflow resolves against (empty ⇒ nothing to call).
     mcp_tools_enabled: bool | None = None
     mcp_servers: list[McpServerConfig] = Field(default_factory=list)
+    # TASK-876 — the RESOLVED TEXT_GENERATION fallback chain, verbatim as the gateway's worker
+    # policy route ships it (the same `textFallback` shape `/internal/agents/resolve` carries).
+    # Carried RAW so this model stays a snapshot and the walk lives in ONE place
+    # (`interpreter/nodes/_text_fallback.py`), shared with the `core.agent` activity.
+    # ADDITIVE-OPTIONAL: `None` ⇒ nothing to switch to, i.e. exactly the pre-876 behaviour, so an
+    # old history still decodes and replays.
+    text_fallback: dict[str, Any] | None = None
     version: int = 0
 
     @classmethod
@@ -428,6 +435,11 @@ class HarnessPolicy(BaseModel):
                 for s in (data.get("mcpServers") or [])
                 if isinstance(s, dict)
             ],
+            # the resolved fallback chain the worker policy route composes.
+            # Absent (an older gateway, or nothing to switch to) ⇒ None ⇒ primary only.
+            text_fallback=(
+                data.get("textFallback") if isinstance(data.get("textFallback"), dict) else None
+            ),
             version=_get("version", defaults.version),
         )
 
@@ -646,6 +658,12 @@ class GenerateInput(BaseModel):
     hyperparameters: dict[str, Any] = Field(default_factory=dict)
     provider: str | None = None
     model: str | None = None
+    # TASK-876 — the run-effective TEXT fallback chain, snapshotted from the policy at workflow
+    # start (like ``phi_enabled``) so the activity's walk is deterministic across replay. The
+    # workflow reads it from deterministic workflow state and never resolves anything itself.
+    # ADDITIVE-OPTIONAL with a safe default: an old input deserializes it to None ⇒ the activity
+    # runs the primary alone, byte-identical to before ⇒ no new workflow command, replay-safe.
+    text_fallback: dict[str, Any] | None = None
     # The run-effective PHI egress policy, snapshotted from the harness
     # policy at workflow start so the guard in the ``generate`` activity is
     # deterministic across replay. Defaults mirror the fail-closed code default, so

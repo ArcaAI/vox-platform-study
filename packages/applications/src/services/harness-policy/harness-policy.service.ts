@@ -15,8 +15,11 @@ import {
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
+import { NotFoundException } from '@nestjs/common';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { TaskSelectionVetoedError } from '../ai-routing-policy/task-selection-veto';
+import { TextAgentResolverService } from '../agent/text-agent-resolver.service';
+import type { ResolvedTextFallback } from '../agent/text-generation-spec';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { McpServerDtoMapper } from '../mcp-server/mcp-server.dto.mapper';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
@@ -25,61 +28,18 @@ import type { McpServerResponse } from '../mcp-server/dto';
 import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
 
 /**
- * the TEXT routing tasks the loop discriminates on:
- *  - `live` → the live-documentation delta summariser (`text.live`).
- *  - `finalize` → the final/comprehensive summary generator (`text.finalize`).
- *  - `test` → the tenant-admin prompt-template test bench (`text.test`,
- * — falls back to `finalize` at the CALLER when unresolved.
- * `resolveTextSelection` consults the matching `AiTaskDefault` key FIRST, then
- * falls back to the legacy `HarnessPolicy.textProvider/textModel` cascade.
+ * The TEXT routing tasks callers name — INFORMATIONAL since TASK-876:
+ *  - `live` → the live-documentation delta summariser.
+ *  - `finalize` → the final/comprehensive summary generator.
+ *  - `test` → the tenant-admin prompt-template test bench.
+ *
+ * The task no longer SELECTS a model. Selection is the tenant's assigned TEXT_GENERATION
+ * agent (`department → tenant → SYSTEM`, one `AgentAssignment` per scope — the assignment has
+ * no role dimension), resolved through `TextAgentResolverService`. A workflow that wants a
+ * different model per node binds a `core.agent` with an explicit `agentRef`. The parameter is
+ * kept because every caller stamps it as telemetry (`task_key` on the generation stats).
  */
 export type TextRoutingTask = 'live' | 'finalize' | 'test';
-
-/**
- *  — a workflow node's OWN model selection, read off its `config.llmBinding`.
- *
- * One field, because one field is the whole of what `AiTaskDefault` transfers: its `taskKey` is
- * already a node config key, its `configJson` has no reader in either runtime, and the
- * `{provider, model}` pair a caller finally sends to `apps/text` is DERIVED from the `AiModel`
- * row the slug names. See the ADDENDUM 2 block in
- * `@arcaai/workflow-contract`'s `node-config-schemas.ts` for why each richer field would be
- * either a hardcoded literal or a second source for something already modelled.
- */
-export interface NodeLlmBinding {
-  readonly modelSlug?: string | null;
-}
-
-const TEXT_TASK_KEY: Record<TextRoutingTask, string> = {
-  live: 'text.live',
-  finalize: 'text.finalize',
-  test: 'text.test',
-};
-
-/**
- * The tasks that HAVE a fallback tier. `test` deliberately does not: the
- * prompt-template test bench is authoring, not clinical documentation, so a
- * failed test surfaces rather than silently re-running on another model.
- */
-type TextFallbackTask = Exclude<TextRoutingTask, 'test'>;
-
-/**
- * The per-tenant, opt-in text fallback selection keys. Tenant-admin
- * configurable (the `text.` prefix is NOT in `SUPER_ADMIN_ONLY_TASK_PREFIXES`);
- * `resolveTextFallbackSelection` reads these fail-OPEN (no row ⇒ null ⇒ no
- * fallback runs — the same effect as the removed `TEXT_FALLBACK_*` env being
- * unset). No SYSTEM default is seeded.
- *
- * this map used to carry a third entry, `text.test.fallback`,
- * purely to satisfy a `Record<TextRoutingTask, string>` exhaustiveness check —
- * an unregistered, unseeded literal that was not in `AI_TASK_KEYS` and that no
- * caller could reach. Narrowing the key type to {@link TextFallbackTask} deletes
- * the literal instead of documenting it, so the map cannot name an unregistered
- * key again.
- */
-const TEXT_FALLBACK_TASK_KEY: Record<TextFallbackTask, string> = {
-  live: 'text.live.fallback',
-  finalize: 'text.finalize.fallback',
-};
 
 /**
  * the SYSTEM-only AiTaskDefault key that selects the harness
@@ -291,9 +251,9 @@ export class HarnessPolicyService {
     // Optional so fixtures keep their 4-arg construction and
     // non-Vault deployments degrade to plaintext WORM change rows.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // optional so existing fixtures keep their 4/5-arg
-    // construction; when absent, `resolveTextSelection` uses only the legacy
-    // HarnessPolicy cascade (the AiTaskDefault-first path is a no-op).
+    // optional so existing fixtures keep their 4/5-arg construction. Since TASK-876 it
+    // serves ONLY the SYSTEM-only `harness.judge` selection — text selection is the assigned
+    // TEXT_GENERATION agent (`textAgents`, below).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
     // The SYSTEM-shared MCP registry the worker resolves tool
     // calls against. Optional + trailing so existing fixtures keep their arity;
@@ -302,6 +262,10 @@ export class HarnessPolicyService {
     // Settings-registry read facade for the per-run token budget.
     // Optional + trailing; absent ⇒ null budget ⇒ the harness stays unbounded.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // TASK-876 — the ONE text selection seam: the tenant's assigned TEXT_GENERATION agent.
+    // Optional + trailing so existing fixtures keep their arity; absent ⇒ `resolveTextSelection`
+    // FAILS CLOSED (selection is `failMode: closed`), never a substituted model.
+    @Optional() @Inject(TextAgentResolverService) private readonly textAgents?: TextAgentResolverService,
   ) {}
 
   /**
@@ -407,37 +371,38 @@ export class HarnessPolicyService {
    * ticket's to edit. Removing the query param is a follow-on for whoever owns
    * that module; nothing reads it here.
    *
-   * When `opts.taskKey` is supplied the `AiTaskDefault` row for
-   * that key — resolved tenant → SYSTEM by `AiTaskDefaultService.getEffective` —
-   * overlays `textProvider`/`textModel` on whichever policy row wins. Same
-   * best-effort contract as the judge overlay: an unresolved key leaves the
-   * policy columns in place. Without a taskKey the result is byte-identical to
-   * the prior behaviour.
+   * TASK-876: the tenant's ASSIGNED TEXT_GENERATION agent (`resolveTextSelection`) overlays
+   * `textProvider`/`textModel` on whichever policy row wins — the Python interpreter nodes
+   * (`generate.text`, `consultation.realtimeSummary`, the Lane N judgements) read their selection
+   * off exactly these two fields.
+   *
+   * The overlay is UNCONDITIONAL. It used to be gated on `opts.taskKey`, and that gate was a
+   * live selection hole: `AgentAssignment`'s key is `(scope, scopeId, task)` — it carries NO role
+   * dimension — so a task key never chose WHICH agent serves, while the DURABLE lane
+   * (`activities.fetch_policy` → `workflows.py`, which sends no task key) kept reading the
+   * RETIRED `HarnessPolicy.textProvider/textModel` columns straight into `GenerateInput`.
+   *
+   * FAIL-CLOSED: when no agent is assigned at any tier both fields are NULLED and the miss is
+   * logged as a configuration error, so the node degrades `no_text_selection` — the legacy
+   * columns are never served as a selection again.
+   *
+   * EVERY field of `_opts` is now inert — hence the underscore. `consultationId` stopped
+   * selecting with the retired per-agent overlay, `taskKey` with the gate above, and `modelSlug`
+   * with the node `llmBinding`. The parameter survives because
+   * `harness-internal.controller.ts` threads all three from a wire route this ticket does not
+   * own; removing the query parameters is a follow-on for that module.
    */
   async getEffectivePolicy(
     tenantId?: string,
-    opts?: { consultationId?: string; taskKey?: string; modelSlug?: string },
+    /** @deprecated TASK-876 — every field is accepted for the wire and consulted by nothing. */
+    _opts?: { consultationId?: string; taskKey?: string; modelSlug?: string },
   ): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
-    // the interpreter passes the executing node's `llmBinding.modelSlug` alongside its
-    // `taskKey`, so the DURABLE lane resolves through the same two-tier precedence the TS callers
-    // do — node binding (fail-CLOSED) first, then the task key. This is the whole of "the graph
-    // carries selection" on the Python side: `nodes/*.py` already read `config.taskKey`, and now
-    // read `config.llmBinding.modelSlug` beside it.
-    //
-    // D-1: the task key SELECTS the model. Resolved once and overlaid on every
-    // return path below, exactly like `judge` — null ⇒ keep the policy columns.
-    const taskSelection = opts?.modelSlug
-      ? await this.resolveBoundNodeSelection(opts.modelSlug, tid)
-      : opts?.taskKey
-        ? await this.resolveTextSelectionForKey(opts.taskKey, tid)
-        : null;
+    const taskSelection = await this.resolveTextSelectionOrNull(tid);
     const applyTaskSelection = (resp: HarnessPolicyResponse): HarnessPolicyResponse => {
-      if (taskSelection) {
-        resp.textProvider = taskSelection.provider;
-        resp.textModel = taskSelection.model;
-      }
+      resp.textProvider = taskSelection?.provider ?? null;
+      resp.textModel = taskSelection?.model ?? null;
       return resp;
     };
 
@@ -530,158 +495,147 @@ export class HarnessPolicyService {
   }
 
   /**
-   * Resolve ONE `AiTaskDefault` task key into a `{ provider, model }` pair,
-   * tenant → SYSTEM (the cascade `AiTaskDefaultService.getEffective` owns).
+   * TASK-876 — the single fail-closed text-selection seam every TS `/api/v1/generate` caller
+   * funnels through (the live loop, the finalize/pre-summary processors, the DNA processor,
+   * the text proxy and the v1 compat controller).
    *
-   * The single place the task key is turned into a model. Both the fail-closed
-   * seam (`resolveTextSelection`), the fail-open fallback seam
-   * (`resolveTextFallbackSelection`) and the D-1 `getEffectivePolicy` overlay
-   * funnel through it, so the `azure → azure-openai` runtime alias and the
-   * "an enabled model needs BOTH provider and sourceUri" rule cannot drift
-   * between them.
+   * ONE tier: the tenant's assigned TEXT_GENERATION agent, `department → tenant → SYSTEM`,
+   * through `TextAgentResolverService` (which also owns the fallback chain and per-row derived
+   * funding). Returns the resolved primary's `{ provider, model }` — the provider as apps/text
+   * registers it (`azure` → `azure-openai`) and the provider-native model id (`sourceUri`).
    *
-   * Best-effort by contract: returns `null` when the AiTaskDefault service is
-   * un-wired, the key resolves to no enabled model, or the lookup throws. Each
-   * caller decides what `null` means (throw / no fallback / keep the policy
-   * columns) — this method never decides for them.
-   */
-  private async resolveTextSelectionForKey(taskKey: string, tenantId?: string): Promise<{ provider: string; model: string } | null> {
-    if (!this.aiTaskDefaultService) return null;
-    try {
-      const eff = await this.aiTaskDefaultService.getEffective(taskKey, tenantId);
-      const model = eff.model;
-      if (model?.provider && model.sourceUri) {
-        // Catalog seeds `azure`; the text service registers `azure-openai`.
-        return { provider: model.provider === 'azure' ? 'azure-openai' : model.provider, model: model.sourceUri };
-      }
-    } catch (error) {
-      // A VETO propagates. Every seam below this one reads `null` as "no
-      // opinion here, apply your own fallback", which is exactly the answer a
-      // tenant that DISABLED its own selection must not get (TASK-872): it
-      // would substitute the platform's model for one the tenant refused. The
-      // other failure modes keep degrading, because they are genuinely
-      // "the lookup did not answer" rather than "the answer is no".
-      if (error instanceof TaskSelectionVetoedError) throw error;
-      this.logger.warn({
-        message: `AiTaskDefault lookup failed for '${taskKey}' — the caller's own fallback applies`,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return null;
-  }
-
-  /**
-   *  — resolve a workflow node's OWN `llmBinding.modelSlug`.
+   * `departmentId` is what makes the DEPARTMENT tier of that cascade reachable at all: this seam
+   * used to call `resolve({ tenantId })` unconditionally, so a department-scoped `AgentAssignment`
+   * could never win. Callers that hold the consultation pass its department; the rest pass null,
+   * which starts the cascade at the tenant tier. Null is the honest answer — never a fabricated
+   * department.
    *
-   * The successor to `AiTaskDefault` for the one thing a task key cannot say: WHICH model THIS
-   * node generates with. A tenant running both an `agent.summarization` and an
-   * `agent.discharge_summary` node has one `text.finalize` row between them, so before this the
-   * two were pinned to the same model with no way to differ.
+   * Removed here: the node `llmBinding` (precedence 0), the `text.*` `AiTaskDefault` keys
+   * (precedence 1) and the `HarnessPolicy.textProvider/textModel` columns (precedence 2). The
+   * routing-policy read does NOT survive as a terminal fallback: the seed ships a SYSTEM
+   * TENANT-scope TEXT_GENERATION assignment (`platform-summarization`), so "no agent anywhere"
+   * is a configuration error, reported as such.
    *
-   * Shares {@link IAiTaskDefaultService.resolveModelBySlug} with the task tier, so the
-   * `[tenant, SYSTEM]` preference, the ENABLED pin and the `azure -> azure-openai` runtime alias
-   * cannot drift between the two tiers — the same reason {@link resolveTextSelectionForKey}
-   * exists.
-   *
-   * FAIL-CLOSED, and that is the difference from every other seam on this class. Selection is
-   * `failMode: closed` (`09-infrastructure-devops.md` §Configuration Tiers): a slug that resolves
-   * to nothing, or a lookup that faults, THROWS. It must never fall through to the tenant's
-   * `taskKey` default, because that would keep an explicitly-bound node generating on a
-   * different model with nothing anywhere saying so — the silent-substitution class of failure
-   * the 2026-08-25 outage belongs to. An ABSENT binding is a different statement ("this node has
-   * no opinion") and is handled by the caller, which simply does not call this.
-   *
-   * Funding is NOT stamped here and cannot be: the binding names a MODEL, while funding is
-   * derived from whose `AiProviderConnection` row supplies the CREDENTIAL
-   * (`AiProviderConnectionService.fundingOf`), downstream and unchanged.
-   */
-  private async resolveBoundNodeSelection(modelSlug: string, tenantId?: string): Promise<{ provider: string; model: string }> {
-    if (!this.aiTaskDefaultService) {
-      throw new BadRequestException(
-        `Workflow node model binding '${modelSlug}' cannot be resolved: the AI task-default service is not wired in this composition.`,
-      );
-    }
-    let model: { provider?: string | null; sourceUri?: string | null } | null;
-    try {
-      model = await this.aiTaskDefaultService.resolveModelBySlug(modelSlug, tenantId);
-    } catch (error) {
-      // A FAULT is not "no opinion". Re-raised, never swallowed into the task tier.
-      throw new BadRequestException(
-        `Workflow node model binding '${modelSlug}' could not be resolved: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (!model?.provider || !model.sourceUri) {
-      throw new BadRequestException(
-        `Workflow node model binding '${modelSlug}' does not resolve to an ENABLED model in this tenant or the platform registry. ` +
-          'Bind the node to a registered model, or remove the binding to use the tenant AiTaskDefault for its task key.',
-      );
-    }
-    // Catalog seeds `azure`; the text service registers `azure-openai` (mirrors
-    // `resolveTextSelectionForKey`, deliberately the same line).
-    return { provider: model.provider === 'azure' ? 'azure-openai' : model.provider, model: model.sourceUri };
-  }
-
-  /**
-   * The single fail-closed text-selection seam every TS
-   * `/api/v1/generate` caller funnels through. Resolves the effective policy
-   * (tenant own → SYSTEM default → code default, with the B1 field-level
-   * fallthrough) and returns a GUARANTEED-non-null `{ provider, model }`.
-   *
-   * Throws when the cascade yields no provider/model so the admin-managed
-   * default can never be silently bypassed (the text service itself also
-   * fail-closes with a 422).
-   *
-   * Model-routing precedence: the
-   * `AiTaskDefault` key for the task (`text.live` / `text.finalize`) is consulted
-   * FIRST. When it resolves to an ENABLED model, its `{ provider, sourceUri }`
-   * wins (sourceUri is the provider-native identifier actually sent to the text
-   * service). The legacy `HarnessPolicy.textProvider/textModel` cascade is the
-   * documented fallback for tenants that have not migrated to AiTaskDefault. The
-   * text service stays a stateless gateway; the model resolved here is authority.
+   * Throws (fail-closed) when nothing is assigned or the resolver is not wired — selection is
+   * `failMode: closed`; a tenant veto of the primary provider propagates unchanged.
    */
   async resolveTextSelection(
     tenantId?: string,
     task: TextRoutingTask = 'finalize',
-    binding?: NodeLlmBinding,
+    departmentId?: string | null,
   ): Promise<{ provider: string; model: string }> {
-    // precedence 0 — the NODE's own binding, when the caller carries one. It is not a
-    // "tier" in the widen-on-absence sense: a node that names a model has stated something no
-    // tenant-level row can, so it wins outright and fails closed. Absent ⇒ every line below runs
-    // byte-identically to before, which is what keeps this addition safe for the live loop.
-    if (binding?.modelSlug) return this.resolveBoundNodeSelection(binding.modelSlug, tenantId);
-
-    // Precedence 1 — AiTaskDefault (when wired), tenant → SYSTEM.
-    const selected = await this.resolveTextSelectionForKey(TEXT_TASK_KEY[task], tenantId);
-    if (selected) return selected;
-
-    // Precedence 2 — legacy HarnessPolicy.textProvider/textModel cascade.
-    const effective = await this.getEffectivePolicy(tenantId);
-    if (!effective.textProvider || !effective.textModel) {
+    const tid = tenantId ?? this.callerTenantId;
+    if (!tid) throw new BadRequestException('Tenant ID is required');
+    if (!this.textAgents) {
       throw new BadRequestException(
-        'No text-generation model is configured for this tenant. Configure the AiTaskDefault `text.finalize`/`text.live` key or set HarnessPolicy.textProvider/textModel on the tenant or the SYSTEM default.',
+        `Text selection for the '${task}' task cannot be resolved: the TEXT_GENERATION agent resolver is not wired in this composition.`,
       );
     }
-    return { provider: effective.textProvider, model: effective.textModel };
+    try {
+      const spec = await this.textAgents.resolve({ tenantId: tid, departmentId: departmentId ?? null });
+      return { provider: spec.primary.provider, model: spec.primary.model };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new BadRequestException(
+          'No TEXT_GENERATION agent is assigned for this tenant. Assign a published TEXT_GENERATION agent at TENANT or DEPARTMENT scope, or restore the SYSTEM platform default assignment.',
+        );
+      }
+      throw error;
+    }
   }
 
   /**
-   * Resolve the tenant's per-tenant text FALLBACK selection for a task
-   * (`text.<task>.fallback`) via `AiTaskDefault`. Shares
-   * {@link resolveTextSelectionForKey} with the primary seam, so the
-   * provider/model derivation (the model's `sourceUri` is the provider-native id
-   * the text service expects; `azure` normalises to `azure-openai`) cannot drift
-   * between the two tiers.
-   *
-   * Fail-OPEN by contract: `null` — never a throw — when the AiTaskDefault
-   * service is un-wired, the key resolves to no enabled model, or the lookup
-   * errors. A `null` means the caller runs no fallback (the same effect as the
-   * removed `TEXT_FALLBACK_*` env being unset). Fallback is per-tenant opt-in:
-   * there is NO SYSTEM default, so an un-configured tenant gets `null`.
-   *
-   * `task` excludes `'test'` — the test bench has no fallback tier (D-4).
+   * `resolveTextSelection` for the `getEffectivePolicy` overlay: `null` = nothing assigned, which
+   * NULLS both fields so the Python node degrades `no_text_selection`. Logged at ERROR — with no
+   * agent at the department, tenant OR SYSTEM tier the platform is misconfigured, and the one
+   * thing that must never happen instead is the retired `HarnessPolicy` columns passing through
+   * as a selection. A veto (or any non-`BadRequestException`) still propagates.
    */
-  async resolveTextFallbackSelection(tenantId?: string, task: TextFallbackTask = 'finalize'): Promise<{ provider: string; model: string } | null> {
-    return this.resolveTextSelectionForKey(TEXT_FALLBACK_TASK_KEY[task], tenantId);
+  private async resolveTextSelectionOrNull(tenantId: string): Promise<{ provider: string; model: string } | null> {
+    try {
+      // No department: this route is reached with a tenant and (optionally) a CONSULTATION id,
+      // and deriving the consultation's department here would mean a consultation read this
+      // service has no repository for. Null is honest — the cascade starts at the tenant tier —
+      // and it is never fabricated. Threading it is a follow-on for whoever gives this service
+      // the consultation read.
+      return await this.resolveTextSelection(tenantId, 'finalize', null);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        this.logger.error({
+          message: 'No assigned TEXT_GENERATION agent for the effective-policy overlay — text selection nulled (configuration error, fail closed)',
+          tenantId,
+          error: error.message,
+        });
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The tenant's text FALLBACK for a task — the FIRST candidate of the resolved agent's
+   * ordered chain (explicit fallback agent | the agent's own model chain, then the SYSTEM
+   * platform default), gated by the tenant's per-agent HA toggle
+   * (`parameters.fallback.autoSwitch`, ON by default — owner decision #4).
+   *
+   * Fail-OPEN by contract: `null` — never a throw — when the toggle is off, the chain is empty
+   * (the primary IS the platform default), the resolver is un-wired, or the lookup faults. A
+   * `null` means the caller runs no fallback. The per-tenant `text.*.fallback` AiTaskDefault
+   * keys are no longer read.
+   */
+  async resolveTextFallbackSelection(
+    tenantId?: string,
+    task: Exclude<TextRoutingTask, 'test'> = 'finalize',
+    departmentId?: string | null,
+  ): Promise<{ provider: string; model: string } | null> {
+    const tid = tenantId ?? this.callerTenantId;
+    if (!tid || !this.textAgents) return null;
+    try {
+      const spec = await this.textAgents.resolve({ tenantId: tid, departmentId: departmentId ?? null });
+      if (!spec.fallback.autoSwitch) return null;
+      const next = spec.fallback.chain[0];
+      return next ? { provider: next.provider, model: next.model } : null;
+    } catch (error) {
+      this.logger.warn({
+        message: `Text fallback resolution failed for the '${task}' task — no fallback runs`,
+        tenantId: tid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * TASK-876 — the RESOLVED TEXT_GENERATION fallback chain for the durable worker lane.
+   *
+   * The realtime lane and the harness `core.agent` activity already receive this block (on the
+   * spec and on `GET /internal/agents/resolve` respectively). The DURABLE documentation workflow
+   * received only `textProvider`/`textModel`, so a Text outage mid-run failed the run outright
+   * while every other text lane had platform HA. The internal policy route now ships it too, the
+   * workflow snapshots it as plain activity input, and the `generate` activity walks it.
+   *
+   * Deliberately NOT a field on `HarnessPolicyResponse`: that DTO is the PUBLIC admin-policy
+   * shape, and the chain is worker-plane data (a candidate carries a one-hop provider override).
+   * The `@ApiExcludeController()` internal route composes it onto its own answer instead.
+   *
+   * Fail-OPEN, exactly like `resolveTextFallbackSelection`: `null` when the toggle is off, the
+   * chain is empty, the resolver is un-wired or the lookup faults — the workflow then runs the
+   * primary alone, which is the behaviour it had before this block existed.
+   */
+  async resolveTextFallbackChain(tenantId?: string, departmentId?: string | null): Promise<ResolvedTextFallback | null> {
+    const tid = tenantId ?? this.callerTenantId;
+    if (!tid || !this.textAgents) return null;
+    try {
+      const spec = await this.textAgents.resolve({ tenantId: tid, departmentId: departmentId ?? null });
+      return spec.fallback.chain.length > 0 ? spec.fallback : null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Text fallback chain resolution failed for the worker policy read — the run keeps the primary alone',
+        tenantId: tid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   /** The SYSTEM-tenant GLOBAL-DEFAULT policy (platform editor reads this). */

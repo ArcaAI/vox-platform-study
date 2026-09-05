@@ -1,0 +1,415 @@
+"""TASK-876 — `core.agent` text generation falls back along the GATEWAY-RESOLVED chain.
+
+The resolve route (`GET /internal/agents/resolve`) answers a TEXT_GENERATION agent with a
+`textFallback` block: the agent's governance (`autoSwitch`, ON by default — owner decision #4,
+fallback is a platform HA capability) and the ORDERED chain the gateway already resolved (the
+explicit fallback agent | the agent's own model chain, then the SYSTEM platform default), each
+candidate carrying its provider, provider-native model id, resolved prompt, parameters and the
+funding tier DERIVED from the row that serves it. The activity walks that chain on a
+`TextServiceError` and never resolves anything itself — one resolution in the platform.
+
+Pinned here:
+
+1. The wire block parses with the contract defaults (absent ⇒ ON, threshold 2, empty chain).
+2. Primary failure + autoSwitch ON ⇒ the next candidate is called with ITS provider / model /
+   instruction, and the output names the candidate that served (`agent`, `selectionSource`,
+   `fundingTier`) — metering and attribution follow the serving row.
+3. autoSwitch OFF ⇒ no switch: the node degrades `text_generate_failed` after ONE call.
+4. Every candidate failing ⇒ degraded, with every candidate tried once.
+5. The provider on the wire is what apps/text registers (`azure` → `azure-openai`).
+6. The retired `llmBinding` never travels: no node module reads a model slug off its config.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from harness.services.text_client import TextServiceError
+from harness.temporal.interpreter.models import NodeActivityInput
+from harness.temporal.interpreter.nodes import agent_catalogue as agent_catalogue_mod
+from harness.temporal.interpreter.nodes import consultation_realtime as realtime_mod
+from harness.temporal.interpreter.nodes import core
+from harness.temporal.interpreter.nodes import guards as guards_mod
+from harness.temporal.interpreter.nodes import text_generate as text_generate_mod
+from harness.temporal.interpreter.nodes._text_fallback import (
+    ActivityBudget,
+    chain_candidates,
+    read_text_fallback,
+    read_text_primary,
+    wire_provider,
+)
+
+_TENANT = "10000000-0000-0000-0000-000000000001"
+_SYSTEM = "00000000-0000-0000-0000-000000000000"
+_RUN = "018f3a7c-5b84-7d19-9e63-0a2c8d5f7b43"
+
+
+def _candidate(**over: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "kind": "platform-default",
+        "agent": {
+            "slug": "platform-summarization",
+            "versionId": "p1",
+            "versionNumber": 1,
+            "tenantId": _SYSTEM,
+            "source": "platform-default",
+        },
+        "modelSlug": "lms-gemma-4-e2b-it-qat",
+        "provider": "lm-studio",
+        "model": "gemma-4-e2b-it-qat",
+        "resolvedPrompt": {"source": "inline", "content": "PLATFORM {{name}}"},
+        "instruction": {"systemPrompt": "PLATFORM {{name}}", "variables": {"name": "default"}},
+        "parameters": {"generation": {"temperature": 0.2, "maxTokens": 2048}},
+        "tools": [],
+        "fundingTier": "platform",
+    }
+    base.update(over)
+    return base
+
+
+def _wire(
+    *, auto_switch: bool = True, chain: list[dict[str, Any]] | None = None, **over: Any
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "agentId": "agent-1",
+        "agentVersionId": "agent-1",
+        "slug": "clinic-summarizer",
+        "versionNumber": 3,
+        "task": "TEXT_GENERATION",
+        "tenantId": _TENANT,
+        "source": "tenant",
+        "compiledConfig": {
+            "task": "TEXT_GENERATION",
+            "service": "llm",
+            "model": {
+                "id": "m-1",
+                "slug": "az-gpt",
+                "provider": "azure",
+                "taskType": "TEXT_GENERATION",
+            },
+            "fallbacks": [],
+            "instruction": {"systemPrompt": "Raw {{name}}", "variables": {"name": "Raw"}},
+            "resolvedPrompt": {"source": "inline", "content": "Resolved {{name}}"},
+            "parameters": {"generation": {"temperature": 0.1, "maxTokens": 900}},
+            "inputSchema": {"type": "object"},
+            "outputSchema": {"type": "object"},
+            "tools": [],
+            "protocols": ["http"],
+        },
+        "models": [
+            {
+                "role": "primary",
+                "slug": "az-gpt",
+                "sourceUri": "gpt-5.4-mini",
+                "sourceRevision": None,
+                "localPath": None,
+                "checksum": None,
+                "format": "CLOUD",
+                "computeType": None,
+                "provider": "azure",
+                "tenantId": _TENANT,
+            }
+        ],
+        # NOT a hand-stamped funding tier: the gateway populates `ResolvedAgent.fundingTier`
+        # only when TASK-862's credential resolver returned a CLOUD override. The attribution
+        # the activity must use is the DERIVED one on `textPrimary`, so leave this null and let
+        # the test prove the primary is attributed from the wire's own derived value.
+        "textPrimary": _candidate(
+            kind="primary",
+            agent={
+                "slug": "clinic-summarizer",
+                "versionId": "agent-1",
+                "versionNumber": 3,
+                "tenantId": _TENANT,
+                "source": "tenant",
+            },
+            modelSlug="az-gpt",
+            provider="azure-openai",
+            model="gpt-5.4-mini",
+            fundingTier="tenant",
+        ),
+        "textFallback": {
+            "autoSwitch": auto_switch,
+            "chain": [_candidate()] if chain is None else chain,
+        },
+    }
+    payload.update(over)
+    return payload
+
+
+def _payload(**config: Any) -> NodeActivityInput:
+    return NodeActivityInput(
+        node_id="agent1",
+        node_type="core.agent",
+        config=config or {"agentRef": {"slug": "clinic-summarizer"}},
+        tenant_id=_TENANT,
+        sandbox=False,
+        bound_inputs={"in": "Summarise this."},
+        run_payload={},
+        run_id=_RUN,
+    )
+
+
+class _StubApi:
+    def __init__(self, answer: dict[str, Any]) -> None:
+        self.answer = answer
+
+    async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
+        return self.answer
+
+    async def get_policy(
+        self, tenant_id: str, consultation_id: Any = None, task_key: Any = None
+    ) -> dict[str, Any]:
+        # PHI egress OFF keeps the test hermetic (no Presidio); the flags are all this activity reads here.
+        return {"phiEnabled": False, "phiFailClosed": True}
+
+
+class _Result:
+    def __init__(self, provider: str, model: str) -> None:
+        self.content = "generated"
+        self.provider = provider
+        self.model = model
+        self.usage = None
+
+
+class _StubText:
+    """Fails the providers in ``failing`` with a TextServiceError; records every call."""
+
+    def __init__(self, failing: set[str]) -> None:
+        self.failing = failing
+        self.calls: list[dict[str, Any]] = []
+
+    async def generate(self, **kwargs: Any) -> _Result:
+        self.calls.append(kwargs)
+        if kwargs["provider"] in self.failing:
+            raise TextServiceError(f"{kwargs['provider']} down")
+        return _Result(kwargs["provider"], kwargs["model"])
+
+
+@pytest.fixture
+def harness(monkeypatch: pytest.MonkeyPatch):
+    async def _noop(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(core, "record_and_flush", _noop)
+    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
+
+    def _install(answer: dict[str, Any], failing: set[str]) -> _StubText:
+        api = _StubApi(answer)
+        text = _StubText(failing)
+        monkeypatch.setattr(core, "_api_client", lambda _settings: api)
+        monkeypatch.setattr(core, "_text_client", lambda _settings: text)
+        return text
+
+    return _install
+
+
+class TestReadTextFallback:
+    def test_parses_the_wire_block(self) -> None:
+        block = read_text_fallback(_wire(auto_switch=False))
+        assert block.auto_switch is False
+        assert [c.agent.slug for c in block.chain] == ["platform-summarization"]
+        assert block.chain[0].provider == "lm-studio"
+        assert block.chain[0].model == "gemma-4-e2b-it-qat"
+        assert block.chain[0].funding_tier == "platform"
+        assert block.chain[0].resolved_prompt is not None
+        assert block.chain[0].resolved_prompt.content == "PLATFORM {{name}}"
+
+    def test_absent_block_reads_as_the_contract_defaults(self) -> None:
+        wire = _wire()
+        del wire["textFallback"]
+        block = read_text_fallback(wire)
+        assert block.auto_switch is True
+        assert block.chain == []
+
+    def test_a_malformed_block_reads_as_defaults_with_no_chain(self) -> None:
+        block = read_text_fallback(_wire(textFallback="nope"))
+        assert block.auto_switch is True and block.chain == []
+        block = read_text_fallback(
+            _wire(textFallback={"autoSwitch": True, "chain": ["junk", {"kind": "x"}]})
+        )
+        assert block.chain == []
+
+    def test_wire_provider_is_what_apps_text_registers(self) -> None:
+        assert wire_provider("azure") == "azure-openai"
+        assert wire_provider("lm-studio") == "lm-studio"
+        assert wire_provider(None) is None
+
+
+class TestFallbackOnPrimaryFailure:
+    @pytest.mark.asyncio
+    async def test_switches_to_the_next_candidate_and_attributes_the_serving_row(
+        self, harness
+    ) -> None:
+        text = harness(_wire(), failing={"azure-openai"})
+
+        result = await core.interpreter_core_agent(
+            _payload(
+                agentRef={"slug": "clinic-summarizer"},
+                overrides={"promptVariables": {"name": "Ada"}},
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        assert [c["provider"] for c in text.calls] == ["azure-openai", "lm-studio"]
+        # The fallback candidate runs on ITS model, ITS resolved prompt (node variables interpolated) and ITS parameters.
+        served = text.calls[1]
+        assert served["model"] == "gemma-4-e2b-it-qat"
+        assert served["system_prompt"] == "PLATFORM Ada"
+        assert served["temperature"] == 0.2 and served["max_tokens"] == 2048
+        # And the output names the row that served — metering follows it.
+        assert result.output is not None
+        assert result.output["agent"] == {"slug": "platform-summarization", "versionNumber": 1}
+        assert result.output["selectionSource"] == "agent-fallback"
+        assert result.output["fundingTier"] == "platform"
+
+    @pytest.mark.asyncio
+    async def test_the_primary_serves_when_it_works_and_is_attributed_as_the_agent(
+        self, harness
+    ) -> None:
+        text = harness(_wire(), failing=set())
+
+        result = await core.interpreter_core_agent(_payload())
+
+        assert result.status == "SUCCEEDED"
+        assert [c["provider"] for c in text.calls] == ["azure-openai"]
+        assert text.calls[0]["model"] == "gpt-5.4-mini"
+        assert result.output is not None
+        assert result.output["agent"] == {"slug": "clinic-summarizer", "versionNumber": 3}
+        assert result.output["selectionSource"] == "agent"
+        assert result.output["fundingTier"] == "tenant"
+
+    @pytest.mark.asyncio
+    async def test_the_primary_is_attributed_from_the_wire_derived_tier_not_the_agent_field(
+        self, harness
+    ) -> None:
+        """A SELF-HOSTED PLATFORM primary. `ResolvedAgent.fundingTier` is populated only for a
+        cloud BYO override, so it is absent here; the attribution must come from the DERIVED
+        `textPrimary.fundingTier`, or the same call meters `null` on the primary and
+        `"platform"` on its own fallback."""
+        wire = _wire()
+        wire["tenantId"] = _SYSTEM
+        wire["source"] = "platform-default"
+        wire["models"][0].update({"provider": "lm-studio", "sourceUri": "gemma-4-e2b-it-qat"})
+        wire["compiledConfig"]["model"]["provider"] = "lm-studio"
+        wire["textPrimary"] = _candidate(
+            kind="primary",
+            agent={
+                "slug": "clinic-summarizer",
+                "versionId": "agent-1",
+                "versionNumber": 3,
+                "tenantId": _SYSTEM,
+                "source": "platform-default",
+            },
+            fundingTier="platform",
+        )
+        assert "fundingTier" not in wire
+        text = harness(wire, failing=set())
+
+        result = await core.interpreter_core_agent(_payload())
+
+        assert result.status == "SUCCEEDED"
+        assert len(text.calls) == 1
+        assert result.output is not None
+        assert result.output["selectionSource"] == "agent"
+        assert result.output["fundingTier"] == "platform"
+
+    def test_read_text_primary_is_tolerant_of_an_older_answer(self) -> None:
+        assert read_text_primary(_wire()) is not None
+        wire = _wire()
+        del wire["textPrimary"]
+        assert read_text_primary(wire) is None
+        assert read_text_primary(_wire(textPrimary="nope")) is None
+
+    @pytest.mark.asyncio
+    async def test_auto_switch_off_degrades_after_one_call(self, harness) -> None:
+        text = harness(_wire(auto_switch=False), failing={"azure-openai"})
+
+        result = await core.interpreter_core_agent(_payload())
+
+        assert result.status == "DEGRADED"
+        assert "text generate failed" in (result.reason or "")
+        assert len(text.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_every_candidate_failing_degrades_after_trying_each_once(self, harness) -> None:
+        second = _candidate(
+            kind="fallback-model",
+            agent={
+                "slug": "clinic-summarizer",
+                "versionId": "agent-1",
+                "versionNumber": 3,
+                "tenantId": _TENANT,
+                "source": "tenant",
+            },
+            provider="vllm",
+            model="medgemma",
+            fundingTier="tenant",
+        )
+        text = harness(
+            _wire(chain=[second, _candidate()]), failing={"azure-openai", "vllm", "lm-studio"}
+        )
+
+        result = await core.interpreter_core_agent(_payload())
+
+        assert result.status == "DEGRADED"
+        assert [c["provider"] for c in text.calls] == ["azure-openai", "vllm", "lm-studio"]
+
+
+class TestLlmBindingIsRetired:
+    @pytest.mark.parametrize(
+        "module", [text_generate_mod, realtime_mod, guards_mod, agent_catalogue_mod]
+    )
+    def test_no_node_module_reads_a_model_slug_off_its_config(self, module) -> None:
+        source = __import__("inspect").getsource(module)
+        assert "read_model_slug(" not in source
+        assert "model_slug=" not in source
+
+
+class TestActivityBudget:
+    """The chain walk runs inside ONE activity's `start_to_close_timeout`. A candidate started
+    too late times the activity out mid-call, and Temporal re-runs it FROM THE PRIMARY —
+    re-billing a generation that already completed."""
+
+    def test_never_blocks_the_first_attempt_and_stops_switching_when_the_call_cannot_fit(
+        self,
+    ) -> None:
+        # 30s of budget left, a 120s per-call timeout: no further candidate can finish.
+        assert ActivityBudget(per_call_seconds=120.0, total_seconds=30.0).allows_another() is False
+        assert ActivityBudget(per_call_seconds=10.0, total_seconds=30.0).allows_another() is True
+        # No declared budget (outside an activity context) ⇒ the guard is inert.
+        assert ActivityBudget(per_call_seconds=120.0, total_seconds=None).allows_another() is True
+        assert ActivityBudget(120.0, None).remaining_seconds is None
+
+    def test_chain_candidates_is_the_one_may_i_switch_answer(self) -> None:
+        block = read_text_fallback(_wire())
+        assert [c.agent.slug for c in chain_candidates(block)] == ["platform-summarization"]
+        assert chain_candidates(read_text_fallback(_wire(auto_switch=False))) == []
+        assert chain_candidates(None) == []
+
+    @pytest.mark.asyncio
+    async def test_an_exhausted_budget_degrades_instead_of_starting_a_doomed_switch(
+        self, harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        text = harness(_wire(), failing={"azure-openai"})
+
+        class _Spent:
+            @classmethod
+            def for_activity(cls, _per_call: float) -> _Spent:
+                return cls()
+
+            def allows_another(self) -> bool:
+                return False
+
+        monkeypatch.setattr(core, "ActivityBudget", _Spent)
+
+        result = await core.interpreter_core_agent(_payload())
+
+        # The primary still ran (the budget governs SWITCHING, not the attempt the activity
+        # exists to make); the fallback was never started, and the node DEGRADED rather than
+        # raising — a raise is what makes Temporal retry from the primary.
+        assert len(text.calls) == 1
+        assert result.status == "DEGRADED"
+        assert "activity budget exhausted" in (result.reason or "")

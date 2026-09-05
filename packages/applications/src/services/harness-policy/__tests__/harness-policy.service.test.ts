@@ -136,35 +136,15 @@ describe('HarnessPolicyService', () => {
       expect(result.id).toBeNull();
     });
 
-    // ── field-level fallthrough for the two TEXT fields ──
-    it('fills null TEXT fields on the tenant own row from the SYSTEM default (field-level fallthrough)', async () => {
+    // ── TASK-876: the two TEXT columns are no longer a selection source ──
+    // They used to cascade tenant-row → SYSTEM row. Selection is now the tenant's ASSIGNED
+    // TEXT_GENERATION agent, overlaid UNCONDITIONALLY; with no resolver wired (this fixture)
+    // both fields are NULLED so the Python node degrades `no_text_selection` rather than
+    // generating on whatever the retired columns still hold.
+    it('never serves the retired HarnessPolicy TEXT columns as a selection — both fields are NULLED (fail closed)', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         coverageThreshold: 0.55,
-        // Pre-Phase-2 tenant row: TEXT selection was never set.
-        textProvider: null,
-        textModel: null,
-      });
-      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
-        tenantId: SYSTEM_TENANT_ID,
-        textProvider: 'lm-studio',
-        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
-      });
-      policyRepository.findForExactTenant.mockResolvedValue(own);
-      policyRepository.findSystemDefault.mockResolvedValue(sys);
-
-      const result = await service.getEffectivePolicy();
-
-      // Still the tenant's own row (source unchanged) but TEXT fields inherited.
-      expect(result.source).toBe('tenant');
-      expect(result.coverageThreshold).toBe(0.55);
-      expect(result.textProvider).toBe('lm-studio');
-      expect(result.textModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
-    });
-
-    it('SYSTEM TEXT selection wins over a non-null tenant-row TEXT field', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({
-        tenantId: TENANT,
         textProvider: 'ollama',
         textModel: 'tenant-pinned-model',
       });
@@ -178,8 +158,11 @@ describe('HarnessPolicyService', () => {
 
       const result = await service.getEffectivePolicy();
 
-      expect(result.textProvider).toBe('lm-studio');
-      expect(result.textModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+      // Still the tenant's own row, and every non-selection field is untouched.
+      expect(result.source).toBe('tenant');
+      expect(result.coverageThreshold).toBe(0.55);
+      expect(result.textProvider).toBeNull();
+      expect(result.textModel).toBeNull();
     });
   });
 
@@ -242,184 +225,8 @@ describe('HarnessPolicyService', () => {
   });
 
   // ── the fail-closed TEXT selection seam ──
-  describe('resolveTextSelection', () => {
-    it('returns {provider, model} resolved from the SYSTEM-default cascade', async () => {
-      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
-        tenantId: SYSTEM_TENANT_ID,
-        textProvider: 'lm-studio',
-        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
-      });
-      policyRepository.findForExactTenant.mockResolvedValue(null);
-      policyRepository.findSystemDefault.mockResolvedValue(sys);
-
-      const result = await service.resolveTextSelection();
-
-      expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-sft-rlvr-medical' });
-    });
-
-    it('resolves a null-TEXT tenant row to the SYSTEM default (field-level fallthrough)', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, textProvider: null, textModel: null });
-      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
-        tenantId: SYSTEM_TENANT_ID,
-        textProvider: 'lm-studio',
-        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
-      });
-      policyRepository.findForExactTenant.mockResolvedValue(own);
-      policyRepository.findSystemDefault.mockResolvedValue(sys);
-
-      const result = await service.resolveTextSelection();
-
-      expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-sft-rlvr-medical' });
-    });
-
-    it('throws (fail-closed) when the cascade yields no model (no tenant row, no SYSTEM default)', async () => {
-      policyRepository.findForExactTenant.mockResolvedValue(null);
-      policyRepository.findSystemDefault.mockResolvedValue(null);
-
-      await expect(service.resolveTextSelection()).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('throws (fail-closed) when the tenant row and the SYSTEM default both leave TEXT null', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, textProvider: null, textModel: null });
-      policyRepository.findForExactTenant.mockResolvedValue(own);
-      policyRepository.findSystemDefault.mockResolvedValue(null);
-
-      await expect(service.resolveTextSelection()).rejects.toBeInstanceOf(BadRequestException);
-    });
-  });
-
-  // AiTaskDefault-first TEXT routing.
-  describe('resolveTextSelection — AiTaskDefault precedence', () => {
-    it('consults the text.finalize AiTaskDefault FIRST and returns its {provider, sourceUri}', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockResolvedValue({
-        taskKey: 'text.finalize',
-        modelSlug: 'lms-gemma-4-e2b-it-qat',
-        source: 'system',
-        model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
-      });
-
-      const result = await svc.resolveTextSelection('tenant-1');
-
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.finalize', 'tenant-1');
-      expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
-      // AiTaskDefault won — the legacy policy cascade must not be consulted.
-      expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
-    });
-
-    it('maps the live task to the text.live key', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockResolvedValue({
-        model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
-      });
-
-      await svc.resolveTextSelection('tenant-1', 'live');
-
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.live', 'tenant-1');
-    });
-
-    it('falls back to the legacy HarnessPolicy cascade when AiTaskDefault resolves no model', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockResolvedValue({ model: null });
-      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
-        tenantId: SYSTEM_TENANT_ID,
-        textProvider: 'lm-studio',
-        textModel: 'legacy-model',
-      });
-      policyRepository.findForExactTenant.mockResolvedValue(null);
-      policyRepository.findSystemDefault.mockResolvedValue(sys);
-
-      const result = await svc.resolveTextSelection('tenant-1');
-
-      expect(result).toEqual({ provider: 'lm-studio', model: 'legacy-model' });
-    });
-
-    it('falls back to the legacy cascade when the AiTaskDefault lookup throws', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
-      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
-        tenantId: SYSTEM_TENANT_ID,
-        textProvider: 'ollama',
-        textModel: 'granite4:latest',
-      });
-      policyRepository.findForExactTenant.mockResolvedValue(null);
-      policyRepository.findSystemDefault.mockResolvedValue(sys);
-
-      const result = await svc.resolveTextSelection('tenant-1');
-
-      expect(result).toEqual({ provider: 'ollama', model: 'granite4:latest' });
-    });
-  });
-
-  // Tenant-configurable TEXT fallback selection (fail-OPEN).
-  describe('resolveTextFallbackSelection', () => {
-    it('resolves the text.finalize.fallback key to {provider, sourceUri} when a model is enabled', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockResolvedValue({
-        taskKey: 'text.finalize.fallback',
-        modelSlug: 'lms-gemma-4-e2b-it-qat',
-        source: 'tenant',
-        model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
-      });
-
-      const result = await svc.resolveTextFallbackSelection('tenant-1');
-
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.finalize.fallback', 'tenant-1');
-      expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
-      // Fallback resolution never consults the legacy policy cascade.
-      expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
-    });
-
-    it('maps the live task to the text.live.fallback key', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockResolvedValue({
-        model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
-      });
-
-      await svc.resolveTextFallbackSelection('tenant-1', 'live');
-
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.live.fallback', 'tenant-1');
-    });
-
-    it('normalizes an azure provider to azure-openai', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockResolvedValue({
-        model: { provider: 'azure', sourceUri: 'gpt-4o-mini' },
-      });
-
-      const result = await svc.resolveTextFallbackSelection('tenant-1');
-
-      expect(result).toEqual({ provider: 'azure-openai', model: 'gpt-4o-mini' });
-    });
-
-    it('returns null (fail-open) when the fallback key resolves to no enabled model', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockResolvedValue({ model: null });
-
-      const result = await svc.resolveTextFallbackSelection('tenant-1');
-
-      expect(result).toBeNull();
-      // Fail-OPEN: the legacy cascade is NOT a fallback for the fallback key.
-      expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
-    });
-
-    it('returns null (fail-open) when the AiTaskDefault lookup throws — never propagates', async () => {
-      const svc = makeServiceWithAiTaskDefault();
-      aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
-
-      const result = await svc.resolveTextFallbackSelection('tenant-1');
-
-      expect(result).toBeNull();
-    });
-
-    it('returns null when the AiTaskDefault service is not wired (fixtures)', async () => {
-      const svc = makeService();
-
-      const result = await svc.resolveTextFallbackSelection('tenant-1');
-
-      expect(result).toBeNull();
-    });
-  });
+  // TASK-876 — `resolveTextSelection` / `resolveTextFallbackSelection` are agent-first now;
+  // their contract lives in `harness-policy.agent-first-text.task876.test.ts`.
 
   // agentic loop knob cascade (null ⇒ env default).
   describe('agentic loop knobs', () => {

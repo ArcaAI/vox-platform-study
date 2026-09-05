@@ -1765,14 +1765,17 @@ describe('PromptManagementService', () => {
       },
     });
 
-    const defaultTaskDefaults = () => ({
-      getEffective: vi.fn().mockResolvedValue({ taskKey: 'text.test', model: { provider: 'lm-studio', sourceUri: 'resolved-medgemma' } }),
+    // TASK-876 — the bench resolves through the tenant's ASSIGNED TEXT_GENERATION agent, the
+    // same resolution every real generation makes; the retired `text.test` AiTaskDefault key no
+    // longer selects anything. The resolved candidate is already wire-shaped.
+    const defaultTextAgents = () => ({
+      resolve: vi.fn().mockResolvedValue({ primary: { provider: 'lm-studio', model: 'resolved-medgemma' } }),
     });
 
     const buildTextService = (
       taskOutput: string,
       opts: {
-        aiTaskDefaultService?: { getEffective: ReturnType<typeof vi.fn> };
+        textAgents?: { resolve: ReturnType<typeof vi.fn> };
         secretsService?: Record<string, unknown>;
         aiModelRepository?: { findByTaskTypeSharedRead: ReturnType<typeof vi.fn> };
         goldenCaseRepository?: { findById: ReturnType<typeof vi.fn>; decryptFieldsFromEntity: ReturnType<typeof vi.fn> };
@@ -1782,7 +1785,7 @@ describe('PromptManagementService', () => {
     ) => {
       const httpMock = createTextHttpMock(taskOutput, opts.taskOverrides);
       const configMock = createMockConfigService();
-      const aiTaskDefaultService = opts.aiTaskDefaultService ?? defaultTaskDefaults();
+      const textAgents = opts.textAgents ?? defaultTextAgents();
       const svc = new PromptManagementService(
         mockTemplateRepo as never,
         mockVersionRepo as never,
@@ -1794,15 +1797,15 @@ describe('PromptManagementService', () => {
         httpMock as never,
         configMock as never,
         opts.secretsService as never, // secretsService
-        aiTaskDefaultService as never, // IAiTaskDefaultService
         undefined, // userProfileService
         undefined, // entitlements
         undefined, // promotionGate
         opts.aiModelRepository as never, // aiModelRepository
         opts.goldenCaseRepository as never, // goldenCaseRepository
         opts.textRequestEnrichment as never, // TextRequestEnrichmentService
+        textAgents as never, // TextAgentResolverService
       );
-      return { svc, httpMock, aiTaskDefaultService };
+      return { svc, httpMock, textAgents };
     };
 
     /** Run the full two-call flow the way the console does. */
@@ -1851,14 +1854,14 @@ describe('PromptManagementService', () => {
     });
 
     // ── model selection ──────────────────────────────────
-    it('resolves provider+model via the text.test AiTaskDefault and posts both to TEXT', async () => {
+    it('resolves provider+model via the ASSIGNED TEXT_GENERATION agent and posts both to TEXT', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
       mockTemplateRepo.findById.mockResolvedValue(existing);
-      const { svc, httpMock, aiTaskDefaultService } = buildTextService(wordsOfLength(60));
+      const { svc, httpMock, textAgents } = buildTextService(wordsOfLength(60));
 
       const ack = await svc.startPromptTemplateTest('tpl-1', { variables: { topic: 'asthma' } } as never);
 
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.test', 'tenant-1');
+      expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
       const [, payload] = httpMock.axiosRef.post.mock.calls[0];
       expect((payload as { provider?: string }).provider).toBe('lm-studio');
       expect((payload as { model?: string }).model).toBe('resolved-medgemma');
@@ -2155,20 +2158,20 @@ describe('PromptManagementService', () => {
     });
 
     // ─── provider selection, dry-run/version, golden-case ───
-    describe('provider/model selection (text.test routing tier)', () => {
+    describe('provider/model selection (the assigned TEXT_GENERATION agent)', () => {
       it('forwards an explicit caller-supplied provider/model pair to TEXT verbatim', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
-        const aiTaskDefaultService = { getEffective: vi.fn() };
+        const textAgents = { resolve: vi.fn() };
         const aiModelRepository = {
           findByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ provider: 'azure-openai', sourceUri: 'gpt-4o' }]),
         };
-        const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiTaskDefaultService, aiModelRepository });
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { textAgents, aiModelRepository });
 
         await svc.startPromptTemplateTest('tpl-1', { provider: 'azure-openai', model: 'gpt-4o' } as never);
 
-        // The task-default cascade is never consulted when the caller pins a pair.
-        expect(aiTaskDefaultService.getEffective).not.toHaveBeenCalled();
+        // The agent cascade is never consulted when the caller pins a pair.
+        expect(textAgents.resolve).not.toHaveBeenCalled();
         const [, payload] = httpMock.axiosRef.post.mock.calls[0];
         expect((payload as { provider?: string }).provider).toBe('azure-openai');
         expect((payload as { model?: string }).model).toBe('gpt-4o');
@@ -2195,24 +2198,24 @@ describe('PromptManagementService', () => {
         await expect(svc.startPromptTemplateTest('tpl-1', { provider: 'azure-openai' } as never)).rejects.toThrow(ArgumentInvalidException);
       });
 
-      // ── BUG-018 test 5/6: fail-closed miss, and miss ≠ error ──
-      it('fails closed with a BadRequestException naming text.test when nothing resolves', async () => {
+      // ── fail-closed miss, and miss ≠ error ──
+      it('fails closed with a BadRequestException when NO agent is assigned at any tier', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
-        const aiTaskDefaultService = { getEffective: vi.fn().mockResolvedValue({ modelSlug: null, source: null, model: null }) };
-        const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiTaskDefaultService });
+        const textAgents = { resolve: vi.fn().mockRejectedValue(new NotFoundException('nothing assigned')) };
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { textAgents });
 
         await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(BadRequestException);
-        await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(/text\.test/);
+        await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(/TEXT_GENERATION agent/);
         expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
       });
 
-      it('propagates a task-default LOOKUP ERROR instead of silently substituting a platform model', async () => {
+      it('propagates a resolution LOOKUP ERROR instead of silently substituting a platform model', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         const boom = new Error('registry unavailable');
-        const aiTaskDefaultService = { getEffective: vi.fn().mockRejectedValue(boom) };
-        const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiTaskDefaultService });
+        const textAgents = { resolve: vi.fn().mockRejectedValue(boom) };
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { textAgents });
 
         await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(boom);
         expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
@@ -2555,7 +2558,6 @@ describe('PromptManagementService', () => {
         undefined, // httpService
         undefined, // configService
         undefined, // secretsService
-        undefined, // harnessPolicyService
         profileSvc as never, // userProfileService
       );
     });
@@ -2897,7 +2899,6 @@ describe('PromptManagementService', () => {
         undefined as never, // httpService
         undefined as never, // configService
         undefined as never, // secretsService
-        undefined as never, // harnessPolicyService
         undefined as never, // userProfileService
         undefined as never, // entitlements
         mockGate as never, // promotionGate (appended)

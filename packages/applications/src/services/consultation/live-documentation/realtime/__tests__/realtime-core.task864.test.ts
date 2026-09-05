@@ -116,7 +116,7 @@ describe('realtimeHandlerFor — handlers by instance', () => {
     const caps = capabilities();
     const config = { agentRef: { slug: 'platform-summarization' }, execution: { lane: 'realtime' } };
     const output = await realtimeHandlerFor('core.agent')!.run({ bound: { in: 'said so far' }, config, tenantId: 't', consultationId: 'c', capabilities: caps });
-    expect(caps.generateDocument).toHaveBeenCalledWith({ sourceText: 'said so far', tenantId: 't', config }, undefined);
+    expect(caps.generateDocument).toHaveBeenCalledWith({ sourceText: 'said so far', tenantId: 't', config, agentRef: { slug: 'platform-summarization' } }, undefined);
     expect(output.text).toBe('note');
   });
 });

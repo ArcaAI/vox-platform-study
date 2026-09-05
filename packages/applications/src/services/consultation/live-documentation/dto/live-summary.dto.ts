@@ -191,9 +191,20 @@ export class LiveSummaryStatsDto {
 
   @ApiPropertyOptional({
     description:
-      "whether this flush's model came from the session agent's frozen `llmOverrides.live` ('agent-override') or from the tenant's per-flush `text.live` AiTaskDefault ('task-default').",
+      "How this flush's model was selected (TASK-876): 'agent' = a bound `core.agent` node's own agent, 'agent-fallback' = one of that agent's resolved fallback candidates after a primary failure, 'assigned-agent' = the tenant's ASSIGNED TEXT_GENERATION agent (the legacy summary node). The third value was 'task-default' until TASK-876 — the name of the retired `AiTaskDefault` tier, which no longer selects anything.",
   })
   selection_source?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'TASK-876 — the lineage slug of the agent whose candidate actually served this flush (bound `core.agent` nodes only).',
+  })
+  agent_slug?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "TASK-876 — 'tenant' | 'platform': which tier's row served the model, derived per candidate (a platform-default fallback is platform-funded).",
+  })
+  funding_tier?: string | null;
 }
 
 /**

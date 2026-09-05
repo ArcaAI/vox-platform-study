@@ -47,6 +47,25 @@ export class AgentRepository extends Repository<AgentEntity, Agent> {
   }
 
   /**
+   * TASK-876 — ONE PINNED version of a lineage, visible to the caller (own row shadowing
+   * SYSTEM's), for a reader that was given an explicit `versionNumber` rather than "whatever is
+   * active". `findPublishedActiveBySlug` cannot serve that: it answers the ACTIVE version, so a
+   * caller holding a pin would silently read — and report on — a different version.
+   *
+   * Not filtered by `isActive`: the point of a pin is a version that may no longer be the active
+   * one. `null` — never a throw — for a foreign, unknown, unpublished or deleted version.
+   */
+  async findPublishedVisibleBySlugVersion(tenantId: string, slug: string, versionNumber: number): Promise<AgentEntity | null> {
+    const rows = await this.findManyTolerant({
+      where: { slug, versionNumber, status: WorkflowDefinitionStatus.PUBLISHED, resourceStatus: ResourceStatusType.ENABLED },
+      orderBy: [{ tenantId: 'desc' }],
+    });
+    const visible = rows.filter((row) => row.tenantId === tenantId || row.tenantId === SYSTEM_TENANT_ID);
+    const row = visible.find((candidate) => candidate.tenantId === tenantId) ?? visible.find((candidate) => candidate.tenantId === SYSTEM_TENANT_ID) ?? null;
+    return row ? AgentEntityMapper.getInstance().toDomainEntity(row) : null;
+  }
+
+  /**
    * Every live agent visible to the tenant — one row per slug, the tenant's own
    * row shadowing SYSTEM's (`GET /api/v1/agents`; the same predicate as
    * `findPublishedActiveBySlug`, so what a list advertises a by-slug read serves).

@@ -519,6 +519,13 @@ class HarnessDocWorkflow:
             # The workflow input wins over the policy default when it specifies a model.
             text_provider = inp.text_provider or policy.text_provider
             text_model = inp.text_model or policy.text_model
+            # TASK-876 — platform HA for the DURABLE lane. The gateway resolved the ordered
+            # chain (explicit fallback agent | the agent's own model chain, then the SYSTEM
+            # platform default) and the worker policy route ships it; snapshot it here, from
+            # deterministic workflow state, and thread it as plain activity input. The workflow
+            # performs no I/O and makes no selection of its own — the `generate` activity walks
+            # it with the SAME walker `core.agent` uses.
+            text_fallback = policy.text_fallback
             # LLM-as-judge selection from the SYSTEM harness.judge policy,
             # snapshotted here so the inferential activity builds the judge
             # deterministically across replay. None ⇒ the activity fails closed (no
@@ -550,6 +557,8 @@ class HarnessDocWorkflow:
             phi_fail_closed = True
             text_provider = inp.text_provider
             text_model = inp.text_model
+            # No policy ⇒ no resolved chain ⇒ the primary alone (pre-876 behaviour).
+            text_fallback = None
             # no policy ⇒ no SYSTEM judge selection ⇒ the inferential pass
             # fails closed (never falls back to an env-selected judge).
             judge_provider = None
@@ -833,6 +842,7 @@ class HarnessDocWorkflow:
                     hyperparameters=assembled.hyperparameters,
                     provider=text_provider,
                     model=text_model,
+                    text_fallback=text_fallback,
                     phi_enabled=phi_enabled,
                     phi_fail_closed=phi_fail_closed,
                     # critique from the prior iteration (None on the
@@ -1196,6 +1206,7 @@ class HarnessDocWorkflow:
                         hyperparameters=asm_.hyperparameters,
                         provider=text_provider,
                         model=text_model,
+                        text_fallback=text_fallback,
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
                         # critique from the pre-regen verdict (set by the
