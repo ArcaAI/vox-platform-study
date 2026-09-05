@@ -9,7 +9,7 @@
  *     VERBATIM — the gateway's 409 names the references this tenant is missing, and that naming
  *     is the whole value of the message.
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ImportDefinitionDialog } from '../import-definition-dialog';
