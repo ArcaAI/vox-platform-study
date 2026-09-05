@@ -181,35 +181,32 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(AI_TASK_MODEL_TASK_TYPES['text.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
   });
 
-  it('flags nlp.*/harness.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
+  it('flags nlp.*/harness.*/guardrail.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
     // These task-model defaults are platform-owned: nlp (revoked tenant
-    // writes) and harness.judge. Both resolve to the super-admin resource
-    // and carry globalOnly. TEXT and, since (owner decision
-    // 2026-08-16, reversing the 2026-07-17 super-admin-only directive),
-    // guardrail are NOT in this set — see the test below.
-    for (const key of ['models.nlp.ner', 'models.nlp.classification', 'models.nlp.diagnosis', 'models.harness.judge']) {
+    // writes), harness.judge, and — since owner decision #3 of 2026-09-05
+    // (TASK-872) — the whole guardrail safety plane. Guardrail is built-in and
+    // platform-only: it gates every text-generation request before send and
+    // every response after receive, so which model does the gating is not a
+    // tenant's choice. TEXT is NOT in this set — see the test below.
+    for (const key of [
+      'models.nlp.ner',
+      'models.nlp.diagnosis',
+      'models.harness.judge',
+      'models.guardrail.validate',
+      'models.guardrail.safety',
+      'models.guardrail.groundedness',
+    ]) {
       const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
       expect(d.editableBy, key).toBe('all');
       expect(d.globalOnly, key).toBe(true);
     }
   });
 
-  // TEXT summarization model selection (primary + per-tenant fallback), and
-  // guardrail.* since, are tenant-admin configurable: the
-  // descriptors resolve to the tenant-editable AiTaskDefault resource and are
-  // NOT flagged globalOnly. (guardrail.* writes still pass through the D2
-  // platform-approved-list floor enforced in AiTaskDefaultService — this
-  // descriptor only governs WHO may attempt the write.)
-  it('flags text.* and guardrail.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
-    for (const key of [
-      'models.text.live',
-      'models.text.finalize',
-      'models.text.live.fallback',
-      'models.text.finalize.fallback',
-      'models.guardrail.validate',
-      'models.guardrail.safety',
-      'models.guardrail.groundedness',
-    ]) {
+  // TEXT summarization model selection (primary + per-tenant fallback) is what
+  // is LEFT of the tenant-configurable lane: those descriptors resolve to the
+  // tenant-editable AiTaskDefault resource and are NOT flagged globalOnly.
+  it('flags text.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
+    for (const key of ['models.text.live', 'models.text.finalize', 'models.text.live.fallback', 'models.text.finalize.fallback']) {
       const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
       expect(d.editableBy, key).toBe('AiTaskDefault');
       expect(d.globalOnly, key).toBeUndefined();

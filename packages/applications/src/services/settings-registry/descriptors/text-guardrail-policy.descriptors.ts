@@ -108,9 +108,16 @@ export const TEXT_GUARDRAIL_POLICY_SETTINGS: SettingDescriptor[] = (
   tier: 'global-kv',
   dataType: 'boolean',
   sensitivity: 'internal',
-  // The whole point of the family: a TENANT may set it.
+  // The SCOPE stays `tenant` — the value is per tenant, and a super admin sets
+  // it on that tenant's behalf. `globalOnly` below decides WHO may write it,
+  // which is a different question.
   maxScope: 'tenant',
   editableBy: 'all',
+  // OWNER DECISION #3 (2026-09-05): guardrail is BUILT-IN and PLATFORM-ONLY —
+  // no tenant admin manages any guardrail setting. This family is TEXT's half
+  // of the guardrail posture, so it moves with it: a platform admin still tunes
+  // a single tenant's moderation stance, a tenant admin no longer can.
+  globalOnly: true,
   // NO `consumedBy` — see the header. A tenant-varying value never travels the
   // platform-scope pull snapshot.
   failMode: 'open-to-default',

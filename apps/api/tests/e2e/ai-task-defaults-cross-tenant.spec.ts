@@ -4,25 +4,26 @@
  *
  * Governance contracts (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
  * `packages/applications/src/services/ai-task-default/constants.ts` covers
- * `nlp.` AND `harness.` only. REMOVED `text.` (earlier) and `guardrail.`
- * (owner decision 2026-08-16, reversing the 2026-07-17
- * super-admin-only directive) — both are now TENANT-ADMIN configurable, so a
- * tenant admin may write them for their OWN tenant while `nlp.`/`harness.`
- * stay super-admin-only. `guardrail.*` carries an ADDITIONAL platform floor
- * on top (D2, tighten-only): a tenant write must name a `modelSlug` that
- * resolves to a SYSTEM-tenant `AiModel` row (the platform-approved list) —
- * also 403 otherwise. The seeded slug `granite-guardian-4.1-8b` used below is
- * a SYSTEM-catalog row, so it satisfies that floor):
+ * `nlp.`, `harness.` AND — since TASK-872, owner decision #3 of 2026-09-05 —
+ * `guardrail.`. Guardrail is built-in and platform-only: it gates every
+ * text-generation request before send and every response after receive, so no
+ * tenant admin manages any guardrail setting. `text.` is what remains
+ * TENANT-ADMIN configurable. `guardrail.*` also keeps its ADDITIONAL platform
+ * floor (D2, tighten-only): a write for a non-SYSTEM tenant must name a
+ * `modelSlug` that resolves to a SYSTEM-tenant `AiModel` row (the
+ * platform-approved list) — 403 otherwise. That floor now bounds the super
+ * admin acting on a tenant's behalf, which is the only caller left. The seeded
+ * slug `granite-guardian-4.1-8b` used below is a SYSTEM-catalog row, so it
+ * satisfies it):
  *  1. Tenant scoping — a tenant admin is pinned to their CLS tenant; an explicit
  *     foreign `?tenantId=` is REJECTED (403/404, 200 never; no foreign row
  *     content in the body).
  *  2. Task-key governance — writes to a SUPER_ADMIN-ONLY task key
- *     (nlp./harness.) are refused: a tenant admin PUT → 403 even for
+ *     (nlp./harness./guardrail.) are refused: a tenant admin PUT → 403 even for
  *     their OWN tenant (a privilege verdict, deliberately raised BEFORE the OCC
  *     compare — so a tenant admin sees 403, not 412, on any version). The
- *     un-locked `text.*`/`guardrail.*` keys are the exception: a tenant admin
- *     PUT succeeds for their own tenant (guardrail.* subject to the
- *     platform-approved-list floor above).
+ *     `text.*` keys are the exception: a tenant admin PUT succeeds for their
+ *     own tenant.
  *  3. Super admin acts cross-tenant via `?tenantId=` (PUT succeeds).
  *  4. RFC 7232 OCC — PUT without `If-Match` → 428; stale `If-Match` → 412
  *     (asserted on the seeded SYSTEM row, where a version ≥ 1 exists).
@@ -137,42 +138,37 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect([403, 404]).toContain(resp.status());
   });
 
-  test('tenant admin PUT on guardrail.validate for their OWN tenant → 200 (guardrail left the super-admin-only set)', async ({ request }) => {
-    // Reverses the OLD "GOVERNANCE: tenant admin PUT on guardrail.validate …
-    // → 403 (deliberate, not 404)" contract (owner directive 2026-07-17).
-    // (owner decision 2026-08-16) makes guardrail.*
-    // tenant-admin configurable, same cascade as text.*. The seeded slug is a
-    // SYSTEM-catalog row, so it also satisfies the D2 platform-approved-list
-    // floor (see the negative probe below for the floor itself).
+  test('TASK-872: tenant admin PUT on guardrail.validate for their OWN tenant → 403 (guardrail is platform-only)', async ({ request }) => {
+    // Owner decision #3 (2026-09-05) puts `guardrail.` back under
+    // SUPER_ADMIN_ONLY_TASK_PREFIXES, reversing the 2026-08-16 window in which
+    // this same PUT answered 200. The verdict is a PRIVILEGE 403 raised before
+    // the OCC compare, so it does not depend on the version sent.
     const row = await readRowVersion(request, tenantAdminToken, 'guardrail.validate');
     const resp = await request.put(`${BASE}/row?taskKey=guardrail.validate`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': `"${row.version}"` },
       data: { modelSlug: 'granite-guardian-4.1-8b' },
     });
-    expect(resp.status()).toBe(200);
-    const updated = (await resp.json()) as AiTaskDefaultRow;
-    expect(updated.modelSlug).toBe('granite-guardian-4.1-8b');
-    // Written into the tenant admin's OWN tenant, not SYSTEM.
-    expect(updated.tenantId).not.toBe('00000000-0000-0000-0000-000000000000');
+    expect(resp.status()).toBe(403);
+    expect(JSON.stringify(await resp.json())).toContain('super administrators only');
   });
 
-  test(' D2: tenant admin PUT on guardrail.validate with a slug OUTSIDE the platform-approved (SYSTEM) list → 403', async ({ request }) => {
-    // The platform-approved-list floor is independent of the blanket
-    // super-admin-only governance check above (which no longer fires for
-    // guardrail.* at all) — it rejects an unvetted slug even for the
-    // caller's OWN tenant.
-    const row = await readRowVersion(request, tenantAdminToken, 'guardrail.validate');
-    const resp = await request.put(`${BASE}/row?taskKey=guardrail.validate`, {
-      headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': `"${row.version}"` },
+  test('D2: super-admin PUT on guardrail.validate with a slug OUTSIDE the platform-approved (SYSTEM) list → 403', async ({ request }) => {
+    // The platform-approved-list floor is INDEPENDENT of the super-admin-only
+    // governance gate above: it bounds WHICH slug may be bound, not WHO may
+    // bind it, so it must still fire for the one caller the gate now leaves —
+    // a super admin writing a non-SYSTEM tenant's row.
+    const row = await readRowVersion(request, superAdminToken, 'guardrail.validate', arcaaiTenantId);
+    const resp = await request.put(`${BASE}/row?taskKey=guardrail.validate&tenantId=${arcaaiTenantId}`, {
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': `"${row.version}"` },
       data: { modelSlug: 'not-a-platform-approved-slug' },
     });
     expect(resp.status()).toBe(403);
+    expect(JSON.stringify(await resp.json())).toContain('platform-approved');
   });
 
-  test('GOVERNANCE: a still-locked prefix stays global-only — nlp.ner PUT by a tenant admin → 403', async ({ request }) => {
-    // nlp./harness. remain SUPER_ADMIN-ONLY (text. and, since,
-    // guardrail. were un-locked). The 403 fires BEFORE the OCC compare, so
-    // any valid If-Match sees it.
+  test('GOVERNANCE: a locked prefix stays global-only — nlp.ner PUT by a tenant admin → 403', async ({ request }) => {
+    // nlp./harness./guardrail. are SUPER_ADMIN-ONLY; only text. is not. The 403
+    // fires BEFORE the OCC compare, so any valid If-Match sees it.
     const row = await readRowVersion(request, tenantAdminToken, 'nlp.ner');
     const resp = await request.put(`${BASE}/row?taskKey=nlp.ner`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': `"${row.version}"` },
@@ -183,9 +179,10 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
   });
 
   test('Tenant admin CAN write an text.* key (text.finalize) for their OWN tenant → 200', async ({ request }) => {
-    // `text.` left SUPER_ADMIN_ONLY_TASK_PREFIXES: the text.* keys are
-    // now tenant-admin configurable. Unlike the guardrail/nlp negative probes
-    // above, this write is accepted for the caller's own CLS-pinned tenant. On a
+    // `text.` is the one prefix outside SUPER_ADMIN_ONLY_TASK_PREFIXES, so the
+    // text.* keys stay tenant-admin configurable. Unlike the guardrail/nlp
+    // negative probes above, this write is accepted for the caller's own
+    // CLS-pinned tenant. On a
     // fresh seed the tenant row is a version-0 placeholder, so this PUT travels
     // the `If-Match: "0"` create lane (the service CAS decides create-vs-412).
     const row = await readRowVersion(request, tenantAdminToken, 'text.finalize');
