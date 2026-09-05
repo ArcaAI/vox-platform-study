@@ -165,7 +165,7 @@ managed service list.
 | `HarnessServiceTokenGuard` accepted only the legacy `HARNESS_SERVICE_TOKEN` while the harness presents the shared `INTERNAL_ACCESS_TOKEN` — every worker callback 401'd and the workflow FAILED | guard accepts either, shared first, constant-time over all candidates |
 | `Object.assign(existingMeta, summaryMeta, { id })` over a getter-only `BaseEntity.id` → `TypeError` → 500 on EVERY adopted draft | explicit per-field assignment (also restores `setProperty` change tracking) |
 | Six routes returned 201 while `openapi.json` documents 200 (`prime`, `recording/start`, `recording/stop`, `close`, `reopen`, `summary/:ctx/approve`) — specs had been widened to `[200, 201]` in three files | `@HttpCode(HttpStatus.OK)` |
-| Platform rate-limit RULES never applied (login brute-force protection not firing) | **TASK-870** raised; e2e `fixme` against it |
+| Platform rate-limit RULES never applied (login brute-force protection not firing) | **TASK-875** raised; e2e `fixme` against it |
 
 **Stale tests corrected:** `case 2/4` polled for `applyLegacySafetyFloor`, deleted with the legacy
 generator (a grep gate asserts zero references); `/escalate` vs the real `/escalation`; tenant KEY
@@ -179,7 +179,7 @@ open without a Hub credential; one consolidated `HARNESS_E2E_FULL`.
 
 ### Open, deliberately
 
-- **TASK-870** — rate-limit rules not applied. Product ticket; the e2e is its acceptance test.
+- **TASK-875** — rate-limit rules not applied. Product ticket; the e2e is its acceptance test.
 - **`task-704-generator-seam`** (`fixme`) — regenerates on a SEEDED consultation that sits at OPEN,
   so the draft write is an illegal transition. Either the spec stages its subject like its siblings
   or the product accepts it; owner notes TASK-704 is old and may be superseded.

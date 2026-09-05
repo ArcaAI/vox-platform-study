@@ -1,4 +1,8 @@
-# TASK-870 — Platform rate-limit RULES are not applied by the throttler
+# TASK-875 — Platform rate-limit RULES are not applied by the throttler
+
+> Renumbered from TASK-870 before merge: `dev-2.2` had meanwhile allocated 870 to the
+> Configuration Governance Program (and 871-874 besides). Commit messages written during the
+> investigation still say TASK-870 — they are the history, not the ticket id.
 
 **Status:** Pending
 **Raised by:** TASK-869 (e2e full-coverage), 2026-09-05
