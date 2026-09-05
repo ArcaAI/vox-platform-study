@@ -136,6 +136,27 @@ class KokoroProvider:
     credential_posture = CredentialPosture.SELF_HOST
     is_configured = True  # Self-hosted engine needs no credential
 
+    @classmethod
+    def from_spec(
+        cls, settings: Any, candidate: Any, override: dict[str, str]
+    ) -> KokoroProvider | None:
+        """Build a REQUEST-SCOPED engine for one resolved TTS spec candidate.
+
+        Kokoro takes ONE fact from the spec — where its published weights are (`model.localPath`,
+        the registry row's derived mirror). Empty means the dev Hub fallback, exactly as the
+        retired `TTS_KOKORO_MODEL_PATH` did. `override` is unused: a self-hosted engine
+        authenticates to nothing, and accepting a credential here would invent an override path
+        that does not exist.
+
+        The instance is cached by the router on the facts below, so a resident pipeline stays
+        resident across requests that name the same weights.
+        """
+        del override
+        return cls(
+            settings.kokoro.model_copy(update={"model_path": candidate.model.local_path or ""}),
+            ttl_seconds=settings.model_cache_ttl_seconds,
+        )
+
     def __init__(
         self,
         config: KokoroConfig,
