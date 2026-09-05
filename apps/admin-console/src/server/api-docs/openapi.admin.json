@@ -38986,7 +38986,7 @@
     },
     "/api/v1/admin/prompt-templates/assign-department": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:prompt-template:manage`).\n\n**Abilities** — `manage:Department`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:prompt-template:manage`).\n\n**Abilities** — `update:Department`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "PromptManagementController_assignDepartment",
         "parameters": [],
         "requestBody": {
@@ -39011,7 +39011,7 @@
             "description": "Updated department prompt config"
           },
           "403": {
-            "description": "Forbidden - caller lacks manage Department ability"
+            "description": "Forbidden - caller lacks the update Department ability"
           },
           "404": {
             "description": "Department not found (or cross-tenant)"
@@ -39033,7 +39033,7 @@
           "admin-prompt-templates"
         ],
         "x-hope-abilities": [
-          "manage:Department"
+          "update:Department"
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [
@@ -46229,7 +46229,7 @@
     },
     "/api/v1/admin/settings/{id}/reveal": {
       "post": {
-        "description": "Returns the decrypted plaintext of ONE global setting. SUPER_ADMIN only (CASL `manage:all`). Requires step-up re-authentication: the request body must carry the caller's current account password, verified server-side against the stored hash. Every reveal is audit-logged; the plaintext is never logged. Never bulk-reveals.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:settings:manage`).\n\n**Abilities** — `manage:all`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns the decrypted plaintext of ONE global setting. SUPER_ADMIN only (CASL `manage:all`). Requires step-up re-authentication: the request body must carry the caller's current account password, verified server-side against the stored hash. Every reveal is audit-logged; the plaintext is never logged. Never bulk-reveals.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:all`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "GlobalSettingController_reveal",
         "parameters": [
           {
@@ -46293,8 +46293,7 @@
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
+          "user-jwt"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "admin",
@@ -46306,7 +46305,7 @@
     },
     "/api/v1/admin/settings/{id}/rotate": {
       "post": {
-        "description": "Atomically replaces the stored secret value of ONE global setting under optimistic concurrency. SUPER_ADMIN only (CASL `manage:all`). Requires step-up re-authentication (the caller's current password in the body) AND the RFC 7232 `If-Match` header carrying the row version (missing → 428, drift → 412). The old value is invalidated by the same versioned write. Every rotation is distinctly audit-logged; neither the old nor the new plaintext is ever logged or returned — the response is the masked setting.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:settings:manage`).\n\n**Abilities** — `manage:all`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Atomically replaces the stored secret value of ONE global setting under optimistic concurrency. SUPER_ADMIN only (CASL `manage:all`). Requires step-up re-authentication (the caller's current password in the body) AND the RFC 7232 `If-Match` header carrying the row version (missing → 428, drift → 412). The old value is invalidated by the same versioned write. Every rotation is distinctly audit-logged; neither the old nor the new plaintext is ever logged or returned — the response is the masked setting.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:all`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "GlobalSettingController_rotate",
         "parameters": [
           {
@@ -46389,8 +46388,7 @@
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
+          "user-jwt"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "admin",

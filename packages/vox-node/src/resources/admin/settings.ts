@@ -16,9 +16,6 @@ import type {
   EffectiveSettingResponse,
   GlobalSettingResponse,
   PaginatedResponse,
-  RevealGlobalSettingRequest,
-  RevealGlobalSettingResponse,
-  RotateGlobalSettingRequest,
   SecurityPolicyResponse,
   SettingCatalogResponse,
   UpdateGlobalSettingRequest,
@@ -35,7 +32,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers GlobalSettingController, SecurityPolicyController, SettingsCatalogController, SettingsRegistryWriteController
- * (14 routes). Several controllers sharing one scope share one
+ * (12 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -154,47 +151,6 @@ export class AdminSettingsResource extends AdminResource {
     return this.requestWithPrecondition<GlobalSettingResponse>({
       method: 'PATCH',
       path: `admin/settings/${encodePathSegment(String(id))}`,
-      body,
-      ifMatch: options.ifMatch,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Reveal a secret setting (super-admin, step-up re-auth, audited)
-   *
-   * Returns the decrypted plaintext of ONE global setting. SUPER_ADMIN only (CASL `manage:all`). Requires step-up re-authentication: the request body must carry the caller's current account password, verified server-side against the stored hash. Every reveal is audit-logged; the plaintext is never logged. Never bulk-reveals.
-   *
-   * `POST /api/v1/admin/settings/{id}/reveal` — `GlobalSettingController.reveal`.
-   */
-  reveal(id: string, body: RevealGlobalSettingRequest, options: AdminRequestOptions = {}): Promise<RevealGlobalSettingResponse> {
-    return this.request<RevealGlobalSettingResponse>({
-      method: 'POST',
-      path: `admin/settings/${encodePathSegment(String(id))}/reveal`,
-      body,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Rotate a secret setting (super-admin, step-up re-auth, OCC, audited)
-   *
-   * Atomically replaces the stored secret value of ONE global setting under optimistic concurrency. SUPER_ADMIN only (CASL `manage:all`). Requires step-up re-authentication (the caller's current password in the body) AND the RFC 7232 `If-Match` header carrying the row version (missing → 428, drift → 412). The old value is invalidated by the same versioned write. Every rotation is distinctly audit-logged; neither the old nor the new plaintext is ever logged or returned — the response is the masked setting.
-   *
-   * `POST /api/v1/admin/settings/{id}/rotate` — `GlobalSettingController.rotate`.
-   *
-   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
-   */
-  rotate(
-    id: string,
-    body: RotateGlobalSettingRequest,
-    options: AdminRequestOptions & { ifMatch: IfMatchPrecondition },
-  ): Promise<GlobalSettingResponse> {
-    return this.requestWithPrecondition<GlobalSettingResponse>({
-      method: 'POST',
-      path: `admin/settings/${encodePathSegment(String(id))}/rotate`,
       body,
       ifMatch: options.ifMatch,
       signal: options.signal,

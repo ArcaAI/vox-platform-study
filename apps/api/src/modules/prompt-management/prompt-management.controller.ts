@@ -437,11 +437,22 @@ export class PromptManagementController {
 
   @Post('assign-department')
   @HttpCode(200)
-  @Authorize(['manage', 'Department'])
+  // TASK-873 — NARROWED from `manage:Department` to `update:Department`. This
+  // route writes exactly three columns of one Department row: it delegates to
+  // `DepartmentService.updatePromptConfig` under OCC and touches nothing else,
+  // so `manage` was broader than the write it performs. The narrowing is what
+  // lets the controller's own machine scope
+  // (`svc:admin:prompt-template:manage`) carry the requirement without being
+  // taught to ADMINISTER departments — `admin:department:manage` is that scope,
+  // and `DepartmentController` accepts only its own. No seeded policy grants a
+  // bare `update:Department`, so the human plane widens to nobody: TENANT_ADMIN
+  // reaches it through `manage:Department` and SUPER_ADMIN through `manage:all`,
+  // exactly as before.
+  @Authorize(['update', 'Department'])
   @ApiOperation({ summary: 'Assign prompt templates to a department' })
   @ApiBody({ type: AssignDepartmentPromptRequest })
   @ApiResponse({ status: 200, description: 'Updated department prompt config', type: DepartmentResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden - caller lacks manage Department ability' })
+  @ApiResponse({ status: 403, description: 'Forbidden - caller lacks the update Department ability' })
   @ApiResponse({ status: 404, description: 'Department not found (or cross-tenant)' })
   async assignDepartment(@Body() request: AssignDepartmentPromptRequest): Promise<DepartmentResponse> {
     return this.promptService.assignToDepartment(request);
