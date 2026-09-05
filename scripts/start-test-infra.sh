@@ -91,6 +91,25 @@ validate_services() {
         all_ok=false
     fi
 
+    # Temporal (TASK-869): the server, then the init container that registers the
+    # `default` namespace and the `HarnessTenantId` search attribute. The order
+    # matters and is enforced by compose `depends_on`, but it is reported here
+    # because a worker started before the namespace exists never recovers — it
+    # keeps logging "Namespace default is not found" and polls nothing.
+    if nc -z localhost "${TEST_TEMPORAL_PORT:-7333}" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Temporal (port ${TEST_TEMPORAL_PORT:-7333}) - healthy"
+        local temporal_init
+        temporal_init=$(docker inspect hope-temporal-init-test --format='{{.State.ExitCode}}' 2>/dev/null)
+        if [ "$temporal_init" = "0" ]; then
+            echo -e "  ${GREEN}✓${NC} Temporal namespace + search attributes - initialized"
+        else
+            echo -e "  ${YELLOW}!${NC} Temporal init container has not completed (exit=${temporal_init:-missing})"
+        fi
+    else
+        echo -e "  ${RED}✗${NC} Temporal (port ${TEST_TEMPORAL_PORT:-7333}) - not ready"
+        all_ok=false
+    fi
+
     # Vault (isolated hope-vault-test, not the shared dev Vault)
     if docker exec hope-vault-test wget -q -O- http://127.0.0.1:8200/v1/sys/health 2>/dev/null | grep -q '"initialized":true'; then
         echo -e "  ${GREEN}✓${NC} Vault (port 8201) - healthy"
