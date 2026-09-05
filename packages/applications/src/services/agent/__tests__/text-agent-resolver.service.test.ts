@@ -15,7 +15,7 @@ import { AgentTask, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import type { ResolvedAgent, ResolvedAgentModel } from '@arcaai/types';
 import { ProviderVetoedException } from '../../ai-provider-connection/provider-vetoed.exception';
-import { TextAgentResolverService } from '../text-agent-resolver.service';
+import { TEXT_SPEC_CACHE_TTL_MS, TextAgentResolverService } from '../text-agent-resolver.service';
 
 // A plain customer tenant. NOT `50000000-…` ("Global"): that is a RESERVED id — the
 // platform-admin playground tenant — and a cascade test whose caller is a reserved tenant
@@ -359,5 +359,87 @@ describe('TextAgentResolverService.resolve — funding is derived per candidate 
     );
     const spec = await make(false).resolve({ tenantId: TENANT });
     expect(spec.primary).toMatchObject({ fundingTier: 'tenant', providerOverride: { provider: 'azure', api_key: 'k' } });
+  });
+});
+
+// TASK-876 — the live documentation lane resolved the WHOLE spec on every flush (the assignment
+// cascade, the agent row + models, the prompt, the platform-default agent, a credential per cloud
+// candidate — ~10 round trips) at four call sites per flush.
+describe('TextAgentResolverService.resolve — the short-TTL, tenant-keyed spec cache', () => {
+  it('collapses repeated resolutions of the same key into ONE', async () => {
+    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    const service = make();
+    await service.resolve({ tenantId: TENANT });
+    await service.resolve({ tenantId: TENANT });
+    await service.resolve({ tenantId: TENANT });
+    // 2 = the primary cascade + the platform-default lookup, once.
+    expect(agents.resolve).toHaveBeenCalledTimes(2);
+  });
+
+  it('keys by tenant FIRST — one tenant`s agent (and credential) can never serve another', async () => {
+    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    const service = make();
+    await service.resolve({ tenantId: TENANT });
+    agents.resolve.mockClear();
+    await service.resolve({ tenantId: 'c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f' });
+    expect(agents.resolve).toHaveBeenCalled();
+  });
+
+  it('keys by department and explicit slug too', async () => {
+    bySlug({ 'clinic-summarizer': agent(), 'platform-summarization': platformAgent() }, agent());
+    const service = make();
+    await service.resolve({ tenantId: TENANT });
+    agents.resolve.mockClear();
+    await service.resolve({ tenantId: TENANT, departmentId: 'dept-1' });
+    expect(agents.resolve).toHaveBeenCalledWith(expect.objectContaining({ departmentId: 'dept-1' }));
+    agents.resolve.mockClear();
+    await service.resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
+    expect(agents.resolve).toHaveBeenCalledWith(expect.objectContaining({ agentSlug: 'clinic-summarizer' }));
+  });
+
+  it('re-resolves once the TTL is spent', async () => {
+    vi.useFakeTimers();
+    try {
+      bySlug({ 'platform-summarization': platformAgent() }, agent());
+      const service = make();
+      await service.resolve({ tenantId: TENANT });
+      agents.resolve.mockClear();
+      vi.advanceTimersByTime(TEXT_SPEC_CACHE_TTL_MS + 1);
+      await service.resolve({ tenantId: TENANT });
+      expect(agents.resolve).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('single-flights concurrent callers — a flush burst makes ONE round trip, not N', async () => {
+    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    const service = make();
+    await Promise.all([service.resolve({ tenantId: TENANT }), service.resolve({ tenantId: TENANT }), service.resolve({ tenantId: TENANT })]);
+    expect(agents.resolve).toHaveBeenCalledTimes(2);
+  });
+
+  it('hands every caller its own copy — one consumer cannot mutate another`s spec', async () => {
+    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    const service = make();
+    const first = await service.resolve({ tenantId: TENANT });
+    first.primary.model = 'mutated';
+    const second = await service.resolve({ tenantId: TENANT });
+    expect(second.primary.model).toBe('gemma-4-e2b-it-qat');
+  });
+
+  it('enforces a version PIN against the CACHED spec — a shared entry still fails closed on drift', async () => {
+    bySlug({ 'clinic-summarizer': agent(), 'platform-summarization': platformAgent() });
+    const service = make();
+    await service.resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer', versionNumber: 3 });
+    await expect(service.resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer', versionNumber: 2 })).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('never caches a failure', async () => {
+    bySlug({});
+    const service = make();
+    await expect(service.resolve({ tenantId: TENANT })).rejects.toBeInstanceOf(NotFoundException);
+    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    await expect(service.resolve({ tenantId: TENANT })).resolves.toMatchObject({ primary: { kind: 'primary' } });
   });
 });
