@@ -134,20 +134,30 @@ describe('STT_RUNTIME_SETTINGS', () => {
     expect(STT_RUNTIME_SETTINGS.map((d) => d.key)).not.toContain(key);
   });
 
-  it('keeps stt.diarization.hfModelId as a PLATFORM-scope key, on purpose (TASK-880)', () => {
-    // The one `stt.*` model id that did NOT move onto the agent. It does not merely
-    // select a model: it declares the vector SPACE enrolled `UserVoiceProfile` rows
-    // live in (`vector(256)`), so a per-agent choice of another width would be data the
-    // column cannot hold. The platform declares the space; an agent picks within it,
-    // and `buildResolvedAsrSpec` refuses a declared mismatch with a 409.
-    const key = HOPE_SETTINGS_REGISTRY.get('stt.diarization.hfModelId');
+  /**
+   * TASK-887 (owner decision, target model item 8) — the two keys diarization used to own.
+   *
+   * TASK-880 kept `stt.diarization.hfModelId` as THE platform embedding space and pinned it
+   * here. The owner then decided the opposite: the ASR agent declares the embedding model, an
+   * enrolled `UserVoiceProfile` records the model that embedded it, and matching only considers
+   * profiles from that same model. With no single platform space left, the key describes
+   * nothing — and `stt.voiceProfile.minSimilarity` became the agent's
+   * `audioFrontEnd.diarization.matchThreshold` for the same reason.
+   */
+  const REMOVED_TASK_887: ReadonlyArray<[string, string]> = [
+    ['stt.diarization.hfModelId', 'the agent’s `audioFrontEnd.diarization.embeddingModelSlug` → the spec’s `models.embedding`'],
+    ['stt.voiceProfile.minSimilarity', 'the agent’s `audioFrontEnd.diarization.matchThreshold`'],
+  ];
+
+  it.each(REMOVED_TASK_887)('%s is gone from the registry entirely (now: %s)', (key) => {
+    expect(HOPE_SETTINGS_REGISTRY.has(key)).toBe(false);
+    expect(STT_RUNTIME_SETTINGS.map((d) => d.key)).not.toContain(key);
+  });
+
+  it('keeps stt.diarization.device — process placement is a property of the box, not of the agent', () => {
+    const key = HOPE_SETTINGS_REGISTRY.get('stt.diarization.device');
     expect(key).toBeDefined();
-    expect(key?.maxScope).toBe('system');
-    expect(key?.globalOnly).toBe(true);
-    expect(key?.default).toBe('pyannote/wespeaker-voxceleb-resnet34-LM');
-    // The description must say WHY it is platform-scope, or the next reader moves it.
-    expect(key?.description).toMatch(/SPACE/);
-    expect(key?.description).toMatch(/vector\(256\)/);
+    expect(key?.default).toBe('auto');
   });
 
   it('leaves the storage keys to the db-config cascade rather than re-declaring them here', () => {

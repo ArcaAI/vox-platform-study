@@ -2256,7 +2256,6 @@ class TestAssemblyWithRealPipelineSpec:
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=(AsyncMock(), None))
         mgr._load_gloss_pipeline = AsyncMock(return_value=None)
-        mgr._preseed_speaker = AsyncMock()
         fake_emb = MagicMock()
         mgr._get_pipeline_embedding_service = AsyncMock(return_value=fake_emb)
 

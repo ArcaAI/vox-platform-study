@@ -233,6 +233,8 @@ export type {
   UseVoiceEmbeddingReturn,
   VoiceProfile,
   EnrollFiles,
+  EnrollOptions,
+  VoiceEnrollmentTarget,
   UserRole,
 } from './hooks';
 

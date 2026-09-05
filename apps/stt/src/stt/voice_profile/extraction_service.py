@@ -17,9 +17,14 @@ logger = logging.getLogger(__name__)
 
 MAX_SAMPLE_DURATION_SEC = 15.0
 MAX_SAMPLES = 3
-# Must match the ``vector(N)`` dimension of ``core."UserVoiceProfile"."embedding"``
-# in the Prisma migration. Changing this requires a coordinated DB migration.
-EXPECTED_EMBEDDING_DIM = 256
+# TASK-887 — there is deliberately no EXPECTED_EMBEDDING_DIM any more.
+# `core."UserVoiceProfile"."embedding"` is a dimension-agnostic pgvector `vector`, and a row
+# records the model that produced it (`modelId`), so width is a property of the model the
+# agent named — not a platform constant this service could meaningfully police. Matching only
+# ever compares profiles from the SAME model, so a wrong-width comparison cannot arise.
+# The default the retired platform key `stt.voiceProfile.minSimilarity` carried, used when the
+# caller pushes no agent threshold (`audioFrontEnd.diarization.matchThreshold`).
+DEFAULT_MIN_CROSS_SAMPLE_SIMILARITY = 0.6
 
 
 @dataclass
@@ -37,30 +42,17 @@ class ExtractionService:
         vad_service: Any,
         *,
         min_cross_sample_similarity: float | None = None,
-        expected_embedding_dim: int | None = None,
     ) -> None:
         self._embedding_service = embedding_service
         self._vad_service = vad_service
-
-        if min_cross_sample_similarity is None:
-            from ..core.config.settings import get_settings
-
-            min_cross_sample_similarity = get_settings().voice_profile_min_similarity
-        self._min_cross_sample_similarity = min_cross_sample_similarity
-
-        if expected_embedding_dim is None:
-            # The dimension is a property of the DEPLOYED
-            # `UserVoiceProfile.embedding vector(N)` column, so this module
-            # constant is the single source and is gated against `user.prisma`
-            # by `tests/unit/test_task799_env_surface.py`.
-            #
-            # It used to be a settings field too (lane C removed it):
-            # one fact in two places, only one of which was operator-settable.
-            # An ECAPA cutover (192-d) is a migration plus full re-enrolment —
-            # changing this number alone does not perform it, it only makes
-            # every enrollment fail dimension validation.
-            expected_embedding_dim = EXPECTED_EMBEDDING_DIM
-        self._expected_embedding_dim = expected_embedding_dim
+        # TASK-887 — the floor is the AGENT's `audioFrontEnd.diarization.matchThreshold`,
+        # pushed by the gateway with the request. `None` means the caller expressed no
+        # opinion, so the engine default stands; there is no settings field behind it.
+        self._min_cross_sample_similarity = (
+            DEFAULT_MIN_CROSS_SAMPLE_SIMILARITY
+            if min_cross_sample_similarity is None
+            else min_cross_sample_similarity
+        )
 
     async def extract(
         self,
@@ -104,28 +96,19 @@ class ExtractionService:
         if norm > 1e-10:
             centroid = centroid / norm
 
+        # The model that actually embedded these samples — the one the gateway handed this
+        # service, which is the agent's `models.embedding`. The caller stores it alongside
+        # the vector so a later session only compares profiles from the same space.
         hf_id = getattr(self._embedding_service, "_hf_model_id", None)
-        if isinstance(hf_id, str) and hf_id:
-            model_id = hf_id
-        else:
-            from ..core.config.settings import get_settings
-
-            model_id = get_settings().diarization_hf_model_id
-
-        if len(centroid) != self._expected_embedding_dim:
+        if not (isinstance(hf_id, str) and hf_id):
             raise ValueError(
-                f"Embedding dimension mismatch: model '{model_id}' produced "
-                f"{len(centroid)}-d embedding but database expects "
-                f"{self._expected_embedding_dim}-d. "
-                f"Set DIARIZATION_HF_MODEL_ID to a model that outputs "
-                f"{self._expected_embedding_dim}-d embeddings (e.g. "
-                f"'pyannote/wespeaker-voxceleb-resnet34-LM') or run a migration "
-                f"to alter the UserVoiceProfile.embedding column."
+                "The embedding service did not report the model it loaded, so the profile "
+                "could not be attributed to a vector space."
             )
 
         return ExtractionResult(
             embedding=centroid.tolist(),
-            model_id=model_id,
+            model_id=hf_id,
         )
 
 

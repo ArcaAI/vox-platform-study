@@ -259,14 +259,13 @@ class TestProcessUtterance:
             consultation_id="consult-1",
             diarization_config=diarization_cfg,
             speaker_identifier=mock_identifier,
+            # TASK-887 — injected at session assembly from the agent's `models.embedding`;
+            # there is no `get_embedding_service()` singleton to patch any more.
+            embedding_service=MagicMock(extract_from_samples=AsyncMock(return_value=mock_embedding)),
         )
         utt = _make_utterance(duration_s=1.2, is_final=True)
 
-        with patch(
-            "stt.diarization.embedding_service.get_embedding_service",
-        ) as mock_emb_svc:
-            mock_emb_svc.return_value.extract_from_samples = AsyncMock(return_value=mock_embedding)
-            result = await worker.process_utterance("sess-1", utt)
+        result = await worker.process_utterance("sess-1", utt)
 
         assert result.speaker_id == "speaker-abc"
         assert result.speaker_confidence == pytest.approx(0.93)

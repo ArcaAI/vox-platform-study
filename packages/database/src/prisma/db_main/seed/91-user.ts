@@ -705,14 +705,24 @@ export const SEED_USERS = [
 // =========================================================================
 
 /**
- * pgvector dimension of `core."UserVoiceProfile"."embedding"`. MUST match the
- * `vector(N)` in the migration and `EXPECTED_EMBEDDING_DIM` in the backend
- * `VoiceProfileService` (256-d wespeaker/WavLM speaker embedding).
+ * Width of the demo embeddings. TASK-887 — this is no longer a deployment-wide fact:
+ * `core."UserVoiceProfile"."embedding"` is a dimension-agnostic pgvector `vector`, and a row's
+ * width is whatever the model named by `VOICE_PROFILE_MODEL_SLUG` emits. 256 is that model's
+ * width (wespeaker ResNet34), so these rows are consistent with the row they claim.
  */
 export const VOICE_EMBEDDING_DIM = 256;
 
-/** Speaker-embedding model id used for the demo rows (matches the backend default). */
-const VOICE_PROFILE_MODEL_ID = 'pyannote/wespeaker-voxceleb-resnet34-LM';
+/**
+ * The `AiModel` SLUG that embedded the demo rows — `seed/ai-models/audio.ts`'s
+ * `wespeaker-voxceleb-resnet34` (`sourceUri: pyannote/wespeaker-voxceleb-resnet34-LM`).
+ *
+ * TASK-887 — `UserVoiceProfile.modelId` holds the registry SLUG, not the HuggingFace repo
+ * name it used to hold: the slug is what an ASR agent binds
+ * (`audioFrontEnd.diarization.embeddingModelSlug`) and what travels on the resolved spec, so
+ * it is what a session compares a profile against. A demo profile is only matched by an agent
+ * that binds THIS row.
+ */
+const VOICE_PROFILE_MODEL_SLUG = 'wespeaker-voxceleb-resnet34';
 
 /**
  * Build a DETERMINISTIC placeholder speaker embedding of length
@@ -757,7 +767,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     userId: SEED_USER_IDS.DOCTOR,
     isActive: true,
     label: 'Clinic mic (primary)',
-    modelId: VOICE_PROFILE_MODEL_ID,
+    modelId: VOICE_PROFILE_MODEL_SLUG,
     embedding: makeDeterministicEmbedding(1),
   },
   {
@@ -766,7 +776,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     userId: SEED_USER_IDS.DOCTOR,
     isActive: false,
     label: 'Headset (backup)',
-    modelId: VOICE_PROFILE_MODEL_ID,
+    modelId: VOICE_PROFILE_MODEL_SLUG,
     embedding: makeDeterministicEmbedding(2),
   },
   {
@@ -775,7 +785,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     userId: SEED_USER_IDS.DOCTOR2,
     isActive: true,
     label: 'Clinic mic (primary)',
-    modelId: VOICE_PROFILE_MODEL_ID,
+    modelId: VOICE_PROFILE_MODEL_SLUG,
     embedding: makeDeterministicEmbedding(3),
   },
   {
@@ -784,7 +794,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     userId: SEED_USER_IDS.DOCTOR2,
     isActive: false,
     label: 'Old enrollment (2025)',
-    modelId: VOICE_PROFILE_MODEL_ID,
+    modelId: VOICE_PROFILE_MODEL_SLUG,
     embedding: makeDeterministicEmbedding(4),
   },
   // One ACTIVE enrollment per customer-tenant doctor so the
@@ -797,7 +807,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     userId: SEED_USER_IDS.ARCAAI_DOCTOR,
     isActive: true,
     label: 'Clinic mic (primary)',
-    modelId: VOICE_PROFILE_MODEL_ID,
+    modelId: VOICE_PROFILE_MODEL_SLUG,
     embedding: makeDeterministicEmbedding(5),
   },
 ];

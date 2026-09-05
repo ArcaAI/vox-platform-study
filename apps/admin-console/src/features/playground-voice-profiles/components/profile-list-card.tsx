@@ -14,14 +14,37 @@ import { formatRelativeTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useDeleteVoiceProfile, useSetVoiceProfileActive, useVoiceProfiles } from '../api';
-import type { VoiceProfile } from '../api';
+import type { VoiceProfile, VoiceProfileEnrollmentTarget } from '../api';
 
 function displayName(profile: VoiceProfile): string {
   return profile.label ?? 'Untitled profile';
 }
 
-function ProfileRow({ profile, onToggle, onDelete, isBusy }: { profile: VoiceProfile; onToggle: () => void; onDelete: () => void; isBusy: boolean }) {
+/**
+ * TASK-887 — a profile lives in the space of the model that embedded it, and diarization only
+ * compares profiles from the SAME model. So a profile embedded by a different model is
+ * invisible to the agent this user's sessions run, not merely less accurate — which is a
+ * different state from "not enrolled" and needs saying out loud.
+ */
+export function isStaleForTarget(profile: VoiceProfile, target: VoiceProfileEnrollmentTarget | undefined): boolean {
+  return Boolean(target) && profile.modelId !== target?.modelId;
+}
+
+function ProfileRow({
+  profile,
+  target,
+  onToggle,
+  onDelete,
+  isBusy,
+}: {
+  profile: VoiceProfile;
+  target?: VoiceProfileEnrollmentTarget;
+  onToggle: () => void;
+  onDelete: () => void;
+  isBusy: boolean;
+}) {
   const name = displayName(profile);
+  const stale = isStaleForTarget(profile, target);
   return (
     <li className="flex flex-col gap-2 rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -32,6 +55,9 @@ function ProfileRow({ profile, onToggle, onDelete, isBusy }: { profile: VoicePro
         ) : (
           <Badge variant="outline">Inactive</Badge>
         )}
+        {/* Never colour alone (rule 11 §10): the badge carries the words, and the row below
+            names the model that would match. */}
+        {stale ? <Badge variant="destructive">Re-enroll needed</Badge> : null}
         <Button
           type="button"
           variant="outline"
@@ -48,6 +74,7 @@ function ProfileRow({ profile, onToggle, onDelete, isBusy }: { profile: VoicePro
       </div>
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         {profile.modelId ? <span className="font-mono">{profile.modelId}</span> : <span>Model pending</span>}
+        {stale ? <span>{`Your agent diarizes with ${target?.modelId} — this profile will not be matched`}</span> : null}
         <span>Enrolled {formatRelativeTime(profile.createdAt)}</span>
         <span>Updated {formatRelativeTime(profile.updatedAt)}</span>
       </div>
@@ -61,7 +88,16 @@ function ProfileRow({ profile, onToggle, onDelete, isBusy }: { profile: VoicePro
  * optimistic write) and delete behind a destructive confirm (biometric
  * removal, frame 05 pattern).
  */
-export function ProfileListCard({ query, onEnroll }: { query: ReturnType<typeof useVoiceProfiles>; onEnroll?: () => void }) {
+export function ProfileListCard({
+  query,
+  target,
+  onEnroll,
+}: {
+  query: ReturnType<typeof useVoiceProfiles>;
+  /** TASK-887 — the model a new enrollment would use; absent while loading or unresolvable. */
+  target?: VoiceProfileEnrollmentTarget;
+  onEnroll?: () => void;
+}) {
   const setActive = useSetVoiceProfileActive();
   const deleteProfile = useDeleteVoiceProfile();
   const [deleteTarget, setDeleteTarget] = useState<VoiceProfile | null>(null);
@@ -134,6 +170,7 @@ export function ProfileListCard({ query, onEnroll }: { query: ReturnType<typeof 
                 <ProfileRow
                   key={profile.id}
                   profile={profile}
+                  target={target}
                   onToggle={() => toggle(profile)}
                   onDelete={() => setDeleteTarget(profile)}
                   isBusy={setActive.isPending || deleteProfile.isPending}

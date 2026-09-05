@@ -682,6 +682,12 @@ class DiarizationConfig:
     enable_segmentation_refinement: bool = True
     # Rolling window size per speaker (number of recent embeddings to keep)
     max_embeddings_per_speaker: int = 8
+    # TASK-887 — the cosine floor at which a segment may be labelled with an ENROLLED
+    # voice profile (the gateway pushes the session's profiles; see `preseed.py`), and the
+    # cross-sample consistency floor enrollment must clear. Below it the segment gets a
+    # generic "Speaker N" label — a real clinician name is never attached on a weak match.
+    # 0.6 is the value the retired platform key `stt.voiceProfile.minSimilarity` carried.
+    match_threshold: float = 0.6
     # Streaming diarizer backend selector.
     #   "embedding"  -> the existing pyannote/wespeaker embedding-clustering path
     #                   (DEFAULT — preserves current behavior; batch stays here).

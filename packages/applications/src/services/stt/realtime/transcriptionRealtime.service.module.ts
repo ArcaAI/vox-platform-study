@@ -4,6 +4,7 @@ import { ClsModule } from 'nestjs-cls';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { RedisCacheModule } from '../../baseServices/redis/redis-cache.module';
 import { TranscriptionJobServiceModule } from '../job/transcriptionJob.service.module';
+import { VoiceProfileServiceModule } from '../../user/voiceProfile/voiceProfile.service.module';
 import { RedisSubscriberService } from './redisSubscriber.service';
 import { TranscriptionRealtimeService } from './transcriptionRealtime.service';
 
@@ -24,7 +25,7 @@ import { TranscriptionRealtimeService } from './transcriptionRealtime.service';
  * - TranscriptionRealtimeService: Orchestrates job creation, dispatch, SSE
  */
 @Module({
-  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, RedisCacheModule.register(), TranscriptionJobServiceModule],
+  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, RedisCacheModule.register(), TranscriptionJobServiceModule, VoiceProfileServiceModule],
   providers: [RedisSubscriberService, TranscriptionRealtimeService],
   exports: [TranscriptionRealtimeService, RedisSubscriberService],
 })

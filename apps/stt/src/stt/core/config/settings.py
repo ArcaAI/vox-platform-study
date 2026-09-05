@@ -463,12 +463,12 @@ class Settings(BaseSettings):
     # the three above it (`audioFrontEnd.vad.speechPadMs` -> `VadConfig.padding_ms`); a
     # caller that passes nothing gets the dataclass default, not a per-process setting.
 
-    # Diarization -- Pyannote embeddings
-    diarization_hf_model_id: str = Field(
-        validation_alias=moved_alias("diarization_hf_model_id"),
-        default="pyannote/wespeaker-voxceleb-resnet34-LM",
-        description="HuggingFace model ID for speaker embedding extraction",
-    )
+    # Diarization -- device placement only.
+    # TASK-887 — `diarization_hf_model_id` lived here and named THE platform speaker-embedding
+    # model. Diarization is now a declared ASR-agent option: the agent binds the
+    # `SPEAKER_EMBEDDING` row (`ResolvedAsrSpec.models.embedding`) for a session, and the
+    # gateway pushes the same model to `/internal/voice-profile/extract` at enrollment. There is
+    # no process-wide embedding model and no singleton that could serve one.
     diarization_device: str = Field(
         validation_alias=moved_alias("diarization_device"),
         default="auto",
@@ -476,27 +476,16 @@ class Settings(BaseSettings):
     )
 
     # Voice profile enrollment
-    voice_profile_min_similarity: float = Field(
-        validation_alias=moved_alias("voice_profile_min_similarity"),
-        default=0.6,
-        ge=0.0,
-        le=1.0,
-        description=(
-            "Minimum acceptable pairwise cosine similarity between per-sample "
-            "embeddings during enrollment. Below this, the enrollment is rejected "
-            "as inconsistent. Lower this (~0.3) for dev with consumer-grade "
-            "microphones; keep >=0.6 in production."
-        ),
-    )
-    # There is deliberately NO `voice_profile_embedding_dim`.
-    # Its own description conceded it "must match the deployed
-    # `UserVoiceProfile.embedding vector(N)` column" — so it was one fact stored
-    # in two places, only one of which an operator could change. Setting it to
-    # 192 against a `vector(256)` column does not perform the ECAPA cutover; it
-    # just makes every enrollment fail dimension validation. The single source
-    # is `voice_profile.extraction_service.EXPECTED_EMBEDDING_DIM`, gated
-    # against `user.prisma` by `tests/unit/test_task799_env_surface.py`. A real
-    # cutover is a migration plus re-enrolment, which no env var can express.
+    # TASK-887 — `voice_profile_min_similarity` lived here. How confidently a clinic wants a
+    # real name attached to speech is an agent decision, so it is the agent's
+    # `audioFrontEnd.diarization.matchThreshold`, pushed per enrollment request and carried
+    # per session on `ResolvedAsrSpec`. `DiarizationConfig.match_threshold` holds the engine
+    # default for the "agent said nothing" case.
+    #
+    # There is deliberately NO `voice_profile_embedding_dim` EITHER — and since TASK-887 no
+    # module constant behind it: `UserVoiceProfile.embedding` is a dimension-agnostic pgvector
+    # `vector`, and a profile records the model that embedded it, so width is a property of the
+    # model the agent named, not of the deployment.
 
     # Worker settings
     worker_threads: int = Field(

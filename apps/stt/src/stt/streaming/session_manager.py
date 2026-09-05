@@ -213,6 +213,12 @@ class SessionManager:
         self._switch_controllers: dict[str, EngineSwitchController] = {}
         self._provider_overrides: dict[str, dict[str, Any]] = {}
         self._fallback_pipeline_ids: dict[str, str] = {}
+        # TASK-887 — the end-user's ENROLLED voice profiles, resolved by the gateway for
+        # the agent's embedding model and pushed on the create body. Biometric PHI: held
+        # IN MEMORY ONLY, exactly like `_provider_overrides` — never persisted to Redis
+        # session metadata, never logged. A recovered session therefore loses its labels
+        # and diarizes generically rather than re-reading a vector from anywhere.
+        self._session_voice_profiles: dict[str, list[dict[str, Any]]] = {}
         # TASK-861 — per-session gateway-resolved spec bundle (the engine chains
         # + every model config, pre-mapped). When present for a session, NO
         # pipeline/model row is read from Postgres for it.
@@ -597,8 +603,12 @@ class SessionManager:
             and effective_diarization
             and diarization_config
             and sortformer_diarizer is None
+            # TASK-887 — no embedding service, no embedding diarization. The platform
+            # singleton that used to stand in here is gone: it embedded into a space no
+            # agent had chosen, so its matches were meaningless and its enrolments landed
+            # in a space nothing would ever compare against.
+            and pipeline_embedding_service is not None
         ):
-            from stt.diarization.embedding_service import get_embedding_service
             from stt.diarization.speaker_identifier import SpeakerIdentifier
             from stt.diarization.speaker_tracker import SpeakerTracker
 
@@ -632,36 +642,21 @@ class SessionManager:
                         exc_info=True,
                     )
 
-            # The per-pipeline embedding service resolved above;
-            # settings singleton is the fallback.
-            emb_service = pipeline_embedding_service
-            try:
-                if emb_service is None:
-                    emb_service = get_embedding_service()
-            except Exception:
-                logger.warning(
-                    "Failed to get embedding service for session %s", session_id, exc_info=True
-                )
-
             speaker_identifier = SpeakerIdentifier(
                 tracker=speaker_tracker,
-                embedding_service=emb_service,
+                embedding_service=pipeline_embedding_service,
                 segmentation_service=seg_service,
                 config=diarization_config,
             )
 
-            if consultation_id or user_id:
-                # Pass the session tenant so the
-                # voice-profile lookups are tenant-scoped (they fail
-                # closed without it; a cross-tenant profile is never
-                # served).
-                await self._preseed_speaker(
-                    speaker_tracker,
-                    consultation_id,
-                    session_id,
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                )
+            # TASK-887 — seed the end-user's ENROLLED profiles for THIS agent's embedding
+            # model. Pure and local: the gateway resolved and pushed them, so no row is
+            # read here and a profile from another model is ignored rather than compared.
+            self._seed_voice_profiles(
+                speaker_tracker,
+                session_id,
+                self._spec_embedding_slug(pipeline_config),
+            )
 
         # Inference worker (per-utterance ASR)
         postprocessing_config = pipeline_config.postprocessing if pipeline_config else None
@@ -895,6 +890,7 @@ class SessionManager:
         consecutive_failure_threshold: int | None = None,
         channel_count: int = 1,
         resolved_spec: dict[str, Any] | None = None,
+        voice_profiles: list[dict[str, Any]] | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -1022,6 +1018,11 @@ class SessionManager:
             # pointer before any load, so they are available to the primary ASR
             # load, the create-time fallback path, and later engine swaps.
             self._provider_overrides[session_id] = dict(provider_overrides or {})
+            # TASK-887 — the gateway already filtered these to the agent's embedding model
+            # and to this user + tenant; `seed_voice_profiles` re-checks the model before
+            # registering anything.
+            if voice_profiles:
+                self._session_voice_profiles[session_id] = list(voice_profiles)
             if fallback_pipeline_id:
                 self._fallback_pipeline_ids[session_id] = fallback_pipeline_id
             # Stash the end-user language mode so both the primary and
@@ -1461,23 +1462,23 @@ class SessionManager:
             raise RuntimeError(f"Primary pipeline '{primary_pipeline_id}' produced no ASR callable")
         return asr_callable
 
-    async def _preseed_speaker(
-        self,
-        tracker: Any,
-        consultation_id: str | None,
-        session_id: str,
-        *,
-        tenant_id: str | None = None,
-        user_id: str | None = None,
-    ) -> None:
-        from stt.diarization.preseed import preseed_speaker
+    def _seed_voice_profiles(
+        self, tracker: Any, session_id: str, model_slug: str | None
+    ) -> dict[str, object]:
+        """Register the session's gateway-pushed voice profiles on ``tracker``.
 
-        await preseed_speaker(
+        TASK-887 — this replaced ``_preseed_speaker``, which reached into Postgres for the
+        consultation's doctor and their embedding. The gateway knows the session's user and
+        the agent's embedding model, so it resolves the profiles and pushes them; this side
+        only registers what it was handed.
+        """
+        from stt.diarization.preseed import seed_voice_profiles
+
+        return seed_voice_profiles(
             tracker,
-            consultation_id,
-            tenant_id=tenant_id,
+            self._session_voice_profiles.get(session_id),
+            model_slug=model_slug,
             log_context=session_id,
-            user_id=user_id,
         )
 
     async def end_session(self, session_id: str) -> dict[str, Any] | None:
@@ -1564,6 +1565,7 @@ class SessionManager:
         # overrides + fallback pointer); the overrides are never persisted.
         self._switch_controllers.pop(session_id, None)
         self._provider_overrides.pop(session_id, None)
+        self._session_voice_profiles.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
         self._session_channel_counts.pop(session_id, None)
@@ -1746,8 +1748,8 @@ class SessionManager:
         so resolving the slug adds no database read to the agent path.
 
         Returns ``None`` when there is no embedding ref, or when a slug is not in this
-        session's bundle — the caller then falls back to the platform singleton, which is
-        the pre-existing behaviour for a deprecated-pipeline session.
+        session's bundle. TASK-887 removed the platform singleton that used to serve in
+        that case: ``None`` now means embedding diarization does not run for this session.
         """
         ref = getattr(getattr(pipeline_config, "models", None), "embedding", None)
         if ref is None:
@@ -1757,6 +1759,20 @@ class SessionManager:
         slug = getattr(ref, "slug", None)
         model_config = _spec_model_config_of(self, session_id, slug)
         return getattr(model_config, "source_uri", None) if model_config is not None else None
+
+    @staticmethod
+    def _spec_embedding_slug(pipeline_config: Any) -> str | None:
+        """The registry SLUG of the session's speaker-embedding model, or ``None``.
+
+        TASK-887 — the slug is the IDENTITY a ``UserVoiceProfile.modelId`` is compared
+        against, while :meth:`_spec_embedding_model_id` returns the loader id
+        (``source_uri``). Two registry rows can wrap the same HuggingFace repo with
+        different revisions or compute types, so the slug is what decides whether a
+        profile's vectors belong to this session's space.
+        """
+        ref = getattr(getattr(pipeline_config, "models", None), "embedding", None)
+        slug = getattr(ref, "slug", None) if ref is not None else None
+        return str(slug) if slug else None
 
     def _spec_vad_local_path(self, session_id: str | None, pipeline_config: Any) -> str | None:
         """``ResolvedAsrSpec.models.vad.localPath`` for a spec-driven session, else ``None``."""

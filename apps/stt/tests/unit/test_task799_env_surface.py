@@ -46,18 +46,25 @@ class TestDeadAndDuplicatedKnobsAreGone:
         """
         assert "voice_profile_embedding_dim" not in Settings.model_fields
 
-    def test_the_embedding_dim_constant_matches_the_prisma_column(self) -> None:
-        """The remaining single source is GATED against the schema.
+    def test_the_voice_profile_column_declares_no_dimension(self) -> None:
+        """TASK-887 — there is no embedding-dimension constant left to gate.
 
-        Parsed, not transcribed: a hand-copied number would reintroduce exactly
-        the drift this test exists to prevent.
+        The column was `vector(256)` and `EXPECTED_EMBEDDING_DIM` mirrored it, because the
+        platform declared ONE embedding space. The owner replaced that with a per-agent
+        declaration: a `UserVoiceProfile` records the model that embedded it and matching only
+        ever compares profiles from the same model, so a width is a property of the model the
+        agent named. Parsed, not transcribed — a pinned typmod would re-impose the single
+        space this ticket removed.
         """
-        from stt.voice_profile.extraction_service import EXPECTED_EMBEDDING_DIM
+        import stt.voice_profile.extraction_service as extraction_service
+
+        assert not hasattr(extraction_service, "EXPECTED_EMBEDDING_DIM")
 
         schema = _USER_PRISMA.read_text(encoding="utf-8")
-        match = re.search(r'embedding\s+Unsupported\("vector\((\d+)\)"\)', schema)
-        assert match is not None, f'no `embedding Unsupported("vector(N)")` in {_USER_PRISMA}'
-        assert EXPECTED_EMBEDDING_DIM == int(match.group(1))
+        assert re.search(r'embedding\s+Unsupported\("vector"\)', schema), (
+            f'`embedding` must be an un-dimensioned `Unsupported("vector")` in {_USER_PRISMA}'
+        )
+        assert re.search(r'embedding\s+Unsupported\("vector\(\d+\)"\)', schema) is None
 
 
 class TestBuildIdentityIsNotConfiguration:

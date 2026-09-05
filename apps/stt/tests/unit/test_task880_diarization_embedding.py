@@ -5,11 +5,11 @@ embedding model only from an INLINE `ModelRef`, while `pipeline_spec_from_resolv
 emits a SLUG ref for every agent. So an agent that bound a speaker-embedding row got
 the platform singleton (`stt.diarization.hfModelId`) instead, silently.
 
-`stt.diarization.hfModelId` itself is deliberately NOT moved: it declares the embedding
-SPACE that enrolled `UserVoiceProfile` rows live in. The guard that keeps an agent from
-re-spacing diarization behind enrollment's back is on the PRODUCER side
-(`buildResolvedAsrSpec` refuses a declared dimension mismatch); this half only makes the
-reference actually arrive.
+TASK-887 then removed the singleton this defect used to fall through to: the ASR agent
+declares the embedding model, a `UserVoiceProfile` records the model that embedded it, and
+matching only compares profiles from that model. So this resolution is no longer merely the
+CORRECT source of the model — it is the ONLY one, and `None` means embedding diarization does
+not run for the session at all.
 """
 
 from __future__ import annotations
@@ -64,9 +64,11 @@ class TestEmbeddingRefResolution:
             ({}, _config()),
         ],
     )
-    def test_no_resolvable_row_falls_back_to_the_platform_singleton(
+    def test_no_resolvable_row_resolves_to_none(
         self, bundle: dict | None, config: SimpleNamespace
     ) -> None:
-        """`None` is the caller's signal to use `get_embedding_service()` — the
-        pre-existing behaviour for a deprecated-pipeline session, kept deliberately."""
+        """TASK-887 — `None` no longer means "use the platform singleton" (there is none); it
+        means this session does not diarize by embedding. `buildResolvedAsrSpec` refuses an
+        agent that enables it without naming a model, so reaching here is a
+        deprecated-pipeline session."""
         assert SessionManager._spec_embedding_model_id(_mgr(bundle), "s1", config) is None

@@ -29,6 +29,12 @@ class CreateStreamingSessionRequest(BaseModel):
             "nothing from Postgres. Absent ⇒ the deprecated pipeline_id path."
         ),
     )
+    voice_profiles: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "TASK-887 — the end-user's ENROLLED voice profiles for THIS agent's speaker-embedding model, resolved and pushed by the gateway: [{profile_id, label, model_id, embedding}]. Diarization labels a matched segment with the profile's label and everything else `Speaker N`; a profile from another model is ignored, never re-projected. Biometric PHI — held in memory for the run only, never persisted here, never logged."
+        ),
+    )
     consultation_id: str | None = Field(default=None, description="Optional consultation context")
     sample_rate: int = Field(default=16000, description="Audio sample rate in Hz")
     microphone_id: str | None = Field(

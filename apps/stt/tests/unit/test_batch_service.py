@@ -9,8 +9,10 @@ These tests focus on behavior verification:
 
 import logging
 import os
+import pathlib
 import sys
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -1370,6 +1372,25 @@ class TestBatchServicePostprocessingSentenceTimestamps:
         assert result.sentence_timestamps == []
 
 
+# TASK-887 — diarization is a declared ASR-agent option: the speaker-embedding model is the
+# agent's (`ResolvedAsrSpec.models.embedding`, resolved to a row in the job's pre-resolved
+# `model_configs`). There is no platform singleton behind it, so a job that binds no model does
+# not diarize by embedding at all.
+DIARIZATION_EMBEDDING_SLUG = "wespeaker-voxceleb-resnet34"
+DIARIZATION_EMBEDDING_SOURCE_URI = "pyannote/wespeaker-voxceleb-resnet34-LM"
+
+
+def _embedding_pipeline_config():
+    """A minimal `pipeline_config` whose spec binds the speaker-embedding row by SLUG."""
+    return SimpleNamespace(
+        spec=SimpleNamespace(models=SimpleNamespace(embedding=SimpleNamespace(slug=DIARIZATION_EMBEDDING_SLUG, is_inline=False, inline=None), segmentation=None))
+    )
+
+
+def _embedding_model_configs():
+    return {DIARIZATION_EMBEDDING_SLUG: SimpleNamespace(source_uri=DIARIZATION_EMBEDDING_SOURCE_URI)}
+
+
 class TestRunDiarization:
     """Tests for _run_diarization direct-call behavior.
 
@@ -1409,7 +1430,7 @@ class TestRunDiarization:
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
             patch(
-                "stt.diarization.embedding_service.get_embedding_service",
+                "stt.diarization.embedding_service.create_embedding_service",
                 return_value=mock_emb_service,
             ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
@@ -1435,6 +1456,8 @@ class TestRunDiarization:
                 tenant_id="t-1",
                 consultation_id=None,
                 config=config,
+                pipeline_config=_embedding_pipeline_config(),
+                model_configs=_embedding_model_configs(),
             )
 
             # Verify audio was capped at 5s (80000 samples)
@@ -1471,7 +1494,7 @@ class TestRunDiarization:
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
             patch(
-                "stt.diarization.embedding_service.get_embedding_service",
+                "stt.diarization.embedding_service.create_embedding_service",
                 return_value=mock_emb_service,
             ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
@@ -1497,6 +1520,8 @@ class TestRunDiarization:
                 tenant_id="t-1",
                 consultation_id=None,
                 config=config,
+                pipeline_config=_embedding_pipeline_config(),
+                model_configs=_embedding_model_configs(),
             )
 
             # Short segment should NOT have speaker_id
@@ -1540,7 +1565,7 @@ class TestRunDiarization:
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
             patch(
-                "stt.diarization.embedding_service.get_embedding_service",
+                "stt.diarization.embedding_service.create_embedding_service",
                 return_value=mock_emb_service,
             ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
@@ -1569,6 +1594,8 @@ class TestRunDiarization:
                 tenant_id="t-1",
                 consultation_id=None,
                 config=config,
+                pipeline_config=_embedding_pipeline_config(),
+                model_configs=_embedding_model_configs(),
             )
 
             assert result["speakers_detected"] == 2
@@ -1598,7 +1625,7 @@ class TestRunDiarization:
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
             patch(
-                "stt.diarization.embedding_service.get_embedding_service",
+                "stt.diarization.embedding_service.create_embedding_service",
                 return_value=mock_emb_service,
             ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
@@ -1635,6 +1662,8 @@ class TestRunDiarization:
                 tenant_id="t-1",
                 consultation_id=None,
                 config=config,
+                pipeline_config=_embedding_pipeline_config(),
+                model_configs=_embedding_model_configs(),
             )
 
             # First entry's speaker should be used (collapse)
@@ -1642,33 +1671,34 @@ class TestRunDiarization:
             assert raw.segments[0]["speaker_confidence"] == 0.9
 
     @pytest.mark.asyncio
-    async def test_run_diarization_preseeds_when_consultation_present(self, service):
-        """_run_diarization should preseed tracker when consultation_id is provided."""
+    async def test_run_diarization_seeds_the_pushed_voice_profiles(self, service):
+        """TASK-887 — the gateway resolved the profiles; `_run_diarization` only registers them.
+
+        This replaces the two `_preseed_speaker` call-shape tests (consultation present / only
+        user_id): there is no consultation lookup and no user branch any more, because there is
+        no database read to scope. The profiles arrive on the Dramatiq message already filtered
+        to the agent's embedding model.
+        """
         sample_rate = 16000
         samples = np.random.randn(5 * sample_rate).astype(np.float32)
         raw = RawTranscription(text="Hello")
         raw.segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
 
         mock_emb_service = AsyncMock()
-        mock_emb_service.extract_from_samples = AsyncMock(
-            return_value=MagicMock(embedding=np.zeros(256).tolist())
-        )
+        mock_emb_service.extract_from_samples = AsyncMock(return_value=MagicMock(embedding=np.zeros(256).tolist()))
+        profiles = [{"profile_id": "vp-1", "label": "Dr Jane", "model_id": DIARIZATION_EMBEDDING_SLUG, "embedding": [0.1, 0.2]}]
 
-        config = DiarizationConfig(
-            enabled=True,
-            min_segment_duration_s=0.5,
-            max_speakers=5,
-        )
+        config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5, max_speakers=5)
 
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
             patch(
-                "stt.diarization.embedding_service.get_embedding_service",
+                "stt.diarization.embedding_service.create_embedding_service",
                 return_value=mock_emb_service,
             ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker") as MockTracker,
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
-            patch.object(service, "_preseed_speaker", new=AsyncMock()) as mock_preseed,
+            patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed,
         ):
             mock_tracker = MagicMock()
             MockTracker.return_value = mock_tracker
@@ -1677,11 +1707,7 @@ class TestRunDiarization:
 
             mock_identifier = AsyncMock()
             mock_identifier.identify = AsyncMock(
-                return_value=SpeakerIdentification(
-                    speaker_id="Speaker 1",
-                    confidence=0.95,
-                    is_new_speaker=False,
-                )
+                return_value=SpeakerIdentification(speaker_id="Speaker 1", confidence=0.95, is_new_speaker=False)
             )
             MockIdentifier.return_value = mock_identifier
 
@@ -1692,171 +1718,59 @@ class TestRunDiarization:
                 tenant_id="t-1",
                 consultation_id="consult-123",
                 config=config,
+                pipeline_config=_embedding_pipeline_config(),
+                model_configs=_embedding_model_configs(),
+                voice_profiles=profiles,
             )
 
-            mock_preseed.assert_awaited_once_with(mock_tracker, "consult-123", "t-1", user_id=None)
+            mock_seed.assert_called_once()
+            args, kwargs = mock_seed.call_args
+            assert args[0] is mock_tracker
+            assert args[1] == profiles
+            # Scoped to the model the agent bound — the identity a profile's `modelId` matches.
+            assert kwargs["model_slug"] == DIARIZATION_EMBEDDING_SLUG
 
     @pytest.mark.asyncio
-    async def test_run_diarization_preseeds_when_only_user_id_present(self, service):
-        """_run_diarization should preseed tracker when consultation_id is missing but user_id exists."""
+    async def test_run_diarization_fails_closed_without_a_bound_embedding_model(self, service):
+        """No agent-declared model ⇒ no diarization, rather than a platform substitute whose
+        matches would be meaningless and whose space nothing enrolled in."""
         sample_rate = 16000
-        samples = np.random.randn(5 * sample_rate).astype(np.float32)
         raw = RawTranscription(text="Hello")
         raw.segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
 
-        mock_emb_service = AsyncMock()
-        mock_emb_service.extract_from_samples = AsyncMock(
-            return_value=MagicMock(embedding=np.zeros(256).tolist())
-        )
-
-        config = DiarizationConfig(
-            enabled=True,
-            min_segment_duration_s=0.5,
-            max_speakers=5,
-        )
-
-        with (
-            patch("stt.diarization.embedding_service.EmbeddingService"),
-            patch(
-                "stt.diarization.embedding_service.get_embedding_service",
-                return_value=mock_emb_service,
-            ),
-            patch("stt.diarization.speaker_tracker.SpeakerTracker") as MockTracker,
-            patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
-            patch.object(service, "_preseed_speaker", new=AsyncMock()) as mock_preseed,
-        ):
-            mock_tracker = MagicMock()
-            MockTracker.return_value = mock_tracker
-
-            from stt.diarization.dto import SpeakerIdentification
-
-            mock_identifier = AsyncMock()
-            mock_identifier.identify = AsyncMock(
-                return_value=SpeakerIdentification(
-                    speaker_id="Speaker 1",
-                    confidence=0.95,
-                    is_new_speaker=False,
-                )
-            )
-            MockIdentifier.return_value = mock_identifier
-
-            await service._run_diarization(
-                samples=samples,
+        with patch("stt.diarization.embedding_service.create_embedding_service") as mock_create:
+            result = await service._run_diarization(
+                samples=np.random.randn(5 * sample_rate).astype(np.float32),
                 sample_rate=sample_rate,
                 raw_result=raw,
                 tenant_id="t-1",
                 consultation_id=None,
-                config=config,
-                user_id="user-1",
+                config=DiarizationConfig(enabled=True, min_segment_duration_s=0.5, max_speakers=5),
+                pipeline_config=None,
             )
 
-            mock_preseed.assert_awaited_once_with(mock_tracker, None, "t-1", user_id="user-1")
+        assert result == {}
+        mock_create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_preseed_speaker_registers_doctor_embedding(self, service):
-        """Preseed should register doctor embedding with display name when profile exists."""
+    async def test_seed_wrapper_forwards_to_the_pure_helper(self, service):
+        """`_seed_voice_profiles` replaced `_preseed_speaker`, which read the consultation's
+        doctor and their embedding straight out of Postgres — the four tests that pinned those
+        DB lookups now live in `tests/unit/diarization/test_preseed.py`."""
         tracker = MagicMock()
-        tracker.register = MagicMock(return_value="Dr Jane")
+        profiles = [{"profile_id": "vp-1", "label": "Dr Jane", "model_id": DIARIZATION_EMBEDDING_SLUG, "embedding": [0.1]}]
 
-        with (
-            patch(
-                "stt.core.database.voice_profile_model.get_user_identity",
-                new=AsyncMock(return_value=("user-1", "Dr Jane")),
-            ),
-            patch(
-                "stt.core.database.voice_profile_model.get_voice_embedding",
-                new=AsyncMock(return_value=np.zeros(256).tolist()),
-            ),
-            patch(
-                "stt.core.database.voice_profile_model.get_user_display_name",
-                new=AsyncMock(return_value="Dr Jane"),
-            ),
-        ):
-            await service._preseed_speaker(
-                tracker,
-                "consult-123",
-                "t-1",
-            )
+        with patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed:
+            service._seed_voice_profiles(tracker, profiles, DIARIZATION_EMBEDDING_SLUG, "job-1")
 
-        tracker.register.assert_called_once()
-        args, kwargs = tracker.register.call_args
-        assert isinstance(args[0], np.ndarray)
-        assert args[0].dtype == np.float32
-        assert kwargs["speaker_id"] == "Dr Jane"
+        mock_seed.assert_called_once_with(tracker, profiles, model_slug=DIARIZATION_EMBEDDING_SLUG, log_context="job-1")
 
-    @pytest.mark.asyncio
-    async def test_preseed_speaker_skips_when_profile_missing(self, service):
-        """Preseed should not register speaker when no active voice profile exists."""
-        tracker = MagicMock()
-        tracker.register = MagicMock()
+    def test_the_batch_service_reads_no_voice_profile_row(self, service):
+        """Rule 06: `apps/stt` performs no Postgres read on the agent path."""
+        import stt.transcription.batch_service as batch_service
 
-        with (
-            patch(
-                "stt.core.database.voice_profile_model.get_user_identity",
-                new=AsyncMock(return_value=("user-1", "Dr Jane")),
-            ),
-            patch(
-                "stt.core.database.voice_profile_model.get_voice_embedding",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "stt.core.database.voice_profile_model.get_user_display_name",
-                new=AsyncMock(return_value="Dr Jane"),
-            ),
-        ):
-            await service._preseed_speaker(
-                tracker,
-                "consult-123",
-                "t-1",
-            )
-
-        tracker.register.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_preseed_speaker_nonfatal_when_identity_lookup_fails(self, service):
-        """Preseed should stay non-fatal when consultation identity lookup raises."""
-        tracker = MagicMock()
-        tracker.register = MagicMock()
-
-        with patch(
-            "stt.core.database.voice_profile_model.get_user_identity",
-            new=AsyncMock(side_effect=RuntimeError("db down")),
-        ):
-            await service._preseed_speaker(
-                tracker,
-                "consult-123",
-                "t-1",
-            )
-
-        tracker.register.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_preseed_speaker_nonfatal_when_tracker_at_capacity(self, service):
-        """Preseed should stay non-fatal when tracker rejects registration."""
-        tracker = MagicMock()
-        tracker.register = MagicMock(return_value=None)
-
-        with (
-            patch(
-                "stt.core.database.voice_profile_model.get_user_identity",
-                new=AsyncMock(return_value=("user-1", "Dr Jane")),
-            ),
-            patch(
-                "stt.core.database.voice_profile_model.get_voice_embedding",
-                new=AsyncMock(return_value=np.zeros(256).tolist()),
-            ),
-            patch(
-                "stt.core.database.voice_profile_model.get_user_display_name",
-                new=AsyncMock(return_value="Dr Jane"),
-            ),
-        ):
-            await service._preseed_speaker(
-                tracker,
-                "consult-123",
-                "t-1",
-            )
-
-        tracker.register.assert_called_once()
+        assert "voice_profile_model" not in pathlib.Path(batch_service.__file__).read_text(encoding="utf-8")
+        assert not hasattr(service, "_preseed_speaker")
 
 
 class TestBatchServiceDiarization:
@@ -1870,7 +1784,9 @@ class TestBatchServiceDiarization:
         """Create pipeline with diarization config."""
         spec = PipelineSpec(
             version="1.1",
-            models=ModelRefs(asr=ModelRef(slug="whisper-test")),
+            # TASK-887 — an agent that diarizes by embedding MUST bind the model; the platform
+            # singleton that used to serve when none was bound is gone.
+            models=ModelRefs(asr=ModelRef(slug="whisper-test"), embedding=ModelRef(slug=DIARIZATION_EMBEDDING_SLUG)),
             preprocessing=PreprocessingConfig(),
             inference=InferenceConfig(),
             postprocessing=PostprocessingConfig(),
@@ -1945,8 +1861,8 @@ class TestBatchServiceDiarization:
             assert result.metadata["diarization"]["speakers_detected"] == 2
 
     @pytest.mark.asyncio
-    async def test_transcribe_inline_path_preseeds_when_consultation_present(self, service):
-        """Inline diarization setup should preseed tracker when consultation_id is set."""
+    async def test_transcribe_inline_path_seeds_the_pushed_voice_profiles(self, service):
+        """TASK-887 — inline diarization setup seeds the profiles the gateway pushed."""
         pipeline = self.create_diarization_pipeline(enabled=True)
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
@@ -1957,14 +1873,10 @@ class TestBatchServiceDiarization:
             patch.object(service, "_run_per_segment_inference") as mock_per_segment,
             patch.object(service, "_run_diarization") as mock_diar,
             patch.object(service, "_postprocess") as mock_postproc,
-            patch("stt.diarization.embedding_service.get_embedding_service") as mock_get_emb,
+            patch("stt.diarization.embedding_service.create_embedding_service") as mock_get_emb,
             patch("stt.diarization.speaker_tracker.SpeakerTracker") as MockTracker,
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
-            patch.object(
-                service,
-                "_preseed_speaker",
-                new=AsyncMock(),
-            ) as mock_preseed,
+            patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed,
         ):
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
@@ -1997,7 +1909,9 @@ class TestBatchServiceDiarization:
             mock_identifier._tracker = mock_tracker
             MockIdentifier.return_value = mock_identifier
 
-            mock_emb_service = MagicMock()
+            # TASK-887 — the service is CREATED for the agent's model and then initialized,
+            # so the double must be awaitable where the production path awaits.
+            mock_emb_service = MagicMock(initialize=AsyncMock())
             mock_get_emb.return_value = mock_emb_service
 
             raw = RawTranscription(
@@ -2021,20 +1935,22 @@ class TestBatchServiceDiarization:
                 duration_seconds=2.0,
             )
 
+            profiles = [{"profile_id": "vp-1", "label": "Dr Jane", "model_id": DIARIZATION_EMBEDDING_SLUG, "embedding": [0.1]}]
             await service.transcribe(
                 job_id="j-diar-inline-1",
                 audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
                 tenant_id="t-456",
                 consultation_id="c-001",
+                model_configs=_embedding_model_configs(),
+                voice_profiles=profiles,
             )
 
-            mock_preseed.assert_awaited_once_with(
-                mock_tracker,
-                "c-001",
-                "t-456",
-                user_id=None,
-            )
+            mock_seed.assert_called_once()
+            args, kwargs = mock_seed.call_args
+            assert args[0] is mock_tracker
+            assert args[1] == profiles
+            assert kwargs["model_slug"] == DIARIZATION_EMBEDDING_SLUG
             mock_diar.assert_not_called()
 
     @pytest.mark.asyncio
@@ -2533,6 +2449,8 @@ class TestTranscribeTimingMetrics:
 
         pipeline = create_complete_pipeline_config()
         pipeline.spec.diarization = DiarizationConfig(enabled=True)
+        # TASK-887 — embedding diarization needs the model the agent bound.
+        pipeline.spec.models.embedding = ModelRef(slug=DIARIZATION_EMBEDDING_SLUG)
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
@@ -2567,7 +2485,7 @@ class TestTranscribeTimingMetrics:
             ) as mock_per_seg,
             patch.object(service, "_run_inference") as mock_full,
             patch.object(service, "_postprocess") as mock_postproc,
-            patch("stt.diarization.embedding_service.get_embedding_service") as mock_get_emb,
+            patch("stt.diarization.embedding_service.create_embedding_service") as mock_get_emb,
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=tracker),
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier", return_value=identifier),
         ):
@@ -2584,7 +2502,7 @@ class TestTranscribeTimingMetrics:
                 )
             )
             mock_preproc.return_value = mock_preprocessor
-            mock_get_emb.return_value = MagicMock()
+            mock_get_emb.return_value = MagicMock(initialize=AsyncMock())
             mock_per_seg.return_value = raw_result
             mock_postproc.return_value = TranscriptionResult(
                 text="Per-segment",
@@ -2596,6 +2514,7 @@ class TestTranscribeTimingMetrics:
                 audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
                 tenant_id="t-456",
+                model_configs=_embedding_model_configs(),
             )
 
         mock_per_seg.assert_called_once()

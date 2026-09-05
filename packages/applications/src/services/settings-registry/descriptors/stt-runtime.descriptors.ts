@@ -149,30 +149,14 @@ const KNOBS: Record<string, SttKnob> = {
   //    `audioFrontEnd.vad.speechPadMs` now.
 
   // ── diarization / voice profiles ─────────────────────────────────────────
-  // DELIBERATELY KEPT, and the one `stt.*` key TASK-880 examined and did not move
-  // (owner default assumption, option 1). Every other model id in this service became
-  // an `AiModel` the agent binds; this one is different because it does not merely
-  // SELECT a model — it declares the vector SPACE that already-enrolled
-  // `UserVoiceProfile` rows live in. `UserVoiceProfile.embedding` is `vector(256)`,
-  // written by this 256-d model; a per-agent choice of a 192-d model would not be a
-  // different preference, it would be data the column cannot hold. So the platform
-  // declares the space, an agent may pick only within it, and
-  // `buildResolvedAsrSpec` refuses a declared mismatch at resolve time
-  // (`ASR_AGENT_EMBEDDING_SPACE_MISMATCH`, 409) rather than shipping a spec whose every
-  // enrolment fails. Changing this value is a re-enrolment exercise, not a config edit.
-  'stt.diarization.hfModelId': {
-    dataType: 'string',
-    default: 'pyannote/wespeaker-voxceleb-resnet34-LM',
-    label: 'Speaker-embedding space (platform)',
-    description:
-      'HuggingFace model id for speaker-embedding extraction — the embedding SPACE the platform ' +
-      'enrolls voice profiles in, not a per-agent choice. Changing it invalidates every enrolled ' +
-      'UserVoiceProfile: the vectors do not transfer, and a model whose output dimension differs ' +
-      'from the deployed UserVoiceProfile.embedding column (vector(256)) fails every enrollment. ' +
-      'An agent may bind a SPEAKER_EMBEDDING model only within this space; one that declares a ' +
-      'different width is refused when its ASR spec is resolved. Treat a change as a migration.',
-    category: 'STT Audio',
-  },
+  // TASK-887 (owner decision, target model item 8) — `stt.diarization.hfModelId` and
+  // `stt.voiceProfile.minSimilarity` are GONE. Diarization is a declared ASR-agent option:
+  // the agent names the speaker-embedding model (`audioFrontEnd.diarization.embeddingModelSlug`,
+  // resolved to the spec's `models.embedding`) and the confidence floor for attaching an
+  // enrolled label (`audioFrontEnd.diarization.matchThreshold`). There is no platform embedding
+  // SPACE any more: a `UserVoiceProfile` records the model that embedded it and matching only
+  // considers profiles from that same model, so the platform has nothing left to declare.
+  // What stays here is process placement, which is a property of the box, not of the agent.
   'stt.diarization.device': {
     dataType: 'string',
     default: 'auto',
@@ -180,17 +164,6 @@ const KNOBS: Record<string, SttKnob> = {
     description: 'Device for pyannote inference: auto | cuda | cpu.',
     category: 'STT Audio',
   },
-  'stt.voiceProfile.minSimilarity': {
-    dataType: 'number',
-    default: 0.6,
-    label: 'Voice-profile enrollment similarity floor',
-    description:
-      'Minimum pairwise cosine similarity between a speaker’s enrollment samples; below it the ' +
-      'enrollment is rejected as inconsistent. Keep >= 0.6 in production; ~0.3 is workable for dev ' +
-      'with consumer microphones.',
-    category: 'STT Audio',
-  },
-
   // ── worker + runtime threading ───────────────────────────────────────────
   'stt.workers.pollTimeoutMs': {
     dataType: 'number',

@@ -7,9 +7,9 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
-import { useVoiceProfiles } from '../api';
+import { useVoiceProfileEnrollmentTarget, useVoiceProfiles } from '../api';
 import { EnrollmentCard } from './enrollment-card';
-import { ProfileListCard } from './profile-list-card';
+import { ProfileListCard, isStaleForTarget } from './profile-list-card';
 
 /**
  * Frame 52 / artboard 4d — Playground voice enrollment & profiles (tier 50–59,
@@ -27,9 +27,18 @@ import { ProfileListCard } from './profile-list-card';
  */
 export function VoiceProfilesScreen() {
   const profiles = useVoiceProfiles();
+  // TASK-887 — no agent is named: a clinician enrols for the agent their sessions actually
+  // run, which is the tenant's assigned one, and the gateway resolves the same cascade.
+  const enrollmentTarget = useVoiceProfileEnrollmentTarget();
   const wizardRef = useRef<HTMLDivElement | null>(null);
 
-  const activeCount = profiles.data?.filter((profile) => profile.isActive).length ?? 0;
+  const target = enrollmentTarget.data;
+  const activeProfiles = profiles.data?.filter((profile) => profile.isActive) ?? [];
+  const activeCount = activeProfiles.length;
+  // "Enrolled" and "enrolled for THIS agent" are different questions: a profile from another
+  // embedding model is invisible to the agent, so an active-but-stale set still means no
+  // speaker attribution.
+  const needsReenrollment = activeCount > 0 && activeProfiles.every((profile) => isStaleForTarget(profile, target));
 
   /** Header/empty CTA: the wizard is inline, so "enroll" = move focus to it. */
   function focusWizard() {
@@ -61,9 +70,11 @@ export function VoiceProfilesScreen() {
               ? 'Loading your voice profiles…'
               : profiles.isError
                 ? 'Could not load your voice profiles'
-                : activeCount > 0
-                  ? `${activeCount} active profile${activeCount === 1 ? '' : 's'} — auto-attached to live sessions`
-                  : 'No active profile — live sessions run without speaker attribution'
+                : needsReenrollment
+                  ? `Your active profile was enrolled with a different speaker model — re-enroll for ${target?.agentSlug ?? 'your agent'}`
+                  : activeCount > 0
+                    ? `${activeCount} active profile${activeCount === 1 ? '' : 's'} — auto-attached to live sessions`
+                    : 'No active profile — live sessions run without speaker attribution'
           }
           end={
             profiles.data ? (
@@ -77,7 +88,7 @@ export function VoiceProfilesScreen() {
     >
       <PlaygroundCanvas>
         <EnrollmentCard ref={wizardRef} />
-        <ProfileListCard query={profiles} onEnroll={focusWizard} />
+        <ProfileListCard query={profiles} target={target} onEnroll={focusWizard} />
       </PlaygroundCanvas>
     </ScreenTemplate>
   );

@@ -191,12 +191,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         punctuation_service.shutdown()
     except Exception:
         pass
-    try:
-        from stt.diarization.embedding_service import get_embedding_service
-
-        await get_embedding_service().shutdown()
-    except Exception:
-        pass
+    # TASK-887 — nothing to shut down here any more. The embedding model is declared per
+    # ASR agent, so the only embedding services that exist belong to a SessionManager's
+    # per-model cache and die with it.
     await close_minio()
     await close_redis()
     await close_database()

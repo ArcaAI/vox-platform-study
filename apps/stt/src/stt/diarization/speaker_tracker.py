@@ -23,6 +23,10 @@ class SpeakerTracker:
         centroid_weight: float = 0.7,
     ) -> None:
         self._embedding_windows: dict[str, collections.deque[np.ndarray]] = {}
+        # TASK-887 — ids registered from an ENROLLED voice profile. Their label is a real
+        # person's name, so `SpeakerIdentifier` refuses to attach one below the agent's
+        # `matchThreshold`; a generic id has no such floor.
+        self._enrolled: set[str] = set()
         self._max_speakers = max_speakers
         self._max_embeddings = max_embeddings_per_speaker
         self._centroid_w = centroid_weight
@@ -56,12 +60,21 @@ class SpeakerTracker:
 
             return best_id, max(best_score, 0.0)
 
-    def register(self, embedding: np.ndarray, speaker_id: str | None = None) -> str | None:
+    def register(
+        self,
+        embedding: np.ndarray,
+        speaker_id: str | None = None,
+        *,
+        enrolled: bool = False,
+    ) -> str | None:
         """Register new speaker. Returns speaker_id or None if at capacity.
 
         Args:
             embedding: Speaker embedding vector (will be L2-normalized).
             speaker_id: Optional custom ID. If None, a generic "Speaker N" label is assigned.
+            enrolled: True when the embedding came from an enrolled voice profile, so the id
+                carries a real person's name (TASK-887). Keyword-only, defaulted off: every
+                existing call site registers an anonymous, session-discovered speaker.
         """
         normalized = self._normalize(embedding)
         with self._lock:
@@ -78,8 +91,15 @@ class SpeakerTracker:
             )
             window.append(normalized)
             self._embedding_windows[sid] = window
+            if enrolled:
+                self._enrolled.add(sid)
             self._next_speaker_num += 1
             return sid
+
+    def is_enrolled(self, speaker_id: str) -> bool:
+        """True when ``speaker_id`` was seeded from an enrolled voice profile."""
+        with self._lock:
+            return speaker_id in self._enrolled
 
     def update_reference(self, speaker_id: str, embedding: np.ndarray) -> None:
         """Append embedding to speaker's rolling window."""

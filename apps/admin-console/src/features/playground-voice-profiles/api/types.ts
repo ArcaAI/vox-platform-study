@@ -24,6 +24,28 @@ export interface EnrollVoiceProfileInput {
   files: File[];
   /** Optional human label, ≤100 chars (EnrollBodyDto). */
   label?: string;
+  /**
+   * TASK-887 — the SPEECH_TO_TEXT agent to enroll FOR. Omitted here on purpose: a clinician
+   * enrols for the agent their sessions actually run, which is the tenant's assigned one, and
+   * the gateway resolves that same cascade. The field exists for a caller that has a reason
+   * to name a different agent.
+   */
+  agentSlug?: string;
+}
+
+/**
+ * GET /voice-profiles/enrollment-target — the speaker-embedding model a new enrollment would
+ * land in (TASK-887).
+ *
+ * Diarization is a declared ASR-agent option: the agent names the model, and a profile is only
+ * ever matched by an agent bound to the SAME model. A profile whose `modelId` differs is
+ * therefore invisible to that agent, not merely less accurate — which is why the screen can
+ * tell "not enrolled" from "enrolled for a model this agent no longer uses".
+ */
+export interface VoiceProfileEnrollmentTarget {
+  agentSlug: string;
+  modelId: string;
+  diarizationEnabled: boolean;
 }
 
 /** PATCH :id/activate | :id/deactivate acknowledgement. */

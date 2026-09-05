@@ -186,7 +186,7 @@ class TestSettings:
             assert settings.worker_threads == 4
             assert settings.whisper_cpp_num_threads == 8
             assert settings.vad_threshold == 0.5
-            assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
+            assert settings.diarization_device == "auto"
 
     def test_env_override(self):
         """Process identity and topology stay env-settable; build identity does not.
@@ -409,31 +409,38 @@ class TestSettings:
         assert [k for k in CONTROL_PLANE_KEYS.values() if k.startswith("stt.vad.")] == []
 
     def test_diarization_defaults(self):
-        """Test Pyannote diarization default configuration."""
+        """TASK-887 — only DEVICE placement is left here.
+
+        `diarization_hf_model_id` named THE platform speaker-embedding model. Diarization is
+        now a declared ASR-agent option: the agent binds the `SPEAKER_EMBEDDING` row
+        (`ResolvedAsrSpec.models.embedding`) for a session, and the gateway pushes the same
+        model to `/internal/voice-profile/extract` at enrollment. Where the model RUNS is
+        still a property of the box, so `diarization_device` stays.
+        """
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings(_env_file=None)
-            assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
             assert settings.diarization_device == "auto"
 
-    def test_diarization_model_id_is_not_an_env_var(self):
-        """F-11: a MODEL ID as a pydantic default settable from env is a defect.
+    def test_the_platform_embedding_model_and_similarity_floor_are_gone(self):
+        """Both fields, and both control-plane keys, removed together (TASK-887).
 
-        `DIARIZATION_HF_MODEL_ID` named a real speaker-embedding model
-        (`pyannote/wespeaker-…`) and could be repointed by anyone who could set
-        an environment variable — with no record of who chose it or when. It is
-        now `stt.diarization.hfModelId` in the control plane. The bootstrap
-        default is UNCHANGED, so the running model is the same one.
+        `stt.diarization.hfModelId` declared a single platform embedding SPACE; the owner
+        replaced it with a per-agent declaration, so a profile now records the model that
+        embedded it and nothing platform-wide describes the space. `stt.voiceProfile.
+        minSimilarity` moved to the agent's `audioFrontEnd.diarization.matchThreshold` for the
+        same reason — how confidently a clinic wants a real name attached to speech is an
+        agent decision.
         """
-        env_vars = {
-            "DIARIZATION_HF_MODEL_ID": "custom/embedding-model",
-            "DIARIZATION_DEVICE": "cuda",
-        }
-        with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings()
-            assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
-            assert settings.diarization_device == "auto"
+        from stt.core.control_plane import CONTROL_PLANE_KEYS
 
-    def test_diarization_is_settable_from_the_control_plane(self):
+        assert "diarization_hf_model_id" not in Settings.model_fields
+        assert "voice_profile_min_similarity" not in Settings.model_fields
+        assert "stt.diarization.hfModelId" not in CONTROL_PLANE_KEYS.values()
+        assert "stt.voiceProfile.minSimilarity" not in CONTROL_PLANE_KEYS.values()
+        # Device placement survives — it is the box's property, not the agent's.
+        assert CONTROL_PLANE_KEYS["diarization_device"] == "stt.diarization.device"
+
+    def test_diarization_device_is_settable_from_the_control_plane(self):
         from stt.core.control_plane import apply_control_plane
 
         with patch.dict(os.environ, {}, clear=True):
@@ -442,11 +449,6 @@ class TestSettings:
                 settings,
                 {
                     "settings": {
-                        "stt.diarization.hfModelId": {
-                            "value": "custom/embedding-model",
-                            "dataType": "string",
-                            "source": "db",
-                        },
                         "stt.diarization.device": {
                             "value": "cuda",
                             "dataType": "string",
@@ -455,7 +457,6 @@ class TestSettings:
                     }
                 },
             )
-            assert settings.diarization_hf_model_id == "custom/embedding-model"
             assert settings.diarization_device == "cuda"
 
 

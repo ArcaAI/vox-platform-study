@@ -105,10 +105,14 @@ class TestDiarizationResultDTO:
 # =============================================================================
 
 
+# TASK-887 — every embedding service is constructed FOR a model the agent named.
+EMBEDDING_MODEL = "pyannote/wespeaker-voxceleb-resnet34-LM"
+
+
 class TestEmbeddingService:
     async def test_extract_from_samples(self):
         """Verify extraction returns a 256-dim embedding."""
-        service = PyannoteEmbeddingService()
+        service = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
         mock_inference = MagicMock()
         mock_inference.return_value = np.array([[0.1] * 256], dtype=np.float32)
 
@@ -127,7 +131,7 @@ class TestEmbeddingService:
     async def test_extract_lazily_initializes_on_first_use(self, mocker):
         """Extraction lazily loads the model on first use instead of
         raising when not yet initialized."""
-        service = PyannoteEmbeddingService()
+        service = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
         init_spy = mocker.patch.object(service, "initialize", new_callable=AsyncMock)
         mocker.patch.object(service, "_extract_sync", return_value=[0.0] * 8)
 
@@ -137,7 +141,7 @@ class TestEmbeddingService:
 
     async def test_extract_from_segments_skips_short(self):
         """Segments shorter than 1 second should be skipped."""
-        service = PyannoteEmbeddingService()
+        service = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
         mock_inference = MagicMock()
         mock_inference.return_value = np.array([[0.1] * 256], dtype=np.float32)
 
@@ -155,7 +159,7 @@ class TestEmbeddingService:
         assert len(embeddings) == 1
 
     async def test_shutdown(self):
-        service = PyannoteEmbeddingService()
+        service = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
         service._loaded = True
         service._inference = MagicMock()
 
@@ -173,10 +177,12 @@ class TestEmbeddingService:
 class TestEmbeddingServicePipelineOverride:
     """Tests for the hf_model_id pipeline override feature."""
 
-    def test_default_hf_model_id_is_none(self):
-        """Default constructor should have no pipeline override."""
-        svc = PyannoteEmbeddingService()
-        assert svc._hf_model_id is None
+    def test_the_model_id_is_required_not_defaulted(self):
+        """TASK-887 — there is no platform embedding model to default to: the ASR agent names
+        the SPEAKER_EMBEDDING row, so a service that was handed nothing could only embed into
+        a space no enrolled profile lives in."""
+        with pytest.raises(TypeError):
+            PyannoteEmbeddingService()  # type: ignore[call-arg]
 
     def test_custom_hf_model_id_stored(self):
         """Constructor with hf_model_id should store the override."""
@@ -214,7 +220,7 @@ class TestEmbeddingServiceBatch:
 
     async def test_extract_batch_returns_embeddings(self):
         """Batch extraction should return one embedding per segment."""
-        svc = PyannoteEmbeddingService()
+        svc = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
         mock_inference = MagicMock()
         mock_inference.return_value = np.array([[0.5] * 256], dtype=np.float32)
         svc._inference = mock_inference
@@ -240,7 +246,7 @@ class TestEmbeddingServiceBatch:
     async def test_extract_batch_lazily_initializes_on_first_use(self, mocker):
         """Batch extraction lazily loads the model on first use
         instead of raising when not yet initialized."""
-        svc = PyannoteEmbeddingService()
+        svc = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
         init_spy = mocker.patch.object(svc, "initialize", new_callable=AsyncMock)
         mocker.patch.object(svc, "_extract_batch_sync", return_value=[[0.0] * 8])
 
@@ -250,7 +256,7 @@ class TestEmbeddingServiceBatch:
 
     async def test_extract_batch_partial_failure_returns_none(self):
         """If inference fails for one segment, that entry should be None."""
-        svc = PyannoteEmbeddingService()
+        svc = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
         call_count = 0
 
         def side_effect_fn(input_dict):
@@ -281,7 +287,7 @@ class TestEmbeddingServiceBatch:
 
     async def test_extract_batch_empty_input(self):
         """Empty segment list should return empty result."""
-        svc = PyannoteEmbeddingService()
+        svc = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
         svc._loaded = True
         svc._inference = MagicMock()
         svc._lock = threading.Lock()
@@ -291,7 +297,7 @@ class TestEmbeddingServiceBatch:
 
     async def test_extract_batch_verifies_tensor_shape(self):
         """Inference should receive waveform tensor of shape (1, num_samples)."""
-        svc = PyannoteEmbeddingService()
+        svc = PyannoteEmbeddingService(hf_model_id=EMBEDDING_MODEL)
 
         captured_inputs: list[dict] = []
 

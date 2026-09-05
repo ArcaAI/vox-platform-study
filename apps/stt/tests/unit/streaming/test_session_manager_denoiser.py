@@ -351,8 +351,13 @@ class TestSessionManagerDenoiserWiring:
             assert pp_call.kwargs.get("denoiser") is None
 
     @pytest.mark.asyncio
-    async def test_preseed_runs_with_user_id_without_consultation_id(self):
-        """Diarization preseed should be attempted when only user_id is provided."""
+    async def test_voice_profiles_are_seeded_for_a_session_with_no_consultation(self):
+        """TASK-887 — seeding is driven by the SESSION, not by a consultation lookup.
+
+        The old preseed resolved the consultation's doctor out of Postgres, so a session
+        without a consultation id needed the `user_id` branch to reach a profile at all. The
+        gateway now pushes the profiles it already resolved, so there is nothing to look up
+        and no branch to take."""
         from stt.streaming.session_manager import SessionManager
 
         mgr = MagicMock(spec=SessionManager)
@@ -366,6 +371,7 @@ class TestSessionManagerDenoiserWiring:
         mgr._commit_policies = {}
         mgr._switch_controllers = {}
         mgr._provider_overrides = {}
+        mgr._session_voice_profiles = {}
         mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
@@ -377,6 +383,7 @@ class TestSessionManagerDenoiserWiring:
         pipeline_config.preprocessing.normalize = False
         pipeline_config.preprocessing.target_sample_rate = 16000
         pipeline_config.diarization.enabled = True
+        pipeline_config.diarization.backend = "embedding"
         pipeline_config.diarization.max_speakers = 5
         pipeline_config.diarization.max_embeddings_per_speaker = 5
         pipeline_config.diarization.enable_segmentation_refinement = False
@@ -394,9 +401,6 @@ class TestSessionManagerDenoiserWiring:
             patch("stt.streaming.session_manager.ControlListener") as mock_cl,
             patch("stt.diarization.speaker_tracker.SpeakerTracker") as mock_tracker_cls,
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier"),
-            patch(
-                "stt.diarization.embedding_service.get_embedding_service", return_value=MagicMock()
-            ),
         ):
 
             mock_ic.return_value.start = AsyncMock()
@@ -424,8 +428,9 @@ class TestSessionManagerDenoiserWiring:
             mgr._make_control_handler = MagicMock(return_value=lambda x: None)
             mgr._make_commit_policy = MagicMock(return_value=None)
             mgr.remove_session = AsyncMock()
-            mgr._preseed_speaker = AsyncMock()
+            mgr._spec_embedding_slug = MagicMock(return_value="wespeaker-voxceleb-resnet34")
 
+            profiles = [{"profile_id": "vp-1", "label": "Dr Who", "model_id": "wespeaker-voxceleb-resnet34", "embedding": [0.1]}]
             await SessionManager.create_session(
                 mgr,
                 session_id="s1",
@@ -434,14 +439,14 @@ class TestSessionManagerDenoiserWiring:
                 consultation_id=None,
                 sample_rate=16000,
                 user_id="user-1",
+                voice_profiles=profiles,
             )
 
-            # The call site threads the session tenant so the voice-profile
-            # lookups are tenant-scoped.
-            mgr._preseed_speaker.assert_awaited_once_with(
+            # The session tracker is seeded with the pushed profiles, scoped to the model
+            # the agent bound — no consultation, no database, no branch.
+            mgr._seed_voice_profiles.assert_called_once_with(
                 mock_tracker,
-                None,
                 "s1",
-                tenant_id="t1",
-                user_id="user-1",
+                "wespeaker-voxceleb-resnet34",
             )
+            assert mgr._session_voice_profiles["s1"] == profiles
