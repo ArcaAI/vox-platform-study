@@ -299,11 +299,12 @@ export type PipelineStep = 'transcription' | 'summary' | 'ner';
  *   4. System defaults (all enabled)
  */
 export interface ConsultationPipelineConfig {
-  /** Generate summary automatically after transcription completes */
+  /**
+   * Generate summary automatically after transcription completes. TASK-882: resolved from the
+   * assigned workflow's generation node (`ConfigResolver.resolveAutoSummaryEnabled`); the
+   * per-consultation `metadata.pipelineConfig` overlay still wins on top.
+   */
   autoSummaryEnabled: boolean;
-
-  /** Extract NER entities automatically after summary generation */
-  autoNerEnabled: boolean;
 
   /** Default DNA style ID for auto-generated summaries */
   dnaStyleId?: string;
@@ -316,13 +317,6 @@ export interface ConsultationPipelineConfig {
 
   /** Stop pipeline on step failure, or continue remaining steps */
   haltOnFailure?: boolean;
-
-  /**
-   * (Lane G) — route auto-generation to the durable harness
-   * workflow (apps/harness) instead of the legacy BullMQ summary job. Defaults
-   * to false/undefined, so existing consultations keep the legacy pipeline.
-   */
-  harnessEnabled?: boolean;
 }
 
 /**
@@ -331,7 +325,6 @@ export interface ConsultationPipelineConfig {
  */
 export const DEFAULT_PIPELINE_CONFIG: ConsultationPipelineConfig = {
   autoSummaryEnabled: true,
-  autoNerEnabled: true,
   haltOnFailure: false,
 };
 

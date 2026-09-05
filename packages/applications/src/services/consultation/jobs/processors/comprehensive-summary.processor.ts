@@ -109,7 +109,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // trailing so existing positional fixtures keep compiling.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
     // comprehensive-summary has no harness equivalent today ( of
-    // the ticket); this call exists purely to make the harnessEnabled read
+    // the ticket); this call exists purely to make the generator decision
     // happen through the single seam and get the decision logged — the
     // decision is always 'legacy'/'harness-not-supported-for-trigger' and
     // this processor's generation body always runs regardless. Optional +
@@ -164,7 +164,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       });
 
       try {
-        // route the harnessEnabled read through the single seam.
+        // route the generator decision through the single seam.
         // Comprehensive-summary has no harness equivalent (the ticket)
         // — the decision is always 'legacy', logged, and this generation
         // body always runs. Never blocks/short-circuits generation.

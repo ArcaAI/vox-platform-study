@@ -28,11 +28,13 @@ const AGENT_CATALOGUE = [
   'agent.retrieval',
   'agent.feedback',
   'agent.dna_redaction',
+  // TASK-882 — the DNA writing-style gate, out of the retired PipelinePolicy cascade.
+  'agent.dna_style',
 ] as const;
 
 const GUARD_CATALOGUE = ['guard.phi', 'guard.moderation', 'guard.groundedness'] as const;
 
-describe('DD-9 — the nine-node agent.* catalogue is registered', () => {
+describe('DD-9 — the agent.* catalogue is registered', () => {
   it.each(AGENT_CATALOGUE)('%s is a registered, implemented node type', (key) => {
     const descriptor = REGISTRY[key];
     expect(descriptor, `${key} is missing from WORKFLOW_NODE_REGISTRY`).toBeDefined();

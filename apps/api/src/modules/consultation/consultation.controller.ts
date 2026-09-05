@@ -1563,10 +1563,9 @@ export class ConsultationController {
     });
 
     if (decision.generator !== 'harness') {
-      // Reachable only if `harnessEnabled` resolves false for this
-      // consultation (stale per-consultation override, or a not-yet-
-      // migrated tenant) — the legacy generator that used to run here no
-      // longer exists. Per `design.md` handling this is a VISIBLE
+      // Unreachable on the seam's own contract since TASK-882 (no
+      // `harnessEnabled` toggle routes a supported trigger elsewhere) — the
+      // legacy generator that used to run here no longer exists. Per `design.md` handling this is a VISIBLE
       // queued failure, never a silent no-op and never a resurrection of the
       // legacy generator.
       this.logger.error({

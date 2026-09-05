@@ -82,18 +82,6 @@ describe('SettingsRegistry.assertWithinMaxScope (the uniform clamp)', () => {
 });
 
 describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
-  it('registers the four pipeline toggles sourced from PIPELINE_SETTING_DESCRIPTORS', () => {
-    const auto = HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.autoSummaryEnabled');
-    expect(auto).toMatchObject({ tier: 'db-config', dataType: 'boolean', maxScope: 'doctor', default: true });
-    // harnessEnabled is the rollout knob — capped at DEPARTMENT.
-    // flipped its default to true (the legacy signable generator it used to
-    // fall back to no longer exists).
-    const harness = HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.harnessEnabled');
-    expect(harness).toMatchObject({ maxScope: 'department', default: true });
-    // the clamp must reject setting the rollout knob per-doctor
-    expect(() => HOPE_SETTINGS_REGISTRY.assertWithinMaxScope('pipeline.harnessEnabled', 'doctor')).toThrow(ArgumentInvalidException);
-  });
-
   // Was: "registers the TTS BYO provider credentials as db-secret / secret
   // sensitivity" over `tts.credential.{azure,sarvam}`. TASK-872 removed those
   // five `db-secret` descriptors (the three `stt.credential.*` twins with
@@ -111,25 +99,6 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     for (const key of ['tts.credential.azure', 'tts.credential.sarvam', 'stt.credential.azure-speech', 'stt.credential.sarvam', 'stt.credential.openai']) {
       expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(false);
     }
-  });
-
-  // The two pipeline toggles that gate guardrail's primary caller (the
-  // harness) and NLP auto-extraction are super-admin-only. Enforcement reads
-  // THIS metadata, so the descriptor is the contract, not a hand-rolled key
-  // list in the service.
-  it('flags pipeline.harnessEnabled + pipeline.autoNerEnabled as globalOnly, leaving the other two tenant-writable', () => {
-    for (const key of ['pipeline.harnessEnabled', 'pipeline.autoNerEnabled']) {
-      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).globalOnly, key).toBe(true);
-    }
-    for (const key of ['pipeline.autoSummaryEnabled', 'pipeline.dnaStyleEnabled']) {
-      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).globalOnly ?? false, key).toBe(false);
-    }
-  });
-
-  it('leaves the pipeline maxScope cascade untouched by the globalOnly lock', () => {
-    // Only WHO may write changed — the cascade shape must not drift.
-    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.harnessEnabled').maxScope).toBe('department');
-    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.autoNerEnabled').maxScope).toBe('doctor');
   });
 
   // The nightly SYSTEM-template resync sweep. Registering

@@ -257,9 +257,10 @@ describe('API Key Scope Registry', () => {
     // connection, hyper-parameters onto the Agent).
     // 55 -> 56 (TASK-863): adds `admin:agent:manage`.
     // 56 -> 55 (TASK-881): `admin:ai-task-default:manage` retired with the `AiTaskDefault` facade.
-    it('marks all 55 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
+    // 55 -> 54 (TASK-882): removes `admin:pipeline-policy:manage` with `PipelinePolicy`.
+    it('marks all 54 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
       const admin = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('admin:'));
-      expect(admin.length).toBe(55);
+      expect(admin.length).toBe(54);
       // `admin:*` sits OUTSIDE the contiguous admin block in the source file.
       // Enumerating by line range instead of by KEY would leave the single most
       // dangerous string in the family grantable.
@@ -290,8 +291,9 @@ describe('API Key Scope Registry', () => {
       // 60 -> 59: removes one admin scope (56 admin + 3 webhook).
       // 59 -> 58: TASK-862 removes `admin:ai-runtime-profile:manage`; 58 -> 59 (TASK-863):
       // `admin:agent:manage` (56 admin + 3 webhook); 59 -> 58 (TASK-881): `admin:ai-task-default:manage`
-      // retired with the `AiTaskDefault` facade (55 admin + 3 webhook).
-      expect(reservedKeys().length).toBe(58);
+      // retired with the `AiTaskDefault` facade (55 admin + 3 webhook); 58 -> 57 (TASK-882):
+      // `admin:pipeline-policy:manage` retired with `PipelinePolicy` (54 admin + 3 webhook).
+      expect(reservedKeys().length).toBe(57);
     });
 
     it('isReservedScope answers for members and is false for unknown strings', () => {

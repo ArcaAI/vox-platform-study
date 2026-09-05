@@ -43,6 +43,7 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         // lane A — the target catalogue and the guards.
         'agent.discharge_summary',
         'agent.dna_redaction',
+        'agent.dna_style',
         'agent.feedback',
         'agent.grammar',
         'agent.important_findings',

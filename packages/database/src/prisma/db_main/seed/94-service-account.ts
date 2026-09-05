@@ -198,7 +198,6 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:ai-provider:manage', // → manage:GlobalSetting
   'svc:admin:settings:manage', // → manage:GlobalSetting
   'svc:admin:nlp-task-instructions:manage', // → manage:TenantNlpTaskInstructions
-  'svc:admin:pipeline-policy:manage', // → manage:PipelinePolicy
   // Tenant self-service surfaces
   'svc:admin:allowed-origin:manage', // → manage:TenantAllowedOrigin
   'svc:admin:tenant-frontend-config:manage', // → update:Tenant

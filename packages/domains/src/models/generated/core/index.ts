@@ -57,8 +57,6 @@ export * from './NamedEntityModel';
 export * from './NotificationModel';
 export * from './PasswordResetTokenModel';
 export * from './PermissionModel';
-export * from './PipelinePolicyChangeModel';
-export * from './PipelinePolicyModel';
 export * from './PlanEntitlementModel';
 export * from './PolicyModel';
 export * from './PromptTemplateModel';

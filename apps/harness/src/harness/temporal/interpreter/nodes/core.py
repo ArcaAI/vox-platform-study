@@ -100,6 +100,7 @@ ACTION_KEYS: tuple[str, ...] = (
     "agent.retrieval",
     "agent.feedback",
     "agent.dna_redaction",
+    "agent.dna_style",
     "guard.phi",
     "guard.moderation",
     "guard.groundedness",

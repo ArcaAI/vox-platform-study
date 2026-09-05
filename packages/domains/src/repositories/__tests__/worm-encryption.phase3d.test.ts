@@ -1,20 +1,18 @@
 // Repository encryption helpers
-// for the immutable WORM tables (HarnessAuditEvent / HarnessPolicyChange /
-// PipelinePolicyChange), exercised via the prototype-augmentation siblings. No
+// for the immutable WORM tables (HarnessAuditEvent / HarnessPolicyChange),
+// exercised via the prototype-augmentation siblings. No
 // real Prisma client is booted; the helpers are pure (encrypt/decrypt only).
 import { describe, it, expect, vi } from 'vitest';
 import 'reflect-metadata';
 import { HarnessAuditEventRepository } from '../generated/core/HarnessAuditEventRepository';
 import { HarnessPolicyChangeRepository } from '../generated/core/HarnessPolicyChangeRepository';
-import { PipelinePolicyChangeRepository } from '../generated/core/PipelinePolicyChangeRepository';
-import { HarnessAuditEventFactory, HarnessPolicyChangeFactory, PipelinePolicyChangeFactory } from '../../factories';
-import { HarnessAuditAction, PipelinePolicyScope } from '../../enums';
+import { HarnessAuditEventFactory, HarnessPolicyChangeFactory } from '../../factories';
+import { HarnessAuditAction } from '../../enums';
 import type { SecretsServiceLike } from '../../common/field-encryption';
 
 // Side-effect imports that register the prototype methods.
 import '../generated/core/HarnessAuditEventRepository.encryption';
 import '../generated/core/HarnessPolicyChangeRepository.encryption';
-import '../generated/core/PipelinePolicyChangeRepository.encryption';
 
 /** A reversible fake Vault Transit (`vault:v1:<base64>`), routed through hope-phi. */
 function fakeSecrets(): SecretsServiceLike {
@@ -120,33 +118,6 @@ describe('HarnessPolicyChangeRepository encryption (Phase 3D)', () => {
 
     const dec = await repo.decryptPayloadsFromEntity(entity, secrets);
     expect(dec.beforeJson).toBeNull();
-    expect(dec.afterJson).toEqual(after);
-  });
-});
-
-describe('PipelinePolicyChangeRepository encryption (Phase 3D)', () => {
-  const repo = Object.create(PipelinePolicyChangeRepository.prototype) as PipelinePolicyChangeRepository;
-
-  it('round-trips before/after toggle snapshots', async () => {
-    const secrets = fakeSecrets();
-    const before = { harnessEnabled: false };
-    const after = { harnessEnabled: true };
-    const enc = await repo.encryptPayloads(secrets, before, after);
-
-    const entity = PipelinePolicyChangeFactory.CreatePipelinePolicyChange({
-      tenantId: 'tenant-1',
-      scope: PipelinePolicyScope.TENANT,
-      beforeJson: before as never,
-      afterJson: after as never,
-      encryptedBeforeJson: enc.encryptedBeforeJson,
-      encryptedAfterJson: enc.encryptedAfterJson,
-      keyVersion: enc.keyVersion,
-    });
-    expect(entity.beforeJson).toEqual({ _encrypted: true });
-    expect(entity.afterJson).toEqual({ _encrypted: true });
-
-    const dec = await repo.decryptPayloadsFromEntity(entity, secrets);
-    expect(dec.beforeJson).toEqual(before);
     expect(dec.afterJson).toEqual(after);
   });
 });

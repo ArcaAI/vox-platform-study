@@ -132,7 +132,7 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
    * Create or replace the assignment for one `(scope, scopeId, paletteKey)`
    * tier. The row edit and its WORM change record commit in ONE transaction —
    * an assignment is never changed without its audit row, and vice versa
-   * (the `PipelinePolicyService.upsertRow` contract).
+   * (the contract the retired `PipelinePolicyService.upsertRow` established).
    */
   async upsert(dto: UpsertWorkflowAssignmentRequest, expectedVersion?: number): Promise<WorkflowAssignmentResponse> {
     const tenantId = this.requireTenant();

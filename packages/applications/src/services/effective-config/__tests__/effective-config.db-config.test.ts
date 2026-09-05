@@ -15,7 +15,6 @@
 import { StorageProviderType, type TenantStorageConfigEntity, type TenantStorageConfigRepository } from '@arcaai/domains';
 import { describe, expect, it, vi } from 'vitest';
 import type { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
-import type { ConfigResolver } from '../../config-resolver/config-resolver.service';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { PlatformStorageSettingsResolver } from '../../tenant-storage-config/platform-storage-settings.resolver';
 import { EffectiveConfigService } from '../effective-config.service';
@@ -43,7 +42,6 @@ function pullService(rows: TenantStorageConfigEntity[]): EffectiveConfigService 
   } as unknown as IAppSettingsService;
 
   const settings = new EffectiveSettingsService(
-    {} as unknown as ConfigResolver,
     undefined,
     new PlatformStorageSettingsResolver(repo, appSettings),
   );

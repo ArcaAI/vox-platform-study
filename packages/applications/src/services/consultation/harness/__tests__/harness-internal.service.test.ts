@@ -294,7 +294,6 @@ const createMockHarnessAssuranceService = () => ({
 // read-only) so async/harness generation honors Tier-0 like the sync/REST path.
 const createMockConfigResolver = () => ({
   resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
-  resolvePipelineToggles: vi.fn(),
   // Effective DNA decision (tenant AND doctor). Default
   // effective so existing fixtures (which never pass a dnaStyleId) are unaffected.
   resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),

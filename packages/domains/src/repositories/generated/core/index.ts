@@ -87,10 +87,6 @@ export * from './PasswordResetTokenRepository';
 export * from './NotificationRepository.encryption';
 export * from './PermissionRepository';
 export * from './PlanEntitlementRepository';
-export * from './PipelinePolicyChangeRepository';
-// Sibling that patches PipelinePolicyChangeRepository.prototype.
-export * from './PipelinePolicyChangeRepository.encryption';
-export * from './PipelinePolicyRepository';
 export * from './PromptTemplateRepository';
 // Sibling that patches PromptTemplateRepository.prototype.
 export * from './PromptTemplateRepository.encryption';

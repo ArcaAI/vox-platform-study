@@ -70,7 +70,7 @@ export class SettingsCatalogController {
   @Get('effective')
   @CanRead('GlobalSetting')
   @ApiOperation({ summary: 'Resolve the effective value of one non-secret setting for a context (with cascade trace).' })
-  @ApiQuery({ name: 'key', required: true, description: 'Registry key, e.g. pipeline.harnessEnabled.' })
+  @ApiQuery({ name: 'key', required: true, description: 'Registry key, e.g. harness.loop.emergencyStop.' })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform admins scope with this; tenant admins are pinned.' })
   @ApiQuery({ name: 'departmentId', required: false })
   @ApiQuery({ name: 'doctorId', required: false })

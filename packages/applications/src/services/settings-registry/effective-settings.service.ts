@@ -8,7 +8,7 @@
 
 import { Injectable, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { ConfigResolutionContext, ConfigResolver, PipelineToggleKey } from '../config-resolver/config-resolver.service';
+import type { ConfigResolutionContext } from '../config-resolver/config-resolver.service';
 import { PlatformStorageSettingsResolver } from '../tenant-storage-config/platform-storage-settings.resolver';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import type { SettingDescriptor } from './registry.types';
@@ -58,7 +58,6 @@ export function applyFailMode(descriptor: SettingDescriptor): EffectiveSettingRe
  */
 export function effectiveResolverLane(descriptor: SettingDescriptor): string | null {
   const { key, tier } = descriptor;
-  if (key.startsWith('pipeline.')) return 'pipeline';
   if (tier === 'global-kv') return 'global-kv';
   // `db-config` is per-FAMILY, not per-tier: each family is owned by the
   // service that owns its table, so opening the tier wholesale would be a lie.
@@ -84,7 +83,6 @@ const PLATFORM_STORAGE_KEYS = new Set([
 @Injectable()
 export class EffectiveSettingsService {
   constructor(
-    private readonly configResolver: ConfigResolver,
     // Backs the `global-kv` lane. Optional so graphs that never read KV
     // settings (and existing unit tests) keep working; an unwired resolver
     // simply falls back to the descriptor default.
@@ -113,15 +111,6 @@ export class EffectiveSettingsService {
       throw new ArgumentInvalidException(`Setting '${key}' is a secret; effective values are never resolved through this read surface.`);
     }
 
-    if (key.startsWith('pipeline.')) {
-      const toggle = key.slice('pipeline.'.length) as PipelineToggleKey;
-      const resolved = await this.configResolver.resolvePipelineToggles(ctx);
-      if (!(toggle in resolved.trace)) {
-        throw new ArgumentInvalidException(`Unknown pipeline setting '${key}'.`);
-      }
-      return { key, tier: descriptor.tier, value: resolved[toggle], sourceScope: resolved.trace[toggle] };
-    }
-
     // The `global-kv` lane — the full cascade:
     //
     //   tenant override → SYSTEM/platform row → descriptor.default
@@ -140,10 +129,10 @@ export class EffectiveSettingsService {
     // The `db-config` lane.
     //
     // Dispatched per key FAMILY to the service that owns that family's table —
-    // never resolved here. `PipelinePolicy` (`pipeline.*`) is handled above;
-    // `TenantStorageConfig` is handled below. (The `models.*` lane over the
-    // `AiTaskDefault` facade was retired by TASK-881 — model SELECTION is not a
-    // setting; it resolves through `AiRoutingPolicyService.resolveDefault`.)
+    // never resolved here. `TenantStorageConfig` is handled below. (The `models.*` lane over
+    // the `AiTaskDefault` facade was retired by TASK-881 — model SELECTION is not a setting; it
+    // resolves through `AiRoutingPolicyService.resolveDefault`. The `pipeline.*` lane over
+    // `PipelinePolicy` was retired by TASK-882 — the assigned workflow graph owns those toggles.)
     // Families whose values vary BY TENANT (`tts.defaultVoiceEn`) deliberately
     // have no lane: per owner decision D-1 they
     // travel the PUSH channel — per-request gateway injection — and putting

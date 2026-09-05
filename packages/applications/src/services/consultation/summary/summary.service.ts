@@ -266,7 +266,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // HUMAN-GATED. Until a product owner approves short-circuiting this route
     // to the harness start (mirroring entry #4's async behavior),
     // `generateSummary` calls the seam's side-effect-free `resolveConfig`
-    // instead, purely to log the resolved harnessEnabled for observability.
+    // instead, purely to log the resolved pipeline config for observability.
     // Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
     // hop 1 — PHI redaction before the synchronous NER call.
@@ -333,7 +333,7 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   /**
    * route a trigger with NO harness equivalent through the seam
-   * purely to make the harnessEnabled read happen in one place and get the
+   * purely to make the generator decision happen in one place and get the
    * decision logged. Safe to call unconditionally: `generate()` never has a
    * side effect for a trigger outside `HARNESS_SUPPORTED_TRIGGERS`, and this
    * is best-effort — a seam failure never blocks generation.
@@ -578,10 +578,9 @@ export class SummaryService extends BaseService implements ISummaryService {
       try {
         const config = await this.noteGenerationService.resolveConfig(consultationId);
         this.logger.log({
-          message:
-            'sync generateSummary: harnessEnabled resolved (logging-only, decided — this route never routes to harness; see )',
+          message: 'sync generateSummary: pipeline config resolved (logging-only — this route never routes to harness)',
           consultationId,
-          harnessEnabled: config.harnessEnabled ?? false,
+          autoSummaryEnabled: config.autoSummaryEnabled,
         });
       } catch (error) {
         this.logger.warn({

@@ -228,7 +228,6 @@ describe('modelHasSoftDelete', () => {
       // rows immutable, UPDATE/DELETE REVOKEd by their migrations). They had
       // been omitted since they were introduced.
       'HarnessPolicyChange',
-      'PipelinePolicyChange',
       // TASK-863 — the agent-assignment WORM log, identity-only like its siblings.
       'AgentAssignmentChange',
     ];
