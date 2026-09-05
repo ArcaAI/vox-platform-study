@@ -10,7 +10,6 @@ import { AiProviderConnectionRepository } from '../../../repositories/generated/
 import { WorkflowWebhookSecretRepository } from '../../../repositories/generated/core/WorkflowWebhookSecretRepository';
 import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRoutingPolicyRepository } from '../../../repositories/generated/core/AiRoutingPolicyRepository';
-import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
 import { TenantPlanHistoryRepository } from '../../../repositories/generated/core/TenantPlanHistoryRepository';
@@ -180,10 +179,8 @@ const repositories = [
   AsrPipelineRepository,
   AsrPipelineVersionRepository,
   AiModelRepository,
-  // Per-tenant AI task-model defaults
-  AiTaskDefaultRepository,
-  // Tenant-writable nlp.topic/nlp.intent instruction content
-  // deliberately separate from AiTaskDefault's model-selection governance.
+  // Tenant-writable nlp.topic/nlp.intent instruction content —
+  // deliberately separate from the routing-policy model-selection governance.
   TenantNlpTaskInstructionsRepository,
   GateEditExemplarRepository,
   // Config-plane core — provider endpoints/credentials + runtime

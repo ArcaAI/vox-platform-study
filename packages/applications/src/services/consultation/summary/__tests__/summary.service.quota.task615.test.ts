@@ -109,7 +109,7 @@ function makeService(overrides: { entitlements?: unknown } = {}) {
     undefined, // configResolver
     entitlements as never,
     undefined, // trajectoryService
-    undefined, // aiTaskDefaultService
+    undefined, // routingPolicies
     undefined, // transcriptSegmentRepository
     usageLedger as never,
     unitOfWork as never,

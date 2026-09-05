@@ -15,7 +15,7 @@ import { AiRoutingPolicyDtoMapper } from '../ai-routing-policy.dto.mapper';
 describe('AiRoutingPolicyDtoMapper.toResponse —  configuration fields', () => {
   const base = {
     tenantId: '00000000-0000-0000-0000-000000000000',
-    taskKey: 'text.finalize',
+    taskKey: 'harness.judge',
   };
 
   it('projects the provider-configuration binding, the election and the gate inputs', () => {

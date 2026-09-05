@@ -24,8 +24,6 @@ export const HARNESS_POLICY_DEFAULTS = {
   safetyEnabled: true,
   phiEnabled: true,
   phiFailClosed: true,
-  textProvider: null as string | null,
-  textModel: null as string | null,
   maxRegen: 2,
   gateSlaSeconds: 86400,
   gateEscalationSeconds: 43200,
@@ -56,8 +54,6 @@ export interface CreateHarnessPolicyProps extends BaseEntityFactoryCreateProps {
   safetyEnabled?: IHarnessPolicyEntity['safetyEnabled'];
   phiEnabled?: IHarnessPolicyEntity['phiEnabled'];
   phiFailClosed?: IHarnessPolicyEntity['phiFailClosed'];
-  textProvider?: IHarnessPolicyEntity['textProvider'];
-  textModel?: IHarnessPolicyEntity['textModel'];
   maxRegen?: IHarnessPolicyEntity['maxRegen'];
   gateSlaSeconds?: IHarnessPolicyEntity['gateSlaSeconds'];
   gateEscalationSeconds?: IHarnessPolicyEntity['gateEscalationSeconds'];
@@ -108,8 +104,6 @@ export class HarnessPolicyFactory {
       safetyEnabled: props.safetyEnabled ?? d.safetyEnabled,
       phiEnabled: props.phiEnabled ?? d.phiEnabled,
       phiFailClosed: props.phiFailClosed ?? d.phiFailClosed,
-      textProvider: props.textProvider ?? d.textProvider,
-      textModel: props.textModel ?? d.textModel,
       maxRegen: props.maxRegen ?? d.maxRegen,
       gateSlaSeconds: props.gateSlaSeconds ?? d.gateSlaSeconds,
       gateEscalationSeconds: props.gateEscalationSeconds ?? d.gateEscalationSeconds,

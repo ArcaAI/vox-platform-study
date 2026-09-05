@@ -279,17 +279,10 @@ describe('HarnessPolicyScreen', () => {
   describe('E3-L1 locked safety/PHI switches', () => {
     // Every key the TENANT route rejects must render read-only.
     // Mirrors TENANT_LOCKED_POLICY_KEYS in ../policy-fields.ts, by rendered
-    // label. locked textProvider/textModel too — both sit in the
-    // backend's SUPER_ADMIN_ONLY_POLICY_KEYS, so a tenant edit could only 403.
-    // `Safety provider`/`Safety model` are absent because deleted the
-    // controls with their columns — see ../policy-fields.ts and policy-fields.test.ts.
-    const LOCKED = [
-      'Safety guardrail',
-      'PHI detection',
-      'PHI fail-closed',
-      'Text-generation provider',
-      'Text-generation model',
-    ];
+    // label. `Safety provider`/`Safety model` and (TASK-881) `Text-generation
+    // provider`/`Text-generation model` are absent because their controls were
+    // deleted with their columns — see ../policy-fields.ts and policy-fields.test.ts.
+    const LOCKED = ['Safety guardrail', 'PHI detection', 'PHI fail-closed'];
 
     it.each(LOCKED)('renders %s disabled on the tenant tab', async (label) => {
       stubFetch({ session: TENANT_ADMIN_SESSION });

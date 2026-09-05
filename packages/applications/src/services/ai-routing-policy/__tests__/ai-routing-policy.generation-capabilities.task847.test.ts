@@ -28,7 +28,7 @@ const TEXT_PLANE = ['temperature', 'maxTokens', 'topP'];
 function makeConfig(overrides: Record<string, any> = {}) {
   const row = AiRoutingPolicyFactory.CreateAiRoutingPolicy({
     tenantId: overrides.tenantId ?? TENANT,
-    taskKey: overrides.taskKey ?? 'text.finalize',
+    taskKey: overrides.taskKey ?? 'harness.judge',
     displayName: overrides.displayName ?? null,
     providerConnectionId: null,
     modelId: overrides.model === null ? null : `model:${overrides.model ?? 'lms-gemma-4-e2b-it-qat'}`,
@@ -118,7 +118,7 @@ describe('F-32 — the capability set comes off the resolved AiModel row', () =>
       modelCapabilities: { 'lms-gemma-4-e2b-it-qat': TEXT_PLANE },
     });
 
-    const result = await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'text.finalize' });
+    const result = await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'harness.judge' });
     expect(result.supportedGenerationParams).toEqual(TEXT_PLANE);
   });
 
@@ -143,7 +143,7 @@ describe('F-32 — the cascade is request tenant → SYSTEM, and nothing else', 
       modelCapabilities: { 'tenant-own-vllm': [...TEXT_PLANE, 'presencePenalty'], 'lms-gemma-4-e2b-it-qat': TEXT_PLANE },
     });
 
-    const result = await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'text.finalize' });
+    const result = await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'harness.judge' });
     expect(result.supportedGenerationParams).toContain('presencePenalty');
   });
 
@@ -153,18 +153,18 @@ describe('F-32 — the cascade is request tenant → SYSTEM, and nothing else', 
       modelCapabilities: { 'lms-gemma-4-e2b-it-qat': TEXT_PLANE },
     });
 
-    const result = await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'text.finalize' });
+    const result = await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'harness.judge' });
     expect(result.supportedGenerationParams).toEqual(TEXT_PLANE);
   });
 
   it('hands the repository EXACTLY [requestTenant, SYSTEM] — never a third tier', async () => {
     const { svc, repo } = makeService({ rows: [makeConfig({ id: 'pol-1' })], modelCapabilities: {} });
 
-    await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'text.finalize' });
+    await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'harness.judge' });
 
     // The load-bearing assertion is the TIER SET, not the read options that
     // follow it (`resolveDefault` passes `includeParked` there since TASK-872).
-    expect(repo.findCandidates.mock.calls[0]!.slice(0, 3)).toEqual([[TENANT, SYSTEM_TENANT_ID], 'text.finalize', undefined]);
+    expect(repo.findCandidates.mock.calls[0]!.slice(0, 3)).toEqual([[TENANT, SYSTEM_TENANT_ID], 'harness.judge', undefined]);
     for (const call of repo.findCandidates.mock.calls) {
       expect(call[0]).not.toContain(GLOBAL_CUSTOMER_TENANT);
     }
@@ -178,11 +178,11 @@ describe('F-32 — the cascade is request tenant → SYSTEM, and nothing else', 
       modelCapabilities: { 'playground-model': [...TEXT_PLANE, 'seed', 'presencePenalty'] },
     });
 
-    const result = await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'text.finalize' });
+    const result = await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'harness.judge' });
 
     // Nothing resolved: the playground row is invisible to this tenant.
     expect(result.supportedGenerationParams).toBeUndefined();
-    expect(result.label).toBe("taskKey 'text.finalize'");
+    expect(result.label).toBe("taskKey 'harness.judge'");
   });
 
   it('a pinned id owned by the Global playground resolves to nothing for another tenant', async () => {

@@ -86,14 +86,13 @@ describe('HOPE_SETTINGS_REGISTRY — failMode governance', () => {
     }
   });
 
-  // Provider/model SELECTION is the second fail-closed class: an unresolved
-  // selection must never silently become another tenant's or a global model.
-  it('every models.* selection descriptor fails CLOSED', () => {
-    const selection = HOPE_SETTINGS_REGISTRY.list().filter((d) => d.key.startsWith('models.'));
-    expect(selection.length).toBeGreaterThan(0);
-    for (const d of selection) {
-      expect(d.failMode, d.key).toBe('closed');
-    }
+  // Provider/model SELECTION is the second fail-closed class — and since
+  // TASK-881 it is NOT a setting at all: the `models.*` projection over the
+  // `AiTaskDefault` facade is gone, and selection resolves through
+  // `AiRoutingPolicyService.resolveDefault`, which fails closed on its own
+  // (a null model is the caller's 503, never a substituted default).
+  it('registers no models.* selection descriptor — selection is not a setting', () => {
+    expect(HOPE_SETTINGS_REGISTRY.list().filter((d) => d.key.startsWith('models.'))).toEqual([]);
   });
 
   // Tuning knobs / feature flags fall back to the descriptor default, so a

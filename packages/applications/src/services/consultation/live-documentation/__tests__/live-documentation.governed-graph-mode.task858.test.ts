@@ -243,7 +243,7 @@ function buildService(opts: BuildOpts = {}) {
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
     undefined, // trajectoryService
     effectiveSettings as never,
-    { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as never,
+    { resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as never,
     { run: vi.fn((cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() } as never,
     { resolveForSession: vi.fn().mockResolvedValue(snapshot()) } as never,
     undefined, // textRequestEnrichment

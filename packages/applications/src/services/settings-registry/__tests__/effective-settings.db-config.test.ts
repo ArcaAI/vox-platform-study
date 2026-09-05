@@ -32,7 +32,7 @@ function storageResolver(impl: Partial<PlatformStorageSettingsResolver> = {}): P
 }
 
 function service(storage?: PlatformStorageSettingsResolver): EffectiveSettingsService {
-  return new EffectiveSettingsService(configResolver, undefined, undefined, storage);
+  return new EffectiveSettingsService(configResolver, undefined, storage);
 }
 
 describe('EffectiveSettingsService — the db-config lane', () => {

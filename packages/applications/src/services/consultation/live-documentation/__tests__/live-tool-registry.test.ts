@@ -43,12 +43,12 @@ function makeDeps(post = vi.fn()): { deps: LiveToolRegistryDeps; post: ReturnTyp
     post,
     deps: {
       // Fail-CLOSED `nlp.ner` selection: the NER tool needs BOTH a resolvable
-      // AiTaskDefault row and a CLS scope to pin the SYSTEM-only read to.
+      // routing election and a CLS scope to pin the SYSTEM-only read to.
       nlp: {
         httpService,
         nlpServiceUrl: 'http://nlp.test:8864',
         logger,
-        aiTaskDefaultService: { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as never,
+        routingPolicies: { resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as never,
         cls: { run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() } as never,
       },
       groundedness: {

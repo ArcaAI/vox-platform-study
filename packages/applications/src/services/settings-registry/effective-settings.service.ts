@@ -6,9 +6,8 @@
 // tier) rather than re-implementing data access, and REFUSES secret-sensitivity
 // keys so a secret value can never be surfaced through a config read.
 
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { ConfigResolutionContext, ConfigResolver, PipelineToggleKey } from '../config-resolver/config-resolver.service';
 import { PlatformStorageSettingsResolver } from '../tenant-storage-config/platform-storage-settings.resolver';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
@@ -60,7 +59,6 @@ export function applyFailMode(descriptor: SettingDescriptor): EffectiveSettingRe
 export function effectiveResolverLane(descriptor: SettingDescriptor): string | null {
   const { key, tier } = descriptor;
   if (key.startsWith('pipeline.')) return 'pipeline';
-  if (key.startsWith('models.')) return 'models';
   if (tier === 'global-kv') return 'global-kv';
   // `db-config` is per-FAMILY, not per-tier: each family is owned by the
   // service that owns its table, so opening the tier wholesale would be a lie.
@@ -87,10 +85,6 @@ const PLATFORM_STORAGE_KEYS = new Set([
 export class EffectiveSettingsService {
   constructor(
     private readonly configResolver: ConfigResolver,
-    // Resolver for models.* keys. Optional so graphs that never
-    // read task-model defaults (and existing unit tests) keep working; an
-    // unwired models.* read falls through to the no-resolver error.
-    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
     // Backs the `global-kv` lane. Optional so graphs that never read KV
     // settings (and existing unit tests) keep working; an unwired resolver
     // simply falls back to the descriptor default.
@@ -128,22 +122,6 @@ export class EffectiveSettingsService {
       return { key, tier: descriptor.tier, value: resolved[toggle], sourceScope: resolved.trace[toggle] };
     }
 
-    // Models.<taskKey> delegates to AiTaskDefaultService (tenant →
-    // SYSTEM cascade); never re-implements data access here.
-    //
-    // An UNSELECTED task (`modelSlug` null) is an unresolved value, so it goes
-    // through the declared failure mode. Every `models.*` descriptor is
-    // fail-closed, so this raises rather than reporting a null that a caller
-    // cannot distinguish from a deliberately-null selection.
-    if (key.startsWith('models.') && this.aiTaskDefaultService) {
-      const taskKey = key.slice('models.'.length);
-      const effective = await this.aiTaskDefaultService.getEffective(taskKey, ctx.tenantId);
-      if (effective.modelSlug === null || effective.modelSlug === undefined) {
-        return applyFailMode(descriptor);
-      }
-      return { key, tier: descriptor.tier, value: effective.modelSlug, sourceScope: effective.source ?? 'none' };
-    }
-
     // The `global-kv` lane — the full cascade:
     //
     //   tenant override → SYSTEM/platform row → descriptor.default
@@ -162,8 +140,10 @@ export class EffectiveSettingsService {
     // The `db-config` lane.
     //
     // Dispatched per key FAMILY to the service that owns that family's table —
-    // never resolved here. `AiTaskDefault` (`models.*`) and `PipelinePolicy`
-    // (`pipeline.*`) are handled above; `TenantStorageConfig` is handled below.
+    // never resolved here. `PipelinePolicy` (`pipeline.*`) is handled above;
+    // `TenantStorageConfig` is handled below. (The `models.*` lane over the
+    // `AiTaskDefault` facade was retired by TASK-881 — model SELECTION is not a
+    // setting; it resolves through `AiRoutingPolicyService.resolveDefault`.)
     // Families whose values vary BY TENANT (`tts.defaultVoiceEn`) deliberately
     // have no lane: per owner decision D-1 they
     // travel the PUSH channel — per-request gateway injection — and putting

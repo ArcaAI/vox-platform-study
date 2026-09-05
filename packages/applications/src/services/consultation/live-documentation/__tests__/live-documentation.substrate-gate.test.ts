@@ -25,7 +25,7 @@ const CID = 'consultation-gate-001';
 const TENANT = 'tenant-gate-001';
 const NOTE = 'Subjective: patient reports cough and takes aspirin\nObjective:\nAssessment:\nPlan:';
 
-const nerAiTaskDefaultDouble = () => ({ getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) });
+const nerRoutingElectionDouble = () => ({ resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) });
 const nerClsDouble = () => ({ run: vi.fn((cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() });
 
 function httpMock() {
@@ -115,7 +115,7 @@ function buildService(http: unknown, opts: BuildOpts = {}) {
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
     (opts.trajectory ?? undefined) as never,
     effectiveSettings as never,
-    nerAiTaskDefaultDouble() as never,
+    nerRoutingElectionDouble() as never,
     nerClsDouble() as never,
     { resolveForSession: vi.fn().mockResolvedValue(snapshot()) } as never as Partial<ILiveAgentResolver> as never,
     undefined, // textRequestEnrichment

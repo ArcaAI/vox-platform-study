@@ -51,7 +51,7 @@ function makeService(): HarnessPolicyService {
     databaseService as never,
     cls as never,
     undefined, // secretsService
-    undefined, // aiTaskDefaultService
+    undefined, // routingPolicies
     undefined, // mcpServerRepository
     undefined, // effectiveSettings
   );
@@ -66,8 +66,6 @@ function tenantOwnRow() {
     gateSlaSeconds: 3600,
     gateEscalationSeconds: 1800,
     toolAllowlist: ['nlp'],
-    textProvider: 'tenant-prov',
-    textModel: 'tenant-model',
   });
 }
 

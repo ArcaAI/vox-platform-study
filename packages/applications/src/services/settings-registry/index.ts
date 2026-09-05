@@ -7,7 +7,6 @@ export * from './effective-settings.module';
 export * from './registry';
 export * from './descriptors/pipeline.descriptors';
 export * from './descriptors/entitlements.descriptors';
-export * from './descriptors/model-defaults.descriptors';
 export * from './descriptors/agentic-context.descriptors';
 export * from './descriptors/agentic-eval.descriptors';
 export * from './descriptors/agentic-revisit.descriptors';

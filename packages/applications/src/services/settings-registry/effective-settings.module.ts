@@ -1,6 +1,5 @@
 import { Logger, Module, OnModuleInit } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
-import { AiTaskDefaultServiceModule } from '../ai-task-default/ai-task-default.service.module';
 import { CommonServiceModule } from '../baseServices/common.service.module';
 import { ConfigResolverModule } from '../config-resolver/config-resolver.module';
 import { GlobalSettingServiceModule } from '../globalSetting/globalSetting.service.module';
@@ -12,8 +11,7 @@ import { TenantSettingsService } from './tenant-settings.service';
 
 /**
  * DI module for the EffectiveSettingsService facade. Imports
- * ConfigResolverModule for the pipeline cascade resolver and
- * AiTaskDefaultServiceModule for the models.* task-default resolver.
+ * ConfigResolverModule for the pipeline cascade resolver.
  *
  * Also hosts the registry WRITE lane
  * (`SettingsRegistryWriteService`), and enforces the kill-switch governance
@@ -23,7 +21,7 @@ import { TenantSettingsService } from './tenant-settings.service';
   // `CoreDatabaseModule` supplies `TenantStorageConfigRepository`, the ONLY new
   // dependency the `db-config` lane needs — the cascade itself is the pure
   // function the upload path already uses.
-  imports: [ConfigResolverModule, AiTaskDefaultServiceModule, CommonServiceModule, GlobalSettingServiceModule, CoreDatabaseModule],
+  imports: [ConfigResolverModule, CommonServiceModule, GlobalSettingServiceModule, CoreDatabaseModule],
   providers: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService, PlatformStorageSettingsResolver],
   exports: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService, PlatformStorageSettingsResolver],
 })

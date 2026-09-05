@@ -60,8 +60,8 @@ interface HttpMockOptions {
  * scope to pin the SYSTEM-only read to — an absent either is a 503, not a
  * silent post without `model_name`.
  */
-const nerAiTaskDefaultDouble = () => ({
-  getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
+const nerRoutingElectionDouble = () => ({
+  resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
 });
 const nerClsDouble = () => ({ run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() });
 
@@ -145,7 +145,7 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     secretsService as any,
     undefined, // trajectoryService
     undefined, // effectiveSettings
-    nerAiTaskDefaultDouble() as any,
+    nerRoutingElectionDouble() as any,
     nerClsDouble() as any,
   );
 

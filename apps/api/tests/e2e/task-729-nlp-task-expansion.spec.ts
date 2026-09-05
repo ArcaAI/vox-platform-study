@@ -3,16 +3,16 @@
  *
  * NOT RUN as part of this ticket's execution (LOCAL INFRA IS DOWN — no
  * Postgres/Redis/API — and there is no cluster access; this file is authored
- * per the ticket's Task 7 and gated on infra being available). Follows the
- * `ai-task-defaults-cross-tenant.spec.ts` pattern for the admin
- * OCC/cross-tenant probes and the ordinary `loginUser`/proxy pattern for the
+ * per the ticket's Task 7 and gated on infra being available). Follows the admin
+ * OCC/cross-tenant probe pattern and the ordinary `loginUser`/proxy pattern for the
  * `/ai/nlp/*` calls.
  *
  * Covers:
- *  1. `nlp.sentiment`/`nlp.toxicity` — no new endpoint; reachable the SAME
- *     generic way `nlp.classification`/`nlp.diagnosis` already are, once an
- *     `AiTaskDefault` row exists (governance: still `nlp.*`
- *     super-admin-only on write — a tenant admin PUT → 403).
+ *  1. (RETIRED by TASK-881) `nlp.sentiment`/`nlp.toxicity` used to be probed
+ *     through `/admin/ai-task-defaults`; that facade and its routes are gone.
+ *     Their selection is the super-admin-only `AiRoutingPolicy` plane
+ *     (`/admin/routing-policies`), pinned by unit tests in
+ *     `packages/applications/src/services/ai-routing-policy/__tests__`.
  *  2. `nlp.topic`/`nlp.intent` — tenant-writable instructions
  *     (`TenantNlpTaskInstructionsAdminController`, `/admin/nlp-task-instructions`)
  *     flow through the gateway proxy (`/text-analyses/topic`, `/text-analyses/intent`) into
@@ -47,34 +47,17 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
  */
 const RUN_TAG = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-// A platform admin has no implicit tenant, so every ai-task-default call it makes
-// must name one: the controller answers 400 "Platform admins must pass ?tenantId=
-// to scope this request." SYSTEM is the config tier these defaults live in.
+/** The SYSTEM config tier — a tenant-authored instructions row must never land there. */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
-const TASK_DEFAULTS_BASE = '/api/v1/admin/ai-task-defaults';
 const NLP_INSTRUCTIONS_BASE = '/api/v1/admin/nlp-task-instructions';
 const AI_BASE = '/api/v1/ai';
-
-interface AiTaskDefaultRow {
-  tenantId: string;
-  taskKey: string;
-  modelSlug: string | null;
-  version: number;
-}
 
 interface NlpInstructionsRow {
   tenantId: string;
   taskKey: string;
   instructionsJson: string[] | null;
   version: number;
-}
-
-async function readTaskDefaultRow(request: APIRequestContext, token: string, taskKey: string, tenantId?: string): Promise<AiTaskDefaultRow> {
-  const qs = tenantId ? `?taskKey=${taskKey}&tenantId=${tenantId}` : `?taskKey=${taskKey}`;
-  const resp = await request.get(`${TASK_DEFAULTS_BASE}/row${qs}`, { headers: { Authorization: `Bearer ${token}` } });
-  expect(resp.status(), `GET ai-task-default row ${taskKey}`).toBe(200);
-  return (await resp.json()) as AiTaskDefaultRow;
 }
 
 async function readInstructionsRow(request: APIRequestContext, token: string, taskKey: string, tenantId?: string): Promise<NlpInstructionsRow> {
@@ -91,54 +74,11 @@ async function readInstructionsRow(request: APIRequestContext, token: string, ta
 // symptom is failures that vanish under `--workers=1`. Pin the file to one worker.
 test.describe.configure({ mode: 'serial' });
 
-test.describe('nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new endpoint)', () => {
-  let superAdminToken: string;
-  let tenantAdminToken: string;
-
-  test.beforeAll(async ({ request }) => {
-    const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'super admin login failed').toBeTruthy();
-    superAdminToken = ga!.token;
-
-    const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
-    expect(ta, 'tenant admin login failed').toBeTruthy();
-    tenantAdminToken = ta!.token;
-  });
-
-  test('nlp.sentiment / nlp.toxicity are registered task keys, reachable via the existing row surface', async ({ request }) => {
-    for (const taskKey of ['nlp.sentiment', 'nlp.toxicity']) {
-      const row = await readTaskDefaultRow(request, tenantAdminToken, taskKey);
-      expect(row.taskKey).toBe(taskKey);
-    }
-  });
-
-  test('GOVERNANCE: tenant admin PUT on nlp.sentiment/nlp.toxicity → 403 (still nlp.* super-admin-only)', async ({ request }) => {
-    for (const taskKey of ['nlp.sentiment', 'nlp.toxicity']) {
-      const row = await readTaskDefaultRow(request, tenantAdminToken, taskKey);
-      const resp = await request.put(`${TASK_DEFAULTS_BASE}/row?taskKey=${taskKey}`, {
-        headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': `"${row.version}"` },
-        data: { modelSlug: 'medical-ner' },
-      });
-      expect(resp.status(), `${taskKey} tenant-admin PUT`).toBe(403);
-    }
-  });
-
-  test('super admin can set nlp.sentiment/nlp.toxicity SYSTEM defaults', async ({ request }) => {
-    for (const taskKey of ['nlp.sentiment', 'nlp.toxicity']) {
-      const row = await readTaskDefaultRow(request, superAdminToken, taskKey, SYSTEM_TENANT_ID);
-      const resp = await request.put(`${TASK_DEFAULTS_BASE}/row?taskKey=${taskKey}&tenantId=${SYSTEM_TENANT_ID}`, {
-        headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': `"${row.version}"` },
-        // nlp.sentiment/nlp.toxicity require a TEXT_CLASSIFICATION model
-        // (AI_TASK_MODEL_TASK_TYPES in ai-task-default/constants.ts) — 'medical-ner'
-        // is TOKEN_CLASSIFICATION (seeded for nlp.ner) and is rejected by
-        // AiTaskDefaultService.upsertRow's taskType check (400). Use the seeded
-        // TEXT_CLASSIFICATION fixture slug instead (same one nlp.diagnosis uses).
-        data: { modelSlug: 'symps-disease-bert-v3-c41' },
-      });
-      expect(resp.status(), `${taskKey} super-admin PUT`).toBe(200);
-    }
-  });
-});
+// TASK-881: the `nlp.sentiment` / `nlp.toxicity` describe that probed
+// `/admin/ai-task-defaults` (registration, tenant-admin PUT → 403, super-admin
+// SYSTEM PUT → 200) is gone with that surface. The keys remain routing-policy
+// vocabulary (`AI_TASK_KEYS`), still `nlp.*` super-admin-only; every
+// `AiRoutingPolicy` write is super-admin-only by construction.
 
 // ─── DB access (cleanup only — the instructions surface has no DELETE) ──────
 
@@ -185,7 +125,7 @@ test.describe('nlp.topic / nlp.intent (open-taxonomy, tenant-writable instructio
     expect(ta, 'tenant admin login failed').toBeTruthy();
     tenantAdminToken = ta!.token;
 
-    const row = await readTaskDefaultRow(request, superAdminToken, 'nlp.ner');
+    const row = await readInstructionsRow(request, superAdminToken, 'nlp.topic');
     arcaaiTenantId = row.tenantId;
     expect(arcaaiTenantId).toBeTruthy();
   });

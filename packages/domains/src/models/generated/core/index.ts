@@ -8,7 +8,6 @@ export * from './AiModelModel';
 export * from './AiPriceBookModel';
 export * from './AiProviderConnectionModel';
 export * from './AiRoutingPolicyModel';
-export * from './AiTaskDefaultModel';
 export * from './AiUsageEventModel';
 export * from './AiUsageOutboxModel';
 export * from './AiUsageRollupDailyModel';

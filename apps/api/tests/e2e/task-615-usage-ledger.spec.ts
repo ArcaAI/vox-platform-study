@@ -99,7 +99,7 @@ test.describe('Usage ledger — synthetic drain-and-rollup flow', () => {
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
     tenantAdminToken = ta!.token;
 
-    const me = await request.get('/api/v1/admin/ai-task-defaults/row?taskKey=nlp.ner', { headers: bearer(tenantAdminToken) });
+    const me = await request.get('/api/v1/admin/nlp-task-instructions/row?taskKey=nlp.topic', { headers: bearer(tenantAdminToken) });
     expect(me.status()).toBe(200);
     tenantId = ((await me.json()) as { tenantId: string }).tenantId;
     expect(tenantId).toBeTruthy();

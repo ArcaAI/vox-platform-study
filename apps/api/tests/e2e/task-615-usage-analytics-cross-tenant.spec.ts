@@ -52,9 +52,9 @@ test.describe('Usage-analytics cross-tenant posture', () => {
     superAdminToken = ga!.token;
 
     // Discover the FOREIGN_TENANT_KEY tenant id through the super admin's own
-    // working-tenant scope — the proven ai-task-defaults `/row` discovery trick.
-    const row = await request.get('/api/v1/admin/ai-task-defaults/row?taskKey=nlp.ner', { headers: bearer(superAdminToken) });
-    expect(row.status(), 'ai-task-defaults row (tenant discovery)').toBe(200);
+    // working-tenant scope — the `/row` discovery trick (TASK-881 moved it off the retired ai-task-defaults surface).
+    const row = await request.get('/api/v1/admin/nlp-task-instructions/row?taskKey=nlp.topic', { headers: bearer(superAdminToken) });
+    expect(row.status(), 'nlp-task-instructions row (tenant discovery)').toBe(200);
     foreignTenantId = ((await row.json()) as { tenantId: string }).tenantId;
     expect(foreignTenantId).toBeTruthy();
 

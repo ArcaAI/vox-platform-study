@@ -58,7 +58,6 @@ import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admi
 import { AiInferenceModule } from './modules/ai-inference/ai-inference.module';
 import { AiProviderConnectionModule } from './modules/ai-provider-connection/ai-provider-connection.module';
 import { AiRoutingPolicyModule } from './modules/ai-routing-policy/ai-routing-policy.module';
-import { AiTaskDefaultModule } from './modules/ai-task-default/ai-task-default.module';
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
 import { NlpTaskInstructionsModule } from './modules/nlp-task-instructions/nlp-task-instructions.module';
 import { ApiKeyModule } from './modules/api-key/api-key.module';
@@ -437,7 +436,6 @@ const featureModules: any[] = [
   AiServiceAdminModule,
   AiInferenceModule,
   // /admin/ai-task-defaults (per-tenant default model per AI task key).
-  AiTaskDefaultModule,
   // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
   // instruction content — separate subject from AiTaskDefault).
   NlpTaskInstructionsModule,

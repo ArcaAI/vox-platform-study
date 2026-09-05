@@ -130,11 +130,11 @@ interface BuildDepsOpts {
   // Vault-Transit encryption service — undefined by default (matches every
   // other buildDeps fixture's soft-no-op posture in dev/test).
   secretsService?: any;
-  // Nlp.ner model-injection resolver deps. Both default to WORKING
+  // Nlp.ner routing-election resolver deps. Both default to WORKING
   // doubles: model selection is fail-CLOSED, so a fixture reaching the NER hop
   // without them takes a 503 rather than posting without `model_name`. Pass an
   // explicit `undefined` (the key present) to exercise a refusal.
-  aiTaskDefaultService?: any;
+  routingPolicies?: any;
   cls?: any;
 }
 
@@ -185,10 +185,10 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   const secretsService = opts.secretsService;
   // `in` rather than `??` so an explicit `undefined` still means "absent" —
   // that is how the fail-closed refusal cases are set up.
-  const aiTaskDefaultService =
-    'aiTaskDefaultService' in opts
-      ? opts.aiTaskDefaultService
-      : { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
+  const routingPolicies =
+    'routingPolicies' in opts
+      ? opts.routingPolicies
+      : { resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
   const cls = 'cls' in opts ? opts.cls : { run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() };
 
   const service = new LiveDocumentationService(
@@ -202,7 +202,7 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     secretsService as any,
     undefined, // trajectoryService
     undefined, // effectiveSettings
-    aiTaskDefaultService as any,
+    routingPolicies as any,
     cls as any,
   );
 
@@ -402,19 +402,19 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // Nlp.ner AiTaskDefault model injection (fail-CLOSED)
+  // Nlp.ner routing-election model injection (fail-CLOSED)
   // ------------------------------------------------------------------
   describe('nlp.ner model injection', () => {
     function makeCls() {
       return { run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() };
     }
 
-    it('injects the effective nlp.ner model_name when the AiTaskDefault service resolves one', async () => {
-      const aiTaskDefaultService = {
-        getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
+    it('injects the effective nlp.ner model_name when the routing-policy service resolves one', async () => {
+      const routingPolicies = {
+        resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
       };
       const cls = makeCls();
-      const { service, httpMock } = buildDeps(buildHttpMock(), { aiTaskDefaultService, cls });
+      const { service, httpMock } = buildDeps(buildHttpMock(), { routingPolicies, cls });
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
       await service.flush(CID);
@@ -423,12 +423,12 @@ describe('LiveDocumentationService', () => {
       expect((nlpCall[1] as { model_name?: string }).model_name).toBe('blaze999/Medical-NER');
     });
 
-    it('never posts to /classify/tokens (fail-closed) when AiTaskDefault resolution fails', async () => {
-      const aiTaskDefaultService = {
-        getEffective: vi.fn().mockRejectedValue(new Error('registry unavailable')),
+    it('never posts to /classify/tokens (fail-closed) when routing-election resolution fails', async () => {
+      const routingPolicies = {
+        resolveDefault: vi.fn().mockRejectedValue(new Error('registry unavailable')),
       };
       const cls = makeCls();
-      const { service, httpMock } = buildDeps(buildHttpMock(), { aiTaskDefaultService, cls });
+      const { service, httpMock } = buildDeps(buildHttpMock(), { routingPolicies, cls });
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
       await service.flush(CID);
@@ -442,7 +442,7 @@ describe('LiveDocumentationService', () => {
     it('never posts to /classify/tokens when CLS is not wired — the SYSTEM pin cannot be established', async () => {
       // An absent CLS scope is a refusal like any other: without a scope to pin,
       // the SYSTEM-only read would resolve under the ambient tenant instead.
-      const { service, httpMock } = buildDeps(buildHttpMock(), { aiTaskDefaultService: undefined, cls: undefined });
+      const { service, httpMock } = buildDeps(buildHttpMock(), { routingPolicies: undefined, cls: undefined });
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
       await service.flush(CID);
