@@ -26,6 +26,7 @@ import type {
   AsrSpecModels,
   AsrSpecPostProcessing,
   AsrSpecStreaming,
+  AsrSpecStreamingSemantic,
   ResolvedAgent,
   ResolvedAgentModel,
   ResolvedAsrSpec,
@@ -56,6 +57,11 @@ const bool = (value: unknown, fallback: boolean): boolean => (typeof value === '
 const str = (value: unknown): string | null => (typeof value === 'string' && value.length > 0 ? value : null);
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
   typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+/** `[left, right]` context seconds. Anything else is no opinion, never a half-read pair. */
+const pair = (value: unknown): readonly [number, number] | null =>
+  Array.isArray(value) && value.length === 2 && value.every((v) => typeof v === 'number' && Number.isFinite(v))
+    ? [value[0] as number, value[1] as number]
+    : null;
 
 function toSpecModel(model: ResolvedAgentModel, role: AsrSpecModelRole): AsrSpecModel {
   return {
@@ -81,7 +87,7 @@ function primaryOf(agent: ResolvedAgent): ResolvedAgentModel {
 
 function auxModels(agent: ResolvedAgent): Omit<AsrSpecModels, 'asr'> {
   const out: Omit<AsrSpecModels, 'asr'> = {};
-  for (const role of ['vad', 'denoise', 'embedding', 'punctuation'] as const) {
+  for (const role of ['vad', 'denoise', 'embedding', 'punctuation', 'endpointing'] as const) {
     const found = agent.models.find((m) => m.role === role);
     if (found) out[role] = toSpecModel(found, role);
   }
@@ -110,7 +116,7 @@ function audioFrontEnd(parameters: Rec, models: AsrSpecModels): AsrSpecAudioFron
 
 function decoding(parameters: Rec): AsrSpecDecoding {
   const d = rec(parameters.decoding);
-  return {
+  const block: AsrSpecDecoding = {
     languageMode: str(d.languageMode),
     codeSwitching: bool(d.codeSwitching, false),
     wordTimestamps: bool(d.wordTimestamps, false),
@@ -118,6 +124,15 @@ function decoding(parameters: Rec): AsrSpecDecoding {
     temperature: num(d.temperature),
     vadFilter: bool(d.vadFilter, false),
   };
+  // Owner decision #9 — per-agent batch chunking. OMITTED, not `null`, when the
+  // agent said nothing: `apps/stt`'s mirror is `extra='forbid'`, so the key must be
+  // absent until both halves have learned it (they may deploy in either order), and
+  // absence is also what tells the batch path to keep the platform values.
+  const chunkLengthSec = num(d.chunkLengthSec);
+  if (chunkLengthSec !== null) block.chunkLengthSec = chunkLengthSec;
+  const strideLengthSec = pair(d.strideLengthSec);
+  if (strideLengthSec !== null) block.strideLengthSec = strideLengthSec;
+  return block;
 }
 
 function postProcessing(parameters: Rec): AsrSpecPostProcessing {
@@ -132,11 +147,23 @@ function postProcessing(parameters: Rec): AsrSpecPostProcessing {
 
 function streaming(parameters: Rec): AsrSpecStreaming {
   const s = rec(parameters.streaming);
-  return {
+  const block: AsrSpecStreaming = {
     partialIntervalMs: num(s.partialIntervalMs),
     endpointing: oneOf(s.endpointing, ['fixed', 'semantic'] as const, 'fixed'),
     maxUtteranceSec: num(s.maxUtteranceSec),
   };
+  // The four knobs that replace `stt.semanticEndpoint.*`. Same omit-when-absent
+  // rule as the chunking fields; a declared-but-empty block is still omitted, so
+  // "the agent set nothing" and "the agent set nothing useful" look identical on
+  // the wire rather than producing two encodings of one state.
+  const semantic: AsrSpecStreamingSemantic = {
+    minSilenceMs: num(rec(s.semantic).minSilenceMs),
+    maxSilenceMs: num(rec(s.semantic).maxSilenceMs),
+    confidenceThreshold: num(rec(s.semantic).confidenceThreshold),
+    minWords: num(rec(s.semantic).minWords),
+  };
+  if (Object.values(semantic).some((v) => v !== null)) block.semantic = semantic;
+  return block;
 }
 
 function instruction(agent: ResolvedAgent): AsrSpecInstruction {

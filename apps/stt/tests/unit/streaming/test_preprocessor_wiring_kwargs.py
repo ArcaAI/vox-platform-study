@@ -7,26 +7,22 @@ Pins the contract of ``SessionManager._build_preprocessor_vad_kwargs``:
   the preprocessor's legacy hardcoded 700 ms.
 - Pipeline YAML still wins when VAD is configured (per-pipeline override).
 - C2: the partial decode window is settings-driven and always present.
+- TASK-877: the partial-emit CADENCE is not — it is a per-session agent value.
 """
 
 from unittest.mock import MagicMock
 
-import pytest
-
-from stt.core.config.settings import Settings
 from stt.streaming.session_manager import SessionManager
 
 
 def _make_mgr(
     vad_silence_threshold_ms: int = 500,
     partial_window_s: float = 8.0,
-    partial_interval_s: float = 0.4,
 ) -> MagicMock:
     mgr = MagicMock(spec=SessionManager)
     mgr._profile = MagicMock()
     mgr._profile.vad_silence_threshold_ms = vad_silence_threshold_ms
     mgr._partial_window_s = partial_window_s
-    mgr._partial_interval_s = partial_interval_s
     return mgr
 
 
@@ -107,26 +103,22 @@ class TestBuildPreprocessorVadKwargs:
         assert without_config["partial_window_s"] == 6.5
         assert with_config["partial_window_s"] == 6.5
 
-    def test_partial_interval_always_present_from_settings(self):
-        """The lowered partial cadence is settings-driven and
-        always wired into the preprocessor, regardless of VAD config."""
-        mgr = _make_mgr(partial_interval_s=0.3)
+    def test_partial_interval_is_not_wired_from_a_platform_setting(self):
+        """TASK-877 — the cadence is a PER-SESSION agent concept.
+
+        `test_partial_interval_always_present_from_settings` lived here and asserted
+        the opposite: that `stt.streaming.partialIntervalS` was always threaded into
+        the preprocessor. That key is deleted (it duplicated
+        `ResolvedAsrSpec.streaming.partialIntervalMs`), so with no agent opinion the
+        kwarg is OMITTED and the preprocessor's own `_PARTIAL_INTERVAL_S` stands.
+        The spec-driven path is asserted in `test_task877_session_wiring.py`.
+        """
+        mgr = _make_mgr()
 
         without_config = SessionManager._build_preprocessor_vad_kwargs(mgr, None)
         with_config = SessionManager._build_preprocessor_vad_kwargs(
             mgr, _make_pipeline_config(vad_enabled=True)
         )
 
-        assert without_config["partial_interval_s"] == 0.3
-        assert with_config["partial_interval_s"] == 0.3
-
-
-class TestStreamingPartialIntervalSetting:
-    """The cadence is a bare-env Settings field (the Settings
-    class has NO env_prefix, so the env var is STREAMING_PARTIAL_INTERVAL_S)
-    defaulting below the legacy 1.0 s."""
-
-    def test_setting_default_is_lowered_below_one_second(self):
-        field = Settings.model_fields["streaming_partial_interval_s"]
-        assert field.default == pytest.approx(0.4)
-        assert field.default < 1.0
+        assert "partial_interval_s" not in without_config
+        assert "partial_interval_s" not in with_config

@@ -500,16 +500,6 @@ const KNOBS: Record<string, SttKnob> = {
       'deterministic, so matched windows converge and the final stops visibly rephrasing the partial.',
     category: 'STT Streaming',
   },
-  'stt.streaming.partialIntervalS': {
-    dataType: 'number',
-    default: 0.4,
-    label: 'Partial emission interval (s)',
-    description:
-      'Minimum wall-clock interval between successive PARTIAL emissions for a live utterance. The ' +
-      'LocalAgreement-2 commit policy still governs when a word is COMMITTED; this only paces the ' +
-      'tentative tail.',
-    category: 'STT Streaming',
-  },
   'stt.streaming.resultStreamExpireS': {
     dataType: 'number',
     default: 3600,
@@ -525,62 +515,18 @@ const KNOBS: Record<string, SttKnob> = {
     category: 'STT Streaming',
   },
 
-  // ── semantic endpointing ─────────────────────────────────────────────────
-  'stt.semanticEndpoint.enabled': {
-    dataType: 'boolean',
-    default: false,
-    label: 'Semantic endpointing enabled',
-    description:
-      'Content-driven end-of-utterance detection on the streaming hot path. Default OFF: until it is ' +
-      'measured against the accuracy/latency scorecard the preprocessor keeps the fixed Silero-VAD ' +
-      'silence offset. A wrong early cut truncates clinical content, which is why this is a ' +
-      'kill-switch rather than a plain flag.',
-    category: 'STT Streaming',
-    killSwitch: true,
-  },
-  'stt.semanticEndpoint.minSilenceMs': {
-    dataType: 'number',
-    default: 200,
-    label: 'Semantic endpoint silence floor (ms)',
-    description:
-      'Trailing silence required before a semantic early cut is allowed. Kept below the fixed VAD ' +
-      'backstop so a semantic cut is genuinely earlier than it.',
-    category: 'STT Streaming',
-  },
-  'stt.semanticEndpoint.maxSilenceMs': {
-    dataType: 'number',
-    default: 500,
-    label: 'Semantic endpoint latency band max (ms)',
-    description:
-      'Target-max end-of-utterance latency band — informational. The fixed VAD silence offset remains ' + 'the true upper bound and backstop.',
-    category: 'STT Streaming',
-  },
-  'stt.semanticEndpoint.confidenceThreshold': {
-    dataType: 'number',
-    default: 0.85,
-    label: 'Semantic endpoint confidence threshold',
-    description:
-      'Minimum decision confidence (0–1) to cut a final early. Raise it if measurement shows early ' +
-      'cuts truncating clinical content; the fixed backstop always still fires.',
-    category: 'STT Streaming',
-  },
-  'stt.semanticEndpoint.minWords': {
-    dataType: 'number',
-    default: 3,
-    label: 'Semantic endpoint minimum words',
-    description: 'Minimum running-hypothesis word count before a semantic early cut; shorter fragments defer to ' + 'the fixed silence timer.',
-    category: 'STT Streaming',
-  },
-  'stt.semanticEndpoint.modelId': {
-    dataType: 'string',
-    default: '',
-    label: 'Semantic endpoint model id',
-    description:
-      'Optional SELF-HOSTED turn/end-of-utterance model. Empty = model-free heuristic only. An ' +
-      'un-staged id degrades to the heuristic. Never a cloud vendor: this sees live clinical audio ' +
-      'transcript ahead of the guardrail.',
-    category: 'STT Streaming',
-  },
+  // TASK-877 removed the whole `stt.semanticEndpoint.*` family (enabled, minSilenceMs,
+  // maxSilenceMs, confidenceThreshold, minWords, modelId) and `stt.streaming.partialIntervalS`.
+  // Each duplicated a concept the ASR AGENT owns, and the owner's rule is that a redundant
+  // setting from the old architecture is removed COMPLETELY, not dual-homed: endpointing mode,
+  // its four tuning knobs, the end-of-utterance model and the partial cadence all arrive per
+  // session on `ResolvedAsrSpec` (`streaming.{partialIntervalMs,endpointing,semantic}` plus the
+  // new `endpointing` model role).
+  //
+  // `stt.semanticEndpoint.enabled` carried `killSwitch: true`. Its replacement is NOT a flag:
+  // an agent selects `streaming.endpointing`, and the platform's veto is refusing to publish
+  // an `endpointing` model row — the same shape the rest of the agent's model chain already
+  // has. Nothing can turn semantic endpointing on behind the agent's back any more.
 
   // ── real-time event publishing ───────────────────────────────────────────
   'stt.pubsub.channelPrefix': {
