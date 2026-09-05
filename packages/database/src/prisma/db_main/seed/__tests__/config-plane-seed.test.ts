@@ -89,7 +89,15 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     const stt = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'stt')
       .map((c) => c.provider)
       .sort();
-    expect(stt).toEqual(['azure-speech', 'openai', 'sarvam']);
+    expect(stt).toEqual(['azure-foundry', 'azure-speech', 'openai', 'sarvam']);
+
+    // TASK-880 — `stt.azureFoundry.enabled` became the SYSTEM row's `enabled` (a PREVIEW veto that
+    // must seed OFF), and `stt.sarvam.baseUrl` / `stt.openai.baseUrl` moved onto their rows. A row
+    // that carried none of them would leave the platform default unexpressed.
+    const rows = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'stt');
+    expect(rows.find((c) => c.provider === 'azure-foundry')!.enabled).toBe(false);
+    expect(rows.find((c) => c.provider === 'sarvam')!.baseUrl).toBe('https://api.sarvam.ai');
+    expect(rows.find((c) => c.provider === 'openai')!.baseUrl).toBe('https://api.openai.com/v1');
   });
 
   it('seeds the TTS cloud catalog rows, carrying the endpoint facts that used to be settings keys', () => {

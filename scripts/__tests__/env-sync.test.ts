@@ -429,7 +429,9 @@ describe('generate-env-file.sh — every declared secret is accounted for', () =
     // supersedes them was not.
     const generated = generatedKeys();
     expect(generated.has('INTERNAL_ACCESS_TOKEN')).toBe(true);
-    for (const legacy of ['TEXT_SERVICE_TOKEN', 'NLP_SERVICE_TOKEN', 'GUARDRAIL_SERVICE_TOKEN', 'HARNESS_SERVICE_TOKEN', 'TTS_SERVICE_TOKEN']) {
+    // `TTS_SERVICE_TOKEN` left this list with TASK-879/880: its last reader is gone and the
+    // descriptor with it, so generating it would seed a value nothing reads.
+    for (const legacy of ['TEXT_SERVICE_TOKEN', 'NLP_SERVICE_TOKEN', 'GUARDRAIL_SERVICE_TOKEN', 'HARNESS_SERVICE_TOKEN']) {
       expect(generated.has(legacy), `${legacy} should still be generated as a fallback`).toBe(true);
     }
   });
