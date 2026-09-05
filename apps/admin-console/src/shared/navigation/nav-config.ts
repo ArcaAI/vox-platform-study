@@ -259,7 +259,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   {
     route: '/security-policy',
     domain: 'identity-access',
-    label: 'Credential policy',
+    label: 'Security policy',
     tier: '10-19',
     icon: IconLockCog,
     required: [['manage', 'all']],
