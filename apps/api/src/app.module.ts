@@ -121,6 +121,7 @@ import { StreamingModule } from './modules/streaming/streaming.module';
 import { SpeechModule } from './modules/speech/speech.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
 import { TenantFrontendConfigModule } from './modules/tenant-frontend-config/tenant-frontend-config.module';
+import { GuardrailAvailabilityModule } from './modules/guardrail-availability/guardrail-availability.module';
 import { TenantStorageConfigModule } from './modules/tenant-storage-config/tenant-storage-config.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
@@ -533,6 +534,7 @@ const featureModules: any[] = [
   AiModelModule,
   TenantModule,
   TenantBucketModule,
+  GuardrailAvailabilityModule,
   TenantStorageConfigModule,
   TenantFrontendConfigModule,
   UserModule,
