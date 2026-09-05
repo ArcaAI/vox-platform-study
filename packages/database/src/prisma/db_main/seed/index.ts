@@ -27,7 +27,6 @@ import { seedGlobalSetting } from './11-global-setting';
 import { seedPlatformKnobSettings } from './11a-platform-knob-settings';
 import { seedTenantAllowedOrigins } from './11b-tenant-allowed-origins';
 import { seedConsultationGateSettings } from './11c-consultation-gate-settings';
-import { seedTtsEngineFlagSettings } from './11d-tts-engine-flags';
 import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedEntitlements } from './15-entitlements';
@@ -287,13 +286,14 @@ export const seed = async () => {
     // enables them, and `defaultValue` stays at the fail-safe.
     await seedConsultationGateSettings(client);
     console.log('');
-    // The five tts provider/engine enable flags. `tts.kokoro.enabled` seeds ON
-    // — the SYSTEM voice catalog routes `en` to kokoro, so without it a keyless
-    // deployment registers no provider and answers 503 on /health/ready. The
-    // descriptor defaults stay OFF (they must equal the Python fields), so the
-    // ROW is what turns kokoro on and `defaultValue` stays at the code value.
-    await seedTtsEngineFlagSettings(client);
-    console.log('');
+    // `seedTtsEngineFlagSettings` ran here — five `GlobalSetting` rows for the tts
+    // provider/engine enable flags. TASK-879 removed it: "may this engine serve"
+    // is exactly what an `AiProviderConnection` row's three-state `enabled` says,
+    // so the five keys became five SYSTEM connection rows in
+    // `17-ai-provider-connection.ts` (kokoro ON for the same keyless-readiness
+    // reason the old comment gave, the rest OFF). Two control surfaces for one
+    // fact is how they disagree.
+
     // Day-1 browser origins permitted to call the gateway, owned by the SYSTEM
     // tenant. Must be seeded BEFORE the production catch-all is closed
     // an empty registry plus a closed catch-all locks every
