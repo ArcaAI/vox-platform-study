@@ -98,6 +98,17 @@ describe('STT_RUNTIME_SETTINGS', () => {
     expect(pubsub?.default).toBe(true);
   });
 
+  it('has no orphaned semanticEndpoint.enabled feature flag left behind', () => {
+    // The EIGHTH duplicate of the `stt.semanticEndpoint.*` family lived outside
+    // this file, in `feature-flags.descriptors.ts` — a bare (no `stt.` prefix)
+    // `semanticEndpoint.enabled`, `tier: 'env'`, bound to `SEMANTIC_ENDPOINT_ENABLED`.
+    // Its only reader was the `Settings.semantic_endpoint_enabled` field TASK-877
+    // deleted with the rest of the family, so the descriptor was left with nothing
+    // reading it. Deleted for the same reason as the other seven: a duplicate from
+    // the old architecture is removed completely, not left dual-homed.
+    expect(HOPE_SETTINGS_REGISTRY.has('semanticEndpoint.enabled')).toBe(false);
+  });
+
   it('leaves the storage keys to the db-config cascade rather than re-declaring them here', () => {
     // `STORAGE_PROVIDER` / `AZURE_STORAGE_*` belong in the
     // `storage.platformDefault.*` cascade — a `TenantStorageConfig` row, which
