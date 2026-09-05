@@ -121,7 +121,7 @@ const build = (m: ReturnType<typeof makeMocks>, miningQueue?: unknown) =>
     undefined, // configResolver
     undefined, // entitlements
     undefined, // trajectoryService
-    undefined, // aiTaskDefaultService
+    undefined, // routingPolicies
     undefined, // transcriptSegmentRepository
     undefined, // usageLedger
     undefined, // unitOfWork

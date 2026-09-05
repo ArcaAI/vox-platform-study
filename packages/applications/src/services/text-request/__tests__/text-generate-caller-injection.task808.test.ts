@@ -95,7 +95,7 @@ describe('each TEXT /generate caller posts provider_overrides', () => {
       secretsStub,
       undefined, // trajectoryService
       undefined, // effectiveSettings
-      undefined, // aiTaskDefaultService
+      undefined, // routingPolicies
       clsStub(),
       undefined, // liveAgentResolver
       enrichment as never,

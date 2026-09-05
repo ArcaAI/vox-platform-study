@@ -150,7 +150,7 @@ function buildService(opts: { generate: (call: number) => unknown; nodeConfig?: 
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
     undefined, // trajectoryService
     effectiveSettings as never,
-    undefined, // aiTaskDefaultService
+    undefined, // routingPolicies
     { run: vi.fn((cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() } as never,
     { resolveForSession: vi.fn().mockResolvedValue(snapshot()) } as never,
     (opts.textRequestEnrichment ?? undefined) as never, // textRequestEnrichment

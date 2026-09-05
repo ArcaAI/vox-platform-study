@@ -39,7 +39,7 @@ import { HarnessPolicyService } from '../../harness-policy/harness-policy.servic
 // interpreter's Python mirror (`nodes/_shared.py`'s `read_model_slug`).
 import { TextAgentResolverService } from '../../agent/text-agent-resolver.service';
 import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../agent/text-generation-spec';
-import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
+import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
   LiveDocEngineConfigResponse,
@@ -626,11 +626,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Optional + trailing so existing positional fixtures keep their arity; absent
     // ⇒ env/code-default resolution.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
-    // Resolves the effective `nlp.ner` AiTaskDefault model for injection into
-    // the live-plane NLP call. Optional + trailing so
-    // existing positional fixtures keep their arity; absent ⇒ posts without
-    // `model_name`, i.e. today's behavior (fail-open).
-    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // Resolves the SYSTEM `nlp.ner` routing election for injection into the
+    // live-plane NLP call (`resolveNerModelInjection`). Optional + trailing so
+    // existing positional fixtures keep their arity; absent ⇒ the NER hop is
+    // refused with a 503 naming the key (fail-closed).
+    @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
     // CLS accessor for the SYSTEM-pin the resolver needs (this service is not
     // otherwise request-scoped). `ClsService` is provided by the globally-
     // registered `ClsModule` (see the class doc above). Optional + trailing so
@@ -746,7 +746,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         nlpServiceUrl: this.nlpServiceUrl,
         logger: this.logger,
         cls: this.cls,
-        aiTaskDefaultService: this.aiTaskDefaultService,
+        routingPolicies: this.routingPolicies,
         secretsService: this.secretsService,
       },
       groundedness: {

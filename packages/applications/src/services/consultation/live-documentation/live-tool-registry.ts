@@ -33,7 +33,7 @@ import type { Logger } from '@nestjs/common';
 import type { HttpService } from '@nestjs/axios';
 import type { ClsService } from 'nestjs-cls';
 import type { SecretsService } from '../../baseServices/_meta/secrets';
-import type { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
+import type { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import type { IActiveUserContext } from '../../../interfaces';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
@@ -168,7 +168,7 @@ export interface NlpExtractionToolDeps {
   nlpServiceUrl: string;
   logger: Logger;
   cls?: ClsService<IActiveUserContext>;
-  aiTaskDefaultService?: IAiTaskDefaultService;
+  routingPolicies?: IAiRoutingPolicyService;
   /** Resolves `NLP_SERVICE_TOKEN` for the authenticated gateway→NLP hop (same as the groundedness deps). */
   secretsService?: SecretsService;
 }
@@ -185,14 +185,14 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
   }
 
   async execute(input: ExtractionToolInput, signal?: AbortSignal): Promise<ExtractionToolOutput> {
-    // Inject the effective `nlp.ner` AiTaskDefault model
+    // Inject the SYSTEM `nlp.ner` routing election's model
     // (mirrors AiInferenceController's playground mapping) so a global
     // admin's re-point governs the live plane too, not just the playground.
     // Fail-CLOSED: an unresolved key throws a 503 naming `nlp.ner`. An absent
     // `cls` is one of those refusals — the live-doc service isn't otherwise
     // request-scoped, but without a scope the SYSTEM-only read cannot be pinned
     // and would resolve under the ambient tenant, so the resolver refuses it.
-    const modelSelection = await resolveNerModelInjection(this.deps.aiTaskDefaultService, this.deps.cls, this.deps.logger);
+    const modelSelection = await resolveNerModelInjection(this.deps.routingPolicies, this.deps.cls, this.deps.logger);
     // The gateway→NLP hop is shared-secret authenticated the same way the
     // guardrail executor below already does it. This call omitted the header,
     // so wherever NLP enforces a token (`NLP_SERVICE_TOKEN` non-empty) entity

@@ -51,7 +51,7 @@ function makeService(): HarnessPolicyService {
     databaseService as never,
     cls as never,
     undefined, // secretsService
-    undefined, // aiTaskDefaultService
+    undefined, // routingPolicies
     undefined, // mcpServerRepository
     undefined, // effectiveSettings
   );

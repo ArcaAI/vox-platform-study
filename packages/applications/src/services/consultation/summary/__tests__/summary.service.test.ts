@@ -121,14 +121,14 @@ const createMockClsService = () => ({
 });
 
 /**
- * The `nlp.ner` AiTaskDefault double every fixture that reaches
+ * The `nlp.ner` routing-election double every fixture that reaches
  * `extractEntities` now needs. Model SELECTION is fail-CLOSED
  * (`resolveNerModelInjection`): an unwired service or an unresolved key is a
  * 503, not a silent post without `model_name` — so a fixture that reaches the
  * NLP hop must wire a resolvable row, exactly as production does.
  */
-const createMockAiTaskDefaultService = () => ({
-  getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
+const createMockRoutingPolicyService = () => ({
+  resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
 });
 
 const createMockEventEmitter = () => ({
@@ -311,7 +311,7 @@ describe('SummaryService', () => {
       undefined, // configResolver (@Optional)
       undefined, // entitlements (@Optional)
       undefined, // trajectoryService (@Optional)
-      createMockAiTaskDefaultService() as any, // aiTaskDefaultService (@Optional; fail-closed resolver needs a row)
+      createMockRoutingPolicyService() as any, // routingPolicies (@Optional; fail-closed resolver needs a row)
       undefined, // transcriptSegmentRepository (@Optional)
       undefined, // usageLedger (@Optional)
       undefined, // unitOfWork (@Optional)
@@ -862,12 +862,12 @@ describe('SummaryService', () => {
   });
 
   // ===========================================================================
-  // Nlp.ner AiTaskDefault model injection (fail-CLOSED)
+  // Nlp.ner routing-election model injection (fail-CLOSED)
   // ===========================================================================
 
   describe('extractEntities — nlp.ner model injection', () => {
-    /** A SummaryService wired with an explicit (possibly absent) AiTaskDefault double. */
-    const buildServiceWithAiTaskDefault = (aiTaskDefaultService: unknown) =>
+    /** A SummaryService wired with an explicit (possibly absent) routing-policy double. */
+    const buildServiceWithRoutingPolicies = (routingPolicies: unknown) =>
       new SummaryService(
         mockContextItemRepository as any,
         mockConsultationRepository as any,
@@ -887,7 +887,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        aiTaskDefaultService as any,
+        routingPolicies as any,
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -899,9 +899,9 @@ describe('SummaryService', () => {
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
-    it('injects the effective nlp.ner model_name when the AiTaskDefault service resolves one', async () => {
-      const aiTaskDefaultService = {
-        getEffective: vi.fn().mockResolvedValue({
+    it('injects the effective nlp.ner model_name when the routing-policy service resolves one', async () => {
+      const routingPolicies = {
+        resolveDefault: vi.fn().mockResolvedValue({
           model: { sourceUri: 'blaze999/Medical-NER' },
         }),
       };
@@ -924,7 +924,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        aiTaskDefaultService as any,
+        routingPolicies as any,
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -951,9 +951,9 @@ describe('SummaryService', () => {
       );
     });
 
-    it('refuses with a 503 naming nlp.ner (fail-closed) when AiTaskDefault resolution fails', async () => {
-      const aiTaskDefaultService = {
-        getEffective: vi.fn().mockRejectedValue(new Error('registry unavailable')),
+    it('refuses with a 503 naming nlp.ner (fail-closed) when routing-election resolution fails', async () => {
+      const routingPolicies = {
+        resolveDefault: vi.fn().mockRejectedValue(new Error('registry unavailable')),
       };
       const serviceWithResolver = new SummaryService(
         mockContextItemRepository as any,
@@ -974,7 +974,7 @@ describe('SummaryService', () => {
         undefined,
         undefined,
         undefined,
-        aiTaskDefaultService as any,
+        routingPolicies as any,
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -997,8 +997,8 @@ describe('SummaryService', () => {
       expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
     });
 
-    it('refuses with a 503 naming nlp.ner when no AiTaskDefault service is wired', async () => {
-      const serviceWithoutResolver = buildServiceWithAiTaskDefault(undefined);
+    it('refuses with a 503 naming nlp.ner when no routing-policy service is wired', async () => {
+      const serviceWithoutResolver = buildServiceWithRoutingPolicies(undefined);
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Patient with Diabetes' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
@@ -1051,7 +1051,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1119,7 +1119,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1200,7 +1200,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1256,7 +1256,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1331,7 +1331,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1374,7 +1374,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1648,7 +1648,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1708,7 +1708,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -2766,7 +2766,7 @@ describe('SummaryService', () => {
   describe('extractEntities — usage-ledger emission', () => {
     const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 2 }) });
 
-    const buildServiceWithLedger = (usageLedger: unknown, aiTaskDefaultService?: unknown) =>
+    const buildServiceWithLedger = (usageLedger: unknown, routingPolicies?: unknown) =>
       new SummaryService(
         mockContextItemRepository as any,
         mockConsultationRepository as any,
@@ -2786,7 +2786,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        aiTaskDefaultService as any,
+        routingPolicies as any,
         undefined, // transcriptSegmentRepository
         usageLedger as any,
         undefined, // unitOfWork
@@ -2800,8 +2800,8 @@ describe('SummaryService', () => {
 
     it('emits TEXT_UNIT + REQUEST keyed to a freshly generated requestId, with consultationId as attribution', async () => {
       const usageLedger = createMockUsageLedger();
-      const aiTaskDefaultService = { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
-      const svc = buildServiceWithLedger(usageLedger, aiTaskDefaultService);
+      const routingPolicies = { resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
+      const svc = buildServiceWithLedger(usageLedger, routingPolicies);
       const content = 'y'.repeat(300); // 300 chars -> 3 TEXT_UNIT
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content, consultationId: 'consult-sync-1' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
@@ -2831,9 +2831,9 @@ describe('SummaryService', () => {
       ]);
     });
 
-    it('meters nothing when AiTaskDefault resolution refuses — the NER call never happened', async () => {
+    it('meters nothing when the routing election refuses — the NER call never happened', async () => {
       const usageLedger = createMockUsageLedger();
-      const svc = buildServiceWithLedger(usageLedger); // no aiTaskDefaultService
+      const svc = buildServiceWithLedger(usageLedger); // no routingPolicies
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content', consultationId: 'consult-sync-2' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
@@ -2848,7 +2848,7 @@ describe('SummaryService', () => {
       // Regression test for the earlier consultation-keyed design, which
       // silently dropped every call after the first for a consultation.
       const usageLedger = createMockUsageLedger();
-      const svc = buildServiceWithLedger(usageLedger, createMockAiTaskDefaultService());
+      const svc = buildServiceWithLedger(usageLedger, createMockRoutingPolicyService());
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content', consultationId: 'shared-consult' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
@@ -2874,7 +2874,7 @@ describe('SummaryService', () => {
 
     it('a metering failure never fails extractEntities (never let a metering failure fail the request)', async () => {
       const usageLedger = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox write failed')) };
-      const svc = buildServiceWithLedger(usageLedger, createMockAiTaskDefaultService());
+      const svc = buildServiceWithLedger(usageLedger, createMockRoutingPolicyService());
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
@@ -2911,7 +2911,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+        createMockRoutingPolicyService() as any, // routingPolicies (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork

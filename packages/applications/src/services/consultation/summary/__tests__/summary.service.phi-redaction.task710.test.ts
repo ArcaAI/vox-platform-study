@@ -80,7 +80,7 @@ describe('SummaryService.extractEntities redacts before calling NLP', () => {
       undefined, // configResolver
       undefined, // entitlements
       undefined, // trajectoryService
-      { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as any, // aiTaskDefaultService (fail-closed resolver needs a row)
+      { resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as any, // routingPolicies (fail-closed NER resolver needs an election)
       undefined, // transcriptSegmentRepository
       undefined, // usageLedger
       undefined, // unitOfWork
