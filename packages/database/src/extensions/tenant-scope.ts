@@ -126,11 +126,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // knowledge.prisma (2) — institutional RAG corpus
   'KnowledgeDocument',
   'KnowledgeChunk',
-  // tenant-tts-config.prisma (1) — per-tenant TTS config. The former
-  // per-(tenant,provider) BYO-credential model, TenantTtsProviderCredential,
-  // was DROPPED in — those rows now live in the unified
-  // AiProviderConnection plane (service='tts').
-  'TenantTtsConfig', // also a SYSTEM-shared read model (platform-default row, below)
+  // tenant-tts-config.prisma is GONE (TASK-888): TenantTtsConfig was retired
+  // once the speech path became agent-first — every field it carried maps onto
+  // the TEXT_TO_SPEECH Agent or an AiProviderConnection(service='tts') row,
+  // which is also where the earlier TenantTtsProviderCredential rows went.
   // tenant-stt-config.prisma (1) — per-tenant STT fallback config. The former
   // per-(tenant,provider) BYO-credential model, TenantSttProviderCredential,
   // was DROPPED in — those rows now live in the unified
@@ -392,13 +391,6 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // but never mutate the SYSTEM-owned global default (only a platform admin can,
   // through the dedicated global-default service path).
   'HarnessPolicy',
-  // The per-tenant TTS PLATFORM-DEFAULT row is owned by the SYSTEM
-  // tenant and read by every tenant's resolveForTenant (tenant row merged over
-  // the SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened
-  // (only a platform admin mutates the SYSTEM default). This model never
-  // carries a secret — BYO credentials live in AiProviderConnection
-  // (service='tts'; see its own CAVEAT below for how ITS widening stays safe).
-  'TenantTtsConfig',
   // The per-tenant STT PLATFORM-DEFAULT row is owned by the SYSTEM
   // tenant and read by every tenant's getEffective (tenant row merged over the
   // SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened

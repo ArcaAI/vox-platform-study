@@ -67,7 +67,6 @@ export * from './TenantIdentityProviderDomainEntityMapper';
 export * from './TenantNlpTaskInstructionsEntityMapper';
 export * from './TenantStorageConfigEntityMapper';
 export * from './TenantSttConfigEntityMapper';
-export * from './TenantTtsConfigEntityMapper';
 export * from './TenantEntityMapper';
 export * from './TenantPlanHistoryEntityMapper';
 export * from './TenantUsageMeterEntityMapper';

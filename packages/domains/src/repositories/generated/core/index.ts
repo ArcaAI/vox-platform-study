@@ -111,7 +111,6 @@ export * from './TenantIdentityProviderDomainRepository';
 export * from './TenantNlpTaskInstructionsRepository';
 export * from './TenantStorageConfigRepository';
 export * from './TenantSttConfigRepository';
-export * from './TenantTtsConfigRepository';
 export * from './TenantRepository';
 export * from './TenantPlanHistoryRepository';
 export * from './TenantUsageMeterRepository';

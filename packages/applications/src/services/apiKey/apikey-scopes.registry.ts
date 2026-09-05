@@ -653,12 +653,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'TenantSttConfig' }],
     reserved: true,
   },
-  'admin:tenant-tts-config:manage': {
-    description: 'Manage tenant TTS configuration',
-    category: 'Admin',
-    implies: [{ action: 'manage', subject: 'TenantTtsConfig' }],
-    reserved: true,
-  },
   'admin:workflow-run:read': {
     description: 'Read admin workflow runs',
     category: 'Admin',

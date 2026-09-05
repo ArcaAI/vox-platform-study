@@ -98,7 +98,6 @@ import { TenantFrontendConfigAdminController } from '../modules/tenant-frontend-
 import { TenantIdpConfigAdminController } from '../modules/tenant-idp-config/tenant-idp-config-admin.controller';
 import { TenantStorageConfigAdminController } from '../modules/tenant-storage-config/tenant-storage-config-admin.controller';
 import { TenantSttConfigAdminController } from '../modules/tenant-stt-config/tenant-stt-config-admin.controller';
-import { TenantTtsConfigAdminController } from '../modules/tenant-tts-config/tenant-tts-config-admin.controller';
 import { TenantPipelineResyncController } from '../modules/tenant/tenant-pipeline-resync.controller';
 import { TenantProvisionController } from '../modules/tenant/tenant-provision.controller';
 import { TenantController } from '../modules/tenant/tenant.controller';
@@ -196,7 +195,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: TenantProvisionController, expect: 'FORBID' },
   { controller: TenantStorageConfigAdminController, expect: 'FORBID' },
   { controller: TenantSttConfigAdminController, expect: 'FORBID' },
-  { controller: TenantTtsConfigAdminController, expect: 'FORBID' },
   { controller: UserController, expect: 'FORBID' },
   { controller: UserDepartmentsController, expect: 'FORBID' },
   { controller: WebhookController, expect: 'FORBID' },

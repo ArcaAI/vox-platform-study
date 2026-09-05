@@ -52,7 +52,6 @@ export * from './TenantIdentityProviderFactory';
 export * from './TenantIdentityProviderDomainFactory';
 export * from './TenantStorageConfigFactory';
 export * from './TenantSttConfigFactory';
-export * from './TenantTtsConfigFactory';
 export * from './TenantFactory';
 export * from './TenantPlanHistoryFactory';
 export * from './TenantUsageMeterFactory';

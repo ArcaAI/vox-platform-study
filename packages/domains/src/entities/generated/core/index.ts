@@ -52,7 +52,6 @@ export * from './TenantIdentityProviderEntity';
 export * from './TenantIdentityProviderDomainEntity';
 export * from './TenantStorageConfigEntity';
 export * from './TenantSttConfigEntity';
-export * from './TenantTtsConfigEntity';
 export * from './TenantEntity';
 export * from './TenantPlanHistoryEntity';
 export * from './TenantUsageMeterEntity';

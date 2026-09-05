@@ -106,7 +106,6 @@ export * from './usageAnalytics';
 // Platform runtime metrics (E1/E2/E3) + multi-instance socket registry.
 export * from './platform-metrics';
 // Per-tenant TTS configuration (DB-backed spec + BYO provider creds).
-export * from './tenant-tts-config';
 // Per-tenant STT fallback configuration (fallback pipeline pointer + BYO provider creds).
 export * from './tenant-stt-config';
 // Tenant-writable nlp.topic/nlp.intent instruction content — deliberately separate from AiTaskDefault's model-selection governance.

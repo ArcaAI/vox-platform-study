@@ -782,27 +782,24 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // and both moved to `/ai-platform`, where the tier is a control rather than a
   // route. The URL is unchanged, so this is a narrowing and takes no redirect.
   //
-  // Speech and Voice stayed deliberately: `TenantSttConfig` / `TenantTtsConfig`
-  // are pipeline and voice BINDINGS resolved on their own rows, not provider
-  // configuration on the routing cascade. Folding them into a provider console
-  // would recreate the by-which-table grouping exists to remove.
-  // `required` is the OR of the two remaining reads; each tab is separately
-  // `<RequirePermission>`-gated in the screen.
+  // Speech stayed deliberately: `TenantSttConfig` is a pipeline BINDING resolved
+  // on its own row, not provider configuration on the routing cascade. Folding
+  // it into a provider console would recreate the by-which-table grouping
+  // exists to remove. TASK-888 retired `TenantTtsConfig`, so the Voice tab reads
+  // nothing any more and is gated on `Agent` instead; `required` is therefore
+  // the ONE remaining read, and each tab is separately `<RequirePermission>`-gated
+  // in the screen.
   //
-  // DEPRECATED (TASK-862, removed in R4): both bindings retire with the ASR and
-  // TTS Agents (TASK-861/863), when this route becomes a one-release
-  // `redirect('/agents')`. The Models/Providers halves it used to link to now
-  // live on `/ai-providers`.
+  // DEPRECATED (TASK-862, removed in R4): the last binding retires with the ASR
+  // Agent, when this route becomes a one-release `redirect('/agents')`. The
+  // Models/Providers halves it used to link to now live on `/ai-providers`.
   {
     route: '/ai-configuration',
     domain: 'ai-platform',
     label: 'Speech & Voice',
     tier: '30-49',
     icon: IconTargetArrow,
-    required: [
-      ['read', 'TenantSttConfig'],
-      ['read', 'TenantTtsConfig'],
-    ],
+    required: [['read', 'TenantSttConfig']],
     implemented: true,
   },
   {
