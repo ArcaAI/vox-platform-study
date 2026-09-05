@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review |
 | **Type** | refactor |
 | **Program** | TASK-870 Configuration Governance, wave 3a lane B |
 | **Branch** | `task-880-asr-remainder-moves` (worktree `hope-v2-task-880`) |
@@ -409,8 +409,76 @@ is exercised.
 
 ## Verification
 
+| Gate | Result |
+|---|---|
+| `pnpm stt:test` | `1 failed, 3189 passed, 6 skipped, 3 xfailed, 33 warnings, 210 errors` — the brief's baseline shape exactly (the failure is the pre-existing `test_minio_credentials_default_to_empty`; the 210 errors are integration/e2e tests with no test DB) |
+| `pnpm stt:lint` | `All checks passed!` (the 2 ruff errors in `apps/stt/scripts/test_worker.py` are pre-existing and OUTSIDE the script's scope, which is `apps/stt/src/ apps/stt/tests/`) |
+| `pnpm stt:typecheck` | `Success: no issues found in 140 source files` |
+| `pnpm --filter @arcaai/types build` | clean (`tsc --build`) |
+| `@arcaai/types` typecheck | `tsc --noEmit` clean (the package ships no `typecheck` script) |
+| `pnpm --filter @arcaai/workflow-contract build` | `DTS ⚡️ Build success` |
+| `pnpm --filter @arcaai/workflow-contract test` | `Test Files 35 passed (35)`, `Tests 1493 passed (1493)` |
+| `pnpm --filter @arcaai/applications build` | clean (exit 0) |
+| `pnpm --filter @arcaai/applications test` | `Test Files 661 passed | 1 skipped (662)`, `Tests 11558 passed | 4 skipped (11562)` |
+| `pnpm --filter @arcaai/applications lint` | `✖ 213 problems (0 errors, 213 warnings)` — **0 errors**; no warning is in a file this lane touched |
+| `npx vitest run tests/contracts` | `Test Files 16 passed (16)`, `Tests 210 passed (210)` |
+| `pnpm --filter @arcaai/database test` | `Test Files 2 failed | 77 passed (79)`, `Tests 8 failed | 1764 passed (1772)` — **exactly** the 8 pre-existing failures in `ai-model-registry-seed.test.ts` (4) and `task-863-agents.test.ts` (4), all from TASK-869's 36th catalogue row |
+| `pnpm env:python-dead` | `OK — 370 declared settings fields across 6 Python services; every one is read (4 allow-listed)` — no `INTENTIONALLY_UNREAD` entry names a deleted field |
+| Registry size | **265**, measured by a throwaway probe on `HOPE_SETTINGS_REGISTRY.list().length` (277 − 12) |
+
+**Python test-count reconciliation** (measured by diffing collected test ids, not assumed).
+Collected: base `4923cac40` = **3408**, HEAD = **3409**, net **+1** — from **+55 added**
+and **−54 removed**. (Base was collected with `git checkout 4923cac40 -- apps/stt`, which
+leaves this lane's three NEW files in place, so its raw 3435 includes their 27.)
+
+Added (55): 27 in the three new `test_task880_{model_geometry,audio_front_end,diarization_embedding}.py`
+files · 7 `models/test_azure_foundry_loader.py` · 4 `test_settings.py` · 3 each in
+`test_whisper_cpp_asr.py`, `test_batch_service_usage_attribution.py`,
+`models/test_sarvam_loader.py`, `models/test_openai_loader.py` · 2
+`streaming/test_preprocessor_wiring_kwargs.py` · 1 each in `test_streaming_preprocessor.py`,
+`test_azure_speech_loader.py`, `processors/test_asr_engines.py`.
+
+Removed (54): **24** parametrized cases over the 12 deleted `CONTROL_PLANE_KEYS` — 12 keys ×
+the two `test_task799_{control_plane,descriptor_parity}` tests, which iterate that mapping,
+so they shrink automatically and prove the Python and TypeScript sides still agree in both
+directions — plus **30** hand-rewritten or deleted cases whose only subject was a deleted
+key (9 in `test_whisper_cpp_asr.py`: the seven `consultation_prompt_for_language`
+parametrizations and the two flag tests; 6 `test_settings.py`; 5
+`models/test_azure_foundry_loader.py`; 2 each in the usage-attribution, sarvam and openai
+loader suites; 1 each in four more). Most are RENAMES — one removed id and one added id for
+the same behaviour re-specimened onto the new source.
+
+**TypeScript test-count reconciliation.** `@arcaai/applications` base = **11540** collected
+(measured with `git checkout 4923cac40 -- packages/{applications,types,workflow-contract}`;
+the 2 failures in that run are an artifact of the partial checkout — the HEAD contract
+fixture against the base builder — not a base failure), HEAD = **11562**. Δ **+22** =
+9 in `build-resolved-asr-spec.test.ts` (4 model-metadata, 1 VAD padding, 4 diarization
+guard) + 13 in `stt-runtime.descriptors.test.ts` (12 parametrized absence assertions, 1
+diarization scope pin). Nothing removed. `packages/workflow-contract` 1492 → 1493 (+1 VAD
+padding bound; the stride assertion was rewritten in place).
+
+**Worktree source guard**: `assert_source_tree` passed silently on every run in this
+worktree — `stt` resolves to `…/hope-v2-task-880/apps/stt/src/stt/__init__.py`.
+
+**Env names of the twelve deleted keys, grepped repo-wide.** Remaining hits are, in full:
+the five GENERATED artifacts (`turbo.json`, `.env.sample`, `apps/stt/.env.sample`,
+`env-surface.generated.md`, `scripts/generated/python-env-surface.json`) → **H-6**;
+`docs/archive/**` (off-limits, historical); `docs/development-patterns-and-standards.md:308`
+and `apps/tts` for `TTS_SARVAM_BASE_URL` / the `AZURE_SPEECH_REGION` `AliasChoices` fallback
+— `apps/tts` has its OWN fields and is unaffected by this lane, but it is lane A's file and
+the alias now names a variable no service reads. Every in-scope prose reference was
+corrected: `apps/stt/README.md`'s ASR-engine and VAD tables, the `audio.ts` comment on the
+Foundry row, `silero_service`'s auto-download error, and `apps/stt/scripts/mlen_scorecard.py`,
+which SET `WHISPER_CPP_MAX_AUDIO_SECONDS` and would now have tuned nothing.
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-05 | Ticket opened; plan recorded against the verified base state. |
+| 2026-09-05 | Model-metadata channel (`AsrSpecModel.metadata` both halves + fixture, `ResolvedAgentModel.metaData`); `stt.whisperCpp.{maxAudioSeconds,consultationPromptEnabled}` and `stt.streaming.partialWindowS` deleted. `ASR_SPEC_FALLBACK_DEFAULTS` → `AGENT_FALLBACK_DEFAULTS`, re-exported from the contract package. Registry 277 → 274. |
+| 2026-09-05 | VAD group: `stt.vad.modelPath` → the model row's `localPath` off the spec bundle, `stt.vad.speechPadMs` → `audioFrontEnd.vad.speechPadMs`. Diarization slug refs resolve (the TASK-877 defect, runtime half). `decoding.strideLengthSec` corrected to a pair in the agent schema. Registry 274 → 272. |
+| 2026-09-05 | Chunking: the spec is the only source, both batch readers via `_resolve_chunking`, engine defaults on `InferenceConfig`. Registry 272 → 270. |
+| 2026-09-05 | Cloud connection facts ride the `AiProviderConnection` row; Azure Foundry gets its own `azure-foundry` identity and the row state replaces the kill-switch. No kill-switch left in the file. Registry 270 → 265. |
+| 2026-09-05 | Diarization producer half: `ASR_AGENT_EMBEDDING_SPACE_MISMATCH` refusal on a declared width mismatch; `stt.diarization.hfModelId` kept and documented as the embedding space; `_metadata` seeded on the five whisper.cpp rows and both speaker-embedding rows. |
+| 2026-09-05 | Gates green at baseline; azure integration/e2e fixtures re-pointed at the connection row (they had errored 8 tests by patching a `get_settings` the loader no longer imports). Test counts reconciled by id-diff on both sides. |
