@@ -149,7 +149,7 @@ export function ImportDefinitionDialog({ open, onOpenChange, onConfirm, confirmi
                   <span className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary">{SOURCE_LABEL[bundle.source.tenantKind]}</Badge>
                     <span className="font-mono text-xs">
-                      {bundle.source.slug} &middot; v{bundle.source.versionNumber}
+                      {bundle.source.slug} &middot; v{bundle.source.version}
                     </span>
                     <span>
                       {bundle.payload.references.length} reference{bundle.payload.references.length === 1 ? '' : 's'} to resolve

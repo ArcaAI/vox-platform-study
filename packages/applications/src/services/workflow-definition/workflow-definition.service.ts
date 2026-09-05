@@ -21,10 +21,12 @@ import {
 import type { JsonValue } from '@arcaai/domains';
 import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
 import {
+  buildPortableBundle,
   canonicalJson,
   compile,
   hyperparameterCapabilityProblems,
   nodeInfo as registryNodeInfo,
+  portableBundleProblems,
   registryChecksum,
   validate,
   WORKFLOW_NODE_REGISTRY,
@@ -33,6 +35,7 @@ import {
 import type {
   CompiledWorkflowConfig,
   CompilerContext,
+  PortableBundleTenantKind,
   ProviderGenerationCapabilities,
   WorkflowFinding,
   WorkflowGraph,
@@ -85,11 +88,6 @@ import {
 import { collectGenerationBindings, type NodeGenerationBindingRef } from './node-generation-binding';
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
 import {
-  WORKFLOW_DEFINITION_BUNDLE_KIND,
-  WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION,
-  type PortableSourceTenantKind,
-} from './portable-bundle.contract';
-import {
   collectPortableReferences,
   collectRowReferences,
   referenceMapKey,
@@ -117,8 +115,15 @@ const WORKFLOW_DEFINITION_FILTER_MODEL = 'WorkflowDefinition';
  */
 const GLOBAL_PLAYGROUND_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
+/**
+ * This service's half of `PORTABLE_BUNDLE_KINDS` (TASK-889). Declared as a constant so the export
+ * builder and the import validator can never drift to two different literals — the defect the
+ * shared envelope exists to prevent.
+ */
+const WORKFLOW_BUNDLE_KIND = 'workflow' as const;
+
 /** Provenance for an export: which TIER authored it. A tenant id never travels in a bundle. */
-function tenantKindOf(tenantId: string): PortableSourceTenantKind {
+function tenantKindOf(tenantId: string): PortableBundleTenantKind {
   if (tenantId === SYSTEM_TENANT_ID) return 'system';
   if (tenantId === GLOBAL_PLAYGROUND_TENANT_ID) return 'global';
   return 'tenant';
@@ -528,19 +533,22 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       data: { action: 'export', slug: entity.slug, versionNumber: entity.versionNumber, references: portable.references.length },
     });
 
-    return {
-      kind: WORKFLOW_DEFINITION_BUNDLE_KIND,
-      schemaVersion: WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION,
-      exportedAt: new Date().toISOString(),
-      source: { tenantKind: tenantKindOf(entity.tenantId), slug: entity.slug, versionNumber: entity.versionNumber },
-      payload: {
+    // The envelope is BUILT by the shared contract, never assembled here: `schemaVersion` and
+    // `exportedAt` are its business, and a hand-written literal is how two kinds of bundle end up
+    // claiming two different envelope versions. The cast is the same one `AgentService.exportBySlug`
+    // makes — `buildPortableBundle` returns the `kind` UNION, while the DTO narrows it for Swagger.
+    const bundle = buildPortableBundle(
+      WORKFLOW_BUNDLE_KIND,
+      { tenantKind: tenantKindOf(entity.tenantId), slug: entity.slug, version: entity.versionNumber },
+      {
         name: entity.name,
         description: entity.description ?? null,
         paletteKey: entity.paletteKey,
         graph: portable.graph as unknown as Record<string, unknown>,
         references: portable.references,
       },
-    };
+    );
+    return bundle as unknown as WorkflowDefinitionBundle;
   }
 
   /**
@@ -567,13 +575,17 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     }
 
     const { bundle } = dto;
-    if (bundle?.kind !== WORKFLOW_DEFINITION_BUNDLE_KIND) {
-      throw new BadRequestException(`This document is not a workflow export (kind '${String(bundle?.kind)}').`);
-    }
-    if (bundle.schemaVersion !== WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION) {
-      throw new BadRequestException(
-        `Unsupported bundle schemaVersion ${String(bundle.schemaVersion)} — this deployment implements ${WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION}.`,
-      );
+    // ONE envelope check for BOTH bundle kinds (TASK-889). Wrong kind, unreadable schema version,
+    // missing `source`, non-object payload — all of it is the shared contract's answer, so an
+    // agent bundle POSTed here and a workflow bundle POSTed to the agent importer fail the same
+    // way, with the same problem list naming the same paths.
+    const envelopeProblems = portableBundleProblems(bundle, { kind: WORKFLOW_BUNDLE_KIND });
+    if (envelopeProblems.length > 0) {
+      throw new BadRequestException({
+        message: 'This document is not a valid workflow bundle.',
+        code: 'BUNDLE_INVALID',
+        findings: envelopeProblems,
+      });
     }
 
     // Byte-for-byte the precheck `create` and `clone` run: an import writes a row, so an import

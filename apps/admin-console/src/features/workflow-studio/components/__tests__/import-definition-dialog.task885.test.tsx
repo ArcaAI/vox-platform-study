@@ -17,10 +17,10 @@ import { parseBundleJson, suggestImportSlug } from '../../lib/bundle-io';
 import type { WorkflowDefinitionBundle } from '../../api/types';
 
 const bundle: WorkflowDefinitionBundle = {
-  kind: 'workflow-definition',
+  kind: 'workflow',
   schemaVersion: 1,
   exportedAt: '2026-09-06T00:00:00.000Z',
-  source: { tenantKind: 'system', slug: 'discharge_summary', versionNumber: 3 },
+  source: { tenantKind: 'system', slug: 'discharge_summary', version: 3 },
   payload: {
     name: 'Discharge Summary',
     description: null,
