@@ -80,51 +80,24 @@ type SttKnob = {
 };
 
 const KNOBS: Record<string, SttKnob> = {
-  // ── cloud engine connections (non-secret halves) ─────────────────────────
-  'stt.azureSpeech.region': {
-    dataType: 'string',
-    default: '',
-    label: 'Azure Speech region',
-    description:
-      'Azure Speech service region (e.g. eastus, westeurope) for the platform default connection. ' +
-      'Empty = unset. The subscription KEY is never here: Azure Speech is BYOK and its credential ' +
-      'is resolved per request from AiProviderConnection.',
-    category: 'STT Engines',
-  },
-  'stt.azureFoundry.enabled': {
-    dataType: 'boolean',
-    default: false,
-    label: 'Azure AI Foundry engine enabled',
-    description:
-      'Enables the Azure AI Foundry MAI-Transcribe engine. PREVIEW: no SLA, no diarization, ' +
-      'batch-only. PHI must not flow through it until GA and data-residency sign-off, which is why ' +
-      'it defaults OFF and is a kill-switch rather than a plain flag.',
-    category: 'STT Engines',
-    killSwitch: true,
-  },
-  'stt.azureFoundry.endpoint': {
-    dataType: 'string',
-    default: '',
-    label: 'Azure AI Foundry endpoint',
-    description: 'Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com. ' + 'Empty = unset.',
-    category: 'STT Engines',
-  },
-  'stt.sarvam.baseUrl': {
-    dataType: 'string',
-    default: 'https://api.sarvam.ai',
-    label: 'Sarvam API base URL',
-    description:
-      'Base URL for the Sarvam speech-to-text API. Point this at an enterprise VPC / on-prem host ' +
-      'before real patient data flows: the public API carries no BAA.',
-    category: 'STT Engines',
-  },
-  'stt.openai.baseUrl': {
-    dataType: 'string',
-    default: 'https://api.openai.com/v1',
-    label: 'OpenAI ASR base URL',
-    description: 'Base URL for the OpenAI (or Azure-OpenAI-compatible) speech-to-text API. The key is BYOK and ' + 'arrives per request.',
-    category: 'STT Engines',
-  },
+  // ── cloud engine connections: NOTHING is declared here any more ──────────
+  // TASK-880 removed `stt.azureSpeech.region`, `stt.azureFoundry.{enabled,endpoint}`,
+  // `stt.sarvam.baseUrl` and `stt.openai.baseUrl`.
+  //
+  // Their KEYS never lived here — every cloud STT engine is BYOK and its credential is
+  // resolved per request from `AiProviderConnection`. These were the non-secret halves,
+  // and they are properties of the CONNECTION: a connection reaches a loader only as a
+  // `provider_overrides` entry, which exists only behind an ENABLED, KEYED row — the
+  // same row that carries `baseUrl` and `region`. So a platform key could only ever
+  // patch a row that forgot to set its own, while making a PUBLIC vendor endpoint the
+  // silent default on a PHI platform.
+  //
+  // `stt.azureFoundry.enabled` was this file's only kill-switch. Its replacement is not
+  // another flag: the row's three states ARE the gate — no row / disabled / keyless =
+  // no entry = the engine cannot load — seeded OFF on the SYSTEM row, and now decidable
+  // PER TENANT rather than once for the whole platform. Foundry also has its own
+  // `azure-foundry` row now instead of aliasing `azure-speech`, so a tenant enabling
+  // Speech no longer enables a PREVIEW service for its PHI.
 
   // ── local ggml runtimes ──────────────────────────────────────────────────
   'stt.parakeetCpp.libraryPath': {

@@ -15,7 +15,6 @@ import logging
 
 from pydantic import SecretStr
 
-from ..core.config.settings import get_settings
 from ..core.exceptions import CloudASRAuthError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
@@ -59,26 +58,35 @@ class OpenAILoader(BaseModelLoader):
         Raises:
             CloudASRAuthError: when no key is available from either source.
         """
-        settings = get_settings()
         override = resolve_override_key(provider_overrides, OPENAI_OVERRIDE_KEY)
 
         api_key_str = None
-        base_url = settings.openai_base_url
+        # TASK-880 — `stt.openai.baseUrl` is deleted. An override entry exists ONLY
+        # behind an enabled, keyed `AiProviderConnection(stt, openai)` row, and that row
+        # is what carries `baseUrl` — including the Azure-OpenAI-compatible endpoints
+        # this loader exists to reach. The platform key could only ever have patched a
+        # row that forgot to set its own.
+        base_url = None
         model_name = model_config.source_uri or DEFAULT_OPENAI_MODEL
         used_override = False
 
         if override:
             api_key_str = override.get("api_key") or None
-            base_url = override.get("base_url") or base_url
+            base_url = override.get("base_url") or None
             model_name = override.get("model") or model_name
             used_override = bool(api_key_str)
 
-        if not api_key_str:
+        if not api_key_str or not base_url:
             raise CloudASRAuthError(
-                "OpenAI credentials not configured. OpenAI ASR is BYOK-only: configure "
-                "a tenant OpenAI credential, or the platform (SYSTEM-tenant) OpenAI "
-                "connection, in the provider-connection plane. There is no env fallback.",
-                details={"has_key": False, "provider": "openai"},
+                "OpenAI connection not configured. OpenAI ASR is BYOK-only: configure a "
+                "tenant OpenAI credential, or the platform (SYSTEM-tenant) OpenAI "
+                "connection, in the provider-connection plane, with its `baseUrl` set on "
+                "the same row. There is no env fallback for either.",
+                details={
+                    "has_key": bool(api_key_str),
+                    "has_base_url": bool(base_url),
+                    "provider": "openai",
+                },
             )
 
         config = CloudRestConfig(

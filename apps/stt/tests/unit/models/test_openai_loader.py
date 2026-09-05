@@ -1,15 +1,17 @@
 """Unit tests for the OpenAI speech-to-text loader.
 
-Mirrors ``test_sarvam_loader.py``: BYOK-override-first / env-fallback, the
-CloudASRAuthError when neither source has a key, base_url override, and the
-never-log-the-key invariant.
+Mirrors ``test_sarvam_loader.py``: the connection row supplies BOTH halves, the
+CloudASRAuthError when either is missing, and the never-log-the-key invariant.
+
+TASK-880 — ``stt.openai.baseUrl`` is deleted with the key. An override entry exists
+only behind an enabled, keyed ``AiProviderConnection(stt, openai)`` row, and that row
+carries ``baseUrl`` — including the Azure-OpenAI-compatible endpoints this loader
+exists to reach.
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
 
 from stt.core.exceptions import CloudASRAuthError
 from stt.models.base_loader import LoadedModel
@@ -47,11 +49,12 @@ def _config(source_uri: str | None = "gpt-4o-transcribe") -> AiModelConfig:
     )
 
 
-def _settings(openai_key: SecretStr | None) -> MagicMock:
-    return MagicMock(
-        openai_api_key=openai_key,
-        openai_base_url="https://api.openai.com/v1",
-    )
+_BASE_URL = "https://api.openai.com/v1"
+
+
+def _entry(**extra: object) -> dict[str, dict[str, object]]:
+    """A complete connection row on the wire (`base_url` from `AiProviderConnection.baseUrl`)."""
+    return {"openai": {"api_key": "byok-openai-key", "base_url": _BASE_URL, **extra}}
 
 
 class TestOpenAILoaderFormats:
@@ -66,12 +69,7 @@ class TestOpenAILoaderLoad:
     @pytest.mark.asyncio
     async def test_load_with_override_key(self):
         loader = OpenAILoader()
-        with patch("stt.models.openai_loader.get_settings") as gs:
-            gs.return_value = _settings(None)
-            result = await loader.load(
-                _config(),
-                provider_overrides={"openai": {"api_key": "byok-openai-key"}},
-            )
+        result = await loader.load(_config(), provider_overrides=_entry())
         assert isinstance(result, LoadedModel)
         assert result.format == AiModelFormat.OPENAI
         assert result.device == "cloud"
@@ -80,33 +78,39 @@ class TestOpenAILoaderLoad:
         assert isinstance(cfg, CloudRestConfig)
         assert cfg.api_key.get_secret_value() == "byok-openai-key"
         assert cfg.model_name == "gpt-4o-transcribe"
-        assert cfg.base_url == "https://api.openai.com/v1"
+        assert cfg.base_url == _BASE_URL
 
     @pytest.mark.asyncio
-    async def test_env_key_is_ignored_byok_only(self):
-        """An env-set OpenAI key must NOT satisfy the loader — BYOK-only."""
+    async def test_no_connection_row_fails_closed(self):
+        """With no override entry the loader fails closed. TASK-880 — there is no env
+        half left at all: the loader no longer reads `Settings`."""
         loader = OpenAILoader()
-        with patch("stt.models.openai_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("env-openai-key"))
-            with pytest.raises(CloudASRAuthError) as exc:
-                await loader.load(_config())
+        with pytest.raises(CloudASRAuthError) as exc:
+            await loader.load(_config())
         assert exc.value.details["has_key"] is False
+        assert exc.value.details["has_base_url"] is False
 
     @pytest.mark.asyncio
-    async def test_override_key_and_base_url_win(self):
+    async def test_a_row_with_a_key_but_no_base_url_fails_closed(self):
+        """TASK-880 — a keyed row with no `baseUrl` is a misconfigured row. It used to
+        silently inherit the platform key's hardcoded api.openai.com."""
         loader = OpenAILoader()
-        with patch("stt.models.openai_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("env-key"))
-            result = await loader.load(
-                _config(),
-                provider_overrides={
-                    "openai": {
-                        "api_key": "byok-key",
-                        "base_url": "https://my-azure.openai.azure.com/v1",
-                        "model": "gpt-4o-mini-transcribe",
-                    }
-                },
-            )
+        with pytest.raises(CloudASRAuthError) as exc:
+            await loader.load(_config(), provider_overrides={"openai": {"api_key": "k"}})
+        assert exc.value.details["has_key"] is True
+        assert exc.value.details["has_base_url"] is False
+
+    @pytest.mark.asyncio
+    async def test_the_rows_base_url_and_model_reach_the_wire(self):
+        loader = OpenAILoader()
+        result = await loader.load(
+            _config(),
+            provider_overrides=_entry(
+                api_key="byok-key",
+                base_url="https://my-azure.openai.azure.com/v1",
+                model="gpt-4o-mini-transcribe",
+            ),
+        )
         cfg = result.model
         assert cfg.api_key.get_secret_value() == "byok-key"
         assert cfg.base_url == "https://my-azure.openai.azure.com/v1"
@@ -115,33 +119,23 @@ class TestOpenAILoaderLoad:
     @pytest.mark.asyncio
     async def test_raises_when_no_key_anywhere(self):
         loader = OpenAILoader()
-        with patch("stt.models.openai_loader.get_settings") as gs:
-            gs.return_value = _settings(None)
-            with pytest.raises(CloudASRAuthError) as exc:
-                await loader.load(_config())
+        with pytest.raises(CloudASRAuthError) as exc:
+            await loader.load(_config())
         assert exc.value.details["has_key"] is False
         assert exc.value.details["provider"] == "openai"
 
     @pytest.mark.asyncio
     async def test_default_model_when_no_source_uri(self):
         loader = OpenAILoader()
-        with patch("stt.models.openai_loader.get_settings") as gs:
-            gs.return_value = _settings(None)
-            result = await loader.load(
-                _config(source_uri=None),
-                provider_overrides={"openai": {"api_key": "byok-key"}},
-            )
+        result = await loader.load(_config(source_uri=None), provider_overrides=_entry())
         assert result.model.model_name == DEFAULT_OPENAI_MODEL
 
     @pytest.mark.asyncio
     async def test_key_absent_from_repr_and_logs(self, caplog):
         loader = OpenAILoader()
-        with patch("stt.models.openai_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("super-secret-openai"))
-            with caplog.at_level("DEBUG"):
-                result = await loader.load(
-                    _config(),
-                    provider_overrides={"openai": {"api_key": "super-secret-openai"}},
-                )
+        with caplog.at_level("DEBUG"):
+            result = await loader.load(
+                _config(), provider_overrides=_entry(api_key="super-secret-openai")
+            )
         assert "super-secret-openai" not in repr(result.model)
         assert "super-secret-openai" not in caplog.text
