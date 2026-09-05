@@ -121,7 +121,8 @@ export class AdminAuditResource extends AdminResource {
           | 'AiRoutingPolicy'
           | 'Agent'
           | 'AgentAssignment'
-          | 'WorkflowRun';
+          | 'WorkflowRun'
+          | 'TenantGuardrailPolicy';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -246,7 +247,8 @@ export class AdminAuditResource extends AdminResource {
           | 'AiRoutingPolicy'
           | 'Agent'
           | 'AgentAssignment'
-          | 'WorkflowRun';
+          | 'WorkflowRun'
+          | 'TenantGuardrailPolicy';
         to?: string;
         userId?: string;
       };
@@ -353,7 +355,8 @@ export class AdminAuditResource extends AdminResource {
           | 'AiRoutingPolicy'
           | 'Agent'
           | 'AgentAssignment'
-          | 'WorkflowRun';
+          | 'WorkflowRun'
+          | 'TenantGuardrailPolicy';
         search?: string;
         searchFields?: string;
         sort?: string;

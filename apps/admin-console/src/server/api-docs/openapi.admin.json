@@ -8584,6 +8584,89 @@
         ],
         "type": "object"
       },
+      "GuardrailAvailabilityResponse": {
+        "properties": {
+          "effective": {
+            "additionalProperties": true,
+            "description": "What ACTUALLY applies to this tenant after the two-tier `request tenant → SYSTEM` cascade.",
+            "type": "object"
+          },
+          "effectiveSourceTenantId": {
+            "description": "WHICH tier supplied `effective` — this tenant, or the reserved SYSTEM tenant `00000000-…`. Every screening decision records the same value so a verdict stays attributable.",
+            "type": "string"
+          },
+          "policies": {
+            "additionalProperties": true,
+            "description": "This tenant's OWN selection, keyed by policy id (`{}` when it has none). An empty — or all-disabled — selection is NOT an off switch: it inherits the SYSTEM set.",
+            "type": "object"
+          },
+          "reason": {
+            "description": "Why this tenant's set differs from the platform default.",
+            "nullable": true,
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "The tenant this availability row governs.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "ISO timestamp of the last write, or null when no row exists.",
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedBy": {
+            "description": "Id of the platform admin who last wrote this row.",
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "description": "Optimistic-concurrency version. `0` means the tenant has NO row yet — send `If-Match: \"0\"` to create one. A tenant with no row inherits the SYSTEM set.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantId",
+          "version",
+          "policies",
+          "effective",
+          "effectiveSourceTenantId"
+        ],
+        "type": "object"
+      },
+      "GuardrailPolicyCatalogueEntryResponse": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "directions": {
+            "description": "Which screening direction(s) the check runs on.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "The check name, as declared in `screening.py`.",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "threshold": {
+            "additionalProperties": true,
+            "description": "The strictness field this policy accepts, and which direction TIGHTENS it. Absent ⇒ the policy is on/off only.",
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "directions"
+        ],
+        "type": "object"
+      },
       "HarnessAuditEventResponse": {
         "properties": {
           "action": {
@@ -19465,6 +19548,27 @@
         },
         "type": "object"
       },
+      "UpdateGuardrailAvailabilityRequest": {
+        "properties": {
+          "expectedVersion": {
+            "description": "Version read from the prior GET. Normally supplied by `If-Match` (`\"0\"` creates the row); the header wins when both are present.",
+            "type": "number"
+          },
+          "policies": {
+            "additionalProperties": true,
+            "description": "Selected policies, keyed by policy id: `{ \"pii_leak\": { \"enabled\": true, \"minScore\": 0.2 } }`. Unknown ids are REFUSED (400). An empty object means \"no opinion\" and inherits the SYSTEM set — it is not an off switch.",
+            "type": "object"
+          },
+          "reason": {
+            "description": "Why this tenant's set differs from the platform default.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policies"
+        ],
+        "type": "object"
+      },
       "UpdateHarnessPolicyRequest": {
         "properties": {
           "atomicFactEnabled": {
@@ -28691,7 +28795,8 @@
                 "AiRoutingPolicy",
                 "Agent",
                 "AgentAssignment",
-                "WorkflowRun"
+                "WorkflowRun",
+                "TenantGuardrailPolicy"
               ],
               "type": "string"
             }
@@ -28942,7 +29047,8 @@
                 "AiRoutingPolicy",
                 "Agent",
                 "AgentAssignment",
-                "WorkflowRun"
+                "WorkflowRun",
+                "TenantGuardrailPolicy"
               ],
               "type": "string"
             }
@@ -29194,7 +29300,8 @@
                 "AiRoutingPolicy",
                 "Agent",
                 "AgentAssignment",
-                "WorkflowRun"
+                "WorkflowRun",
+                "TenantGuardrailPolicy"
               ],
               "type": "string"
             }
@@ -33983,6 +34090,251 @@
         "x-hope-service-account-scopes": [
           "svc:admin:entitlement:manage"
         ]
+      }
+    },
+    "/api/v1/admin/guardrail/availability": {
+      "get": {
+        "description": "The SYSTEM row is returned first: it is the platform default set every other tenant is read against, and inherits on absence.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "GuardrailAvailabilityController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GuardrailAvailabilityResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Caller is not a super administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List every tenant guardrail-availability row — SUPER_ADMIN only",
+        "tags": [
+          "admin-guardrail-availability"
+        ],
+        "x-hope-abilities": [
+          "read:Tenant"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/guardrail/availability/catalogue": {
+      "get": {
+        "description": "The catalogue is the ONLY legal vocabulary for a selection: every entry is a screening check that reads the selection, and an unknown id is refused (400) rather than dropped. Entries that carry a `threshold` declare which direction TIGHTENS it.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "GuardrailAvailabilityController_catalogue",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GuardrailPolicyCatalogueEntryResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Caller is not a super administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the selectable guardrail policies — SUPER_ADMIN only",
+        "tags": [
+          "admin-guardrail-availability"
+        ],
+        "x-hope-abilities": [
+          "read:Tenant"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/guardrail/availability/{tenantId}": {
+      "get": {
+        "description": "Returns the tenant's OWN selection plus the EFFECTIVE set after the `request tenant → SYSTEM` cascade, and which tier supplied it. A tenant with no row answers `version: 0` with an empty selection — not 404, because \"no selection\" is a fully resolved state that inherits the platform set. Send `If-Match: \"0\"` to create the row.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "GuardrailAvailabilityController_getForTenant",
+        "parameters": [
+          {
+            "description": "The tenant whose availability to read. `00000000-…` is the platform default row.",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailAvailabilityResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Caller is not a super administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read one tenant's guardrail availability — SUPER_ADMIN only",
+        "tags": [
+          "admin-guardrail-availability"
+        ],
+        "x-hope-abilities": [
+          "read:Tenant"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      },
+      "put": {
+        "description": "Availability SELECTS policies; it can never disable the gate. An empty selection means \"no opinion\" and inherits the SYSTEM set, and a selection that would leave a screening direction ungated is REFUSED (400). A threshold weaker than the SYSTEM row's is REFUSED (403) rather than silently clamped. `If-Match` carries the version from the prior GET: `\"0\"` creates the row, an existing version CASes against `_version`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `update:Tenant`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "GuardrailAvailabilityController_putForTenant",
+        "parameters": [
+          {
+            "description": "The tenant whose availability to write. `00000000-…` is the platform default row.",
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the version the client read (e.g. `\"0\"` to create).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"0\"",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGuardrailAvailabilityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailAvailabilityResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Unknown policy id, malformed selection, or a selection that would leave a direction ungated."
+          },
+          "403": {
+            "description": "Caller is not a super administrator, or the selection would LOOSEN a policy below the platform floor."
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace one tenant's guardrail availability under optimistic concurrency — SUPER_ADMIN only",
+        "tags": [
+          "admin-guardrail-availability"
+        ],
+        "x-hope-abilities": [
+          "update:Tenant"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": true,
+        "x-hope-service-account-scopes": []
       }
     },
     "/api/v1/admin/harness/audit": {
@@ -65961,6 +66313,10 @@
     {
       "description": "Platform-wide non-secret knobs (global-kv tier).",
       "name": "admin-global-settings"
+    },
+    {
+      "description": "Which safety policies apply to a tenant. Platform-managed and SUPER_ADMIN-only: availability SELECTS policies, it never disables the gate — every request is still screened before send and every response after receive.",
+      "name": "admin-guardrail-availability"
     },
     {
       "description": "Harness policy, evaluation, assurance, and live configuration.",

@@ -3435,6 +3435,90 @@
       "apiExcluded": false
     },
     {
+      "controller": "GuardrailAvailabilityController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/availability",
+      "routePath": "/admin/guardrail/availability",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Tenant"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailAvailabilityController",
+      "handler": "getForTenant",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/availability/{tenantId}",
+      "routePath": "/admin/guardrail/availability/:tenantId",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Tenant"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailAvailabilityController",
+      "handler": "putForTenant",
+      "method": "PUT",
+      "path": "/api/v1/admin/guardrail/availability/{tenantId}",
+      "routePath": "/admin/guardrail/availability/:tenantId",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "update",
+          "Tenant"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "GuardrailAvailabilityController",
+      "handler": "catalogue",
+      "method": "GET",
+      "path": "/api/v1/admin/guardrail/availability/catalogue",
+      "routePath": "/admin/guardrail/availability/catalogue",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Tenant"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "HarnessAdminController",
       "handler": "listAudit",
       "method": "GET",
