@@ -223,6 +223,7 @@ All run in the worktree at `74059b895`.
 | `pnpm nlp:test` (via `arcaenv`'s python) | `2 failed, 586 passed, 1 skipped, 3 deselected` — the 2 are the stated baseline (`test_metrics_endpoint_task636.py`) |
 | `pnpm nlp:lint` | 3 pre-existing `W291` in files byte-identical to the base commit; **ruff over this lane's five Python files: `All checks passed!`** |
 | `pnpm nlp:typecheck` | `Success: no issues found in 59 source files` |
+| registry size (measured, not assumed) | `HOPE_SETTINGS_REGISTRY.size === 266` and `0` keys under `nlp.logging.` — exactly the 277 − 11 target for this lane. Lanes A and B remove their own keys in parallel, so 266 is this lane's contribution to the wave-3a target of 198, not the end state |
 
 ### Count reconciliation
 
