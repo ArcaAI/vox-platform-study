@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from tts.core.config import IndicParlerConfig
+from tts.core.config import IndicParlerConfig, Settings
 from tts.providers.base import AudioFormat, SynthesisRequest, TTSEngine
 from tts.providers.indic_parler import (
     IndicParlerProvider,
@@ -87,11 +87,54 @@ def test_protocol_and_streaming_flag():
 # --- Internal-mirror load-branch resolution ---
 
 
-def test_model_source_defaults_to_gated_hub():
-    """No mirror configured (dev) → gated hub id, no local_files_only."""
-    source, kwargs = _resolve_model_source(IndicParlerConfig())
+def test_model_source_comes_from_the_registry_row_not_a_hardcoded_default():
+    """No mirror on the row → the hub id the AGENT's model names, no local_files_only.
+
+    The hub id used to be a `pydantic-settings` default (`ai4bharat/indic-parler-tts`), which is a
+    model SELECTION wearing a config costume. TASK-879 emptied the field and made the registry row
+    the only supplier: `from_spec` fills it from `AiModel.sourceUri`.
+    """
+    assert IndicParlerConfig().hf_model == "", "the hub id must not be a hardcoded default"
+
+    from tts.providers.indic_parler import IndicParlerProvider
+    from tts.tests.fakes import candidate
+
+    built = IndicParlerProvider.from_spec(
+        Settings(),
+        candidate("indic_parler", slug="indic-parler-tts", source_uri="ai4bharat/indic-parler-tts"),
+        {},
+    )
+    source, kwargs = _resolve_model_source(built._config)
     assert source == "ai4bharat/indic-parler-tts"
     assert kwargs == {}
+
+
+def test_the_mirror_and_the_description_tokenizer_come_from_the_row_too():
+    """`localPath` and `_metadata.artifacts.descEncoderPath`, the two deployment paths.
+
+    Parler bakes `google/flan-t5-large` as a Hub id in its own config, so an otherwise-offline
+    deployment still reaches out for that ONE tokenizer unless the mirror is named. It is an
+    artifact of the model, so it rides on the model row.
+    """
+    from tts.providers.indic_parler import IndicParlerProvider, _resolve_desc_source
+    from tts.tests.fakes import candidate
+
+    built = IndicParlerProvider.from_spec(
+        Settings(),
+        candidate(
+            "indic_parler",
+            slug="indic-parler-tts",
+            source_uri="ai4bharat/indic-parler-tts",
+            local_path="/mnt/models/indic-parler-tts",
+            artifacts={"descEncoderPath": "/mnt/models/flan-t5-large"},
+        ),
+        {},
+    )
+    assert _resolve_model_source(built._config) == ("/mnt/models/indic-parler-tts", {"local_files_only": True})
+    assert _resolve_desc_source(built._config, "google/flan-t5-large") == (
+        "/mnt/models/flan-t5-large",
+        {"local_files_only": True},
+    )
 
 
 def test_model_source_uses_mirror_offline_when_path_set():

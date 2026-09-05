@@ -230,3 +230,8 @@ def spec(
         primary=head,
         fallback={"autoSwitch": auto_switch, "chain": chain or []},
     )
+
+
+def spec_json(*args, **kwargs) -> dict:
+    """The wire form of :func:`spec` — what a gateway actually posts."""
+    return spec(*args, **kwargs).model_dump(by_alias=True, mode="json")
