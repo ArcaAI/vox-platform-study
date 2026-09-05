@@ -12909,20 +12909,8 @@
       },
       "PlanEntitlementResponse": {
         "properties": {
-          "featureDnaReports": {
-            "description": "DNA writing-style + reports enabled",
-            "type": "boolean"
-          },
-          "featureMonitoringAccess": {
-            "description": "Monitoring / telemetry access enabled",
-            "type": "boolean"
-          },
           "featurePlatformDefaultCredential": {
-            "description": "May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED, not display-only. false on every plan — the grant is issued per tenant via the tenant-entitlement override.",
-            "type": "boolean"
-          },
-          "featureVoiceEnrollment": {
-            "description": "Voice enrollment / diarization enabled",
+            "description": "May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED — it decides platform SPEND. false on every plan — the grant is issued per tenant via the tenant-entitlement override.",
             "type": "boolean"
           },
           "id": {
@@ -13050,9 +13038,6 @@
         "required": [
           "id",
           "plan",
-          "featureDnaReports",
-          "featureVoiceEnrollment",
-          "featureMonitoringAccess",
           "featurePlatformDefaultCredential",
           "modelTier",
           "rateLimitTier",
@@ -14948,24 +14933,9 @@
           "agenticLoop": {
             "description": "Harness agentic loop — multi-agent consultation orchestration",
             "type": "boolean"
-          },
-          "dnaReports": {
-            "description": "DNA writing-style + reports (F2)",
-            "type": "boolean"
-          },
-          "monitoringAccess": {
-            "description": "Monitoring / telemetry access (F5)",
-            "type": "boolean"
-          },
-          "voiceEnrollment": {
-            "description": "Voice enrollment / diarization (F3)",
-            "type": "boolean"
           }
         },
         "required": [
-          "dnaReports",
-          "voiceEnrollment",
-          "monitoringAccess",
           "agenticLoop"
         ],
         "type": "object"
@@ -17908,23 +17878,8 @@
       },
       "TenantEntitlementResponse": {
         "properties": {
-          "featureDnaReports": {
-            "description": "Override DNA reports feature; null = inherit",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "featureMonitoringAccess": {
-            "description": "Override monitoring access feature; null = inherit",
-            "nullable": true,
-            "type": "boolean"
-          },
           "featurePlatformDefaultCredential": {
             "description": "Override the PLATFORM-DEFAULT (SYSTEM-tenant) provider-credential grant; null = inherit the plan (false on every plan), true = grant, false = explicit deny. A tenant's own DISABLED provider row is a stronger per-provider veto this grant never overrides.",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "featureVoiceEnrollment": {
-            "description": "Override voice enrollment feature; null = inherit",
             "nullable": true,
             "type": "boolean"
           },
@@ -20525,20 +20480,8 @@
             "description": "Does this plan include the harness AGENTIC LOOP ? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE.",
             "type": "boolean"
           },
-          "featureDnaReports": {
-            "description": "DNA writing-style + reports enabled",
-            "type": "boolean"
-          },
-          "featureMonitoringAccess": {
-            "description": "Monitoring / telemetry access enabled",
-            "type": "boolean"
-          },
           "featurePlatformDefaultCredential": {
             "description": "Grant this plan's tenants the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential. Platform SPEND, not a display flag — a plan-level grant funds cloud calls for every tenant on the tier. Prefer the per-tenant override.",
-            "type": "boolean"
-          },
-          "featureVoiceEnrollment": {
-            "description": "Voice enrollment / diarization enabled",
             "type": "boolean"
           },
           "maxApiKeys": {
@@ -21723,23 +21666,8 @@
             "nullable": true,
             "type": "boolean"
           },
-          "featureDnaReports": {
-            "description": "Override DNA reports feature; null = inherit",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "featureMonitoringAccess": {
-            "description": "Override monitoring access feature; null = inherit",
-            "nullable": true,
-            "type": "boolean"
-          },
           "featurePlatformDefaultCredential": {
             "description": "Grant (true) / deny (false) / inherit (null) the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential for this tenant. This is how the grant is issued — no plan tier carries it. Granting lets the platform fund this tenant's cloud provider calls.",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "featureVoiceEnrollment": {
-            "description": "Override voice enrollment feature; null = inherit",
             "nullable": true,
             "type": "boolean"
           },
@@ -21848,10 +21776,6 @@
       },
       "UpsertTenantFrontendConfigRequest": {
         "properties": {
-          "asrModel": {
-            "description": "Default ASR model slug/id for the tenant",
-            "type": "string"
-          },
           "captureMode": {
             "description": "Tenant audio capture mode",
             "enum": [
@@ -21871,18 +21795,10 @@
             "description": "Typed advanced configuration (see FrontendPipelineConfigJson)",
             "type": "object"
           },
-          "diarization": {
-            "description": "Enable speaker diarization by default",
-            "type": "boolean"
-          },
           "expectedVersion": {
             "description": "Current row version (from the prior GET). REQUIRED on update; the PUT fails with 412 if the version drifted.",
             "example": 3,
             "type": "number"
-          },
-          "noiseCancel": {
-            "description": "Enable browser noise cancellation by default",
-            "type": "boolean"
           },
           "transcriptionMode": {
             "description": "Tenant default transcription mode (LOCAL or BACKEND)",
@@ -21894,14 +21810,6 @@
           },
           "transcriptionModeLocked": {
             "description": "Lock the transcription mode so doctors cannot override it via their workflowMode",
-            "type": "boolean"
-          },
-          "vad": {
-            "description": "Enable voice-activity detection by default",
-            "type": "boolean"
-          },
-          "voiceEnrollment": {
-            "description": "Enable voice enrollment by default",
             "type": "boolean"
           }
         },

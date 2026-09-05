@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 388,
+  "distinctNames": 387,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -4217,9 +4217,6 @@
     ],
     "HOSTNAME": [
       "packages/py-env/src/hope_env/service_registration.py"
-    ],
-    "LOG_FILE_PATH": [
-      "apps/nlp/src/nlp/core/logging.py"
     ],
     "NLP_MODEL_LOCAL_ROOTS": [
       "apps/nlp/src/nlp/core/guard_model_reference.py"

@@ -3362,14 +3362,8 @@ export interface PipelineVersionResponse {
 }
 
 export interface PlanEntitlementResponse {
-  /** DNA writing-style + reports enabled */
-  featureDnaReports: boolean;
-  /** Monitoring / telemetry access enabled */
-  featureMonitoringAccess: boolean;
-  /** May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED, not display-only. false on every plan — the grant is issued per tenant via the tenant-entitlement override. */
+  /** May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED — it decides platform SPEND. false on every plan — the grant is issued per tenant via the tenant-entitlement override. */
   featurePlatformDefaultCredential: boolean;
-  /** Voice enrollment / diarization enabled */
-  featureVoiceEnrollment: boolean;
   /** Row ID */
   id: string;
   /** Max API keys; null = unlimited */
@@ -3949,12 +3943,6 @@ export interface ResetPasswordResponse {
 export interface ResolvedFeaturesResponse {
   /** Harness agentic loop — multi-agent consultation orchestration */
   agenticLoop: boolean;
-  /** DNA writing-style + reports (F2) */
-  dnaReports: boolean;
-  /** Monitoring / telemetry access (F5) */
-  monitoringAccess: boolean;
-  /** Voice enrollment / diarization (F3) */
-  voiceEnrollment: boolean;
 }
 
 export interface ResolvedPromptTierResponse {
@@ -4603,14 +4591,8 @@ export interface TenantConfigResponse {
 }
 
 export interface TenantEntitlementResponse {
-  /** Override DNA reports feature; null = inherit */
-  featureDnaReports?: boolean | null;
-  /** Override monitoring access feature; null = inherit */
-  featureMonitoringAccess?: boolean | null;
   /** Override the PLATFORM-DEFAULT (SYSTEM-tenant) provider-credential grant; null = inherit the plan (false on every plan), true = grant, false = explicit deny. A tenant's own DISABLED provider row is a stronger per-provider veto this grant never overrides. */
   featurePlatformDefaultCredential?: boolean | null;
-  /** Override voice enrollment feature; null = inherit */
-  featureVoiceEnrollment?: boolean | null;
   /** Row ID */
   id: string;
   /** Override max API keys; null = inherit */
@@ -5505,14 +5487,8 @@ export interface UpdatePlanEntitlementRequest {
   expectedVersion: number;
   /** Does this plan include the harness AGENTIC LOOP ? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE. */
   featureAgenticLoop?: boolean;
-  /** DNA writing-style + reports enabled */
-  featureDnaReports?: boolean;
-  /** Monitoring / telemetry access enabled */
-  featureMonitoringAccess?: boolean;
   /** Grant this plan's tenants the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential. Platform SPEND, not a display flag — a plan-level grant funds cloud calls for every tenant on the tier. Prefer the per-tenant override. */
   featurePlatformDefaultCredential?: boolean;
-  /** Voice enrollment / diarization enabled */
-  featureVoiceEnrollment?: boolean;
   /** Max API keys; null = unlimited */
   maxApiKeys?: number | null;
   /** Max ASR pipelines; null = unlimited */
@@ -5920,14 +5896,8 @@ export interface UpsertTenantEntitlementRequest {
   expectedVersion?: number;
   /** Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant . Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide. */
   featureAgenticLoop?: boolean | null;
-  /** Override DNA reports feature; null = inherit */
-  featureDnaReports?: boolean | null;
-  /** Override monitoring access feature; null = inherit */
-  featureMonitoringAccess?: boolean | null;
   /** Grant (true) / deny (false) / inherit (null) the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential for this tenant. This is how the grant is issued — no plan tier carries it. Granting lets the platform fund this tenant's cloud provider calls. */
   featurePlatformDefaultCredential?: boolean | null;
-  /** Override voice enrollment feature; null = inherit */
-  featureVoiceEnrollment?: boolean | null;
   /** Override max API keys; null = inherit */
   maxApiKeys?: number | null;
   /** Override max ASR pipelines; null = inherit */
@@ -5971,28 +5941,18 @@ export interface UpsertTenantEntitlementRequest {
 }
 
 export interface UpsertTenantFrontendConfigRequest {
-  /** Default ASR model slug/id for the tenant */
-  asrModel?: string;
   /** Tenant audio capture mode */
   captureMode?: 'RAW_AND_PROCESSED' | 'RAW_ONLY' | 'PROCESSED_ONLY' | 'NONE' | null;
   /** Enable local raw-stream audio capture for the tenant (effective only when the platform capability is on) */
   captureRawAudio?: boolean;
   /** Typed advanced configuration (see FrontendPipelineConfigJson) */
   configJson?: Record<string, unknown>;
-  /** Enable speaker diarization by default */
-  diarization?: boolean;
   /** Current row version (from the prior GET). REQUIRED on update; the PUT fails with 412 if the version drifted. */
   expectedVersion?: number;
-  /** Enable browser noise cancellation by default */
-  noiseCancel?: boolean;
   /** Tenant default transcription mode (LOCAL or BACKEND) */
   transcriptionMode?: 'LOCAL' | 'BACKEND';
   /** Lock the transcription mode so doctors cannot override it via their workflowMode */
   transcriptionModeLocked?: boolean;
-  /** Enable voice-activity detection by default */
-  vad?: boolean;
-  /** Enable voice enrollment by default */
-  voiceEnrollment?: boolean;
 }
 
 export interface UpsertTenantNlpTaskInstructionsRequest {
