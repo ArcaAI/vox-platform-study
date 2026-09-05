@@ -23,7 +23,7 @@ import { WorkflowDefinitionService } from '../workflow-definition.service';
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 const mockRoutingPolicyService = { resolveGenerationCapabilities: vi.fn() };
-const agentRepository = { findPublishedActiveBySlug: vi.fn() };
+const agentRepository = { findPublishedActiveBySlug: vi.fn(), findPublishedVisibleBySlugVersion: vi.fn() };
 const aiModelRepository = { findById: vi.fn() };
 
 const node = (config: Record<string, unknown>) => ({ id: 'n_agent', type: 'core.agent', config });
@@ -195,6 +195,42 @@ describe('publish — a core.agent override the bound agent`s provider rejects i
   it('an agent that does not resolve at publish is an UNKNOWN capability set (WARNING) — the runtime fails closed on it anyway', async () => {
     agentRepository.findPublishedActiveBySlug.mockResolvedValue(null);
     const result = await makeService().publish('def-1', {});
+    expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
+    expect(aiModelRepository.findById).not.toHaveBeenCalled();
+  });
+
+  // TASK-876 — a PINNED `agentRef.versionNumber` names the version the node will actually run
+  // (`TextAgentResolverService` refuses any other, 409). Clamping against the ACTIVE version
+  // bounds the node by a capability set it never sees, and labels the finding with a version
+  // number the author did not write.
+  it('clamps against the PINNED version, not the active one, and labels the finding with it', async () => {
+    const pinned = { id: 'agent-2', slug: 'clinic-summarizer', versionNumber: 2, compiledConfig: { model: { id: 'm2', slug: 'pinned-model' } } };
+    agentRepository.findPublishedVisibleBySlugVersion.mockResolvedValue(pinned);
+    aiModelRepository.findById.mockResolvedValue(modelRow(['temperature', 'maxTokens', 'topP']));
+    mockWorkflowDefinitionRepository.findById.mockResolvedValue(
+      entity({ graph: graph({ agentRef: { slug: 'clinic-summarizer', versionNumber: 2 }, overrides: { generation: { presencePenalty: 0.5 } } }) }),
+    );
+
+    const service = makeService();
+    await expect(service.publish('def-1', {})).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(agentRepository.findPublishedVisibleBySlugVersion).toHaveBeenCalledWith('tenant-1', 'clinic-summarizer', 2);
+    expect(agentRepository.findPublishedActiveBySlug).not.toHaveBeenCalled();
+    expect(aiModelRepository.findById).toHaveBeenCalledWith('m2');
+    const findings = await findingsOf(service);
+    // Labelled with the PINNED version — not `v3`, the active one the author did not name.
+    expect(findings[0].message).toContain('v2');
+    expect(findings[0].message).not.toContain('v3');
+  });
+
+  it('an UNRESOLVABLE pin is an unknown capability set (WARNING), like an unresolvable slug', async () => {
+    agentRepository.findPublishedVisibleBySlugVersion.mockResolvedValue(null);
+    mockWorkflowDefinitionRepository.findById.mockResolvedValue(
+      entity({ graph: graph({ agentRef: { slug: 'clinic-summarizer', versionNumber: 9 }, overrides: { generation: { presencePenalty: 0.5 } } }) }),
+    );
+
+    const result = await makeService().publish('def-1', {});
+
     expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
     expect(aiModelRepository.findById).not.toHaveBeenCalled();
   });
