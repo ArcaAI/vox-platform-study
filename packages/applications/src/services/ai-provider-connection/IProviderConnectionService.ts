@@ -13,6 +13,13 @@ export interface ResolvedProviderConnection {
   region: string | null;
   apiVersion: string | null;
   deploymentName: string | null;
+  /**
+   * Per-request timeout ceiling, seconds. `null` = no opinion (the consuming service's own
+   * default applies). Surfaced here because a resolved connection is what a per-request runtime
+   * spec is built from: `tts.sarvam.timeoutS` used to be a platform settings key, and a value the
+   * row carries but the resolver drops is a ceiling nothing can enforce.
+   */
+  timeoutS: number | null;
   /** Ciphertext — gateway-side decrypt only; never leaves the server. */
   encryptedApiKey: Uint8Array | null;
   keyVersion: number | null;

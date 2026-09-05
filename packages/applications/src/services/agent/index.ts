@@ -7,8 +7,11 @@ export * from './agent-resolver.service';
 export * from './text-generation-spec';
 export * from './text-agent-resolver.service';
 export * from './tts-spec';
+export * from './tts-agent-resolver.service';
+export * from './tts-agent-resolver.service.module';
 export * from './agent-invocation.service';
 export * from './agent.service.module';
 
 // The resolver contract shape lives in @arcaai/types; re-exported so apps/api needs no direct dependency on that package.
-export type { ResolvedAgent } from '@arcaai/types';
+export type { ResolvedAgent, ResolvedTtsCandidate, ResolvedTtsSpec, TtsSpecConnection, TtsSpecModel, TtsSpecParameters, TtsVoiceBinding } from '@arcaai/types';
+export { RESOLVED_TTS_SPEC_SCHEMA_VERSION, TTS_SPEC_MODEL_ROLES, TTS_SPEC_MODEL_TASK_TYPE } from '@arcaai/types';
