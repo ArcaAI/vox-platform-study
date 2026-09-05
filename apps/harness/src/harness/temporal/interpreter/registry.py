@@ -66,6 +66,8 @@ with workflow.unsafe.imports_passed_through():
     )
     from harness.temporal.interpreter.nodes.consultation_endpoint import (
         interpreter_feedback_capture,
+        interpreter_harness_finalize,
+        interpreter_livedoc_stop,
         interpreter_session_timeout,
         interpreter_summary_finalize,
     )
@@ -541,6 +543,29 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         activity=interpreter_feedback_capture,
         critical=False,
         external_write=True,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
+    ),
+    # TASK-882 — the two endpoint stages that had no node type. `livedoc.stop` closes a real
+    # live session (external_write=True); `harness.finalize` is an ordering marker inside an
+    # interpreter run (the graph IS the document workflow), so it writes nothing.
+    "livedoc.stop": NodeSpec(
+        key="livedoc.stop",
+        implemented=True,
+        activity=interpreter_livedoc_stop,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
+    ),
+    "harness.finalize": NodeSpec(
+        key="harness.finalize",
+        implemented=True,
+        activity=interpreter_harness_finalize,
+        critical=False,
+        external_write=False,
         default_timeout_seconds=30,
         default_max_attempts=3,
         output_keys={"next": None},

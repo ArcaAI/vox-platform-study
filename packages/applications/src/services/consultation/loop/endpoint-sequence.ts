@@ -1,71 +1,45 @@
 /**
- * (D-10) — the CONSULTATION ENDPOINT SEQUENCE.
+ * The consultation ENDPOINT STAGE — the ordered actions `ConsultationLoopWorkflow` runs before a
+ * consultation session closes — read off the ASSIGNED GRAPH (TASK-882).
  *
- * The endpoint stage is the ordered list of actions that runs before a consultation session
- * closes. Until this module it was a literal, four lines into a private method:
+ * ## Where it came from
  *
- * ```ts
- * const endingActionsBase = hasStreamAudio ? ['livedoc.stop', 'harness.finalize'] : ['harness.finalize'];
- * const endingActions = endingActionsBase.filter((action) => !neverActions.has(action));
- * ```
+ * It began as a code literal (`endingActionsBase = hasStreamAudio ? ['livedoc.stop',
+ * 'harness.finalize'] : ['harness.finalize']`) that a department agent could only SUBTRACT from
+ * (`neverActions`); then it became the admin-ordered `consultation.endpoint.actions` setting,
+ * extended by the agent's `alwaysActions` and still vetoed by its `neverActions`. TASK-882
+ * retired all three levers: a tenant-managed list of steps is a tenant-managed condition, and
+ * the owner's model has none — developers branch in workflows.
  *
- * ## What was actually wrong with that
+ * ## What decides it now
  *
- * Not that it was hardcoded — plenty of correct things are. The defect is the SHAPE of the only
- * control it offered: `neverActions` can only SUBTRACT. A tenant could delete a step from the
- * stage that closes a consultation and could do nothing else with it — not reorder it, not add a
- * step, not express "capture feedback after finalizing". "You may remove entries from this list"
- * is a veto, not configuration, and a veto is the one lever you would least want to be the only
- * one on a clinical closing sequence.
- *
- * ## Where the ordered list lives, and why it is not a new column
- *
- * `consultation.endpoint.actions`, a `global-kv` setting with `maxScope: 'tenant'`
- * (`consultation-endpoint.descriptors.ts`). Registering a descriptor is the ONLY step needed to
- * make a key governed, readable and writable — there is no per-key allow-list — so the platform
- * order, the per-tenant override, the admin write lane, the cache invalidation and the
- * settings-catalog surface all come for free, and no migration is involved. A
- * `DepartmentAgent.endpointActions` column would have bought a third cascade level nobody asked
- * for at the cost of a schema change on a shared branch.
- *
- * ## The four levers, in resolution order
- *
- * | Lever | Who sets it | What it does |
+ * | Lever | Source | Effect |
  * |---|---|---|
- * | the persisted list | platform admin, or a tenant override | ORDER and membership |
+ * | membership | the governing graph's endpoint nodes (`ENDPOINT_ELIGIBLE_ACTIONS`, directly or through a `core.action`) | a node present and `enabled` runs |
+ * | order | the graph's edges | topological order; declaration order breaks ties |
  * | audio scoping | the consultation's own context schema | drops `livedoc.stop` with no STREAM_AUDIO kind |
- * | `alwaysActions` | the department agent | EXTENDS — appends an endpoint-eligible action the list omits |
- * | `neverActions` | the department agent | SUBTRACTS — the compliance veto, unchanged |
  *
- * `alwaysActions` extends only with ENDPOINT-ELIGIBLE keys, and that restriction is what keeps
- * every existing agent byte-identical: agents configured before this ticket carry per-kind
- * actions there (`client.emit` above all), and appending those to the endpoint stage would
- * silently change what happens when their consultations close.
- *
- * ## Fallback is a real default, never an empty stage
- *
- * An unset, empty or malformed value resolves to `CONSULTATION_ENDPOINT_ACTIONS_DEFAULT`. The
- * descriptor is `failMode: 'open-to-default'` for the same reason: "nobody has configured this"
- * must never mean "close consultations without finalizing them". An admin who genuinely wants an
- * empty stage says so through `neverActions`, which is an explicit act.
+ * A graph that declares NO endpoint node runs `CONSULTATION_ENDPOINT_ACTIONS_DEFAULT`. That
+ * fallback is a clinical-safety floor, not a convenience: "nobody authored this" must never mean
+ * "close consultations without finalizing them". A graph author who wants a different stage
+ * declares one; the seeded legacy SOAP graph declares none (WF-CONS-004 makes its HITL gate
+ * terminal, and a stage placed BEFORE the gate would lock documents before review) and so runs
+ * the default.
  */
 
-import { LoopActionKey as AgentActionKey } from './loop-action-keys';
-
-/** The `global-kv` key holding the ordered endpoint sequence. */
-export const CONSULTATION_ENDPOINT_ACTIONS_KEY = 'consultation.endpoint.actions';
+import type { WorkflowGraph, WorkflowGraphNode } from '@arcaai/workflow-contract';
+import { topologicalLevels } from '@arcaai/workflow-contract';
 
 /**
  * The actions that may appear in the endpoint sequence — a CLOSED list.
  *
- * An admin orders the stage; they do not invent steps for it. Anything outside this list would
- * reach `ConsultationLoopWorkflow._run_lifecycle_actions`, find no `LOOP_ACTION_REGISTRY` entry,
- * and be reported as `unsupported_action` — a step that looks configured and does nothing.
+ * A graph author places the stage; they do not invent steps for it. Anything outside this list
+ * would reach `ConsultationLoopWorkflow._run_lifecycle_actions`, find no `LOOP_ACTION_REGISTRY`
+ * entry, and be reported as `unsupported_action` — a step that looks configured and does nothing.
  *
- * The first two are the earlier stage. The last three are the node types adds
- * (`session.timeout`, `summary.finalize`, `feedback.capture`), which are deliberately the SAME
- * strings as the `trigger: 'on-end'` node keys in `@arcaai/workflow-contract` — one vocabulary
- * whether the consultation runs on the legacy loop or on an authored graph.
+ * These are deliberately the SAME strings as the five `trigger: 'on-end'` endpoint node keys in
+ * `@arcaai/workflow-contract` — one vocabulary whether the consultation runs on the legacy loop
+ * or on an authored graph.
  */
 export const ENDPOINT_ELIGIBLE_ACTIONS = ['livedoc.stop', 'harness.finalize', 'session.timeout', 'summary.finalize', 'feedback.capture'] as const;
 
@@ -103,45 +77,55 @@ export const CONSULTATION_ENDPOINT_ACTIONS_DEFAULT: readonly EndpointActionKey[]
   'feedback.capture',
 ] as const);
 
+const CORE_ACTION_NODE_TYPE = 'core.action';
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/** The effective type of a node — a `core.action`'s is the action it delegates to. */
+function endpointActionOf(node: WorkflowGraphNode): string | null {
+  const config = asRecord(node.config);
+  if (config.enabled === false) return null;
+  const type = node.type === CORE_ACTION_NODE_TYPE ? config.actionKey : node.type;
+  return typeof type === 'string' && ELIGIBLE.has(type) ? type : null;
+}
+
 /**
- * The ONE ordering invariant an admin must not be able to save, as a message or nothing.
+ * The endpoint chain a graph DECLARES, in edge order — or `null` when it declares none (which
+ * is what makes the platform default apply; an all-disabled chain declares none too).
  *
- * `harness.finalize` PRODUCES the clinical note; `summary.finalize` LOCKS every document of the
- * consultation. Saved in that order the consultation locks an empty record and then has nowhere
- * to put the note — a settings write that reads as a preference and lands as silent loss of the
- * consultation record. Membership in `ENDPOINT_ELIGIBLE_ACTIONS` cannot catch it: both entries
- * are legitimate, it is their ORDER that is wrong.
- *
- * CONDITIONAL on both being present, deliberately. An admin who drops `harness.finalize`
- * entirely is making a legitimate choice — the realtime lane writes its own sections — so only
- * the inverted both-present case is refused. Nothing else about the order is policed: this is a
- * safety floor, not a house style.
- *
- * Wired to the write lane through `SettingDescriptor.validate` on
- * `consultation.endpoint.actions`; the Studio editor warns on the same rule BEFORE the save
- * (`isEndpointOrderInverted` in the console's `workflow-studio/api/endpoint-sequence.ts`), but
- * that copy is advisory and this one is the enforcement.
+ * Order is the topological order of the graph's edges; nodes no edge orders keep their
+ * declaration order. An action declared by more than one node runs once, at its FIRST position.
  */
-export function endpointOrderProblem(sequence: unknown): string | undefined {
-  if (!Array.isArray(sequence)) return undefined;
-  const writesTheNote = sequence.indexOf('harness.finalize');
-  const locksDocuments = sequence.indexOf('summary.finalize');
-  if (writesTheNote === -1 || locksDocuments === -1 || writesTheNote < locksDocuments) return undefined;
-  return (
-    '`summary.finalize` LOCKS every document of the consultation and `harness.finalize` is what writes the note into it, ' +
-    'so `harness.finalize` must come first. As ordered, the consultation would lock an empty record and the note would have nowhere to go.'
-  );
+export function endpointSequenceFromGraph(graph: WorkflowGraph | null | undefined): string[] | null {
+  if (!graph || !Array.isArray(graph.nodes)) return null;
+  const declarationIndex = new Map(graph.nodes.map((node, index) => [node.id, index] as const));
+  const levelIndex = new Map<string, number>();
+  const ordering = topologicalLevels({ ...graph, edges: Array.isArray(graph.edges) ? graph.edges : [] });
+  if ('levels' in ordering) {
+    ordering.levels.forEach((level, index) => level.forEach((id) => levelIndex.set(id, index)));
+  }
+  const rank = (node: WorkflowGraphNode): [number, number] => [levelIndex.get(node.id) ?? 0, declarationIndex.get(node.id) ?? 0];
+
+  const sequence: string[] = [];
+  const ordered = graph.nodes.slice().sort((a, b) => {
+    const [la, da] = rank(a);
+    const [lb, db] = rank(b);
+    return la - lb || da - db;
+  });
+  for (const node of ordered) {
+    const action = endpointActionOf(node);
+    if (action && !sequence.includes(action)) sequence.push(action);
+  }
+  return sequence.length === 0 ? null : sequence;
 }
 
 export interface ResolveEndpointSequenceInput {
-  /** The persisted, admin-ordered list. Anything not a non-empty array falls back to the default. */
-  readonly configured?: readonly string[] | null;
+  /** The chain the governing graph declares (`endpointSequenceFromGraph`), or `null` for none. */
+  readonly declared?: readonly string[] | null;
   /** True when the consultation subscribes at least one STREAM_AUDIO kind. */
   readonly hasStreamAudio: boolean;
-  /** The agent's compliance-envelope EXTENSION lever. */
-  readonly alwaysActions?: readonly (AgentActionKey | string)[] | null;
-  /** The agent's compliance-envelope VETO lever. */
-  readonly neverActions?: readonly (AgentActionKey | string)[] | null;
 }
 
 /** Keep only eligible string entries, de-duplicated, order preserved (first occurrence wins). */
@@ -160,31 +144,19 @@ function eligibleInOrder(values: readonly unknown[]): string[] {
  * The endpoint sequence this consultation will run, in dispatch order.
  *
  * Pure: every input is passed in, nothing is read from a service. That is what lets the ordering
- * rules be tested exhaustively without a settings backend, and it is why the setting READ lives
- * in `LoopConfigService` (which already resolves the idle bound the same way) rather than here.
+ * rules be tested exhaustively without a graph backend, and it is why the graph READ lives in
+ * `LoopConfigService` (which already resolves the governing definition) rather than here.
  */
 export function resolveEndpointSequence(input: ResolveEndpointSequenceInput): string[] {
-  const source = Array.isArray(input.configured) && input.configured.length > 0 ? input.configured : CONSULTATION_ENDPOINT_ACTIONS_DEFAULT;
+  const source = Array.isArray(input.declared) && input.declared.length > 0 ? input.declared : CONSULTATION_ENDPOINT_ACTIONS_DEFAULT;
 
   let sequence = eligibleInOrder(source);
-  // A configured list of nothing but junk is indistinguishable, to a consultation, from no list
+  // A declared chain of nothing eligible is indistinguishable, to a consultation, from no chain
   // at all — so it degrades the same way rather than closing consultations with no stage.
   if (sequence.length === 0) sequence = eligibleInOrder(CONSULTATION_ENDPOINT_ACTIONS_DEFAULT);
 
   if (!input.hasStreamAudio) {
     sequence = sequence.filter((action) => !AUDIO_ONLY_ENDPOINT_ACTIONS.has(action));
   }
-
-  // EXTEND. Appended at the END, never inserted: the admin owns the ordering, and an agent that
-  // adds a step gets it after the ones the platform placed. An action already present keeps its
-  // authored position.
-  for (const action of eligibleInOrder(input.alwaysActions ?? [])) {
-    if (!sequence.includes(action)) sequence.push(action);
-  }
-
-  // SUBTRACT, last, so the veto outranks every other lever including `alwaysActions`. An action
-  // that is both mandatory and forbidden is already refused at write time
-  // (`actionOverlapProblems`); resolving it here in the strict direction is the safe residue.
-  const never = new Set(input.neverActions ?? []);
-  return sequence.filter((action) => !never.has(action));
+  return sequence;
 }

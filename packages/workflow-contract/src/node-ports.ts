@@ -341,6 +341,9 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   // consultation, which is why the edge is optional.
   'summary.finalize': ports([port('in', 'document', false, true), AFTER], [NEXT]),
   'feedback.capture': ports([port('in', 'edits', false, true), AFTER], [NEXT]),
+  // TASK-882 — the two endpoint stages that had no node type; ordering-only, like session.timeout.
+  'livedoc.stop': ports([AFTER], [NEXT]),
+  'harness.finalize': ports([AFTER], [NEXT]),
 
   // -------------------------------------------------------------------------------------------
   // The TARGET CATALOGUE (/DD-9) and the guards — lane A.

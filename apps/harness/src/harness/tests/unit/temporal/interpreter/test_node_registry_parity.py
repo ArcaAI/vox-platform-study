@@ -178,7 +178,10 @@ class TestNodeRegistryParity:
             "guard.moderation",
             "guard.phi",
             "guardrail.check",
+            # TASK-882 -- the two endpoint stages that had no node type.
+            "harness.finalize",
             "input.context_binding",
+            "livedoc.stop",
             "noop",
             "output.deliver",
             "passthrough",

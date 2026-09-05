@@ -870,12 +870,13 @@ const CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA: NodeConfigSchema = Object.freeze(
 });
 
 // ---------------------------------------------------------------------------------------------
-// The ENDPOINT STAGE — the three `trigger: 'on-end'` node types.
+// The ENDPOINT STAGE — the five `trigger: 'on-end'` endpoint node types.
 //
-// Each schema is deliberately SMALL. The endpoint stage's ORDER is not authored here: it lives
-// in the persisted endpoint sequence (`consultation.endpoint.actions`, resolved by
-// `LoopConfigService`), because the order is a property of the sequence and not of any one node.
-// What a node's config carries is only what THAT node does when its turn comes.
+// Each schema is deliberately SMALL. The endpoint stage's ORDER is not authored here: since
+// TASK-882 it is the EDGE ORDER of the endpoint nodes on the assigned graph (read by
+// `LoopConfigService`; the platform default applies when a graph declares none), because the
+// order is a property of the chain and not of any one node. What a node's config carries is
+// only what THAT node does when its turn comes.
 // ---------------------------------------------------------------------------------------------
 
 const SESSION_TIMEOUT_SCHEMA: NodeConfigSchema = Object.freeze({
@@ -938,6 +939,37 @@ const FEEDBACK_CAPTURE_SCHEMA: NodeConfigSchema = Object.freeze({
       maximum: 1,
       description: 'Proposals below this confidence are never offered for promotion, even if the payload names them.',
     },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+/**
+ * TASK-882 — the two endpoint stages that had no node type. `livedoc.stop` closes the live
+ * audio session (`persistSnapshot` mirrors the loop's own stop); `harness.finalize` is the
+ * position of note generation in the stage — inside an interpreter run it is an ordering marker
+ * (the graph IS the document workflow), so it carries nothing but the shared `onError`.
+ */
+const LIVEDOC_STOP_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'livedoc.stop node config (the endpoint stage closes the live session first)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    persistSnapshot: {
+      type: 'boolean',
+      default: true,
+      description: 'Whether stopping persists the final live snapshot. Defaults TRUE, matching the loop`s own stop.',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const HARNESS_FINALIZE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'harness.finalize node config (the position of note generation in the endpoint stage)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
     onError: CONSULTATION_ON_ERROR,
   },
 });
@@ -2000,6 +2032,8 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
   'session.timeout': SESSION_TIMEOUT_SCHEMA,
   'summary.finalize': SUMMARY_FINALIZE_SCHEMA,
   'feedback.capture': FEEDBACK_CAPTURE_SCHEMA,
+  'livedoc.stop': LIVEDOC_STOP_SCHEMA,
+  'harness.finalize': HARNESS_FINALIZE_SCHEMA,
   // The TARGET CATALOGUE , in catalogue order. Each entry reuses the schema of the
   // engine it delegates to — see the block above `AGENT_DNA_REDACTION_SCHEMA`.
   'agent.transcription': CONSULTATION_CAPTURE_BINDING_SCHEMA,

@@ -180,7 +180,7 @@ describe('LoopConfigService against the seeded rows', () => {
     const result = await service.resolveForConsultation(TENANT_ID, CONSULTATION_ID);
 
     expect(result.startActions).toEqual([]);
-    // (D-10): the day-1 tenant has no `consultation.endpoint.actions` row, so the stage
+    // TASK-882: the day-1 tenant's governing graph declares no endpoint node, so the stage
     // resolves to the platform default — minus `livedoc.stop`, because the loop never drives the
     // LiveDoc lifecycle. `harness.finalize` is still there and still in the same relative
     // position; what is new is the stage AROUND it.

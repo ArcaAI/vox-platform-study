@@ -202,8 +202,8 @@ export interface SettingDescriptor {
    *
    * `dataType` classifies a value's SHAPE — "a number", "an array of strings". It cannot express
    * a relationship BETWEEN entries, and for an ordered list that gap is where the real defect
-   * lives: `consultation.endpoint.actions` passes a `string[]` check in any order, including the
-   * one that locks a consultation's documents before the step that writes the note into them.
+   * lives: an ordered `string[]` passes its shape check in any order, including one that locks a
+   * consultation's documents before the step that writes the note into them.
    *
    * Declared on the descriptor, never branched on in the write lane — the same rule that makes
    * `globalOnly`, `maxScope` and `floorDirection` work: registering a descriptor stays the ONLY

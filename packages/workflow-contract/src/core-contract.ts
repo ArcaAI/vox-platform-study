@@ -89,6 +89,9 @@ const ACTION_KEYS: readonly string[] = Object.freeze([
   'session.timeout',
   'summary.finalize',
   'feedback.capture',
+  // TASK-882 — the whole endpoint stage is authorable through `core.action`.
+  'livedoc.stop',
+  'harness.finalize',
   'prompt.template_ref',
 ]);
 
