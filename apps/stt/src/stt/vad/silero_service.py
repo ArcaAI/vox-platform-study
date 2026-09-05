@@ -20,6 +20,7 @@ import numpy as np
 
 from ..core.config.settings import get_settings
 from ..core.metrics import track_model_inference
+from ..pipeline.dto import VadConfig
 from .dto import SpeechSegment, VADResult, VADSessionState
 
 logger = logging.getLogger(__name__)
@@ -138,7 +139,11 @@ class SileroVADService:
             if min_silence_duration_ms is not None
             else settings.vad_min_silence_duration_ms
         )
-        pad_ms = speech_pad_ms if speech_pad_ms is not None else settings.vad_speech_pad_ms
+        # TASK-880 — `stt.vad.speechPadMs` is deleted. Padding is an AGENT tuning
+        # choice (`audioFrontEnd.vad.speechPadMs` -> `VadConfig.padding_ms`), which both
+        # pipeline callers already pass explicitly; a caller that passes nothing gets the
+        # dataclass default rather than a per-process setting.
+        pad_ms = speech_pad_ms if speech_pad_ms is not None else VadConfig.padding_ms
 
         frame_size = _SILERO_FRAME_SIZE_16K if sample_rate == 16000 else _SILERO_FRAME_SIZE_8K
         audio_duration = len(samples) / sample_rate
@@ -280,8 +285,9 @@ class SileroVADService:
             return Path(cached_path)
         except ImportError:
             raise RuntimeError(
-                "huggingface_hub is required to auto-download Silero VAD. "
-                "Install it or set VAD_MODEL_PATH to a local file."
+                "huggingface_hub is required to auto-download Silero VAD. Install it, "
+                "or stage the weights and set `localPath` on the AiModel "
+                "(VOICE_ACTIVITY_DETECTION) row the agent binds."
             ) from None
 
     @staticmethod
@@ -422,10 +428,29 @@ class SileroVADService:
 _service: SileroVADService | None = None
 
 
-def get_vad_service() -> SileroVADService:
-    """Get singleton Silero VAD service instance."""
+def get_vad_service(model_path: str | None = None) -> SileroVADService:
+    """The process-wide Silero VAD service.
+
+    TASK-880 — ``stt.vad.modelPath`` is deleted. The weights are an ``AiModel`` row
+    (``VOICE_ACTIVITY_DETECTION``), and its ``localPath`` already travels on every
+    session's ``ResolvedAsrSpec`` as ``models.vad.localPath``; the session manager passes
+    it here. ``None`` (every batch/enrollment caller, and any session whose row stages no
+    local copy) resolves the weights the way the platform key's own default did — auto,
+    from the HuggingFace cache.
+
+    The service is a SINGLETON because the ONNX session is stateless and shared; the
+    first caller that supplies a path therefore decides it, and a later, different path
+    is refused with a warning rather than silently ignored — two agents on genuinely
+    different VAD weights need a per-path cache, not a quiet first-wins.
+    """
     global _service
     if _service is None:
-        settings = get_settings()
-        _service = SileroVADService(model_path=settings.vad_model_path)
+        _service = SileroVADService(model_path=model_path)
+    elif model_path and _service._model_path and model_path != _service._model_path:
+        logger.warning(
+            "Ignoring a second Silero VAD model path (%s); the singleton is already "
+            "loaded from %s",
+            model_path,
+            _service._model_path,
+        )
     return _service

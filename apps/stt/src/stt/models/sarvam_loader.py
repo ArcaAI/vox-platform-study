@@ -14,7 +14,6 @@ import logging
 
 from pydantic import SecretStr
 
-from ..core.config.settings import get_settings
 from ..core.exceptions import CloudASRAuthError, ModelNotFoundError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
@@ -63,17 +62,21 @@ class SarvamLoader(BaseModelLoader):
         Raises:
             CloudASRAuthError: when no key is available from either source.
         """
-        settings = get_settings()
         override = resolve_override_key(provider_overrides, SARVAM_OVERRIDE_KEY)
 
         api_key_str = None
-        base_url = settings.sarvam_base_url
+        # TASK-880 — `stt.sarvam.baseUrl` is deleted. An override entry exists ONLY
+        # behind an enabled, keyed `AiProviderConnection(stt, sarvam)` row, and that row
+        # is what carries `baseUrl`; the platform key could only ever have patched a row
+        # that forgot to set its own, and its default was the PUBLIC api.sarvam.ai —
+        # which carries no BAA and must not be a silent default on a PHI platform.
+        base_url = None
         model_name = model_config.source_uri
         used_override = False
 
         if override:
             api_key_str = override.get("api_key") or None
-            base_url = override.get("base_url") or base_url
+            base_url = override.get("base_url") or None
             model_name = override.get("model") or model_name
             used_override = bool(api_key_str)
 
@@ -86,12 +89,17 @@ class SarvamLoader(BaseModelLoader):
                 details={"provider": SARVAM_OVERRIDE_KEY, "slug": model_config.slug},
             )
 
-        if not api_key_str:
+        if not api_key_str or not base_url:
             raise CloudASRAuthError(
-                "Sarvam credentials not configured. Sarvam is BYOK-only: configure "
-                "a tenant Sarvam credential, or the platform (SYSTEM-tenant) Sarvam "
-                "connection, in the provider-connection plane. There is no env fallback.",
-                details={"has_key": False, "provider": "sarvam"},
+                "Sarvam connection not configured. Sarvam is BYOK-only: configure a "
+                "tenant Sarvam credential, or the platform (SYSTEM-tenant) Sarvam "
+                "connection, in the provider-connection plane, with its `baseUrl` set on "
+                "the same row. There is no env fallback for either.",
+                details={
+                    "has_key": bool(api_key_str),
+                    "has_base_url": bool(base_url),
+                    "provider": "sarvam",
+                },
             )
 
         config = CloudRestConfig(

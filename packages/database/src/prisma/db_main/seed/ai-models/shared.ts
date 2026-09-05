@@ -451,6 +451,26 @@ export interface AiModelSeed {
      * `sourceUri` is still the engine-host wire id (see `wireModelId`).
      */
     hubArtifact?: string;
+    /**
+     * TASK-880 — ASR decode geometry, carried to `apps/stt` on
+     * `ResolvedAsrSpec.models.asr.metadata`. It replaces the platform keys
+     * `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`, which
+     * applied ONE number to every engine on the box; these describe a MODEL, so a
+     * fallback chain now decodes on its own window instead of the primary's.
+     */
+    asr?: {
+      /** Longest audio fed to the engine in ONE decode, seconds. Absent ⇒ no split guard. */
+      maxDecodeWindowSec?: number;
+      /** Tail of the live utterance decoded for PARTIALs, seconds. Absent ⇒ the preprocessor default. */
+      partialWindowSec?: number;
+    };
+    /**
+     * TASK-880 — speaker-embedding geometry. `dimension` is the vector width the row
+     * emits, and it is LOAD-BEARING: `buildResolvedAsrSpec` REFUSES an agent whose
+     * `models.embedding` declares a width the deployed `UserVoiceProfile.embedding`
+     * column cannot hold, rather than shipping a spec whose every enrollment fails.
+     */
+    embedding?: { dimension?: number };
     voices?: TtsVoiceBinding[];
     azureDeployment?: string;
     ttsProvider?: string;

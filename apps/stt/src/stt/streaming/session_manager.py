@@ -305,7 +305,10 @@ class SessionManager:
                 1, int(_settings.streaming_transcript_outbox_max_attempts)
             )
             self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
-            self._partial_window_s = float(getattr(_settings, "streaming_partial_window_s", 8.0))
+            # TASK-880 — the partial decode WINDOW was cached here from
+            # `stt.streaming.partialWindowS`, one number per process for every engine.
+            # It is the ASR row's force-emit window, so it now arrives per session on
+            # `ResolvedAsrSpec.models.asr.metadata.partialWindowSec`.
             # TASK-877 — the partial-emit cadence and the whole semantic-endpoint
             # family used to be cached here from `stt.streaming.partialIntervalS`
             # and `stt.semanticEndpoint.*`. Both are per-session AGENT concepts, so
@@ -327,7 +330,6 @@ class SessionManager:
             self._transcript_persist_backoff_s = 0.5
             self._transcript_outbox_max_attempts = 10
             self._snapshot_interval_s = 30.0
-            self._partial_window_s = 8.0
             self._audio_trim_interval_s = 30.0
             # Semantic endpointing defaults (OFF).
 
@@ -412,18 +414,24 @@ class SessionManager:
           the hardware profile (500 ms on every profile) instead of the
           preprocessor's legacy hardcoded 700 ms (shaves ~200 ms off
           every final's latency floor).
-        - The partial decode window is settings-driven and always wired.
         - TASK-877 — the partial-emit cadence and the utterance cap come from the
           SESSION's ``ResolvedAsrSpec`` (``streaming.{partialIntervalMs,maxUtteranceSec}``).
           The platform key ``stt.streaming.partialIntervalS`` is deleted: it
           duplicated an agent concept, and a per-session cadence cannot be a
           per-process setting. When the agent says nothing the kwarg is OMITTED so
           the preprocessor's own default stands — never restated here.
+        - TASK-880 — the partial decode WINDOW follows the same rule, sourced from the
+          ASR MODEL row (``models.asr.metadata.partialWindowSec`` →
+          ``StreamingConfig.partial_window_s``) rather than the deleted platform key
+          ``stt.streaming.partialWindowS``. It should match the engine's force-emit
+          window so the last partial and the final decode the SAME audio, and that is a
+          property of the model, not of the box.
         """
-        kwargs: dict[str, Any] = {
-            "partial_window_s": self._partial_window_s,
-        }
+        kwargs: dict[str, Any] = {}
         spec_streaming = getattr(pipeline_config, "streaming", None) if pipeline_config else None
+        partial_window_s = getattr(spec_streaming, "partial_window_s", None)
+        if isinstance(partial_window_s, (int, float)) and not isinstance(partial_window_s, bool):
+            kwargs["partial_window_s"] = float(partial_window_s)
         partial_interval_s = getattr(spec_streaming, "partial_interval_s", None)
         if isinstance(partial_interval_s, (int, float)) and not isinstance(
             partial_interval_s, bool
@@ -569,11 +577,7 @@ class SessionManager:
         # seeded default (ECAPA on every session) doesn't reload the model.
         pipeline_embedding_service = None
         if effective_diarization and sortformer_diarizer is None:
-            emb_model_id = None
-            if pipeline_config and pipeline_config.models.embedding:
-                emb_ref = pipeline_config.models.embedding
-                if emb_ref.is_inline and emb_ref.inline:
-                    emb_model_id = emb_ref.inline.hf_model_id
+            emb_model_id = self._spec_embedding_model_id(session_id, pipeline_config)
             if emb_model_id:
                 try:
                     pipeline_embedding_service = await self._get_pipeline_embedding_service(
@@ -1691,6 +1695,12 @@ class SessionManager:
         ONNX session across all streaming sessions (the model is
         stateless — per-session LSTM state lives in ``VADSessionState``).
 
+        TASK-880 — the WEIGHTS come from the session's own ``AiModel`` row
+        (``ResolvedAsrSpec.models.vad.localPath``), not from the deleted platform key
+        ``stt.vad.modelPath``. A spec whose VAD row stages no local copy passes ``None``
+        and the service resolves from the HuggingFace cache, which is exactly what that
+        key's own default (empty = auto-download) did.
+
         Returns ``None`` if VAD is disabled, not configured, or fails to
         load. The preprocessor degrades gracefully by using an
         energy-based fallback VAD.
@@ -1708,7 +1718,7 @@ class SessionManager:
         try:
             from stt.vad.silero_service import get_vad_service
 
-            vad_service = get_vad_service()
+            vad_service = get_vad_service(model_path=self._spec_vad_local_path(session_id, pipeline_config))
             if not vad_service.is_loaded:
                 await vad_service.initialize()
 
@@ -1724,6 +1734,36 @@ class SessionManager:
                 error=str(exc),
             )
             return None
+
+    def _spec_embedding_model_id(self, session_id: str | None, pipeline_config: Any) -> str | None:
+        """The per-session speaker-embedding model id, from an INLINE or a SLUG ref.
+
+        TASK-880 closes the defect TASK-877 recorded and deferred: only the INLINE branch
+        existed, while ``pipeline_spec_from_resolved`` emits ``ModelRef(slug=...)`` for
+        every agent — so an agent's ``models.embedding`` never reached the embedding
+        service and every agent session silently diarized on the platform singleton
+        (``stt.diarization.hfModelId``). The spec bundle already carries the resolved row,
+        so resolving the slug adds no database read to the agent path.
+
+        Returns ``None`` when there is no embedding ref, or when a slug is not in this
+        session's bundle — the caller then falls back to the platform singleton, which is
+        the pre-existing behaviour for a deprecated-pipeline session.
+        """
+        ref = getattr(getattr(pipeline_config, "models", None), "embedding", None)
+        if ref is None:
+            return None
+        if getattr(ref, "is_inline", False) and ref.inline:
+            return str(ref.inline.hf_model_id)
+        slug = getattr(ref, "slug", None)
+        model_config = _spec_model_config_of(self, session_id, slug)
+        return getattr(model_config, "source_uri", None) if model_config is not None else None
+
+    def _spec_vad_local_path(self, session_id: str | None, pipeline_config: Any) -> str | None:
+        """``ResolvedAsrSpec.models.vad.localPath`` for a spec-driven session, else ``None``."""
+        ref = getattr(getattr(pipeline_config, "models", None), "vad", None)
+        slug = getattr(ref, "slug", None) if ref is not None else None
+        model_config = _spec_model_config_of(self, session_id, slug)
+        return getattr(model_config, "local_path", None) if model_config is not None else None
 
     async def _warm_and_pin_pipeline_models(
         self,

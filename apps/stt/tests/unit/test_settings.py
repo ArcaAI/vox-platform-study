@@ -81,57 +81,83 @@ class TestSettings:
             assert settings.worker_max_retries == 3
 
     def test_transcription_defaults(self):
-        """Test transcription default configuration."""
+        """Test transcription default configuration.
+
+        TASK-880 — `transcription_chunk_length_s` / `_stride_length_s` were asserted
+        here. Chunking is the agent's (`decoding.{chunkLengthSec,strideLengthSec}`) and
+        the engine defaults moved to `InferenceConfig`; the job timeout stays, because a
+        batch worker's wall-clock budget is a property of this process.
+        """
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
 
             assert settings.transcription_timeout_seconds == 600
-            assert settings.transcription_chunk_length_s == 15
-            assert settings.transcription_stride_length_s == "4,2"
+            assert "transcription_chunk_length_s" not in Settings.model_fields
+            assert "transcription_stride_length_s" not in Settings.model_fields
 
-    def test_byok_credentials_are_not_settings_fields(self):
-        """Sarvam / OpenAI / Azure-Speech subscription keys are BYOK-only
-        they are NOT Settings fields at all (resolved per request from the
-        provider-connection plane). Their env vars are silently ignored (extra=ignore)
-        and the attributes do not exist on Settings. The non-secret region / base_url
-        fields remain."""
+            from stt.pipeline.dto import InferenceConfig
+
+            assert InferenceConfig().chunk_length_sec == 15.0
+            assert InferenceConfig().stride_length_sec == (4, 2)
+
+    def test_no_cloud_asr_engine_has_a_settings_field_of_any_kind(self):
+        """TASK-880 — the cloud STT engines have NO fields left, secret or not.
+
+        Their KEYS never had one (BYOK, resolved per request from
+        `AiProviderConnection`). The non-secret halves — region, base URL, endpoint,
+        enable flag — are properties of the CONNECTION, and a connection reaches a
+        loader only as a `provider_overrides` entry, which exists only behind an
+        enabled, keyed row: the same row that carries `baseUrl`/`region`. So these
+        fields could only ever patch a row that forgot to set its own, while making
+        a PUBLIC vendor endpoint the silent default on a PHI platform.
+        """
         env_vars = {
             "SARVAM_API_KEY": "leaked-sarvam",
             "OPENAI_API_KEY": "leaked-openai",
             "AZURE_SPEECH_KEY": "leaked-azure",
+            "SARVAM_BASE_URL": "https://leaked.sarvam.ai",
+            "OPENAI_BASE_URL": "https://leaked.openai.com/v1",
+            "AZURE_SPEECH_REGION": "leakedregion",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings(_env_file=None)
 
-            assert not hasattr(settings, "sarvam_api_key")
-            assert not hasattr(settings, "openai_api_key")
-            assert not hasattr(settings, "azure_speech_key")
-            # Non-secret operational fields are unaffected.
-            assert settings.sarvam_base_url == "https://api.sarvam.ai"
-            assert settings.openai_base_url == "https://api.openai.com/v1"
+            for field in (
+                "sarvam_api_key",
+                "openai_api_key",
+                "azure_speech_key",
+                "sarvam_base_url",
+                "openai_base_url",
+                "azure_speech_region",
+            ):
+                assert not hasattr(settings, field), field
 
-    def test_azure_foundry_is_byok_only_and_carries_no_model_default(self):
-        """Azure Foundry joins the BYOK-only set: the API KEY is resolved per
-        request from the provider-connection plane (`azure.foundryApiKey` is a
-        registered vault-kv descriptor), and the MAI model is SELECTION, which
-        the pipeline's AiModel carries. Neither is a Settings field; the
-        non-secret enable flag and endpoint remain."""
+    def test_azure_foundry_has_no_settings_field_including_its_gate(self):
+        """TASK-880 — Foundry's ENABLE FLAG went with its endpoint and its key.
+
+        `stt.azureFoundry.enabled` was a per-PLATFORM boolean standing in for "is this
+        preview engine available?". The `AiProviderConnection(stt, azure-foundry)` row
+        answers that better and PER TENANT: no row / disabled / keyless = no override
+        entry = the engine cannot load, with the SYSTEM row seeded disabled as the
+        preview veto. Foundry has its own row now rather than aliasing `azure-speech`,
+        so enabling Speech does not enable a PREVIEW service for PHI.
+        """
         env_vars = {
             "AZURE_FOUNDRY_API_KEY": "leaked-foundry",
             "AZURE_FOUNDRY_MODEL": "mai-transcribe-1.5",
             "AZURE_FOUNDRY_ENDPOINT": "https://res.cognitiveservices.azure.com",
+            "AZURE_FOUNDRY_ENABLED": "true",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings(_env_file=None)
 
-            assert not hasattr(settings, "azure_foundry_api_key")
-            assert not hasattr(settings, "azure_foundry_model")
-            assert settings.azure_foundry_enabled is False
-            # the ENDPOINT joined the enable flag in the control
-            # plane (`stt.azureFoundry.endpoint`). It is not a credential, but
-            # it IS the address a preview PHI-bearing engine is called at, and
-            # changing it must not need a redeploy.
-            assert settings.azure_foundry_endpoint is None
+            for field in (
+                "azure_foundry_api_key",
+                "azure_foundry_model",
+                "azure_foundry_enabled",
+                "azure_foundry_endpoint",
+            ):
+                assert not hasattr(settings, field), field
 
     def test_verified_dead_settings_fields_are_gone(self):
         """Fields with ZERO read sites anywhere in the service. `WORKER_CONCURRENCY`
@@ -159,7 +185,7 @@ class TestSettings:
             settings = Settings(_env_file=None)
             assert settings.worker_threads == 4
             assert settings.whisper_cpp_num_threads == 8
-            assert settings.vad_speech_pad_ms == 200
+            assert settings.vad_threshold == 0.5
             assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
 
     def test_env_override(self):
@@ -317,55 +343,19 @@ class TestSettings:
             # Default should be valid
             assert settings.log_level in ["DEBUG", "INFO", "WARNING", "ERROR"]
 
-    def test_azure_speech_region_defaults(self):
-        """Test Azure Speech region default (None when not set).
+    def test_no_cloud_engine_key_is_settable_from_the_control_plane_either(self):
+        """TASK-880 — the cloud engine family has NO control-plane keys left.
 
-        The Azure Speech KEY is no longer a settings field (BYOK-only);
-        only the non-secret region remains.
+        `stt.azureSpeech.region`, `stt.azureFoundry.{enabled,endpoint}`,
+        `stt.sarvam.baseUrl` and `stt.openai.baseUrl` all moved onto the
+        `AiProviderConnection` row that already had to exist for the credential to
+        arrive. The env path was closed before; now the CONTROL-PLANE path is closed
+        too, so there is exactly one place a cloud endpoint can be set.
         """
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
+        from stt.core.control_plane import CONTROL_PLANE_KEYS
 
-            assert settings.azure_speech_region is None
-
-    def test_azure_speech_region_is_control_plane_owned_and_the_key_has_no_field(self):
-        """The region moved to `stt.azureSpeech.region`; the KEY never had a field.
-
-        Two different mechanisms with the same visible effect, and the
-        distinction matters: `AZURE_SPEECH_KEY` is BYOK-only, so it has no
-        settings field at all and arrives per request from the
-        provider-connection plane; `AZURE_SPEECH_REGION` is non-secret platform
-        config and still has a field — but no env path to it.
-        """
-        env_vars = {
-            "AZURE_SPEECH_KEY": "test-azure-key-123",  # ignored (no field)
-            "AZURE_SPEECH_REGION": "eastus2",
-        }
-
-        with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings()
-
-            assert settings.azure_speech_region is None
-            assert not hasattr(settings, "azure_speech_key")
-
-    def test_azure_speech_region_is_settable_from_the_control_plane(self):
-        from stt.core.control_plane import apply_control_plane
-
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
-            apply_control_plane(
-                settings,
-                {
-                    "settings": {
-                        "stt.azureSpeech.region": {
-                            "value": "eastus2",
-                            "dataType": "string",
-                            "source": "db",
-                        }
-                    }
-                },
-            )
-            assert settings.azure_speech_region == "eastus2"
+        moved = ("stt.azureSpeech.", "stt.azureFoundry.", "stt.sarvam.", "stt.openai.")
+        assert [k for k in CONTROL_PLANE_KEYS.values() if k.startswith(moved)] == []
 
     def test_vad_defaults(self):
         """Test Silero VAD default configuration.
@@ -375,11 +365,9 @@ class TestSettings:
         """
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings(_env_file=None)
-            assert settings.vad_model_path is None
             assert settings.vad_threshold == 0.5
             assert settings.vad_min_speech_duration_ms == 100
             assert settings.vad_min_silence_duration_ms == 500
-            assert settings.vad_speech_pad_ms == 200
 
     def test_vad_is_control_plane_owned_not_env_owned(self):
         """the five VAD knobs no longer have an env path.
@@ -397,43 +385,28 @@ class TestSettings:
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
-            assert settings.vad_model_path is None
             assert settings.vad_threshold == 0.5
             assert settings.vad_min_speech_duration_ms == 100
             assert settings.vad_min_silence_duration_ms == 500
-            assert settings.vad_speech_pad_ms == 200
+            # TASK-880 — `VAD_MODEL_PATH` and `VAD_SPEECH_PAD_MS` cannot land anywhere
+            # at all now: their fields are gone, not merely un-settable from env.
+            assert "vad_model_path" not in Settings.model_fields
+            assert "vad_speech_pad_ms" not in Settings.model_fields
 
-    def test_vad_is_settable_from_the_control_plane(self):
-        from stt.core.control_plane import apply_control_plane
+    def test_vad_is_no_longer_settable_from_the_control_plane(self):
+        """TASK-880 — the VAD family has NO control-plane keys left.
 
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
-            apply_control_plane(
-                settings,
-                {
-                    "settings": {
-                        "stt.vad.modelPath": {
-                            "value": "/custom/vad.onnx",
-                            "dataType": "string",
-                            "source": "db",
-                        },
-                        "stt.vad.speechPadMs": {
-                            "value": 250,
-                            "dataType": "number",
-                            "source": "db",
-                        },
-                    }
-                },
-            )
-            assert settings.vad_model_path == "/custom/vad.onnx"
-            assert settings.vad_speech_pad_ms == 250
-            # `stt.vad.threshold` / `minSpeechDurationMs` / `minSilenceDurationMs`
-            # were exercised here until TASK-872 removed them: the live path
-            # takes its VAD parameters from `ResolvedAsrSpec`, so those three
-            # keys could only move a bootstrap default the spec then overrode.
-            # The fields survive as that default and are simply no longer
-            # settable from the control plane.
-            assert settings.vad_threshold == 0.5
+        `stt.vad.threshold` / `minSpeechDurationMs` / `minSilenceDurationMs` went in
+        TASK-872: the live path takes its VAD parameters from `ResolvedAsrSpec`, so
+        those three could only move a bootstrap default the spec then overrode (the
+        FIELDS survive as that default). TASK-880 took the last two outright —
+        `stt.vad.modelPath`, because the weights are an `AiModel` row whose `localPath`
+        already travels on the spec, and `stt.vad.speechPadMs`, because padding is an
+        agent tuning knob beside the three above it.
+        """
+        from stt.core.control_plane import CONTROL_PLANE_KEYS
+
+        assert [k for k in CONTROL_PLANE_KEYS.values() if k.startswith("stt.vad.")] == []
 
     def test_diarization_defaults(self):
         """Test Pyannote diarization default configuration."""

@@ -99,14 +99,29 @@ describe('TASK-876 — TEXT_GENERATION fallback block', () => {
 });
 
 describe('TASK-876 — SPEECH_TO_TEXT additions for TASK-877', () => {
-  it('decoding gains chunkLengthSec / strideLengthSec as bounded optional numbers (owner decision #9)', () => {
+  it('decoding gains chunkLengthSec and a strideLengthSec PAIR (owner decision #9)', () => {
     expect(props(ASR, 'decoding', 'chunkLengthSec')).toMatchObject({ type: 'number', minimum: 1, maximum: 60 });
-    expect(props(ASR, 'decoding', 'strideLengthSec')).toMatchObject({ type: 'number', minimum: 0, maximum: 30 });
-    expect(jsonSchemaValueProblems(ASR, { decoding: { chunkLengthSec: 30, strideLengthSec: 5 } }, 'parameters')).toEqual([]);
+    // TASK-880 corrected `strideLengthSec` from a scalar to the `[left, right]` PAIR the
+    // wire field (`AsrSpecDecoding.strideLengthSec`), `buildResolvedAsrSpec`'s `pair()`
+    // reader and the committed contract fixture have always used. As a `number` it was a
+    // value an agent could author and the runtime could never consume.
+    expect(props(ASR, 'decoding', 'strideLengthSec')).toMatchObject({ type: 'array', minItems: 2, maxItems: 2 });
+    expect(jsonSchemaValueProblems(ASR, { decoding: { chunkLengthSec: 30, strideLengthSec: [4, 2] } }, 'parameters')).toEqual([]);
     expect(jsonSchemaValueProblems(ASR, { decoding: { chunkLengthSec: 0 } }, 'parameters')).not.toEqual([]);
-    expect(jsonSchemaValueProblems(ASR, { decoding: { strideLengthSec: 31 } }, 'parameters')).not.toEqual([]);
+    expect(jsonSchemaValueProblems(ASR, { decoding: { strideLengthSec: 5 } }, 'parameters')).not.toEqual([]);
+    expect(jsonSchemaValueProblems(ASR, { decoding: { strideLengthSec: [4] } }, 'parameters')).not.toEqual([]);
+    expect(jsonSchemaValueProblems(ASR, { decoding: { strideLengthSec: [4, 31] } }, 'parameters')).not.toEqual([]);
     // Still closed: the existing `additionalProperties: false` on `decoding` is preserved.
     expect(jsonSchemaValueProblems(ASR, { decoding: { chunkLength: 30 } }, 'parameters')).not.toEqual([]);
+  });
+
+  it('audioFrontEnd.vad gains speechPadMs, the fourth agent-owned VAD knob (TASK-880)', () => {
+    // `stt.vad.speechPadMs` was a platform key beside `threshold` / `minSpeechMs` /
+    // `minSilenceMs`, which the agent has owned since TASK-861.
+    expect(props(ASR, 'audioFrontEnd', 'vad', 'speechPadMs')).toMatchObject({ type: 'integer', minimum: 0, maximum: 5000 });
+    expect(jsonSchemaValueProblems(ASR, { audioFrontEnd: { vad: { speechPadMs: 200 } } }, 'parameters')).toEqual([]);
+    expect(jsonSchemaValueProblems(ASR, { audioFrontEnd: { vad: { speechPadMs: 5001 } } }, 'parameters')).not.toEqual([]);
+    expect(jsonSchemaValueProblems(ASR, { audioFrontEnd: { vad: { speechPadMs: 200.5 } } }, 'parameters')).not.toEqual([]);
   });
 
   it('streaming gains a closed `semantic` block and the endpointing model reference', () => {

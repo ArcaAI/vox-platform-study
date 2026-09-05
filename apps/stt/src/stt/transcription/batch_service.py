@@ -70,6 +70,37 @@ from .preprocessing import get_preprocessor
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_chunking(config: Any) -> tuple[float, int, int]:
+    """``(chunk_length_s, stride_left, stride_right)`` for a batch inference run.
+
+    TASK-880 — the ONE source is the resolved spec: `stt.transcription.chunkLengthS`
+    and `stt.transcription.strideLengthS` are deleted, so an agent that expresses no
+    opinion gets `InferenceConfig`'s own defaults (15 s and `[4, 2]` — the same numbers
+    those keys carried, declared where every other engine default lives) rather than a
+    per-process setting. Both call sites read through here, which is also what closes
+    the older half of the split: `_transcribe_optimum_onnx` never consulted the spec at
+    all, so an agent's chunking applied on one batch path and not the other.
+
+    Defensive about shape because `config` is `Any` at both call sites and unit tests
+    pass `MagicMock`s: a non-numeric value falls back to the dataclass default rather
+    than reaching `float()`.
+    """
+    default = InferenceConfig()
+    raw_chunk = getattr(config, "chunk_length_sec", None)
+    chunk_length_s = (
+        float(raw_chunk)
+        if isinstance(raw_chunk, (int, float)) and not isinstance(raw_chunk, bool)
+        else float(default.chunk_length_sec)
+    )
+    raw_stride = getattr(config, "stride_length_sec", None)
+    if isinstance(raw_stride, (tuple, list)) and len(raw_stride) == 2:
+        try:
+            return chunk_length_s, int(raw_stride[0]), int(raw_stride[1])
+        except (TypeError, ValueError):
+            pass
+    return chunk_length_s, int(default.stride_length_sec[0]), int(default.stride_length_sec[1])
+
 # Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
 # dict (BYOK). For these the batch ASR load bypasses the shared by-slug
 # cache when an override is present. Mirrors the streaming set in session_manager.
@@ -91,17 +122,25 @@ _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
 # guessing the rest would risk silently forking a rollup dimension instead.
 _ENGINE_ID_OVERRIDES: dict[AiModelFormat, str] = {
     AiModelFormat.AZURE_SPEECH: "azure-speech",
+    # TASK-880 — AZURE_FOUNDRY lowercases to "azure_foundry" while its connection id
+    # is "azure-foundry" (it has its own row now, no longer aliasing azure-speech).
+    AiModelFormat.AZURE_FOUNDRY: "azure-foundry",
 }
 
-# Which ``provider_overrides`` KEY each cloud ASR format reads
-# its credential from. This is NOT the same as the ledger engine id above:
-# AZURE_FOUNDRY meters as its own engine but takes its credential from the
-# ``azure-speech`` entry (``azure_foundry_loader.py``). Kept in lockstep with
-# the loaders by ``tests/unit/test_batch_service_usage_attribution.py``, which
-# imports the loaders' own constants and asserts agreement.
+# Which ``provider_overrides`` KEY each cloud ASR format reads its credential from.
+# Kept in lockstep with the loaders by
+# ``tests/unit/test_batch_service_usage_attribution.py``, which imports the loaders'
+# own constants and asserts agreement.
+#
+# TASK-880 — AZURE_FOUNDRY reads ``azure-foundry``, not ``azure-speech``. Aliasing made
+# one credential the gate for two engines with different data-residency postures: a
+# tenant could not enable Speech without also enabling a PREVIEW service for its PHI,
+# and could not point Foundry at a different resource. Attribution follows the key the
+# LOADER actually reads, so this must move with it or a Foundry call served on the
+# tenant's own Foundry key would meter as platform CLOUD.
 _OVERRIDE_KEY_BY_FORMAT: dict[AiModelFormat, str] = {
     AiModelFormat.AZURE_SPEECH: "azure-speech",  # azure_speech_loader.py
-    AiModelFormat.AZURE_FOUNDRY: "azure-speech",  # azure_foundry_loader.py
+    AiModelFormat.AZURE_FOUNDRY: "azure-foundry",  # azure_foundry_loader.py
     AiModelFormat.SARVAM: "sarvam",  # sarvam_loader.SARVAM_OVERRIDE_KEY
     AiModelFormat.OPENAI: "openai",  # openai_loader.OPENAI_OVERRIDE_KEY
 }
@@ -402,10 +441,19 @@ class BatchTranscriptionService:
             logger.info(f"[{job_id}] Running ASR inference...")
             inference_start = time.time()
 
-            # Resolve initial prompt from DB if configured
-            initial_prompt: str | None = None
+            # TASK-880 — the AGENT's literal prompt wins, and it is the only prompt
+            # channel whisper.cpp has now that the hardcoded consultation line and its
+            # `stt.whisperCpp.consultationPromptEnabled` flag are gone. The streaming path
+            # already preferred it (`session_manager._load_asr_pipeline`); this path did
+            # not, so a batch job on an agent with an `instruction.initialPrompt` decoded
+            # with no prior context at all. The template-id lookup (a DB read) survives
+            # only for the deprecated pipeline path.
+            prompt_text = getattr(spec.inference, "initial_prompt_text", None)
+            initial_prompt: str | None = (
+                prompt_text if isinstance(prompt_text, str) and prompt_text else None
+            )
             initial_prompt_id = getattr(spec.inference, "initial_prompt", None)
-            if initial_prompt_id:
+            if initial_prompt is None and initial_prompt_id:
                 initial_prompt = await get_initial_prompt(initial_prompt_id)
                 if initial_prompt:
                     logger.info(
@@ -1242,20 +1290,7 @@ class BatchTranscriptionService:
             ``model_output`` contains ``{"segment_latencies": [...]}``.
         """
         settings = get_settings()
-        spec_chunk_length_sec = getattr(config, "chunk_length_sec", None)
-        spec_stride_length_sec = getattr(config, "stride_length_sec", None)
-        chunk_length_s = (
-            float(spec_chunk_length_sec)
-            if isinstance(spec_chunk_length_sec, (int, float))
-            and not isinstance(spec_chunk_length_sec, bool)
-            else float(settings.transcription_chunk_length_s)
-        )
-        if isinstance(spec_stride_length_sec, tuple) and len(spec_stride_length_sec) == 2:
-            stride_left, stride_right = (int(spec_stride_length_sec[0]), int(spec_stride_length_sec[1]))
-        else:
-            stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
-            stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
-            stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
+        chunk_length_s, stride_left, stride_right = _resolve_chunking(config)
         raw_carry = getattr(config, "prev_text_context_words", None)
         if isinstance(raw_carry, int) and not isinstance(raw_carry, bool):
             carry_max_words = max(0, raw_carry)
@@ -2367,13 +2402,7 @@ class BatchTranscriptionService:
             raise TranscriptionError("Optimum ONNX model requires a processor")
 
         audio_duration_s = len(samples) / sample_rate
-        settings = get_settings()
-        chunk_length_s = float(settings.transcription_chunk_length_s)
-
-        # Parse stride from settings (e.g. "4,2" -> left=4, right=2)
-        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
-        stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
-        stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
+        chunk_length_s, stride_left, stride_right = _resolve_chunking(config)
         stride_s = stride_left + stride_right
         step_s = chunk_length_s - stride_s  # non-overlapping advance
 

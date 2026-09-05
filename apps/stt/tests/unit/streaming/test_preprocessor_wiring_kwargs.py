@@ -6,8 +6,9 @@ Pins the contract of ``SessionManager._build_preprocessor_vad_kwargs``:
   from the hardware ``ExecutionProfile`` (500 ms on every profile) instead of
   the preprocessor's legacy hardcoded 700 ms.
 - Pipeline YAML still wins when VAD is configured (per-pipeline override).
-- C2: the partial decode window is settings-driven and always present.
-- TASK-877: the partial-emit CADENCE is not — it is a per-session agent value.
+- TASK-877: the partial-emit CADENCE is a per-session AGENT value, not a setting.
+- TASK-880: the partial decode WINDOW is a per-model value (the ASR row's
+  `_metadata.asr.partialWindowSec`), not a setting either.
 """
 
 from unittest.mock import MagicMock
@@ -15,14 +16,10 @@ from unittest.mock import MagicMock
 from stt.streaming.session_manager import SessionManager
 
 
-def _make_mgr(
-    vad_silence_threshold_ms: int = 500,
-    partial_window_s: float = 8.0,
-) -> MagicMock:
+def _make_mgr(vad_silence_threshold_ms: int = 500) -> MagicMock:
     mgr = MagicMock(spec=SessionManager)
     mgr._profile = MagicMock()
     mgr._profile.vad_silence_threshold_ms = vad_silence_threshold_ms
-    mgr._partial_window_s = partial_window_s
     return mgr
 
 
@@ -91,17 +88,37 @@ class TestBuildPreprocessorVadKwargs:
         assert kwargs["force_emit_lookback_ms"] == 1500
         assert kwargs["force_emit_overlap_ms"] == 500
 
-    def test_partial_window_always_present_from_settings(self):
-        """C2: the bounded partial window is wired regardless of VAD config."""
-        mgr = _make_mgr(partial_window_s=6.5)
+    def test_partial_window_is_not_wired_from_a_platform_setting(self):
+        """TASK-880 — `stt.streaming.partialWindowS` is deleted.
+
+        It applied one window to every engine on the box. The right tail length is the
+        ASR row's force-emit window, so it arrives per session on
+        `StreamingConfig.partial_window_s`; with no declaration the kwarg is OMITTED
+        and the preprocessor's own `_DEFAULT_PARTIAL_WINDOW_S` stands.
+        """
+        mgr = _make_mgr()
 
         without_config = SessionManager._build_preprocessor_vad_kwargs(mgr, None)
         with_config = SessionManager._build_preprocessor_vad_kwargs(
             mgr, _make_pipeline_config(vad_enabled=True)
         )
 
-        assert without_config["partial_window_s"] == 6.5
-        assert with_config["partial_window_s"] == 6.5
+        assert "partial_window_s" not in without_config
+        assert "partial_window_s" not in with_config
+
+    def test_partial_window_comes_from_the_asr_rows_metadata(self):
+        """A spec-driven session threads the MODEL's window through
+        `StreamingConfig.partial_window_s`."""
+        mgr = _make_mgr()
+        config = _make_pipeline_config(vad_enabled=True)
+        config.streaming = MagicMock(spec=["partial_window_s", "partial_interval_s", "max_utterance_sec"])
+        config.streaming.partial_window_s = 6.0
+        config.streaming.partial_interval_s = None
+        config.streaming.max_utterance_sec = None
+
+        kwargs = SessionManager._build_preprocessor_vad_kwargs(mgr, config)
+
+        assert kwargs["partial_window_s"] == 6.0
 
     def test_partial_interval_is_not_wired_from_a_platform_setting(self):
         """TASK-877 — the cadence is a PER-SESSION agent concept.

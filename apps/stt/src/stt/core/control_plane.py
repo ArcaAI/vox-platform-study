@@ -104,30 +104,31 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "model_cache_ttl_seconds": "stt.modelCache.ttlSeconds",
     "worker_threads": "stt.workers.concurrency",
     "streaming_max_concurrent": "stt.streaming.maxConcurrent",
-    # ── cloud engine endpoints / regions ─────────────────────────────────────
-    # NOT credentials — every one of these engines is BYOK and its key already
-    # arrives per request from the provider-connection plane. These are the
-    # non-secret halves that were left behind in env.
-    "azure_speech_region": "stt.azureSpeech.region",
-    "azure_foundry_enabled": "stt.azureFoundry.enabled",
-    "azure_foundry_endpoint": "stt.azureFoundry.endpoint",
-    "sarvam_base_url": "stt.sarvam.baseUrl",
-    "openai_base_url": "stt.openai.baseUrl",
+    # ── cloud engine endpoints / regions: NOTHING is mapped here any more ────
+    # `azure_speech_region`, `azure_foundry_{enabled,endpoint}`, `sarvam_base_url` and
+    # `openai_base_url` were mapped here until TASK-880. Each is a property of the
+    # CONNECTION, and a connection reaches a loader only as a `provider_overrides`
+    # entry — which exists only behind an enabled, keyed `AiProviderConnection` row,
+    # the same row that carries `baseUrl`/`region`. The enable flag is replaced by that
+    # row's three states rather than by another flag.
     # ── local ggml runtimes ──────────────────────────────────────────────────
     "parakeet_cpp_library_path": "stt.parakeetCpp.libraryPath",
     "parakeet_cpp_num_threads": "stt.parakeetCpp.numThreads",
     "whisper_cpp_num_threads": "stt.whisperCpp.numThreads",
-    "whisper_cpp_max_audio_seconds": "stt.whisperCpp.maxAudioSeconds",
-    "whisper_cpp_consultation_prompt_enabled": "stt.whisperCpp.consultationPromptEnabled",
+    # `whisper_cpp_max_audio_seconds` and `whisper_cpp_consultation_prompt_enabled`
+    # were mapped here until TASK-880. The first is the MODEL's decode window
+    # (`AiModel._metadata.asr.maxDecodeWindowSec`, carried per chain on the spec), not one
+    # number for every whisper.cpp row on the box; the second gated two HARDCODED
+    # consultation lines, while WHAT prior context a decode gets is the agent's
+    # `instruction.initialPrompt` — which already reached the adapter by another route.
     # ── VAD (Silero v5) ──────────────────────────────────────────────────────
-    "vad_model_path": "stt.vad.modelPath",
-    # `vad_threshold`, `vad_min_speech_duration_ms` and
-    # `vad_min_silence_duration_ms` were mapped here until TASK-872. Their
-    # descriptors are gone: the live path is fed by `ResolvedAsrSpec`, which
-    # carries its own VAD parameters, so a control-plane value could only move a
-    # bootstrap default the spec then overrode. The FIELDS stay — they are that
-    # bootstrap default — but the control plane no longer pretends to own them.
-    "vad_speech_pad_ms": "stt.vad.speechPadMs",
+    # NOTHING is mapped here any more. `vad_threshold`, `vad_min_speech_duration_ms`
+    # and `vad_min_silence_duration_ms` lost their descriptors in TASK-872 (the live
+    # path is fed by `ResolvedAsrSpec`, which carries its own VAD parameters); their
+    # FIELDS stay as the bootstrap default. TASK-880 took the last two outright:
+    # `vad_model_path` (the weights are the `AiModel` row the spec already carries as
+    # `models.vad.localPath`) and `vad_speech_pad_ms` (an agent tuning knob beside the
+    # three above it, now `audioFrontEnd.vad.speechPadMs`).
     # ── diarization / voice profiles ─────────────────────────────────────────
     "diarization_hf_model_id": "stt.diarization.hfModelId",
     "diarization_device": "stt.diarization.device",
@@ -140,8 +141,11 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "torch_num_interop_threads": "stt.runtime.torchNumInteropThreads",
     # ── batch transcription geometry ─────────────────────────────────────────
     "transcription_timeout_seconds": "stt.transcription.timeoutSeconds",
-    "transcription_chunk_length_s": "stt.transcription.chunkLengthS",
-    "transcription_stride_length_s": "stt.transcription.strideLengthS",
+    # `transcription_chunk_length_s` and `transcription_stride_length_s` were mapped
+    # here until TASK-880. Both are the AGENT's
+    # `decoding.{chunkLengthSec,strideLengthSec}` (TASK-877, owner decision #9); the
+    # engine defaults they carried now live on `InferenceConfig`, where every other
+    # engine default lives.
     "segment_merge_gap_threshold_s": "stt.segmentMerge.gapThresholdS",
     # ── gateway call budget ──────────────────────────────────────────────────
     # The gateway URL and key stay in env (bootstrap transport — they are how
@@ -173,7 +177,9 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "streaming_audio_trim_interval_s": "stt.streaming.audioTrimIntervalS",
     "streaming_extra_filler_patterns": "stt.streaming.extraFillerPatterns",
     "streaming_punctuation_timeout_s": "stt.streaming.punctuationTimeoutS",
-    "streaming_partial_window_s": "stt.streaming.partialWindowS",
+    # `streaming_partial_window_s` was mapped here until TASK-880. Its own description
+    # said to set it to "the whisper.cpp force-emit window", which makes it a property of
+    # the ASR MODEL: it is now `AiModel._metadata.asr.partialWindowSec`.
     "streaming_result_stream_expire_s": "stt.streaming.resultStreamExpireS",
     "streaming_session_metadata_expire_s": "stt.streaming.sessionMetadataExpireS",
     # `streaming_partial_interval_s` and the six `semantic_endpoint_*` keys were
@@ -257,9 +263,9 @@ def _acceptable(current: Any, served: Any) -> bool:
     if isinstance(current, str):
         return isinstance(served, str)
     if current is None:
-        # `str | None` fields (vad_model_path, azure_speech_region,
-        # azure_foundry_endpoint, parakeet_cpp_library_path,
-        # punctuation_model_cache_dir).
+        # `str | None` fields (`parakeet_cpp_library_path`,
+        # `punctuation_model_cache_dir` — the other three went with TASK-880's
+        # provider-connection and model-row moves).
         #
         # An EMPTY STRING is how these five spell "no opinion" on the wire. The
         # registry has no null literal for a `string` descriptor, so their

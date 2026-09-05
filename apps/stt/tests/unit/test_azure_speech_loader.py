@@ -10,7 +10,6 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
 
 from stt.core.exceptions import CloudASRAuthError
 from stt.models.azure_speech_loader import (
@@ -193,33 +192,32 @@ class TestAzureSpeechLoaderLoad:
     # Azure Speech is BYOK-only. The subscription KEY comes solely from
     # the per-tenant / SYSTEM provider-connection override (gateway wire:
     # provider_overrides["azure-speech"]["api_key"]); env is never a key source and
-    # the compute_type "key:" inline path is removed. The REGION stays env/config.
+    # the compute_type "key:" inline path is removed.
+    #
+    # TASK-880 — so does the REGION. `stt.azureSpeech.region` is deleted: an override
+    # entry exists ONLY behind an enabled, keyed row, and that row carries `region`, so
+    # the platform key could only ever patch a row that forgot to set its own.
     _BYOK = {"azure-speech": {"api_key": "byok-azure-key"}}
+    _BYOK_WITH_REGION = {"azure-speech": {"api_key": "byok-azure-key", "region": "centralus"}}
 
     @pytest.mark.asyncio
     async def test_load_with_override_credentials(self, loader):
-        """Successful load using a BYOK override key + config/env region."""
+        """Successful load using a BYOK override key + a config-supplied region."""
         config = create_azure_model_config(source_uri="eastus")
 
         mock_speech_config = MagicMock()
 
         with (
-            patch("stt.models.azure_speech_loader.get_settings") as mock_settings,
             patch(
                 "stt.models.azure_speech_loader.SpeechConfig",
                 return_value=mock_speech_config,
             ) as mock_sc_class,
         ):
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=None,
-                azure_speech_region="westeurope",
-            )
-
             result = await loader.load(config, provider_overrides=self._BYOK)
 
             # Verify SpeechConfig was created with correct args
             mock_sc_class.assert_called_once_with(subscription="byok-azure-key", region="eastus")
-            # region from source_uri takes priority over settings
+            # region from source_uri takes priority over the connection row
             assert isinstance(result, LoadedModel)
             assert result.model_slug == "azure-speech"
             assert result.format == AiModelFormat.AZURE_SPEECH
@@ -229,8 +227,9 @@ class TestAzureSpeechLoaderLoad:
             assert result.extra["provider"] == "azure_speech"
 
     @pytest.mark.asyncio
-    async def test_load_falls_back_to_settings_region(self, loader):
-        """Test that region falls back to settings when not in config."""
+    async def test_region_falls_back_to_the_connection_row(self, loader):
+        """TASK-880 — with no region in the model config, the region comes off the
+        SAME connection row that carried the credential, not from a platform key."""
         config = create_azure_model_config(
             source_uri="openai/whisper-large",  # URI, not a region
             source_revision=None,
@@ -239,39 +238,27 @@ class TestAzureSpeechLoaderLoad:
         mock_speech_config = MagicMock()
 
         with (
-            patch("stt.models.azure_speech_loader.get_settings") as mock_settings,
             patch(
                 "stt.models.azure_speech_loader.SpeechConfig",
                 return_value=mock_speech_config,
             ) as mock_sc_class,
         ):
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=None,
-                azure_speech_region="centralus",
-            )
+            _result = await loader.load(config, provider_overrides=self._BYOK_WITH_REGION)
 
-            _result = await loader.load(config, provider_overrides=self._BYOK)
-
-            # Should use settings region since source_uri looks like a URL
+            # source_uri looks like a URL, so the row's `region` serves.
             mock_sc_class.assert_called_once_with(subscription="byok-azure-key", region="centralus")
 
     @pytest.mark.asyncio
     async def test_load_raises_when_no_key(self, loader):
-        """No override key raises CloudASRAuthError (env is not a key source)."""
-        config = create_azure_model_config()
+        """No override entry raises CloudASRAuthError (env is not a key source)."""
+        config = create_azure_model_config(source_uri="eastus")
 
-        with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=SecretStr("env-key-must-be-ignored"),
-                azure_speech_region="eastus",
-            )
+        with pytest.raises(CloudASRAuthError) as exc_info:
+            await loader.load(config)
 
-            with pytest.raises(CloudASRAuthError) as exc_info:
-                await loader.load(config)
-
-            assert "BYOK-only" in str(exc_info.value)
-            assert exc_info.value.details["has_key"] is False
-            assert exc_info.value.details["has_region"] is True
+        assert "BYOK-only" in str(exc_info.value)
+        assert exc_info.value.details["has_key"] is False
+        assert exc_info.value.details["has_region"] is True
 
     @pytest.mark.asyncio
     async def test_load_raises_when_no_region(self, loader):
@@ -281,35 +268,25 @@ class TestAzureSpeechLoaderLoad:
             source_revision=None,
         )
 
-        with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=None,
-                azure_speech_region=None,
-            )
+        with pytest.raises(CloudASRAuthError) as exc_info:
+            await loader.load(config, provider_overrides=self._BYOK)
 
-            with pytest.raises(CloudASRAuthError) as exc_info:
-                await loader.load(config, provider_overrides=self._BYOK)
-
-            assert "AZURE_SPEECH_REGION" in str(exc_info.value)
-            assert exc_info.value.details["has_key"] is True
-            assert exc_info.value.details["has_region"] is False
+        # TASK-880 — the message names the ROW, not the deleted AZURE_SPEECH_REGION.
+        assert "AZURE_SPEECH_REGION" not in str(exc_info.value)
+        assert "`region` set on the same row" in str(exc_info.value)
+        assert exc_info.value.details["has_key"] is True
+        assert exc_info.value.details["has_region"] is False
 
     @pytest.mark.asyncio
     async def test_load_raises_when_both_missing(self, loader):
         """Test that missing key and region raises CloudASRAuthError."""
         config = create_azure_model_config(source_uri=None, source_revision=None)
 
-        with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=None,
-                azure_speech_region=None,
-            )
+        with pytest.raises(CloudASRAuthError) as exc_info:
+            await loader.load(config)
 
-            with pytest.raises(CloudASRAuthError) as exc_info:
-                await loader.load(config)
-
-            assert exc_info.value.details["has_key"] is False
-            assert exc_info.value.details["has_region"] is False
+        assert exc_info.value.details["has_key"] is False
+        assert exc_info.value.details["has_region"] is False
 
     @pytest.mark.asyncio
     async def test_load_compute_type_key_prefix_is_not_a_key_source(self, loader):
@@ -319,16 +296,10 @@ class TestAzureSpeechLoaderLoad:
             compute_type="key:inline-secret-key",
         )
 
-        with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=None,
-                azure_speech_region="westus",
-            )
+        with pytest.raises(CloudASRAuthError) as exc_info:
+            await loader.load(config)
 
-            with pytest.raises(CloudASRAuthError) as exc_info:
-                await loader.load(config)
-
-            assert exc_info.value.details["has_key"] is False
+        assert exc_info.value.details["has_key"] is False
 
     @pytest.mark.asyncio
     async def test_load_enables_word_timestamps(self, loader):
@@ -338,17 +309,11 @@ class TestAzureSpeechLoaderLoad:
         mock_speech_config = MagicMock()
 
         with (
-            patch("stt.models.azure_speech_loader.get_settings") as mock_settings,
             patch(
                 "stt.models.azure_speech_loader.SpeechConfig",
                 return_value=mock_speech_config,
             ),
         ):
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=None,
-                azure_speech_region="eastus",
-            )
-
             await loader.load(config, provider_overrides=self._BYOK)
 
             mock_speech_config.request_word_level_timestamps.assert_called_once()
@@ -364,17 +329,11 @@ class TestAzureSpeechLoaderLoad:
         mock_speech_config = MagicMock()
 
         with (
-            patch("stt.models.azure_speech_loader.get_settings") as mock_settings,
             patch(
                 "stt.models.azure_speech_loader.SpeechConfig",
                 return_value=mock_speech_config,
             ),
         ):
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=None,
-                azure_speech_region="westus2",
-            )
-
             result = await loader.load(config, provider_overrides=self._BYOK)
 
             assert result.model_id == "m-test-42"

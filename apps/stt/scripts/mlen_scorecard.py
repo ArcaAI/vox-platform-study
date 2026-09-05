@@ -4,7 +4,7 @@
 Runs each labeled clip in a directory through the REAL ``WhisperCppAsrAdapter``
 (so it exercises the shipped greedy / language / prompt / clean-text / length-guard
 behaviour), reports **CER** per clip and the mean, and writes a scorecard JSON.
-Use it to tune ``WHISPER_CPP_MAX_AUDIO_SECONDS`` and the other whisper.cpp knobs
+Use it to tune the decode window (``--max-audio-seconds``) and the other whisper.cpp knobs
 as the labeled set grows.
 
 ``_norm`` (below) is exactly three steps — NFC normalize, collapse whitespace
@@ -112,8 +112,6 @@ def main() -> int:
 
     if not args.gguf:
         ap.error("--gguf (or WHISPER_MLEN_GGUF) is required")
-    if args.max_audio_seconds is not None:
-        os.environ["WHISPER_CPP_MAX_AUDIO_SECONDS"] = str(args.max_audio_seconds)
 
     from pywhispercpp.model import Model
 
@@ -124,9 +122,16 @@ def main() -> int:
         format=AiModelFormat.WHISPER_CPP, device="auto",
         extra={"model_path": args.gguf, "num_threads": 4},
     )
-    adapter = WhisperCppAsrAdapter(
-        loaded, type("C", (), {"language": args.language})(), want_word_timestamps=False
-    )
+    # TASK-880 — the decode window is `InferenceConfig.max_decode_window_sec`
+    # (from `AiModel._metadata.asr.maxDecodeWindowSec`), not the deleted env var
+    # `WHISPER_CPP_MAX_AUDIO_SECONDS`. `0.0` disables the split guard, matching a row
+    # that declares no window.
+    inference_config = type(
+        "C",
+        (),
+        {"language": args.language, "max_decode_window_sec": args.max_audio_seconds or 0.0},
+    )()
+    adapter = WhisperCppAsrAdapter(loaded, inference_config, want_word_timestamps=False)
 
     clips = _discover(args.clips_dir)
     if not clips:
@@ -152,7 +157,7 @@ def main() -> int:
     print(f"MEAN CER over {len(rows)} clips: {mean:.3f}")
 
     scorecard = {"model": os.path.basename(args.gguf), "language": args.language,
-                 "max_audio_seconds": os.environ.get("WHISPER_CPP_MAX_AUDIO_SECONDS", "default"),
+                 "max_audio_seconds": args.max_audio_seconds or "disabled",
                  "mean_cer": round(mean, 4), "clips": rows}
     if args.out:
         Path(args.out).write_text(json.dumps(scorecard, ensure_ascii=False, indent=2), encoding="utf-8")
