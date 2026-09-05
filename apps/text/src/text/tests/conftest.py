@@ -10,14 +10,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from pydantic import SecretStr
 
 # Refuse to run against another checkout's source (git-worktree false-greens).
 # See scripts/pytest-support/hope_worktree_guard.py. Every shared package this
 # service imports is listed, so a `pythonpath` entry that quietly drops out of
 # `pyproject.toml` fails the run instead of testing the primary checkout.
 from hope_worktree_guard import assert_source_tree
+from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
 assert_source_tree(
     ["text", "hope_env", "hope_otel", "hope_async_contract", "hope_runtime_models"], __file__

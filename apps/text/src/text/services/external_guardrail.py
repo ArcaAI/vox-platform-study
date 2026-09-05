@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -79,6 +80,102 @@ class ExternalGuardrailClient:
             }
 
         text = prompt if not system_prompt else f"{system_prompt}\n\n{prompt}"
+
+        def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            is_medical = bool(payload.get("is_medical", False))
+            return {
+                "allowed": is_medical if posture.require_medical else True,
+                "is_medical": is_medical,
+                "confidence": float(payload.get("confidence", 0.0)),
+                "reason": payload.get("reasoning")
+                or payload.get("error")
+                or "medical_validation_completed",
+                "raw": payload,
+            }
+
+        verdict, last_error = await self._post_verdict(
+            "/api/medical/validate",
+            {"text": text, "include_reasoning": posture.include_reasoning},
+            headers=self._headers(tenant_id),
+            posture=posture,
+            parse=_parse,
+        )
+        if verdict is not None:
+            return verdict
+        return {
+            "allowed": False,
+            "is_medical": False,
+            "confidence": 0.0,
+            "reason": GUARDRAIL_UNAVAILABLE_REASON,
+            "error": last_error,
+        }
+
+    async def screen_output(
+        self,
+        response: str,
+        *,
+        source_context: str | None = None,
+        tenant_id: str | None = None,
+        tenant_policy: Any = None,
+    ) -> dict[str, Any]:
+        """Screen a model RESPONSE under the resolved posture (TASK-871).
+
+        The post-receive half of the moderation gate. Posts the assembled
+        completion to guardrail's outbound screen
+        (``POST /api/v1/guardrail/screen/outbound``), which runs the
+        response-safety / toxicity / refusal classifiers, a PII-leak check against
+        ``source_context`` (the prompt the response was generated FROM — without
+        it that check is reported ``skipped``, never ``pass``) and containment-echo
+        detection. Guardrail's own decision is fail-CLOSED: a check that could not
+        run yields ``decision: "block"``.
+
+        The verdict shape mirrors :meth:`validate` so both halves of the gate read
+        the same keys: ``allowed`` (``decision == "allow"``), ``reason`` (the first
+        of guardrail's ``reasons[]`` — check names and labels only, never text) and
+        ``raw``. A payload with no recognisable ``decision`` is
+        ``allowed: False, reason: "malformed_verdict"`` — guardrail answered, so
+        this is a rejection rather than an outage. Transport and HTTP failures ride
+        the same bounded retry as the input gate and exhaust to the same
+        ``GUARDRAIL_UNAVAILABLE_REASON``. ``tenant_policy`` folds over the
+        platform posture exactly as on the input side; only its transport fields
+        (switch, timeout, retry budget) apply here — ``require_medical`` is an
+        input-direction question.
+        """
+        posture = resolve_posture(self._platform_posture(), tenant_policy)
+        if not posture.enabled:
+            return {"allowed": True, "reason": "external_guardrail_disabled"}
+
+        def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            decision = payload.get("decision")
+            if decision not in ("allow", "block"):
+                return {"allowed": False, "reason": "malformed_verdict", "raw": payload}
+            reasons = payload.get("reasons")
+            first = reasons[0] if isinstance(reasons, list) and reasons else None
+            allowed = decision == "allow"
+            return {
+                "allowed": allowed,
+                "reason": (
+                    str(first) if first else ("output_screened" if allowed else "output_blocked")
+                ),
+                "raw": payload,
+            }
+
+        verdict, last_error = await self._post_verdict(
+            "/api/v1/guardrail/screen/outbound",
+            {"response": response, "source_context": source_context},
+            headers=self._headers(tenant_id),
+            posture=posture,
+            parse=_parse,
+        )
+        if verdict is not None:
+            return verdict
+        return {
+            "allowed": False,
+            "reason": GUARDRAIL_UNAVAILABLE_REASON,
+            "error": last_error,
+        }
+
+    def _headers(self, tenant_id: str | None) -> dict[str, str]:
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
@@ -86,42 +183,46 @@ class ExternalGuardrailClient:
         # provider/model from the DB.
         if tenant_id:
             headers["X-Tenant-Id"] = tenant_id
+        return headers
 
-        # Bounded retry: total tries = max_retries + 1. A transient blip is
-        # absorbed (a clean re-check proceeds); only a sustained outage exhausts the
-        # budget and fails CLOSED below.
-        #
-        # Latency ceiling: under a HANG-style outage (each attempt burns the full
-        # timeout_s) worst-case added latency is bounded but non-trivial —
-        # ~= (max_retries + 1) * timeout_s + sum(backoff) ~= 30s at the defaults
-        # (3 * 10s + 0.3s) before the 503. The degrade-safe path therefore relies on
-        # the CALLER's own request timeout as the outer bound; do not raise the
-        # defaults without accounting for this ceiling.
+    async def _post_verdict(
+        self,
+        path: str,
+        body: dict[str, Any],
+        *,
+        headers: dict[str, str],
+        posture: GuardrailPosture,
+        parse: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> tuple[dict[str, Any] | None, str]:
+        """POST under the bounded retry; ``(verdict, "")`` or ``(None, last_error)``.
+
+        The ONE retry/fail-closed loop both gate halves share. ``parse`` runs
+        INSIDE the attempt so a payload the mapper cannot read is retried as a
+        transient error, exactly as it always was for :meth:`validate`.
+
+        Bounded retry: total tries = max_retries + 1. A transient blip is
+        absorbed (a clean re-check proceeds); only a sustained outage exhausts the
+        budget and fails CLOSED in the caller.
+
+        Latency ceiling: under a HANG-style outage (each attempt burns the full
+        timeout_s) worst-case added latency is bounded but non-trivial —
+        ~= (max_retries + 1) * timeout_s + sum(backoff) ~= 30s at the defaults
+        (3 * 10s + 0.3s) before the 503. The degrade-safe path therefore relies on
+        the CALLER's own request timeout as the outer bound; do not raise the
+        defaults without accounting for this ceiling.
+        """
         attempts = posture.max_retries + 1
         last_error = ""
         for attempt in range(attempts):
             try:
                 response = await self.http_client.post(
-                    f"{self.base_url}/api/medical/validate",
-                    json={
-                        "text": text,
-                        "include_reasoning": posture.include_reasoning,
-                    },
+                    f"{self.base_url}{path}",
+                    json=body,
                     headers=headers,
                     timeout=posture.timeout_s,
                 )
                 response.raise_for_status()
-                payload = response.json()
-                is_medical = bool(payload.get("is_medical", False))
-                return {
-                    "allowed": is_medical if posture.require_medical else True,
-                    "is_medical": is_medical,
-                    "confidence": float(payload.get("confidence", 0.0)),
-                    "reason": payload.get("reasoning")
-                    or payload.get("error")
-                    or "medical_validation_completed",
-                    "raw": payload,
-                }
+                return parse(response.json()), ""
             except Exception as exc:
                 last_error = str(exc)
                 is_last = attempt + 1 >= attempts
@@ -141,18 +242,12 @@ class ExternalGuardrailClient:
 
         # Bounded retry exhausted → fail CLOSED with a deterministic not-allowed
         # verdict. There is deliberately no fail-open branch: an errored guardrail can
-        # never ship an unmoderated PHI prompt. The gate maps this reason to a
-        # retryable 503.
+        # never ship an unmoderated PHI prompt, or an unscreened response. The gate
+        # maps this reason to a retryable 503.
         logger.error(
             "external_guardrail.exhausted_fail_closed",
             attempts=attempts,
             error=last_error,
             base_url=self.base_url,
         )
-        return {
-            "allowed": False,
-            "is_medical": False,
-            "confidence": 0.0,
-            "reason": GUARDRAIL_UNAVAILABLE_REASON,
-            "error": last_error,
-        }
+        return None, last_error
