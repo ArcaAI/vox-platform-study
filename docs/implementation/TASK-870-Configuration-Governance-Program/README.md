@@ -121,12 +121,27 @@ Prisma schema changes (`AiTaskDefault` table drop, `TenantFrontendConfig` client
 display-only `PlanEntitlement` columns); `nlp.logging.*` removal (needs the deployment repo
 confirmed for stdout logging); `apps/stt/src/stt/pipeline/spec.py` (wave 2 ASR wiring).
 
-### Wave 2 — agent-first text, ASR spec wiring, schema drops
+### Wave 2 — agent-first text, ASR spec wiring, guardrail outbound (base: wave-1 close commit)
 
-Agent-first text on both lanes (TEXT_GENERATION `fallback` block + `AgentModelFallback`
-reader + realtime `CoreAgentHandler` resolving `agentRef` + `resolveTextSelection`); wire the
-dropped `ResolvedAsrSpec` fields and widen `decoding`, then delete the 8 platform duplicates;
-the Prisma drops above; `nlp.logging.*`.
+| Lane | Ticket | Scope | Owns (exclusive) | Tier |
+|---|---|---|---|---|
+| A | TASK-876 | Agent-first text on both lanes: TEXT_GENERATION `fallback` block and SPEECH_TO_TEXT `decoding.{chunkLengthSec,strideLengthSec}` in the agent schema; a runtime reader for `AgentModelFallback` on TEXT_GENERATION; realtime `CoreAgentHandler` resolves `agentRef`, else the assigned agent; `resolveTextSelection` precedence 1 → the assigned TEXT_GENERATION agent; both lanes fall back to the SYSTEM-assigned agent on primary failure, honouring the per-agent-node toggle, funding derived per row | `packages/workflow-contract/src/agent-schemas.ts`, `packages/applications/src/services/{agent,agent-assignment,harness-policy,consultation/live-documentation}/**`, `apps/harness/src/harness/temporal/nodes/**`, `apps/harness/src/harness/temporal/_llm_policy.py`, their tests | fable |
+| B | TASK-877 | ASR spec wiring: map `streaming.{partialIntervalMs,endpointing,maxUtteranceSec}`, `decoding.vadFilter` and the two chunking fields (declared optional on the Python wire) in `pipeline_spec_from_resolved`; an end-of-utterance model role; `build-resolved-asr-spec.ts` maps the new agent parameters; then delete the eight platform duplicates (`stt.streaming.partialIntervalS`, `stt.semanticEndpoint.*`), the dead override branches at `execution_profile.py:377-387`, and turn the punctuation boot gate into a lazy per-spec load | `apps/stt/src/stt/{pipeline,streaming,punctuation}/**`, `apps/stt/src/stt/core/control_plane.py`, `apps/stt/tests/**`, `packages/types/src/asr-spec.ts`, `tests/contracts/resolved-asr-spec.fixture.json`, `packages/applications/src/services/stt/agent-resolver/**`, `packages/applications/src/services/settings-registry/descriptors/stt-runtime.descriptors.ts` + its test | opus |
+| C | TASK-878 | Guardrail outbound gaps from TASK-871: `jailbreak_detection` in `OUTBOUND_TASKS`, `usage_detail` on `ScreenResponse`, the containment-echo nonce; judge `temperature`/`maxTokens` from `config.py:32-33` literals to `AiModel._metadata.policy` (seeded on the guardian rows, resolved via `policy.py`); a new `guardrail.judge.timeoutSeconds` descriptor on the pull route replacing `config.py:34` | `apps/guardrail/**`, `apps/text/src/text/services/{external_guardrail,output_gate}.py` + tests, a new `descriptors/guardrail-judge.descriptors.ts` + its `registry.ts` spread + test, `packages/database/src/prisma/db_main/seed/06-ai-models.ts` + seed tests | opus |
+
+Orchestrator-owned in wave 2 (shared surfaces, serialised after the lanes): the Prisma drops
+(`AiTaskDefault` table + trio + `CoreDatabaseModule` registration; the five `TenantFrontendConfig`
+client-AI columns; the three display-only `PlanEntitlement` columns; the per-tenant guardrail
+availability column) — the Prisma CLI refuses a Claude-invoked migration, so these go through
+the `prisma-local` MCP or the owner; `nlp.logging.*` removal once the deployment repo confirms
+stdout logging; post-merge artifact regeneration; the e2e matrix at close.
+
+Disjointness: A owns the agent schema file and B only reads its shape (`build-resolved-asr-spec`
+maps `parameters` it receives, testable with fixtures); B owns `stt-runtime.descriptors.ts`
+and does not touch `registry.ts`, which C edits for one spread line; C's two `apps/text`
+files are the guardrail client and the output gate, which A never touches. Every worktree is
+pre-built by the orchestrator (`pnpm install`, `pnpm db:generate`, `turbo run build`) before
+its agent starts — both C and D in wave 1 lost time discovering an empty `dist/`.
 
 ### Wave 3 — resolution capabilities and governance
 
