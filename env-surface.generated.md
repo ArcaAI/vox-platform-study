@@ -20,7 +20,7 @@ disagree with those declarations.
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 23 |
 | Python declared fields | 339 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 388 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 387 |
 | `turbo.json#globalEnv` entries | 516 |
 
 ## Variables — the TypeScript platform surface
@@ -551,7 +551,6 @@ promotion into its service’s `BaseSettings`.
 | `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/nlp/src/nlp/models/source_resolver.py`, `apps/stt/src/stt/models/source_resolver.py`, `apps/tts/src/tts/models/source_resolver.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
 | `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py` |
-| `LOG_FILE_PATH` | `apps/nlp/src/nlp/core/logging.py` |
 | `NLP_MODEL_LOCAL_ROOTS` | `apps/nlp/src/nlp/core/guard_model_reference.py` |
 | `OMP_NUM_THREADS` | `apps/stt/src/stt/main.py` |
 | `OPENAI_API_KEY` | `apps/harness/eval/promptfoo/provider.py` |
