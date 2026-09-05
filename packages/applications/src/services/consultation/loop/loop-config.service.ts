@@ -19,7 +19,8 @@ import { IActiveUserContext } from '../../../interfaces';
 import { ContextPrimitive, type ContextKindDeclaration } from '../../consultation-context-schema/context-schema-definition';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
-import { CONSULTATION_ENDPOINT_ACTIONS_DEFAULT, CONSULTATION_ENDPOINT_ACTIONS_KEY, resolveEndpointSequence } from './endpoint-sequence';
+import type { WorkflowGraph } from '@arcaai/workflow-contract';
+import { endpointSequenceFromGraph, resolveEndpointSequence } from './endpoint-sequence';
 import { ILoopConfigService } from './ILoopConfigService';
 import { HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT, HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY } from './loop-lifecycle.constants';
 import { LoopConfigResponse, LoopSubscriptionDto } from './dto';
@@ -102,7 +103,7 @@ function declaredKinds(version: ConsultationContextSchemaVersionEntity | null): 
  * | `agentId` | the governing `WorkflowDefinition`'s SLUG — its identity across versions |
  * | `agentConfigVersionId` | that definition's ROW id; rows ARE versions, so the row IS the pin |
  * | `subscriptions` | the kinds the servable context schema DECLARES, crossed with their primitives |
- * | `startActions` / `endingActions` | the tenant's ordered `consultation.endpoint.actions` list |
+ * | `startActions` / `endingActions` | the endpoint chain the governing definition's graph declares (TASK-882), else the platform default |
  * | `agents[]` / `reasoningEnabled` | retired with `DepartmentAgentRole` — `[]` / `false` |
  *
  * The two identifier FIELD NAMES are deliberately unchanged. `agent_id` and
@@ -113,11 +114,11 @@ function declaredKinds(version: ConsultationContextSchemaVersionEntity | null): 
  * ## Two levers that left, and why nothing replaced them
  *
  * The agent carried `alwaysActions` (EXTEND) and `neverActions` (VETO) over the
- * endpoint stage. Both are subsumed by the ordered
- * `consultation.endpoint.actions` list introduced, which can add,
- * ORDER and omit — strictly more than the two levers could express between
- * them. `resolveEndpointSequence` still accepts them as optional inputs (they
- * are its own tested contract); this service simply no longer supplies any.
+ * endpoint stage; an admin-ordered `consultation.endpoint.actions` setting then
+ * subsumed both. TASK-882 retired all three: the stage is a property of the
+ * workflow that closes the consultation, so it is read off the governing
+ * graph's endpoint nodes (presence + `enabled`, in edge order), and a graph that
+ * declares none runs the platform default.
  *
  * The PRIMARY/SPECIALIST roster was expressed entirely in `DepartmentAgentRole`,
  * an enum this ticket drops, and the graph substrate has no equivalent concept.
@@ -200,7 +201,7 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
 
     const kinds = declaredKinds(servableVersion);
     const subscriptions = this.buildSubscriptions(kinds);
-    const { startActions, endingActions } = this.deriveStartAndEndingActions(tenantId);
+    const { startActions, endingActions } = this.deriveStartAndEndingActions(definition);
 
     return {
       enabled: true,
@@ -309,26 +310,14 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
   }
 
   /**
-   * The tenant's ORDERED endpoint sequence (D-10).
-   *
-   * Read here, once per consultation, for the same reason the idle bound is: this is the
-   * resolution the workflow PINS at start, so a mid-consultation edit cannot reorder the stage of
-   * a run already underway. `resolve` (not `resolvePlatform`) because the key is
-   * `maxScope: 'tenant'` — the endpoint stage is where a tenant's own compliance posture shows
-   * up, and the read path enforces the same clamp the write path does.
-   *
-   * Anything other than an array of strings degrades to the platform default rather than to an
-   * empty stage. A malformed `GlobalSetting` row must never mean "close consultations without
-   * finalizing them"; `resolveEndpointSequence` applies the same rule to the entries themselves.
-   */
-  private resolveConfiguredEndpointActions(tenantId: string): readonly string[] {
-    if (!this.tenantSettings) return CONSULTATION_ENDPOINT_ACTIONS_DEFAULT;
-    const resolved = this.tenantSettings.resolve<unknown>(CONSULTATION_ENDPOINT_ACTIONS_KEY, tenantId).value;
-    return Array.isArray(resolved) ? (resolved as readonly string[]) : CONSULTATION_ENDPOINT_ACTIONS_DEFAULT;
-  }
-
-  /**
    * The consultation's start actions and its ENDPOINT SEQUENCE.
+   *
+   * TASK-882: the stage is the chain the governing definition's graph declares — endpoint nodes
+   * present and `enabled`, in edge order (`endpointSequenceFromGraph`) — read here, once per
+   * consultation, because this is the resolution the workflow PINS at start, so a republish
+   * cannot reorder the stage of a run already underway. A definition that declares no endpoint
+   * node (or no definition at all) runs the platform default: "nobody authored this" must never
+   * mean "close consultations without finalizing them".
    *
    * `hasStreamAudio` is FALSE, unconditionally, and that is a decision rather than a stub. The
    * live-documentation lifecycle is not this loop's to drive: `consultation.controller.ts` owns
@@ -340,13 +329,14 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
    * exactly. `resolveEndpointSequence` still drops `livedoc.stop` on this input, which is the
    * stage every consultation runs today.
    *
-   * `alwaysActions` / `neverActions` are no longer supplied — see the class docstring.
+   * `alwaysActions` / `neverActions` are gone with the setting — see the class docstring.
    */
-  private deriveStartAndEndingActions(tenantId: string): { startActions: string[]; endingActions: string[] } {
+  private deriveStartAndEndingActions(definition: WorkflowDefinitionEntity | null): { startActions: string[]; endingActions: string[] } {
+    const graph = (definition?.graph ?? null) as unknown as WorkflowGraph | null;
     return {
       startActions: [],
       endingActions: resolveEndpointSequence({
-        configured: this.resolveConfiguredEndpointActions(tenantId),
+        declared: endpointSequenceFromGraph(graph),
         hasStreamAudio: false,
       }),
     };

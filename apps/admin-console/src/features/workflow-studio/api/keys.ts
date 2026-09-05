@@ -24,9 +24,4 @@ export const workflowStudioKeys = {
   // legitimately referenced from several definitions).
   promptBindings: (definitionId: string) => [...workflowStudioKeys.root, 'prompt-bindings', definitionId] as const,
   promptTemplateVersions: (promptTemplateId: string) => [...workflowStudioKeys.root, 'prompt-template-versions', promptTemplateId] as const,
-  // (D-10) — the ordered consultation endpoint sequence. Keyed by SCOPE because the
-  // key is `maxScope: 'tenant'`: the platform row and the caller tenant's override are two
-  // different rows with two different ETags, and caching them under one key would precondition a
-  // tenant write on the platform row's version (a permanent 412).
-  endpointSequence: (scope: string) => [...workflowStudioKeys.root, 'endpoint-sequence', scope] as const,
 };

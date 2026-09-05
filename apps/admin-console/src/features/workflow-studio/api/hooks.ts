@@ -38,7 +38,6 @@ import type {
   UpdateNodePromptRequest,
   UpsertWorkflowAssignmentRequest,
 } from './types';
-import { getEndpointSequence, putEndpointSequence } from './endpoint-sequence';
 
 export function useWorkflowDefinitions(params?: ListWorkflowDefinitionsParams) {
   return useQuery({ queryKey: [...workflowStudioKeys.list(), params ?? {}], queryFn: () => listWorkflowDefinitions(params) });
@@ -209,33 +208,6 @@ export function useUpdateNodePrompt() {
 // ===========================================================================
 // (D-10) — the ordered consultation endpoint sequence
 // ===========================================================================
-
-/**
- * The endpoint sequence at one scope, with the ETag the write will precondition on.
- *
- * `scope` selects WHICH ROW the returned version refers to, and getting it wrong is a permanent
- * 412 rather than a visible error: a `maxScope: 'tenant'` key has two rows, and preconditioning a
- * tenant write on the platform row's version can never succeed. So the read asks for the same
- * scope the write will target — hence the scope in the query key too.
- */
-export function useEndpointSequence(scope: 'system' | 'tenant', enabled = true) {
-  return useQuery({
-    queryKey: workflowStudioKeys.endpointSequence(scope),
-    queryFn: () => getEndpointSequence(scope),
-    enabled,
-  });
-}
-
-export function usePutEndpointSequence() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ value, scope, etag }: { value: string[]; scope: 'system' | 'tenant'; etag: string | null }) =>
-      putEndpointSequence(value, scope, etag),
-    // BOTH scopes. A platform write changes what every tenant without an override resolves to, so
-    // the tenant-scope read is stale even though its own row never moved.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [...workflowStudioKeys.root, 'endpoint-sequence'] }),
-  });
-}
 
 /** The `core.agent` picker's options (TASK-864 B1). Retries are off: a 404 means the agent surface is not there yet, and the picker falls back to a slug box. */
 export function useAgentOptions(task: string, enabled = true) {

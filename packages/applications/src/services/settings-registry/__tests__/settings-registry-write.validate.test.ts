@@ -2,22 +2,18 @@
  * Settings-registry write lane — the descriptor-declared INVARIANT hook.
  *
  * `dataType` can say "an array of strings". It cannot say "this entry must come before that
- * one", and for the consultation endpoint sequence that gap is a clinical-safety hole:
- * `harness.finalize` WRITES the note, `summary.finalize` LOCKS every document of the
- * consultation. Saved in that order the consultation locks an empty record and then has nowhere
- * to put the note — silent loss of the consultation record, from a settings write that the
- * membership check happily accepted.
+ * one", and an ordered list is exactly where that gap bites. The hook is
+ * `SettingDescriptor.validate`, and the point of these tests is that it is DESCRIPTOR-DRIVEN
+ * exactly like every other guard in this lane: the write service names no key. They prove it by
+ * patching `validate` onto an UNRELATED descriptor and watching the same enforcement point fire.
  *
- * The hook is `SettingDescriptor.validate`, and the point of these tests is that it is
- * DESCRIPTOR-DRIVEN exactly like every other guard in this lane: the write service must contain
- * no `if (key === 'consultation.endpoint.actions')`. The last two cases prove that by patching
- * `validate` onto an UNRELATED descriptor and watching the same enforcement point fire.
+ * (The hook's first exemplar, the `consultation.endpoint.actions` ordering invariant, retired
+ * with that key in TASK-882 — the endpoint stage is read off the assigned graph now. The hook
+ * itself stays in use: `mcp-egress.descriptors.ts` declares one.)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
 import { SettingsRegistryWriteService } from '../settings-registry-write.service';
-import { CONSULTATION_ENDPOINT_ACTIONS_KEY } from '../../consultation/loop/endpoint-sequence';
 
 const appSettings = { getFromCache: vi.fn(), getValueFromCache: vi.fn(), refreshCache: vi.fn().mockResolvedValue(undefined) };
 const globalSettings = { update: vi.fn(), create: vi.fn() };
@@ -45,43 +41,6 @@ beforeEach(() => {
   globalSettingRepository.findFirst.mockResolvedValue(null);
   globalSettings.create.mockResolvedValue({ id: 'row-1', version: 1 });
   globalSettings.update.mockResolvedValue({ id: 'row-1', version: 2 });
-});
-
-describe('SettingsRegistryWriteService — consultation endpoint ORDERING invariant', () => {
-  it('REFUSES a sequence that locks the documents before the note is written', async () => {
-    const svc = buildService();
-    await expect(
-      svc.write(CONSULTATION_ENDPOINT_ACTIONS_KEY, ['livedoc.stop', 'summary.finalize', 'harness.finalize']),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
-    expect(globalSettings.create).not.toHaveBeenCalled();
-  });
-
-  it('says WHY, naming both steps, so the admin can act on the refusal', async () => {
-    const svc = buildService();
-    await expect(svc.write(CONSULTATION_ENDPOINT_ACTIONS_KEY, ['summary.finalize', 'harness.finalize'])).rejects.toThrow(
-      /harness\.finalize[\s\S]*summary\.finalize|summary\.finalize[\s\S]*harness\.finalize/,
-    );
-  });
-
-  it('accepts the platform default order', async () => {
-    const svc = buildService();
-    await expect(
-      svc.write(CONSULTATION_ENDPOINT_ACTIONS_KEY, ['livedoc.stop', 'session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture']),
-    ).resolves.toBeDefined();
-  });
-
-  // CONDITIONAL on purpose. An admin who drops `harness.finalize` entirely is making a
-  // legitimate choice (the realtime lane writes its own sections); only the inverted
-  // BOTH-present case is a refusal.
-  it('accepts a sequence that locks documents with no note-generation step at all', async () => {
-    const svc = buildService();
-    await expect(svc.write(CONSULTATION_ENDPOINT_ACTIONS_KEY, ['livedoc.stop', 'summary.finalize'])).resolves.toBeDefined();
-  });
-
-  it('accepts a sequence that writes the note and never locks', async () => {
-    const svc = buildService();
-    await expect(svc.write(CONSULTATION_ENDPOINT_ACTIONS_KEY, ['harness.finalize', 'feedback.capture'])).resolves.toBeDefined();
-  });
 });
 
 describe('SettingsRegistryWriteService — the validate hook is generic, not per-key', () => {

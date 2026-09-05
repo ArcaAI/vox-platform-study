@@ -1234,12 +1234,13 @@ LOOP_ACTION_NLP_EXTRACT_ENTITIES = "nlp.extract_entities"
 LOOP_ACTION_HARNESS_FINALIZE = "harness.finalize"
 LOOP_ACTION_CLIENT_EMIT = "client.emit"
 
-# the ENDPOINT STAGE's three action keys. These are the SAME strings as the three
-# `trigger: 'on-end'` node types in `packages/workflow-contract/src/node-registry.ts`, and that
-# is the point: the endpoint sequence an admin orders is a list of these keys, whether the
-# consultation runs on the legacy loop (which dispatches them here) or on an authored graph
-# (which dispatches them through the interpreter). Two vocabularies for one stage is how the
-# hardcoded `endingActionsBase` literal survived as long as it did.
+# the ENDPOINT STAGE's three later action keys. These are the SAME strings as the endpoint
+# `trigger: 'on-end'` node types in `packages/workflow-contract/src/node-registry.ts` (which
+# since TASK-882 also cover `livedoc.stop` and `harness.finalize`), and that is the point: the
+# endpoint chain a graph declares is a list of these keys, whether the consultation runs on the
+# legacy loop (which dispatches them here) or on an authored graph (which dispatches them through
+# the interpreter). Two vocabularies for one stage is how the hardcoded `endingActionsBase`
+# literal survived as long as it did.
 LOOP_ACTION_SESSION_TIMEOUT = "session.timeout"
 LOOP_ACTION_SUMMARY_FINALIZE = "summary.finalize"
 LOOP_ACTION_FEEDBACK_CAPTURE = "feedback.capture"

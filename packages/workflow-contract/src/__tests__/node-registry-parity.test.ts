@@ -167,7 +167,11 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'guard.moderation',
       'guard.phi',
       'guardrail.check',
+      // TASK-882 — the two endpoint stages that had no node type, so the whole stage can be declared
+      // on a graph.
+      'harness.finalize',
       'input.context_binding',
+      'livedoc.stop',
       'noop',
       'output.deliver',
       'passthrough',

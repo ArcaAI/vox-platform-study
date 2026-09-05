@@ -114,14 +114,13 @@ describe('LoopConfigService — resolved from the governing definition', () => {
     expect(config.subscriptions.every((s) => s.actions.length > 0)).toBe(true);
   });
 
-  it('runs the platform endpoint sequence with no agent levers, and never drives the livedoc lifecycle', async () => {
+  it('runs the platform endpoint sequence when the governing graph declares no endpoint node, and never drives the livedoc lifecycle', async () => {
     servableSchema();
 
     const config = await service.resolveForConsultation(TENANT, CONSULTATION);
 
-    // The tenant's ordered `consultation.endpoint.actions` list is the ONLY
-    // lever now. `alwaysActions`/`neverActions` were the agent's, and the
-    // ordered list subsumes both: it can add, order AND omit.
+    // TASK-882: the stage is read off the governing graph — node presence + `enabled`, in edge
+    // order. A graph that declares no endpoint node (this one) runs the platform default.
     expect(config.startActions).toEqual([]);
     expect(config.endingActions).toEqual(['session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture']);
     expect(config.endingActions).not.toContain('livedoc.stop');
@@ -130,9 +129,25 @@ describe('LoopConfigService — resolved from the governing definition', () => {
     expect(CONSULTATION_ENDPOINT_ACTIONS_DEFAULT).toContain('livedoc.stop');
   });
 
-  it('honours the tenant’s configured endpoint order', async () => {
+  it('honours the endpoint chain the governing graph declares, in edge order (TASK-882)', async () => {
     servableSchema();
-    tenantSettings.resolve.mockReturnValue({ value: ['harness.finalize', 'summary.finalize'] });
+    workflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({
+      id: 'wfdef-row-7',
+      slug: 'consultation-default',
+      paletteKey: 'consultation',
+      graph: {
+        version: 1,
+        nodes: [
+          { id: 'lock', type: 'summary.finalize', config: {} },
+          { id: 'fin', type: 'core.action', config: { actionKey: 'harness.finalize' } },
+          { id: 'fb', type: 'feedback.capture', config: { enabled: false } },
+        ],
+        edges: [
+          { id: 'e1', from: 'fin', fromPort: 'next', to: 'lock', toPort: 'after' },
+          { id: 'e2', from: 'lock', fromPort: 'next', to: 'fb', toPort: 'after' },
+        ],
+      },
+    });
 
     const config = await service.resolveForConsultation(TENANT, CONSULTATION);
 

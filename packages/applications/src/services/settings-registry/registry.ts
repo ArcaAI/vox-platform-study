@@ -11,7 +11,6 @@ import { AGENTIC_EVAL_SETTINGS } from './descriptors/agentic-eval.descriptors';
 import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
-import { CONSULTATION_ENDPOINT_SETTINGS } from './descriptors/consultation-endpoint.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
@@ -33,7 +32,6 @@ import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-pol
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
-import { VISIT_TYPE_SETTINGS } from './descriptors/visit-type.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
 export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().registerAll([
@@ -80,11 +78,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // (fail-closed, resolved by the cascade that chose the model), and the timeout
   // is the platform-scope peer-call budget below.
   ...GUARDRAIL_JUDGE_SETTINGS,
-  // The tenant's VISIT-TYPE catalogue — the label set that
-  // used to be a derived literal in nine places. `maxScope: 'tenant'`, so a
-  // tenant defines its own and one with no opinion inherits the two shipped
-  // defaults through the SYSTEM lane.
-  ...VISIT_TYPE_SETTINGS,
+  // `consultation.visitTypes` was here. TASK-882 retired it: there are no tenant-managed
+  // conditions (owner #6); the two visit types are platform data derived from the parent link,
+  // and the `(task, visitType) -> prompt` binding is replaced by `Agent.tags` (TASK-884).
   // agentic context-management strategy knobs.
   ...AGENTIC_CONTEXT_SETTINGS,
   // agentic eval promotion-gate mode (block | warn | off).
@@ -156,8 +152,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // carries a deliberate BEHAVIOUR CHANGE — `OCR_ENABLED` defaulted ON, and a
   // kill-switch must default OFF.
   ...CONSULTATION_GATE_SETTINGS,
-  // the ordered endpoint stage that runs before a consultation closes.
-  ...CONSULTATION_ENDPOINT_SETTINGS,
+  // `consultation.endpoint.actions` was here. TASK-882 moved the stage onto the assigned graph
+  // (endpoint nodes, presence + `enabled`, in edge order).
 
   // ── Consultation-loop lifecycle bounds ───────────────────────────────────
   // The loop's IDLE bound. A tuning knob rather than a kill-switch, and PINNED
