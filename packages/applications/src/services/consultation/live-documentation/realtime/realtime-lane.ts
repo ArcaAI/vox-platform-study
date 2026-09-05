@@ -19,7 +19,7 @@
  * that is the parity claim the cutover rests on, and it is a property of this
  * constant, not of a code path that happens to agree.
  *
- * ## Lane membership comes from `WorkflowNodeDescriptor.lane`
+ * ## Lane membership comes from `WorkflowNodeDescriptor.lane` 
  *
  * It did not, and the reasons it could not are worth keeping because both were
  * removed rather than worked around:
@@ -95,7 +95,7 @@ const DEFAULT_CAPTURE_TIMEOUT_MS = 1_000;
  *
  * ```
  * stage 0 capture -> transcript
- * stage 1 extract (in: transcript) -> entities ┐ concurrent
+ * stage 1 extract (in: transcript) -> entities ┐ concurrent 
  *           summarize (in: transcript) -> document ┘
  * ```
  *
