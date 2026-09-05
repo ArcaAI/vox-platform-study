@@ -88,30 +88,28 @@ describe('TenantFrontendConfigService', () => {
       const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
       const entity = TenantFrontendConfigFactory.CreateTenantFrontendConfig({
         tenantId: 'tenant-1',
-        asrModel: 'whisper-large-v3',
-        noiseCancel: true,
-        configJson: { vadThreshold: 0.5 },
+        captureRawAudio: true,
+        configJson: { sampleRate: 16000 },
       });
       mockConfigRepository.findByTenant.mockResolvedValue(entity);
 
       const result = await service.getByTenant();
 
       expect(result).not.toBeNull();
-      expect(result!.asrModel).toBe('whisper-large-v3');
-      expect(result!.noiseCancel).toBe(true);
-      expect(result!.configJson).toEqual({ vadThreshold: 0.5 });
+      expect(result!.captureRawAudio).toBe(true);
+      expect(result!.configJson).toEqual({ sampleRate: 16000 });
     });
   });
 
   describe('upsert — create branch', () => {
     it('creates and persists a new config when none exists (no version needed)', async () => {
+      const { CaptureMode } = await import('@arcaai/domains');
       mockConfigRepository.findByTenant.mockResolvedValue(null);
       mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
 
       const result = await service.upsert({
-        asrModel: 'whisper-tiny',
-        noiseCancel: true,
-        vad: true,
+        captureRawAudio: true,
+        captureMode: CaptureMode.RAW_ONLY,
         configJson: { sampleRate: 16000 },
       });
 
@@ -119,11 +117,10 @@ describe('TenantFrontendConfigService', () => {
       expect(mockConfigRepository.create).toHaveBeenCalledTimes(1);
       const created = mockConfigRepository.create.mock.calls[0][0];
       expect(created.tenantId).toBe('tenant-1');
-      expect(created.asrModel).toBe('whisper-tiny');
-      expect(created.noiseCancel).toBe(true);
-      expect(created.vad).toBe(true);
+      expect(created.captureRawAudio).toBe(true);
+      expect(created.captureMode).toBe(CaptureMode.RAW_ONLY);
       // unspecified booleans default to false
-      expect(created.diarization).toBe(false);
+      expect(created.transcriptionModeLocked).toBe(false);
 
       expect(result.configJson).toEqual({ sampleRate: 16000 });
       expect(mockConfigRepository.updateWithVersion).not.toHaveBeenCalled();
@@ -133,20 +130,20 @@ describe('TenantFrontendConfigService', () => {
 
   describe('upsert — update branch (OCC)', () => {
     it('updates via updateWithVersion using the supplied expectedVersion', async () => {
-      const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
-      const existing = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', noiseCancel: false });
+      const { TenantFrontendConfigFactory, CaptureMode } = await import('@arcaai/domains');
+      const existing = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: false });
       mockConfigRepository.findByTenant.mockResolvedValue(existing);
       mockConfigRepository.updateWithVersion.mockImplementation(async (_id: string, entity: any) => entity);
 
-      const result = await service.upsert({ noiseCancel: true, diarization: true, expectedVersion: 1 });
+      const result = await service.upsert({ captureRawAudio: true, captureMode: CaptureMode.RAW_ONLY, expectedVersion: 1 });
 
       // BEHAVIORAL: the existing entity mutated
-      expect(existing.noiseCancel).toBe(true);
-      expect(existing.diarization).toBe(true);
+      expect(existing.captureRawAudio).toBe(true);
+      expect(existing.captureMode).toBe(CaptureMode.RAW_ONLY);
       // OCC contract: CAS write fires with the expectedVersion; plain create does NOT
       expect(mockConfigRepository.updateWithVersion).toHaveBeenCalledWith(existing.id, existing, 1);
       expect(mockConfigRepository.create).not.toHaveBeenCalled();
-      expect(result.noiseCancel).toBe(true);
+      expect(result.captureRawAudio).toBe(true);
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ resourceId: existing.id }));
     });
 
@@ -155,7 +152,7 @@ describe('TenantFrontendConfigService', () => {
       const existing = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1' });
       mockConfigRepository.findByTenant.mockResolvedValue(existing);
 
-      await expect(service.upsert({ noiseCancel: true })).rejects.toThrow(BadRequestException);
+      await expect(service.upsert({ captureRawAudio: true })).rejects.toThrow(BadRequestException);
       expect(mockConfigRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
@@ -168,7 +165,7 @@ describe('TenantFrontendConfigService', () => {
         new OptimisticConcurrencyException('TenantFrontendConfig', existing.id, { expectedVersion: 1, currentVersion: 2 }),
       );
 
-      await expect(service.upsert({ noiseCancel: true, expectedVersion: 1 })).rejects.toThrow(OptimisticConcurrencyException);
+      await expect(service.upsert({ captureRawAudio: true, expectedVersion: 1 })).rejects.toThrow(OptimisticConcurrencyException);
       expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
     });
   });
@@ -220,13 +217,13 @@ describe('TenantFrontendConfigService', () => {
       asTenantAdmin();
       mockConfigRepository.findByTenant.mockResolvedValue(null);
       mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
-      await service.upsert({ noiseCancel: true });
+      await service.upsert({ transcriptionModeLocked: true });
       const createdDefault = mockConfigRepository.create.mock.calls[0][0];
       expect(createdDefault.captureRawAudio).toBe(false);
     });
 
     it('updates captureRawAudio on the update branch (OCC)', async () => {
-      const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
+      const { TenantFrontendConfigFactory, CaptureMode } = await import('@arcaai/domains');
       const existing = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: false });
       mockConfigRepository.findByTenant.mockResolvedValue(existing);
       mockConfigRepository.updateWithVersion.mockImplementation(async (_id: string, entity: any) => entity);
@@ -312,7 +309,7 @@ describe('TenantFrontendConfigService', () => {
       mockConfigRepository.findByTenant.mockResolvedValue(null);
       mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
 
-      await service.upsert({ noiseCancel: true });
+      await service.upsert({ captureRawAudio: true });
 
       const created = mockConfigRepository.create.mock.calls[0][0];
       expect(created.transcriptionMode).toBe(TranscriptionMode.BACKEND);

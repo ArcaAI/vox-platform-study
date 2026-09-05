@@ -3,10 +3,13 @@ import { CaptureMode, ResourceStatusType, TranscriptionMode } from '@arcaai/doma
 import { FrontendPipelineConfigJson } from './frontend-pipeline-config';
 
 /**
- * Per-tenant frontend audio-pipeline defaults as returned to
- * admin callers. Applies to ALL users of the tenant. `version` is the OCC
- * token — echo it back as `If-Match: "<version>"` (or `expectedVersion`) on
- * the next PUT.
+ * The per-tenant frontend CAPTURE policy as returned to admin callers. Applies
+ * to ALL users of the tenant. `version` is the OCC token — echo it back as
+ * `If-Match: "<version>"` (or `expectedVersion`) on the next PUT.
+ *
+ * TASK-883 removed the client-AI toggles: VAD, denoise, diarization and ASR
+ * selection are server-side agent decisions, so the browser has nothing to
+ * switch on.
  */
 export class TenantFrontendConfigResponse {
   @ApiProperty({ description: 'Config ID' })
@@ -14,21 +17,6 @@ export class TenantFrontendConfigResponse {
 
   @ApiProperty({ description: 'Tenant ID' })
   tenantId: string;
-
-  @ApiPropertyOptional({ description: 'Default ASR model slug/id for the tenant' })
-  asrModel?: string | null;
-
-  @ApiProperty({ description: 'Enable browser noise cancellation by default' })
-  noiseCancel: boolean;
-
-  @ApiProperty({ description: 'Enable voice-activity detection by default' })
-  vad: boolean;
-
-  @ApiProperty({ description: 'Enable voice enrollment by default' })
-  voiceEnrollment: boolean;
-
-  @ApiProperty({ description: 'Enable speaker diarization by default' })
-  diarization: boolean;
 
   // The tenant toggle (persisted). NOTE: this is NOT the SDK-facing
   // enablement; the effective flag is `platformRawCaptureCapable && captureRawAudio`,

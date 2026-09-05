@@ -26,7 +26,12 @@ import { captureModeToLocalRawCapture } from './capture-mode.translation';
 export const LOCAL_RAW_CAPTURE_CAPABILITY_KEY = 'enable-local-raw-capture';
 
 /**
- * Manages per-tenant frontend audio-pipeline defaults.
+ * Manages the per-tenant frontend CAPTURE policy.
+ *
+ * TASK-883 removed the client-AI toggles (`asrModel` / `noiseCancel` / `vad` /
+ * `voiceEnrollment` / `diarization`): the browser never runs a model, so those
+ * were controls an admin could set with no effect. What is left is what the
+ * browser captures and how the transcription mode is pinned.
  *
  * There is exactly one row per tenant (`tenantId @unique`); `upsert` creates it
  * on first save and updates it thereafter. Updates run via the OCC
@@ -107,11 +112,6 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     this.broadcastSysEvent(existing ? SysEventType.ResourceUpdated : SysEventType.ResourceCreated, {
       resourceId: saved.id,
       data: {
-        asrModel: saved.asrModel ?? null,
-        noiseCancel: saved.noiseCancel,
-        vad: saved.vad,
-        voiceEnrollment: saved.voiceEnrollment,
-        diarization: saved.diarization,
         captureRawAudio: saved.captureRawAudio,
         transcriptionMode: saved.transcriptionMode,
         transcriptionModeLocked: saved.transcriptionModeLocked,
@@ -125,11 +125,6 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
   private async createNew(tenantId: string, dto: UpsertTenantFrontendConfigRequest): Promise<TenantFrontendConfigEntity> {
     const entity = TenantFrontendConfigFactory.CreateTenantFrontendConfig({
       tenantId,
-      asrModel: dto.asrModel ?? null,
-      noiseCancel: dto.noiseCancel ?? false,
-      vad: dto.vad ?? false,
-      voiceEnrollment: dto.voiceEnrollment ?? false,
-      diarization: dto.diarization ?? false,
       captureRawAudio: dto.captureRawAudio ?? false,
       // The factory defaults transcriptionMode=BACKEND,
       // transcriptionModeLocked=false, captureMode=null when these are omitted.
@@ -144,11 +139,6 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
   }
 
   private async applyUpdate(entity: TenantFrontendConfigEntity, dto: UpsertTenantFrontendConfigRequest): Promise<TenantFrontendConfigEntity> {
-    if (dto.asrModel !== undefined) entity.asrModel = dto.asrModel;
-    if (dto.noiseCancel !== undefined) entity.noiseCancel = dto.noiseCancel;
-    if (dto.vad !== undefined) entity.vad = dto.vad;
-    if (dto.voiceEnrollment !== undefined) entity.voiceEnrollment = dto.voiceEnrollment;
-    if (dto.diarization !== undefined) entity.diarization = dto.diarization;
     if (dto.captureRawAudio !== undefined) entity.captureRawAudio = dto.captureRawAudio;
     // CaptureMode is nullable: `null` is a meaningful value
     // (clears the tenant override), so we only skip the assignment when the

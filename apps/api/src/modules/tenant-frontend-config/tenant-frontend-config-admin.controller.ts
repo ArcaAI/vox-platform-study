@@ -6,9 +6,11 @@ import { CanAny, ExpectedVersion, ForbidApiKey, NoOptimisticConcurrency, Require
 /**
  * Admin API for the per-tenant FRONTEND audio-pipeline defaults.
  *
- * A single row per tenant holds the client-side capture defaults applied to
- * every user in that tenant (ASR model + feature switches + a typed advanced
- * `configJson`). Tenant scoping mirrors the DNA admin surface:
+ * A single row per tenant holds the client-side CAPTURE defaults applied to
+ * every user in that tenant (raw-capture toggle, transcription mode + lock,
+ * capture mode, and a typed advanced `configJson`). TASK-883 removed the
+ * client-AI switches — the browser never runs a model. Tenant scoping mirrors
+ * the DNA admin surface:
  * a super admin (SUPER_ADMIN) may target a tenant via
  * `?tenantId=`; a tenant admin is pinned to their CLS tenant and any supplied
  * `tenantId` is ignored by the service.

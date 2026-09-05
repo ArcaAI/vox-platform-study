@@ -7,11 +7,6 @@ import { TenantFrontendConfigEntity, ITenantFrontendConfigEntity } from '../../.
 import * as Enums from '../../../enums';
 
 export interface CreateTenantFrontendConfigProps extends BaseEntityFactoryCreateProps {
-  asrModel?: ITenantFrontendConfigEntity['asrModel'];
-  noiseCancel?: ITenantFrontendConfigEntity['noiseCancel'];
-  vad?: ITenantFrontendConfigEntity['vad'];
-  voiceEnrollment?: ITenantFrontendConfigEntity['voiceEnrollment'];
-  diarization?: ITenantFrontendConfigEntity['diarization'];
   captureRawAudio?: ITenantFrontendConfigEntity['captureRawAudio'];
   transcriptionMode?: ITenantFrontendConfigEntity['transcriptionMode'];
   transcriptionModeLocked?: ITenantFrontendConfigEntity['transcriptionModeLocked'];
@@ -37,11 +32,6 @@ export class TenantFrontendConfigFactory {
       createdBy: props.createdBy ?? null,
       updatedBy: props.updatedBy ?? null,
       tenantId: props.tenantId,
-      asrModel: props.asrModel ?? null,
-      noiseCancel: props.noiseCancel ?? false,
-      vad: props.vad ?? false,
-      voiceEnrollment: props.voiceEnrollment ?? false,
-      diarization: props.diarization ?? false,
       captureRawAudio: props.captureRawAudio ?? false,
       transcriptionMode: props.transcriptionMode ?? Enums.TranscriptionMode.BACKEND,
       transcriptionModeLocked: props.transcriptionModeLocked ?? false,
