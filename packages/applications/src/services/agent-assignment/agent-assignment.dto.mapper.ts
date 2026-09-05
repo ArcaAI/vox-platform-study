@@ -10,6 +10,7 @@ export class AgentAssignmentDtoMapper {
       scopeId: entity.scopeId ?? null,
       task: entity.task,
       agentSlug: entity.agentSlug,
+      selectorTags: entity.selectorKey ? entity.selectorKey.split(',') : [],
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
       version: entity.version,

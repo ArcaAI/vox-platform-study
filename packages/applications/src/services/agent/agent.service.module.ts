@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { CoreDatabaseModule } from '@arcaai/domains';
+import { AuthorizationModule } from '../../authorization/authorization.module';
 import { CommonServiceModule } from '../baseServices';
 import { AgentAssignmentServiceModule } from '../agent-assignment/agent-assignment.service.module';
 import { AiProviderConnectionServiceModule } from '../ai-provider-connection/ai-provider-connection.service.module';
@@ -15,6 +16,7 @@ import { IAgentService } from './IAgentService';
 /**
  * Agent DI module (TASK-863): authoring (`AgentService`), the one resolution
  * (`AgentResolverService`) and execution preparation (`AgentInvocationService`).
+ * TASK-884 added clone / export / import / sync to `AgentService`.
  */
 @Module({
   imports: [
@@ -24,6 +26,11 @@ import { IAgentService } from './IAgentService';
     HttpModule,
     AgentAssignmentServiceModule,
     AiProviderConnectionServiceModule,
+    // TASK-884 — `PolicyEngine`, which is what lets `syncToTenants` answer "does this caller
+    // hold manage:Agent in that OTHER tenant?" from the service. The module is @Global, but it
+    // is named here for the same reason `AgentPromotionServiceModule` names it: the dependency
+    // is load-bearing, and an implicit global is not a record of that.
+    AuthorizationModule,
     TextRequestServiceModule,
   ],
   providers: [

@@ -16,6 +16,7 @@ import {
   SYSTEM_TENANT_ID,
   SysEventType,
 } from '@arcaai/domains';
+import { agentTagProblems, agentTagsSatisfy, canonicalAgentTags } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { AgentAssignmentResponse, UpsertAgentAssignmentRequest } from './dto';
@@ -51,40 +52,64 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
   // Resolution
   // ---------------------------------------------------------------------
 
-  async resolve(tenantId: string, task: AgentTask, departmentId?: string | null): Promise<ResolvedAgentAssignment> {
-    const tiers: Array<{ source: AgentAssignmentSource; slug: string | null }> = [];
+  async resolve(tenantId: string, task: AgentTask, departmentId?: string | null, selectorTags: readonly string[] = []): Promise<ResolvedAgentAssignment> {
+    const requestTags = canonicalAgentTags([...selectorTags]);
+    const candidates: Array<{ source: AgentAssignmentSource; slug: string; selector: string[] }> = [];
 
+    // TIER order is unchanged — department → tenant → SYSTEM. WITHIN each tier, TASK-884 adds
+    // the selector: the rows whose `key:value` selector is a SUBSET of the request's tags, most
+    // specific first, unqualified last. A request that carries no tags therefore sees exactly
+    // the one unqualified row each tier always had, and behaviour is byte-identical.
     if (departmentId) {
-      const row = await this.assignmentRepository.findForScope(tenantId, PipelinePolicyScope.DEPARTMENT, departmentId, task);
-      tiers.push({ source: 'department', slug: row?.agentSlug ?? null });
+      candidates.push(...(await this.tierCandidates(tenantId, PipelinePolicyScope.DEPARTMENT, departmentId, task, requestTags, 'department')));
     }
-    const tenantRow = await this.assignmentRepository.findForScope(tenantId, PipelinePolicyScope.TENANT, null, task);
-    tiers.push({ source: 'tenant', slug: tenantRow?.agentSlug ?? null });
-
+    candidates.push(...(await this.tierCandidates(tenantId, PipelinePolicyScope.TENANT, null, task, requestTags, 'tenant')));
     if (tenantId !== SYSTEM_TENANT_ID) {
-      const systemRow = await this.assignmentRepository.findForScope(SYSTEM_TENANT_ID, PipelinePolicyScope.TENANT, null, task);
-      tiers.push({ source: 'platform-default', slug: systemRow?.agentSlug ?? null });
+      candidates.push(...(await this.tierCandidates(SYSTEM_TENANT_ID, PipelinePolicyScope.TENANT, null, task, requestTags, 'platform-default')));
     }
 
-    // First-set-wins, but a set tier must also RESOLVE: an assignment is a reference and a
+    // First-match-wins, but a matched row must also RESOLVE: an assignment is a reference and a
     // reference can rot (the agent was deprecated or deleted since). Skip it with a warning
     // and keep walking — never serve a stale slug, never silently substitute one either.
-    for (const tier of tiers) {
-      if (tier.slug === null) continue;
-      const published = await this.agentRepository.findPublishedActiveBySlug(tenantId, tier.slug);
+    for (const candidate of candidates) {
+      const published = await this.agentRepository.findPublishedActiveBySlug(tenantId, candidate.slug);
       if (published && published.task === task) {
-        return { agentSlug: tier.slug, source: tier.source };
+        return { agentSlug: candidate.slug, source: candidate.source, selector: candidate.selector };
       }
       this.logger.warn({
         message: 'Agent assignment points at a slug with no ACTIVE PUBLISHED agent of this task — skipping this tier',
         tenantId,
         task,
         departmentId: departmentId ?? null,
-        agentSlug: tier.slug,
-        assignedAt: tier.source,
+        agentSlug: candidate.slug,
+        assignedAt: candidate.source,
+        selector: candidate.selector,
       });
     }
-    return { agentSlug: null, source: 'platform-default' };
+    return { agentSlug: null, source: 'platform-default', selector: [] };
+  }
+
+  /**
+   * One tier's rows that the request's tags SATISFY, ordered most specific first.
+   *
+   * Specificity is the selector's length, and ties are broken by the canonical selector string
+   * so the order is total and deterministic — two equally specific selectors must not resolve
+   * differently between two identical requests.
+   */
+  private async tierCandidates(
+    tenantId: string,
+    scope: PipelinePolicyScope,
+    scopeId: string | null,
+    task: AgentTask,
+    requestTags: readonly string[],
+    source: AgentAssignmentSource,
+  ): Promise<Array<{ source: AgentAssignmentSource; slug: string; selector: string[] }>> {
+    const rows = await this.assignmentRepository.findAllForScope(tenantId, scope, scopeId, task);
+    return rows
+      .map((row) => ({ row, selector: row.selectorKey ? row.selectorKey.split(',') : [] }))
+      .filter(({ selector }) => agentTagsSatisfy(requestTags, selector))
+      .sort((a, b) => b.selector.length - a.selector.length || a.row.selectorKey.localeCompare(b.row.selectorKey))
+      .map(({ row, selector }) => ({ source, slug: row.agentSlug, selector }));
   }
 
   // ---------------------------------------------------------------------
@@ -120,9 +145,15 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     await this.assertDepartmentInTenant(scope, scopeId);
     await this.assertSlugPublished(tenantId, dto.task, dto.agentSlug);
 
+    // TASK-884 — the selector is part of the row's IDENTITY, not one of its editable fields:
+    // it is in the uniqueness key, so a different selector addresses a DIFFERENT assignment.
+    // Canonicalising here is what makes `{a,b}` and `{b,a}` one row rather than two rows
+    // competing for the same tier.
+    const selectorKey = this.canonicalSelector(dto.selectorTags);
+
     const changedBy = this.requestUserId ?? null;
     const reason = dto.reason ?? null;
-    const existing = await this.assignmentRepository.findForScope(tenantId, scope, scopeId, dto.task);
+    const existing = await this.assignmentRepository.findForScopeSelector(tenantId, scope, scopeId, dto.task, selectorKey);
 
     if (existing) {
       const beforeSlug = existing.agentSlug;
@@ -138,7 +169,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
       const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
         const saved = await this.assignmentRepository.updateWithVersion(existing.id, existing, casVersion, tx);
         await this.appendChange(
-          { tenantId, scope, scopeId, task: dto.task, changedBy, reason },
+          { tenantId, scope, scopeId, task: dto.task, selectorKey, changedBy, reason },
           { beforeSlug, afterSlug: saved.agentSlug, assignmentVersion: saved.version },
           tx,
         );
@@ -158,6 +189,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
       scopeId,
       task: dto.task,
       agentSlug: dto.agentSlug,
+      selectorKey,
       createdBy: changedBy,
     });
     entity.validate();
@@ -165,7 +197,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     const created = await this.databaseService.baseClient.$transaction(async (tx) => {
       const saved = await this.assignmentRepository.create(entity, tx);
       await this.appendChange(
-        { tenantId, scope, scopeId, task: dto.task, changedBy, reason },
+        { tenantId, scope, scopeId, task: dto.task, selectorKey, changedBy, reason },
         { beforeSlug: null, afterSlug: saved.agentSlug, assignmentVersion: saved.version },
         tx,
       );
@@ -174,7 +206,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: created.id,
-      data: { scope, scopeId, task: created.task, agentSlug: created.agentSlug },
+      data: { scope, scopeId, task: created.task, agentSlug: created.agentSlug, selectorKey },
     });
     return AgentAssignmentDtoMapper.toResponse(created);
   }
@@ -186,7 +218,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     const removed = await this.databaseService.baseClient.$transaction(async (tx) => {
       const deleted = await this.assignmentRepository.softDelete(entity.id, changedBy ?? undefined, tx);
       await this.appendChange(
-        { tenantId: entity.tenantId, scope: entity.scope, scopeId: entity.scopeId ?? null, task: entity.task, changedBy, reason: reason ?? null },
+        { tenantId: entity.tenantId, scope: entity.scope, scopeId: entity.scopeId ?? null, task: entity.task, selectorKey: entity.selectorKey, changedBy, reason: reason ?? null },
         { beforeSlug: entity.agentSlug, afterSlug: null, assignmentVersion: deleted?.version ?? entity.version },
         tx,
       );
@@ -222,6 +254,20 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     return entity;
   }
 
+  /**
+   * The stored form of a selector: validated against the `key:value` grammar, de-duplicated,
+   * sorted and comma-joined. A bare key is REFUSED rather than dropped — a silently dropped tag
+   * changes which assignment the row is, and therefore which agent a request resolves.
+   */
+  private canonicalSelector(selectorTags?: readonly string[]): string {
+    if (!selectorTags || selectorTags.length === 0) return '';
+    const problems = agentTagProblems([...selectorTags], 'selectorTags');
+    if (problems.length > 0) {
+      throw new BadRequestException({ message: 'An assignment selector must be `key:value` tags.', code: 'TAG_GRAMMAR', findings: problems });
+    }
+    return canonicalAgentTags([...selectorTags]).join(',');
+  }
+
   private async assertDepartmentInTenant(scope: PipelinePolicyScope, scopeId: string | null): Promise<void> {
     if (scope !== PipelinePolicyScope.DEPARTMENT || !scopeId) return;
     const tenantId = this.requireTenant();
@@ -239,7 +285,15 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
   }
 
   private async appendChange(
-    key: { tenantId: string; scope: PipelinePolicyScope; scopeId: string | null; task: AgentTask; changedBy: string | null; reason: string | null },
+    key: {
+      tenantId: string;
+      scope: PipelinePolicyScope;
+      scopeId: string | null;
+      task: AgentTask;
+      selectorKey: string;
+      changedBy: string | null;
+      reason: string | null;
+    },
     delta: { beforeSlug: string | null; afterSlug: string | null; assignmentVersion: number },
     tx: unknown,
   ): Promise<void> {
@@ -249,6 +303,7 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
         scope: key.scope,
         scopeId: key.scopeId,
         task: key.task,
+        selectorKey: key.selectorKey,
         changedBy: key.changedBy,
         assignmentVersion: delta.assignmentVersion,
         beforeSlug: delta.beforeSlug,

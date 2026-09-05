@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
+import { AgentAssignmentServiceModule } from '../../agent-assignment/agent-assignment.service.module';
 import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workflow-assignment.service.module';
 import { PromptResolutionService } from './prompt-resolution.service';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
@@ -16,9 +17,14 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
  * what makes tier-1a actually resolve in the running gateway, and
  * `prompt-resolution.di-wiring.task815.test.ts` is the guard that this import
  * is not dropped.
+ *
+ * `AgentAssignmentServiceModule` does the same job for TASK-884's tag-selected agent tier:
+ * unwired, a request carrying `agentSelectorTags` simply resolves the ordinary way, which is
+ * indistinguishable from a request that carried none — so the wiring is what makes owner
+ * decision #6 actually reachable, and its absence would be silent.
  */
 @Module({
-  imports: [VisitTypeServiceModule, CoreDatabaseModule, WorkflowAssignmentServiceModule],
+  imports: [VisitTypeServiceModule, CoreDatabaseModule, WorkflowAssignmentServiceModule, AgentAssignmentServiceModule],
   providers: [PromptResolutionService],
   exports: [PromptResolutionService],
 })
