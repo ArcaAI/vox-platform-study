@@ -146,7 +146,24 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
     "Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check.",
     'Service Tokens',
   ),
-  platformSecret('nlp.serviceToken', 'NLP service token', 'Shared secret on the gateway↔NLP hop (`X-Service-Token`).', 'Service Tokens'),
+  // `nlp.serviceToken` stood here until TASK-872. It is the one member of this
+  // family that is genuinely retired: no gateway call site asks
+  // `SecretsService` for `NLP_SERVICE_TOKEN`, and no `apps/nlp` pydantic field
+  // carries it — the hop presents the shared `internal.accessToken` above, so
+  // the descriptor only kept `vault-seed-secrets.sh` provisioning a path
+  // nothing reads.
+  //
+  // Its `text` and `tts` siblings were proposed for removal in the same pass
+  // and deliberately KEPT, because `vault-kv-coverage.test.ts` proved both
+  // names are still fetched: `TEXT_SERVICE_TOKEN` in `text-proxy.controller.ts`
+  // and `text-compat.controller.ts` (as the fallback after
+  // `INTERNAL_ACCESS_TOKEN`), and `TTS_SERVICE_TOKEN` at four `apps/api` call
+  // sites with no such preference at all. Dropping a descriptor whose name a
+  // call site still reads stops the seeding script writing it, so the read
+  // resolves to undefined on a Vault-backed deployment while every
+  // `SECRETS_PROVIDER=env` box stays green — the exact production-only failure
+  // that guard exists to catch. The READ has to be retired first; the
+  // descriptor follows it.
   platformSecret(
     'guardrail.serviceToken',
     'Guardrail service token',

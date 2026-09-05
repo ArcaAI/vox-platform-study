@@ -26,13 +26,15 @@ describe('vlm.extract task key', () => {
     expect(isSuperAdminOnlyTaskKey('vlm.extract')).toBe(false);
   });
 
-  it('registers a models.vlm.extract settings descriptor, db-config, fail-closed, tenant-editable', () => {
-    const d = HOPE_SETTINGS_REGISTRY.getOrThrow('models.vlm.extract');
-    expect(d.tier).toBe('db-config');
-    expect(d.dataType).toBe('string');
-    expect(d.maxScope).toBe('tenant');
-    expect(d.failMode).toBe('closed');
-    expect(d.editableBy).toBe('AiTaskDefault');
-    expect(d.globalOnly).toBeUndefined();
+  // TASK-872 removed the `models.*` descriptor(s) for this key: no request
+  // path resolves it, so cataloguing it offered a SELECTION control with
+  // nothing on the other end. The task key itself is unchanged — it stays
+  // `AiRoutingPolicy` vocabulary with its own admin route and seed posture —
+  // so the assertion flips to the descriptor's ABSENCE.
+  // The seed's own exemption reads: "no deployable vision model is loaded on
+  // the LM Studio instance; a SYSTEM default would replace a clean 503 with an
+  // upstream 404."
+  it('registers NO models.vlm.extract descriptor — no vision model is deployed', () => {
+    expect(HOPE_SETTINGS_REGISTRY.has('models.vlm.extract')).toBe(false);
   });
 });

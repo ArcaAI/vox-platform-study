@@ -82,13 +82,20 @@ const FLAGS: FlagSpec[] = [
   // (2026-08-20): a publicly-exposed workflow MAY select a cloud AI provider — the
   // tenant carries the risk (BYOK), consistent with the platform's BYO-first posture.
 
-  {
-    key: 'entitlements.enabledDefault',
-    label: 'Entitlements enforcement seed default',
-    description:
-      'SEED-TIME ONLY, and the only key in this file that is not a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `entitlements.enabled` GlobalSetting row on a FRESH database. POLICY: quota enforcement is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets ENTITLEMENTS_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set), so a developer never fights quota locally and the shared E2E baseline stays deterministic. Keep this LOCAL default false; an operator flips it live via `PUT /admin/entitlements/enabled`. The live control plane is `entitlements.enabled` (already cataloged, tier `global-kv`, kill-switch). Its migration is therefore NOT to redis-flag but DELETION, once seeding takes its default from the descriptor instead of the environment.',
-    default: false,
-  },
+  // `entitlements.enabledDefault` was declared here, and its own description
+  // named the exit: "its migration is DELETION". TASK-872 took it, together
+  // with the sibling `metering.reconcile.enabledDefault`
+  // (metering.descriptors.ts).
+  //
+  // The seed does NOT read these descriptors — `seed/15-entitlements.ts` reads
+  // `process.env.ENTITLEMENTS_ENABLED_DEFAULT` as an explicit OVERRIDE over its
+  // own derived default (`seedsEnforcementOn()`), so seeding is unchanged and
+  // the override still works from host env. What the descriptor did was emit
+  // `ENTITLEMENTS_ENABLED_DEFAULT=false` into the generated `.env.sample` —
+  // and since `pnpm setup:dev` copies that file to `.env.dev`, it FORCED
+  // enforcement off on every laptop, reversing the 2026-08-22 owner decision
+  // that local dev runs with enforcement ON. A stale declaration that beats the
+  // code it documents is worse than no declaration.
   {
     key: 'harness.warmStartEnabled',
     label: 'Harness warm start',
@@ -107,14 +114,14 @@ const FLAGS: FlagSpec[] = [
   },
 
   // ── Python services (pydantic-settings readers) ───────────────────────────
-  {
-    key: 'guardrailV2.groundedness.enabled',
-    label: 'Guardrail groundedness gate',
-    description:
-      'Gates the guardrail NLI groundedness gate (`GUARDRAIL_V2_GROUNDEDNESS_` prefix). OFF is the dev/hermetic-CI bypass: the gate answers honestly with `unverified` and never loads a model. Fail posture is FAIL-CLOSED throughout — a disabled gate, an un-staged model and a scoring error all degrade to `unverified`, and no path yields `grounded` without the model actually entailing the segment. Turning it ON requires the self-hosted MiniCheck-class model staged on the host (no cloud PHI).',
-    default: false,
-    killSwitch: true,
-  },
+  // `guardrailV2.groundedness.enabled` (env tier, `GUARDRAIL_V2_GROUNDEDNESS_`
+  // prefix) was declared here. TASK-872 removed it: guardrail's
+  // `GroundednessConfig` holds no env-reachable field at all any more, so
+  // `GUARDRAIL_V2_GROUNDEDNESS_ENABLED` reaches no pydantic field and appears
+  // in no Python surface manifest. The LIVE gate is
+  // `guardrail.groundedness.enabled` (`service-runtime.descriptors.ts`, tier
+  // `global-kv`, `consumedBy: ['guardrail']`), served on the pull route — this
+  // one was the env-era twin left behind after that migration.
   // `text.externalGuardrail.enabled` MOVED to `text-provider-connections.descriptors.ts`.
   // This family is uniformly `tier: 'env'` — every flag here
   // is still read from a process environment variable — and
