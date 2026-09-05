@@ -25,10 +25,12 @@ describe('SettingsCatalogController.getCatalog', () => {
     expect(res.items.some((i) => i.key === 'entitlements.enabled')).toBe(false);
     expect(res.items.every((i) => !i.globalOnly)).toBe(true);
     expect(res.items.some((i) => i.key === 'pipeline.autoSummaryEnabled')).toBe(true);
-    // Specimen changed in TASK-872: `tts.credential.azure` was removed with the
-    // rest of the `db-secret` tier. `tts.defaultVoiceEn` is the same shape for
-    // this assertion — tenant-editable, not `globalOnly`.
-    expect(res.items.some((i) => i.key === 'tts.defaultVoiceEn')).toBe(true);
+    // Specimen changed twice: `tts.credential.azure` went with the `db-secret` tier (TASK-872),
+    // then `tts.defaultVoiceEn` went with the per-tenant tts settings surface (TASK-879 — a
+    // tenant's default voice is `Agent.parameters.voice` now). `rateLimit.maxRequests` is one of
+    // the SIX keys the configuration-governance program leaves tenant-scoped at its end state, so
+    // it is the specimen least likely to need changing again.
+    expect(res.items.some((i) => i.key === 'rateLimit.maxRequests')).toBe(true);
   });
 
   it('categories are distinct and sorted', () => {
