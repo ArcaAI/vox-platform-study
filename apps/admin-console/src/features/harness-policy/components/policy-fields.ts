@@ -7,7 +7,9 @@
 
 import type { HarnessPolicy, UpdateHarnessPolicyRequest } from '../api';
 
-export type PolicyFieldKind = 'fraction' | 'integer' | 'switch' | 'text' | 'nullable-text' | 'list';
+// TASK-881: the `text` / `nullable-text` kinds went with the two text-generation
+// controls; every surviving knob is a number, a switch or a list.
+export type PolicyFieldKind = 'fraction' | 'integer' | 'switch' | 'list';
 
 export interface PolicyField {
   key: keyof HarnessPolicy & keyof UpdateHarnessPolicyRequest;
@@ -101,8 +103,6 @@ export function fieldDraftValue(field: PolicyField, policy: HarnessPolicy): stri
       return Boolean(value);
     case 'list':
       return ((value as string[] | null) ?? []).join(', ');
-    case 'nullable-text':
-      return (value as string | null) ?? '';
     default:
       return value === null || value === undefined ? '' : String(value);
   }
@@ -116,7 +116,7 @@ export function fieldDisplayValue(field: PolicyField, policy: HarnessPolicy): st
     const list = value as string[] | null;
     return list && list.length > 0 ? list.join(', ') : '\u2014';
   }
-  if (value === null || value === undefined || value === '') return '\u2014';
+  if (value === null || value === undefined) return '\u2014';
   return String(value);
 }
 
@@ -131,14 +131,6 @@ function parseDraft(field: PolicyField, draft: string | boolean): UpdateHarnessP
       if (text === '') return undefined;
       const parsed = Number(text);
       return Number.isFinite(parsed) ? parsed : undefined;
-    }
-    case 'text': {
-      const text = String(draft).trim();
-      return text === '' ? undefined : text;
-    }
-    case 'nullable-text': {
-      const text = String(draft).trim();
-      return text === '' ? null : text;
     }
     case 'list': {
       const items = String(draft)
