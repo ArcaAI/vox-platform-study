@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 149 |
+| Declared keys (distinct) | 146 |
 | … of which required (`failMode: closed`) | 27 |
 | … of which secret | 26 |
-| … tier `env` | 118 |
+| … tier `env` | 115 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 307 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 354 |
-| `turbo.json#globalEnv` entries | 482 |
+| Python declared fields | 305 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 352 |
+| `turbo.json#globalEnv` entries | 479 |
 
 ## Variables — the TypeScript platform surface
 
@@ -49,16 +49,13 @@ disagree with those declarations.
 | `GUARDRAIL_PORT` | `env` | no | `8863` | `apps/guardrail` | Port apps/guardrail binds (test: 8963). |
 | `GUARDRAIL_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔guardrail hop (`X-Service-Token`). |
 | `GUARDRAIL_URL` | `env` | no | `http://localhost:8863` | `apps/api` | Safety-engine base URL (apps/guardrail, port 8863). |
-| `HARNESS_ATOMIC_FACT_ENABLED` | `env` | no | `false` | `apps/harness` | Gates the `run_inferential_sensors` atomic-fact path. Same policy-overrides-env shape as the NER-priors flag. |
 | `HARNESS_CLAIM_CHECK_ACCESS_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/harness` | S3/MinIO access key for the harness claim-check blob store. The offloaded payloads are clinical content, so the store is SELF-HOSTED by contract — this credential must never address a cloud bucket. |
 | `HARNESS_CLAIM_CHECK_ENABLED` | `env` | no | `true` | `apps/harness` | Moves large clinical blobs OUT of Temporal workflow history into a self-hosted content-addressed store, protecting the ~50 MB history budget. DEFAULTS **ON**, and is therefore NOT marked `killSwitch` — it is a PROTECTION, so turning it off REMOVES a safeguard (unbounded history growth) rather than disabling an enforcement path. Marking it a kill-switch would violate the defaults-OFF invariant and fail registry assembly. Same polarity as `rate-limit.enabled`. Turning it off is a deliberate acceptance of unbounded Temporal history, exactly as the harness startup validator states. |
 | `HARNESS_CLAIM_CHECK_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/harness` | S3/MinIO secret key for the harness claim-check blob store (self-hosted only; PHI must not egress). |
 | `HARNESS_INTERNAL_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | SECOND, SEPARATE harness credential — NOT an alias of `HARNESS_SERVICE_TOKEN`. It gates the knowledge-ingest endpoint only (`apps/harness/.../api/endpoints/knowledge.py`, pydantic field `internal_service_token` under the `HARNESS_` prefix) and is resolved by `KnowledgeIngestClient` for the outbound `X-Service-Token`. Added by lane J: it was read through SecretsService but had no descriptor, so `vault-seed-secrets.sh` never seeded it and every ingest call would 401 on a Vault-backed deployment. |
-| `HARNESS_NER_PRIORS_ENABLED` | `env` | no | `false` | `apps/harness` | Gates reuse of already-persisted CODED NER priors inside harness activities. A workflow-policy value may override it per run; this is the fallback when the policy says nothing. |
 | `HARNESS_PORT` | `env` | no | `8866` | `apps/harness` | Port apps/harness binds (test: 8966). |
 | `HARNESS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔harness hop. Fetched on demand (not a warmup key) by `HarnessOpsClient` / `HarnessGatewayService` / `HarnessServiceTokenGuard`. It MUST equal the harness process’s own `HARNESS_SERVICE_TOKEN`, or every `/api/v1/internal/harness/*` call 401s. |
 | `HARNESS_URL` | `env` | no | `http://localhost:8866` | `apps/api` | Clinical Documentation Harness base URL (apps/harness, port 8866). |
-| `HARNESS_WARM_START_ENABLED` | `env` | no | `false` | `apps/harness` | Env FALLBACK for harness warm-start; `HarnessInternalService` treats the DB/policy value as the authority and consults this only when that is absent. Being a fallback for a policy value is itself an argument for moving it out of env. |
 | `HIGHLIGHT_BACKEND_URL` | `env` | no | — | `apps/api` | Overrides the Highlight.io ingest backend. Unset uses the vendor default. |
 | `HIGHLIGHT_OTLP_ENDPOINT` | `env` | no | — | `apps/api` | Overrides the Highlight.io OTLP endpoint. Unset uses the vendor default. |
 | `HIGHLIGHT_PROJECT_ID` | `env` | no | — | `apps/api` | Enables the Highlight.io log transport. UNSET ⇒ the transport does not mount at all, which is the shipped posture. |
@@ -223,7 +220,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_API_BASE_URL` | `apps/harness` | no | no | `http://localhost:8868` | commented | — |
 | `HARNESS_API_INTERNAL_PREFIX` | `apps/harness` | no | no | `/api/v1/internal/harness` | commented | — |
 | `HARNESS_API_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
-| `HARNESS_ATOMIC_FACT_ENABLED` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_ATOMIC_FACT_ENTAIL_THRESHOLD` | `apps/harness` | no | no | `0.5` | commented | — |
 | `HARNESS_ATOMIC_FACT_MODEL_CACHE_DIR` | `apps/harness` | no | no | `/models/harness-cache` | commented | — |
 | `HARNESS_ATOMIC_FACT_MODEL_ID` | `apps/harness` | no | no | `nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF` | commented | — |
@@ -296,7 +292,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_METRICS_ENABLED` | `apps/harness` | no | no | `true` | commented | — |
 | `HARNESS_MODEL_CACHE_MAX_MODELS` | `apps/harness` | no | no | `1` | commented | — |
 | `HARNESS_MODEL_CACHE_TTL_SECONDS` | `apps/harness` | no | no | `600` | commented | — |
-| `HARNESS_NER_PRIORS_ENABLED` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_NLP_BASE_URL` | `apps/harness` | no | no | `http://localhost:8864` | commented | — |
 | `HARNESS_NLP_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_NLP_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
