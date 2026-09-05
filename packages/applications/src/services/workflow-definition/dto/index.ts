@@ -7,3 +7,6 @@ export * from './paginated-workflow-definition.response';
 export * from './workflow-node.response';
 export * from './sandbox-compile-result';
 export * from './node-prompt-binding.dto';
+export * from './workflow-definition-bundle';
+export * from './sync-workflow-definition.dto';
+export * from './promote-to-system.dto';
