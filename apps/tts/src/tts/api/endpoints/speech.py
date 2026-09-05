@@ -19,7 +19,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from tts.catalog.voices import VoiceNotFoundError
 from tts.core.usage import (
     UNKNOWN_PROVIDER,
     compute_audio_seconds,
@@ -28,6 +27,7 @@ from tts.core.usage import (
 )
 from tts.providers.base import CONTENT_TYPES, AudioChunk, AudioFormat
 from tts.routing.router import AllProvidersUnavailableError
+from tts.spec import ResolvedTtsSpec, candidate_chain
 
 router = APIRouter(tags=["speech"])
 
@@ -37,29 +37,30 @@ _STREAM_HEADERS = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
 class SpeechRequest(BaseModel):
     model: str = "tts"
     input: str = Field(min_length=1)
-    voice: str
+    # OPTIONAL since TASK-879. Absent ⇒ the resolved agent's own `parameters.voice`, which is what
+    # a caller that has not chosen a voice should get: the tenant's configured one, not a service
+    # default. When present it must be a voice the candidate's bound model actually declares —
+    # an unknown one is a 404, never a substituted voice.
+    voice: str | None = None
     response_format: AudioFormat = AudioFormat.PCM
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     stream_format: Literal["audio", "sse"] | None = None
-    # Per-request routing overrides injected by the gateway from a tenant's
-    # resolved config. None → fall back to the static settings chains.
-    routing_en: list[str] | None = None
-    routing_ml: list[str] | None = None
-    allowed_providers: list[str] | None = None
-    # Decrypted per-tenant BYO provider credentials, gateway-injected.
+    # The gateway-resolved TEXT_TO_SPEECH agent: engine chain, models, voices, connections and
+    # the funding-gated fallback governance. REQUIRED — this service reads no selection of its
+    # own, so a request without one cannot be served on anything but a guessed vendor.
+    #
+    # It REPLACES `routing_en` / `routing_ml` / `allowed_providers` / `voice_bindings`, which were
+    # the `TenantTtsConfig` fold.
+    resolved_spec: ResolvedTtsSpec
+    # Decrypted per-tenant BYO provider credentials, gateway-injected. They ride BESIDE the spec
+    # rather than on it: a credential must never travel on a document anything might persist.
     provider_overrides: dict[str, dict[str, str]] | None = None
-    # Per-request voice-binding overrides, gateway-resolved from the
-    # AiModel registry / tenant TTS config: {internalVoiceId: {provider: voiceName}}.
-    # A present entry MERGES over that voice's DEFAULT_VOICES binding map
-    # (unmentioned providers keep their catalog binding — "empty = inherit").
-    voice_bindings: dict[str, dict[str, str]] | None = None
 
 
 @router.post("/audio/speech")
 async def create_speech(body: SpeechRequest, request: Request) -> Response:
     settings = request.app.state.settings
     tts_router = request.app.state.router
-    catalog = request.app.state.voice_catalog
 
     if len(body.input) > settings.max_input_chars:
         # 413 — nothing was accepted, so nothing is recorded: no headers, no
@@ -68,16 +69,29 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
             status_code=413,
             detail=f"input exceeds max_input_chars ({settings.max_input_chars})",
         )
-    try:
-        voice = catalog.get(body.voice)
-    except VoiceNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"unknown voice: {body.voice}") from exc
+
+    # Resolve the chain ONCE, here, so the two failure modes stay distinguishable: a voice this
+    # agent's models do not declare is the CALLER's error (404), while an agent whose engines are
+    # all disabled or failing is the SERVICE's (503). Deriving both from one empty list downstream
+    # would collapse them into whichever status the router happened to raise.
+    chain = candidate_chain(body.resolved_spec, voice_id=body.voice)
+    if not chain and body.voice is not None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"unknown voice for the resolved agent: {body.voice}",
+        )
 
     # ACCEPTED input length (contract: 1 Unicode code point = 1
     # character) — computed here, past every rejection path, never re-derived
     # downstream from a re-encoded/truncated copy of the text.
     character_count = count_characters(body.input)
-    locale = voice.locale
+    # Provisional: the chain's first candidate. Re-read from the candidate that actually WON once
+    # the first byte has shipped (below) — a failover changes both, and a header that describes
+    # the candidate that did not serve is worse than no header.
+    head = chain[0] if chain else body.resolved_spec.primary
+    head_binding = head.binding_for(body.voice)
+    locale = (head_binding.locale if head_binding else None) or head.parameters.language or ""
+    sample_rate = head.sample_rate()
 
     # Read-triggered retention refresh (TTL-cached, single-flight,
     # fail-safe): a service that never synthesizes never polls. Applied BEFORE
@@ -89,15 +103,12 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
 
     fmt = body.response_format
     stream = tts_router.synthesize(
+        spec=body.resolved_spec,
         voice_id=body.voice,
         text=body.input,
         fmt=fmt,
         speed=body.speed,
-        routing_en=body.routing_en,
-        routing_ml=body.routing_ml,
-        allowed_providers=body.allowed_providers,
         provider_overrides=body.provider_overrides,
-        voice_bindings=body.voice_bindings,
     )
 
     # Prime the generator so provider-availability errors become an HTTP status
@@ -116,6 +127,13 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
         ) from exc
 
     provider = first.provider if first is not None else None
+    # The candidate that actually served. Its sample rate and locale are what the audio IS, so
+    # they are what the headers, the derived duration and the Prometheus labels must describe.
+    winner = next((c for c in chain if c.engine == provider), None)
+    if winner is not None:
+        binding = winner.binding_for(body.voice)
+        locale = (binding.locale if binding else None) or winner.parameters.language or locale
+        sample_rate = winner.sample_rate()
     # Accumulated across every chunk this request yields, regardless of which
     # response mode drains it — the SAME counters back batch, SSE, and raw
     # streaming, and are read at teardown (success OR abort) by each mode below.
@@ -137,7 +155,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
     content_type = CONTENT_TYPES[fmt]
     base_headers = {
         "X-Tts-Characters": str(character_count),
-        "X-Tts-Sample-Rate": str(settings.sample_rate),
+        "X-Tts-Sample-Rate": str(sample_rate),
         "X-Tts-Audio-Format": fmt.value,
         "X-Tts-Provider": provider or UNKNOWN_PROVIDER,
     }
@@ -156,7 +174,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
                 # SSE is TTS's own framing (unlike the raw byte stream below),
                 # so the EXACT final duration can ride the wire as one more
                 # event — accumulate + surface at teardown, abort included.
-                audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, settings.sample_rate)
+                audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, sample_rate)
                 record_usage_metrics(
                     provider=provider,
                     locale=locale,
@@ -191,7 +209,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
                 # from X-Tts-Sample-Rate/X-Tts-Audio-Format + the byte count it
                 # observes while proxying (same RTF byte math). This is TTS's
                 # own accumulate-and-record-at-teardown for the Prometheus view.
-                audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, settings.sample_rate)
+                audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, sample_rate)
                 record_usage_metrics(
                     provider=provider,
                     locale=locale,
@@ -215,7 +233,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
             buf += chunk.data
         interrupted = False
     finally:
-        audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, settings.sample_rate)
+        audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, sample_rate)
         record_usage_metrics(
             provider=provider,
             locale=locale,

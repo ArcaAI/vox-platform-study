@@ -1,14 +1,31 @@
 'use client';
 
 import { Fragment, useId } from 'react';
-import { Badge } from '@arcaai/ui/components/shadcn/badge';
-import { Card } from '@arcaai/ui/components/shadcn/card';
-import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import Link from 'next/link';
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, Skeleton } from '@arcaai/ui';
 import { ErrorState } from '@/shared/state/error-state';
-import { useTtsCatalog, useTtsEffective, useTtsRow, usePutTtsRow, type EffectiveTtsConfig } from '../api';
-import { TtsConfigForm } from './tts-config-form';
+import { useTtsEffective, type EffectiveTtsConfig } from '../api';
 
-/** Compact key/value summary of the resolved effective TTS config. */
+/**
+ * Voice tab — a READ-ONLY summary of the retired `TenantTtsConfig` row, plus the way forward.
+ *
+ * @deprecated TASK-862/879 — removed in R4 with `TenantTtsConfig`.
+ *
+ * TASK-879 made the speech path agent-first: the gateway resolves the tenant's TEXT_TO_SPEECH
+ * agent per request and pushes a resolved spec that carries the engine chain, the bound model
+ * (its mirror, artifacts and voices), the provider connections and the fallback governance. Every
+ * field this tab used to EDIT now lives on a row that actually reaches `apps/tts`:
+ *
+ *   voice / format / speed / sample rate  → the agent's `parameters`
+ *   routing chains + allowed providers    → the agent's model chain and the connection rows'
+ *                                           three-state `enabled`
+ *   voice bindings                        → `AiModel._metadata.voices`
+ *
+ * The editor is therefore GONE rather than disabled: a form that writes a row nothing reads is
+ * worse than no form — an operator would change a value, see it saved, and hear no difference.
+ * The summary stays for the deprecation window so an admin can SEE what the old row held while
+ * migrating it, and the links go to the surfaces that own each half now.
+ */
 function EffectiveResolveCard({ effective }: { effective: EffectiveTtsConfig }) {
   const uid = useId();
   const list = (values: string[]) => (values.length > 0 ? values.join(', ') : '—');
@@ -23,7 +40,6 @@ function EffectiveResolveCard({ effective }: { effective: EffectiveTtsConfig }) 
     { label: 'routing ml', value: list(effective.routingMl) },
     { label: 'allowed', value: list(effective.allowedProviders) },
     { label: 'sarvam public', value: effective.sarvamPublicApiAllowed ? 'on' : 'off' },
-    // Effective merged bindings, read-only (tenant over SYSTEM per voice id).
     ...Object.entries(effective.voiceBindings ?? {}).map(([voiceId, bindings]) => ({
       label: `bind ${voiceId}`,
       value: Object.entries(bindings)
@@ -34,10 +50,10 @@ function EffectiveResolveCard({ effective }: { effective: EffectiveTtsConfig }) 
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id={`${uid}-title`} className="text-sm font-medium">
-          Effective TTS config
-        </h2>
-        <Badge variant="secondary">tenant over SYSTEM default</Badge>
+        <h3 id={`${uid}-title`} className="text-sm font-medium">
+          Retired TTS config row
+        </h3>
+        <Badge variant="outline">read-only</Badge>
       </div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
         {summary.map((row) => (
@@ -53,75 +69,46 @@ function EffectiveResolveCard({ effective }: { effective: EffectiveTtsConfig }) 
 
 function ConfigTabSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-hidden>
+    <div className="flex flex-col gap-4 py-4" aria-hidden>
+      <Skeleton className="h-5 w-72" />
+      <Skeleton className="h-24 w-full" />
       <Skeleton className="h-64 w-full max-w-md" />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Skeleton className="h-56" />
-        <Skeleton className="h-56" />
-        {/* Voice-bindings card: per-voice rows of provider selects (rule 10: mirror the loaded shape). */}
-        <div className="flex flex-col gap-3 lg:col-span-2">
-          <Skeleton className="h-5 w-32" />
-          {Array.from({ length: 2 }, (_, index) => (
-            <div key={index} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <Skeleton className="h-8" />
-              <Skeleton className="h-8" />
-              <Skeleton className="h-8" />
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
 
-/**
- * Voice (TTS config) tab body — effective resolve card + the OCC row editor.
- * Extracted from the retired `/tts-config` screen so the `/ai-configuration`
- * hub can compose it as its "Voice" tab. The BYO TTS credentials
- * formerly beside it are now edited only in the hub's Providers tab (the
- * unified provider plane) — the one authoritative credential editor (rule 13).
- */
 export function TtsConfigTab() {
-  const uid = useId();
   const effectiveQuery = useTtsEffective();
-  const rowQuery = useTtsRow();
-  // Catalog failure degrades gracefully: the bindings editor is hidden, the rest of the form stays editable.
-  const catalogQuery = useTtsCatalog();
-  const mutation = usePutTtsRow();
 
-  if (effectiveQuery.isPending || rowQuery.isPending || catalogQuery.isPending) return <ConfigTabSkeleton />;
+  if (effectiveQuery.isPending) return <ConfigTabSkeleton />;
   if (effectiveQuery.error || !effectiveQuery.data) {
     return <ErrorState error={effectiveQuery.error} onRetry={() => void effectiveQuery.refetch()} />;
   }
-  if (rowQuery.error || !rowQuery.data) {
-    return <ErrorState error={rowQuery.error} onRetry={() => void rowQuery.refetch()} />;
-  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <EffectiveResolveCard effective={effectiveQuery.data} />
-        <section aria-labelledby={`${uid}-editor`} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <h2 id={`${uid}-editor`} className="text-base font-medium">
-              Tenant TTS config editor
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              Sparse patch over the row &mdash; <span className="font-mono text-xs">PUT /admin/tts-config/row</span> with If-Match; drift returns 412
-              with reload-merge. Empty scalar = inherit the SYSTEM default.
-            </p>
-          </div>
-          <TtsConfigForm
-            row={rowQuery.data.data}
-            etag={rowQuery.data.etag}
-            mutation={mutation}
-            onReloadLatest={() => void rowQuery.refetch()}
-            successMessage="Tenant TTS config saved"
-            catalog={catalogQuery.data}
-            effectiveBindings={effectiveQuery.data.voiceBindings}
-          />
-        </section>
+    <div className="flex flex-col gap-4 py-4">
+      <h2 className="text-base font-semibold">Voice settings moved to the text-to-speech agent</h2>
+      <Alert>
+        <AlertTitle>Retired (TASK-879 — removed in R4)</AlertTitle>
+        <AlertDescription>
+          The tenant TTS config row no longer reaches the speech service. The voice, format, speed and sample rate are the
+          text-to-speech agent&apos;s <span className="font-mono">parameters</span>; the provider order is the agent&apos;s model chain
+          and its fallback block; which engines may serve, and on whose key, is the provider connection. The values below are what the
+          old row still holds, kept visible while you migrate them.
+        </AlertDescription>
+      </Alert>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild>
+          <Link href="/agents?task=TEXT_TO_SPEECH">Open text-to-speech agents</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/workflow-studio/assignments">Agent assignments</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/ai-providers">Providers &amp; keys</Link>
+        </Button>
       </div>
+      <EffectiveResolveCard effective={effectiveQuery.data} />
     </div>
   );
 }

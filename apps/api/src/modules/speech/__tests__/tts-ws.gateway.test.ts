@@ -143,25 +143,51 @@ describe('TtsWsGateway', () => {
 
   // The first `init` frame is additionally enriched with the
   // tenant's resolved `voice_bindings` (mirrors the batch speech proxy).
-  describe('init-frame voice_bindings enrichment', () => {
-    const BINDINGS = { 'en-female-1': { azure: 'en-IN-NeerjaNeural' } };
+  describe('init-frame agent enrichment', () => {
+    const SPEC = {
+      schemaVersion: 1,
+      agent: {
+        slug: 'platform-tts',
+        versionId: 'a1',
+        versionNumber: 1,
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        source: 'platform-default',
+      },
+      primary: {
+        kind: 'primary',
+        runtimeKey: 'a1',
+        agent: {
+          slug: 'platform-tts',
+          versionId: 'a1',
+          versionNumber: 1,
+          tenantId: '00000000-0000-0000-0000-000000000000',
+          source: 'platform-default',
+        },
+        model: {
+          role: 'primary',
+          slug: 'kokoro',
+          taskType: 'TEXT_TO_SPEECH',
+          format: 'PYTORCH',
+          sourceUri: 'hexgrad/Kokoro-82M',
+          sourceRevision: null,
+          localPath: null,
+          checksum: null,
+          computeType: null,
+          provider: 'kokoro',
+          tenantId: '00000000-0000-0000-0000-000000000000',
+          artifacts: {},
+          voices: [{ id: 'af_heart', locale: 'en-US', providerVoice: null, refAudioPath: null, refText: null }],
+        },
+        parameters: { voice: 'af_heart', language: 'en', speed: 1.25, format: 'pcm', sampleRate: 24000, ssml: false },
+        voice: { id: 'af_heart', locale: 'en-US', providerVoice: null, refAudioPath: null, refText: null },
+        connection: { provider: 'kokoro', baseUrl: null, region: null, timeoutS: null, funding: 'platform' },
+        fundingTier: 'platform',
+      },
+      fallback: { autoSwitch: true, chain: [] },
+    };
 
-    const makeTenantTtsConfig = (voiceBindings: Record<string, Record<string, string>>) => ({
-      getEffective: vi.fn().mockResolvedValue({
-        tenantId: 't1',
-        defaultFormat: 'pcm',
-        defaultSpeed: 1.0,
-        routingEn: ['azure'],
-        routingMl: ['azure'],
-        allowedProviders: ['azure'],
-        voiceBindings,
-      }),
-    });
-
-    // The resolver returns `{overrides, platformDefault?}` (two
-    // tiers merged per provider), not a bare map.
-    const makeProviderConnectionService = (overrides: Record<string, unknown> = {}) => ({
-      resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides }),
+    const makeResolver = (overrides: Record<string, unknown> = {}) => ({
+      resolve: vi.fn().mockResolvedValue({ spec: SPEC, ...(Object.keys(overrides).length > 0 ? { providerOverrides: overrides } : {}) }),
     });
 
     const lastUpstreamTextFrame = () => {
@@ -170,53 +196,48 @@ describe('TtsWsGateway', () => {
       return JSON.parse(String(call?.[0]));
     };
 
-    it('injects voice_bindings into the first init frame when non-empty', async () => {
-      gateway = new TtsWsGateway(
-        ticketService as never,
-        config as never,
-        secrets as never,
-        makeTenantTtsConfig(BINDINGS) as never,
-        makeProviderConnectionService() as never,
-      );
+    it('injects the resolved TEXT_TO_SPEECH agent into the first init frame', async () => {
+      const resolver = makeResolver();
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, resolver as never);
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
       upstream.emit('open');
 
-      client.emit('message', Buffer.from('{"type":"init","voice":"en-female-1"}'), false);
+      client.emit('message', Buffer.from('{"type":"init"}'), false);
 
+      expect(resolver.resolve).toHaveBeenCalledWith({ tenantId: 't1', agentSlug: null, departmentId: null });
       const frame = lastUpstreamTextFrame();
       expect(frame.type).toBe('init');
-      expect(frame.voice_bindings).toEqual(BINDINGS);
-      expect(frame.routing_en).toEqual(['azure']);
-    });
-
-    it('omits voice_bindings when the resolved bindings map is empty', async () => {
-      gateway = new TtsWsGateway(
-        ticketService as never,
-        config as never,
-        secrets as never,
-        makeTenantTtsConfig({}) as never,
-        makeProviderConnectionService() as never,
-      );
-      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
-      const client = makeSocket();
-      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
-      upstream.emit('open');
-
-      client.emit('message', Buffer.from('{"type":"init","voice":"en-female-1"}'), false);
-
-      const frame = lastUpstreamTextFrame();
-      expect(frame.type).toBe('init');
+      expect(frame.resolved_spec).toEqual(SPEC);
+      // …and the agent's own speed becomes the session default.
+      expect(frame.speed).toBe(1.25);
+      // The `TenantTtsConfig` fold is GONE, not merely unused: an injected routing chain would
+      // be a second authority over which engine speaks.
+      expect('routing_en' in frame).toBe(false);
       expect('voice_bindings' in frame).toBe(false);
+      expect('allowed_providers' in frame).toBe(false);
     });
 
-    it('fails open — a config resolve error relays the init frame verbatim', async () => {
-      const failing = {
-        getEffective: vi.fn().mockRejectedValue(new Error('config db down')),
-      };
-      const failingProviders = { resolveTenantCloudOverrides: vi.fn().mockRejectedValue(new Error('config db down')) };
-      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, failing as never, failingProviders as never);
+    it('lets a client-supplied speed win over the agent`s', async () => {
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeResolver() as never);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      client.emit('message', Buffer.from('{"type":"init","speed":0.8}'), false);
+
+      expect(lastUpstreamTextFrame().speed).toBe(0.8);
+    });
+
+    it('opens the socket anyway when the agent will not resolve — the session ends in an error frame, not a 4401', async () => {
+      // Refusing the handshake would report an agent-configuration problem as an AUTH failure:
+      // every rejection on this socket is deliberately byte-identical, so the cause would be
+      // invisible to the operator and to the user. `apps/tts` refuses an init frame with no spec,
+      // which the browser client renders as `provider_unavailable`.
+      const failing = { resolve: vi.fn().mockRejectedValue(new Error('no published TEXT_TO_SPEECH agent')) };
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, failing as never);
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
@@ -225,50 +246,36 @@ describe('TtsWsGateway', () => {
       const raw = Buffer.from('{"type":"init","voice":"en-female-1"}');
       client.emit('message', raw, false);
 
+      expect(client.close).not.toHaveBeenCalled();
       expect(upstream.send).toHaveBeenCalledWith(raw, { binary: false });
     });
 
-    // Provider_overrides now resolves through the unified
-    // IProviderConnectionService (`service='tts'`). Shape unchanged (C4).
-    it('injects provider_overrides into the first init frame via IProviderConnectionService', async () => {
+    it('injects provider_overrides beside the spec, never on it', async () => {
       const OVERRIDES = { sarvam: { api_key: 'THE-KEY', funding: 'tenant', base_url: 'https://vpc.sarvam' } };
-      const providerConnectionService = makeProviderConnectionService(OVERRIDES);
-      gateway = new TtsWsGateway(
-        ticketService as never,
-        config as never,
-        secrets as never,
-        makeTenantTtsConfig({}) as never,
-        providerConnectionService as never,
-      );
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeResolver(OVERRIDES) as never);
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
       upstream.emit('open');
 
-      client.emit('message', Buffer.from('{"type":"init","voice":"en-female-1"}'), false);
+      client.emit('message', Buffer.from('{"type":"init"}'), false);
 
-      expect(providerConnectionService.resolveTenantCloudOverrides).toHaveBeenCalledWith('tts', 't1');
       const frame = lastUpstreamTextFrame();
       expect(frame.provider_overrides).toEqual(OVERRIDES);
+      // A credential must not travel on a document anything downstream might persist or log.
+      expect(JSON.stringify(frame.resolved_spec)).not.toContain('THE-KEY');
     });
 
     it('omits provider_overrides when the resolved map is empty', async () => {
-      gateway = new TtsWsGateway(
-        ticketService as never,
-        config as never,
-        secrets as never,
-        makeTenantTtsConfig({}) as never,
-        makeProviderConnectionService({}) as never,
-      );
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeResolver() as never);
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
       upstream.emit('open');
 
-      client.emit('message', Buffer.from('{"type":"init","voice":"en-female-1"}'), false);
+      client.emit('message', Buffer.from('{"type":"init"}'), false);
 
-      const frame = lastUpstreamTextFrame();
-      expect('provider_overrides' in frame).toBe(false);
+      expect('provider_overrides' in lastUpstreamTextFrame()).toBe(false);
     });
   });
 
@@ -281,7 +288,7 @@ describe('TtsWsGateway', () => {
     const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 1 }) });
 
     const buildGateway = (usageLedger: unknown) =>
-      new TtsWsGateway(ticketService as never, config as never, secrets as never, undefined, undefined, usageLedger as never);
+      new TtsWsGateway(ticketService as never, config as never, secrets as never, undefined, usageLedger as never);
 
     it('emits CHARACTER + AUDIO_SECOND from the usage frame and does not relay it to the browser', async () => {
       const usageLedger = createMockUsageLedger();
@@ -291,9 +298,7 @@ describe('TtsWsGateway', () => {
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
       upstream.emit('open');
 
-      const usageFrame = Buffer.from(
-        JSON.stringify({ type: 'usage', characters: 10, audioSeconds: 0.2, interrupted: false, provider: 'azure' }),
-      );
+      const usageFrame = Buffer.from(JSON.stringify({ type: 'usage', characters: 10, audioSeconds: 0.2, interrupted: false, provider: 'azure' }));
       upstream.emit('message', usageFrame, false);
 
       expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
@@ -336,30 +341,48 @@ describe('TtsWsGateway', () => {
       expect(call.common.attributesJson).toEqual({ interrupted: true });
     });
 
+    const resolverWith = (overrides: Record<string, unknown>) => ({
+      resolve: vi.fn().mockResolvedValue({
+        spec: {
+          schemaVersion: 1,
+          agent: { slug: 'tenant-tts', versionId: 'a1', versionNumber: 1, tenantId: 't1', source: 'tenant' },
+          primary: {
+            kind: 'primary',
+            runtimeKey: 'a1',
+            agent: { slug: 'tenant-tts', versionId: 'a1', versionNumber: 1, tenantId: 't1', source: 'tenant' },
+            model: {
+              role: 'primary',
+              slug: 'azure-neural-voices',
+              taskType: 'TEXT_TO_SPEECH',
+              format: 'AZURE_SPEECH',
+              sourceUri: 'azure://neural-voices',
+              sourceRevision: null,
+              localPath: null,
+              checksum: null,
+              computeType: null,
+              provider: 'azure',
+              tenantId: '00000000-0000-0000-0000-000000000000',
+              artifacts: {},
+              voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN', providerVoice: null, refAudioPath: null, refText: null }],
+            },
+            parameters: { voice: 'en-IN-NeerjaNeural', language: 'en', speed: null, format: null, sampleRate: null, ssml: false },
+            voice: { id: 'en-IN-NeerjaNeural', locale: 'en-IN', providerVoice: null, refAudioPath: null, refText: null },
+            connection: { provider: 'azure', baseUrl: null, region: 'eastus', timeoutS: null, funding: 'platform' },
+            fundingTier: 'platform',
+          },
+          fallback: { autoSwitch: true, chain: [] },
+        },
+        providerOverrides: overrides,
+      }),
+    });
+
     it('classifies a BYOK-resolved provider as deployment BYOK / costBasis BYOK_NOTIONAL', async () => {
       const usageLedger = createMockUsageLedger();
-      // Both tenantTtsConfig AND providerConnectionService must be present —
-      // openBridge() only resolves provider_overrides when the FIRST is set.
-      const tenantTtsConfig = {
-        getEffective: vi.fn().mockResolvedValue({
-          tenantId: 't1',
-          defaultFormat: 'pcm',
-          defaultSpeed: 1.0,
-          routingEn: ['azure'],
-          routingMl: ['azure'],
-          allowedProviders: ['azure'],
-          voiceBindings: {},
-        }),
-      };
-      const providerConnectionService = {
-        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { azure: { api_key: 'k', funding: 'tenant' } } }),
-      };
       gateway = new TtsWsGateway(
         ticketService as never,
         config as never,
         secrets as never,
-        tenantTtsConfig as never,
-        providerConnectionService as never,
+        resolverWith({ azure: { api_key: 'k', funding: 'tenant' } }) as never,
         usageLedger as never,
       );
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
@@ -378,30 +401,15 @@ describe('TtsWsGateway', () => {
     });
 
     it('A PLATFORM-FUNDED override resolves to deployment CLOUD, not BYOK', async () => {
-      // Same bridge, same injected init frame — the only difference is WHOSE
-      // credential the resolver supplied. A SYSTEM-tenant (platform) key is
-      // platform vendor spend, so it must reach the COGS rollups (OD-2).
+      // Same bridge, same resolved agent — the only difference is WHOSE credential the resolver
+      // supplied. A SYSTEM-tenant (platform) key is platform vendor spend, so it must reach the
+      // COGS rollups.
       const usageLedger = createMockUsageLedger();
-      const tenantTtsConfig = {
-        getEffective: vi.fn().mockResolvedValue({
-          tenantId: 't1',
-          defaultFormat: 'pcm',
-          defaultSpeed: 1.0,
-          routingEn: ['azure'],
-          routingMl: ['azure'],
-          allowedProviders: ['azure'],
-          voiceBindings: {},
-        }),
-      };
-      const providerConnectionService = {
-        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { azure: { api_key: 'k', funding: 'platform' } } }),
-      };
       gateway = new TtsWsGateway(
         ticketService as never,
         config as never,
         secrets as never,
-        tenantTtsConfig as never,
-        providerConnectionService as never,
+        resolverWith({ azure: { api_key: 'k', funding: 'platform' } }) as never,
         usageLedger as never,
       );
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);

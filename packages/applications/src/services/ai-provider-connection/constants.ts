@@ -110,6 +110,32 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   'model-registry': [],
 };
 
+/**
+ * TASK-879 — SYSTEM-ONLY serving providers: the platform's OWN engines, which have a connection
+ * row so that "does this deployment run that engine, and where does it live" is a super-admin
+ * write with an audit trail rather than a boot flag in a ConfigMap.
+ *
+ * They are the complement of `CLOUD_BYO_PROVIDERS`, not an addition to it: a tenant row here is a
+ * 403 (a self-hosted engine has no vendor account for a tenant to bring), so only the SYSTEM row
+ * exists and it serves every tenant — the same shape `rerank` and `model-registry` already have.
+ *
+ * `tts` is the first service to declare its own: `tts.{kokoro,parler,indicf5}.enabled` were
+ * platform settings keys whose whole content was "may this engine serve", which is exactly what a
+ * connection row's three-state `enabled` says. Listing an engine here does NOT widen what a tenant
+ * may write; it gives the PLATFORM a row to write.
+ *
+ * A service with no entry declares no self-host serving engine — deliberately empty rather than
+ * aspirational, so the list stays evidence about what exists.
+ */
+export const PLATFORM_SELF_HOST_PROVIDERS: Readonly<Partial<Record<ProviderService, readonly string[]>>> = Object.freeze({
+  tts: Object.freeze(['kokoro', 'indic_parler', 'indic_f5'] as const),
+});
+
+/** Whether `(service, provider)` names one of the platform's own self-hosted serving engines. */
+export function isPlatformSelfHostProvider(service: ProviderService, provider: string): boolean {
+  return (PLATFORM_SELF_HOST_PROVIDERS[service] ?? []).includes(provider);
+}
+
 /** The union of every cloud BYO provider name across all services. */
 export type CloudByoProvider = (typeof CLOUD_BYO_PROVIDERS)[ProviderService][number];
 

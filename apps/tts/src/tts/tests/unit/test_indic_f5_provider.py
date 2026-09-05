@@ -71,7 +71,11 @@ def test_protocol_and_gated_off_by_default():
     provider = IndicF5Provider(IndicF5Config(), generate=FakeGenerate())
     assert isinstance(provider, TTSEngine)
     assert provider.native_streaming is True
-    assert IndicF5Config().enabled is False  # gated OFF (prod NO-GO)
+    # The prod NO-GO gate is no longer a config field. TASK-879 moved it onto the SYSTEM
+    # `AiProviderConnection(tts, indic_f5)` row, seeded DISABLED — so enabling this engine is a
+    # SUPER_ADMIN write with an audit trail rather than an environment variable, and the gateway
+    # emits `connection: null` for it until someone does. There is also no `indic-f5` registry row
+    # (it is retired), so no agent can bind it in the first place.
 
 
 def test_catalog_binding_present_but_not_in_default_routing():

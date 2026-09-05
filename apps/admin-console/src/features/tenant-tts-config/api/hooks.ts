@@ -1,27 +1,17 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTtsCatalog, getTtsEffective, getTtsRow, putTtsRow } from './client';
+import { useQuery } from '@tanstack/react-query';
+import { getTtsEffective } from './client';
 import { ttsConfigKeys } from './keys';
-import type { UpdateTtsConfigRequest } from './types';
 
+/**
+ * @deprecated TASK-862/879 — removed in R4 with `TenantTtsConfig`.
+ *
+ * Only the READ survives. `useTtsRow` / `useTtsCatalog` / `usePutTtsRow` went with the editor
+ * (TASK-879): the row no longer reaches `apps/tts`, so a mutation hook would let an operator save
+ * a value and hear no difference. The voice, format, speed, sample rate, provider order and voice
+ * bindings are the TEXT_TO_SPEECH agent's now — `/agents?task=TEXT_TO_SPEECH`.
+ */
 export function useTtsEffective() {
   return useQuery({ queryKey: ttsConfigKeys.effective(), queryFn: getTtsEffective });
-}
-
-export function useTtsRow() {
-  return useQuery({ queryKey: ttsConfigKeys.row(), queryFn: getTtsRow });
-}
-
-export function useTtsCatalog() {
-  return useQuery({ queryKey: ttsConfigKeys.catalog(), queryFn: getTtsCatalog, staleTime: 5 * 60 * 1000 });
-}
-
-export function usePutTtsRow() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ patch, etag }: { patch: Omit<UpdateTtsConfigRequest, 'expectedVersion'>; etag: string | null }) => putTtsRow(patch, etag),
-    // The row edit also moves the resolved effective config.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ttsConfigKeys.root }),
-  });
 }

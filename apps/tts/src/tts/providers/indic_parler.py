@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncGenerator, Callable
+from typing import Any
 
 import numpy as np
 from hope_runtime_models import ModelCache
@@ -106,6 +107,30 @@ class IndicParlerProvider:
     # an adapter that says nothing fails it.
     credential_posture = CredentialPosture.SELF_HOST
     is_configured = True  # Self-hosted engine needs no credential
+
+    @classmethod
+    def from_spec(
+        cls, settings: Any, candidate: Any, override: dict[str, str]
+    ) -> IndicParlerProvider | None:
+        """Build a REQUEST-SCOPED engine for one resolved TTS spec candidate.
+
+        Three model facts, all from the registry row the agent bound: the gated Hub id
+        (`sourceUri`), the ungated internal mirror (`localPath`), and the description-tokenizer
+        mirror (`_metadata.artifacts.descEncoderPath` — the one artifact an otherwise-offline
+        deployment still reaches out for). `override` is unused: this engine authenticates to
+        nothing.
+        """
+        del override
+        return cls(
+            settings.indic_parler.model_copy(
+                update={
+                    "hf_model": candidate.model.source_uri,
+                    "model_path": candidate.model.local_path or "",
+                    "desc_encoder_path": candidate.model.artifacts.get("descEncoderPath", ""),
+                }
+            ),
+            ttl_seconds=settings.model_cache_ttl_seconds,
+        )
 
     def __init__(
         self,

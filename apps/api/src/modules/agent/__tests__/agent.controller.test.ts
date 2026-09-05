@@ -20,7 +20,19 @@ const RESOLVED = {
   task: 'TEXT_GENERATION',
   tenantId: TENANT,
   source: 'explicit',
-  compiledConfig: { task: 'TEXT_GENERATION', service: 'llm', model: { id: 'm', slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio', taskType: 'TEXT_GENERATION' }, fallbacks: [], instruction: null, resolvedPrompt: null, parameters: {}, inputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' } } }, outputSchema: { type: 'object' }, tools: [], protocols: ['http', 'http-sse'] },
+  compiledConfig: {
+    task: 'TEXT_GENERATION',
+    service: 'llm',
+    model: { id: 'm', slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio', taskType: 'TEXT_GENERATION' },
+    fallbacks: [],
+    instruction: null,
+    resolvedPrompt: null,
+    parameters: {},
+    inputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' } } },
+    outputSchema: { type: 'object' },
+    tools: [],
+    protocols: ['http', 'http-sse'],
+  },
   models: [],
 };
 
@@ -51,7 +63,9 @@ function make(overrides: Record<string, unknown> = {}) {
   const resolver = { resolve: vi.fn(async () => RESOLVED) };
   const invocation = {
     inputProblems: vi.fn(() => []),
-    invokeText: vi.fn(async (_r: unknown, _t: string, _i: unknown, mode: string) => (mode === 'stream' ? { stream: new PassThrough() } : { text: 'hello', provider: 'lm-studio', model: 'lms-gemma-4-e2b-it-qat', usage: null })),
+    invokeText: vi.fn(async (_r: unknown, _t: string, _i: unknown, mode: string) =>
+      mode === 'stream' ? { stream: new PassThrough() } : { text: 'hello', provider: 'lm-studio', model: 'lms-gemma-4-e2b-it-qat', usage: null },
+    ),
     buildSpeechRequest: vi.fn(),
     resolveAsrPipelineId: vi.fn(async () => 'pipe-1'),
   };
@@ -62,7 +76,13 @@ function make(overrides: Record<string, unknown> = {}) {
   // TASK-861 — the ASR resolution behind `transcriptions`.
   const asrResolver = {
     resolve: vi.fn(async () => ({
-      spec: { schemaVersion: 1, runtimeKey: 'agent-v-1', agent: { slug: 'platform-transcription', versionId: 'agent-v-1' }, models: { asr: { slug: 'whisper' } }, fallback: { kind: 'none', spec: null } },
+      spec: {
+        schemaVersion: 1,
+        runtimeKey: 'agent-v-1',
+        agent: { slug: 'platform-transcription', versionId: 'agent-v-1' },
+        models: { asr: { slug: 'whisper' } },
+        fallback: { kind: 'none', spec: null },
+      },
     })),
   };
   const deps = { agentService, resolver, invocation, cls, jobService, realtimeService, mediaService, asrResolver, ...overrides };
@@ -73,11 +93,10 @@ function make(overrides: Record<string, unknown> = {}) {
     deps.cls as never,
     {} as never,
     { getConfigValue: () => 'http://tts' } as never,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
+    undefined, // secretsService
+    undefined, // ttsResolver
+    undefined, // entitlementsService
+    undefined, // usageLedger
     deps.jobService as never,
     deps.realtimeService as never,
     deps.mediaService as never,
@@ -144,13 +163,30 @@ describe('AgentController — transcriptions (TASK-861: agent-keyed, no pipeline
     expect(asrResolver.resolve).toHaveBeenCalledWith({ tenantId: TENANT, agentSlug: 'platform-transcription', departmentId: null });
     expect(invocation.resolveAsrPipelineId).not.toHaveBeenCalled();
     expect(jobService.createBatchJob).toHaveBeenCalledWith(
-      expect.objectContaining({ agentVersionId: 'agent-v-1', resolvedSpec: expect.objectContaining({ runtimeKey: 'agent-v-1' }), mediaId: 'media-1', consultationId: undefined }),
+      expect.objectContaining({
+        agentVersionId: 'agent-v-1',
+        resolvedSpec: expect.objectContaining({ runtimeKey: 'agent-v-1' }),
+        mediaId: 'media-1',
+        consultationId: undefined,
+      }),
     );
     expect(jobService.createBatchJob.mock.calls[0][0]).not.toHaveProperty('pipelineId');
     expect(realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: 'job-1', pipelineId: 'agent-v-1', resolvedSpec: expect.objectContaining({ runtimeKey: 'agent-v-1' }), audioUri: 's3://bucket/audio.wav', language: 'ml-en' }),
+      expect.objectContaining({
+        jobId: 'job-1',
+        pipelineId: 'agent-v-1',
+        resolvedSpec: expect.objectContaining({ runtimeKey: 'agent-v-1' }),
+        audioUri: 's3://bucket/audio.wav',
+        language: 'ml-en',
+      }),
     );
-    expect(out).toMatchObject({ id: 'job-1', agentSlug: 'platform-transcription', agentVersionId: 'agent-v-1', pipelineId: 'agent-v-1', sseUrl: '/api/v1/audio/transcription-jobs/job-1/stream' });
+    expect(out).toMatchObject({
+      id: 'job-1',
+      agentSlug: 'platform-transcription',
+      agentVersionId: 'agent-v-1',
+      pipelineId: 'agent-v-1',
+      sseUrl: '/api/v1/audio/transcription-jobs/job-1/stream',
+    });
   });
 
   it('fails closed (409) when the agent cannot become a runnable spec — the resolver’s verdict propagates untouched', async () => {

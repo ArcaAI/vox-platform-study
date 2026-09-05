@@ -2,10 +2,9 @@ import {
   IActiveUserContext,
   IConfigService,
   IEntitlementsService,
-  IProviderConnectionService,
-  ITenantTtsConfigService,
   IUsageLedgerService,
   SecretsService,
+  TtsAgentResolverService,
   UsageIdempotencyKey,
 } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
@@ -20,7 +19,7 @@ import { Public } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { HarnessServiceTokenGuard } from '../consultation/harness-service-token.guard';
 import { classifyTtsProvider } from './tts-provider-classification';
-import { resolveTtsTenantConfig } from './tts-tenant-config';
+import { resolveTtsRequestConfig } from './tts-tenant-config';
 
 // Raw s16le mono PCM: 2 bytes/sample; WAV carries the same payload behind a fixed 44-byte
 // header. Same constants (and same reason) as `speech-proxy.controller.ts`.
@@ -44,10 +43,21 @@ class HarnessSynthesizeSpeechRequest {
   @MaxLength(100_000)
   text: string;
 
-  @ApiProperty({ description: 'Voice identifier within the tenant`s resolved catalogue — never a provider voice name.' })
+  @ApiPropertyOptional({
+    description: 'Voice identifier within the resolved agent`s bound model catalogue. Omitted ⇒ the agent`s own configured voice.',
+  })
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  voice: string;
+  voice?: string;
+
+  @ApiPropertyOptional({
+    description: 'An explicit TEXT_TO_SPEECH agent (lineage slug). Omitted ⇒ the tenant → department → SYSTEM AgentAssignment cascade decides.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  agentSlug?: string;
 
   @ApiPropertyOptional({ description: 'Audio format. Omitted ⇒ the tenant`s configured default.' })
   @IsOptional()
@@ -130,12 +140,13 @@ export class HarnessTtsInternalController {
     @Inject(IConfigService) private readonly configService: IConfigService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // All four are `@Optional()` for the reason `SpeechProxyController` records: positional test
-    // construction keeps its arity, and a stack without them still boots. Absent config/overrides
-    // ⇒ apps/tts falls back to its own settings (fail-open, synthesis still happens); absent
-    // ledger/entitlements ⇒ no metering and no quota check, never a blocked synthesis.
-    @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
-    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
+    // All three are `@Optional()` for the reason `SpeechProxyController` records: positional test
+    // construction keeps its arity, and a stack without them still boots. Absent ledger /
+    // entitlements ⇒ no metering and no quota check, never a blocked synthesis. An absent AGENT
+    // RESOLVER is different in kind since TASK-879: `apps/tts` refuses a request with no resolved
+    // spec, so a stack without it cannot synthesize at all — which is the correct fail-closed
+    // outcome, not a degraded one.
+    @Optional() private readonly ttsAgentResolver?: TtsAgentResolverService,
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
     @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
   ) {}
@@ -197,45 +208,38 @@ export class HarnessTtsInternalController {
   }
 
   /**
-   * Fold the tenant's resolved TTS configuration onto the node's request.
+   * Fold the tenant's resolved TEXT_TO_SPEECH agent onto the node's request.
    *
-   * Fails OPEN, exactly as the user-facing proxy does: a config-resolution error degrades to
-   * apps/tts's own settings rather than failing a synthesis. It is logged, never swallowed
-   * silently — a run that quietly stopped honouring a tenant's provider chain is worth seeing.
+   * Fails CLOSED, exactly as the user-facing proxy does since TASK-879: there is no service-side
+   * default left to degrade to, so an unresolvable agent surfaces as the 404/409 it is rather
+   * than as an opaque 503 from a service that was handed nothing to do. A run that quietly
+   * stopped honouring a tenant's agent is exactly what this must not become.
    */
   private async buildForwardBody(dto: HarnessSynthesizeSpeechRequest): Promise<Record<string, unknown>> {
-    const body: Record<string, unknown> = { input: dto.text, voice: dto.voice };
+    const body: Record<string, unknown> = { input: dto.text, ...(dto.voice ? { voice: dto.voice } : {}) };
     if (dto.format) body.response_format = dto.format;
     if (dto.speed !== undefined) body.speed = dto.speed;
 
-    if (!this.tenantTtsConfig) return body;
-    try {
-      const { eff, overrides } = await resolveTtsTenantConfig(dto.tenantId, {
-        tenantTtsConfig: this.tenantTtsConfig,
-        providerConnectionService: this.providerConnectionService,
-      });
-      return {
-        ...body,
-        response_format: dto.format ?? eff.defaultFormat,
-        speed: dto.speed ?? eff.defaultSpeed,
-        routing_en: eff.routingEn,
-        routing_ml: eff.routingMl,
-        allowed_providers: eff.allowedProviders,
-        ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
-        ...(eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0 ? { voice_bindings: eff.voiceBindings } : {}),
-      };
-    } catch (err) {
-      this.logger.warn({
-        message: 'Tenant TTS config resolve failed for a harness synthesis; forwarding with service defaults',
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return body;
-    }
+    if (!this.ttsAgentResolver) return body;
+    const { spec, overrides } = await resolveTtsRequestConfig(dto.tenantId, {
+      ttsAgentResolver: this.ttsAgentResolver,
+      agentSlug: dto.agentSlug,
+    });
+    return {
+      ...body,
+      // The node's own config wins over the agent's parameters; the agent supplies what the node
+      // left unsaid.
+      ...(dto.format || spec.primary.parameters.format ? { response_format: dto.format ?? spec.primary.parameters.format } : {}),
+      ...(dto.speed !== undefined || spec.primary.parameters.speed !== null ? { speed: dto.speed ?? spec.primary.parameters.speed } : {}),
+      resolved_spec: spec,
+      ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
+    };
   }
 
+  /** The ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is the migration fallback only. */
   private forwardHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream' };
-    const serviceToken = this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }

@@ -288,21 +288,48 @@ class TestEndToEndThroughApp:
     async def test_speech_endpoint_streams_azure_audio(self):
         from httpx import ASGITransport, AsyncClient
 
+        import tts.routing.router as router_mod
         from tts.core.config import Settings
         from tts.main import create_app
+        from tts.tests.fakes import candidate, spec_json, voice_binding
 
         app = create_app(settings_override=Settings(debug=True))
         sdk = make_fake_sdk(_FakeResult("started", chunks=[b"AA", b"BB"]))
-        app.state.provider_registry.register("azure", AzureSpeechProvider(_config(), sdk=sdk))
+        # The KEYED instance replaces the keyless one boot registration installs, and
+        # `_build_spec_engine` is stubbed so the router serves it rather than building a real
+        # Azure client from the spec.
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(router_mod, "_build_spec_engine", lambda *_a, **_k: None)
+            app.state.provider_registry.register("azure", AzureSpeechProvider(_config(), sdk=sdk))
 
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            resp = await c.post(
-                "/api/v1/audio/speech",
-                json={"input": "Hi.", "voice": "en-female-1", "routing_en": ["azure", "kokoro"]},
-            )
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                resp = await c.post(
+                    "/api/v1/audio/speech",
+                    json={
+                        "input": "Hi.",
+                        "voice": "en-female-1",
+                        "resolved_spec": spec_json(
+                            candidate(
+                                "azure",
+                                slug="azure-neural-voices",
+                                source_uri="azure://neural-voices",
+                                voices=[
+                                    voice_binding(
+                                        "en-female-1",
+                                        locale="en-IN",
+                                        provider_voice="en-IN-NeerjaNeural",
+                                    )
+                                ],
+                                voice="en-female-1",
+                                region="eastus",
+                            )
+                        ),
+                    },
+                )
         assert resp.status_code == 200
         assert resp.content == b"AABB"
-        # Azure received the catalog-resolved en-IN voice binding.
+        # Azure received the engine-native name from the MODEL ROW's own voice binding — the
+        # agent names `en-female-1`, the row says what that is called on Azure.
         assert sdk.synths[-1].cfg.speech_synthesis_voice_name == "en-IN-NeerjaNeural"
 
 

@@ -1,15 +1,14 @@
 import {
-  EffectiveTtsConfigResponse,
   IConfigService,
   IEntitlementsService,
   IOriginRegistry,
-  IProviderConnectionService,
-  ITenantTtsConfigService,
   IUsageLedgerService,
   ProviderOverrides,
   SecretsService,
+  TtsAgentResolverService,
   UsageIdempotencyKey,
 } from '@arcaai/applications';
+import type { ResolvedTtsSpec } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import { Inject, Logger, Optional } from '@nestjs/common';
@@ -21,6 +20,7 @@ import { StreamTicketService } from '../auth/stream-ticket.service';
 // The classifier + self-hosted allow-list used to exist as a
 // verbatim copy here AND in SpeechProxyController. One definition now.
 import { classifyTtsProvider } from './tts-provider-classification';
+import { resolveTtsRequestConfig } from './tts-tenant-config';
 
 /** Shape of the `{"type":"usage",...}` control frame stream_ws.py sends at teardown. */
 interface TtsUsageFrame {
@@ -91,8 +91,8 @@ interface Bridge {
   pending: Array<{ data: WebSocket.RawData; isBinary: boolean }>;
   upstreamOpen: boolean;
   backpressureTimer?: ReturnType<typeof setInterval>;
-  /** Resolved tenant TTS spec injected into the init frame; null = none. */
-  effectiveConfig: EffectiveTtsConfigResponse | null;
+  /** The resolved TEXT_TO_SPEECH agent injected into the init frame; null = none resolved. */
+  spec: ResolvedTtsSpec | null;
   /** Decrypted BYO provider credentials injected into the init frame; null = none. */
   providerOverrides: ProviderOverrides | null;
   /** The client's first `init` frame is enriched with the tenant config exactly once. */
@@ -118,11 +118,9 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly streamTicketService: StreamTicketService,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolve the ticket tenant's TTS spec and inject it into the init frame.
-    @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
-    // BYO provider credential injection (`service='tts'`) — the
-    // unified provider-connection plane.
-    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
+    // Resolve the ticket tenant's TEXT_TO_SPEECH agent and inject the resolved spec into the
+    // init frame.
+    @Optional() private readonly ttsAgentResolver?: TtsAgentResolverService,
     // Emits CHARACTER + AUDIO_SECOND from tts's final "usage"
     // control frame. Optional/trailing so existing positional test fixtures
     // keep compiling; absent (or no tenantId on the ticket) ⇒ no emission.
@@ -307,32 +305,31 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private async openBridge(client: WebSocket, sessionId: string, tenantId: string | null): Promise<void> {
     const headers: Record<string, string> = {};
-    const token = this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    // The ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is the migration fallback only.
+    const token = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
     if (token) {
       headers['X-Service-Token'] = token;
     }
 
-    // Pre-resolve the tenant's effective TTS spec (fail-open: a lookup
-    // error leaves it null → tts uses its own settings). Injected into the
-    // first `init` frame the browser sends.
-    let effectiveConfig: EffectiveTtsConfigResponse | null = null;
+    // Pre-resolve the tenant's TEXT_TO_SPEECH agent, injected into the first `init` frame the
+    // browser sends.
+    //
+    // A resolve failure leaves BOTH null and the socket still opens. That is not the fail-open
+    // the `TenantTtsConfig` fold had — `apps/tts` refuses an init frame with no spec, so the
+    // session ends in a `provider_unavailable` error frame, which a browser client can render.
+    // The alternative, refusing the handshake, would report an agent-configuration problem as an
+    // authentication failure (this gateway's rejections are deliberately indistinguishable, so
+    // the cause would be invisible to the operator AND to the user).
+    let spec: ResolvedTtsSpec | null = null;
     let providerOverrides: ProviderOverrides | null = null;
-    if (this.tenantTtsConfig && tenantId) {
+    if (this.ttsAgentResolver && tenantId) {
       try {
-        // Two tiers (tenant rows over the SYSTEM-tenant platform
-        // default); each entry carries the `funding` label the teardown usage
-        // stamp reads back.
-        const [eff, resolved] = await Promise.all([
-          this.tenantTtsConfig.getEffective(tenantId),
-          this.providerConnectionService
-            ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId)
-            : Promise.resolve({ overrides: {} as ProviderOverrides }),
-        ]);
-        effectiveConfig = eff;
+        const resolved = await resolveTtsRequestConfig(tenantId, { ttsAgentResolver: this.ttsAgentResolver });
+        spec = resolved.spec;
         providerOverrides = resolved.overrides;
       } catch (err) {
         this.logger.warn({
-          message: 'Tenant TTS config resolve failed; init frame not enriched',
+          message: 'Tenant TTS agent resolve failed; the session will end in a provider-unavailable frame',
           sessionId,
           error: err instanceof Error ? err.message : String(err),
         });
@@ -357,7 +354,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       upstream,
       pending: [],
       upstreamOpen: false,
-      effectiveConfig,
+      spec,
       providerOverrides,
       initEnriched: false,
       sessionId,
@@ -426,13 +423,16 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * Enrich the browser's first `init` frame with the tenant's resolved
-   * routing chains + whitelist (and default speed when omitted). Binary frames,
-   * non-init frames, and everything after the first init pass through untouched.
-   * Fail-open: a non-JSON frame is forwarded verbatim.
+   * Enrich the browser's first `init` frame with the tenant's resolved TEXT_TO_SPEECH agent.
+   *
+   * Binary frames, non-init frames, and everything after the first init pass through untouched;
+   * a non-JSON frame is forwarded verbatim. What the enrichment carries changed with TASK-879:
+   * `routing_en` / `routing_ml` / `allowed_providers` / `voice_bindings` were the `TenantTtsConfig`
+   * fold and are gone, replaced by the resolved spec — which names the engine chain, the model,
+   * its voices and the connection that serves each engine.
    */
   private maybeEnrichInit(bridge: Bridge, data: WebSocket.RawData, isBinary: boolean): WebSocket.RawData {
-    if (isBinary || bridge.initEnriched || (!bridge.effectiveConfig && !bridge.providerOverrides)) {
+    if (isBinary || bridge.initEnriched || (!bridge.spec && !bridge.providerOverrides)) {
       return data;
     }
     let parsed: Record<string, unknown>;
@@ -446,17 +446,11 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     bridge.initEnriched = true;
     const enriched: Record<string, unknown> = { ...parsed };
-    const eff = bridge.effectiveConfig;
-    if (eff) {
-      enriched.speed = parsed.speed ?? eff.defaultSpeed;
-      enriched.routing_en = eff.routingEn;
-      enriched.routing_ml = eff.routingMl;
-      enriched.allowed_providers = eff.allowedProviders;
-      // Resolved voice bindings; only injected when non-empty so
-      // tts keeps its built-in DEFAULT_VOICES otherwise.
-      if (eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0) {
-        enriched.voice_bindings = eff.voiceBindings;
-      }
+    const spec = bridge.spec;
+    if (spec) {
+      // The agent's own speed is the default; a client that named one keeps it.
+      enriched.speed = parsed.speed ?? spec.primary.parameters.speed ?? undefined;
+      enriched.resolved_spec = spec;
     }
     if (bridge.providerOverrides && Object.keys(bridge.providerOverrides).length > 0) {
       enriched.provider_overrides = bridge.providerOverrides;

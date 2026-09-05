@@ -17,6 +17,37 @@ import {
  * bindings in `metaData.voices` (`seedAiModels` re-syncs `metaData` on
  * re-seed so voice catalogs stay current). `indic-f5` (prod NO-GO licence) is
  * retired — see `retired.ts`.
+ *
+ * TASK-879 — THESE ROWS ARE NOW THE MODEL FACTS THE SPEECH PATH READS. The
+ * gateway resolves the tenant's TEXT_TO_SPEECH agent, folds the bound row into a
+ * `ResolvedTtsSpec` and pushes it with every synthesis request, so a value here
+ * reaches `apps/tts` directly instead of being restated as a settings key:
+ *
+ *   `sourceUri`  the provider-native model id on the wire — what
+ *                `tts.sarvam.model` ('bulbul:v3'), `tts.indicParler.hfModel` and
+ *                `tts.indicF5.hfModel` used to hold.
+ *   `localPath`  the ungated internal mirror — `tts.{indicParler,indicF5}.modelPath`.
+ *                DEPLOYMENT-SPECIFIC, so it is deliberately NOT seeded: an empty
+ *                value means "pull from the Hub", exactly as the retired keys'
+ *                empty defaults did.
+ *   `metaData.artifacts`
+ *                auxiliary loader paths beside the weights — today only
+ *                `descEncoderPath` (the Parler description tokenizer, formerly
+ *                `tts.indicParler.descEncoderPath`). Same deployment-specific
+ *                rule: the SHAPE is contract, the value is an operator's.
+ *   `metaData.voices[]`
+ *                the selectable voices an agent's `parameters.voice` names. A
+ *                voice-CLONE engine's reference recording rides HERE, on the
+ *                voice (`refAudioPath` / `refText` — formerly
+ *                `tts.indicF5.refAudioPath` / `.refText`), because conditioning
+ *                audio is a property of the voice and not of the service.
+ *                `providerVoice` is the engine-native name when it differs from
+ *                the catalogue id; today none do, so none declare it.
+ *
+ * `indic-f5`'s four moved keys therefore have a declared home and NO row: the
+ * engine stays retired (CC-BY-NC provenance unresolved) and its SYSTEM
+ * `AiProviderConnection(tts, indic_f5)` row is seeded DISABLED, so nothing can
+ * bind or route to it. Re-seeding the row later needs no contract change.
  */
 export const TTS_AI_MODELS: AiModelSeed[] = [
   {

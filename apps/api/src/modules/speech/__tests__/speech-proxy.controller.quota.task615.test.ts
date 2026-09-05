@@ -56,8 +56,7 @@ function buildController(opts: { entitlements?: unknown; cls?: unknown } = {}) {
     http as any,
     config as any,
     createMockSecrets('svc-token') as any,
-    undefined, // tenantTtsConfig
-    undefined, // providerConnectionService
+    undefined, // ttsAgentResolver
     cls as any,
     undefined, // usageLedger
     entitlements as any,
@@ -96,7 +95,9 @@ describe('SpeechProxyController — TTS character quota pre-flight', () => {
     const entitlements = {
       assertMeterQuota: vi
         .fn()
-        .mockRejectedValue(new QuotaExceededException('over allowance', { capability: 'monthlyTtsCharacters', limit: 10, used: 10, requested: 5, tenantId: 't1' })),
+        .mockRejectedValue(
+          new QuotaExceededException('over allowance', { capability: 'monthlyTtsCharacters', limit: 10, used: 10, requested: 5, tenantId: 't1' }),
+        ),
     };
     const { controller, http } = buildController({ entitlements });
     const res = makeRes();

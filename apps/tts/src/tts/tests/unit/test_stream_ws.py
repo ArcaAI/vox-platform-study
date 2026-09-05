@@ -13,7 +13,15 @@ from starlette.websockets import WebSocketDisconnect
 
 from tts.core.config import Settings
 from tts.main import create_app
-from tts.tests.fakes import FakeEngine
+from tts.tests.fakes import FakeEngine, candidate, spec_json, voice_binding
+
+# The gateway-resolved TEXT_TO_SPEECH agent, injected on the init frame (TASK-879). It replaced
+# `routing_en` / `routing_ml` / `allowed_providers` / `voice_bindings`.
+_EN = voice_binding("en-female-1", locale="en-IN")
+
+
+def _spec(engine: str = "azure", **kwargs) -> dict:
+    return spec_json(candidate(engine, voices=[_EN], voice=_EN.id, **kwargs))
 
 
 def _app(*, service_token: str = "", providers: dict | None = None):
@@ -29,13 +37,13 @@ def test_init_ready_then_binary_frames_then_done():
     app = _app(providers={"azure": FakeEngine("azure", native_streaming=False, chunks=1)})
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            # routing chain is gateway-injected on the init frame.
+            # the resolved agent is gateway-injected on the init frame.
             ws.send_json(
                 {
                     "type": "init",
                     "voice": "en-female-1",
                     "format": "pcm",
-                    "routing_en": ["azure", "kokoro"],
+                    "resolved_spec": _spec(),
                 }
             )
             ready = ws.receive_json()
@@ -55,16 +63,26 @@ def test_unknown_voice_errors_before_audio():
     app = _app()
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            ws.send_json({"type": "init", "voice": "nope-voice", "format": "pcm"})
+            ws.send_json({"type": "init", "voice": "nope-voice", "format": "pcm", "resolved_spec": _spec()})
             msg = ws.receive_json()
             assert msg["type"] == "error" and msg["code"] == "invalid_voice"
+
+
+def test_a_session_with_no_resolved_spec_is_refused():
+    """FAIL CLOSED, the same rule the HTTP path follows: no spec, no synthesis."""
+    app = _app()
+    with TestClient(app) as client:
+        with client.websocket_connect("/api/v1/audio/stream") as ws:
+            ws.send_json({"type": "init", "voice": "en-female-1", "format": "pcm"})
+            msg = ws.receive_json()
+            assert msg["type"] == "error" and msg["code"] == "invalid_input"
 
 
 def test_no_provider_errors_up_front():
     app = _app(providers={})  # nothing registered → no candidate
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            ws.send_json({"type": "init", "voice": "en-female-1", "format": "pcm"})
+            ws.send_json({"type": "init", "voice": "en-female-1", "format": "pcm", "resolved_spec": _spec()})
             msg = ws.receive_json()
             assert msg["type"] == "error" and msg["code"] == "provider_unavailable"
 
@@ -82,7 +100,7 @@ def test_non_pcm_format_rejected():
     app = _app()
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            ws.send_json({"type": "init", "voice": "en-female-1", "format": "mp3"})
+            ws.send_json({"type": "init", "voice": "en-female-1", "format": "mp3", "resolved_spec": _spec()})
             msg = ws.receive_json()
             assert msg["type"] == "error" and msg["code"] == "invalid_input"
 
@@ -110,7 +128,7 @@ def test_valid_service_token_accepted():
                     "type": "init",
                     "voice": "en-female-1",
                     "format": "pcm",
-                    "routing_en": ["azure", "kokoro"],
+                    "resolved_spec": _spec(),
                 }
             )
             assert ws.receive_json()["type"] == "ready"
@@ -136,7 +154,7 @@ class TestUsageMetering:
                         "type": "init",
                         "voice": "en-female-1",
                         "format": "pcm",
-                        "routing_en": ["azure", "kokoro"],
+                        "resolved_spec": _spec(),
                     }
                 )
                 assert ws.receive_json()["type"] == "ready"
@@ -169,7 +187,7 @@ class TestUsageMetering:
                         "type": "init",
                         "voice": "en-female-1",
                         "format": "pcm",
-                        "routing_en": ["azure"],
+                        "resolved_spec": _spec(),
                     }
                 )
                 assert ws.receive_json()["type"] == "ready"
@@ -198,7 +216,7 @@ class TestUsageMetering:
                         "type": "init",
                         "voice": "en-female-1",
                         "format": "pcm",
-                        "routing_en": ["azure"],
+                        "resolved_spec": _spec(),
                     }
                 )
                 assert ws.receive_json()["type"] == "ready"
@@ -228,7 +246,7 @@ class TestUsageMetering:
                         "type": "init",
                         "voice": "en-female-1",
                         "format": "pcm",
-                        "routing_en": ["azure"],
+                        "resolved_spec": _spec(),
                     }
                 )
                 assert ws.receive_json()["type"] == "ready"

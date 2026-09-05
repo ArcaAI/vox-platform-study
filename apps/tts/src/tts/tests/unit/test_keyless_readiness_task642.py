@@ -13,11 +13,11 @@ fails if any of the four layers in regresses:
 * readiness contract: a keyless deployment must reach 200;
 * the image: `kokoro` must be a dependency of the DEFAULT image, not of
   a `[local]` extra nobody builds;
-* enablement: `TTS_KOKORO_ENABLED=true` must actually register the
-  provider (and it must be the flag that does it — the manifest's suggested
-  `TTS_AZURE_ENABLED` path cannot work);
-* routing: the SYSTEM row routes `en` to `kokoro`, so `kokoro` is the
-  name that has to be present and healthy.
+* enablement: since TASK-879 registration is IMAGE-driven, so what has to be true is that the
+  engine the image contains actually registers — there is no `TTS_KOKORO_ENABLED` left to get
+  wrong, and no ConfigMap in another repository that a deployment depends on for readiness;
+* routing: the SYSTEM TEXT_TO_SPEECH agent binds `kokoro`, so `kokoro` is the name that has to be
+  present and healthy.
 
 Hermeticity: registration is deliberately lazy — `KokoroProvider` imports the
 `kokoro` package inside `_load_pipeline`, which the ModelCache only calls on the
@@ -44,21 +44,20 @@ from tts.main import create_app
 
 _TTS_DIR = Path(__file__).parents[4]
 
-# Everything that could hand the service a platform credential or flip a
-# provider on. Cleared so the app boots as a keyless deployment does.
+# Everything that could hand the service a platform credential. Cleared so the app boots as a
+# keyless deployment does.
 _CREDENTIAL_ENV_PREFIXES = ("TTS_", "AZURE_", "SARVAM_", "SPEECH_")
 
 
 @pytest.fixture
 def keyless_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A container-shaped environment: Kokoro on, not one credential anywhere."""
+    """A container-shaped environment: not one credential anywhere."""
     for key in list(os.environ):
         if key.startswith(_CREDENTIAL_ENV_PREFIXES):
             monkeypatch.delenv(key, raising=False)
     # `hope_env.load_env` reads no file when CI is truthy, so the
     # developer's gitignored `.env.dev` cannot smuggle a key into this test.
     monkeypatch.setenv("CI", "true")
-    monkeypatch.setenv("TTS_KOKORO_ENABLED", "true")
 
 
 @pytest_asyncio.fixture
@@ -77,13 +76,14 @@ async def test_ready_with_no_cloud_credential_present_at_all(keyless_client) -> 
     settings = app.state.settings
 
     # Precondition: this really is a keyless deployment.
-    assert settings.azure.enabled is False
-    assert settings.sarvam.enabled is False
     assert settings.azure.api_key.get_secret_value() == ""
     assert settings.sarvam.api_key.get_secret_value() == ""
 
-    # + the flag registers the provider the SYSTEM row routes `en` to.
-    assert app.state.provider_registry.list_providers() == ["kokoro"]
+    # The engine the SYSTEM TEXT_TO_SPEECH agent binds is registered because it is IN THE IMAGE —
+    # no flag, no ConfigMap. The keyless cloud engines register too (registration says what this
+    # process contains); they are simply not usable candidates, which readiness reports below and
+    # the router enforces per request.
+    assert "kokoro" in app.state.provider_registry.list_providers()
 
     response = await client.get("/api/v1/health/ready")
 
@@ -113,21 +113,23 @@ async def test_reaching_ready_opens_no_network_connection(
 
 
 @pytest.mark.asyncio
-async def test_azure_alone_cannot_make_the_service_synthesizable(
-    keyless_env: None, monkeypatch: pytest.MonkeyPatch
+async def test_a_process_holding_only_keyless_cloud_engines_is_degraded_not_healthy(
+    keyless_env: None,
 ) -> None:
-    """Pins 's correction of the `tts-v2.yaml` header comment.
+    """The distinction readiness must keep making, now that registration is image-driven.
 
-    `TTS_AZURE_ENABLED=true` — "the cheapest path" the manifest recommends —
-    yields a pod that is schedulable (200, thanks to Step 1) but only `degraded`:
-    it can serve nothing unless the request carries a BYOK override. It is not a
-    substitute for building Kokoro in.
+    Before TASK-879 this was reached by setting `TTS_AZURE_ENABLED=true` and nothing else — "the
+    cheapest path" a manifest header once recommended. There is no such flag now, so the same
+    condition is reached by asking what a process holding ONLY keyless cloud engines reports: 200
+    (it is not broken — a request that brings its own key can be served) but `degraded`, never
+    `healthy`. It is not a substitute for building Kokoro in.
     """
-    monkeypatch.setenv("TTS_KOKORO_ENABLED", "false")
-    monkeypatch.setenv("TTS_AZURE_ENABLED", "true")
-
     app = create_app()
     async with app.router.lifespan_context(app):
+        registry = app.state.provider_registry
+        for name in list(registry.list_providers()):
+            if name != "azure":
+                registry.unregister(name)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get("/api/v1/health/ready")

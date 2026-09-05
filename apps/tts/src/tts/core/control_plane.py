@@ -86,92 +86,62 @@ def moved_alias(env_var: str) -> str:
     return f"{env_var}{MOVED_SUFFIX}"
 
 
+#: Suffix that closes a field's env path because the value moved onto a DATABASE
+#: ROW — the registry model, its provider connection, or the agent — rather than
+#: onto the control plane. Distinct from :data:`MOVED_SUFFIX` on purpose: an
+#: operator grepping for ``TTS_SARVAM_MODEL`` must land on something that says
+#: WHERE the value went, and "the control plane" would send them to a settings
+#: key that no longer exists.
+MOVED_TO_ROW_SUFFIX = "__MOVED_TO_THE_REGISTRY_ROW"
+
+
+def moved_to_row_alias(env_var: str) -> str:
+    """The dead ``validation_alias`` for a field whose value moved onto a row.
+
+    The field itself SURVIVES: it is the per-request carrier the router fills
+    from the resolved spec (``from_spec``). What dies is the environment path, so
+    the only way to populate it is the spec — which is what makes the row the
+    single authority rather than one of two.
+    """
+    return f"{env_var}{MOVED_TO_ROW_SUFFIX}"
+
+
 #Dotted ``Settings`` attribute path → settings-registry key.
 #:
 #: The path is dotted because tts nests its provider config; ``azure.region``
 #: means ``settings.azure.region``. Asserted against the real model by
 #: ``tests/unit/test_task799_control_plane.py``.
 CONTROL_PLANE_KEYS: dict[str, str] = {
-    # ── Azure Speech (managed cloud; BYOK key excluded by design) ────────────
-    "azure.region": "tts.azure.region",
-    # ── Sarvam (cloud; BYOK key excluded by design) ──────────────────────────
-    "sarvam.base_url": "tts.sarvam.baseUrl",
-    "sarvam.model": "tts.sarvam.model",
-    "sarvam.timeout_s": "tts.sarvam.timeoutS",
-    # ── Indic Parler (self-hosted, Malayalam) ────────────────────────────────
-    "indic_parler.hf_model": "tts.indicParler.hfModel",
+    # ── engine placement (a property of the POD, not of the model row) ───────
     "indic_parler.device": "tts.indicParler.device",
-    "indic_parler.model_path": "tts.indicParler.modelPath",
-    "indic_parler.desc_encoder_path": "tts.indicParler.descEncoderPath",
-    # ── IndicF5 (self-hosted voice-clone; licensing-gated) ───────────────────
-    "indic_f5.hf_model": "tts.indicF5.hfModel",
-    "indic_f5.model_path": "tts.indicF5.modelPath",
     "indic_f5.device": "tts.indicF5.device",
-    "indic_f5.ref_audio_path": "tts.indicF5.refAudioPath",
-    "indic_f5.ref_text": "tts.indicF5.refText",
-    # ── service-wide synthesis limits ────────────────────────────────────────
+    # ── service-wide request ceiling and boot strategy ───────────────────────
     "max_input_chars": "tts.limits.maxInputChars",
-    "sample_rate": "tts.limits.sampleRate",
     "warmup_enabled": "tts.warmupEnabled",
-    # ── provider/engine enable flags ───────────────────────
-    # HALF-MIGRATED ON PURPOSE, and the halves are named in `ENV_BOOTSTRAP_KEYS`
-    # below: the control plane now SERVES these, but `TTS_*_ENABLED` is still a
-    # live bootstrap fallback because the k8s manifests that set them live in a
-    # SEPARATE repository (`arca/hope-v2-deployment`) and cannot be updated from
-    # here. Closing the env path before those manifests stop supplying the value
-    # reproduces the outage `test_keyless_readiness_task642` exists to pin.
-    #
-    # Note the two spellings that do NOT match their `global-kv` siblings
-    # (`tts.parler.enabled` beside `tts.indicParler.*`; `tts.indicf5.enabled`
-    # beside `tts.indicF5.*`). They are kept AS THEY WERE REGISTERED: the key is
-    # the row's primary coordinate in `GlobalSetting`, so renaming one now would
-    # orphan the seeded row rather than tidy anything.
-    "azure.enabled": "tts.azure.enabled",
-    "sarvam.enabled": "tts.sarvam.enabled",
-    "kokoro.enabled": "tts.kokoro.enabled",
-    "indic_parler.enabled": "tts.parler.enabled",
-    "indic_f5.enabled": "tts.indicf5.enabled",
-    # Already registered by `service-runtime.descriptors.ts` and already applied
-    # at runtime through `refresh_model_cache_retention`. What changes here is
-    # only that its env path closes: it was documented as a "BOOTSTRAP FALLBACK
-    # ONLY" while remaining fully settable from `TTS_MODEL_CACHE_TTL_SECONDS`,
-    # so an operator could set a value the next config pull silently replaced.
     "model_cache_ttl_seconds": "tts.modelCache.ttlSeconds",
 }
 
 _PATH_BY_KEY: dict[str, str] = {key: path for path, key in CONTROL_PLANE_KEYS.items()}
 
 #: Keys whose ENVIRONMENT path is still open, so an unresolved control-plane
-# value must not overwrite what the environment supplied.
+#: value must not overwrite what the environment supplied.
 #:
-#: The gateway answers every declared key, even when no ``GlobalSetting`` row
-#: exists — in that case it resolves ``descriptor.default`` and labels the entry
-#: ``source: "env-fallback"``. For the ~24 knobs above that is exactly right:
-#: their env path is DEAD (:func:`moved_alias`), the descriptor default is
-#: transcribed verbatim from the Python field, and applying it is a no-op that
-#: keeps one authority.
+#: EMPTY since TASK-879, and empty is the finished state rather than an omission.
+#: It held the five ``tts.*.enabled`` flags, whose env path could not be closed
+#: from this repository: the k8s ConfigMaps that set ``TTS_KOKORO_ENABLED`` live
+#: in ``arca/hope-v2-deployment``, and closing the read while a manifest still
+#: supplied the value would have left ``hope-tts`` answering 503 forever with no
+#: Service endpoints — the outage ``test_keyless_readiness_task642`` exists for.
 #:
-#: For the five flags it is wrong, and dangerously so. ``env-fallback`` there
-#: means "no row answered" — an ABSENCE of platform opinion — while the live
-#: value sits in the container's environment. Applying the descriptor default
-#: (``False``) over an operator's ``TTS_KOKORO_ENABLED=true`` would unregister
-#: the only engine a keyless deployment has, and ``hope-tts`` would answer 503
-#: forever with no Service endpoints. That is the exact regression
-#: ``test_keyless_readiness_task642`` was written for.
+#: TASK-879 dissolved that coupling instead of sequencing it. "May this engine
+#: serve" is an ``AiProviderConnection`` row's three-state ``enabled``, resolved
+#: per request into the pushed spec's ``connection`` block, so there is no key,
+#: no environment variable and no manifest to wait for. A stale
+#: ``TTS_KOKORO_ENABLED`` in a ConfigMap is now simply ignored.
 #:
-#: So the rule is narrow and stated once: for a key in this set, only a value
-#: that a DATABASE ROW supplied (``source == "db"``) may override the
-#: environment. Remove a key from this set in the SAME change that closes its
-#: env path with :func:`moved_alias` — never before, never after.
-ENV_BOOTSTRAP_KEYS: frozenset[str] = frozenset(
-    {
-        "tts.azure.enabled",
-        "tts.sarvam.enabled",
-        "tts.kokoro.enabled",
-        "tts.parler.enabled",
-        "tts.indicf5.enabled",
-    }
-)
+#: Keep the mechanism: a future half-migrated key belongs here, and must leave in
+#: the SAME change that closes its env path with :func:`moved_alias`.
+ENV_BOOTSTRAP_KEYS: frozenset[str] = frozenset()
 
 
 def _resolve(settings: Settings, path: str) -> tuple[Any, str] | None:

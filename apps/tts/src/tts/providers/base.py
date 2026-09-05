@@ -21,8 +21,8 @@ class CredentialPosture(StrEnum):
     per-tenant override engine by asking the adapter rather than by matching
     its name against a literal.
 
-    That distinction is not cosmetic. ``router._build_override_engine`` used to
-    be an ``if name == "azure" / "sarvam"`` switch: a BYOK adapter the switch
+    That distinction is not cosmetic. ``router._build_spec_engine``'s ancestor
+    was an ``if name == "azure" / "sarvam"`` switch: a BYOK adapter the switch
     did not name returned ``None``, silently fell back to the shared registered
     engine, and served every tenant on the PLATFORM key. It is the same shape of
     defect that let ``bedrock`` and ``vertex`` keep ambient credential chains in
@@ -101,9 +101,12 @@ class TTSEngine(Protocol):
     still ships after the first sentence.
 
     Every implementation must also carry a ``credential_posture`` class attribute
-    (see ``CredentialPosture``), and a ``BYOK`` one must additionally implement
-    the ``from_override`` classmethod the router uses to build a request-scoped
-    per-tenant engine. Neither is declared as a member of this Protocol:
+    (see ``CredentialPosture``) and a ``from_spec`` classmethod — the ONE factory
+    the router uses to build a request-scoped engine from a resolved TTS spec
+    candidate (TASK-879). It replaced ``from_override``: a candidate carries the
+    model, mirror, artifacts, endpoint and region as well as the credential, so
+    two factories would have meant two places to get a tenant's engine wrong.
+    Neither obligation is declared as a member of this Protocol:
     ``runtime_checkable`` turns any non-method member into an ``isinstance``
     requirement, which would change ``isinstance(x, TTSEngine)`` for every
     duck-typed test double in the codebase. The obligation is enforced instead by
