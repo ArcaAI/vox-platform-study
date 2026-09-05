@@ -175,10 +175,22 @@ machine could never have executed them); `PromptManagementController.assignDepar
 console folders deleted (no live import). Lane C ran `pnpm db:generate` once in its worktree —
 pure codegen, no DB contacted — and disclosed it.
 
-**Deferred to wave-1 close-out (owner decision 2026-09-05):** the Playwright route-authz matrix
-(`task-776-route-authz-matrix.spec.ts`). A test API was already listening on 8968 for the
-owner's TASK-869 session; the sweep runs once the owner signals the test infra is free. Lane C's
-unit guard and the twelve boot audits exercise the same manifest oracle in the meantime.
+**Wave-1 close-out — e2e route-authz matrix: GREEN.** `task-776-route-authz-matrix.spec.ts`
+ran against `dev-2.2` at `6123ffbb1` (all four lanes plus the owner's TASK-869 merge) on the
+existing seeded test DB with `RESET_DB=false` — no wave-1 lane changed a seed file, and the
+Prisma CLI refuses a Claude-invoked `db push --force-reset` by design — after the owner stopped
+the TASK-869 watch-mode API that held 8968: **7 passed (2.1 s)**, API healthy after 90 s.
+Containers left up.
+
+**TASK-869 merge verified non-reverting.** Of the 129 files wave 1 changed, 869's merge later
+touched three: `.env.sample` and `turbo.json` (both additive — two new `SEED_*` variables) and
+this README (no change on 869's side; the overlap was this file's own later commit). All six
+paths wave 1 deleted remain absent; the veto (`task-selection-veto`), the output gate
+(`screen_output`), the usage segments (`usage_segments`) and the scope guard test are present
+at HEAD.
+
+**Wave 1 status: COMPLETE.** Registry 341 → 286 (executed). Four lanes merged, gated post-merge
+in the primary checkout, worktrees removed, branches deleted.
 
 ## Change History
 
@@ -186,3 +198,5 @@ unit guard and the twelve boot audits exercise the same manifest oracle in the m
 |---|---|
 | 2026-09-05 | Program opened; wave 1 partitioned into TASK-871..874 off `c364bb8ec`. |
 | 2026-09-05 | Lane A (TASK-871) merged at `9a8e2af0b`; lane C (TASK-873) merged at `76686c60d`; both post-merge gates green; worktrees removed. E2E authz matrix deferred to close-out. |
+| 2026-09-05 | Lane D (TASK-874) merged at `f8f7835a1`; STT billing defect direction corrected (last-loaded engine, both directions wrong). Lane B (TASK-872) merged at `94a311e4d` after a watchdog stall and continuation; registry 341 → 286; two service tokens kept (gateway still reads them). |
+| 2026-09-05 | Owner merged TASK-869 (`6123ffbb1`) on top; verified non-reverting. E2E route-authz matrix green (7 passed) on the merged tree. **Wave 1 complete.** |
