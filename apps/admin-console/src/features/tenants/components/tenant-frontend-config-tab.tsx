@@ -17,11 +17,6 @@ import type { TenantFrontendConfig, UpsertTenantFrontendConfigRequest } from '..
 
 /** The PUT-able subset of the row (server-computed fields stay out). */
 const EDITABLE_KEYS = [
-  'asrModel',
-  'noiseCancel',
-  'vad',
-  'voiceEnrollment',
-  'diarization',
   'captureRawAudio',
   'transcriptionMode',
   'transcriptionModeLocked',
@@ -41,9 +36,13 @@ function isOccError(error: unknown): boolean {
 }
 
 /**
- * Frame 12.1 frontend-config tab (capability row 6): the branding/pipeline
- * flags served to tenant apps, edited as one JSON document with client-side
- * parse validation and the If-Match/expectedVersion OCC contract on the PUT.
+ * Frame 12.1 frontend-config tab (capability row 6): the CAPTURE policy served
+ * to tenant apps, edited as one JSON document with client-side parse validation
+ * and the If-Match/expectedVersion OCC contract on the PUT.
+ *
+ * TASK-883 removed the client-AI switches from the editable set — the browser
+ * never runs a model, and the gateway's `forbidNonWhitelisted` pipe now 400s a
+ * document that still carries one.
  */
 export function TenantFrontendConfigTab({ tenantId }: { tenantId: string }) {
   const { data, isLoading, error, refetch } = useFrontendConfig(tenantId);

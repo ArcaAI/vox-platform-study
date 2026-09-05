@@ -86,15 +86,16 @@ export interface UpdateTenantConfigItem {
   expectedVersion: number;
 }
 
-/** GET/PUT /admin/tenant-frontend-config (TenantFrontendConfigResponse). */
+/**
+ * GET/PUT /admin/tenant-frontend-config (TenantFrontendConfigResponse).
+ *
+ * Capture policy only: TASK-883 retired the client-AI switches (`asrModel` /
+ * `noiseCancel` / `vad` / `voiceEnrollment` / `diarization`) — the browser
+ * never runs a model.
+ */
 export interface TenantFrontendConfig {
   id: string;
   tenantId: string;
-  asrModel?: string | null;
-  noiseCancel: boolean;
-  vad: boolean;
-  voiceEnrollment: boolean;
-  diarization: boolean;
   captureRawAudio: boolean;
   /** Server-computed platform capability; disables the toggle when false. */
   platformRawCaptureCapable: boolean;
@@ -110,11 +111,6 @@ export interface TenantFrontendConfig {
 
 /** PUT /admin/tenant-frontend-config body (upsert; all fields optional). */
 export interface UpsertTenantFrontendConfigRequest {
-  asrModel?: string | null;
-  noiseCancel?: boolean;
-  vad?: boolean;
-  voiceEnrollment?: boolean;
-  diarization?: boolean;
   captureRawAudio?: boolean;
   transcriptionMode?: 'LOCAL' | 'BACKEND';
   transcriptionModeLocked?: boolean;
