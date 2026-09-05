@@ -4,7 +4,6 @@ export * from './AiModelEntityMapper';
 export * from './AiPriceBookEntityMapper';
 export * from './AiProviderConnectionEntityMapper';
 export * from './AiRoutingPolicyEntityMapper';
-export * from './AiTaskDefaultEntityMapper';
 export * from './AiUsageEventEntityMapper';
 export * from './AiUsageOutboxEntityMapper';
 export * from './AiUsageRollupDailyEntityMapper';
