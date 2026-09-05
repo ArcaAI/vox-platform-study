@@ -75,7 +75,7 @@ copies fast-forwarded; customized/unlocked rows never touched).
 | Prisma models | `AsrPipeline` (`templateLocked`, `sourceTemplateSlug` provenance), `AsrPipelineVersion` (fast-forward writes a new version snapshot) |
 | Key API endpoints | `POST /admin/audio/pipelines/:id/clone` (unlock into an editable copy); `POST /admin/tenants/:id/pipelines/resync` (`@CanManage('Tenant')`, `@HttpCode(200)`, returns `{ added, fastForwarded, skipped }`; SYSTEM tenant cannot resync against itself → 400) |
 | Console | `apps/admin-console` feature `audio-pipelines` template-governance surface (`template-governance`) under route `/audio/pipelines` |
-| Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service.task531,pipeline-template-resync.service,pipeline-template-resync.cron.service}.test.ts`; unit(api): `pipeline/__tests__/audio-pipeline.task531.controller.test.ts`; unit(console): `audio-pipelines/components/__tests__/template-governance.test.tsx`; e2e: `pipeline-clone-resync-cross-tenant.spec.ts`, `pipeline-template-governance.spec.ts` |
+| Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service.task531,pipeline-template-resync.service,pipeline-template-resync.cron.service}.test.ts`; unit(api): `pipeline/__tests__/audio-pipeline.task531.controller.test.ts`; unit(console): `audio-pipelines/components/__tests__/template-governance.test.tsx`; e2e: NONE — `pipeline-clone-resync-cross-tenant.spec.ts` and `pipeline-template-governance.spec.ts` were DELETED once TASK-861 retired the seeded template copies they probed (no fixture left, so they asserted nothing). The unit suites above remain the coverage for this still-live surface until it is removed in R4. |
 
 ### R6 — Tenant STT fallback pipeline + BYOK, in-session provider switch — NEW (post-2026-07-06)
 
