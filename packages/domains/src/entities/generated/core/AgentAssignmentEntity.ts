@@ -16,6 +16,12 @@ export interface IAgentAssignmentEntity extends IBaseTenantEntity {
   scopeId?: string | null;
   task: Enums.AgentTask;
   agentSlug: string;
+  /**
+   * TASK-884 — the canonical (de-duplicated, sorted, comma-joined) `key:value`
+   * tag selector this assignment is qualified by; `''` = unqualified. Part of
+   * the row's uniqueness key, so a tier can carry one row per selector.
+   */
+  selectorKey: string;
 }
 
 export class AgentAssignmentEntity extends BaseTenantEntity {
@@ -23,6 +29,7 @@ export class AgentAssignmentEntity extends BaseTenantEntity {
   private _scopeId?: IAgentAssignmentEntity['scopeId'];
   private _task: IAgentAssignmentEntity['task'];
   private _agentSlug: IAgentAssignmentEntity['agentSlug'];
+  private _selectorKey: IAgentAssignmentEntity['selectorKey'];
 
   constructor(init: IAgentAssignmentEntity) {
     super(init);
@@ -30,6 +37,7 @@ export class AgentAssignmentEntity extends BaseTenantEntity {
     this._scopeId = init.scopeId;
     this._task = init.task;
     this._agentSlug = init.agentSlug;
+    this._selectorKey = init.selectorKey ?? '';
   }
 
   get scope(): IAgentAssignmentEntity['scope'] {
@@ -54,6 +62,14 @@ export class AgentAssignmentEntity extends BaseTenantEntity {
 
   set task(value: IAgentAssignmentEntity['task']) {
     this.setProperty('task', value);
+  }
+
+  get selectorKey(): IAgentAssignmentEntity['selectorKey'] {
+    return this._selectorKey;
+  }
+
+  set selectorKey(value: IAgentAssignmentEntity['selectorKey']) {
+    this.setProperty('selectorKey', value);
   }
 
   get agentSlug(): IAgentAssignmentEntity['agentSlug'] {

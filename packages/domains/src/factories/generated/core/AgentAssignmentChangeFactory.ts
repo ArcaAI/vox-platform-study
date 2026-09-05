@@ -10,6 +10,8 @@ export interface CreateAgentAssignmentChangeProps extends BaseEntityFactoryCreat
   scope: IAgentAssignmentChangeEntity['scope'];
   scopeId?: IAgentAssignmentChangeEntity['scopeId'];
   task: IAgentAssignmentChangeEntity['task'];
+  /** WHICH row of the tier changed; `''` for the unqualified assignment. */
+  selectorKey?: IAgentAssignmentChangeEntity['selectorKey'];
   changedBy?: IAgentAssignmentChangeEntity['changedBy'];
   assignmentVersion?: IAgentAssignmentChangeEntity['assignmentVersion'];
   /** Null when this change CREATED the assignment. */
@@ -40,6 +42,7 @@ export class AgentAssignmentChangeFactory {
       scope: props.scope,
       scopeId: props.scopeId ?? null,
       task: props.task,
+      selectorKey: props.selectorKey ?? '',
       changedBy: props.changedBy ?? null,
       assignmentVersion: props.assignmentVersion ?? null,
       beforeSlug: props.beforeSlug ?? null,
