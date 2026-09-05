@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Completed (lane; merge into `dev-2.2` is the orchestrator's) |
 | **Type** | feature (safety) |
 | **Program** | TASK-870 wave 1, lane A |
 | **Branch** | `task-871-text-guardrail-output-gate` (base `f3c91ca0c` off `dev-2.2`) |
@@ -212,10 +212,128 @@ output pasted below.
 
 ## Implementation Summary
 
-_Pending._
+Design (d) landed: one output gate, two call sites, fail posture mirrored from the input gate.
+Branch `task-871-text-guardrail-output-gate`, four commits on top of `f3c91ca0c`:
+
+| Commit | What |
+|---|---|
+| `9fc0b761b` | Step 0 — worktree source guard in `apps/text` (RED on `hope_otel` / `hope_async_contract`, fixed via `pythonpath`) |
+| `d70144254` | Ticket opened: current-state evaluation + design decision |
+| `4f7cbb2d7` | The gate: client method, gate module, producer + endpoint wiring, 26 tests |
+| `92947da21` | Review fix: provider permit released BEFORE the gate (RED `[1] == [0]` on the prior commit), 27th test |
+
+### Files changed (all under `apps/text/**` + this directory)
+
+| File | Change |
+|---|---|
+| `apps/text/pyproject.toml` | `pythonpath` += `packages/py-async-contract/src`, `packages/py-otel/src` |
+| `apps/text/src/text/tests/conftest.py` | `assert_source_tree([...text + 4 shared packages...])` before any `text` import |
+| `apps/text/src/text/services/output_gate.py` | NEW — `gate_completion`, `OutputRejectedError` (`status_code` 422/503, `code` `GUARDRAIL_REJECTED`/`GUARDRAIL_UNAVAILABLE`, `task_error`, `terminal_data`), `assemble_completion`, `source_context_of` |
+| `apps/text/src/text/services/external_guardrail.py` | `screen_output(...)` → `POST /api/v1/guardrail/screen/outbound`; the bounded-retry / fail-closed loop extracted into `_post_verdict` and shared with `validate` (behaviour byte-for-byte: existing client tests unchanged and green) |
+| `apps/text/src/text/core/guardrail_posture.py` | `platform_moderation_enabled(app_state)` — moved here from `generate.py` so the producer can read it without an endpoint import (cycle) |
+| `apps/text/src/text/routing/streaming.py` | Accumulates delivered `chunk`/`reasoning` text; gates the assembled completion after the provider stream ends (incl. early stop) and before the terminal frame; on rejection emits the `error` terminal, `FAILED` + `guardrail_rejected:<reason>`, audit `rejected`, `GENERATION_TOTAL{status="rejected"}`, `GENERATION_ERRORS{error_type="guardrail_rejected"}`; breaker untouched. New kwargs `guardrail_client=None`, `app_state=None` (existing callers unchanged) |
+| `apps/text/src/text/api/endpoints/generate.py` | Non-stream: permit released, then the gate, BEFORE `COMPLETED`/audit/response/idempotency cache; dedicated `except OutputRejectedError` arm (422/503, `FAILED`, audit `rejected` with real token totals, no breaker failure, nothing cached). Streaming: passes `guardrail_client` + `app_state` into the producer. `_apply_guardrail_gate` docstring now names itself the INPUT half; `_platform_moderation_enabled` is an alias |
+| `apps/text/src/text/tests/unit/test_task871_output_gate.py` | NEW — 27 tests, hermetic (table in §Implementation Plan + the permit-release test) |
+
+### Wire contract of a rejection
+
+- Non-streaming: `422 {"detail": "Response rejected by guardrail: <reason>"}` (content), or
+  `503` with the same shape and reason `external_guardrail_unavailable` (outage / enforce
+  posture with no client). `GET /tasks/{id}` → `status: "failed"`, `error: "guardrail_rejected:<reason>"`.
+- Streaming: terminal SSE frame `event: error`, `data: {"type":"error","data":{"error":
+  "Response rejected by guardrail: <reason>","code":"GUARDRAIL_REJECTED"|"GUARDRAIL_UNAVAILABLE",
+  "retryable":bool,"guardrail":{"decision":"block","reasons":[...]}|null,"usage":{...}}}` — the
+  usage block is the one the gateway meters from; `reasons` are guardrail check names/labels,
+  never text. Persisted durably as the terminal entry, so a reconnect or a cross-pod tail
+  replays the same rejection. Task record as above.
+- `<reason>` is the first of guardrail's `reasons[]` (e.g. `response_safety`, `pii_leak`),
+  `malformed_verdict` for an unreadable 200, `external_guardrail_unavailable` for an outage.
+
+### Reported for the guardrail lane (not editable from this lane)
+
+1. `OUTBOUND_TASKS` (`apps/guardrail/src/guardrail/services/screening.py:66`) runs
+   `response_safety`, `response_toxicity`, `response_refusal` + PII-leak + containment-echo,
+   but NOT `jailbreak_detection` (inbound only). If the owner wants injection-echo detection on
+   the response direction, add it to `OUTBOUND_TASKS` — the text side needs no change.
+2. `ScreenResponse` carries no `stats` / `usage_detail`, so the outbound screen's judge spend
+   does not ride back to billing. `gate_completion` already lifts `raw.usage_detail` via
+   `guardrail_usage_from_verdict` the moment guardrail adds it; wiring it into the ONE
+   `guardrail_usage` slot on `GenerateResponse` (currently the input verdict's) is a follow-up.
+3. Text does not use guardrail's inbound containment envelope (`/guardrail/screen/inbound`), so
+   no `nonce` is sent and the containment-echo check is reported `skipped`. Switching the input
+   gate from `/api/medical/validate` to `/guardrail/screen/inbound` would enable it — a separate
+   decision (it changes the input gate's semantics from "is medical" to "is safe").
+
+### Out of scope, noted for the program
+
+`POST /translate` and `POST /embeddings` carry no guardrail gate on either side (they are not
+LLM completions; translate is a Sarvam call). Two pre-existing lint/format findings in files
+this ticket did not touch are left as found, both present at base `f3c91ca0c`:
+`ruff W291` at `models/provider.py:47` and `tests/unit/test_judge_route.py:469`; `black --check`
+would reformat `core/exception_handlers.py`, `models/provider.py`, `models/requests.py`,
+`tests/unit/test_embeddings_endpoint.py`, `tests/unit/test_judge_route.py`.
+
+### Verification evidence (worktree `hope-v2-task-871`, HEAD `92947da21`)
+
+Step 0 — guard RED before the `pythonpath` fix, then GREEN:
+
+```
+E   hope_worktree_guard.SourceTreeMismatch: This pytest run would exercise source from a DIFFERENT checkout ...
+E     hope_otel: imports /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/packages/py-otel/src/hope_otel/__init__.py
+E       but this run lives in /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-871
+E     hope_async_contract: imports /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/packages/py-async-contract/src/hope_async_contract/__init__.py
+E       but this run lives in /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-871
+--- after adding the two roots to pythonpath ---
+7 passed in 0.27s
+text -> /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-871/apps/text/src/text/__init__.py
+hope_env -> .../hope-v2-task-871/apps/text/../../packages/py-env/src/hope_env/__init__.py
+hope_otel -> .../hope-v2-task-871/apps/text/../../packages/py-otel/src/hope_otel/__init__.py
+hope_async_contract -> .../hope-v2-task-871/apps/text/../../packages/py-async-contract/src/hope_async_contract/__init__.py
+hope_runtime_models -> .../hope-v2-task-871/apps/text/../../packages/py-runtime-models/src/hope_runtime_models/__init__.py
+```
+
+TDD — new test file RED before the implementation (`22 failed, 4 passed`; the 4 are the
+behaviour-preservation pins: both dev-bypass cases, allowed-stream-still-`done`,
+judge-never-screened), GREEN after (`26 passed`), then `27 passed` with the permit-release test
+(RED on `4f7cbb2d7`: `assert [1] == [0]`).
+
+Baseline before any gate change (with the step-0 guard in place):
+`==== 1587 passed, 4 skipped, 16 deselected, 8 warnings in 174.63s ====`.
+
+`pnpm text:lint` (ruff) — only the two pre-existing findings above:
+
+```
+apps/text/src/text/models/provider.py:47:71: W291 [*] Trailing whitespace
+apps/text/src/text/tests/unit/test_judge_route.py:469:26: W291 [*] Trailing whitespace
+Found 2 errors.
+```
+
+`pnpm text:typecheck` (mypy):
+
+```
+Success: no issues found in 81 source files
+```
+
+`pnpm text:format:check` (black) — only the five pre-existing files above; every file this
+ticket touched: `5 files would be left unchanged.`
+
+`pnpm text:test` on HEAD `92947da21`:
+
+```
+> hope-monorepo@1.0.0 text:test /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-871
+> conda run -n arcaenv --no-capture-output pytest apps/text/src/text/tests/ -v --tb=short
+HEAD=92947da215058c500d0676d10a8822d08563a315
+... apps/text/src/text/tests/unit/test_task871_output_gate.py::* PASSED  (27 of 27)
+=== 1614 passed, 4 skipped, 16 deselected, 12 warnings in 174.39s (0:02:54) ====
+exit=0
+```
+
+1614 = 1587 (baseline) + 27 (this ticket). No test outside the new file changed.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-05 | Ticket opened; step-0 worktree guard added to `apps/text` (commit `9fc0b761b`); design decision (d) recorded. |
+| 2026-09-05 | Output gate landed (`4f7cbb2d7`): `screen_output` client method, `services/output_gate.py`, producer + non-stream wiring, 26 hermetic tests RED→GREEN. |
+| 2026-09-05 | Review fix (`92947da21`): provider permit released before the gate, pinned by a 27th test. Gates on HEAD: `pnpm text:test` 1614 passed / 4 skipped, `text:typecheck` clean, `text:lint` and `text:format:check` clean for every touched file (two `W291` + five black findings pre-exist at base in untouched files). Status → Completed. |
