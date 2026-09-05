@@ -23,6 +23,9 @@
 #               `byo-llm-credentials` needs TEXT_URL aimed at a stub, which would
 #               break every spec that needs real TEXT. Both are read at BOOT, so
 #               they cannot be flipped per-spec — hence a second process.
+#               It also carries a 1-byte WS egress watermark, so the dropped-partial
+#               signal is reachable without a contrived stall: at the real 512 KiB
+#               default it takes a stalled reader AND thousands of partials.
 #
 # REQUIREMENTS:
 #   - test infrastructure running   (pnpm infra:test:up)
@@ -209,6 +212,7 @@ case "$TARGET" in
                 "API_PORT=$TARGET_PORT" \
                 "RATE_LIMIT_ENABLED=true" \
                 "TEXT_URL=${E2E_TEXT_URL:-http://127.0.0.1:8992}" \
+                "STT_WS_EGRESS_HIGH_WATERMARK_BYTES=${E2E_WS_EGRESS_WATERMARK_BYTES:-1}" \
                 pnpm --filter @arcaai/api dev
         fi
         exec npx dotenv -o -e .env.test -- pnpm --filter @arcaai/api dev
