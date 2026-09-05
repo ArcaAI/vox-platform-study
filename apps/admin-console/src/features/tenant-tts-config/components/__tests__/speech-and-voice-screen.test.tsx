@@ -76,6 +76,8 @@ function stubFetch({ session = TENANT_SESSION, permissions = ALL }: { session?: 
       if (method === 'GET' && path === '/api/hope/admin/stt-config/row') return Response.json(STT_ROW);
       if (method === 'GET' && path === '/api/hope/admin/stt-config/fallback-candidates') return Response.json([]);
       if (method === 'GET' && path === '/api/hope/admin/tts-config') return Response.json(TTS_EFFECTIVE);
+      // The row and catalog reads went with the editor (TASK-879); left stubbed so a regression
+      // that re-introduces them surfaces here as an unexpected call rather than a fetch error.
       if (method === 'GET' && path === '/api/hope/admin/tts-config/row') return Response.json(TTS_ROW);
       if (method === 'GET' && path === '/api/hope/admin/tts-config/catalog') return Response.json(TTS_CATALOG);
       throw new Error(`Unhandled fetch: ${method} ${raw}`);
@@ -108,7 +110,7 @@ describe('SpeechAndVoiceScreen — structure', () => {
     expect(link.getAttribute('href')).toBe('/ai-providers');
   });
 
-  it('renders the STT fallback retirement notice (TASK-861) on the Speech tab and the TTS editor on the Voice tab', async () => {
+  it('renders a retirement notice on BOTH tabs — neither binding is editable any more', async () => {
     stubFetch();
     renderWithProviders(<SpeechAndVoiceScreen />, { searchParams: '?tab=speech' });
     expect(await screen.findByRole('heading', { name: /Speech fallback moved to the ASR agent/i })).toBeDefined();
@@ -116,7 +118,20 @@ describe('SpeechAndVoiceScreen — structure', () => {
 
     stubFetch();
     renderWithProviders(<SpeechAndVoiceScreen />, { searchParams: '?tab=voice' });
-    expect(await screen.findByRole('heading', { name: /Tenant TTS config editor/i })).toBeDefined();
+    expect(await screen.findByRole('heading', { name: /Voice settings moved to the text-to-speech agent/i })).toBeDefined();
+  });
+
+  it('the Voice tab is READ-ONLY and points at the agent that owns each setting now', async () => {
+    // TASK-879 — a form that writes a row nothing reads is worse than no form: an operator would
+    // change a value, see it saved, and hear no difference. The summary stays so the old row is
+    // still legible while it is migrated.
+    stubFetch();
+    renderWithProviders(<SpeechAndVoiceScreen />, { searchParams: '?tab=voice' });
+
+    expect(await screen.findByRole('heading', { name: /Retired TTS config row/i })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
+    const link = screen.getByRole('link', { name: /open text-to-speech agents/i });
+    expect(link.getAttribute('href')).toBe('/agents?task=TEXT_TO_SPEECH');
   });
 
   it('shows only the tab whose resource the caller can read', async () => {
