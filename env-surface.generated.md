@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 151 |
+| Declared keys (distinct) | 150 |
 | … of which required (`failMode: closed`) | 28 |
 | … of which secret | 27 |
-| … tier `env` | 119 |
+| … tier `env` | 118 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 23 |
-| Python declared fields | 351 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 400 |
-| `turbo.json#globalEnv` entries | 529 |
+| Python declared fields | 339 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 388 |
+| `turbo.json#globalEnv` entries | 516 |
 
 ## Variables — the TypeScript platform surface
 
@@ -141,7 +141,6 @@ disagree with those declarations.
 | `SECRETS_PROVIDER` | `env` | no | `env` | `apps/api` | Selects the secrets backend (`env` \| `vault` \| …). It decides where every `vault-kv` descriptor is actually read from, so it necessarily precedes all of them. |
 | `SECRETS_REWARM_INTERVAL_SEC` | `env` | no | `0` | `apps/api` | How often the SecretsService re-warms its boot warmup set so the cache-only getSecretSync path (TEXT/TTS X-Service-Token) never expires cold. Unset/<=0 derives max(30, TTL/2). |
 | `SECRETS_TTL_SEC` | `env` | no | `300` | `apps/api` | Per-entry TTL of the SecretsService LRU cache. |
-| `SEMANTIC_ENDPOINT_ENABLED` | `env` | no | `false` | `apps/api` | Gates content-driven semantic end-of-utterance detection on the STT streaming hot path. NOTE the naming exception: the STT `Settings` class carries NO `env_prefix`, so this is the BARE `SEMANTIC_ENDPOINT_ENABLED`, not `STT_SEMANTIC_ENDPOINT_ENABLED` — one of the rule-1 violations (prefix must equal the service prefix) that a later rename has to fix. Default OFF until measured against the accuracy/latency scorecard. |
 | `SERVICE_NAME` | `env` | no | `hope-api` | `apps/api` | Logical service name stamped on logs and metrics. |
 | `SERVICE_VERSION` | `env` | no | `1.0.0` | `apps/api` | Version string stamped on log records. Build identity comes from the image’s `build-info.json`, never from this. |
 | `SESSION_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Signing/encryption secret for server-side session material. Rotating it invalidates existing sessions; users re-authenticate. |
@@ -410,22 +409,14 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `PUBSUB_CHANNEL_PREFIX__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `stt:transcription:` | commented | — |
 | `PUBSUB_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `true` | commented | — |
 | `PUNCTUATION_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `auto` | commented | — |
-| `PUNCTUATION_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `false` | commented | — |
 | `PUNCTUATION_MAX_LENGTH__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `300` | commented | — |
 | `PUNCTUATION_MODEL_CACHE_DIR__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | — | commented | — |
-| `PUNCTUATION_MODEL_NAME__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `Cadence` | commented | — |
 | `REDIS_URL` | `apps/stt` | no | no | `redis://localhost:6379/0` | commented | — |
 | `SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `https://api.sarvam.ai` | commented | — |
 | `SECURITY_CORS_ALLOW_CREDENTIALS` | `apps/nlp` | no | no | `false` | commented | — |
 | `SECURITY_CORS_METHODS` | `apps/nlp` | no | no | `["GET", "POST", "PUT", "DELETE", "OPTIONS"]` | commented | — |
 | `SECURITY_CORS_ORIGINS` | `apps/nlp` | no | no | `["*"]` | commented | — |
 | `SEGMENT_MERGE_GAP_THRESHOLD_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `2` | commented | — |
-| `SEMANTIC_ENDPOINT_CONFIDENCE_THRESHOLD__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.85` | commented | — |
-| `SEMANTIC_ENDPOINT_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `false` | commented | — |
-| `SEMANTIC_ENDPOINT_MAX_SILENCE_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500` | commented | — |
-| `SEMANTIC_ENDPOINT_MIN_SILENCE_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `200` | commented | — |
-| `SEMANTIC_ENDPOINT_MIN_WORDS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `3` | commented | — |
-| `SEMANTIC_ENDPOINT_MODEL_ID__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `` | commented | — |
 | `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `<repo>/apps/nlp/data/dictionaries` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_NON_WORDS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_TERM_WITH_DIGITS` | `apps/nlp` | no | no | `true` | commented | — |
@@ -436,8 +427,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `STREAMING_AUDIO_IDLE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `300` | commented | — |
 | `STREAMING_AUDIO_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `10000` | commented | — |
 | `STREAMING_AUDIO_TRIM_INTERVAL_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `30` | commented | — |
-| `STREAMING_BATCH_WAIT_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
-| `STREAMING_EMBEDDING_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `auto` | commented | — |
 | `STREAMING_EXTRA_FILLER_PATTERNS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `` | commented | — |
 | `STREAMING_INFERENCE_DRAIN_TIMEOUT_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `60` | commented | — |
 | `STREAMING_INFERENCE_QUEUE_MAXSIZE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `64` | commented | — |
@@ -445,8 +434,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `STREAMING_MAX_AUDIO_BUFFER_BYTES__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500000000` | commented | — |
 | `STREAMING_MAX_BATCH_SIZE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
 | `STREAMING_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
-| `STREAMING_MULTI_GPU_STRATEGY__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `auto` | commented | — |
-| `STREAMING_PARTIAL_INTERVAL_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.4` | commented | — |
 | `STREAMING_PARTIAL_WINDOW_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `6` | commented | — |
 | `STREAMING_PUNCTUATION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.4` | commented | — |
 | `STREAMING_REAPER_INTERVAL_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `300` | commented | — |

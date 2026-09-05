@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 400,
+  "distinctNames": 388,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -2886,18 +2886,6 @@
           "description": "Device for punctuation inference: 'cpu', 'cuda', 'auto'"
         },
         {
-          "name": "PUNCTUATION_ENABLED__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "punctuation_enabled",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Enable Cadence punctuation restoration at startup and runtime. Default false: the production Whisper ASR pipelines already emit punctuation and casing, so Cadence is redundant for them, and cadence-punctuation 1.1.0 cannot load under the pinned transformers 5.5.4 (its tied-weights finalization raises 'Sequential has no attribute weight'). Enable only with a transformers/cadence combination that is known to load the model \u2014 e.g. an Indic ASR path whose engine does not self-punctuate, running transformers <5 in a dedicated environment \u2014 or with the direct-load 'cadence-fast' option, which works under the pinned transformers 5.x."
-        },
-        {
           "name": "PUNCTUATION_MAX_LENGTH__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
@@ -2920,18 +2908,6 @@
           "dataType": "string",
           "default": null,
           "description": "Cache dir for punctuation model weights (None = HF default cache)"
-        },
-        {
-          "name": "PUNCTUATION_MODEL_NAME__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "punctuation_model_name",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "Cadence",
-          "description": "Default punctuation model: 'Cadence' (1B) or 'Cadence-Fast' (270M) via the cadence-punctuation wrapper, or 'cadence-fast' for the direct transformers load (works under transformers 5.x). Can be overridden per-pipeline via YAML."
         },
         {
           "name": "REDIS_URL",
@@ -2968,78 +2944,6 @@
           "dataType": "number",
           "default": 2.0,
           "description": "Maximum gap (seconds) between adjacent VAD speech segments that allows merging into a single inference chunk.  Merging reduces the number of Whisper generate() calls, each of which incurs ~6s encoder overhead on CPU.  Default 2.0s works well for conversational audio with natural pauses.  Set to 0 to disable merging entirely."
-        },
-        {
-          "name": "SEMANTIC_ENDPOINT_CONFIDENCE_THRESHOLD__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "semantic_endpoint_confidence_threshold",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 0.85,
-          "description": "Minimum decision confidence (0\u20131) to cut a final early. Raise it if measurement shows early cuts truncating clinical content (measure-first; the fixed backstop always still fires)."
-        },
-        {
-          "name": "SEMANTIC_ENDPOINT_ENABLED__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "semantic_endpoint_enabled",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Enable content-driven semantic end-of-utterance detection on the streaming hot path. Default OFF \u2014 the preprocessor keeps the fixed Silero-VAD silence offset until this is enabled and measured against the accuracy/latency scorecard. Env: SEMANTIC_ENDPOINT_ENABLED."
-        },
-        {
-          "name": "SEMANTIC_ENDPOINT_MAX_SILENCE_MS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "semantic_endpoint_max_silence_ms",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 500,
-          "description": "Target-max EOU latency band (ms) \u2014 informational; the fixed VAD silence offset remains the true upper bound / backstop."
-        },
-        {
-          "name": "SEMANTIC_ENDPOINT_MIN_SILENCE_MS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "semantic_endpoint_min_silence_ms",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 200,
-          "description": "Trailing-silence floor (ms) before a semantic early cut is allowed (target-min EOU latency, 160\u2013500 ms band). Kept below the fixed VAD backstop so a semantic cut is genuinely earlier."
-        },
-        {
-          "name": "SEMANTIC_ENDPOINT_MIN_WORDS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "semantic_endpoint_min_words",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 3,
-          "description": "Minimum running-hypothesis word count before a semantic early cut; tiny fragments defer to the fixed silence timer."
-        },
-        {
-          "name": "SEMANTIC_ENDPOINT_MODEL_ID__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "semantic_endpoint_model_id",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "",
-          "description": "OPTIONAL self-hosted turn/EOU model id. Empty = model-free heuristic only. A staged model can endpoint on unpunctuated complete text; an un-staged id degrades to the heuristic (no cloud vendor ever \u2014 track guardrail)."
         },
         {
           "name": "STORAGE_PROVIDER__MOVED_TO_CONTROL_PLANE",
@@ -3088,30 +2992,6 @@
           "dataType": "number",
           "default": 30.0,
           "description": "Minimum interval (seconds) between XTRIM MINID calls on the consumed portion of stt:audio:{session_id}. 0 disables consumed-portion trimming (MAXLEN bound still applies)."
-        },
-        {
-          "name": "STREAMING_BATCH_WAIT_MS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "streaming_batch_wait_ms",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 0,
-          "description": "Maximum time (ms) the batch scheduler waits before dispatching an incomplete batch. 0 = auto-detect from ExecutionProfile."
-        },
-        {
-          "name": "STREAMING_EMBEDDING_DEVICE__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "streaming_embedding_device",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "auto",
-          "description": "Device for speaker embedding extraction during streaming. 'auto' selects based on hardware profile (e.g. cuda:1, cpu, mps)."
         },
         {
           "name": "STREAMING_EXTRA_FILLER_PATTERNS__MOVED_TO_CONTROL_PLANE",
@@ -3196,30 +3076,6 @@
           "dataType": "number",
           "default": 0,
           "description": "Maximum number of concurrent streaming sessions. 0 = auto-detect from ExecutionProfile based on hardware. Bootstrap fallback \u2014 the runtime value comes from the control plane (effective-config), applied after hardware detection."
-        },
-        {
-          "name": "STREAMING_MULTI_GPU_STRATEGY__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "streaming_multi_gpu_strategy",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "auto",
-          "description": "Multi-GPU strategy for streaming: 'auto' (detect), 'replicate' (same model on each GPU), 'split' (ASR on GPU 0, embeddings on GPU 1), or 'none' (single GPU / CPU)."
-        },
-        {
-          "name": "STREAMING_PARTIAL_INTERVAL_S__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "streaming_partial_interval_s",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 0.4,
-          "description": "Minimum wall-clock interval (seconds) between successive PARTIAL transcript emissions for a live utterance. Lowered from the legacy hardcoded 1.0 s so newly-spoken words surface in near-real-time as a tentative tail; the LocalAgreement-2 commit policy still governs when a word is *committed* (unchanged). The streaming_partial_window_s tail bound and the 0.5 s minimum-buffered-audio floor are unaffected. The Settings class has NO env_prefix, so the env var is the bare STREAMING_PARTIAL_INTERVAL_S."
         },
         {
           "name": "STREAMING_PARTIAL_WINDOW_S__MOVED_TO_CONTROL_PLANE",
