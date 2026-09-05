@@ -220,7 +220,8 @@ pnpm --filter @arcaai/applications test       (full run at a390c7be9^, before th
                                                  + 3 asr-agent-resolver.service.test.ts + 1 vault-kv-coverage.test.ts — pre-existing at base
                                                    (azure-foundry in CLOUD_BYO_PROVIDERS.stt and the tts.serviceToken descriptor removal both land in
                                                     1e50834d7; `git diff 1e81c4966..HEAD --stat` over those areas is empty)
-                                              Final full run at HEAD: see the line appended in Change History.
+pnpm --filter @arcaai/applications test (HEAD) Test Files  3 failed | 659 passed | 1 skipped (663)   Tests  8 failed | 11616 passed | 4 skipped (11628)
+                                              8 = the 4 manifest-drift pairs (svc-scope-route-ability-coverage) + asr-agent-resolver ×3 + vault-kv-coverage ×1 (pre-existing at base)
 pnpm --filter @arcaai/api typecheck           TYPECHECK_EXIT=0
 pnpm --filter @arcaai/api test  (HEAD)        Test Files  1 failed | 278 passed | 2 skipped (281)   Tests  3 failed | 4197 passed | 4 skipped (4204)
                                               3 = stt-internal.controller.test.ts (azure-foundry — pre-existing at base, same commit as above)
@@ -300,4 +301,4 @@ Stale DESCRIPTIONS in files other lanes own (each a one-line handoff below):
 | Date | Change |
 |---|---|
 | 2026-09-06 | Ticket opened in the batch-2 worktree; plan written after mapping every reader of the facade, the vocabulary, the descriptors and the two columns. |
-| 2026-09-06 | Implemented in thirteen commits: vocabulary re-homed + descriptors deleted (`bf54d974c`), NER path repointed (`e43c1b2fc`), judge + modelWeights (`b789ff2ad`), gateway readers (`bd4c96432`), facade/routes/scope/CASL/e2e removal (`e805a48ee`), schema + domain trio (`46ec97987`), HarnessPolicy columns + seeds (`bbe7e0ce5`), console catalogue + register (`e7f9012ce`), count pins (`a390c7be9`), style (`9e2e01bf6`). Gates as recorded above; the harness eval judge SQL found still reading the table and handed off. |
+| 2026-09-06 | Implemented in thirteen commits: vocabulary re-homed + descriptors deleted (`bf54d974c`), NER path repointed (`e43c1b2fc`), judge + modelWeights (`b789ff2ad`), gateway readers (`bd4c96432`), facade/routes/scope/CASL/e2e removal (`e805a48ee`), schema + domain trio (`46ec97987`), HarnessPolicy columns + seeds (`bbe7e0ce5`), console catalogue + register (`e7f9012ce`), count pins (`a390c7be9`), style (`9e2e01bf6`). Gates as recorded above; the harness eval judge SQL found still reading the table and handed off. Final full `@arcaai/applications` run at HEAD: 659/663 files, 11616 passed, 8 failed (4 manifest-drift + 4 pre-existing), 4 skipped. |
