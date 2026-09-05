@@ -608,6 +608,98 @@
       "apiExcluded": false
     },
     {
+      "controller": "AgentAdminController",
+      "handler": "clone",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{slug}/clone",
+      "routePath": "/admin/agents/:slug/clone",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "exportBySlug",
+      "method": "GET",
+      "path": "/api/v1/admin/agents/{slug}/export",
+      "routePath": "/admin/agents/:slug/export",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "sync",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{slug}/sync",
+      "routePath": "/admin/agents/:slug/sync",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "importBundle",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/import",
+      "routePath": "/admin/agents/import",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelAdminController",
       "handler": "fetchAll",
       "method": "GET",

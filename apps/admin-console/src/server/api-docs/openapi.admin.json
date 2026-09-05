@@ -267,6 +267,13 @@
             "nullable": true,
             "type": "string"
           },
+          "selectorTags": {
+            "description": "TASK-884 — the canonical `key:value` selector qualifying this assignment; empty = the tier’s unqualified row.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "task": {
             "enum": [
               "SPEECH_TO_TEXT",
@@ -292,8 +299,66 @@
           "scope",
           "task",
           "agentSlug",
+          "selectorTags",
           "createdAt",
           "updatedAt",
+          "version"
+        ],
+        "type": "object"
+      },
+      "AgentBundleResponse": {
+        "properties": {
+          "exportedAt": {
+            "description": "ISO timestamp",
+            "type": "string"
+          },
+          "kind": {
+            "example": "agent",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "Values only: model references by slug, no credential, no server-owned column.",
+            "type": "object"
+          },
+          "schemaVersion": {
+            "description": "Envelope version. A bundle newer than the importer is refused, never partially applied.",
+            "type": "number"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AgentBundleSourceResponse"
+          }
+        },
+        "required": [
+          "kind",
+          "schemaVersion",
+          "exportedAt",
+          "source",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "AgentBundleSourceResponse": {
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "tenantKind": {
+            "description": "The TIER the bundle came from — never a tenant id.",
+            "enum": [
+              "system",
+              "global",
+              "tenant"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantKind",
+          "slug",
           "version"
         ],
         "type": "object"
@@ -523,6 +588,26 @@
           "slug": {
             "type": "string"
           },
+          "sourceAgentId": {
+            "description": "TASK-884 — the agent version this row was CLONED or SYNCED from (a different lineage, possibly another tenant).",
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceSlug": {
+            "description": "The clone source’s lineage slug.",
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceTenantId": {
+            "description": "The tenant that owned the clone source.",
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "description": "The clone source’s version number.",
+            "nullable": true,
+            "type": "number"
+          },
           "status": {
             "enum": [
               "DRAFT",
@@ -674,6 +759,59 @@
           "inputSchema",
           "outputSchema",
           "protocols"
+        ],
+        "type": "object"
+      },
+      "AgentSyncResponse": {
+        "properties": {
+          "sourceSlug": {
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "type": "number"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/AgentSyncTargetResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sourceSlug",
+          "sourceVersionNumber",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "AgentSyncTargetResponse": {
+        "properties": {
+          "agentId": {
+            "description": "The DRAFT agent version created in that tenant.",
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          },
+          "warnings": {
+            "description": "What could not be carried across (a stripped eval gate, a re-resolved template).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tenantId",
+          "agentId",
+          "slug",
+          "versionNumber"
         ],
         "type": "object"
       },
@@ -2920,6 +3058,42 @@
         "required": [
           "removedJobIds",
           "count"
+        ],
+        "type": "object"
+      },
+      "CloneAgentRequest": {
+        "properties": {
+          "description": {
+            "description": "Description for the clone; defaults to the source’s.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name for the clone; defaults to the source’s name with a “(copy)” suffix.",
+            "type": "string"
+          },
+          "newSlug": {
+            "description": "The slug of the new lineage the clone starts.",
+            "example": "clinic-summarizer-rheum",
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "description": "Clone this exact source version rather than the ACTIVE PUBLISHED one.",
+            "type": "number"
+          },
+          "tags": {
+            "description": "Replace the source’s tags. `key:value` pairs; a bare key is refused.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenantId": {
+            "description": "SUPER_ADMIN only: land the clone in this tenant instead of the caller’s working tenant. A tenant admin that supplies it is refused 403.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "newSlug"
         ],
         "type": "object"
       },
@@ -9203,6 +9377,27 @@
           "email",
           "roles",
           "permissions"
+        ],
+        "type": "object"
+      },
+      "ImportAgentRequest": {
+        "properties": {
+          "bundle": {
+            "additionalProperties": true,
+            "description": "The exported bundle, exactly as `GET /admin/agents/{slug}/export` produced it.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Override the imported agent’s name.",
+            "type": "string"
+          },
+          "slug": {
+            "description": "Land the import under this slug instead of the bundle’s (e.g. when the bundle’s slug is already taken).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle"
         ],
         "type": "object"
       },
@@ -17341,6 +17536,29 @@
         ],
         "type": "object"
       },
+      "SyncAgentRequest": {
+        "properties": {
+          "reason": {
+            "description": "Recorded on the sys-event for the audit trail.",
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "description": "Sync this exact version rather than the ACTIVE PUBLISHED one.",
+            "type": "number"
+          },
+          "targetTenantIds": {
+            "description": "The tenants to push this agent into. The caller must hold manage:Agent in every one of them.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "targetTenantIds"
+        ],
+        "type": "object"
+      },
       "SyncDirectoryUsersResponse": {
         "properties": {
           "jobId": {
@@ -21083,6 +21301,13 @@
             "description": "The department id for a DEPARTMENT-scope assignment; omitted (or null) for TENANT scope.",
             "type": "string"
           },
+          "selectorTags": {
+            "description": "TASK-884 — the optional `key:value` tag selector this assignment is qualified by, e.g. `[\"specialty:rheumatology\"]`. A tier may hold one row per selector plus one unqualified row; resolution tries the most specific MATCHING selector first and the unqualified row last. Omitted (or empty) = the tier’s unqualified assignment. A bare key is refused. The selector identifies the row: changing it addresses a DIFFERENT assignment, it does not re-tag this one.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "task": {
             "description": "The agent task this assignment governs.",
             "enum": [
@@ -24820,6 +25045,67 @@
         ]
       }
     },
+    "/api/v1/admin/agents/import": {
+      "post": {
+        "description": "Validates the bundle ENVELOPE (kind / schemaVersion / source) and then its agent payload, and only then re-resolves every reference against what THIS tenant can see: the model by slug, the bound prompt template by name (a SYSTEM template keeps its id and its version pin; a tenant one is re-resolved and the pin dropped, because version lineages are per-tenant), and each MCP tool binding. Anything unresolvable is a 409 that names it — never a silently dropped binding. A bundle from a newer platform is refused outright rather than partially applied. The import always lands a DRAFT this tenant validates and publishes itself.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentAdminController_importBundle",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Not a valid agent bundle (`BUNDLE_INVALID`), or its payload is malformed / carries a server-owned column (`BUNDLE_PAYLOAD_INVALID`)."
+          },
+          "409": {
+            "description": "A reference cannot be resolved here — `MODEL_NOT_RESOLVABLE`, `PROMPT_TEMPLATE_NOT_RESOLVABLE` or `MCP_SERVER_NOT_RESOLVABLE`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Import an exported agent bundle as a DRAFT in the caller tenant",
+        "tags": [
+          "admin-agents"
+        ],
+        "x-hope-abilities": [
+          "manage:Agent"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:agent:manage"
+        ]
+      }
+    },
     "/api/v1/admin/agents/{id}": {
       "delete": {
         "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -25312,6 +25598,227 @@
           }
         ],
         "summary": "Branch a new DRAFT version from ANY version (own lineage), or a new tenant lineage from a SYSTEM template",
+        "tags": [
+          "admin-agents"
+        ],
+        "x-hope-abilities": [
+          "manage:Agent"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:agent:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/{slug}/clone": {
+      "post": {
+        "description": "Creates a DRAFT under `newSlug`, copying the source’s configuration and recording where it came from. Reusing the source slug in the same tenant is refused — that would be a new VERSION, which `POST {id}/versions` already is. A same-tenant clone keeps every binding, eval gate included; a clone into ANOTHER tenant (SUPER_ADMIN only) re-resolves the model by slug there and refuses a tenant-owned template or MCP binding rather than writing one the target cannot read.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentAdminController_clone",
+        "parameters": [
+          {
+            "description": "The SOURCE agent’s lineage slug — the caller tenant’s own, or a SYSTEM template’s.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloneAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The new slug repeats the source’s in the same tenant, or the tags are not `key:value`."
+          },
+          "403": {
+            "description": "A `tenantId` was supplied by a caller who is not a platform administrator."
+          },
+          "404": {
+            "description": "Source not found (also returned for another tenant’s agent, and for an unpublished SYSTEM draft)."
+          },
+          "409": {
+            "description": "A binding cannot be resolved in the target tenant — `MODEL_NOT_RESOLVABLE`, `PROMPT_TEMPLATE_NOT_PORTABLE` or `MCP_SERVER_NOT_PORTABLE`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Clone a SYSTEM template or any visible agent into a NEW lineage",
+        "tags": [
+          "admin-agents"
+        ],
+        "x-hope-abilities": [
+          "manage:Agent"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:agent:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/{slug}/export": {
+      "get": {
+        "description": "Values only. Models are named by registry SLUG, the bound prompt template by a re-resolvable reference, and every server-owned column (ids, tenant, status, compiledConfig) is absent. An agent carries no credential in the first place, so there is nothing to strip — which is why this file is safe to hand to a person. The eval gate is NOT exported (it points at a corpus of encrypted patient data) and `payload.notes` says so.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentAdminController_exportBySlug",
+        "parameters": [
+          {
+            "description": "The agent lineage slug — the caller tenant’s own, or a SYSTEM template’s.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Export this exact version instead of the ACTIVE PUBLISHED one.",
+            "in": "query",
+            "name": "versionNumber",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBundleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found (also returned for another tenant’s agent)."
+          },
+          "409": {
+            "description": "The bound model row is no longer readable, so the agent cannot be exported by slug."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export one agent version as a portable JSON bundle",
+        "tags": [
+          "admin-agents"
+        ],
+        "x-hope-abilities": [
+          "manage:Agent"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:agent:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/{slug}/sync": {
+      "post": {
+        "description": "For an administrator who manages several tenants. Every target gets a DRAFT of the same version, in ONE transaction — either all of them received it or none did. The source must be the caller’s OWN agent (a SYSTEM template is already visible everywhere), and only SYSTEM-owned prompt-template and MCP bindings cross the boundary. This is NOT the Global → SYSTEM promotion path, which stays with `POST /admin/agent-promotions`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentAdminController_sync",
+        "parameters": [
+          {
+            "description": "The caller tenant’s own agent lineage slug.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSyncResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "A target repeats the source tenant."
+          },
+          "404": {
+            "description": "The source agent, or a target tenant the caller does not manage — the two are deliberately indistinguishable."
+          },
+          "409": {
+            "description": "A binding is not portable across tenants — `PROMPT_TEMPLATE_NOT_PORTABLE`, `MCP_SERVER_NOT_PORTABLE` or `MODEL_NOT_RESOLVABLE`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Push one of the caller’s own agents into other tenants the caller manages",
         "tags": [
           "admin-agents"
         ],
