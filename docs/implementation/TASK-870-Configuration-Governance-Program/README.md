@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review |
+| **Status** | In Progress |
 | **Type** | refactor / feature (program) |
 | **Branch** | `dev-2.2` (all lanes merge here) |
 | **Base** | `c364bb8ec` |
@@ -304,6 +304,13 @@ Pre-existing reds carried through the wave, none in program files: the 8 databas
 
 **Open, owner:** (1) sync the local dev DB (`pnpm db:push` — drops the same columns/tables locally); (2) soft-retire the five stale `text.*` `AiRoutingPolicy` rows (commented in the wave-3a migration); (3) a per-workflow-node fallback override (assumed NOT wanted). **Next seams (wave 3b, not started):** TASK-884 tags + clone + agent import/export, TASK-885 workflow import/export + promotion, TASK-886 guardrail per-tenant availability; the remaining per-service tokens against the one shared token; the deployment-repo handoffs listed per lane.
 
+### Wave 3b (in progress)
+
+Base `3227be8d6` (the program's close-of-3a commit). Three capability lanes in parallel, pre-built worktrees, disjoint ownership: F TASK-884 (`agent`, `agent-assignment`, `agentPromotion`, the new shared `portable-bundle.ts`, `features/agents`), G TASK-885 (`workflow-definition`, `workflow-assignment`, `eval`, `features/workflow-studio`, the workflow seeds), H TASK-886 (`apps/guardrail`, a new `guardrail-availability` service + gateway module + `TenantGuardrailPolicy` model, `features/security-policy`). Known reconciliation at merge: G codes against a local alias of the bundle contract F owns. H's new table becomes a third shadow-authored migration. The assumption H builds on — "availability" = policy SELECTION, never gate removal — is stated in its brief and README for the owner to confirm.
+
+| Lane | Ticket | Merge commit | Post-merge gates (primary checkout) | Worktree |
+|---|---|---|---|---|
+
 ## Change History
 
 | Date | Change |
@@ -327,3 +334,4 @@ Pre-existing reds carried through the wave, none in program files: the 8 databas
 | 2026-09-06 | Wave 3a code complete. The single schema-retirement migration authored and proven on a shadow database (hand-inserted: vector retype, modelId backfill, GlobalSetting purge; soft-retire commented); dev DB sync and the e2e run pending the owner (port 8968 held by a foreign debugger-attached API). Residue lane TASK-888 opened. |
 | 2026-09-06 | Wave 3a e2e green on the merged tree: route-authz matrix + the six repointed depth specs, 60 passed, against the test API serving `2880f462`. Residue lane TASK-888 running in `../hope-v2-task-888`. |
 | 2026-09-06 | Residue lane (TASK-888) merged at `745fa4bd8` and gated; rules updated; second migration proven; e2e 66 passed on the final tree; Python close gate at baseline. **Program complete through wave 3a — registry 209.** Status → Review (owner: dev-DB sync, stale routing rows, wave 3b go/no-go). |
+| 2026-09-06 | Wave 3b opened: TASK-884 / 885 / 886 running in pre-built worktrees off `3227be8d6` (all three `opus`). |
