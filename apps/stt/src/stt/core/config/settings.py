@@ -596,28 +596,10 @@ class Settings(BaseSettings):
         default=600,
         description="Maximum transcription job timeout in seconds (default: 10 min)",
     )
-    transcription_chunk_length_s: int = Field(
-        validation_alias=moved_alias("transcription_chunk_length_s"),
-        default=15,
-        description=(
-            "Audio chunk length (seconds) for Whisper inference. Whisper's "
-            "feature extractor truncates audio to its context window (30s max). "
-            "Audio longer than this value is split into overlapping chunks "
-            "with configurable stride. Default 15s provides ~2x lower TTFW "
-            "latency vs 30s while maintaining good accuracy. "
-            "Set to 30 for maximum accuracy, 10 for ultra-low latency."
-        ),
-    )
-    transcription_stride_length_s: str = Field(
-        validation_alias=moved_alias("transcription_stride_length_s"),
-        default="4,2",
-        description=(
-            "Left and right overlap (seconds) between consecutive chunks, as "
-            "a comma-separated pair. The HF pipeline uses these overlaps to "
-            "avoid cutting words at chunk boundaries. Default '4,2' means 4s "
-            "left overlap and 2s right overlap."
-        ),
-    )
+    # TASK-880 — `transcription_chunk_length_s` and `transcription_stride_length_s`
+    # lived here. Chunking is the AGENT's `decoding.{chunkLengthSec,strideLengthSec}`
+    # (TASK-877, owner decision #9), and the engine defaults these carried are now
+    # declared on `InferenceConfig` with every other engine default.
 
     # VAD segment merging
     segment_merge_gap_threshold_s: float = Field(

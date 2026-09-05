@@ -768,10 +768,15 @@ class InferenceConfig:
     # the engine's own VAD gate (long-form batch audio, mostly) asks for it.
     vad_filter: bool = False
     # TASK-877 / owner decision #9 — ResolvedAsrSpec.decoding.{chunkLengthSec,
-    # strideLengthSec}. `None` = no agent opinion, so the batch path keeps the
-    # platform `stt.transcription.*` values.
-    chunk_length_sec: float | None = None
-    stride_length_sec: tuple[int, int] | None = None
+    # strideLengthSec}. TASK-880 deleted the platform keys these used to fall back to
+    # (`stt.transcription.{chunkLengthS,strideLengthS}`), so these ARE the values: the
+    # spec is the only source, and an agent that says nothing gets the engine defaults
+    # below — the same numbers those keys carried, now declared where every other
+    # engine default lives. Whisper's feature extractor truncates to a 30s context, so
+    # 15s halves time-to-first-word at comparable accuracy; `[4, 2]` is the left/right
+    # overlap that stops a word being cut at a chunk boundary.
+    chunk_length_sec: float = 15.0
+    stride_length_sec: tuple[int, int] = (4, 2)
     # TASK-880 — `ResolvedAsrSpec.models.asr.metadata.maxDecodeWindowSec`
     # (`AiModel._metadata.asr`). Longest audio fed to the engine in ONE decode;
     # longer utterances are split at silence troughs and stitched. `0.0` disables

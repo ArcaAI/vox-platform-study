@@ -265,26 +265,13 @@ const KNOBS: Record<string, SttKnob> = {
     description: 'Maximum wall-clock time for one batch transcription job.',
     category: 'STT Transcription',
   },
-  'stt.transcription.chunkLengthS': {
-    dataType: 'number',
-    default: 15,
-    label: 'Whisper chunk length (s)',
-    description:
-      "Audio chunk length for Whisper inference. Whisper's feature extractor truncates to a 30s " +
-      'context window, so longer audio is split into overlapping chunks. 15s gives roughly half the ' +
-      'time-to-first-word of 30s at comparable accuracy; use 30 for maximum accuracy, 10 for ' +
-      'ultra-low latency.',
-    category: 'STT Transcription',
-  },
-  'stt.transcription.strideLengthS': {
-    dataType: 'string',
-    default: '4,2',
-    label: 'Whisper chunk overlap (s, "left,right")',
-    description:
-      'Left and right overlap between consecutive chunks, as a comma-separated pair. The pipeline ' +
-      'uses these to avoid cutting words at a chunk boundary.',
-    category: 'STT Transcription',
-  },
+  // TASK-880 removed `stt.transcription.chunkLengthS` and `.strideLengthS`. TASK-877
+  // had already put both on the agent (`decoding.{chunkLengthSec,strideLengthSec}`,
+  // owner decision #9) and made ONE of the two batch readers prefer the spec — leaving
+  // the platform keys as a fallback that applied on the other path only. Both readers
+  // now take the spec, and an agent that says nothing gets `InferenceConfig`'s own
+  // defaults: the same 15s and `[4, 2]`, declared where every other engine default lives
+  // instead of in two places at once.
   'stt.segmentMerge.gapThresholdS': {
     dataType: 'number',
     default: 2.0,

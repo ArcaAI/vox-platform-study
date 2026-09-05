@@ -70,6 +70,37 @@ from .preprocessing import get_preprocessor
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_chunking(config: Any) -> tuple[float, int, int]:
+    """``(chunk_length_s, stride_left, stride_right)`` for a batch inference run.
+
+    TASK-880 — the ONE source is the resolved spec: `stt.transcription.chunkLengthS`
+    and `stt.transcription.strideLengthS` are deleted, so an agent that expresses no
+    opinion gets `InferenceConfig`'s own defaults (15 s and `[4, 2]` — the same numbers
+    those keys carried, declared where every other engine default lives) rather than a
+    per-process setting. Both call sites read through here, which is also what closes
+    the older half of the split: `_transcribe_optimum_onnx` never consulted the spec at
+    all, so an agent's chunking applied on one batch path and not the other.
+
+    Defensive about shape because `config` is `Any` at both call sites and unit tests
+    pass `MagicMock`s: a non-numeric value falls back to the dataclass default rather
+    than reaching `float()`.
+    """
+    default = InferenceConfig()
+    raw_chunk = getattr(config, "chunk_length_sec", None)
+    chunk_length_s = (
+        float(raw_chunk)
+        if isinstance(raw_chunk, (int, float)) and not isinstance(raw_chunk, bool)
+        else float(default.chunk_length_sec)
+    )
+    raw_stride = getattr(config, "stride_length_sec", None)
+    if isinstance(raw_stride, (tuple, list)) and len(raw_stride) == 2:
+        try:
+            return chunk_length_s, int(raw_stride[0]), int(raw_stride[1])
+        except (TypeError, ValueError):
+            pass
+    return chunk_length_s, int(default.stride_length_sec[0]), int(default.stride_length_sec[1])
+
 # Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
 # dict (BYOK). For these the batch ASR load bypasses the shared by-slug
 # cache when an override is present. Mirrors the streaming set in session_manager.
@@ -1251,20 +1282,7 @@ class BatchTranscriptionService:
             ``model_output`` contains ``{"segment_latencies": [...]}``.
         """
         settings = get_settings()
-        spec_chunk_length_sec = getattr(config, "chunk_length_sec", None)
-        spec_stride_length_sec = getattr(config, "stride_length_sec", None)
-        chunk_length_s = (
-            float(spec_chunk_length_sec)
-            if isinstance(spec_chunk_length_sec, (int, float))
-            and not isinstance(spec_chunk_length_sec, bool)
-            else float(settings.transcription_chunk_length_s)
-        )
-        if isinstance(spec_stride_length_sec, tuple) and len(spec_stride_length_sec) == 2:
-            stride_left, stride_right = (int(spec_stride_length_sec[0]), int(spec_stride_length_sec[1]))
-        else:
-            stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
-            stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
-            stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
+        chunk_length_s, stride_left, stride_right = _resolve_chunking(config)
         raw_carry = getattr(config, "prev_text_context_words", None)
         if isinstance(raw_carry, int) and not isinstance(raw_carry, bool):
             carry_max_words = max(0, raw_carry)
@@ -2376,13 +2394,7 @@ class BatchTranscriptionService:
             raise TranscriptionError("Optimum ONNX model requires a processor")
 
         audio_duration_s = len(samples) / sample_rate
-        settings = get_settings()
-        chunk_length_s = float(settings.transcription_chunk_length_s)
-
-        # Parse stride from settings (e.g. "4,2" -> left=4, right=2)
-        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
-        stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
-        stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
+        chunk_length_s, stride_left, stride_right = _resolve_chunking(config)
         stride_s = stride_left + stride_right
         step_s = chunk_length_s - stride_s  # non-overlapping advance
 
