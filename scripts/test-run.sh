@@ -225,10 +225,15 @@ fi
 # ----------------------------------------------------------------------------
 # Ports come from .env.test (test = dev + 100), never hardcoded to the dev values.
 env_val() { grep -E "^$1=" "$REPO_ROOT/.env.test" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'"; }
+# The isolated gateway's port (TASK-869). Test API + 1; overridable so a second
+# managed run on the same host can move it.
+ISOLATED_API_PORT="${ISOLATED_API_PORT:-8969}"
+
 port_for() {
     local v
     case "$1" in
         api)       v="$(env_val API_PORT)";       echo "${v:-8968}" ;;
+        api-isolated) echo "$ISOLATED_API_PORT" ;;
         admin)     v="$(env_val ADMIN_PORT)";     echo "${v:-5276}" ;;
         stt)       v="$(env_val STT_PORT)";       echo "${v:-8961}" ;;
         text)      v="$(env_val TEXT_PORT)";       echo "${v:-8962}" ;;
@@ -274,6 +279,28 @@ else
         STARTED_SERVICES+=("$svc")
         echo "  spawned $svc (pid $!) → $log"
     done
+
+    # ISOLATED GATEWAY (TASK-869). A second api process whose BOOT-time settings
+    # differ from the shared one: throttling ON, TEXT_URL at the e2e stub. Two
+    # specs need exactly that and cannot have it on the shared gateway —
+    # throttling would 429 the login helpers every other spec uses, and a stubbed
+    # TEXT_URL would break every spec that needs the real service. Both values are
+    # read once at boot, so no per-spec override exists; a second process is the
+    # mechanism, and `dependencies` in playwright.config.ts keeps its specs off
+    # the shared workers.
+    if [ "$SUITE" = "e2e" ] && [[ " ${SERVICES[*]} " == *" api "* ]]; then
+        if lsof -nP -iTCP:"$ISOLATED_API_PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo -e "${RED}  port $ISOLATED_API_PORT is already bound — refusing to start the isolated gateway.${NC}" >&2
+            teardown
+            exit 1
+        fi
+        log="$LOG_DIR/api-isolated.log"
+        : > "$log"
+        "$SCRIPT_DIR/start-test-app.sh" api --isolated >>"$log" 2>&1 &
+        SERVICE_PIDS+=("$!")
+        STARTED_SERVICES+=("api-isolated")
+        echo "  spawned api-isolated (pid $!) → $log"
+    fi
 
     step "Step 3/5: waiting for services to become healthy (timeout ${READY_TIMEOUT}s)"
     deadline=$(( SECONDS + READY_TIMEOUT ))
@@ -324,6 +351,15 @@ if [ "$SUITE" = "e2e" ]; then
     # ONE consolidated harness switch (the owner's directive). `TASK711_E2E_FULL`
     # was a second flag doing the same job and is gone.
     export HARNESS_E2E_FULL="${HARNESS_E2E_FULL:-1}"
+
+    # The isolated gateway's address + the two settings its specs assert on. The
+    # SPECS read these; the shared services never see them (they load `.env.test`
+    # with `dotenv -o`, so `RATE_LIMIT_ENABLED` stays false there — which is the
+    # point).
+    export E2E_ISOLATED_API_URL="${E2E_ISOLATED_API_URL:-http://localhost:$ISOLATED_API_PORT/api/v1}"
+    export RATE_LIMIT_ENABLED=true
+    export E2E_TEXT_STUB=1
+    export E2E_TEXT_URL="${E2E_TEXT_URL:-http://127.0.0.1:8992}"
 
     # The gateway resolves TEXT_SERVICE_TOKEN through SecretsService (Vault),
     # seeded from THIS file's value by ensure-test-vault-creds.sh — so the value

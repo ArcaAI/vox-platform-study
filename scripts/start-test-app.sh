@@ -8,13 +8,21 @@
 # fix can never silently skip the test launcher.
 #
 # USAGE:
-#   ./scripts/start-test-app.sh <target> [--build]
+#   ./scripts/start-test-app.sh <target> [--build] [--isolated]
 #
 # TARGETS:
 #   api  admin  stt  text  nlp  guardrail  harness  tts  worker
 #
 # FLAGS:
-#   --build   build the TS packages first (db:generate + core packages + modules)
+#   --build     build the TS packages first (db:generate + core packages + modules)
+#   --isolated  (api only, TASK-869) a SECOND gateway on ISOLATED_API_PORT with
+#               throttling ON and TEXT_URL pointed at the e2e stub. Two e2e specs
+#               need process-wide settings the shared gateway cannot have:
+#               `auth-throttle-per-endpoint` needs RATE_LIMIT_ENABLED=true, which
+#               would 429 the login helpers of the other ~1150 tests, and
+#               `byo-llm-credentials` needs TEXT_URL aimed at a stub, which would
+#               break every spec that needs real TEXT. Both are read at BOOT, so
+#               they cannot be flipped per-spec — hence a second process.
 #
 # REQUIREMENTS:
 #   - test infrastructure running   (pnpm infra:test:up)
@@ -34,6 +42,11 @@ source "$SCRIPT_DIR/start-test-service.sh"
 
 TARGET="${1:-}"
 shift || true
+
+ISOLATED=false
+for arg in "$@"; do
+    [ "$arg" = "--isolated" ] && ISOLATED=true
+done
 
 PY_TARGETS=(stt text nlp guardrail harness tts worker)
 TS_TARGETS=(api admin)
@@ -127,6 +140,13 @@ port_for() {
 }
 
 TARGET_PORT="$(port_for "$TARGET")"
+if $ISOLATED; then
+    if [ "$TARGET" != "api" ]; then
+        echo -e "${RED}--isolated is only meaningful for the api target.${NC}" >&2
+        exit 2
+    fi
+    TARGET_PORT="${ISOLATED_API_PORT:-8969}"
+fi
 if [ -n "$TARGET_PORT" ]; then
     check_port_available "$TARGET_PORT"
 elif [ "$TARGET" = "worker" ]; then
@@ -178,6 +198,19 @@ print_service_header "$TARGET (test env)" "${TARGET_PORT:+http://localhost:$TARG
 # ----------------------------------------------------------------------------
 case "$TARGET" in
     api)
+        if $ISOLATED; then
+            # `env` runs AFTER dotenv, so these three win over `.env.test` — the
+            # only way to differ from the shared gateway, since `dotenv -o` is
+            # what makes .env.test beat the ambient environment for every other
+            # variable (and that behaviour is deliberate: a stray dev value must
+            # never leak into a test run).
+            exec npx dotenv -o -e .env.test -- env \
+                "PORT=$TARGET_PORT" \
+                "API_PORT=$TARGET_PORT" \
+                "RATE_LIMIT_ENABLED=true" \
+                "TEXT_URL=${E2E_TEXT_URL:-http://127.0.0.1:8992}" \
+                pnpm --filter @arcaai/api dev
+        fi
         exec npx dotenv -o -e .env.test -- pnpm --filter @arcaai/api dev
         ;;
     admin)
