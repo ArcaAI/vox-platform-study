@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 146 |
-| … of which required (`failMode: closed`) | 27 |
-| … of which secret | 26 |
+| Declared keys (distinct) | 145 |
+| … of which required (`failMode: closed`) | 26 |
+| … of which secret | 25 |
 | … tier `env` | 115 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 22 |
+| … tier `vault-kv` | 21 |
 | Python declared fields | 305 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 352 |
-| `turbo.json#globalEnv` entries | 479 |
+| `turbo.json#globalEnv` entries | 478 |
 
 ## Variables — the TypeScript platform surface
 
@@ -150,7 +150,6 @@ disagree with those declarations.
 | `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/stt` | Buffered-amount threshold above which partial transcripts are dropped. |
 | `STT_WS_RESUME_GRACE_MS` | `env` | no | `15000` | `apps/stt` | Window a disconnected STT session is held open for reconnect. |
 | `TEXT_PORT` | `env` | no | `8862` | `apps/text` | Port apps/text binds; the gateway keeps it only to build health-probe URLs. |
-| `TEXT_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check. |
 | `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Text service base URL (apps/text, port 8862). |
 | `TTS_PORT` | `env` | no | `8865` | `apps/tts` | Port apps/tts binds. |
 | `TTS_URL` | `env` | no | `http://localhost:8865` | `apps/api` | Text-to-speech base URL (apps/tts, port 8865). |
