@@ -163,6 +163,33 @@ describe('resolveTextFallbackSelection — the resolved chain, gated by the per-
   });
 });
 
+// TASK-876 — the DURABLE documentation workflow had no fallback at all: the realtime lane and
+// the harness `core.agent` activity walked the resolved chain while `HarnessDocWorkflow` got only
+// `textProvider`/`textModel`. The worker policy route composes this onto its own answer.
+describe('resolveTextFallbackChain — the worker lane gets the whole resolved chain', () => {
+  it('returns the resolved fallback block (governance + ordered chain) for the worker read', async () => {
+    const chain = await makeService().resolveTextFallbackChain(TENANT);
+    expect(chain?.autoSwitch).toBe(true);
+    expect(chain?.chain.map((c) => c.agent.slug)).toEqual(['platform-summarization']);
+  });
+
+  it('returns null when there is nothing to switch to (the primary IS the platform default)', async () => {
+    textAgents.resolve.mockResolvedValue(spec({ chain: [] }));
+    await expect(makeService().resolveTextFallbackChain(TENANT)).resolves.toBeNull();
+  });
+
+  it('is fail-OPEN: an un-wired resolver or a faulting lookup yields null, never a throw (the run keeps the primary)', async () => {
+    await expect(makeService(false).resolveTextFallbackChain(TENANT)).resolves.toBeNull();
+    textAgents.resolve.mockRejectedValue(new Error('db down'));
+    await expect(makeService().resolveTextFallbackChain(TENANT)).resolves.toBeNull();
+  });
+
+  it('carries the EFFECTIVE (funding-gated) autoSwitch verbatim — the worker never re-derives it', async () => {
+    textAgents.resolve.mockResolvedValue(spec({ autoSwitch: false }));
+    await expect(makeService().resolveTextFallbackChain(TENANT)).resolves.toMatchObject({ autoSwitch: false });
+  });
+});
+
 describe('getEffectivePolicy — the assigned-agent overlay is UNCONDITIONAL (the Python lane)', () => {
   it('with a taskKey, textProvider/textModel come from the resolved primary, never from the policy columns', async () => {
     const resp = await makeService().getEffectivePolicy(TENANT, { taskKey: 'text.live' });
