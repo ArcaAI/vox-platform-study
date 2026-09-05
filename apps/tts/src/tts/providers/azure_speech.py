@@ -62,32 +62,6 @@ class AzureSpeechProvider:
     credential_posture = CredentialPosture.BYOK
 
     @classmethod
-    def from_override(
-        cls, settings: Any, override: dict[str, str]
-    ) -> AzureSpeechProvider | None:
-        """Build a REQUEST-SCOPED engine from an injected tenant credential.
-
-        The router calls this instead of matching provider names against
-        literals, so a new BYOK adapter gets override support from its own
-        declaration rather than from an edit to the router.
-
-        Returns ``None`` for a KEYLESS override. That guard - not the provider
-        list - is what stops a SYSTEM row's endpoint from being mistaken for a
-        credential ( plan, "Phase 2 landmines"): a keyless row injects on
-        NEITHER tier.
-
-        `model_copy` clones the platform config rather than mutating it, so two
-        tenants on concurrent requests cannot race onto each other's key.
-        """
-        api_key = override.get("api_key")
-        if not api_key:
-            return None
-        update: dict[str, object] = {"api_key": SecretStr(api_key)}
-        if override.get("region"):
-            update["region"] = override["region"]
-        return cls(settings.azure.model_copy(update=update))
-
-    @classmethod
     def from_spec(
         cls, settings: Any, candidate: Any, override: dict[str, str]
     ) -> AzureSpeechProvider | None:

@@ -39,6 +39,7 @@ from tts.providers.base import (
     AudioChunk,
     AudioFormat,
     DuplexTTSEngine,
+    ProviderNotFoundError,
     ProviderRegistry,
     SynthesisRequest,
     SynthesisStream,
@@ -222,14 +223,20 @@ class TTSRouter:
         """
         return [c for c in candidate_chain(spec, voice_id=voice_id) if not self.breaker(c.engine or "").is_open()]
 
-    def _engine_for(self, candidate: ResolvedTtsCandidate, provider_overrides: ProviderOverrides | None) -> TTSEngine:
-        """The engine instance for one candidate.
+    def _engine_for(self, candidate: ResolvedTtsCandidate, provider_overrides: ProviderOverrides | None) -> TTSEngine | None:
+        """The engine instance for one candidate, or ``None`` when this process cannot build one.
 
         Built from the SPEC — the model it names, the mirror it names, the connection it names and
         the credential that arrived beside it — and cached by exactly those facts. Falls back to
-        the boot-registered engine only when this image has no spec-buildable adapter for the
-        name; that instance carries no model of its own since TASK-879, so it exists mainly to
-        answer the readiness probe.
+        the boot-registered engine when this image has no spec-buildable adapter for the name;
+        that instance carries no model of its own since TASK-879, so it exists mainly to answer
+        the readiness probe.
+
+        ``None`` is a ROUTING outcome, not an error, and it has two real causes: the image does
+        not contain the engine the agent named (`[indic-parler]` is an optional image variant), or
+        the adapter refused the candidate (a cloud engine with no credential, a clone voice with no
+        reference recording). Both mean "this candidate cannot serve" — which is what the chain
+        exists to survive — so the caller walks on rather than turning a routing fact into a 500.
         """
         name = candidate.engine or ""
         override = (provider_overrides or {}).get(name, {})
@@ -241,7 +248,10 @@ class TTSRouter:
                 self._spec_engines[key] = engine
         if engine is not None:
             return engine
-        return self._registry.get(name)
+        try:
+            return self._registry.get(name)
+        except ProviderNotFoundError:
+            return None
 
     def _request_for(self, candidate: ResolvedTtsCandidate, *, text: str, voice_id: str | None, fmt: AudioFormat, speed: float, request_id: str) -> SynthesisRequest:
         """One provider-ready request, resolved entirely from THIS candidate.
@@ -289,7 +299,13 @@ class TTSRouter:
                 TTS_FAILOVER.labels(from_provider=failed_from, to_provider=name).inc()
                 failed_from = None
 
-            engine: TTSEngine = self._engine_for(candidate, provider_overrides)
+            engine = self._engine_for(candidate, provider_overrides)
+            if engine is None:
+                # Not a failure of this engine — it is not here to fail. No breaker record, no
+                # error counter: recording either would attribute an image/credential fact to an
+                # engine's reliability.
+                failed_from = failed_from or name
+                continue
             breaker = self.breaker(name)
             emitted = False
             audio_bytes = 0
@@ -364,7 +380,7 @@ class TTSRouter:
 
         first = candidates[0]
         engine0 = self._engine_for(first, provider_overrides)
-        if isinstance(engine0, DuplexTTSEngine) and fmt == AudioFormat.PCM and speed == 1.0:
+        if engine0 is not None and isinstance(engine0, DuplexTTSEngine) and fmt == AudioFormat.PCM and speed == 1.0:
             return engine0.open_stream(
                 self._request_for(first, text="", voice_id=voice_id, fmt=fmt, speed=speed, request_id=request_id)
             )
@@ -451,6 +467,8 @@ class _ChainSynthesizer:
             locked = self._locked
             name = locked.engine or ""
             engine = r._engine_for(locked, self._overrides)
+            if engine is None:  # pragma: no cover — the lock implies it built once
+                raise AllProvidersUnavailableError(self._voice_id or "")
             with track_model_inference(name):
                 async with aclosing(engine.synthesize(self._req(locked, sentence))) as stream:
                     async for chunk in stream:
@@ -467,6 +485,8 @@ class _ChainSynthesizer:
                 TTS_FAILOVER.labels(from_provider=failed_from, to_provider=name).inc()
                 failed_from = None
             engine = r._engine_for(candidate, self._overrides)
+            if engine is None:
+                continue
             breaker = r.breaker(name)
             req = self._req(candidate, sentence)
             emitted = False
