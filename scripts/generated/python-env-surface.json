@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 356,
+  "distinctNames": 354,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -2586,18 +2586,6 @@
           "description": "Device for pyannote inference (auto, cuda, cpu)"
         },
         {
-          "name": "DIARIZATION_HF_MODEL_ID__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "diarization_hf_model_id",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "pyannote/wespeaker-voxceleb-resnet34-LM",
-          "description": "HuggingFace model ID for speaker embedding extraction"
-        },
-        {
           "name": "HUGGINGFACE_CACHE_DIR",
           "aliases": [],
           "class": "Settings",
@@ -3326,18 +3314,6 @@
           "dataType": "number",
           "default": 0.5,
           "description": "Silero VAD speech detection threshold (0.0\u20131.0)"
-        },
-        {
-          "name": "VOICE_PROFILE_MIN_SIMILARITY__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "voice_profile_min_similarity",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 0.6,
-          "description": "Minimum acceptable pairwise cosine similarity between per-sample embeddings during enrollment. Below this, the enrollment is rejected as inconsistent. Lower this (~0.3) for dev with consumer-grade microphones; keep >=0.6 in production."
         },
         {
           "name": "WHISPER_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE",

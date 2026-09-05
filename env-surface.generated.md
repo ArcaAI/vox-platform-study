@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 118 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 309 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 356 |
-| `turbo.json#globalEnv` entries | 484 |
+| Python declared fields | 307 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 354 |
+| `turbo.json#globalEnv` entries | 482 |
 
 ## Variables — the TypeScript platform surface
 
@@ -203,7 +203,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `DATABASE_POOL_SIZE` | `apps/stt` | no | no | `5` | commented | — |
 | `DATABASE_URL` | `apps/stt` | no | no | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` | commented | — |
 | `DIARIZATION_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `auto` | commented | — |
-| `DIARIZATION_HF_MODEL_ID__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `pyannote/wespeaker-voxceleb-resnet34-LM` | commented | — |
 | `GUARDRAIL_CONFIG_CACHE_TTL_S` | `apps/guardrail` | no | no | `60` | commented | — |
 | `GUARDRAIL_DATABASE_URL` | `apps/guardrail` | no | no | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` | commented | — |
 | `GUARDRAIL_MAX_OVERFLOW` | `apps/guardrail` | no | no | `10` | commented | — |
@@ -490,7 +489,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `VAD_MIN_SILENCE_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500` | commented | — |
 | `VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `100` | commented | — |
 | `VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.5` | commented | — |
-| `VOICE_PROFILE_MIN_SIMILARITY__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.6` | commented | — |
 | `WHISPER_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `8` | commented | — |
 | `WORKER_MAX_RETRIES__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `3` | commented | — |
 | `WORKER_POLL_TIMEOUT_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `1000` | commented | — |

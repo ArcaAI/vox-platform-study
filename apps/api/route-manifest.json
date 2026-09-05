@@ -15256,6 +15256,27 @@
       "apiExcluded": false
     },
     {
+      "controller": "VoiceProfileController",
+      "handler": "enrollmentTarget",
+      "method": "GET",
+      "path": "/api/v1/voice-profiles/enrollment-target",
+      "routePath": "/voice-profiles/enrollment-target",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "UserVoiceProfile"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "WorkflowsController",
       "handler": "list",
       "method": "GET",

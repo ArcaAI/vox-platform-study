@@ -7549,6 +7549,11 @@
       },
       "EnrollBodyDto": {
         "properties": {
+          "agentSlug": {
+            "description": "TASK-887 — the SPEECH_TO_TEXT agent this enrollment is for. Diarization is a declared agent option, so the agent names the SPEAKER_EMBEDDING model that embeds the samples and the profile is stored in that model’s space. Omit to enroll for the tenant’s assigned ASR agent (the AgentAssignment cascade) — which is what a session with no explicit agent will run.",
+            "maxLength": 128,
+            "type": "string"
+          },
           "label": {
             "description": "Optional label for this voice profile",
             "maxLength": 100,
@@ -22451,6 +22456,28 @@
             "type": "boolean"
           }
         },
+        "type": "object"
+      },
+      "VoiceProfileEnrollmentTargetResponse": {
+        "properties": {
+          "agentSlug": {
+            "description": "The resolved agent (the assigned one when the caller named none).",
+            "type": "string"
+          },
+          "diarizationEnabled": {
+            "description": "Whether the agent currently has diarization switched on.",
+            "type": "boolean"
+          },
+          "modelId": {
+            "description": "AiModel slug of the agent’s speaker-embedding model — matches UserVoiceProfile.modelId.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentSlug",
+          "modelId",
+          "diarizationEnabled"
+        ],
         "type": "object"
       },
       "VoiceProfileResponse": {
@@ -56639,6 +56666,52 @@
           }
         ],
         "summary": "Enroll a voice profile from audio samples",
+        "tags": [
+          "voice-profile"
+        ]
+      }
+    },
+    "/api/v1/voice-profiles/enrollment-target": {
+      "get": {
+        "description": "TASK-887 — resolves the SPEECH_TO_TEXT agent (explicit `agentSlug`, else the tenant’s assigned one) and reports the SPEAKER_EMBEDDING model it declares. A profile whose `modelId` differs from this will never be matched by that agent, so a client uses this to prompt a re-enrollment.",
+        "operationId": "VoiceProfileController_enrollmentTarget",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agentSlug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceProfileEnrollmentTargetResponse"
+                }
+              }
+            },
+            "description": "The enrollment target"
+          },
+          "400": {
+            "description": "The agent declares no speaker-embedding model, so nothing could match an enrollment."
+          },
+          "404": {
+            "description": "Unknown, unpublished, or another tenant’s agent."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The embedding model a new enrollment would use",
         "tags": [
           "voice-profile"
         ]
