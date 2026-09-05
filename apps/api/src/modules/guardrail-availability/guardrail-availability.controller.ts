@@ -6,7 +6,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Get, Inject, Param, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, CanRead, CanUpdate, ExpectedVersion, ForbidApiKey, RequiresIfMatch } from '../../decorators';
+import { CanManage, CanRead, CanUpdate, ExpectedVersion, ForbidApiKey, ForbidServiceAccount, RequiresIfMatch } from '../../decorators';
 
 /**
  * Per-tenant guardrail AVAILABILITY — which safety policies apply to a tenant.
@@ -33,6 +33,9 @@ import { CanManage, CanRead, CanUpdate, ExpectedVersion, ForbidApiKey, RequiresI
 @ApiBearerAuth()
 @ApiTags('admin-guardrail-availability')
 @ForbidApiKey()
+// A human-super-admin-only surface: the service-account plane is refused EXPLICITLY — the boot
+// audit treats silence on an admin route as ambiguous and refuses to start.
+@ForbidServiceAccount()
 @Controller('admin/guardrail/availability')
 @CanManage('Tenant')
 export class GuardrailAvailabilityController {

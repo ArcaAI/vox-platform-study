@@ -1,4 +1,4 @@
-import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
+import { REQUIRED_PERMISSIONS_KEY, SERVICE_ACCOUNT_FORBIDDEN } from '@arcaai/applications';
 import { Reflector } from '@nestjs/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { API_KEY_FORBIDDEN } from '@arcaai/applications';
@@ -48,5 +48,13 @@ describe('GuardrailAvailabilityController', () => {
     // decorator's presence — not its sufficiency — is the point.
     const declared = new Reflector().get(REQUIRED_PERMISSIONS_KEY, GuardrailAvailabilityController);
     expect(declared).toEqual([{ action: 'manage', subject: 'Tenant' }]);
+  });
+});
+
+// TASK-886 follow-up — the boot audit (`service-account-surface-audit.ts`) refuses to start
+// when an admin route says nothing about service-account access; this surface forbids it.
+describe('GuardrailAvailabilityController — machine classes', () => {
+  it('forbids service accounts explicitly at the class level', () => {
+    expect(new Reflector().get(SERVICE_ACCOUNT_FORBIDDEN, GuardrailAvailabilityController)).toBe(true);
   });
 });
