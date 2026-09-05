@@ -67,7 +67,12 @@ function stubFetch(handler: FetchHandler = () => undefined): RecordedCall[] {
           ? Response.json({ user: { username: 'admin' } })
           : call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles'
             ? Response.json(PROFILES)
-            : undefined);
+            // TASK-887 — the screen asks which speaker-embedding model a new enrollment
+            // would land in, so it can tell a live profile from one the assigned agent can
+            // no longer match. The default answer agrees with `PROFILES`.
+            : call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles/enrollment-target'
+              ? Response.json({ agentSlug: 'platform-transcription', modelId: 'mdl_7f3a92', diarizationEnabled: true })
+              : undefined);
       if (!response) throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
       return response;
     }),
@@ -401,5 +406,55 @@ describe('VoiceProfilesScreen', () => {
     await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && call.url.includes('/voice-profiles/vp-1'))).toBe(true));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     await waitFor(() => expect(listCalls(calls)).toHaveLength(2));
+  });
+
+  /**
+   * TASK-887 — a voice profile lives in the space of the model that embedded it, and an agent
+   * only ever matches profiles from ITS model. So "enrolled" and "enrolled for the agent your
+   * sessions run" are different states, and the second one is invisible unless it is said.
+   */
+  describe('re-enrollment prompt', () => {
+    it('flags an active profile the assigned agent could never match', async () => {
+      stubFetch((call, parsed) =>
+        call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles/enrollment-target'
+          ? Response.json({ agentSlug: 'clinic-asr', modelId: 'wespeaker-voxceleb-resnet34', diarizationEnabled: true })
+          : undefined,
+      );
+      renderWithProviders(<VoiceProfilesScreen />);
+
+      await waitFor(() => expect(screen.getByText('Default profile')).toBeTruthy());
+      const activeRow = () => within(screen.getByText('Default profile').closest('li') as HTMLElement);
+      await waitFor(() => expect(activeRow().getByText('Re-enroll needed')).toBeTruthy());
+      // The row says which model WOULD be matched, so the mismatch is legible, not a mystery.
+      expect(activeRow().getByText(/wespeaker-voxceleb-resnet34/)).toBeTruthy();
+      // The status line names the agent, so the fix is actionable.
+      expect(screen.getByText(/re-enroll for clinic-asr/i)).toBeTruthy();
+    });
+
+    it('says nothing when the active profile is already in the agent’s space', async () => {
+      stubFetch();
+      renderWithProviders(<VoiceProfilesScreen />);
+
+      await waitFor(() => expect(screen.getByText('Default profile')).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/auto-attached to live sessions/i)).toBeTruthy());
+      // The ACTIVE row is in the agent's space, so it is not flagged. (The second seeded row
+      // carries no model at all and is still unmatchable — flagging it is correct.)
+      expect(within(screen.getByText('Default profile').closest('li') as HTMLElement).queryByText('Re-enroll needed')).toBeNull();
+    });
+
+    it('stays quiet when the target cannot be resolved — a degraded read is not a verdict', async () => {
+      // e.g. the assigned agent declares no embedding model (400). Claiming every profile is
+      // stale on the strength of a failed lookup would be worse than saying nothing.
+      stubFetch((call, parsed) =>
+        call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles/enrollment-target'
+          ? Response.json({ message: 'no embedding model' }, { status: 400 })
+          : undefined,
+      );
+      renderWithProviders(<VoiceProfilesScreen />);
+
+      await waitFor(() => expect(screen.getByText('Default profile')).toBeTruthy());
+      // Nothing is flagged at all: with no target there is no question to answer.
+      expect(screen.queryByText('Re-enroll needed')).toBeNull();
+    });
   });
 });

@@ -1,12 +1,34 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { activateVoiceProfile, deactivateVoiceProfile, deleteVoiceProfile, enrollVoiceProfile, listVoiceProfiles } from './client';
+import {
+  activateVoiceProfile,
+  deactivateVoiceProfile,
+  deleteVoiceProfile,
+  enrollVoiceProfile,
+  getVoiceProfileEnrollmentTarget,
+  listVoiceProfiles,
+} from './client';
 import { voiceProfileKeys } from './keys';
 import type { EnrollVoiceProfileInput } from './types';
 
 export function useVoiceProfiles() {
   return useQuery({ queryKey: voiceProfileKeys.list(), queryFn: listVoiceProfiles });
+}
+
+/**
+ * TASK-887 — the speaker-embedding model a new enrollment would land in.
+ *
+ * `retry: false`: the honest failures here are a 400 (the assigned agent declares no embedding
+ * model) and a 404 (a named agent this tenant cannot see). Both are answers, not outages, and
+ * retrying them only delays the message.
+ */
+export function useVoiceProfileEnrollmentTarget(agentSlug?: string) {
+  return useQuery({
+    queryKey: voiceProfileKeys.enrollmentTarget(agentSlug),
+    queryFn: () => getVoiceProfileEnrollmentTarget(agentSlug),
+    retry: false,
+  });
 }
 
 /** Multipart enroll; a success invalidates the list so the new row appears. */

@@ -6,7 +6,7 @@
  */
 
 import { deleteJson, getJson, patchJson, request } from '@/shared/api';
-import type { EnrollVoiceProfileInput, VoiceProfile, VoiceProfileToggleResponse } from './types';
+import type { EnrollVoiceProfileInput, VoiceProfile, VoiceProfileEnrollmentTarget, VoiceProfileToggleResponse } from './types';
 
 const BASE = 'voice-profiles';
 
@@ -21,7 +21,7 @@ export const MAX_LABEL_LENGTH = 100;
  * an optional `label`. The shared core skips the JSON content-type for
  * FormData bodies so fetch derives the multipart boundary itself.
  */
-export async function enrollVoiceProfile({ files, label }: EnrollVoiceProfileInput): Promise<VoiceProfile> {
+export async function enrollVoiceProfile({ files, label, agentSlug }: EnrollVoiceProfileInput): Promise<VoiceProfile> {
   const form = new FormData();
   for (const file of files) {
     form.append('files', file);
@@ -29,7 +29,17 @@ export async function enrollVoiceProfile({ files, label }: EnrollVoiceProfileInp
   if (label) {
     form.append('label', label);
   }
+  // TASK-887 — absent means the tenant's ASSIGNED ASR agent, resolved by the gateway with the
+  // same cascade a session uses, so the profile lands in the space that will match it.
+  if (agentSlug) {
+    form.append('agentSlug', agentSlug);
+  }
   return (await request<VoiceProfile>(`${BASE}/enroll`, { method: 'POST', body: form })).data;
+}
+
+/** GET /voice-profiles/enrollment-target — which embedding model a new enrollment would use. */
+export function getVoiceProfileEnrollmentTarget(agentSlug?: string): Promise<VoiceProfileEnrollmentTarget> {
+  return getJson(agentSlug ? `${BASE}/enrollment-target?agentSlug=${encodeURIComponent(agentSlug)}` : `${BASE}/enrollment-target`);
 }
 
 export function listVoiceProfiles(): Promise<VoiceProfile[]> {
