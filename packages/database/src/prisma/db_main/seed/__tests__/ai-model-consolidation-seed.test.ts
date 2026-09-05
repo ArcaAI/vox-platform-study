@@ -11,8 +11,8 @@
  *      step is CREATE-ONLY.
  *   2. Companion updates: HarnessPolicy TEXT default → `gemma-4-e2b-it-qat`;
  *      the six superseded GlobalSetting keys are gone from the seeded arrays
- *      and covered by the idempotent soft-retire sweep; tenant admins hold
- *      read+manage on `AiTaskDefault`.
+ *      and covered by the idempotent soft-retire sweep; the retired
+ *      `AiTaskDefault` subject carries no tenant grant (TASK-881).
  *
  * The model CATALOGUE itself (35 SYSTEM rows, the retirement ledger, the
  * pipeline-reference guard and the sweeps) is pinned by
@@ -285,14 +285,13 @@ describe('companion seed updates', () => {
     });
   });
 
-  it('grants tenant admins read+manage on AiTaskDefault (tenant-scoped, TenantTtsConfig pattern)', () => {
+  // TASK-881: the `AiTaskDefault` subject is gone with the facade and its
+  // routes. Selection is the super-admin-only `AiRoutingPolicy` plane, so no
+  // tenant-scoped grant may name it — a reappearing rule would hand tenants a
+  // write path the service no longer guards.
+  it('grants tenant admins NOTHING on the retired AiTaskDefault subject', () => {
     const tenantFullAccess = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
     const rule = tenantFullAccess?.rules.find((r) => (r as { subject?: string }).subject === 'AiTaskDefault');
-    expect(rule).toBeDefined();
-    const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
-    expect(actions).toContain('read');
-    expect(actions).toContain('manage');
-    const conditions = (rule as { conditions?: unknown } | undefined)?.conditions;
-    expect(JSON.stringify(conditions)).toContain('${context.tenantId}');
+    expect(rule).toBeUndefined();
   });
 });

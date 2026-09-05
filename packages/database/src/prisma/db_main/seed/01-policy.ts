@@ -234,20 +234,14 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // every op to the caller's tenant. `manage` implies `read` (GET routes).
       { action: 'manage', subject: 'TenantSttConfig', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's nlp.topic/nlp.intent
-      // instruction content — a SEPARATE subject from
-      // AiTaskDefault, deliberately NOT under SUPER_ADMIN_ONLY_TASK_PREFIXES:
-      // this is tenant-authored CONTENT, not model selection. Tenant-scoped;
+      // instruction content — tenant-authored CONTENT, not model selection
+      // (selection is the super-admin-only `AiRoutingPolicy` plane;
+      // SUPER_ADMIN_ONLY_TASK_PREFIXES in @arcaai/applications). Tenant-scoped;
       // the service pins every op to the caller's tenant.
       { action: 'manage', subject: 'TenantNlpTaskInstructions', conditions: { tenantId: '${context.tenantId}' } },
-      // Tenant admins read + manage their own tenant's AI
-      // task-model defaults (AiTaskDefault). Tenant-scoped; super admins
-      // are covered by `manage:all`. NOTE (governance): tenant admins DO
-      // hold manage:AiTaskDefault here — but ALL FOUR task-key prefixes
-      // (`guardrail.`, `text.`, `nlp.`, `harness.` —
-      // SUPER_ADMIN_ONLY_TASK_PREFIXES in @arcaai/applications) are
-      // SUPER_ADMIN-ONLY on write, enforced at the application-service
-      // layer, not by RBAC. In practice this grant yields reads only.
-      { action: ['read', 'manage'], subject: 'AiTaskDefault', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-881: the `AiTaskDefault` grant that sat here is gone with the
+      // facade and its routes; `AiRoutingPolicy` writes are super-admin-only
+      // (`manage:all`), tenants only USE the platform selections.
       // Tenant admins manage their own tenant's external OIDC
       // identity provider config. Tenant-scoped; the controller pins every
       // op to the caller's tenant. `manage` implies `read` (used by the GET

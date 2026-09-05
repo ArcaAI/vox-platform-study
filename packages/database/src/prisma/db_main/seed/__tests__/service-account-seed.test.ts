@@ -87,7 +87,6 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   'svc:admin:transcription-job:read': [['read', 'AsrPipeline']],
   'svc:admin:tenant-stt-config:manage': [['manage', 'TenantSttConfig']],
   'svc:admin:tenant-tts-config:manage': [['manage', 'TenantTtsConfig']],
-  'svc:admin:ai-task-default:manage': [['manage', 'AiTaskDefault']],
   'svc:admin:ai-provider:manage': [['manage', 'GlobalSetting']],
   'svc:admin:settings:manage': [['manage', 'GlobalSetting']],
   'svc:admin:nlp-task-instructions:manage': [['manage', 'TenantNlpTaskInstructions']],
