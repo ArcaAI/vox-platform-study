@@ -52,21 +52,19 @@ function makeService(): HarnessPolicyService {
   return new HarnessPolicyService(policyRepository as never, policyChangeRepository as never, databaseService as never, cls as never);
 }
 
-// service with the AiTaskDefault-first TEXT routing wired.
-const aiTaskDefaultService = {
-  getEffective: vi.fn(),
-  getRow: vi.fn(),
-  upsertRow: vi.fn(),
+// service with the routing-policy (judge election) resolver wired.
+const routingPolicies = {
+  resolveDefault: vi.fn(),
 };
 
-function makeServiceWithAiTaskDefault(): HarnessPolicyService {
+function makeServiceWithRoutingPolicies(): HarnessPolicyService {
   return new HarnessPolicyService(
     policyRepository as never,
     policyChangeRepository as never,
     databaseService as never,
     cls as never,
     undefined, // secretsService
-    aiTaskDefaultService as never,
+    routingPolicies as never,
   );
 }
 
@@ -179,11 +177,11 @@ describe('HarnessPolicyService', () => {
       expect(result.judgeModel).toBeNull();
     });
 
-    it('resolves harness.judge from the SYSTEM AiTaskDefault and maps lm-studio → openai_compat', async () => {
-      const svc = makeServiceWithAiTaskDefault();
+    it('resolves harness.judge from the SYSTEM routing election and maps lm-studio → openai_compat', async () => {
+      const svc = makeServiceWithRoutingPolicies();
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
-      aiTaskDefaultService.getEffective.mockResolvedValue({
+      routingPolicies.resolveDefault.mockResolvedValue({
         taskKey: 'harness.judge',
         modelSlug: 'lms-gemma-4-e4b',
         source: 'system',
@@ -192,16 +190,16 @@ describe('HarnessPolicyService', () => {
 
       const result = await svc.getEffectivePolicy('tenant-1');
 
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('harness.judge', 'tenant-1');
+      expect(routingPolicies.resolveDefault).toHaveBeenCalledWith('tenant-1', 'harness.judge', { systemOnly: true });
       expect(result.judgeProvider).toBe('openai_compat');
       expect(result.judgeModel).toBe('google/gemma-4-e4b');
     });
 
     it('passes a non-lm-studio judge provider through verbatim (e.g. bedrock)', async () => {
-      const svc = makeServiceWithAiTaskDefault();
+      const svc = makeServiceWithRoutingPolicies();
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
-      aiTaskDefaultService.getEffective.mockResolvedValue({
+      routingPolicies.resolveDefault.mockResolvedValue({
         model: { provider: 'bedrock', sourceUri: 'anthropic.claude-3-5-haiku-20241022-v1:0' },
       });
 
@@ -211,11 +209,11 @@ describe('HarnessPolicyService', () => {
       expect(result.judgeModel).toBe('anthropic.claude-3-5-haiku-20241022-v1:0');
     });
 
-    it('leaves judge null (fail-safe) when the AiTaskDefault lookup throws', async () => {
-      const svc = makeServiceWithAiTaskDefault();
+    it('leaves judge null (fail-safe) when the routing-election lookup throws', async () => {
+      const svc = makeServiceWithRoutingPolicies();
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
-      aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
+      routingPolicies.resolveDefault.mockRejectedValue(new Error('unknown task key'));
 
       const result = await svc.getEffectivePolicy('tenant-1');
 

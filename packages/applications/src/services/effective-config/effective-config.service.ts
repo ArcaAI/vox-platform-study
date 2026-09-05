@@ -3,7 +3,7 @@
 // Resolves the per-service SERVICE-LEVEL subset that the Python pull clients
 // consume. It is a thin composition over the existing resolvers — the
 // settings-registry effective facade (`global-kv` override lane), the
-// `AiProviderConnection` ceilings (TASK-862) and the `AiTaskDefault`/`AiModel` pair — and
+// `AiProviderConnection` ceilings (TASK-862) and the `AiRoutingPolicy` election/`AiModel` pair — and
 // deliberately owns no data access of its own.
 //
 // TWO HOUSE CONSTRAINTS, both load-bearing:
@@ -31,8 +31,8 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
 import type { AiProviderConnectionResponse } from '../ai-provider-connection/dto';
-import { AI_TASK_KEYS, type AiTaskKey } from '../ai-task-default/constants';
-import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
+import { AI_TASK_KEYS, type AiTaskKey } from '../ai-routing-policy/constants';
+import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
 import type { AiModelService } from '../ai-model/aiModel.service';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { MODEL_WEIGHT_SERVICES } from '../settings-registry/descriptors/service-runtime.descriptors';
@@ -153,7 +153,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     // Optional for the same reason: an unwired pair yields NO `modelWeights`
     // block, which is exactly the state every consumer already handles (it is
     // what they saw before the block existed).
-    @Optional() @Inject(IAiTaskDefaultService) private readonly taskDefaults?: IAiTaskDefaultService,
+    @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
     @Optional() private readonly aiModels?: AiModelService,
   ) {}
 
@@ -370,7 +370,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
 
   /**
    * `modelWeights`: slug → where the weights come from, for the models this
-   * service's `AiTaskDefault` rows select.
+   * service's SYSTEM routing elections select.
    *
    * Served only to services that hold weights in their OWN process
    * (`MODEL_WEIGHT_SERVICES`) — `text` is excluded because it holds none, its
@@ -387,7 +387,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
    * path", so a degraded control plane leaves them exactly where they are.
    */
   private async resolveModelWeights(service: EffectiveConfigServiceName): Promise<Record<string, EffectiveModelWeight> | undefined> {
-    if (!this.taskDefaults || !this.aiModels) return undefined;
+    if (!this.routingPolicies || !this.aiModels) return undefined;
     if (!(MODEL_WEIGHT_SERVICES as readonly string[]).includes(service)) return undefined;
 
     const taskKeys = [...AI_TASK_KEYS.filter((key) => key.startsWith(`${service}.`)), ...(CROSS_SERVICE_MODEL_WEIGHT_KEYS[service] ?? [])];
@@ -398,8 +398,8 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     await Promise.all(
       taskKeys.map(async (taskKey) => {
         try {
-          const effective = await this.taskDefaults!.getEffective(taskKey, SYSTEM_TENANT_ID);
-          const slug = effective.modelSlug;
+          const resolved = await this.routingPolicies!.resolveDefault(SYSTEM_TENANT_ID, taskKey, { systemOnly: true });
+          const slug = resolved.model?.slug ?? null;
           if (!slug || weights[slug]) return;
 
           const model = await this.aiModels!.getBySlug(slug);
