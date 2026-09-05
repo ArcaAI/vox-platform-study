@@ -44,6 +44,7 @@ import {
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
+import type { ResolvedTextFallback } from '@arcaai/applications';
 import { AgentSessionKind, AgentStepStatus, AgentStepType, JsonValue, TranscriptionJobStatus, TranscriptionJobType } from '@arcaai/domains';
 import {
   BadRequestException,
@@ -391,7 +392,7 @@ export class HarnessInternalController {
     @Query('consultationId') consultationId?: string,
     @Query('taskKey') taskKey?: string,
     @Query('modelSlug') modelSlug?: string,
-  ): Promise<HarnessPolicyResponse> {
+  ): Promise<HarnessPolicyResponse & { textFallback: ResolvedTextFallback | null }> {
     if (!tenantId) {
       throw new BadRequestException('tenantId query parameter is required');
     }
@@ -406,7 +407,18 @@ export class HarnessInternalController {
     // the precedent for getting this wrong first).
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      return this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId, taskKey, modelSlug });
+      // TASK-876 — the durable lane gets the SAME platform-HA capability the realtime lane and
+      // `core.agent` already have: the resolved fallback chain rides on the worker's policy read,
+      // the workflow snapshots it as plain activity input, and `generate` walks it. Composed
+      // HERE, not on `HarnessPolicyResponse`: that DTO is the public admin-policy shape, while a
+      // chain candidate is worker-plane data (it can carry a one-hop provider override). This
+      // controller is `@ApiExcludeController()`, so the extra field is not part of the documented
+      // surface. `null` ⇒ nothing to switch to; the run keeps the primary alone.
+      const [policy, textFallback] = await Promise.all([
+        this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId, taskKey, modelSlug }),
+        this.harnessPolicyService.resolveTextFallbackChain(tenantId),
+      ]);
+      return { ...policy, textFallback };
     });
   }
 

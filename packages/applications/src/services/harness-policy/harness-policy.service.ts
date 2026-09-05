@@ -19,6 +19,7 @@ import { NotFoundException } from '@nestjs/common';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { TaskSelectionVetoedError } from '../ai-routing-policy/task-selection-veto';
 import { TextAgentResolverService } from '../agent/text-agent-resolver.service';
+import type { ResolvedTextFallback } from '../agent/text-generation-spec';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { McpServerDtoMapper } from '../mcp-server/mcp-server.dto.mapper';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
@@ -575,6 +576,39 @@ export class HarnessPolicyService {
     } catch (error) {
       this.logger.warn({
         message: `Text fallback resolution failed for the '${task}' task — no fallback runs`,
+        tenantId: tid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * TASK-876 — the RESOLVED TEXT_GENERATION fallback chain for the durable worker lane.
+   *
+   * The realtime lane and the harness `core.agent` activity already receive this block (on the
+   * spec and on `GET /internal/agents/resolve` respectively). The DURABLE documentation workflow
+   * received only `textProvider`/`textModel`, so a Text outage mid-run failed the run outright
+   * while every other text lane had platform HA. The internal policy route now ships it too, the
+   * workflow snapshots it as plain activity input, and the `generate` activity walks it.
+   *
+   * Deliberately NOT a field on `HarnessPolicyResponse`: that DTO is the PUBLIC admin-policy
+   * shape, and the chain is worker-plane data (a candidate carries a one-hop provider override).
+   * The `@ApiExcludeController()` internal route composes it onto its own answer instead.
+   *
+   * Fail-OPEN, exactly like `resolveTextFallbackSelection`: `null` when the toggle is off, the
+   * chain is empty, the resolver is un-wired or the lookup faults — the workflow then runs the
+   * primary alone, which is the behaviour it had before this block existed.
+   */
+  async resolveTextFallbackChain(tenantId?: string): Promise<ResolvedTextFallback | null> {
+    const tid = tenantId ?? this.callerTenantId;
+    if (!tid || !this.textAgents) return null;
+    try {
+      const spec = await this.textAgents.resolve({ tenantId: tid });
+      return spec.fallback.chain.length > 0 ? spec.fallback : null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Text fallback chain resolution failed for the worker policy read — the run keeps the primary alone',
         tenantId: tid,
         error: error instanceof Error ? error.message : String(error),
       });
