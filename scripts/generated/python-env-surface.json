@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 387,
+  "distinctNames": 374,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -2466,42 +2466,6 @@
           "description": ""
         },
         {
-          "name": "AZURE_FOUNDRY_ENABLED__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "azure_foundry_enabled",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Enable the Azure AI Foundry MAI-Transcribe engine (preview, off by default)"
-        },
-        {
-          "name": "AZURE_FOUNDRY_ENDPOINT__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "azure_foundry_endpoint",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": null,
-          "description": "Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com"
-        },
-        {
-          "name": "AZURE_SPEECH_REGION__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "azure_speech_region",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": null,
-          "description": "Azure Speech service region (e.g., eastus, westeurope)"
-        },
-        {
           "name": "AZURE_STORAGE_ACCOUNT",
           "aliases": [],
           "class": "Settings",
@@ -2790,18 +2754,6 @@
           "description": "Number of threads for ONNX Runtime intra_op parallelism. 0 = auto (recommended): ONNX Runtime auto-sizes to physical CPU core count with proper thread affinity. Set explicitly only if profiling shows benefit."
         },
         {
-          "name": "OPENAI_BASE_URL__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "openai_base_url",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "https://api.openai.com/v1",
-          "description": "OpenAI (or Azure-OpenAI-compatible) API base URL"
-        },
-        {
           "name": "OTEL_ENABLED",
           "aliases": [],
           "class": "Settings",
@@ -2920,18 +2872,6 @@
           "dataType": "string",
           "default": "redis://localhost:6379/0",
           "description": "Redis connection string for Dramatiq"
-        },
-        {
-          "name": "SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "sarvam_base_url",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "https://api.sarvam.ai",
-          "description": "Sarvam AI API base URL"
         },
         {
           "name": "SEGMENT_MERGE_GAP_THRESHOLD_S__MOVED_TO_CONTROL_PLANE",
@@ -3076,18 +3016,6 @@
           "dataType": "number",
           "default": 0,
           "description": "Maximum number of concurrent streaming sessions. 0 = auto-detect from ExecutionProfile based on hardware. Bootstrap fallback \u2014 the runtime value comes from the control plane (effective-config), applied after hardware detection."
-        },
-        {
-          "name": "STREAMING_PARTIAL_WINDOW_S__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "streaming_partial_window_s",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 6.0,
-          "description": "Tail window (seconds) of the current utterance decoded for PARTIAL transcripts. Set to the whisper.cpp force-emit window (~6 s) so the last partial and the final decode the SAME audio \u2014 decoding is deterministic, so matched windows converge and the final stops visibly rephrasing the partial. env STREAMING_PARTIAL_WINDOW_S"
         },
         {
           "name": "STREAMING_PUNCTUATION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
@@ -3352,30 +3280,6 @@
           "description": "Number of threads for PyTorch intra-op parallelism (torch.set_num_threads). 0 = auto: uses the number of physical CPU cores. In K8s, set this to match the CPU request/limit (e.g. 8 for 8-core pods) to avoid under- or over-subscribing."
         },
         {
-          "name": "TRANSCRIPTION_CHUNK_LENGTH_S__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "transcription_chunk_length_s",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 15,
-          "description": "Audio chunk length (seconds) for Whisper inference. Whisper's feature extractor truncates audio to its context window (30s max). Audio longer than this value is split into overlapping chunks with configurable stride. Default 15s provides ~2x lower TTFW latency vs 30s while maintaining good accuracy. Set to 30 for maximum accuracy, 10 for ultra-low latency."
-        },
-        {
-          "name": "TRANSCRIPTION_STRIDE_LENGTH_S__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "transcription_stride_length_s",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "4,2",
-          "description": "Left and right overlap (seconds) between consecutive chunks, as a comma-separated pair. The HF pipeline uses these overlaps to avoid cutting words at chunk boundaries. Default '4,2' means 4s left overlap and 2s right overlap."
-        },
-        {
           "name": "TRANSCRIPTION_TIMEOUT_SECONDS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
@@ -3412,30 +3316,6 @@
           "description": "Minimum speech segment length in ms (100 so short clinical confirmations survive)"
         },
         {
-          "name": "VAD_MODEL_PATH__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "vad_model_path",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": null,
-          "description": "Path to Silero VAD ONNX model (auto-downloaded if None)"
-        },
-        {
-          "name": "VAD_SPEECH_PAD_MS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "vad_speech_pad_ms",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 200,
-          "description": "Padding applied to both segment ends in ms (200 per production ASR guidance)"
-        },
-        {
           "name": "VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
@@ -3458,30 +3338,6 @@
           "dataType": "number",
           "default": 0.6,
           "description": "Minimum acceptable pairwise cosine similarity between per-sample embeddings during enrollment. Below this, the enrollment is rejected as inconsistent. Lower this (~0.3) for dev with consumer-grade microphones; keep >=0.6 in production."
-        },
-        {
-          "name": "WHISPER_CPP_CONSULTATION_PROMPT_ENABLED__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "whisper_cpp_consultation_prompt_enabled",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Whether the whisper.cpp adapter prepends its language-derived clinical-consultation initial_prompt (exemplar prior-context, not an instruction). Default OFF \u2014 measured to inject spurious tokens and break grapheme clusters on the ml-en code-switch fine-tune. Toggle on only if an eval shows it helps. env WHISPER_CPP_CONSULTATION_PROMPT_ENABLED"
-        },
-        {
-          "name": "WHISPER_CPP_MAX_AUDIO_SECONDS__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "whisper_cpp_max_audio_seconds",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 7.0,
-          "description": "Max audio length (s) fed to whisper.cpp in one decode. The ml-en code-switch fine-tune is accurate up to ~6-7s but truncates/garbles on longer audio (VAD does not segment continuous clinical speech), so longer utterances are split into <=this-many-second chunks at silence troughs, decoded independently, and stitched. 0 disables chunking. env WHISPER_CPP_MAX_AUDIO_SECONDS"
         },
         {
           "name": "WHISPER_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE",
@@ -4256,9 +4112,6 @@
     ],
     "STT_BENCH_REFERENCE_DIR": [
       "apps/stt/scripts/benchmark_pipelines.py"
-    ],
-    "WHISPER_CPP_MAX_AUDIO_SECONDS": [
-      "apps/stt/scripts/mlen_scorecard.py"
     ],
     "WHISPER_MLEN_GGUF": [
       "apps/stt/scripts/mlen_scorecard.py"
