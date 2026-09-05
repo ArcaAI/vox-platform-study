@@ -16,6 +16,7 @@ import type {
   CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
   DepartmentOption,
+  ImportWorkflowDefinitionRequest,
   NodePromptBinding,
   NodePromptUpdateResult,
   PromptTemplateOption,
@@ -26,6 +27,7 @@ import type {
   UpsertWorkflowAssignmentRequest,
   WorkflowAssignment,
   WorkflowDefinition,
+  WorkflowDefinitionBundle,
   WorkflowNodeRegistry,
   AgentOption,
 } from './types';
@@ -54,6 +56,20 @@ export function listWorkflowDefinitions(params?: ListWorkflowDefinitionsParams):
 /** Detail read keeping the ETag for the later autosave PATCH. */
 export function getWorkflowDefinition(id: string): Promise<WithEtag<WorkflowDefinition>> {
   return getWithEtag(definitionPath(id));
+}
+
+/**
+ * TASK-885 — the portable bundle for one version. NOT an If-Match route and NOT cached: an
+ * export is a point-in-time artifact the admin is about to save to disk, so serving it from a
+ * query cache would hand them a file that no longer matches the definition it names.
+ */
+export function exportWorkflowDefinition(id: string): Promise<WorkflowDefinitionBundle> {
+  return getJson(`${definitionPath(id)}/export`);
+}
+
+/** TASK-885 — import a bundle as a NEW draft lineage. 409 names any reference this tenant lacks. */
+export function importWorkflowDefinition(body: ImportWorkflowDefinitionRequest): Promise<WorkflowDefinition> {
+  return postJson(`${BASE}/import`, body);
 }
 
 /** Every version row in the (tenantId, slug) lineage, most recent first. */

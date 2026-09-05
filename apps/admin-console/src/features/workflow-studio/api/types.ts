@@ -353,3 +353,32 @@ export interface AgentOption {
   tenantId?: string;
   description?: string | null;
 }
+
+/**
+ * TASK-885 (owner #4) — the portable JSON a tenant admin exports and imports.
+ *
+ * Mirrored field-for-field from `WorkflowDefinitionBundle` on the server; the console never
+ * constructs one (export downloads what the gateway returned, import uploads what the user
+ * chose), so this type exists to keep the import dialog's shape check honest rather than to
+ * build a payload.
+ */
+export interface WorkflowDefinitionBundle {
+  kind: 'workflow-definition';
+  schemaVersion: number;
+  exportedAt: string;
+  source: { tenantKind: 'system' | 'global' | 'tenant'; slug: string; versionNumber: number };
+  payload: {
+    name: string;
+    description?: string | null;
+    paletteKey: string;
+    graph: Record<string, unknown>;
+    /** Prompt templates by name, document templates / agents / models by slug, routing by task key. */
+    references: { nodeId: string; kind: string; key: string }[];
+  };
+}
+
+export interface ImportWorkflowDefinitionRequest {
+  targetSlug: string;
+  name?: string;
+  bundle: WorkflowDefinitionBundle;
+}
