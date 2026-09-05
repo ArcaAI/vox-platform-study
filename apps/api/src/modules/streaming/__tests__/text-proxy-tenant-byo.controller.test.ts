@@ -64,7 +64,7 @@ function build(
     undefined, // secretsService (@Optional)
     selection as any, // HarnessPolicyService
     undefined, // aiModelService (@Optional)
-    undefined, // aiTaskDefaultService (@Optional)
+    undefined, // routingPolicies (@Optional)
     connections as any, // aiProviderConnectionService (@Optional)
   );
 

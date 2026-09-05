@@ -85,7 +85,7 @@ function build(upstream = makeUpstream()) {
     undefined, // secretsService
     undefined, // harnessPolicyService
     undefined, // aiModelService
-    undefined, // aiTaskDefaultService
+    undefined, // routingPolicies
     undefined, // aiProviderConnectionService
     { recordUsage: vi.fn().mockResolvedValue({ outboxIds: [], events: 0 }) } as never,
   );

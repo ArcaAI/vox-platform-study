@@ -2,11 +2,11 @@ import {
   AiModelService,
   buildNerUsageEvent,
   IActiveUserContext,
-  IAiTaskDefaultService,
+  IAiRoutingPolicyService,
   ITenantNlpTaskInstructionsService,
   IUsageLedgerService,
 } from '@arcaai/applications';
-import { generateId, ModelTaskType } from '@arcaai/domains';
+import { generateId, ModelTaskType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
@@ -77,9 +77,10 @@ export class AiInferenceController {
 
   constructor(
     private readonly client: AiInferenceClient,
-    // Optional so unit fixtures (and deployments without the
-    // AiTaskDefault surface) construct cleanly; absent = no model injection.
-    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // Resolves the SYSTEM `nlp.*` routing elections (TASK-881: directly through
+    // `resolveDefault`, the `AiTaskDefault` facade is gone). Optional so unit
+    // fixtures construct cleanly; absent = the NLP routes refuse (fail-closed).
+    @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
     // Validates a caller-supplied model override against the
     // registry. Optional for fixture compatibility, but an OVERRIDE with the
     // service absent is rejected (fail-closed) — see resolveValidatedModelOverride.
@@ -363,7 +364,7 @@ export class AiInferenceController {
   /**
    * The same fail-closed resolution as `resolveDefaultModelName`,
    * but keeping the `provider` / `modelSlug` the runtime-profile cascade is
-   * keyed on. Split out rather than re-calling `getEffective` a second time.
+   * keyed on. Split out rather than re-calling `resolveDefault` a second time.
    */
   private async resolveDefaultModelSelection(taskKey: 'nlp.ner' | 'nlp.diagnosis'): Promise<{
     sourceUri: string;
@@ -372,22 +373,23 @@ export class AiInferenceController {
     localPath: string | null;
     clinicalTaxonomy: Record<string, unknown> | null;
   }> {
-    if (!this.aiTaskDefaultService) {
-      throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' is unavailable (AiTaskDefaultService not wired).`);
+    if (!this.routingPolicies) {
+      throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' is unavailable (AiRoutingPolicyService not wired).`);
     }
     try {
-      const effective = await this.aiTaskDefaultService.getEffective(taskKey);
-      const sourceUri = effective.model?.sourceUri;
+      // `nlp.*` is platform-only: the SYSTEM election is the only tier read.
+      const resolved = await this.routingPolicies.resolveDefault(SYSTEM_TENANT_ID, taskKey, { systemOnly: true });
+      const sourceUri = resolved.model?.sourceUri;
       if (!sourceUri) {
-        throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' is missing or has no ENABLED model. Run db:seed.`);
+        throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' is missing or names no ENABLED model. Run db:seed.`);
       }
       return {
         sourceUri,
-        provider: (effective.model as { provider?: string } | null)?.provider ?? null,
-        modelSlug: effective.modelSlug ?? null,
+        provider: resolved.model?.provider ?? null,
+        modelSlug: resolved.model?.slug ?? null,
         // Operator weight override from the registry row.
-        localPath: effective.model?.localPath ?? null,
-        clinicalTaxonomy: readClinicalTaxonomy(effective.model?.metadata),
+        localPath: resolved.model?.localPath ?? null,
+        clinicalTaxonomy: readClinicalTaxonomy(resolved.model?.metaData),
       };
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;
@@ -396,7 +398,7 @@ export class AiInferenceController {
         taskKey,
         error: err instanceof Error ? err.message : String(err),
       });
-      throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' could not be resolved.`);
+      throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' could not be resolved.`);
     }
   }
 }

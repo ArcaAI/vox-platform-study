@@ -1,6 +1,6 @@
 import {
   AiModelServiceModule,
-  AiTaskDefaultServiceModule,
+  AiRoutingPolicyServiceModule,
   TenantNlpTaskInstructionsServiceModule,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
@@ -15,8 +15,8 @@ import { SafetyCheckController } from './safety-check.controller';
  * AiInferenceModule — the user-plane `/ai/*` inference proxy over the
  * Guardrail + NLP Python services (Agent Playground Guardrails/NER tabs).
  * `IConfigService` is global (ConfigModule.forRoot in AppModule), so only
- * HttpModule is imported — plus `AiTaskDefaultServiceModule` so the
- * NLP routes can resolve the tenant's effective default model, and
+ * HttpModule is imported — plus `AiRoutingPolicyServiceModule` so the
+ * NLP routes can resolve the SYSTEM routing election for `nlp.*`, and
  * `AiModelServiceModule` so a caller-supplied model override
  * is validated against the registry before being forwarded. Kept separate
  * from AiServiceAdminModule so the read-only admin plane stays untouched.
@@ -27,7 +27,7 @@ import { SafetyCheckController } from './safety-check.controller';
  * resolve the tenant's topic/intent instruction content before proxying.
  */
 @Module({
-  imports: [HttpModule, AiTaskDefaultServiceModule, AiModelServiceModule, UsageLedgerServiceModule, TenantNlpTaskInstructionsServiceModule],
+  imports: [HttpModule, AiRoutingPolicyServiceModule, AiModelServiceModule, UsageLedgerServiceModule, TenantNlpTaskInstructionsServiceModule],
   controllers: [AiInferenceController, SafetyCheckController, AiInferenceRedirectShimController],
   providers: [AiInferenceClient],
 })

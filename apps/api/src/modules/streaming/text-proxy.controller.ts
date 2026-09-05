@@ -4,7 +4,7 @@ import {
   EffectiveSettingsService,
   HarnessPolicyService,
   IActiveUserContext,
-  IAiTaskDefaultService,
+  IAiRoutingPolicyService,
   IBlobStorageService,
   IConfigService,
   IDnaWritingStyleService,
@@ -230,9 +230,10 @@ export class TextProxyController {
     // is [caller tenant, SYSTEM] de-duplicated by slug, tenant clone wins.
     // @Optional so existing positional test fixtures keep compiling.
     @Optional() @Inject(AiModelService) private readonly aiModelService?: AiModelService,
-    // Resolves the effective `guardrail.validate` default for the
-    // guardrail listing's default marking.
-    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // Resolves the SYSTEM `guardrail.validate` routing election for the
+    // guardrail listing's default marking (TASK-881: directly, the
+    // `AiTaskDefault` facade is gone).
+    @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
     // Resolves the caller tenant's BYO cloud credential for the
     // outgoing provider. @Optional so existing positional test fixtures (and
     // graphs that never proxy to TEXT) keep compiling.
@@ -1358,12 +1359,13 @@ export class TextProxyController {
     const tenantId = await this.resolveTenantId(tenantKey);
     const rows = await this.fetchRegistryModels([ModelTaskType.GUARDRAIL]);
 
-    // Effective default via the AiTaskDefault cascade; fail-open (no default
-    // marked) when the resolver is unavailable or errors.
+    // The SYSTEM `guardrail.validate` election (guardrail is platform-only, so
+    // `systemOnly`); fail-open (no default marked) when the resolver is
+    // unavailable or errors — this only decorates a listing.
     let defaultSelection: { provider?: string | null; model?: string | null } | undefined;
     try {
-      const effective = await this.aiTaskDefaultService?.getEffective('guardrail.validate', tenantId);
-      defaultSelection = effective?.model ? { provider: effective.model.provider, model: effective.model.sourceUri } : undefined;
+      const resolved = await this.routingPolicies?.resolveDefault(tenantId, 'guardrail.validate', { systemOnly: true });
+      defaultSelection = resolved?.model ? { provider: resolved.model.provider ?? null, model: resolved.model.sourceUri } : undefined;
     } catch {
       defaultSelection = undefined;
     }
