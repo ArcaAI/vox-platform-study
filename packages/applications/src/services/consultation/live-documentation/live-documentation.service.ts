@@ -3342,9 +3342,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // echoes back the provider/model it actually ran, so the tier provenance is stamped here.
     return {
       text: stats.text,
-      // `selection_source` is additive telemetry: `task-default` = the tenant's assigned agent
-      // chose this model per flush (vs `agent` / `agent-fallback` for a bound `core.agent`).
-      stats: stats.stats ? { ...stats.stats, task_key: 'text.live', selection_source: 'task-default' } : null,
+      // `selection_source` is additive telemetry: `assigned-agent` = the tenant's ASSIGNED
+      // TEXT_GENERATION agent chose this model per flush (vs `agent` / `agent-fallback` for a
+      // `core.agent` node that named its own). It read `task-default` until TASK-876, which was
+      // the name of the retired `AiTaskDefault` tier and no longer describes anything.
+      stats: stats.stats ? { ...stats.stats, task_key: 'text.live', selection_source: 'assigned-agent' } : null,
       structured: includeResponseFormat,
     };
   }
@@ -3371,6 +3373,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const instruction = asRecord(candidate.instruction);
     const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
     const promptTemplate = candidate.resolvedPrompt?.content ?? (typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : null);
+    // TASK-876 — the RESOLVED candidate's own credential is authoritative for this request.
+    // Without it `postTextGenerate`'s enrichment recomputes `provider_overrides` from the CLS
+    // tenant, so a call served by the SYSTEM platform default would be forwarded with the
+    // TENANT's key and metered `funding: 'tenant'` — the opposite of the tier that actually
+    // served, and of `candidate.fundingTier` stamped on the stats one block below.
+    const { provider: _overrideProvider, ...overrideEntry } = candidate.providerOverride ?? {};
     const payload = {
       prompt: corrective ? `${promptText}${corrective}` : promptText,
       system_prompt: promptTemplate ? interpolatePrompt(promptTemplate, variables) : LIVE_DOCUMENT_SYSTEM_PROMPT,
@@ -3381,6 +3389,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       top_p: numberOrUndefined(generation.topP),
       stream: false as const,
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
+      ...(candidate.providerOverride ? { provider_overrides: { [candidate.provider]: overrideEntry } } : {}),
     };
     const result = await this.postTextGenerate(payload, tenantId, signal);
     return {

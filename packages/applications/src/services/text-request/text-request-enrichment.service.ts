@@ -73,10 +73,18 @@ export class TextRequestEnrichmentService {
    * still refuses non-cloud rows, and cloud SYSTEM rows stay entitlement-gated
    * while self-host SYSTEM rows do not.
    */
-  async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
+  async applyTenantProviderOverrides<T extends { provider?: string; provider_overrides?: unknown }>(target: T): Promise<T> {
     const provider = target.provider;
-    // TEXT is the LLM capability, so the service discriminator is always `llm`
-    // (C2/C5). The 1-arg transition shims are retired here.
+    // TASK-876 — a caller that already carries `provider_overrides` has resolved the credential
+    // FOR THE ROW IT IS ABOUT TO RUN (a `core.agent` candidate: the tenant's own agent, or the
+    // SYSTEM platform default it fell back to). Recomputing it from the CLS tenant here would
+    // silently re-fund the call as that tenant's BYOK even when the platform's row is serving —
+    // the `funding` label on the entry is what TEXT meters, so the two must not disagree. The
+    // resolver already applied the veto/entitlement policy for that row, so nothing is skipped
+    // by returning early.
+    if ((target as { provider_overrides?: unknown }).provider_overrides) {
+      return target;
+    }
     if (!this.aiProviderConnectionService || !provider) {
       return target;
     }

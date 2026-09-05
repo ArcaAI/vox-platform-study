@@ -121,7 +121,7 @@ const snapshot = (): FrozenLiveAgentSnapshot => ({
 const textAgents = { resolve: vi.fn() };
 const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
 
-function buildService(opts: { generate: (call: number) => unknown; nodeConfig?: Record<string, unknown>; lane?: unknown }) {
+function buildService(opts: { generate: (call: number) => unknown; nodeConfig?: Record<string, unknown>; lane?: unknown; textRequestEnrichment?: unknown }) {
   const { post, http } = httpMock(opts.generate);
   const env: Record<string, unknown> = { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_TEXT_MAX_TOKENS: '1500' };
   const configService = { get: vi.fn().mockImplementation((k: string) => env[k]) };
@@ -153,7 +153,7 @@ function buildService(opts: { generate: (call: number) => unknown; nodeConfig?: 
     undefined, // aiTaskDefaultService
     { run: vi.fn((cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() } as never,
     { resolveForSession: vi.fn().mockResolvedValue(snapshot()) } as never,
-    undefined, // textRequestEnrichment
+    (opts.textRequestEnrichment ?? undefined) as never, // textRequestEnrichment
     undefined, // documentTemplateService
     { findById: vi.fn(async (id: string) => ({ id, tenantId: TENANT, metadata: null })) } as never,
     assignments as never,
@@ -218,6 +218,32 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     expect(calls[1]).toMatchObject({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', system_prompt: 'PLATFORM PROMPT.' });
     expect(payload?.textFailed).toBeFalsy();
     expect(payload?.metadata?.stats).toMatchObject({ selection_source: 'agent-fallback', agent_slug: 'platform-summarization', funding_tier: 'platform' });
+  });
+
+  // TASK-876 — the resolved candidate's OWN credential is authoritative for the request it
+  // serves. Without it the shared enrichment recomputes `provider_overrides` from the CLS
+  // tenant, so a call served by the SYSTEM platform default is forwarded with the TENANT's key
+  // and metered `funding: 'tenant'` — contradicting `funding_tier: 'platform'` on the stats.
+  it('forwards the candidate`s own provider_overrides, and the shared enrichment does not overwrite them', async () => {
+    const platformWithKey = { ...platformCandidate(), providerOverride: { provider: 'lm-studio', api_key: 'platform-key', funding: 'platform' as const } };
+    textAgents.resolve.mockResolvedValue(spec({ chain: [platformWithKey] }));
+    const applyTenantProviderOverrides = vi.fn(async (target: Record<string, unknown>) => {
+      if (target.provider_overrides) return target;
+      target.provider_overrides = { [String(target.provider)]: { api_key: 'CLS-TENANT-KEY', funding: 'tenant' } };
+      return target;
+    });
+    const { service, post } = buildService({
+      generate: (n) => (n === 0 ? new Error('primary provider down') : NOTE),
+      textRequestEnrichment: { applyTextRuntimeProfile: vi.fn(async (t: unknown) => t), applyTenantProviderOverrides },
+    });
+    const { payload, calls } = await runOneFlush(service, post);
+
+    expect(calls).toHaveLength(2);
+    // The PRIMARY carries no override in this fixture, so the enrichment still supplies one.
+    expect(calls[0].provider_overrides).toEqual({ vllm: { api_key: 'CLS-TENANT-KEY', funding: 'tenant' } });
+    // The FALLBACK's own platform credential survives untouched — key and funding label both.
+    expect(calls[1].provider_overrides).toEqual({ 'lm-studio': { api_key: 'platform-key', funding: 'platform' } });
+    expect(payload?.metadata?.stats).toMatchObject({ funding_tier: 'platform' });
   });
 
   it('honours autoSwitch:false — the tenant turned HA fallback off for this agent, so the node degrades instead of switching', async () => {
