@@ -196,58 +196,59 @@ export function resolveAiTaskKind(taskKey: string): AiTaskKind | null {
  * (tenants may only *use* platform defaults for these surfaces).
  * - `nlp.`
  * - `harness.`
+ * - `guardrail.`
  *
  * NOTE: `text.` is intentionally NOT here. TEXT summarization model
  * selection — primary (`text.live` / `text.finalize`) AND per-tenant fallback
  * (`text.<task>.fallback`) — is tenant-admin configurable: `getEffective`
  * honours per-tenant override rows and `upsertRow` permits tenant writes.
  *
- * `guardrail.` was REMOVED here by owner decision 2026-08-16 ( Phase
- * 0), reversing the 2026-07-17 super-admin-only directive: guardrail
- * selection is now tenant-admin configurable via the SAME cascade as `text.*`
- * (`getEffective` honours the tenant row; `upsertRow` accepts tenant writes).
- * It is NOT unconditional, though — `AiTaskDefaultService.upsertRow` layers a
- * separate, guardrail-specific platform floor (D2, tighten-only) on top of
- * this list: a tenant write to a `guardrail.*` key must resolve its
+ * `guardrail.` is BACK (TASK-872, owner decision #3 of 2026-09-05), reversing
+ * the 2026-08-16 removal that had itself reversed the 2026-07-17 lock. The
+ * decision is stated positively rather than as a swing: **guardrail is
+ * built-in and platform-only. No tenant admin manages any guardrail setting.**
+ * It gates every text-generation request before send and every response after
+ * receive, for built-in and BYO providers alike, so which model does the
+ * gating is a property of the PLATFORM's safety plane and not a tenant's
+ * choice of vendor.
+ *
+ * Two consequences, both intended: `upsertRow` answers 403 to a tenant admin
+ * writing any `guardrail.*` key, and `getEffective` resolves those keys on the
+ * SYSTEM row alone, so an orphaned tenant row left behind by the 2026-08-16
+ * window is inert rather than silently authoritative.
+ *
+ * The guardrail-specific platform floor (D2, tighten-only) in
+ * `AiTaskDefaultService.upsertRow` is UNCHANGED and still layered on top: a
+ * write of a `guardrail.*` key for a non-SYSTEM tenant must resolve its
  * `modelSlug` to a SYSTEM-tenant `AiModel` row (the platform-approved list),
- * checked via {@link isGuardrailTaskKey}, regardless of the caller's role.
- * The full floor also calls for a `featureGuardrailModelSelection`
- * entitlement ceiling (catalogued in
- * `settings-registry/descriptors/entitlements.descriptors.ts`) that is NOT
- * yet wired to enforcement here — it requires a `PlanEntitlement`/
- * `TenantEntitlement` column (a `packages/database` migration) outside this
- * ticket's file scope. for the gap.
+ * checked via {@link isGuardrailTaskKey}. It now applies only to a super
+ * admin acting on a tenant's behalf, which is exactly the caller it was
+ * written to bound.
  */
-export const SUPER_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.'] as const;
+export const SUPER_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.', 'guardrail.'] as const;
 
 /**
  * SUPER_ADMIN-only task keys that do NOT follow a locked PREFIX.
  *
- * `guardrail.` is deliberately tenant-configurable, so a
- * prefix cannot express these two — and widening the prefix would silently
- * re-lock `guardrail.validate` / `.safety` / `.groundedness`, reversing that
- * owner decision as a side effect. Hence a KEY-level list.
+ * EMPTY since TASK-872, and deliberately RETAINED rather than deleted. It held
+ * `guardrail.pii` / `guardrail.pii.spans` (owner decision 2026-08-24) for
+ * exactly one reason: the `guardrail.` prefix was tenant-configurable at the
+ * time, so a prefix could not express a two-key exception. Owner decision #3
+ * of 2026-09-05 locks the whole prefix, which subsumes both entries —
+ * `guardrail.pii` is covered by {@link SUPER_ADMIN_ONLY_TASK_PREFIXES} and
+ * `guardrail.pii.spans` was retired with its dead descriptor.
  *
- * WHY THESE TWO (owner decision, 2026-08-24): `guardrail.pii` and
- * `guardrail.pii.spans` select TOKEN_CLASSIFICATION models that run in
- * `apps/nlp` (`guardrail/core/tenant_config.py`: "The models themselves run in
- * apps/nlp"), and D-4 rules that nlp-hosted models — naming token
- * classification and guardrail tasks explicitly — are PLATFORM-SHARED with no
- * tenant BYO. PII redaction is also a PHI-protection control: one vetted model
- * for every tenant is the point, not a per-tenant choice.
- *
- * A tenant row for these keys may still be WRITTEN, and will never WIN —
- * `getEffective` short-circuits the tenant read for a super-admin-only key.
- * That is the same shape as every `nlp.*` key.
+ * The MECHANISM stays because the shape it expresses recurs: a key-level lock
+ * inside an otherwise tenant-configurable prefix. Adding one here is a
+ * one-line change; re-deriving it from scratch is not.
  */
-export const SUPER_ADMIN_ONLY_TASK_KEYS = ['guardrail.pii', 'guardrail.pii.spans'] as const;
+export const SUPER_ADMIN_ONLY_TASK_KEYS: readonly string[] = [];
 
 /**
  * @deprecated Use {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}. Retained for
- * back-compat with zero production callers (verified 2026-08-16).
- * Historically pinned to `'guardrail.'`; guardrail left the super-admin-only
- * set in, so that value would now be actively wrong. Aliased
- * to the first remaining locked prefix instead of a stale literal.
+ * back-compat with zero production callers (verified 2026-08-16). Aliased to
+ * the first locked prefix rather than to a literal, so it cannot go stale as
+ * the list changes.
  */
 export const SUPER_ADMIN_ONLY_TASK_PREFIX = SUPER_ADMIN_ONLY_TASK_PREFIXES[0];
 
@@ -260,15 +261,18 @@ export const SUPER_ADMIN_ONLY_TASK_PREFIX = SUPER_ADMIN_ONLY_TASK_PREFIXES[0];
  * folding the key list in here is what makes one edit reach all of them.
  */
 export function isSuperAdminOnlyTaskKey(taskKey: string): boolean {
-  return SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) || (SUPER_ADMIN_ONLY_TASK_KEYS as readonly string[]).includes(taskKey);
+  return SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) || SUPER_ADMIN_ONLY_TASK_KEYS.includes(taskKey);
 }
 
 /**
  * Task-key prefix for the guardrail safety-engine keys
  * (`guardrail.validate` / `guardrail.safety` / `guardrail.groundedness`).
- * `guardrail.` is tenant-configurable (see {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}
- * doc), but `AiTaskDefaultService.upsertRow` still layers the D2 tighten-only
- * platform floor on it via {@link isGuardrailTaskKey}.
+ * Since TASK-872 the prefix is ALSO the super-admin lock (see
+ * {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}); this constant stays separate because
+ * the D2 tighten-only platform floor `AiTaskDefaultService.upsertRow` applies
+ * via {@link isGuardrailTaskKey} is a different rule with a different subject —
+ * it bounds WHICH SLUG may be bound, not WHO may bind it, and it must keep
+ * applying to the super admin the lock now leaves as the only writer.
  */
 export const GUARDRAIL_TASK_PREFIX = 'guardrail.';
 

@@ -5,16 +5,26 @@
 // `AiTaskDefault` table (tier `db-config`, tenant → SYSTEM cascade resolved by
 // `AiTaskDefaultService.getEffective`).
 //
-// Governance: `nlp.*` and `harness.*` keys are SUPER_ADMIN-ONLY —
+// Governance: `nlp.*`, `harness.*` and — since owner decision #3 of
+// 2026-09-05 (TASK-872) — `guardrail.*` keys are SUPER_ADMIN-ONLY.
 // `editableBy` points at the super-admin resource (`'all'`, the CASL
 // manage-everything subject) and the descriptor is flagged `globalOnly`.
-// `text.*` and, since (owner decision 2026-08-16,
-// reversing the 2026-07-17 super-admin-only directive), `guardrail.*` are
-// tenant-admin configurable: their descriptors resolve to the tenant-editable
-// `AiTaskDefault` resource and are NOT flagged `globalOnly` (driven by
-// `SUPER_ADMIN_ONLY_TASK_PREFIXES`). `guardrail.*` writes still pass through
-// the D2 platform-approved-list floor enforced in `AiTaskDefaultService` —
-// this descriptor only governs WHO may attempt the write, not WHICH slugs.
+//
+// That reverses the 2026-08-16 decision this file used to record. The reason
+// is stated positively rather than as a swing: guardrail is BUILT-IN and
+// PLATFORM-ONLY. It gates every text-generation request before send and every
+// response after receive, for built-in and BYO providers alike, so no tenant
+// admin manages any guardrail setting — including which model does the
+// gating. Only `text.*` and `vlm.*` remain tenant-admin configurable: their
+// descriptors resolve to the tenant-editable `AiTaskDefault` resource and are
+// NOT flagged `globalOnly`.
+//
+// One predicate decides all of it — `isSuperAdminOnlyTaskKey`
+// (`ai-task-default/constants.ts`) — so the catalog, the write gate and the
+// runtime read resolution can never disagree about who owns a key. The D2
+// platform-approved-list floor in `AiTaskDefaultService.upsertRow` is
+// unchanged and still layered on top: it bounds WHICH slug may be bound, not
+// WHO may bind it.
 
 import { AI_TASK_KEYS, AiTaskKey, isSuperAdminOnlyTaskKey } from '../../ai-task-default/constants';
 import { SettingDescriptor } from '../registry.types';

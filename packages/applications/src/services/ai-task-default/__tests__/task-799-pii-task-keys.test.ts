@@ -23,16 +23,20 @@ describe(' R6 — guardrail PII task keys', () => {
     for (const k of PII_KEYS) expect(AI_TASK_MODEL_TASK_TYPES[k]).toBe('TOKEN_CLASSIFICATION');
   });
 
-  it('are SUPER_ADMIN-only by KEY, not by prefix', () => {
+  it('are SUPER_ADMIN-only', () => {
     for (const k of PII_KEYS) expect(isSuperAdminOnlyTaskKey(k), k).toBe(true);
   });
 
-  // The regression this guards: widening the `guardrail.` prefix instead of
-  // using a key list would silently re-lock these three and reverse an owner
-  // decision as a side effect.
-  it('leave the rest of the guardrail prefix tenant-configurable', () => {
+  // TASK-872, owner decision #3 (2026-09-05): the WHOLE `guardrail.` prefix is
+  // now locked, so the PII keys are covered by the prefix rather than by the
+  // key-level exception that used to carry them. The assertion this replaces
+  // guarded the opposite posture — that widening the prefix would wrongly
+  // re-lock the sibling keys — and it is that posture the owner reversed:
+  // guardrail is built-in and platform-only, no tenant admin manages any
+  // guardrail setting.
+  it('sit inside a fully locked guardrail prefix — the siblings are super-admin-only too', () => {
     for (const k of ['guardrail.validate', 'guardrail.safety', 'guardrail.groundedness']) {
-      expect(isSuperAdminOnlyTaskKey(k), k).toBe(false);
+      expect(isSuperAdminOnlyTaskKey(k), k).toBe(true);
     }
   });
 
