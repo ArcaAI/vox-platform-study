@@ -195,7 +195,6 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:tenant-tts-config:manage', // → manage:TenantTtsConfig
   // Model + provider selection (tenant tier only — `ai-model`/`ai-service`/
   // `ai-runtime-profile` all imply `manage:all` and are excluded)
-  'svc:admin:ai-task-default:manage', // → manage:AiTaskDefault
   'svc:admin:ai-provider:manage', // → manage:GlobalSetting
   'svc:admin:settings:manage', // → manage:GlobalSetting
   'svc:admin:nlp-task-instructions:manage', // → manage:TenantNlpTaskInstructions

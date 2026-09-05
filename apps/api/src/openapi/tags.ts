@@ -220,12 +220,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     plane: 'admin',
     description: 'Registration and health of the downstream Python inference services.',
   },
-  {
-    name: 'admin-ai-task-defaults',
-    displayName: 'AI Task Defaults',
-    plane: 'admin',
-    description: 'Which provider and model serve each AI task, resolved tenant-first with a SYSTEM fallback.',
-  },
   { name: 'admin-allowed-origins', displayName: 'Allowed Origins', plane: 'admin', description: 'Per-tenant CORS origin allow-list.' },
   { name: 'admin-api-keys', displayName: 'API Keys', plane: 'admin', description: 'Mint, scope, rotate, and revoke tenant API keys.' },
   {

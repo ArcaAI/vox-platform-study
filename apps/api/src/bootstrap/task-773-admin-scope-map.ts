@@ -120,11 +120,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     controllerClass: 'AiServiceAdminController',
     adminScope: 'admin:ai-service:manage',
   },
-  {
-    file: 'apps/api/src/modules/ai-task-default/ai-task-default-admin.controller.ts',
-    controllerClass: 'AiTaskDefaultAdminController',
-    adminScope: 'admin:ai-task-default:manage',
-  },
   { file: 'apps/api/src/modules/api-key/api-key.controller.ts', controllerClass: 'ApiKeyController', adminScope: 'admin:apikey:write' },
   { file: 'apps/api/src/modules/audit-log/audit-log.controller.ts', controllerClass: 'AuditLogController', adminScope: 'admin:audit:read' },
   { file: 'apps/api/src/modules/billing/billing-admin.controller.ts', controllerClass: 'BillingAdminController', adminScope: 'admin:billing:manage' },
