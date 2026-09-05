@@ -55,7 +55,6 @@ from harness.temporal.interpreter.nodes._shared import (
     STATUS_DEGRADED,
     STATUS_OK,
     now,
-    read_model_slug,
     record_and_flush,
 )
 from harness.temporal.models import HarnessPolicy
@@ -118,13 +117,9 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
     settings = get_settings()
     api_client = _api_client(settings)
     try:
-        #  — the node's OWN model binding, when it declares one. Read off the
-        # SAME `payload.config` `task_key` comes from, and threaded to the gateway rather than
-        # resolved here so one model resolution serves both runtimes. Unbound ⇒ `None` ⇒ the
-        # tenant's `taskKey` AiTaskDefault, byte-identical to every run before this ticket.
-        raw_policy = await api_client.get_policy(
-            payload.tenant_id, task_key=task_key, model_slug=read_model_slug(payload.config)
-        )
+        # TASK-876: the gateway overlays the tenant's ASSIGNED TEXT_GENERATION agent on the
+        # policy for this task key (the node `llmBinding` is retired; the key is telemetry).
+        raw_policy = await api_client.get_policy(payload.tenant_id, task_key=task_key)
     except ApiServiceError as exc:
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="policy_fetch_unreachable"
