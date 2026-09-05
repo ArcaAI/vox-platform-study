@@ -62,6 +62,7 @@ export * from './TenantAllowedOriginEntityMapper';
 export * from './TenantBucketEntityMapper';
 export * from './TenantEntitlementEntityMapper';
 export * from './TenantFrontendConfigEntityMapper';
+export * from './TenantGuardrailPolicyEntityMapper';
 export * from './TenantIdentityProviderEntityMapper';
 export * from './TenantIdentityProviderDomainEntityMapper';
 export * from './TenantNlpTaskInstructionsEntityMapper';

@@ -161,4 +161,9 @@ export enum ResourceType {
   // Reverses the telemetry exemption. Parity with audit.prisma; see
   // resourceType.enum-parity.test.ts.
   WorkflowRun = 'WorkflowRun',
+  // TASK-886 — per-tenant guardrail availability: WHICH screening policies
+  // apply to a tenant. Platform-managed and super-admin-only, so every write is
+  // a platform admin changing a customer's safety posture. Parity with
+  // audit.prisma; see resourceType.enum-parity.test.ts.
+  TenantGuardrailPolicy = 'TenantGuardrailPolicy',
 }
