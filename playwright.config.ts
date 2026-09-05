@@ -33,7 +33,11 @@ const baseURL = process.env.API_URL || 'http://localhost:8968/api/v1';
  */
 const INFERENCE_SPECS = [
   '**/ai-inference-proxy.spec.ts',
-  '**/byo-llm-credentials.spec.ts',
+  // `byo-llm-credentials` moved to the isolated-gateway project (TASK-869): it
+  // needs a gateway whose TEXT_URL points at its own stub, which is a BOOT
+  // setting, so project membership follows the process it must talk to rather
+  // than how slow it is. Listing it here too would run it twice, once against a
+  // gateway wired to the real TEXT.
   '**/consultation-job-cross-tenant.spec.ts',
   '**/task-562-text-compat.spec.ts',
   '**/task-704-generator-seam.spec.ts',
@@ -59,6 +63,22 @@ const INFERENCE_TEST_TIMEOUT_MS = 240_000;
  * bigger number.
  */
 const EXCLUSIVE_SPECS = ['**/streaming-backpressure-recovery.spec.ts'];
+
+/**
+ * Specs that need a gateway configured DIFFERENTLY from the shared one, at BOOT.
+ *
+ * `auth-throttle-per-endpoint` needs `RATE_LIMIT_ENABLED=true`; the shared
+ * gateway runs with it false because a per-IP login budget cannot survive dozens
+ * of parallel specs logging in. `byo-llm-credentials` needs `TEXT_URL` pointed at
+ * a stub it binds itself; the shared gateway must keep talking to the real TEXT.
+ * Neither is a per-request knob — both are read once at startup — so they get
+ * their own gateway process (`start-test-app.sh api --isolated`, started by
+ * `scripts/test-run.sh`) and their own project pointed at it.
+ */
+const ISOLATED_GATEWAY_SPECS = ['**/auth-throttle-per-endpoint.spec.ts', '**/byo-llm-credentials.spec.ts'];
+
+/** Where that second gateway listens. Unset ⇒ the project is skipped, not silently run against the shared one. */
+const isolatedApiUrl = process.env.E2E_ISOLATED_API_URL;
 
 export default defineConfig({
   // Test directory
@@ -119,7 +139,7 @@ export default defineConfig({
     {
       name: 'api-tests',
       testMatch: '**/*.spec.ts',
-      testIgnore: [...INFERENCE_SPECS, ...EXCLUSIVE_SPECS],
+      testIgnore: [...INFERENCE_SPECS, ...EXCLUSIVE_SPECS, ...ISOLATED_GATEWAY_SPECS],
     },
     {
       // Specs that drive REAL model inference (STT/LLM/guardrail) rather than a
@@ -152,6 +172,23 @@ export default defineConfig({
       timeout: INFERENCE_TEST_TIMEOUT_MS,
       dependencies: ['api-tests', 'api-inference-tests'],
     },
+    // Runs against the SECOND gateway, and last — the same `dependencies` trick
+    // the exclusive project uses. Throttle counters are per-process and in-memory
+    // in test mode, so nothing this project does can spend another project's
+    // budget. Declared only when the runner actually started that gateway: an
+    // absent URL must not silently re-point these specs at the shared one, where
+    // they would assert against throttling that is off.
+    ...(isolatedApiUrl
+      ? [
+          {
+            name: 'api-isolated-gateway-tests',
+            testMatch: ISOLATED_GATEWAY_SPECS,
+            timeout: INFERENCE_TEST_TIMEOUT_MS,
+            dependencies: ['api-tests', 'api-inference-tests'],
+            use: { baseURL: isolatedApiUrl },
+          },
+        ]
+      : []),
   ],
 
   // Global setup and teardown

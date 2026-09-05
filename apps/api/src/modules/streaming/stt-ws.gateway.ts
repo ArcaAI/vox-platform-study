@@ -157,6 +157,14 @@ interface SessionInfo {
   droppedAudioFrames: number;
   /** Partials dropped because the WS egress buffer was over the threshold. */
   droppedPartialResults: number;
+  /**
+   * Has the client been TOLD about the current partial-drop episode?
+   *
+   * Coalesces the signal to one frame per episode: partials drop at speech
+   * cadence, so a frame per drop would add to the very congestion the drop is
+   * relieving. Cleared when the socket drains, so a later episode signals again.
+   */
+  partialDropSignalled: boolean;
   /** Finals dropped because the bounded egress queue overflowed. */
   droppedFinalResults: number;
   /** Finals awaiting delivery while the socket drains. */
@@ -595,6 +603,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       sampleRate,
       droppedAudioFrames: 0,
       droppedPartialResults: 0,
+      partialDropSignalled: false,
       droppedFinalResults: 0,
       pendingFinalResults: [],
       // No prior SessionInfo existed → this is NOT a continuation; a later
@@ -843,6 +852,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         droppedPartialResults: session.droppedPartialResults,
         bufferedAmount: this.getBufferedAmount(client),
       });
+      // TASK-869 — tell the CLIENT, once per episode. Until this existed the
+      // drop was observable only in a server-side debug log, so a client could
+      // not distinguish "the speaker paused" from "your partials are being
+      // discarded", and the contract could not be asserted from outside the
+      // process at all. Finals already had `emitGapMarker`; this is the partial
+      // half of the same promise: nothing is dropped silently.
+      this.emitPartialDropMarker(session);
       return;
     }
 
@@ -908,6 +924,24 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * backpressured (its congestion is what forced the drop). Recoverable from
    * the durable transcript on the client side.
    */
+  private emitPartialDropMarker(session: SessionInfo): void {
+    if (session.partialDropSignalled) return;
+    const client = session.client;
+    if (client.readyState !== client.OPEN) return;
+    session.partialDropSignalled = true;
+    // Deliberately NOT seq-tagged and NOT buffered for resume: it describes the
+    // transport's state right now, not a point in the transcript, and a resumed
+    // client re-learns it from the next drop if the congestion persists.
+    client.send(
+      JSON.stringify({
+        type: 'gap',
+        reason: 'egress_partial_dropped',
+        sessionId: session.sessionId,
+        droppedPartials: session.droppedPartialResults,
+      }),
+    );
+  }
+
   private emitGapMarker(session: SessionInfo, droppedSeq?: number): void {
     const client = session.client;
     if (client.readyState === client.OPEN) {
@@ -939,6 +973,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       }
       return;
     }
+    // Drained ⇒ the episode is over; a NEW one must be able to signal again.
+    if (!this.isEgressOverThreshold(client)) session.partialDropSignalled = false;
     while (session.pendingFinalResults.length > 0 && !this.isEgressOverThreshold(client)) {
       const next = session.pendingFinalResults.shift()!;
       client.send(JSON.stringify(next));

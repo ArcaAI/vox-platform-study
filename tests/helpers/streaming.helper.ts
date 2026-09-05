@@ -64,6 +64,24 @@ export const STREAM_SAMPLE_RATE = 16000;
 export const DEFAULT_STREAM_PIPELINE_ID: string | undefined = process.env.STREAM_E2E_PIPELINE_ID?.trim() || undefined;
 
 /**
+ * The ASR agent every streaming e2e session names explicitly.
+ *
+ * NOT a stylistic preference — it is what makes a live session possible at all.
+ * Left implicit, the cascade resolves the SYSTEM default `platform-transcription`,
+ * whose model is an ArcaAI fine-tune in a PRIVATE Hub repo; the
+ * `model-registry:huggingface` connection is seeded blank + disabled, so the
+ * pull 401s, `createSession` (which loads the model INLINE) blows the gateway's
+ * 15s budget, and every live-session spec skips with "is STT running?" — which
+ * is exactly what it looked like before TASK-869, and exactly what it was not.
+ *
+ * `example-transcription-turbo` (`25-agents.ts`) is PUBLISHED to the `__GLOBAL__`
+ * tenant, never assigned to anyone, and bound to the PUBLIC
+ * `whisper-large-v3-turbo-q8_0` GGUF — no credential, no fallback download.
+ * Override with `STREAM_E2E_AGENT_SLUG` to point the suite at another agent.
+ */
+export const DEFAULT_STREAM_AGENT_SLUG: string = process.env.STREAM_E2E_AGENT_SLUG?.trim() || 'example-transcription-turbo';
+
+/**
  * Committed 16 kHz mono PCM16 fixture (≈107 s real Malayalam speech). Override
  * with `STREAM_E2E_WAV`. Resolved relative to THIS file so the path is stable
  * regardless of the Playwright working directory.
@@ -156,18 +174,23 @@ export async function createStreamSession(
   opts: {
     token: string;
     pipelineId?: string;
+    agentSlug?: string;
     sampleRate?: number;
     consultationId?: string;
     apiUrl?: string;
   },
 ): Promise<CreateStreamResult> {
   const pipelineId = opts.pipelineId ?? DEFAULT_STREAM_PIPELINE_ID;
+  // The deprecated `pipelineId` still wins when a caller passes one, so the R4
+  // removal path stays exercisable; otherwise every session names the agent.
+  const agentSlug = pipelineId ? undefined : (opts.agentSlug ?? DEFAULT_STREAM_AGENT_SLUG);
   const sampleRate = opts.sampleRate ?? STREAM_SAMPLE_RATE;
 
   const response = await request.post('/api/v1/audio/transcription-jobs/stream/session', {
     headers: { Authorization: `Bearer ${opts.token}` },
     data: {
       ...(pipelineId ? { pipelineId } : {}),
+      ...(agentSlug ? { agentSlug } : {}),
       sampleRate,
       ...(opts.consultationId ? { consultationId: opts.consultationId } : {}),
     },
@@ -179,7 +202,7 @@ export async function createStreamSession(
     return {
       ok: false,
       status,
-      reason: `POST stream/session → ${status}: ${body} (pipeline=${pipelineId ?? 'assigned ASR agent'}; is STT running + the ASR agent resolvable for the caller?)`,
+      reason: `POST stream/session → ${status}: ${body} (pipeline=${pipelineId ?? 'none'}, agent=${agentSlug ?? 'assigned ASR agent'}; is STT running + the model resolvable/pre-staged for the caller?)`,
     };
   }
 

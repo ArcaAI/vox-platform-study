@@ -246,6 +246,33 @@ export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = [
     tags: ['example', 'stt', 'azure', 'cloud'],
   },
   {
+    // The e2e LIVE-SESSION fixture agent. PUBLISHED + active so a spec can name
+    // it with `agentSlug`, but never assigned to any tenant — the SYSTEM
+    // cascade is untouched, so nothing resolves it implicitly.
+    //
+    // Two deliberate differences from `example-transcription`:
+    //   - `whisper-large-v3-turbo-q8_0`, the PUBLIC GGUF (`audio.ts`), because
+    //     the in-house fine-tunes live in a private Hub repo the test stack has
+    //     no token for.
+    //   - NO fallback. `faster-whisper-large-v3-turbo-int8` is a CTranslate2
+    //     download; letting a failed primary silently pull ~1.5 GB inside the
+    //     gateway's 15s session-create budget turns a model problem into a
+    //     timeout that reads as "STT is down". Failing fast names the cause.
+    id: glob(10),
+    tenantId: SEED_TENANT_ID,
+    slug: 'example-transcription-turbo',
+    name: 'Example transcription (whisper.cpp turbo q8_0, public)',
+    description: 'Realtime + batch speech-to-text on the public whisper.cpp GGUF turbo q8_0. The credential-free fixture the e2e live-session specs name explicitly.',
+    task: 'SPEECH_TO_TEXT',
+    modelSlug: 'whisper-large-v3-turbo-q8_0',
+    fallbackModelSlugs: [],
+    instruction: ASR_INSTRUCTION,
+    parameters: ASR_PARAMETERS,
+    status: 'PUBLISHED',
+    isActive: true,
+    tags: ['example', 'stt', 'transcription', 'e2e-fixture'],
+  },
+  {
     id: glob(9),
     tenantId: SEED_TENANT_ID,
     slug: 'example-sarvam-transcription',
