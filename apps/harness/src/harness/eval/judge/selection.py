@@ -3,7 +3,7 @@
 Owner directive D-B (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`):
 an engine name or model id is **never** an env var and **never** a literal in code.
 The runtime (Temporal) path already honours this — `temporal/activities.py` takes
-`judge_provider`/`judge_model` from the SYSTEM ``harness.judge`` ``AiTaskDefault``
+`judge_provider`/`judge_model` from the SYSTEM ``harness.judge`` ``AiRoutingPolicy`` default row
 snapshotted onto the workflow input and fails closed when it is absent. Before this
 module the *eval gate* did not: `run-gate.sh` carried a hardcoded `JUDGE_MODEL`
 default and `JudgeConfig.model` carried a literal, so the gate could silently grade
@@ -11,7 +11,7 @@ with a different judge than production selects.
 
 This module closes that gap. It resolves the SAME row the runtime resolves:
 
-    AiTaskDefault(taskKey='harness.judge', resourceStatus=ENABLED)
+    AiRoutingPolicy(taskKey='harness.judge', isDefault=true, enabled=true, status=ACTIVE)
         -> modelSlug -> AiModel(slug, resourceStatus=ENABLED) -> (provider, sourceUri)
 
 **Resolution order is tenant -> SYSTEM, two tiers, no third.** The eval gate runs with
@@ -49,7 +49,7 @@ logger = structlog.get_logger(__name__)
 #: The config TIER that holds platform defaults. Never a customer tenant.
 SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
-#: The `AiTaskDefault.taskKey` the LLM-as-judge selection lives under (SUPER_ADMIN-owned).
+#: The `AiRoutingPolicy.taskKey` the LLM-as-judge selection lives under (SUPER_ADMIN-owned).
 EVAL_JUDGE_TASK_KEY = "harness.judge"
 
 #: `AiModel.provider` values -> the judge transport that serves them. LM Studio, Ollama,
@@ -102,7 +102,7 @@ class JudgeSelection:
 
 @dataclass(frozen=True)
 class RawSelection:
-    """A resolved `AiTaskDefault` row, provider kept as the RAW `AiModel.provider` string.
+    """A resolved `AiRoutingPolicy` default row, provider kept as the RAW `AiModel.provider` string.
 
     The judge path maps this onto a :class:`JudgeProvider` transport; the SAFETY
     path (``harness.eval.safety_selection``) needs the raw name instead, because
@@ -129,7 +129,7 @@ async def resolve_eval_selection(
     tenant_id: str | None = None,
     dsn: str | None = None,
 ) -> RawSelection:
-    """Resolve any eval-tool `AiTaskDefault` SELECTION from the database, fail closed.
+    """Resolve any eval-tool `AiRoutingPolicy` SELECTION from the database, fail closed.
 
     The shared engine behind :func:`resolve_eval_judge_selection` (``harness.judge``)
     and :func:`harness.eval.safety_selection.resolve_eval_safety_selection`
@@ -211,7 +211,7 @@ async def resolve_eval_selection(
         await conn.close()
 
     raise JudgeSelectionUnavailable(
-        f"no ENABLED {task_key} AiTaskDefault (with an ENABLED AiModel) for "
+        f"no enabled, ACTIVE {task_key} AiRoutingPolicy default row (with an ENABLED AiModel) for "
         f"{'tenant ' + str(tenant_id) + ' or ' if tenant_id else ''}the SYSTEM tenant. "
         "The eval gate fails closed: seed/enable the selection rather than passing a "
         "model id through the environment."
