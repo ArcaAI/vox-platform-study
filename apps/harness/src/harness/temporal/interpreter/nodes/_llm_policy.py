@@ -64,9 +64,9 @@ __all__ = [
     "screen",
 ]
 
-#: Task keys these nodes may select under. Mirrors ``nodes/consultation_realtime.py``'s own set —
-#: the value still SELECTS the model through the ``AiTaskDefault`` overlay; this only rejects a
-#: typo'd key before a pointless gateway round trip.
+#: Task keys these nodes may run under. Mirrors ``nodes/consultation_realtime.py``'s own set. The
+#: value does NOT select a model — since TASK-876 the tenant's assigned ``TEXT_GENERATION`` agent
+#: does; this only rejects a typo'd key before a pointless gateway round trip.
 ALLOWED_TASK_KEYS = {"text.finalize", "text.live", "text.test"}
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)

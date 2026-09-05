@@ -7,7 +7,8 @@
  *    UNIONed with the SYSTEM platform register, because a tenant validating its
  *    own graph against only the rules IT authored would silently under-enforce
  *    the platform's safety rules. The union is TWO explicit-`tenantId` reads,
- *    not one `OR` — mirroring `PipelinePolicyRepository.findSystemDefault` —
+ *    not one `OR` — mirroring the `HarnessPolicy` cascade (`PipelinePolicy`
+ *    was the exemplar named here until TASK-882 retired it) —
  *    since the tenant-scope extension pins an explicit `where.tenantId` to the
  *    caller's own context tenant, and the SYSTEM rows live under a different id.
  *  - Palette-agnostic rows (`paletteKey: null`, the structural class) apply to

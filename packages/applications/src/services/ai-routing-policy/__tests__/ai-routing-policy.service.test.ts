@@ -106,6 +106,10 @@ function makeService(
     rows?: any[];
     connectionSource?: 'tenant' | 'system' | null;
     connectionHasKey?: boolean;
+    /** The owning tenant of the model a write binds — drives the 404-over-403 case. */
+    modelTenantId?: string | null;
+    /** The `AiModel.taskType` a write binds — drives the compatibility case. */
+    modelTaskType?: string;
   } = {},
 ) {
   const rows = opts.rows ?? [];
@@ -138,6 +142,16 @@ function makeService(
   };
   const models = {
     findById: vi.fn().mockImplementation(async (id: string) => ({ id, slug: String(id).replace(/^model:/, '') })),
+    // The WRITE-time lookup. It carries `tenantId` and `taskType` because the
+    // write check reads both: visibility (404-over-403) and task compatibility.
+    // `harness.judge` — the task key every create/update fixture in this file
+    // uses — requires TEXT_GENERATION.
+    findByIdOrNull: vi.fn().mockImplementation(async (id: string) => ({
+      id,
+      slug: String(id).replace(/^model:/, ''),
+      tenantId: opts.modelTenantId ?? SYSTEM_TENANT_ID,
+      taskType: opts.modelTaskType ?? 'TEXT_GENERATION',
+    })),
     findBySlug: vi.fn().mockImplementation(async (_tenantId: string, slug: string) => ({ id: `model:${slug}`, slug })),
   };
   const connections = {
@@ -805,6 +819,87 @@ describe('create', () => {
   it('refuses a revision number that already exists for this (tenant, task)', async () => {
     const { svc } = makeService({ rows: [makeConfig({ tenantId: TENANT, policyVersion: 3 })] });
     await expect(svc.create(TENANT, { ...body, policyVersion: 3 } as any)).rejects.toBeInstanceOf(ArgumentInvalidException);
+  });
+});
+
+describe('write-time task compatibility — a routing row cannot bind a model that cannot serve its task', () => {
+  // TASK-881 retired the `AiTaskDefault` facade, and with it the ONE write-time
+  // check the routing service never had: `upsertRow` refused a slug whose
+  // registry row declared a different `taskType`. Without it a super admin can
+  // elect, say, a TOKEN_CLASSIFICATION span extractor as the `harness.judge`
+  // default, and the failure surfaces at inference time as an unusable model
+  // rather than at write time as a rejected request.
+  const body = { taskKey: 'harness.judge', modelId: 'model:gpt-4o', providerConnectionId: 'conn:azure' };
+
+  it('accepts a model whose taskType serves the task key', async () => {
+    const { svc, repo } = makeService({ rows: [], modelTaskType: 'TEXT_GENERATION' });
+    await svc.create(TENANT, body as any);
+    expect(repo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects 409 with a named code when the model cannot serve the task', async () => {
+    const { svc, repo } = makeService({ rows: [], modelTaskType: 'TOKEN_CLASSIFICATION' });
+    await expect(svc.create(TENANT, body as any)).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'ROUTING_MODEL_TASK_MISMATCH' },
+    });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('admits either shape where the task legitimately has two — content safety is served by a text OR a token classifier', async () => {
+    for (const taskType of ['TEXT_CLASSIFICATION', 'TOKEN_CLASSIFICATION']) {
+      const { svc, repo } = makeService({ rows: [], modelTaskType: taskType });
+      await svc.create(TENANT, { ...body, taskKey: 'guardrail.safety' } as any);
+      expect(repo.create).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('answers 404 — never 403 — for a model owned by another tenant', async () => {
+    // The cross-tenant posture: a foreign id and an id that does not exist give
+    // the same answer, so the write surface is not an existence oracle over the
+    // catalogue.
+    const { svc, repo } = makeService({ rows: [], modelTenantId: OTHER_TENANT });
+    await expect(svc.create(TENANT, body as any)).rejects.toBeInstanceOf(NotFoundException);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 for a model id that resolves to nothing at all — the same answer', async () => {
+    const { svc, models } = makeService({ rows: [] });
+    models.findByIdOrNull.mockResolvedValueOnce(null);
+    await expect(svc.create(TENANT, body as any)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("accepts the tenant's OWN catalogue row, not just the platform one", async () => {
+    const { svc, repo } = makeService({ rows: [], modelTenantId: TENANT });
+    await svc.create(TENANT, body as any);
+    expect(repo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks nothing when the configuration names a provider-side modelRef instead of a catalogue FK', async () => {
+    // `modelRef` is a provider-native id for a model the catalogue does not
+    // carry, so there is no `taskType` to compare against. Refusing it here
+    // would forbid the very case the field exists for.
+    const { svc, models, repo } = makeService({ rows: [] });
+    await svc.create(TENANT, { taskKey: 'harness.judge', modelRef: 'my-azure-deployment' } as any);
+    expect(models.findByIdOrNull).not.toHaveBeenCalled();
+    expect(repo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies on UPDATE too — a DRAFT may be re-bound, but not onto a model that cannot serve it', async () => {
+    const draft = makeConfig({ tenantId: TENANT, status: AiRoutingPolicyStatus.DRAFT, taskKey: 'harness.judge' });
+    const { svc, repo } = makeService({ rows: [draft], modelTaskType: 'TOKEN_CLASSIFICATION' });
+    await expect(svc.update(draft.id, TENANT, { modelId: 'model:medical-ner', expectedVersion: draft.version } as any)).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'ROUTING_MODEL_TASK_MISMATCH' },
+    });
+    expect(repo.updateWithVersion).not.toHaveBeenCalled();
+  });
+
+  it('leaves an update that does not touch the binding alone', async () => {
+    const draft = makeConfig({ tenantId: TENANT, status: AiRoutingPolicyStatus.DRAFT, taskKey: 'harness.judge' });
+    const { svc, models } = makeService({ rows: [draft], modelTaskType: 'TOKEN_CLASSIFICATION' });
+    await svc.update(draft.id, TENANT, { priority: 5, expectedVersion: draft.version });
+    expect(models.findByIdOrNull).not.toHaveBeenCalled();
   });
 });
 

@@ -25,14 +25,24 @@ export class InternalServiceTokenGuard implements CanActivate {
   /**
    * Service name → the secret holding that service's token.
    *
-   * NOTE `text` → `TEXT_SERVICE_TOKEN`: the TEXT service reads its inbound token
-   * from `settings.service_token` under the `TEXT_` pydantic prefix, so that is
-   * the name it actually presents. The gateway's OUTBOUND proxying separately
-   * resolves `TEXT_SERVICE_TOKEN`; the two are distinct secret names that hold the
-   * same shared value by deployment convention.
+   * The per-service names are being retired one service at a time in favour of
+   * the ONE shared `INTERNAL_ACCESS_TOKEN` (owner decision D-D): `tts` moved in
+   * TASK-879/880, `text` in TASK-888. The mapping survives the migration because
+   * three services have not moved yet, and because it is what makes the
+   * `?service=` selector meaningful at all.
+   *
+   * A consequence worth stating: for the services that HAVE moved, the per-service
+   * binding this guard was built for no longer separates them — `text` and `tts`
+   * hold the same secret, so either can read the other's config subset. That is
+   * the shared-token rule doing exactly what it says, not a hole in the guard; the
+   * separation that remains is the `?service=` filter on the RESPONSE.
    */
   private static readonly SERVICE_SECRETS: Readonly<Record<string, string>> = {
-    text: 'TEXT_SERVICE_TOKEN',
+    // `apps/text` stopped accepting `TEXT_SERVICE_TOKEN` when its
+    // `InternalAccessConfig` was introduced — it reads `INTERNAL_ACCESS_TOKEN`
+    // and nothing else — so the gateway kept admitting a credential the service
+    // itself could no longer present (TASK-888).
+    text: 'INTERNAL_ACCESS_TOKEN',
     nlp: 'NLP_SERVICE_TOKEN',
     guardrail: 'GUARDRAIL_SERVICE_TOKEN',
     harness: 'HARNESS_SERVICE_TOKEN',

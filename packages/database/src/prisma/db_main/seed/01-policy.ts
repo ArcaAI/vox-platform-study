@@ -221,7 +221,6 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // Tenant admins manage their own tenant's TTS config + BYO
       // provider credentials. Tenant-scoped; the controller pins every op to
       // the caller's tenant. `manage` implies `read` (used by the GET routes).
-      { action: 'manage', subject: 'TenantTtsConfig', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's STT fallback config + BYO
       // provider credentials. Tenant-scoped; the controller pins
       // every op to the caller's tenant. `manage` implies `read` (GET routes).

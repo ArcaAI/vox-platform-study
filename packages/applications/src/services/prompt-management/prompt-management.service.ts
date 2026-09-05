@@ -1414,8 +1414,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-   * migration fallback).: `X-Tenant-Id` is no longer CONDITIONAL.
+   * D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
+   * fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is no longer CONDITIONAL.
    *
    * The old `if (tenantId) headers['X-Tenant-Id'] = tenantId` was the narrower
    * half of the audit's Class-B finding: this bench has a legitimate no-tenant
@@ -1426,7 +1426,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * caller defect and refuse it with 428.
    */
   private async textHeaders(): Promise<Record<string, string>> {
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     return internalServiceHeaders({
       serviceToken,
       tenantId: this.tenantId,

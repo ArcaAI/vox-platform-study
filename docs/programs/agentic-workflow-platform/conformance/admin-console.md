@@ -159,7 +159,7 @@ the field differently.
 | Surface | Screen |
 |---|---|
 | STT | `(tenant)/audio/pipelines` (`AsrPipeline`), `(tenant)/audio/transcription-jobs` |
-| Text / TTS / models | `(tenant)/ai-configuration` → `features/ai-task-defaults/components/tenant-ai-configuration-screen.tsx` (composes `tenant-stt-config` + `tenant-tts-config`), `(tenant)/ai-model-defaults` |
+| Text / TTS / models | `(tenant)/ai-configuration` → `features/tenant-stt-config/components/speech-and-voice-screen.tsx` (the Speech tab reads `TenantSttConfig`; the Voice tab is a pointer to `/agents?task=TEXT_TO_SPEECH` since TASK-888 retired `TenantTtsConfig`), `(tenant)/agents` |
 | Platform defaults | `(global)/ai-models`, `(global)/ai-task-defaults`, `(global)/ai-services` |
 
 **Exposure (brief §1: "expose it as APIs / Sockets / Webhooks"): backend yes, console no.**

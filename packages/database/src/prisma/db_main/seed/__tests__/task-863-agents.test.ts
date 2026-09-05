@@ -36,7 +36,7 @@ const { agentConfigProblems, canonicalJson: contractCanonicalJson, AGENT_PARAMET
 const REGISTRY: Record<string, { taskType: string; provider: string | null }> = {
   'arcaai-whisper-large-ml-en-gguf': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'built-in' },
   'faster-whisper-large-v3-turbo-int8': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'built-in' },
-  'azure-speech-stt': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'azure' },
+  'azure-speech-stt': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'azure-speech' },
   'sarvam-saaras-v4': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'sarvam' },
   'lms-gemma-4-e2b-it-qat': { taskType: 'TEXT_GENERATION', provider: 'lm-studio' },
   kokoro: { taskType: 'TEXT_TO_SPEECH', provider: 'built-in' },

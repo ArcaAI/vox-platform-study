@@ -33,14 +33,18 @@ export const COMMON_SERVICE_WARMUP_KEYS = [
   'MINIO_SECRET_KEY',
   'S3_ACCESS_KEY',
   'S3_SECRET_KEY',
-  'TEXT_SERVICE_TOKEN',
+  // `TEXT_SERVICE_TOKEN` was warmed here until TASK-888. Nothing reads it any
+  // more — the three gateway proxies moved to the shared token in TASK-883 and
+  // the ten `packages/applications` callers followed — and warming a key no
+  // reader asks for only keeps a retired credential resident in every process.
+  //
   // D-D — the ONE shared internal access token. Read through `getSecretSync` on
   // the two gateway→Text proxy paths that cannot await
   // (`TextProxyController`/`TextCompatController.getForwardHeaders`), and
   // `getSecretSync` is cache-only by design: unwarmed, it resolves to undefined
-  // on EVERY request, so those hops would silently fall through to the legacy
-  // `TEXT_SERVICE_TOKEN` forever and the shared token would appear "not
-  // deployed". Pinned by `warmup-coverage.test.ts`.
+  // on EVERY request, so those hops would attach no `X-Service-Token` at all and
+  // the shared token would appear "not deployed". Pinned by
+  // `warmup-coverage.test.ts`.
   'INTERNAL_ACCESS_TOKEN',
   // Read ONLY through `getSecretSync` (SpeechProxyController.getForwardHeaders,
   // TtsWsGateway.openBridge) — both are on paths that cannot await. Because
@@ -58,8 +62,9 @@ const imports = [
   SecretsModule.forRoot({
     defaultTtlSec: Number(process.env.SECRETS_TTL_SEC ?? 300),
     lruMax: Number(process.env.SECRETS_LRU_MAX ?? 200),
-    // Keep the sync-only service tokens (TEXT/TTS X-Service-Token) continuously
-    // warm; unset derives max(30, TTL/2) so warmed keys never expire cold.
+    // Keep the sync-only service tokens (the shared X-Service-Token, and TTS's
+    // until it is retired) continuously warm; unset derives max(30, TTL/2) so
+    // warmed keys never expire cold.
     reWarmIntervalSec: process.env.SECRETS_REWARM_INTERVAL_SEC ? Number(process.env.SECRETS_REWARM_INTERVAL_SEC) : undefined,
     warmupKeys: [...COMMON_SERVICE_WARMUP_KEYS],
   }),

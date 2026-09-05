@@ -199,12 +199,14 @@ const STUB_REDIS_CACHE_SERVICE = {
  */
 const TEST_ONLY_JWT_SECRET = 'task-309-test-app-module-jwt-secret-not-for-production';
 const TEST_ONLY_API_KEY_PEPPER = 'task-309-test-app-module-api-key-pepper-not-for-production';
-const TEST_ONLY_TEXT_SERVICE_TOKEN = 'task-309-test-app-module-text-token-not-for-production';
+const TEST_ONLY_INTERNAL_ACCESS_TOKEN = 'task-309-test-app-module-internal-token-not-for-production';
 
 const SYNTHETIC_SECRETS: Record<string, string> = {
   JWT_SECRET_KEY: TEST_ONLY_JWT_SECRET,
   API_KEY_PEPPER: TEST_ONLY_API_KEY_PEPPER,
-  TEXT_SERVICE_TOKEN: TEST_ONLY_TEXT_SERVICE_TOKEN,
+  // TASK-888 — the ONE shared internal token; the per-service `TEXT_SERVICE_TOKEN`
+  // it stood in for is retired.
+  INTERNAL_ACCESS_TOKEN: TEST_ONLY_INTERNAL_ACCESS_TOKEN,
   // No OIDC entry: the platform OIDC tier is retired, so nothing asks
   // SecretsService for a client secret. Federated login resolves the tenant's own
   // `TenantIdentityProvider.encryptedSecretRef` via Vault Transit instead.

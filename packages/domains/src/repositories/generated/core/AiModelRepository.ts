@@ -46,6 +46,32 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
   }
 
   /**
+   * Find a catalogue row by id, returning `null` rather than throwing.
+   *
+   * Same `tx` routing rule as `findBySlug`: with an explicit transaction / base
+   * client the read bypasses the tenant-scope extension, so a super-admin lane
+   * acting on a tenant other than its own working tenant still sees that
+   * tenant's own rows. WITHOUT `tx` the extension resolves `tenantId IN
+   * [caller, SYSTEM]`, which is the visibility a tenant-scoped caller should
+   * have — so a foreign id is simply absent rather than forbidden.
+   *
+   * `null` instead of `DataNotFoundException` because the callers here decide
+   * what an unresolvable id means: `AiRoutingPolicyService` turns it into a 404
+   * (404-over-403), `resolveRefs` into "unresolved".
+   */
+  async findByIdOrNull(id: string, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity | null> {
+    if (tx) {
+      const model = await (tx as Record<string, any>).aiModel.findUnique({ where: { id } });
+      return model ? AiModelEntityMapper.getInstance().toDomainEntity(model) : null;
+    }
+    try {
+      return await this.findById(id);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Find the catalog row a provider-native model id belongs to.
    *
    * Every TEXT caller resolves a request's `model` to `AiModel.sourceUri` — the id

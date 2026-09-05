@@ -12,8 +12,9 @@
 // file validates. `scripts/env-sync.mts` generates `apps/api/.env.sample` and
 // `turbo.json#globalEnv` from the SAME list.
 //
-// WHY THE SCHEMA COVERS FLAGS THIS PROCESS DOES NOT READ (e.g.
-// `HARNESS_NER_PRIORS_ENABLED`): since lane C, every TS and Python deployable
+// WHY THE SCHEMA COVERS FLAGS THIS PROCESS DOES NOT READ (a downstream
+// service's own knob, never one the gateway reads): since lane C, every TS and
+// Python deployable
 // reads the SAME `.env.<NODE_ENV>` file. One shared file ⇒ one shared contract,
 // so validating the whole platform surface at gateway boot turns a typo in a
 // downstream service's flag into a loud boot failure instead of a flag that

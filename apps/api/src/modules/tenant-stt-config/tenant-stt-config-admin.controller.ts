@@ -18,7 +18,7 @@ const DEPRECATION = { ticket: 'TASK-861', removeIn: 'R4', replacement: '/api/v1/
 /**
  * TenantSttConfigAdminController — the admin surface for a tenant's STT fallback
  * spec + BYO provider credentials, mounted at `/admin/stt-config` (global prefix
- * → `/api/v1/admin/stt-config`). Mirrors `TenantTtsConfigAdminController`:
+ * → `/api/v1/admin/stt-config`). Mirrors `TenantStorageConfigAdminController` (the `TenantTtsConfigAdminController` this was written against was retired with its model in TASK-888):
  * `@Authorize`, `If-Match` OCC, CLS tenant resolution.
  *
  *  - `GET ''`                   → the RESOLVED effective fallback spec (tenant

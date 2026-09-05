@@ -159,7 +159,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // -1 (90): AiTaskDefault — TASK-881 dropped the table (the facade over
     // AiRoutingPolicy is gone; selection resolves through resolveDefault).
     // -2 (88): TASK-882 retired `PipelinePolicy` + `PipelinePolicyChange`.
-    expect(TENANT_SCOPED_MODELS.size).toBe(88);
+    // -1 (87): TASK-888 retired `TenantTtsConfig` — the speech path is
+    // agent-first, so every field it carried lives on the TEXT_TO_SPEECH Agent
+    // or an AiProviderConnection(service='tts') row.
+    expect(TENANT_SCOPED_MODELS.size).toBe(87);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -397,10 +400,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // default every tenant reads to compute its effective policy.
       // GlobalSetting — platform infra settings (S3/MinIO, STT) are seeded under
       // the SYSTEM tenant; the AppSettingsService platform cache reads them.
-      // TenantTtsConfig's SYSTEM-tenant row is the per-tenant TTS
-      // platform default every tenant's resolveForTenant merges over. This model
-      // never carries a secret — BYO credentials live in the unified
-      // AiProviderConnection plane (service='tts'), never shared cross-tenant.
+      // (TenantTtsConfig sat here until TASK-888 retired the model.)
       // McpServer's SYSTEM-tenant rows are the shared external-tools
       // registry every tenant's harness run reads to resolve a server; writes
       // are NOT widened (registry mutation is super-admin only).
@@ -424,7 +424,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'Role',
         'HarnessPolicy',
         'GlobalSetting',
-        'TenantTtsConfig',
         // TenantSttConfig's SYSTEM-tenant row is the per-tenant STT platform
         // default every tenant's getEffective merges over. This model never
         // carries a secret — BYO credentials live in the unified

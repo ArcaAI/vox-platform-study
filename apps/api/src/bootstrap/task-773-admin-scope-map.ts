@@ -287,11 +287,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     adminScope: 'admin:tenant-stt-config:manage',
   },
   {
-    file: 'apps/api/src/modules/tenant-tts-config/tenant-tts-config-admin.controller.ts',
-    controllerClass: 'TenantTtsConfigAdminController',
-    adminScope: 'admin:tenant-tts-config:manage',
-  },
-  {
     file: 'apps/api/src/modules/tenant/tenant-pipeline-resync.controller.ts',
     controllerClass: 'TenantPipelineResyncController',
     adminScope: 'admin:tenant:write',

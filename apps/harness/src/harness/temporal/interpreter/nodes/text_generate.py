@@ -10,14 +10,16 @@ activity (the one ``HarnessDocWorkflow`` uses for the exact same purpose) alread
 sanctioned pattern: fetch the effective policy via ``ApiClient.get_policy``, then call
 ``TextClient.generate`` DIRECTLY — never through the gateway.
 
-**config.taskKey SELECTS the model .** This node used to validate taskKey
-and then ignore it, resolving from the ``HarnessPolicy`` provider/model columns — so every
-``generate.text`` node in every workflow resolved the SAME model whatever its task key, and the
-seeded ``AiTaskDefault`` rows were inert on this path (they were honoured only on the TypeScript
-path). The key is now threaded to ``get_policy`` as ``taskKey``, and the gateway overlays
-``textProvider``/``textModel`` from the ``AiTaskDefault`` row for that key, tenant → SYSTEM. An
-unresolved key leaves the policy columns in place, so a tenant with no opinion still runs. This activity reuses exactly that
-pattern rather than a second, gateway-routed one. Rule `06-python-services.md` §Gateway
+**Where the selection comes from.** This node used to validate ``config.taskKey`` and then
+ignore it, resolving from the ``HarnessPolicy`` provider/model columns — so every
+``generate.text`` node in every workflow resolved the SAME model whatever its task key. The key
+is still threaded to ``get_policy`` as ``taskKey`` (it names the capability and is validated
+against ``_ALLOWED_TASK_KEYS``), but since TASK-876 the gateway overlays
+``textProvider``/``textModel`` from the tenant's ASSIGNED ``TEXT_GENERATION`` agent
+(department → tenant → SYSTEM), not from a per-task-key row: ``AgentAssignment``'s key carries no
+role dimension, so a task key never chose which agent serves. With no agent assigned at any tier
+both fields are NULLED and this node degrades ``no_text_selection``. This activity reuses exactly
+that pattern rather than a second, gateway-routed one. Rule `06-python-services.md` §Gateway
 Integration sanctions direct peer calls to `apps/text` from a Python service.
 
 **No default provider/model** — mirrors the text service's own fail-closed 422 (`generate.py:315-320`,

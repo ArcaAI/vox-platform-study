@@ -179,6 +179,9 @@ enum ResourceType {
   UserVoiceProfile
   UserDepartment
   TenantFrontendConfig
+  // RETIRED (TASK-888): the TenantTtsConfig table is dropped; a Postgres enum
+  // value cannot be dropped in place, so the member stays for historical
+  // AuditLog rows. Same treatment as AiTaskDefault below.
   TenantTtsConfig
   // Tenant-scoped external identity provider (OIDC).
   TenantIdentityProvider

@@ -140,12 +140,7 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
       'the harness knowledge-ingest endpoint only, nor `API_GATEWAY_KEY`, which must be a real ApiKey row (see below).',
     'Service Tokens',
   ),
-  platformSecret(
-    'text.serviceToken',
-    'Text service token',
-    "Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check.",
-    'Service Tokens',
-  ),
+  // `text.serviceToken` stood here until TASK-888, alongside `nlp` and `tts`.
   // `nlp.serviceToken` stood here until TASK-872. It is the one member of this
   // family that is genuinely retired: no gateway call site asks
   // `SecretsService` for `NLP_SERVICE_TOKEN`, and no `apps/nlp` pydantic field
@@ -153,16 +148,15 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // the descriptor only kept `vault-seed-secrets.sh` provisioning a path
   // nothing reads.
   //
-  // Its `text` and `tts` siblings were proposed for removal in the same pass
-  // and deliberately KEPT, because `vault-kv-coverage.test.ts` proved both
-  // names are still fetched: `TEXT_SERVICE_TOKEN` as the legacy fallback name in
-  // `packages/applications` (TASK-883 retired the gateway readers), and — until
-  // TASK-879/880 — `TTS_SERVICE_TOKEN` at five `apps/api` call sites. Dropping a descriptor whose name a
-  // call site still reads stops the seeding script writing it, so the read
-  // resolves to undefined on a Vault-backed deployment while every
-  // `SECRETS_PROVIDER=env` box stays green — the exact production-only failure
-  // that guard exists to catch. The READ has to be retired first; the
-  // descriptor follows it.
+  // Its `text` and `tts` siblings were proposed for removal in the same pass and
+  // deliberately KEPT, because both names were still fetched: `TEXT_SERVICE_TOKEN`
+  // as the legacy fallback name in `packages/applications`, and `TTS_SERVICE_TOKEN`
+  // at five `apps/api` call sites. Dropping a descriptor whose name a call site
+  // still reads stops the seeding script writing it, so the read resolves to
+  // undefined on a Vault-backed deployment while every `SECRETS_PROVIDER=env` box
+  // stays green — the exact production-only failure `vault-kv-coverage.test.ts`
+  // exists to catch. THE READ IS RETIRED FIRST; THE DESCRIPTOR FOLLOWS IT — which
+  // is the order TASK-879/880 (tts) and TASK-888 (text) both took.
   platformSecret(
     'guardrail.serviceToken',
     'Guardrail service token',
@@ -177,7 +171,8 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   ),
   // `tts.serviceToken` was here until TASK-879/880 retired its last reader (the speech module,
   // the agent module and the service-release guard now use the shared internal access token).
-  // `text.serviceToken` follows once the `packages/applications` fallback names are gone.
+  // `text.serviceToken` followed in TASK-888, once the ten `packages/applications` fallback
+  // names, the discovery probe and the two `apps/api` guard maps were gone.
   platformSecret(
     'harness.internalServiceToken',
     'Harness knowledge-ingest token',

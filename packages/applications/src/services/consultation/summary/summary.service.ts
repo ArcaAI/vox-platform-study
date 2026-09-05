@@ -182,7 +182,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Optional so existing test fixtures (and any future test that
     // constructs SummaryService directly) compile without supplying a
     // mock. When unset we behave exactly like the pre-migration code
-    // when env var TEXT_SERVICE_TOKEN was unset: no X-Service-Token header.
+    // when the internal token was unset: no X-Service-Token header.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // (Tier-0 prompt resolution): load the consulting doctor's
     // `UserProfile.preferredPromptTemplateId`. Optional + trailing so existing
@@ -1703,14 +1703,14 @@ export class SummaryService extends BaseService implements ISummaryService {
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
-    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-    // migration fallback).: `X-Tenant-Id` is MANDATORY on this hop — this
+    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
+    // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY on this hop — this
     // is the FINALIZE path, whose output is the note a clinician signs, and it
     // reached Text with no tenant at all, so the tenant's BYOK provider/credential
     // was never resolved and the derived `funding`/`cost_basis` was attributed to
     // the platform tier instead. Both headers are built once, here, by the shared
     // contract rather than a hand-rolled literal.
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     const textHeaders = internalServiceHeaders({
       serviceToken,
       tenantId: this.tenantId,

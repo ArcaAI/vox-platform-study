@@ -137,7 +137,6 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | AuthController                           | `api/v1/auth`                                                              |    7 | Mixed                                        | forbidden                                                                               | class @ForbidApiKey; login+refresh @Public          | Public: POST login, POST refresh. JWT: logout, me, impersonate, stream-ticket, revoke-impersonation.                                     |
 | BillingAdminController                   | `api/v1/admin/billing/invoices`                                            |    7 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:BillingInvoice                               | Mutations SUPER_ADMIN in service.                                                                                                        |
 | PoliciesController                       | `api/v1/admin/rbac/policies`                                               |    7 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:Policy (GETs CanAny read\|manage)            | Break-glass on protected deletes.                                                                                                        |
-| TenantTtsConfigAdminController           | `api/v1/admin/tts-config`                                                  |    7 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:TenantTtsConfig                         | Catalog + credentials.                                                                                                                   |
 | TextProxyController                      | `api/v1/text-generations`                                                  |    7 | JWT + API key                                | consultation:report:write                                                               | @Authorize()                                        | Hand-rolled SSE on GET tasks/:taskId/stream (StreamScope text_task).                                                                     |
 | WebhookController                        | `api/v1/admin/webhooks`                                                    |    7 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:Webhook (deliveries read:WebhookRunHistory)  | Rotate-secret OCC.                                                                                                                       |
 | ApiHealthController                      | `api/v1/health`                                                            |    4 | Public                                       | forbidden (inert — every route is @Public)                                              | none (all @Public)                                  | PUBLIC-ONLY: /, /live, /ready, /startup. No longer "Mixed" — the two CASL-gated /services routes moved to AdminHealthServicesController. |
@@ -892,22 +891,6 @@ Every live HTTP `@Controller` class. Paths include `/api/v1` except prefix-exclu
 - `PATCH /api/v1/admin/rbac/policies/:id` — jwt `manage:Policy` — apikey same — optional break-glass
 - `DELETE /api/v1/admin/rbac/policies/:id` — jwt `manage:Policy` — apikey same — break-glass body (428/401/400); protected policies 403
 - `POST /api/v1/admin/rbac/policies/validate` — jwt `manage:Policy` — apikey same
-
-### TenantTtsConfigAdminController
-
-- **File:** `src/modules/tenant-tts-config/tenant-tts-config-admin.controller.ts`
-- **Prefix:** `admin/tts-config` → `api/v1/admin/tts-config`
-- **api_count:** 7
-- **Auth model:** JWT + API key
-- **API key:** `admin:tenant-tts-config:manage`
-- **JWT / other:** read/manage:TenantTtsConfig
-- **Notes:** Catalog + credentials.
-
-- `GET /api/v1/admin/tts-config` — jwt read:TenantTtsConfig — apikey yes — getEffective
-- `GET /api/v1/admin/tts-config/row` — jwt read:TenantTtsConfig — apikey yes — getRow
-- `PUT /api/v1/admin/tts-config/row` — jwt manage:TenantTtsConfig — apikey yes — updateRow — extras: `@RequiresIfMatch`
-- `GET /api/v1/admin/tts-config/catalog` — jwt read:TenantTtsConfig — apikey yes — getCatalog
-- _(TASK-862: the `credentials/**` facade was REMOVED; use `admin/providers/tts/:provider`. Every remaining route on this controller is DEPRECATED (`Deprecation` headers, removed in R3 with the TTS Agent).)_
 
 ### TextProxyController
 

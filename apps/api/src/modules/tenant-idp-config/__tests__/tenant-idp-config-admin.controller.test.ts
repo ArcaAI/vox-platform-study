@@ -4,7 +4,7 @@
  * CASL `@Authorize` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ e2e). These specs cover the controller's OWN logic:
  * tenant vs. super-admin scoping (404-over-403 precedent — mirrors
- * `TenantTtsConfigAdminController`), and the If-Match-over-body version
+ * `TenantSttConfigAdminController`; the `TenantTtsConfig` sibling it was written against is retired), and the If-Match-over-body version
  * precedence forwarded to the service.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

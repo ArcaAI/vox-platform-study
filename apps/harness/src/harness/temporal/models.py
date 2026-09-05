@@ -308,7 +308,8 @@ class HarnessPolicy(BaseModel):
     # meant ``from_api`` resolving these two literals on every run: a hardcoded engine name and
     # model id with no reader, which rule 00 §Configuration Principles forbids. The guardrail
     # engine + model are resolved by ``apps/guardrail`` from the ``guardrail.safety``
-    # AiTaskDefault (tenant -> SYSTEM, fail-closed); the harness only supplies the text.
+    # AiRoutingPolicy default row (tenant -> SYSTEM, fail-closed); the harness only
+    # supplies the text.
     # ``extra="ignore"`` above is what makes this replay-safe: a history recorded before the
     # drop still carries the keys and still decodes, they are simply ignored.
     # renamed these from smr_provider/smr_model. These payloads are
@@ -324,8 +325,8 @@ class HarnessPolicy(BaseModel):
     text_model: str | None = Field(
         default=None, validation_alias=AliasChoices("text_model", "smr_model")
     )
-    # LLM-as-judge selection resolved from the SYSTEM ``AiTaskDefault``
-    # key ``harness.judge`` (SUPER_ADMIN-owned). NULLABLE by design (like
+    # LLM-as-judge selection resolved from the SYSTEM ``AiRoutingPolicy`` default
+    # row for ``harness.judge`` (SUPER_ADMIN-owned). NULLABLE by design (like
     # ``text_provider``): ``None`` ⇒ the SYSTEM default is missing/disabled, and the
     # inferential pass FAILS CLOSED (degrades) rather than falling back to the
     # env ``HARNESS_JUDGE_PROVIDER``/``HARNESS_JUDGE_MODEL`` selection — env carries
