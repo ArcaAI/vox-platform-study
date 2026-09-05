@@ -160,7 +160,16 @@ def _component_to_dict(component: ComponentHealth) -> dict[str, Any]:
 
 
 async def _check_database() -> ComponentHealth:
-    """Check database connectivity."""
+    """Check database connectivity.
+
+    TASK-861: the read-only Postgres connection is OFF by default and nothing on
+    the agent path reads it (selection arrives as a gateway-resolved spec), so a
+    ``DatabaseDisabledError`` is a DECLARED absence, not a fault. Reporting it as
+    unhealthy makes ``/health/ready`` fail permanently, which keeps the pod out
+    of the Service Endpoints and stops STT serving at all.
+    """
+    from stt.core.database.connection import DatabaseDisabledError
+
     start = time.monotonic()
     try:
         async with get_db_session() as session:
@@ -170,6 +179,13 @@ async def _check_database() -> ComponentHealth:
             name="database",
             status=HealthStatus.HEALTHY,
             latency_ms=latency,
+        )
+    except DatabaseDisabledError:
+        return ComponentHealth(
+            name="database",
+            status=HealthStatus.HEALTHY,
+            latency_ms=(time.monotonic() - start) * 1000,
+            message="disabled by configuration (STT_DATABASE_ENABLED=false); not on the agent path",
         )
     except Exception as e:
         latency = (time.monotonic() - start) * 1000
