@@ -3,7 +3,7 @@
 Harness has NO database access (services never read the DB directly), so
 the registry path arrives via the control plane's effective-config `modelWeights`
 map, keyed by the `AiModel` SLUG (`minicheck-flan-t5-large`) — harness's use has
-no `AiTaskDefault` task key.
+no routing task key of its own.
 
 The effective-config client does not yet always carry the `modelWeights`
 contract, so this stage ships env-fallback-first: the control-plane lane is

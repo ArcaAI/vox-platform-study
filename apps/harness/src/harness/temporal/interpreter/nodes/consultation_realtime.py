@@ -19,7 +19,7 @@ sets the precedent of grouping by pipeline stage rather than one module per node
 Nothing here hosts a model. LLM judgement goes to ``apps/text`` via the same ``TextClient`` the
 already-shipped ``generate`` activity uses; NER goes to ``apps/nlp`` through the existing
 ``extract_entities`` activity. Provider/model SELECTION resolves tenant -> SYSTEM through
-``get_policy(task_key=...)`` — the ``AiTaskDefault`` overlay ``nodes/text_generate.py``
+``get_policy(task_key=...)`` — the assigned-agent overlay ``nodes/text_generate.py``
 established — and **fails CLOSED**: an unresolved selection DEGRADES the node rather than
 substituting an env default (00-project-context.md Principles).
 
@@ -97,9 +97,10 @@ from harness.temporal.interpreter.nodes._soap import (
 )
 from harness.temporal.models import ExtractEntitiesInput, HarnessPolicy
 
-#: Task keys this family may select under. Mirrors ``nodes/text_generate.py``'s
-#: ``_ALLOWED_TASK_KEYS`` — the value still SELECTS the model via the ``AiTaskDefault`` overlay;
-#: this set only rejects a typo'd key before a pointless gateway round trip.
+#: Task keys this family may run under. Mirrors ``nodes/text_generate.py``'s
+#: ``_ALLOWED_TASK_KEYS``. The value does NOT select a model — since TASK-876 the tenant's
+#: assigned ``TEXT_GENERATION`` agent does — so this set only rejects a typo'd key before a
+#: pointless gateway round trip.
 _ALLOWED_TASK_KEYS = {"text.finalize", "text.live", "text.test"}
 
 #: Default transcript window for W1. A tuning knob, not a selection — it may fail open to this

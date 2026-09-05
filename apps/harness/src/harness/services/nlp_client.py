@@ -45,7 +45,7 @@ class NlpClient:
         """Extract medical entities from ``text`` and map them to ``NEREntity``.
 
         tenant_id is MANDATORY : NER model selection is per-tenant
-        (`nlp.ner` `AiTaskDefault`), so a dropped tenant silently runs someone
+        (the `nlp.ner` `AiRoutingPolicy` row), so a dropped tenant silently runs someone
         else's model choice. Tenant-less internal work must declare itself with a
         ``tenantless:<reason>`` marker instead of omitting the header.
         """
