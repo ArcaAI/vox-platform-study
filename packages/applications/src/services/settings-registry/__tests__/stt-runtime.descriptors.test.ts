@@ -79,14 +79,16 @@ describe('STT_RUNTIME_SETTINGS', () => {
 
   it('keeps every kill-switch defaulting OFF', () => {
     // `SettingsRegistry.killSwitches()` asserts this globally; repeating it here
-    // names the two that are marked, and documents why `stt.pubsub.enabled` —
+    // names the one that is marked, and documents why `stt.pubsub.enabled` —
     // which defaults ON — is deliberately NOT marked as one.
+    //
+    // `stt.semanticEndpoint.enabled` and `stt.punctuation.enabled` were the other
+    // two: TASK-877 deleted both. A kill-switch over an AGENT concept is the wrong
+    // shape — the agent chooses `streaming.endpointing` and `postProcessing.
+    // punctuation.enabled`, and the platform vetoes by not publishing the model row
+    // each needs. One marked kill-switch is left, over a genuinely platform concern.
     const killSwitches = STT_RUNTIME_SETTINGS.filter((d) => d.killSwitch);
-    expect(killSwitches.map((d) => d.key).sort()).toEqual([
-      'stt.azureFoundry.enabled',
-      'stt.punctuation.enabled',
-      'stt.semanticEndpoint.enabled',
-    ]);
+    expect(killSwitches.map((d) => d.key).sort()).toEqual(['stt.azureFoundry.enabled']);
     for (const descriptor of killSwitches) {
       expect(descriptor.default, descriptor.key).toBe(false);
     }
@@ -94,6 +96,17 @@ describe('STT_RUNTIME_SETTINGS', () => {
     const pubsub = STT_RUNTIME_SETTINGS.find((d) => d.key === 'stt.pubsub.enabled');
     expect(pubsub?.killSwitch).toBeUndefined();
     expect(pubsub?.default).toBe(true);
+  });
+
+  it('has no orphaned semanticEndpoint.enabled feature flag left behind', () => {
+    // The EIGHTH duplicate of the `stt.semanticEndpoint.*` family lived outside
+    // this file, in `feature-flags.descriptors.ts` — a bare (no `stt.` prefix)
+    // `semanticEndpoint.enabled`, `tier: 'env'`, bound to `SEMANTIC_ENDPOINT_ENABLED`.
+    // Its only reader was the `Settings.semantic_endpoint_enabled` field TASK-877
+    // deleted with the rest of the family, so the descriptor was left with nothing
+    // reading it. Deleted for the same reason as the other seven: a duplicate from
+    // the old architecture is removed completely, not left dual-homed.
+    expect(HOPE_SETTINGS_REGISTRY.has('semanticEndpoint.enabled')).toBe(false);
   });
 
   it('leaves the storage keys to the db-config cascade rather than re-declaring them here', () => {

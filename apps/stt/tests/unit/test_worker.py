@@ -192,12 +192,16 @@ class TestWorkerNewServiceInitialization:
 
 
 class TestWorkerPunctuationLogging:
-    """Worker boot-log contract for the punctuation service
-    (mirrors the FastAPI lifespan contract in test_main.py)."""
+    """Worker boot contract for the punctuation service (TASK-877 follow-up):
+    punctuation is NOT warmed at boot any more. The model to load comes from a
+    session's ResolvedAsrSpec (models.punctuation), which does not exist until an
+    agent has been resolved — process boot has no spec. This mirrors the FastAPI
+    lifespan contract already asserted by `TestLifespanLazyModels` in test_main.py.
+    """
 
     @contextmanager
     def _quiet_worker_init(self):
-        """Patch all non-punctuation services to initialize without warnings."""
+        """Patch all services to initialize without warnings."""
         mock_vad = MagicMock()
         mock_vad.initialize = AsyncMock()
         mock_embedding = MagicMock()
@@ -227,47 +231,22 @@ class TestWorkerPunctuationLogging:
         return [c.args[0] for c in mock_logger.info.call_args_list if c.args]
 
     @pytest.mark.asyncio
-    async def test_failed_punctuation_init_logs_one_warning_and_debug_detail(self):
-        with self._quiet_worker_init() as mock_logger:
-            with patch(
-                "stt.punctuation.service.initialize",
-                side_effect=RuntimeError("cadence load failed"),
-            ):
-                from stt.worker import initialize_services
+    async def test_boot_never_calls_punctuation_initialize(self):
+        with self._quiet_worker_init(), patch("stt.punctuation.service.initialize") as mock_init:
+            from stt.worker import initialize_services
 
-                await initialize_services()
+            await initialize_services()
 
-        warning_calls = mock_logger.warning.call_args_list
-        assert len(warning_calls) == 1
-        assert "Punctuation service initialization failed" in warning_calls[0].args[0]
-
-        debug_exc_info_calls = [
-            c for c in mock_logger.debug.call_args_list if c.kwargs.get("exc_info") is True
-        ]
-        assert len(debug_exc_info_calls) == 1
-
-        assert "Punctuation service initialized" not in self._info_messages(mock_logger)
+        mock_init.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_disabled_punctuation_does_not_log_initialized(self):
+    async def test_boot_never_logs_punctuation_initialized_or_warns(self):
         with self._quiet_worker_init() as mock_logger:
-            with patch("stt.punctuation.service.initialize", return_value=False):
-                from stt.worker import initialize_services
+            from stt.worker import initialize_services
 
-                await initialize_services()
+            await initialize_services()
 
         assert "Punctuation service initialized" not in self._info_messages(mock_logger)
-        assert mock_logger.warning.call_count == 0
-
-    @pytest.mark.asyncio
-    async def test_loaded_punctuation_logs_initialized(self):
-        with self._quiet_worker_init() as mock_logger:
-            with patch("stt.punctuation.service.initialize", return_value=True):
-                from stt.worker import initialize_services
-
-                await initialize_services()
-
-        assert "Punctuation service initialized" in self._info_messages(mock_logger)
         assert mock_logger.warning.call_count == 0
 
 

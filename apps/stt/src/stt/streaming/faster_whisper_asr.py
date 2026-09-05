@@ -226,6 +226,11 @@ class FasterWhisperAsrAdapter:
         condition = getattr(inference_config, "condition_on_prev_tokens", False)
         kwargs["condition_on_previous_text"] = bool(condition)
 
+        # TASK-877 — ResolvedAsrSpec.decoding.vadFilter. The streaming preprocessor
+        # has already run VAD, so the agent default is OFF and this stays a
+        # deliberate per-agent opt-in rather than a hardcoded False.
+        kwargs["vad_filter"] = bool(getattr(inference_config, "vad_filter", False))
+
         return kwargs
 
     def __call__(
@@ -242,8 +247,9 @@ class FasterWhisperAsrAdapter:
             "task": self._task,
             "language": self._language,
             "word_timestamps": True,
-            # VAD already ran in the streaming preprocessor.
-            "vad_filter": False,
+            # `vad_filter` arrives through `_decode_kwargs` (the agent's
+            # `decoding.vadFilter`); VAD already ran in the streaming preprocessor,
+            # so the spec default is False.
             **self._decode_kwargs,
         }
         if prompt:

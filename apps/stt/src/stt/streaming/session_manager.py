@@ -306,32 +306,13 @@ class SessionManager:
             )
             self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
             self._partial_window_s = float(getattr(_settings, "streaming_partial_window_s", 8.0))
-            # Lowered, configurable partial-emit cadence.
-            self._partial_interval_s = float(
-                getattr(_settings, "streaming_partial_interval_s", 0.4)
-            )
+            # TASK-877 — the partial-emit cadence and the whole semantic-endpoint
+            # family used to be cached here from `stt.streaming.partialIntervalS`
+            # and `stt.semanticEndpoint.*`. Both are per-session AGENT concepts, so
+            # all seven platform keys are deleted and the values now arrive on the
+            # session's `ResolvedAsrSpec`.
             self._audio_trim_interval_s = float(
                 getattr(_settings, "streaming_audio_trim_interval_s", 30.0)
-            )
-            # Semantic endpointing knobs (bare env names; default
-            # OFF so the streaming hot path keeps the fixed silence offset).
-            self._semantic_endpoint_enabled = bool(
-                getattr(_settings, "semantic_endpoint_enabled", False)
-            )
-            self._semantic_endpoint_min_silence_ms = int(
-                getattr(_settings, "semantic_endpoint_min_silence_ms", 200)
-            )
-            self._semantic_endpoint_max_silence_ms = int(
-                getattr(_settings, "semantic_endpoint_max_silence_ms", 500)
-            )
-            self._semantic_endpoint_confidence_threshold = float(
-                getattr(_settings, "semantic_endpoint_confidence_threshold", 0.85)
-            )
-            self._semantic_endpoint_min_words = int(
-                getattr(_settings, "semantic_endpoint_min_words", 3)
-            )
-            self._semantic_endpoint_model_id = str(
-                getattr(_settings, "semantic_endpoint_model_id", "") or ""
             )
         except Exception:
             self._reaper_interval_s = 300
@@ -347,15 +328,8 @@ class SessionManager:
             self._transcript_outbox_max_attempts = 10
             self._snapshot_interval_s = 30.0
             self._partial_window_s = 8.0
-            self._partial_interval_s = 0.4
             self._audio_trim_interval_s = 30.0
             # Semantic endpointing defaults (OFF).
-            self._semantic_endpoint_enabled = False
-            self._semantic_endpoint_min_silence_ms = 200
-            self._semantic_endpoint_max_silence_ms = 500
-            self._semantic_endpoint_confidence_threshold = 0.85
-            self._semantic_endpoint_min_words = 3
-            self._semantic_endpoint_model_id = ""
 
     # ------------------------------------------------------------------
     # Properties
@@ -439,14 +413,22 @@ class SessionManager:
           preprocessor's legacy hardcoded 700 ms (shaves ~200 ms off
           every final's latency floor).
         - The partial decode window is settings-driven and always wired.
-        - The partial-emit cadence is settings-driven and always wired
-          (lowered default so partials render in near-real-time).
+        - TASK-877 — the partial-emit cadence and the utterance cap come from the
+          SESSION's ``ResolvedAsrSpec`` (``streaming.{partialIntervalMs,maxUtteranceSec}``).
+          The platform key ``stt.streaming.partialIntervalS`` is deleted: it
+          duplicated an agent concept, and a per-session cadence cannot be a
+          per-process setting. When the agent says nothing the kwarg is OMITTED so
+          the preprocessor's own default stands — never restated here.
         """
         kwargs: dict[str, Any] = {
             "partial_window_s": self._partial_window_s,
-            # Lowered, settings-driven partial-emit cadence.
-            "partial_interval_s": self._partial_interval_s,
         }
+        spec_streaming = getattr(pipeline_config, "streaming", None) if pipeline_config else None
+        partial_interval_s = getattr(spec_streaming, "partial_interval_s", None)
+        if isinstance(partial_interval_s, (int, float)) and not isinstance(
+            partial_interval_s, bool
+        ):
+            kwargs["partial_interval_s"] = float(partial_interval_s)
         if pipeline_config and pipeline_config.preprocessing.vad.enabled:
             vad_cfg = pipeline_config.preprocessing.vad
             kwargs["threshold"] = vad_cfg.threshold
@@ -462,6 +444,11 @@ class SessionManager:
                 kwargs["force_emit_overlap_ms"] = vad_cfg.force_emit_overlap_ms
         else:
             kwargs["min_silence_duration_ms"] = self._profile.vad_silence_threshold_ms
+        # The agent's utterance cap outranks the front-end's force-emit window: it
+        # is the session-level bound the agent asked for, applied last so it wins.
+        max_utterance_sec = getattr(spec_streaming, "max_utterance_sec", None)
+        if isinstance(max_utterance_sec, (int, float)) and not isinstance(max_utterance_sec, bool):
+            kwargs["max_utterance_duration_ms"] = int(max_utterance_sec * 1000)
         # Build + attach the semantic endpointer (None when
         # disabled, so the preprocessor keeps the exact fixed silence offset).
         # Shared with crash recovery, so recovered sessions get one too.
@@ -765,32 +752,24 @@ class SessionManager:
             policy.reset()
 
     def _resolve_endpoint_config(self, pipeline_config: Any) -> EndpointConfig | None:
-        """Resolve the effective semantic-endpoint config, or None when disabled.
+        """The session's own endpoint config, or None when the agent chose ``fixed``.
 
-        Resolution order:
-        1. A pipeline override — ``preprocessing.endpoint`` is a real
-           ``EndpointConfig`` with ``enabled=True`` (the future seed opt-in).
-           Strict ``isinstance`` so MagicMock/duck-typed test configs never
-           enable it (mirrors ``_make_commit_policy``).
-        2. Otherwise the global settings (the streaming enable surface, default
-           OFF) build an ``EndpointConfig`` when ``semantic_endpoint_enabled``.
-        Returns None when neither enables it.
+        TASK-877 — the SPEC is the only source. ``pipeline_spec_from_resolved``
+        builds ``preprocessing.endpoint`` from ``streaming.endpointing`` plus the
+        optional ``streaming.semantic`` block and the ``endpointing`` model role,
+        so an agent that asks for semantic endpointing now gets it. The former
+        second branch — the ``stt.semanticEndpoint.*`` platform family — is gone:
+        it duplicated an agent concept, and its kill-switch role is served instead
+        by the agent's own ``endpointing`` choice plus an unpublished EOU model row.
+
+        Strict ``isinstance`` so MagicMock/duck-typed test configs never enable it
+        (mirrors ``_make_commit_policy``).
         """
         preprocessing = getattr(pipeline_config, "preprocessing", None)
-        pipeline_endpoint = getattr(preprocessing, "endpoint", None)
-        if isinstance(pipeline_endpoint, EndpointConfig) and pipeline_endpoint.enabled:
-            return pipeline_endpoint
-
-        if not self._semantic_endpoint_enabled:
-            return None
-        return EndpointConfig(
-            enabled=True,
-            min_endpoint_silence_ms=self._semantic_endpoint_min_silence_ms,
-            max_endpoint_silence_ms=self._semantic_endpoint_max_silence_ms,
-            confidence_threshold=self._semantic_endpoint_confidence_threshold,
-            min_words=self._semantic_endpoint_min_words,
-            model_id=self._semantic_endpoint_model_id,
-        )
+        endpoint = getattr(preprocessing, "endpoint", None)
+        if isinstance(endpoint, EndpointConfig) and endpoint.enabled:
+            return endpoint
+        return None
 
     def _make_endpointer(self, pipeline_config: Any) -> SemanticEndpointer | None:
         """Build a per-session semantic endpointer when enabled.
