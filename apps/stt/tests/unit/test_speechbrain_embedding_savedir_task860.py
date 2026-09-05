@@ -44,7 +44,7 @@ def _load(model_id: str) -> MagicMock:
         patch.dict(sys.modules, modules),
         patch("stt.diarization.speechbrain_embedding._resolve_hf_token", return_value=None),
     ):
-        SpeechBrainEmbeddingService()._load_model_sync(model_id, settings)
+        SpeechBrainEmbeddingService(hf_model_id=model_id)._load_model_sync(model_id, settings)
     return encoder_cls
 
 

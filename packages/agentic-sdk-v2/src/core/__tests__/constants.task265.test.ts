@@ -42,9 +42,30 @@ describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profiles API', () => {
     }
   });
 
-  it('keys are exactly {enroll, list, delete, activate, deactivate}', () => {
-    // Extended with activate/deactivate for SDK control surface.
-    expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual(['activate', 'deactivate', 'delete', 'enroll', 'list']);
+  it('keys are exactly {enroll, list, delete, activate, deactivate, enrollmentTarget}', () => {
+    // Extended with activate/deactivate for the SDK control surface, and with
+    // `enrollmentTarget` by TASK-887 — diarization is a declared ASR-agent option, so a client
+    // must be able to ask which speaker-embedding model a new enrollment would land in.
+    expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual([
+      'activate',
+      'deactivate',
+      'delete',
+      'enroll',
+      'enrollmentTarget',
+      'list',
+    ]);
+  });
+
+  it('builds the enrollment-target path with and without an explicit agent', () => {
+    // Absent ⇒ the tenant's ASSIGNED ASR agent, which is what a session that names none runs.
+    expect(VOICE_EMBEDDING_ENDPOINTS.enrollmentTarget()).toBe('/voice-profiles/enrollment-target');
+    expect(VOICE_EMBEDDING_ENDPOINTS.enrollmentTarget('platform-transcription')).toBe(
+      '/voice-profiles/enrollment-target?agentSlug=platform-transcription',
+    );
+    const dangerous = 'slug/with?special#chars&more=true';
+    expect(VOICE_EMBEDDING_ENDPOINTS.enrollmentTarget(dangerous)).toBe(
+      '/voice-profiles/enrollment-target?agentSlug=' + encodeURIComponent(dangerous),
+    );
   });
 });
 

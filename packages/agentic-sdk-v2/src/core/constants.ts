@@ -1137,6 +1137,14 @@ export const DEFAULT_NER_CONFIG = {
 export const VOICE_EMBEDDING_ENDPOINTS = {
   enroll: '/voice-profiles/enroll',
   list: '/voice-profiles',
+  /**
+   * TASK-887 — which speaker-embedding model a new enrollment would use. Diarization is a
+   * declared ASR-agent option, so a profile is only ever matched by an agent bound to the model
+   * that embedded it; a client compares this against its profiles' `modelId` to know which are
+   * still live and which need re-enrolling.
+   */
+  enrollmentTarget: (agentSlug?: string) =>
+    agentSlug ? `/voice-profiles/enrollment-target?agentSlug=${encodeURIComponent(agentSlug)}` : '/voice-profiles/enrollment-target',
   delete: (profileId: string) => `/voice-profiles/${encodeURIComponent(profileId)}`,
   activate: (profileId: string) => `/voice-profiles/${encodeURIComponent(profileId)}/activate`,
   deactivate: (profileId: string) => `/voice-profiles/${encodeURIComponent(profileId)}/deactivate`,

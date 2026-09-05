@@ -74,43 +74,45 @@ class TestOverlay:
     def _snapshot(self, settings_block: dict[str, object]) -> dict[str, object]:
         return {"service": "stt", "settings": settings_block}
 
-    # Specimens changed in TASK-872 and again in TASK-880. They ran first on
+    # Specimens changed in TASK-872, TASK-880 and again in TASK-887. They ran first on
     # `vad_threshold` / `vad_min_speech_duration_ms` (removed in TASK-872 — the live
     # path takes its VAD parameters from `ResolvedAsrSpec`), then on
     # `vad_speech_pad_ms` and `vad_model_path` (removed in TASK-880 — the padding is
-    # an agent knob and the weights are the `AiModel` row). The overlay MECHANICS are
-    # what these tests are for, so they are re-specimened onto knobs the control plane
-    # really does serve: `voice_profile_min_similarity` (float),
-    # `punctuation_max_length` (int) and `punctuation_model_cache_dir` (`str | None`).
+    # an agent knob and the weights are the `AiModel` row), then on
+    # `segment_merge_gap_threshold_s` (removed in TASK-887 — it is the agent's
+    # `audioFrontEnd.diarization.matchThreshold`). The overlay MECHANICS are what these
+    # tests are for, so they are re-specimened onto knobs the control plane really does
+    # serve: `segment_merge_gap_threshold_s` (float), `punctuation_max_length` (int) and
+    # `punctuation_model_cache_dir` (`str | None`).
     def test_a_served_value_is_applied(self) -> None:
         settings = Settings(_env_file=None)
-        key = CONTROL_PLANE_KEYS["voice_profile_min_similarity"]
+        key = CONTROL_PLANE_KEYS["segment_merge_gap_threshold_s"]
         applied = apply_control_plane(
             settings, self._snapshot({key: {"value": 0.77, "dataType": "number", "source": "db"}})
         )
-        assert settings.voice_profile_min_similarity == 0.77
-        assert "voice_profile_min_similarity" in applied
+        assert settings.segment_merge_gap_threshold_s == 0.77
+        assert "segment_merge_gap_threshold_s" in applied
 
     def test_a_null_value_keeps_the_bootstrap_value(self) -> None:
         settings = Settings(_env_file=None)
-        before = settings.voice_profile_min_similarity
-        key = CONTROL_PLANE_KEYS["voice_profile_min_similarity"]
+        before = settings.segment_merge_gap_threshold_s
+        key = CONTROL_PLANE_KEYS["segment_merge_gap_threshold_s"]
         applied = apply_control_plane(
             settings,
             self._snapshot({key: {"value": None, "dataType": "number", "source": "env-fallback"}}),
         )
-        assert settings.voice_profile_min_similarity == before
+        assert settings.segment_merge_gap_threshold_s == before
         assert applied == []
 
     def test_a_type_mismatch_is_refused_not_coerced(self) -> None:
         settings = Settings(_env_file=None)
-        before = settings.voice_profile_min_similarity
-        key = CONTROL_PLANE_KEYS["voice_profile_min_similarity"]
+        before = settings.segment_merge_gap_threshold_s
+        key = CONTROL_PLANE_KEYS["segment_merge_gap_threshold_s"]
         apply_control_plane(
             settings,
             self._snapshot({key: {"value": "loud", "dataType": "number", "source": "db"}}),
         )
-        assert settings.voice_profile_min_similarity == before
+        assert settings.segment_merge_gap_threshold_s == before
 
     def test_a_bool_is_never_read_as_a_number(self) -> None:
         """`bool` is an `int` subclass — the trap `_positive_int` already guards."""

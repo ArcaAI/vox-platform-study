@@ -483,42 +483,39 @@ class TestP507WhisperCppEngine:
 
 
 class TestP4EmbeddingDim:
-    """The voice-profile embedding dim follows the SCHEMA, not a setting."""
+    """TASK-887 — there is no expected embedding dim to police any more.
 
-    def test_extraction_dim_follows_the_module_constant(self):
-        """`VOICE_PROFILE_EMBEDDING_DIM` is gone; the constant is the source.
+    The width used to be one fact in two homes (an env var and the Prisma `vector(N)` column),
+    then one module constant gated against the schema. The owner removed the single platform
+    embedding space entirely: the column is a dimension-agnostic `vector`, a `UserVoiceProfile`
+    records the model that embedded it, and matching only compares profiles from that model —
+    so width is a property of the model the ASR agent named.
+    """
 
-        It was previously settable from env *and* stated in the Prisma
-        `vector(N)` column — one fact, two homes, and an operator could move
-        only one of them. `test_task799_env_surface.py` now gates the constant
-        against `user.prisma` directly, so this asserts the remaining half:
-        the service reads that constant rather than any settings field.
-        """
-        from unittest.mock import MagicMock, patch
+    def test_the_extraction_service_declares_no_expected_dimension(self):
+        from unittest.mock import MagicMock
 
         from stt.voice_profile import extraction_service as es
 
-        # A settings object that still carries the retired field must NOT be
-        # consulted — that is the regression this guards.
-        settings = MagicMock(voice_profile_embedding_dim=192)
-        with patch.object(es, "EXPECTED_EMBEDDING_DIM", 256):
-            with patch("stt.core.config.settings.get_settings", return_value=settings):
-                svc = es.ExtractionService(
-                    embedding_service=MagicMock(),
-                    vad_service=MagicMock(),
-                    min_cross_sample_similarity=0.5,
-                )
-        assert svc._expected_embedding_dim == 256
+        assert not hasattr(es, "EXPECTED_EMBEDDING_DIM")
 
-    def test_explicit_dim_still_wins(self):
-        from unittest.mock import MagicMock
-
-        from stt.voice_profile.extraction_service import ExtractionService
-
-        svc = ExtractionService(
+        svc = es.ExtractionService(
             embedding_service=MagicMock(),
             vad_service=MagicMock(),
             min_cross_sample_similarity=0.5,
-            expected_embedding_dim=512,
         )
-        assert svc._expected_embedding_dim == 512
+        assert not hasattr(svc, "_expected_embedding_dim")
+
+    def test_the_constructor_no_longer_accepts_a_dimension(self):
+        from unittest.mock import MagicMock
+
+        import pytest as _pytest
+
+        from stt.voice_profile.extraction_service import ExtractionService
+
+        with _pytest.raises(TypeError):
+            ExtractionService(
+                embedding_service=MagicMock(),
+                vad_service=MagicMock(),
+                expected_embedding_dim=512,  # type: ignore[call-arg]
+            )

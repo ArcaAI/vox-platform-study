@@ -114,6 +114,38 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
       expect(entries).toHaveLength(3);
     });
 
+    /**
+     * TASK-887 — diarization is a declared ASR-agent option, so an enrollment is FOR an agent:
+     * the gateway resolves it, pushes ITS speaker-embedding model to apps/stt, and stores the
+     * profile in that model's space. A profile is then only matched by an agent bound to the
+     * same model.
+     */
+    it('forwards agentSlug on the multipart form when the caller names an agent', async () => {
+      mockStore.apiClient.postFormData.mockResolvedValue({ id: 'p-1' });
+      const { result } = renderHook(() => useVoiceEmbedding());
+      const audio = new Blob(['data'], { type: 'audio/wav' });
+
+      await act(async () => {
+        await result.current.enroll(audio, { label: 'My Voice', agentSlug: 'platform-transcription' });
+      });
+
+      const [, formData] = mockStore.apiClient.postFormData.mock.calls[0];
+      expect((formData as FormData).get('agentSlug')).toBe('platform-transcription');
+    });
+
+    it('omits agentSlug entirely when none is given — the tenant’s ASSIGNED agent decides', async () => {
+      mockStore.apiClient.postFormData.mockResolvedValue({ id: 'p-1' });
+      const { result } = renderHook(() => useVoiceEmbedding());
+      const audio = new Blob(['data'], { type: 'audio/wav' });
+
+      await act(async () => {
+        await result.current.enroll(audio);
+      });
+
+      const [, formData] = mockStore.apiClient.postFormData.mock.calls[0];
+      expect((formData as FormData).get('agentSlug')).toBeNull();
+    });
+
     it('sets error on failure and resets isUploading', async () => {
       mockStore.apiClient.postFormData.mockRejectedValue(new Error('Enroll failed'));
       const { result } = renderHook(() => useVoiceEmbedding());
@@ -481,6 +513,32 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
       const cached = localStorage.getItem('vox.voiceProfiles.user-1.tenant-1');
       expect(cached).toBeNull();
       expect(result.current.profiles).toEqual([{ id: 'p-1' }]);
+    });
+  });
+
+  describe('enrollmentTarget (TASK-887)', () => {
+    it('GETs the target for the ASSIGNED agent when none is named', async () => {
+      mockStore.apiClient.get.mockResolvedValue({ agentSlug: 'platform-transcription', modelId: 'wespeaker-voxceleb-resnet34', diarizationEnabled: true });
+      const { result } = renderHook(() => useVoiceEmbedding());
+
+      let target: unknown;
+      await act(async () => {
+        target = await result.current.enrollmentTarget();
+      });
+
+      expect(mockStore.apiClient.get).toHaveBeenCalledWith(VOICE_EMBEDDING_ENDPOINTS.enrollmentTarget());
+      expect(target).toMatchObject({ modelId: 'wespeaker-voxceleb-resnet34' });
+    });
+
+    it('GETs the target for an explicit agent', async () => {
+      mockStore.apiClient.get.mockResolvedValue({ agentSlug: 'clinic-asr', modelId: 'ecapa-tdnn-voxceleb', diarizationEnabled: true });
+      const { result } = renderHook(() => useVoiceEmbedding());
+
+      await act(async () => {
+        await result.current.enrollmentTarget('clinic-asr');
+      });
+
+      expect(mockStore.apiClient.get).toHaveBeenCalledWith(VOICE_EMBEDDING_ENDPOINTS.enrollmentTarget('clinic-asr'));
     });
   });
 });

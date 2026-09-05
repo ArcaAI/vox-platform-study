@@ -150,12 +150,13 @@ export { useUserSettings, type UseUserSettingsReturn } from './useUserSettings';
 
 // Voice embedding hook
 export { useVoiceEmbedding, type UseVoiceEmbeddingReturn } from './useVoiceEmbedding';
-export type { VoiceProfile, EnrollFiles, EnrollOptions } from './useVoiceEmbedding';
+export type { VoiceProfile, EnrollFiles, EnrollOptions, VoiceEnrollmentTarget } from './useVoiceEmbedding';
 
 // Voice enrollment status helper + checker interface
 export {
   useVoiceEnrollmentStatus,
   createVoiceEnrollmentChecker,
+  type UseVoiceEnrollmentStatusOptions,
   type UseVoiceEnrollmentStatusReturn,
   type VoiceEnrollmentChecker,
 } from './useVoiceEnrollmentStatus';

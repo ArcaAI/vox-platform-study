@@ -37,6 +37,25 @@ export type EnrollFiles = File | Blob | ReadonlyArray<File | Blob>;
 export interface EnrollOptions {
   /** Optional human-readable label persisted on the profile row (forwarded as form field). */
   label?: string;
+  /**
+   * TASK-887 — the SPEECH_TO_TEXT agent this enrollment is FOR. The agent names the
+   * speaker-embedding model, and the profile is stored in THAT model's space, so it is only
+   * ever matched by an agent bound to the same model. Omit to enroll for the tenant's assigned
+   * ASR agent — which is what a session that names no agent will run.
+   */
+  agentSlug?: string;
+}
+
+/**
+ * TASK-887 — where an enrollment would land: the model the resolved agent declares.
+ *
+ * Compare `modelId` against a profile's own `modelId` to tell a live profile from one embedded
+ * by a model this agent no longer uses (which is invisible to it, not merely less accurate).
+ */
+export interface VoiceEnrollmentTarget {
+  agentSlug: string;
+  modelId: string;
+  diarizationEnabled: boolean;
 }
 
 export interface UseVoiceEmbeddingReturn {
@@ -49,6 +68,8 @@ export interface UseVoiceEmbeddingReturn {
   activate: (profileId: string) => Promise<void>;
   deactivate: (profileId: string) => Promise<void>;
   delete: (profileId: string) => Promise<void>;
+  /** The speaker-embedding model a new enrollment would use, for `agentSlug` or the assigned agent. */
+  enrollmentTarget: (agentSlug?: string) => Promise<VoiceEnrollmentTarget>;
 }
 
 /**
@@ -153,6 +174,11 @@ export function useVoiceEmbedding(): UseVoiceEmbeddingReturn {
       if (opts?.label) {
         formData.append('label', opts.label);
       }
+      // TASK-887 — the gateway resolves this agent and pushes ITS embedding model to
+      // apps/stt; the profile is stored in that model's space.
+      if (opts?.agentSlug) {
+        formData.append('agentSlug', opts.agentSlug);
+      }
 
       setIsUploading(true);
       try {
@@ -217,6 +243,14 @@ export function useVoiceEmbedding(): UseVoiceEmbeddingReturn {
     [execute, cacheKeys, applyProfiles],
   );
 
+  const enrollmentTarget = useCallback(
+    (agentSlug?: string) =>
+      execute<VoiceEnrollmentTarget>('enrollmentTarget', (client) =>
+        client.get<VoiceEnrollmentTarget>(VOICE_EMBEDDING_ENDPOINTS.enrollmentTarget(agentSlug)),
+      ),
+    [execute],
+  );
+
   return {
     profiles,
     isLoading,
@@ -227,5 +261,6 @@ export function useVoiceEmbedding(): UseVoiceEmbeddingReturn {
     activate,
     deactivate,
     delete: deleteProfile,
+    enrollmentTarget,
   };
 }
