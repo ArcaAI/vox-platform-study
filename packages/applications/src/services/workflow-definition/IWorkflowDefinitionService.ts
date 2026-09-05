@@ -6,13 +6,17 @@ import {
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
   PaginatedWorkflowDefinitionResponse,
+  PromoteWorkflowToSystemRequest,
+  PromoteWorkflowToSystemResponse,
   PublishWorkflowDefinitionRequest,
   SandboxCompileResult,
+  SyncWorkflowDefinitionRequest,
   UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinitionBundle,
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
+  WorkflowSyncResponse,
 } from './dto';
 
 /**
@@ -140,6 +144,32 @@ export interface IWorkflowDefinitionService {
    *   a `targetSlug` already in use, or the `maxWorkflowDefinitions` quota
    */
   importDefinition(dto: ImportWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse>;
+
+  /**
+   * TASK-885 (owner #4) — sync ONE version into other tenants the caller ALREADY manages.
+   *
+   * Requires an elevated tenant-less context, and `manage:WorkflowDefinition` in the source
+   * (missing ⇒ 403) and in EVERY target (missing ⇒ **404**, so the request can never be used to
+   * discover which tenants exist). Each target receives a DRAFT whose references were resolved
+   * against ITS catalogue and whose report was recomputed against ITS rule set; a target that
+   * already has the lineage gets its NEXT version. All-or-nothing.
+   *
+   * @throws ForbiddenException — not elevated/tenant-less, or no manage on the source
+   * @throws NotFoundException — a target the caller does not manage, or no such source version
+   * @throws ConflictException — a target cannot resolve a reference (`WORKFLOW_SYNC_UNRESOLVED_REFERENCES`)
+   */
+  syncToTenants(slug: string, dto: SyncWorkflowDefinitionRequest): Promise<WorkflowSyncResponse>;
+
+  /**
+   * TASK-885 (owner #4) — promote a workflow from the Global build tenant into SYSTEM and
+   * publish it as the platform template. Super-admin only (403 otherwise); the prior SYSTEM
+   * version is demoted, never deleted, so the lineage keeps its history.
+   *
+   * @throws ForbiddenException — not a platform administrator, or not elevated and tenant-less
+   * @throws NotFoundException — Global has no such workflow version
+   * @throws ConflictException — the eval promotion gate blocked (`EVAL_GATE_FAILED`)
+   */
+  promoteToSystem(dto: PromoteWorkflowToSystemRequest): Promise<PromoteWorkflowToSystemResponse>;
 
   /** Read-only projection of `WORKFLOW_NODE_REGISTRY` — no tenant scoping, no table. */
   listNodes(): Promise<WorkflowNodeRegistryResponse>;
