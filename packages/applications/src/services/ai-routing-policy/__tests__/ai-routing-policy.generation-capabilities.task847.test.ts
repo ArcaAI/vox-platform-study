@@ -162,7 +162,9 @@ describe('F-32 — the cascade is request tenant → SYSTEM, and nothing else', 
 
     await svc.resolveGenerationCapabilities(TENANT, { taskKey: 'text.finalize' });
 
-    expect(repo.findCandidates).toHaveBeenCalledWith([TENANT, SYSTEM_TENANT_ID], 'text.finalize', undefined);
+    // The load-bearing assertion is the TIER SET, not the read options that
+    // follow it (`resolveDefault` passes `includeParked` there since TASK-872).
+    expect(repo.findCandidates.mock.calls[0]!.slice(0, 3)).toEqual([[TENANT, SYSTEM_TENANT_ID], 'text.finalize', undefined]);
     for (const call of repo.findCandidates.mock.calls) {
       expect(call[0]).not.toContain(GLOBAL_CUSTOMER_TENANT);
     }

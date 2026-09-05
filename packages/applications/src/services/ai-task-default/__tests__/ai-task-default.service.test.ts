@@ -27,6 +27,7 @@ import {
   SysEventType,
 } from '@arcaai/domains';
 import { AiTaskDefaultService } from '../ai-task-default.service';
+import { TaskSelectionVetoedError } from '../../ai-routing-policy/task-selection-veto';
 
 const TENANT = 'tenant-abc';
 
@@ -133,6 +134,17 @@ describe('AiTaskDefaultService — getEffective (facade over resolveDefault)', (
   it('rejects an unknown task key', async () => {
     const { svc } = makeService();
     await expect(svc.getEffective('not.a.key')).rejects.toBeInstanceOf(ArgumentInvalidException);
+  });
+
+  // TASK-872 — the facade must PROPAGATE a tenant veto. It is a facade
+  // precisely so the resolution contract is the same on both sides; catching
+  // the veto here and projecting a null `modelSlug` would hand every caller
+  // "unconfigured" for a selection the tenant deliberately switched off.
+  it('propagates a TaskSelectionVetoedError rather than projecting it as an unconfigured selection', async () => {
+    const { svc, routingService } = makeService();
+    routingService.resolveDefault.mockRejectedValue(new TaskSelectionVetoedError(TENANT, 'text.live'));
+
+    await expect(svc.getEffective('text.live')).rejects.toBeInstanceOf(TaskSelectionVetoedError);
   });
 
   it('honours an explicit tenantId (super admin acting on another tenant)', async () => {

@@ -19,6 +19,11 @@ export interface IAiTaskDefaultService {
    * service env fallback). Includes the resolved ENABLED `AiModel` summary
    * ([tenant, SYSTEM] preferring tenant) when the slug resolves.
    */
+  /**
+   * @throws TaskSelectionVetoedError (503) when the tenant has DISABLED its own
+   * elected routing configuration for `taskKey` — the facade propagates the
+   * veto rather than projecting it as an unconfigured selection (TASK-872).
+   */
   getEffective(taskKey: string, tenantId?: string): Promise<EffectiveAiTaskDefaultResponse>;
 
   /**
