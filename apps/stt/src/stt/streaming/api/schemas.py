@@ -158,6 +158,26 @@ class StreamingSessionResponse(BaseModel):
     )
 
 
+class StreamingUsageSegment(BaseModel):
+    """One engine's total time in a session — one `transcribe.stream` ledger row.
+
+    A session can change ASR engines mid-flight (auto on a classified outage,
+    or manually in either direction), and fallback to the platform default is a
+    METERED platform HA capability, so billing follows ENGINE-TIME: the tenant's
+    BYO minutes meter `BYOK` and the platform fallback's meter `CLOUD`. Segments
+    are aggregated per `(engine, deployment)` — a session that toggles
+    primary -> fallback -> primary yields TWO, not three — and sum exactly to the
+    summary's own `audio_seconds` / `session_seconds`.
+    """
+
+    engine: str = Field(..., description="Usage-ledger engine id that served this segment")
+    deployment: str = Field(
+        ..., description="SELF_HOSTED | CLOUD | BYOK, derived from the row that served"
+    )
+    audio_seconds: float = Field(..., ge=0, description="Decoded audio seconds on this engine")
+    session_seconds: float = Field(..., ge=0, description="Wall-clock seconds on this engine")
+
+
 class StreamingSessionTeardownResponse(BaseModel):
     """Response for a REAL ``DELETE /internal/streaming/sessions/{id}``
     teardown.
@@ -190,6 +210,14 @@ class StreamingSessionTeardownResponse(BaseModel):
     )
     deployment: str | None = Field(
         default=None, description="SELF_HOSTED | CLOUD | BYOK; null alongside a null engine"
+    )
+    segments: list[StreamingUsageSegment] = Field(
+        default_factory=list,
+        description=(
+            "Per-engine usage breakdown; one ledger row each. Empty when no ASR "
+            "model was ever resolved. ADDITIVE to the engine/deployment scalars "
+            "above, which stay the last-loaded engine for an older gateway."
+        ),
     )
     language_mode: str | None = Field(
         default=None, description="End-user language mode id, e.g. 'ml-en'"
