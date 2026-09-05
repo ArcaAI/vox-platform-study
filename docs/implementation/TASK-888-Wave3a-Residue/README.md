@@ -253,6 +253,67 @@ Deliberately NOT in the migration:
   slug = 'azure-speech-stt';` / `… 'azure-foundry' … 'mai-transcribe-1.5';` pair
   would fix it if the owner wants existing rows migrated.
 
+## Verification
+
+Actual output, not assertions. Every red is attributed.
+
+| Gate | Result |
+|---|---|
+| `pnpm text:test` | `1620 passed, 4 skipped, 16 deselected` — the pre-change baseline exactly |
+| `pnpm text:lint` | `Found 2 errors` — both `W291 Trailing whitespace`, in `models/provider.py:47` and `tests/unit/test_judge_route.py:469`. Both files are byte-identical to the base commit (`git diff --quiet a62a466e0 HEAD --`); the ONLY file this lane changed under `apps/text` is `README.md`, which ruff does not lint |
+| `pnpm text:typecheck` | `Success: no issues found in 81 source files` |
+| `pnpm harness:lint` | `All checks passed!` |
+| `pnpm harness:typecheck` | `Success: no issues found in 148 source files` |
+| `pnpm --filter @arcaai/database test` | `8 failed | 1725 passed` — the SAME eight pre-existing failures by name as the pre-change baseline (`ai-model-registry-seed` ×4, `task-863-agents` ×4). Total moved 1736 -> 1725 because this lane deleted `tenant-tts-config-seed.test.ts` |
+| `pnpm gen:model:check` | `no drift — 181 generated file(s) match the committed files` |
+| `pnpm gen:entity:check` | `no drift — 102 generated file(s)`; `Schema coverage OK: 100 entity artifact(s) cover every persisted column of 104 Prisma model(s)` |
+| `pnpm gen:factory:check` | `no drift — 102 generated file(s)`; `Schema coverage OK: 100 factory artifact(s) … 104 Prisma model(s)` |
+| `pnpm --filter @arcaai/domains build` | clean |
+| `pnpm --filter @arcaai/domains test` | `156 passed | 2 skipped` files, `1892 passed | 2 skipped | 9 todo` |
+| `pnpm --filter @arcaai/applications build` | clean |
+| `pnpm --filter @arcaai/applications lint` | `✖ 215 problems (0 errors, 215 warnings)` — gate is 0 ERRORS. All 215 are prettier warnings in three `workflow-*` files this lane never touched |
+| `pnpm --filter @arcaai/applications test` | `4 failed | 11542 passed | 4 skipped` — all four in `svc-scope-route-ability-coverage.test.ts`, which reads the generated `apps/api/route-manifest.json` still listing the deleted `admin/tts-config` routes. H-2 |
+| `pnpm --filter @arcaai/api typecheck` | clean (EXIT=0) |
+| `pnpm --filter @arcaai/api test` | `277 passed | 2 skipped` files, `4172 passed | 4 skipped` |
+| `pnpm --filter @arcaai/api lint` | `✖ 71 problems (6 errors, 65 warnings)` — all 6 errors in `tests/e2e/{auth-throttle-per-endpoint,harness-gate,shared-component-contracts}.spec.ts`, each byte-identical to base. The one e2e spec this lane DID edit (`model-retention-settings.spec.ts`) lints clean |
+| `pnpm --filter @arcaai/admin-console build` | clean |
+| `pnpm --filter @arcaai/admin-console lint` | clean |
+| `pnpm --filter @arcaai/admin-console test` | `256 passed` files, `2265 passed` |
+| `npx vitest run scripts/__tests__ tests/contracts` | `5 failed | 459 passed` — all five in `env-sync.test.ts`: four drift comparisons plus "leaves no secret unclassified", every one of them `TEXT_SERVICE_TOKEN`-shaped and every one cleared by H-1. Proven to be artifact-only: restoring the four files this lane touched to `HEAD~1` and re-running gave `39 passed` |
+
+`@arcaai/vox` was not touched, so its suites were not run.
+
+### Grep residue, with a reason per survivor
+
+`TEXT_SERVICE_TOKEN` — no production LOOKUP survives anywhere. What remains:
+
+| Survivor | Reason |
+|---|---|
+| ~20 comments in `apps/{api,text}`, `packages/applications` | Each records what was retired and why. `internal-access-token.text-callers.test.ts` and both guard suites deliberately assert the name is NOT looked up |
+| `apps/text` test fixtures (`test_config.py`, `test_task799_phase0.py`, `test_internal_access_token.py`, `conftest.py`) | They set the legacy name to PROVE it is inert. Deleting them would delete the proof |
+| `secrets-coverage.test.ts:29` | An anti-regression list ("no source file may read this via `process.env`"), not a reader. Kept deliberately |
+| `HARNESS_TEXT_SERVICE_TOKEN`, `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` | DIFFERENT variables (harness's and nlp's own per-pair copies), out of scope |
+| `apps/api/.env.prod:123`, `docs/research/**`, `execution-log.md` | Dated records; `docs/research` is a historical corpus |
+| `.env.sample` ×2, `turbo.json`, `env-surface.generated.md`, `scripts/generated/` | Generated. H-1 |
+
+`text.serviceToken` — three comments recording the removal, one register row, one dated execution-log line. No descriptor.
+
+`TenantTtsConfig` — no model, no service, no route, no scope, no seed. What remains:
+`ResourceType` in both enums (a Postgres enum value cannot be dropped — a
+tombstone, annotated as one), ~30 comments across `apps/{tts,api,harness}` and
+`packages/{applications,types,database}` recording what replaced the fold,
+`packages/vox-node/src/resources/admin/**` (GENERATED — H-2), the two committed
+migrations that created the table, and `packages/vox-node-codegen`'s naming
+example (a generic function's worked example, unaffected by the deletion).
+
+`AiTaskDefault` — `apps/harness` is swept (only
+`test_task881_judge_selection_source.py` names it, which is the guard's job).
+Roughly 60 comment/docstring sites survive in `apps/{text,guardrail,nlp}`,
+`packages/{applications,domains,database}` and `docs/architecture`, plus
+`apps/guardrail/{README,GUARDIAN_INTEGRATION}.md` — TASK-881 recorded these as
+known residue ("56 Python files") and they are outside this lane's named scope.
+H-7. Two further sites are `.claude/rules/**` — H-5, deliberately not edited.
+
 ## Handoffs
 
 | # | To | What |
