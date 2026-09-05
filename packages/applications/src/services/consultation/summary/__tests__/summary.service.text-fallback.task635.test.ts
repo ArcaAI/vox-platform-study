@@ -142,7 +142,7 @@ describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () =>
     await service.generateSummary('c-1', {} as any);
 
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(2);
-    expect(mockHarnessPolicyService.resolveTextFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+    expect(mockHarnessPolicyService.resolveTextFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
     expect(lastPostBody().provider).toBe('fallback-provider');
     expect(lastPostBody().model).toBe('fallback-model');
   });
@@ -189,6 +189,6 @@ describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () =>
 
     await service.generateSummary('c-1', {} as any);
 
-    expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+    expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
   });
 });

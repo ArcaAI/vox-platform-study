@@ -498,6 +498,12 @@ export class HarnessPolicyService {
    * funding). Returns the resolved primary's `{ provider, model }` — the provider as apps/text
    * registers it (`azure` → `azure-openai`) and the provider-native model id (`sourceUri`).
    *
+   * `departmentId` is what makes the DEPARTMENT tier of that cascade reachable at all: this seam
+   * used to call `resolve({ tenantId })` unconditionally, so a department-scoped `AgentAssignment`
+   * could never win. Callers that hold the consultation pass its department; the rest pass null,
+   * which starts the cascade at the tenant tier. Null is the honest answer — never a fabricated
+   * department.
+   *
    * Removed here: the node `llmBinding` (precedence 0), the `text.*` `AiTaskDefault` keys
    * (precedence 1) and the `HarnessPolicy.textProvider/textModel` columns (precedence 2). The
    * routing-policy read does NOT survive as a terminal fallback: the seed ships a SYSTEM
@@ -507,7 +513,11 @@ export class HarnessPolicyService {
    * Throws (fail-closed) when nothing is assigned or the resolver is not wired — selection is
    * `failMode: closed`; a tenant veto of the primary provider propagates unchanged.
    */
-  async resolveTextSelection(tenantId?: string, task: TextRoutingTask = 'finalize'): Promise<{ provider: string; model: string }> {
+  async resolveTextSelection(
+    tenantId?: string,
+    task: TextRoutingTask = 'finalize',
+    departmentId?: string | null,
+  ): Promise<{ provider: string; model: string }> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
     if (!this.textAgents) {
@@ -516,7 +526,7 @@ export class HarnessPolicyService {
       );
     }
     try {
-      const spec = await this.textAgents.resolve({ tenantId: tid });
+      const spec = await this.textAgents.resolve({ tenantId: tid, departmentId: departmentId ?? null });
       return { provider: spec.primary.provider, model: spec.primary.model };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -537,7 +547,12 @@ export class HarnessPolicyService {
    */
   private async resolveTextSelectionOrNull(tenantId: string): Promise<{ provider: string; model: string } | null> {
     try {
-      return await this.resolveTextSelection(tenantId);
+      // No department: this route is reached with a tenant and (optionally) a CONSULTATION id,
+      // and deriving the consultation's department here would mean a consultation read this
+      // service has no repository for. Null is honest — the cascade starts at the tenant tier —
+      // and it is never fabricated. Threading it is a follow-on for whoever gives this service
+      // the consultation read.
+      return await this.resolveTextSelection(tenantId, 'finalize', null);
     } catch (error) {
       if (error instanceof BadRequestException) {
         this.logger.error({
@@ -565,11 +580,12 @@ export class HarnessPolicyService {
   async resolveTextFallbackSelection(
     tenantId?: string,
     task: Exclude<TextRoutingTask, 'test'> = 'finalize',
+    departmentId?: string | null,
   ): Promise<{ provider: string; model: string } | null> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid || !this.textAgents) return null;
     try {
-      const spec = await this.textAgents.resolve({ tenantId: tid });
+      const spec = await this.textAgents.resolve({ tenantId: tid, departmentId: departmentId ?? null });
       if (!spec.fallback.autoSwitch) return null;
       const next = spec.fallback.chain[0];
       return next ? { provider: next.provider, model: next.model } : null;
@@ -600,11 +616,11 @@ export class HarnessPolicyService {
    * chain is empty, the resolver is un-wired or the lookup faults — the workflow then runs the
    * primary alone, which is the behaviour it had before this block existed.
    */
-  async resolveTextFallbackChain(tenantId?: string): Promise<ResolvedTextFallback | null> {
+  async resolveTextFallbackChain(tenantId?: string, departmentId?: string | null): Promise<ResolvedTextFallback | null> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid || !this.textAgents) return null;
     try {
-      const spec = await this.textAgents.resolve({ tenantId: tid });
+      const spec = await this.textAgents.resolve({ tenantId: tid, departmentId: departmentId ?? null });
       return spec.fallback.chain.length > 0 ? spec.fallback : null;
     } catch (error) {
       this.logger.warn({
