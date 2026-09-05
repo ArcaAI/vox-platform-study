@@ -147,7 +147,6 @@ function build(fixtures: Fixtures = {}) {
     cls as never,
     undefined, // jobService
     undefined, // highlightRepository
-    { get: vi.fn() } as never, // configService
     { publishComplete: vi.fn().mockResolvedValue({ ok: true }) } as never, // assuranceService
     undefined, // configResolver
     undefined, // contextItemVersionRepository

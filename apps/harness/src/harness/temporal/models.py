@@ -487,10 +487,9 @@ class ExtractEntitiesInput(BaseModel):
     reuse_priors: bool = False
     consultation_id: str | None = None
     tenant_id: str | None = None
-    # per-run NER-priors override threaded from the effective
-    # policy. None ⇒ the activity falls through to ``HARNESS_NER_PRIORS_ENABLED``
-    # (env default). Additive-optional ⇒ replay-safe (an old input ⇒ None ⇒ env path,
-    # byte-identical); no new workflow command.
+    # per-run NER-priors flag threaded from the effective
+    # policy (``HarnessPolicy.nerPriorsEnabled``). None ⇒ the code default (OFF) — TASK-882
+    # removed the env fallback. Additive-optional ⇒ replay-safe; no new workflow command.
     ner_priors_enabled: bool | None = None
     # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
@@ -902,9 +901,9 @@ class RunInferentialSensorsInput(BaseModel):
     # optional defaults ⇒ replay-safe (an old input deserializes them to None).
     judge_provider: str | None = None
     judge_model: str | None = None
-    # per-run atomic-fact override threaded from the effective
-    # policy. None ⇒ the activity falls through to ``HARNESS_ATOMIC_FACT_ENABLED``
-    # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
+    # per-run atomic-fact flag threaded from the effective
+    # policy (``HarnessPolicy.atomicFactEnabled``). None ⇒ the code default (OFF) — TASK-882
+    # removed the env fallback. Additive-optional ⇒ replay-safe; no new workflow command.
     atomic_fact_enabled: bool | None = None
     # The run-effective PHI egress policy, snapshotted from the harness
     # policy at workflow start so the guard in ``run_inferential_sensors`` is

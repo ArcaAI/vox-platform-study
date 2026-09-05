@@ -1,5 +1,4 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import {
   ConsultationRepository,
@@ -87,14 +86,9 @@ import type {
 export class HarnessInternalService {
   private readonly logger = new Logger(HarnessInternalService.name);
 
-  // Warm-start kill-switch. When OFF the harness injects no
-  // prior draft and records no preSummaryIds provenance; enable for a
-  // cold-vs-warm A/B.
-  //
-  // `HarnessPolicy.warmStartEnabled` is now the authority, resolved
-  // per call (see `resolveWarmStartEnabled`). This env var survives only as the
-  // fallback for a null policy value, reproducing the legacy behaviour exactly.
-  private readonly warmStartEnvFallback: boolean;
+  // Warm-start switch: `HarnessPolicy.warmStartEnabled`, resolved per call (see
+  // `resolveWarmStartEnabled`). TASK-882 removed the `HARNESS_WARM_START_ENABLED` env fallback —
+  // the column is the one source and a null column is the code default (OFF).
 
   // Idempotency-Key dedup namespace + TTL for the WORM/draft
   // callbacks. The key value is the harness `{run_id}:{activity_id}` (globally
@@ -161,10 +155,6 @@ export class HarnessInternalService {
     // constructor arity; production DI supplies it via CoreDatabaseModule. The
     // manual-highlight SOAP feed is best-effort enrichment either way.
     @Optional() @Inject(HighlightRepository) private readonly highlightRepository?: HighlightRepository,
-    // Optional so existing unit fixtures keep their
-    // constructor arity; production DI supplies it via ConfigModule (added to
-    // HarnessInternalServiceModule). Absent ⇒ flag OFF, matching the prod default.
-    @Optional() private readonly configService?: ConfigService,
     // Optional so existing unit fixtures keep their
     // constructor arity; production DI supplies it via HarnessAssuranceServiceModule.
     // finalizeAssurance publishes the terminal `assurance_complete` here to close
@@ -251,12 +241,7 @@ export class HarnessInternalService {
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
-  ) {
-    const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
-      .trim()
-      .toLowerCase();
-    this.warmStartEnvFallback = raw === 'true' || raw === '1';
-  }
+  ) {}
 
   /**
    * Resolve an MCP server's credential from its `authRef`.
@@ -405,27 +390,23 @@ export class HarnessInternalService {
   }
 
   /**
-   * Effective warm-start decision for `tenantId`.
-   *
-   * Policy wins; a null policy value means "not configured" and falls through to the
-   * env fallback. Resolved on every call so a super admin's console flip takes
-   * effect with no redeploy. A policy-backend failure degrades to the env value —
-   * this sits on the harness generation path and must not fail closed on a
-   * governance lookup.
+   * Effective warm-start decision for `tenantId` — the `HarnessPolicy.warmStartEnabled` column,
+   * resolved on every call so a super admin's console flip takes effect with no redeploy. A null
+   * column is the code default (OFF); so is an unwired policy service or a policy-backend
+   * failure — this sits on the harness generation path and must not throw on a governance
+   * lookup, and since TASK-882 there is no env value to fall back to.
    */
   private async resolveWarmStartEnabled(tenantId: string): Promise<boolean> {
-    if (!this.harnessPolicyService) {
-      return this.warmStartEnvFallback;
-    }
+    if (!this.harnessPolicyService) return false;
     try {
       const effective = await this.harnessPolicyService.getEffectivePolicy(tenantId);
-      return effective.warmStartEnabled ?? this.warmStartEnvFallback;
+      return effective.warmStartEnabled ?? false;
     } catch (error) {
       this.logger.warn({
-        message: 'Harness policy lookup failed while resolving warmStartEnabled — falling back to env',
+        message: 'Harness policy lookup failed while resolving warmStartEnabled — warm start stays OFF for this run',
         error: error instanceof Error ? error.message : String(error),
       });
-      return this.warmStartEnvFallback;
+      return false;
     }
   }
 

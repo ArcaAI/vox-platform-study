@@ -4,8 +4,7 @@
  * R-N2 ("the same specific agent reviews and finalizes") is the product
  * contract, not an opt-in optimization. Once a session has PROVABLY run the live
  * agent — the lineage block exists only because the live loop wrote it — the
- * prior draft is injected regardless of `HarnessPolicy.warmStartEnabled` / the
- * `HARNESS_WARM_START_ENABLED` env fallback.
+ * prior draft is injected regardless of `HarnessPolicy.warmStartEnabled`.
  *
  * The flag is DEMOTED, not deleted: it still governs the LEGACY no-lineage path
  * (a case-notes PRE_SUMMARY, or a session recorded before C3 shipped), where
@@ -50,7 +49,6 @@ function createTemplate() {
 
 async function buildService(opts: { flag: boolean }) {
   const { PromptAssemblyService } = await import('../prompt-assembly.service');
-  const configService = { get: vi.fn(() => undefined) };
   const getEffectivePolicy = vi.fn(async () => ({ warmStartEnabled: opts.flag }));
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : undefined)) };
 
@@ -58,7 +56,6 @@ async function buildService(opts: { flag: boolean }) {
     mockPromptResolutionService as never,
     mockPromptTemplateRepository as never,
     mockDnaWritingStyleRepository as never,
-    configService as never,
     { getEffectivePolicy } as never,
     cls as never,
   );

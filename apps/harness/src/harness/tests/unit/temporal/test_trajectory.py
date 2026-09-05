@@ -474,7 +474,7 @@ def _patch_real_activity_clients(monkeypatch, cap, *, text_stats=None, traj=None
     monkeypatch.setattr(
         activities,
         "get_settings",
-        lambda: Settings(retrieval={"enabled": False}, ner_priors_enabled=False),
+        lambda: Settings(retrieval={"enabled": False}),
     )
     monkeypatch.setattr(activities, "_api_client", lambda s: _FakeApi())
     monkeypatch.setattr(activities, "_nlp_client", lambda s: _FakeNlp())

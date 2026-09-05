@@ -272,9 +272,9 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // deleted `TEXT_EXTERNAL_GUARDRAIL_ENABLED` and made it a `global-kv`
     // kill-switch served on the effective-config pull route, so a clinical
     // deployment turns moderation on without a redeploy.
-    'harness.warmStartEnabled': 'HARNESS_WARM_START_ENABLED',
-    'harness.nerPriorsEnabled': 'HARNESS_NER_PRIORS_ENABLED',
-    'harness.atomicFactEnabled': 'HARNESS_ATOMIC_FACT_ENABLED',
+    // `harness.{warmStartEnabled,nerPriorsEnabled,atomicFactEnabled}` were here — env
+    // FALLBACKS for the `HarnessPolicy` columns of the same name. TASK-882 deleted the
+    // descriptors and every env read behind them; the column is the only source.
     'harness.claimCheck.enabled': 'HARNESS_CLAIM_CHECK_ENABLED',
     // THE canonical internal service-to-service credential (owner decision
     // D-D, 2026-08-17) — one shared token on every internal hop. The legacy
