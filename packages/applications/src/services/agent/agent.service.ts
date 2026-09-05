@@ -814,7 +814,17 @@ export class AgentService extends BaseService implements IAgentService {
     }
   }
 
-  /** The caller must hold `manage:Agent` in the target. A target they do not manage is 404 — the tenant id space is not theirs to probe. */
+  /**
+   * The caller must hold `manage:Agent` in the target.
+   *
+   * A customer tenant they do not manage is **404**: the tenant id space is not theirs to probe,
+   * so "you may not" and "there is no such tenant" must be one answer.
+   *
+   * SYSTEM is the exception, and deliberately so — its existence is not a secret (every tenant
+   * READS its templates through the shared-read cascade), so hiding it behind a 404 would
+   * conceal nothing and mislead the caller about why the push failed. It is a **403** naming the
+   * real rule: only a platform administrator manages the platform tier.
+   */
   private async assertManagesAgentsIn(userId: string, targetTenantId: string): Promise<void> {
     if (!this.policyEngine) {
       // Fail CLOSED: without the engine there is no way to answer "does this caller manage that
@@ -822,9 +832,11 @@ export class AgentService extends BaseService implements IAgentService {
       throw new ForbiddenException('Agent sync is unavailable: the authorization engine is not wired.');
     }
     const ability = await this.policyEngine.buildAbility({ userId, tenantId: targetTenantId }).catch(() => null);
-    if (!ability || !ability.can('manage', 'Agent')) {
-      throw new NotFoundException(`Tenant ${targetTenantId} not found`);
+    if (ability?.can('manage', 'Agent')) return;
+    if (targetTenantId === SYSTEM_TENANT_ID) {
+      throw new ForbiddenException('Only a platform administrator manages the SYSTEM tier; publish into it through the promotion path.');
     }
+    throw new NotFoundException(`Tenant ${targetTenantId} not found`);
   }
 
   /** Clone/sync body: resolve the references, then write the DRAFT. Own transaction unless one is supplied. */
