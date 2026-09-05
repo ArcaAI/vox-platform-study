@@ -617,11 +617,9 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'ecapa-tdnn',
     memorySizeMb: 96,
     computeType: 'float32',
-    // TASK-880 — 192-d, and that is LOAD-BEARING, not documentation. The deployed
-    // `UserVoiceProfile.embedding` column is `vector(256)` and is enrolled with the
-    // wespeaker row below, so an agent that binds THIS row for diarization would fail
-    // every enrollment. `buildResolvedAsrSpec` refuses the mismatch at resolve time
-    // instead of shipping a spec that cannot enroll.
+    // 192-d. Since TASK-887 an agent that binds this row for diarization declares its own
+    // embedding space: profiles are enrolled with the agent's model and matched only against
+    // profiles that model produced (`UserVoiceProfile.modelId`), so no width is load-bearing.
     metaData: { embedding: { dimension: 192 } },
     tags: ['diarization', 'speaker-embedding', 'ecapa'],
   },
@@ -630,7 +628,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'WeSpeaker ResNet34 Speaker Embedding (pyannote)',
     slug: 'wespeaker-voxceleb-resnet34',
-    description: 'pyannote WeSpeaker ResNet34 VoxCeleb speaker-verification embeddings — the stt diarization feature-extractor default (diarization_hf_model_id).',
+    description: 'pyannote WeSpeaker ResNet34 VoxCeleb speaker-verification embeddings — the SYSTEM ASR template\'s diarization embedding model (TASK-887).',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.SPEAKER_EMBEDDING,
     modelType: ModelType.BASE_MODEL,
@@ -647,10 +645,10 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'wespeaker',
     memorySizeMb: 96,
     computeType: 'float32',
-    // TASK-880 — 256-d: THE platform embedding space. It matches the deployed
-    // `UserVoiceProfile.embedding` column (`vector(256)`) and the enrollment seed, which
-    // is why `stt.diarization.hfModelId` is deliberately NOT moved onto the agent —
-    // changing it re-spaces every enrolled voice profile.
+    // 256-d — the model the seeded voice profiles were enrolled with (`seed/91-user.ts`,
+    // `modelId: 'wespeaker-voxceleb-resnet34'`), and the one the SYSTEM ASR template names
+    // (`seed/25-agents.ts`). Descriptive since TASK-887: a profile is matched only by the
+    // model that embedded it, so the width no longer gates anything.
     metaData: { embedding: { dimension: 256 } },
     tags: ['diarization', 'speaker-embedding', 'wespeaker', 'default'],
   },
