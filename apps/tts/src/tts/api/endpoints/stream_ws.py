@@ -23,12 +23,12 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from tts.catalog.voices import VoiceNotFoundError
 from tts.core.logging import get_logger
 from tts.core.service_auth import dev_bypass_active, token_accepted
 from tts.core.usage import compute_audio_seconds, count_characters, record_usage_metrics
 from tts.providers.base import AudioFormat, SynthesisStream
 from tts.routing.router import AllProvidersUnavailableError
+from tts.spec import ResolvedTtsSpec, candidate_chain
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["speech-stream"])
@@ -56,13 +56,6 @@ class _SessionUsage:
         self.provider: str | None = None
 
 
-def _str_list(value: Any) -> list[str] | None:
-    """Coerce an init-frame field to a non-empty list[str], else None (ignore)."""
-    if isinstance(value, list) and value:
-        return [str(item) for item in value]
-    return None
-
-
 def _provider_overrides(value: Any) -> dict[str, dict[str, str]] | None:
     """Coerce init-frame provider_overrides to {provider: {k: str}}, else None."""
     if not isinstance(value, dict) or not value:
@@ -71,28 +64,6 @@ def _provider_overrides(value: Any) -> dict[str, dict[str, str]] | None:
     for provider, creds in value.items():
         if isinstance(creds, dict) and creds.get("api_key"):
             out[str(provider)] = {str(k): str(v) for k, v in creds.items()}
-    return out or None
-
-
-def _voice_bindings(value: Any) -> dict[str, dict[str, str]] | None:
-    """Coerce init-frame voice_bindings to {voiceId: {provider: voiceName}}.
-
-    Malformed entries are dropped safely; an empty/invalid frame field → None
-    (the catalog's DEFAULT_VOICES bindings stay in effect).
-    """
-    if not isinstance(value, dict) or not value:
-        return None
-    out: dict[str, dict[str, str]] = {}
-    for voice_id, bindings in value.items():
-        if not isinstance(voice_id, str) or not isinstance(bindings, dict):
-            continue
-        clean = {
-            provider: name
-            for provider, name in bindings.items()
-            if isinstance(provider, str) and provider and isinstance(name, str) and name
-        }
-        if clean:
-            out[voice_id] = clean
     return out or None
 
 
@@ -126,9 +97,7 @@ async def audio_stream(ws: WebSocket) -> None:
         await ws.close(code=_CLOSE_AUTH)
         return
 
-    settings = ws.app.state.settings
     tts_router = ws.app.state.router
-    catalog = ws.app.state.voice_catalog
     await ws.accept()
 
     try:
@@ -145,9 +114,10 @@ async def audio_stream(ws: WebSocket) -> None:
     if init.get("format", "pcm") != "pcm":
         await _send_error(ws, _ERR_INVALID_INPUT, "streaming supports pcm only")
         return
+    # OPTIONAL since TASK-879: absent ⇒ the resolved agent's own `parameters.voice`.
     voice = init.get("voice")
-    if not isinstance(voice, str) or not voice:
-        await _send_error(ws, _ERR_INVALID_VOICE, "missing voice")
+    if voice is not None and (not isinstance(voice, str) or not voice):
+        await _send_error(ws, _ERR_INVALID_VOICE, "invalid voice")
         return
     try:
         speed = float(init.get("speed", 1.0))
@@ -155,34 +125,50 @@ async def audio_stream(ws: WebSocket) -> None:
         await _send_error(ws, _ERR_INVALID_INPUT, "invalid speed")
         return
 
-    # Per-tenant routing overrides injected by the gateway on the init
-    # frame (resolved from the tenant's config). None → static settings chains.
-    routing_en = _str_list(init.get("routing_en"))
-    routing_ml = _str_list(init.get("routing_ml"))
-    allowed_providers = _str_list(init.get("allowed_providers"))
+    # The gateway-resolved TEXT_TO_SPEECH agent, injected on the init frame. REQUIRED: this
+    # service reads no selection of its own, so a session without one could only run on a guessed
+    # vendor. It REPLACES the `routing_en` / `routing_ml` / `allowed_providers` / `voice_bindings`
+    # fold the gateway used to build from `TenantTtsConfig`.
+    try:
+        spec = ResolvedTtsSpec.model_validate(init.get("resolved_spec"))
+    except Exception:
+        await _send_error(ws, _ERR_INVALID_INPUT, "missing or invalid resolved_spec")
+        return
     provider_overrides = _provider_overrides(init.get("provider_overrides"))
-    voice_bindings = _voice_bindings(init.get("voice_bindings"))
+
+    # Resolved once, up front: the voice is fixed for the session's lifetime (one init → one
+    # stream), and the two failure modes must stay distinguishable — a voice this agent's models
+    # do not declare is the caller's error, an agent whose engines are all disabled is not.
+    try:
+        chain = candidate_chain(spec, voice_id=voice)
+    except Exception:
+        await _send_error(ws, _ERR_INVALID_INPUT, "unsupported resolved_spec")
+        return
+    if not chain:
+        if voice is not None:
+            await _send_error(ws, _ERR_INVALID_VOICE, "unknown voice for the resolved agent")
+        else:
+            await _send_error(ws, _ERR_PROVIDER, "no provider available for this voice")
+        return
+    head = chain[0]
+    head_binding = head.binding_for(voice)
+    locale = (head_binding.locale if head_binding else None) or head.parameters.language or ""
+    sample_rate = head.sample_rate()
 
     try:
         stream = tts_router.stream(
+            spec=spec,
             voice_id=voice,
             fmt=AudioFormat.PCM,
             speed=speed,
-            routing_en=routing_en,
-            routing_ml=routing_ml,
-            allowed_providers=allowed_providers,
             provider_overrides=provider_overrides,
-            voice_bindings=voice_bindings,
         )
-    except VoiceNotFoundError:
-        await _send_error(ws, _ERR_INVALID_VOICE, "unknown voice")
-        return
     except AllProvidersUnavailableError:
         await _send_error(ws, _ERR_PROVIDER, "no provider available for this voice")
         return
 
     await ws.send_json(
-        {"type": "ready", "sample_rate": settings.sample_rate, "format": "pcm", "channels": 1}
+        {"type": "ready", "sample_rate": sample_rate, "format": "pcm", "channels": 1}
     )
 
     # Accumulated across the whole session (every "text" frame
@@ -191,7 +177,6 @@ async def audio_stream(ws: WebSocket) -> None:
     # + AUDIO_SECOND ledger rows. `locale` is resolved once, up front — the
     # voice is fixed for the session's lifetime (one init -> one stream).
     usage = _SessionUsage()
-    locale = catalog.get(voice).locale
 
     reader = asyncio.ensure_future(_pump_input(ws, stream, usage))
     interrupted = True
@@ -223,7 +208,7 @@ async def audio_stream(ws: WebSocket) -> None:
             await reader
         await stream.aclose()  # free upstream (Azure conn / GPU task)
         audio_seconds = compute_audio_seconds(
-            AudioFormat.PCM, usage.audio_bytes, settings.sample_rate
+            AudioFormat.PCM, usage.audio_bytes, sample_rate
         )
         record_usage_metrics(
             provider=usage.provider,

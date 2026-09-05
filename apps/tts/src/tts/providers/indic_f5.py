@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncGenerator, Callable
+from typing import Any
 
 import numpy as np
 from hope_runtime_models import ModelCache
@@ -71,6 +72,34 @@ class IndicF5Provider:
     # an adapter that says nothing fails it.
     credential_posture = CredentialPosture.SELF_HOST
     is_configured = True  # Self-hosted engine needs no credential
+
+    @classmethod
+    def from_spec(
+        cls, settings: Any, candidate: Any, override: dict[str, str]
+    ) -> IndicF5Provider | None:
+        """Build a REQUEST-SCOPED engine for one resolved TTS spec candidate.
+
+        IndicF5 is a flow-matching voice-CLONE model: every utterance conditions on a reference
+        recording, so the reference is a property of the VOICE and arrives on the selected
+        `_metadata.voices[]` binding rather than as a service-wide path. A candidate whose voice
+        carries no reference is REFUSED — cloning against whatever recording the process happened
+        to be configured with would put an unrelated speaker's voice on a clinical utterance.
+        """
+        del override
+        binding = candidate.voice
+        if binding is None or not binding.ref_audio_path:
+            return None
+        return cls(
+            settings.indic_f5.model_copy(
+                update={
+                    "hf_model": candidate.model.source_uri,
+                    "model_path": candidate.model.local_path or "",
+                    "ref_audio_path": binding.ref_audio_path,
+                    "ref_text": binding.ref_text or "",
+                }
+            ),
+            ttl_seconds=settings.model_cache_ttl_seconds,
+        )
 
     def __init__(
         self,

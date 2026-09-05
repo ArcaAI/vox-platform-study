@@ -82,10 +82,33 @@ class AzureSpeechProvider:
         api_key = override.get("api_key")
         if not api_key:
             return None
-        update: dict[str, object] = {"api_key": SecretStr(api_key), "enabled": True}
+        update: dict[str, object] = {"api_key": SecretStr(api_key)}
         if override.get("region"):
             update["region"] = override["region"]
         return cls(settings.azure.model_copy(update=update))
+
+    @classmethod
+    def from_spec(
+        cls, settings: Any, candidate: Any, override: dict[str, str]
+    ) -> AzureSpeechProvider | None:
+        """Build a REQUEST-SCOPED engine for one resolved TTS spec candidate.
+
+        The REGION comes from the candidate's connection row — the tenant's own when it brought
+        one, the platform's otherwise — with an injected override winning, because a BYO
+        credential and the region it is valid in travel together. There is no process-wide region
+        any more: for a service that synthesises clinical text, residency is a per-connection
+        decision, and a default here would be one tenant's residency silently applied to another's.
+
+        Returns ``None`` for a KEYLESS candidate, which is what keeps a SYSTEM row's endpoint from
+        being mistaken for a credential.
+        """
+        api_key = override.get("api_key")
+        if not api_key:
+            return None
+        region = override.get("region") or (candidate.connection.region if candidate.connection else None)
+        if not region:
+            return None
+        return cls(settings.azure.model_copy(update={"api_key": SecretStr(api_key), "region": region}))
 
     def __init__(
         self,
