@@ -210,6 +210,24 @@ at HEAD.
 **Wave 1 status: COMPLETE.** Registry 341 → 286 (executed). Four lanes merged, gated post-merge
 in the primary checkout, worktrees removed, branches deleted.
 
+### Wave 2 (in progress)
+
+Base `030df76b5`. Two owner-session commits landed on `dev-2.2` mid-wave (`3f0adf98a`, `5c6c17dfc`
+— `scripts/**` and the generated env artifacts); every lane merge is intersection-guarded against
+whatever `dev-2.2` accumulated since the base, and each row below states the result.
+
+Two reds are on `dev-2.2` for the whole wave and belong to neither the wave nor the program:
+(1) `@arcaai/database` — 8 seed tests in `ai-model-registry-seed.test.ts` / `task-863-agents.test.ts`,
+all one cause: `9a21f7edc` (TASK-869) seeded a 36th catalogue row (`whisper-large-v3-turbo-q8_0`)
+against tests pinned at "exactly 35 SYSTEM rows" and 9 agent specs; (2) `@arcaai/api` lint — 5
+errors (4 prettier, 1 unused import) in three e2e specs last touched by TASK-869
+(`harness-gate.spec.ts`, `shared-component-contracts.spec.ts`) and TASK-875
+(`auth-throttle-per-endpoint.spec.ts`). No wave-2 lane owns any of those files.
+
+| Lane | Ticket | Merge commit | Post-merge gates (primary checkout) | Worktree |
+|---|---|---|---|---|
+| C | TASK-878 — guardrail outbound judge: `jailbreak_detection` in `OUTBOUND_TASKS`, `usage_detail` on `ScreenResponse`, the containment-echo nonce; judge `temperature`/`maxTokens` moved from `config.py` literals to `AiModel._metadata.policy` (seeded on the SYSTEM guardian row, fail-closed); `guardrail.judge.timeoutSeconds` on the pull route | `dfd4102a6` | `guardrail:test` 458 passed; `guardrail:lint` clean; `guardrail:typecheck` clean (44 files); `text:test` 1620 passed / 4 skipped; `api:build` clean; applications 660 files / 11525 tests; database 77 files / 1762 passed with the 8 pre-attributed failures above (no assertion touches the guardian row this lane re-seeded); `apps/api` lint = the 5 pre-attributed errors, `applications` lint 0 errors. Intersection guard: 10 files on `dev-2.2` since base × 28 lane files = ∅. | removed |
+
 ## Change History
 
 | Date | Change |
@@ -220,3 +238,4 @@ in the primary checkout, worktrees removed, branches deleted.
 | 2026-09-05 | Owner merged TASK-869 (`6123ffbb1`) on top; verified non-reverting. E2E route-authz matrix green (7 passed) on the merged tree. **Wave 1 complete.** |
 | 2026-09-05 | Setup-script pass on the wave-1 close, outside the wave-2 partition (`scripts/**` plus the generated env artifacts; verified untouched by TASK-876..878). `3f0adf98a`: `generate-env-file.sh` was ROTATING `INTERNAL_ACCESS_TOKEN` and `WEBHOOK_SECRET_PEPPER` and BLANKING `VAULT_ROLE_ID` on every `pnpm setup:dev` — `_CARRY_FORWARD_KEYS` was hand-maintained alongside the generated-secret list and had drifted; the two now share one `_GENERATED_SECRET_KEYS` array. `VAULT_WRAPPED_SECRET_ID` is blanked instead of left as `CHANGE_ME`: the provider branches on truthiness, so the placeholder selected the production wrapped path and failed Vault auth at boot. Two reporting defects behind the symptom — an unanchored `=CHANGE_ME` grep matched the sample's commented duplicate lines and word-split comment prose into a list of "unclassified secrets", and `_ENV_REMOVED_TOMBSTONE` matched `__ENV_REMOVED_TASK_<n>` but not the bare `__ENV_REMOVED` used by harness and stt, leaking 7 closed env paths into the manifest and 6 into `.env.sample` as live paste-a-value prompts. Regenerating also cleared drift TASK-869 left: `E2E_ISOLATED_API_URL` added to `turbo.json#globalEnv`, two `SEED_*` keys no tracked source reads dropped from `.env.sample`. Gates: env-sync suite 39/39, `env:sync --check` and `env:python-surface:check` green, shellcheck clean, `.env.dev` regenerates with zero value changes (17 generated secrets hash-identical to a pre-run backup). |
 | 2026-09-05 | `5c6c17dfc`: closed the `apps/tts` dead-field HANDOFF. Lane B (TASK-872, `94a311e4d`) dropped `AzureSpeechConfig.max_concurrent`, `SarvamConfig.max_concurrent` and `SarvamConfig.use_streaming` with their descriptors and overlay entries, but left their three `INTENTIONALLY_UNREAD` rows in `scripts/python-env-surface.py` — so the self-cleaning rule failed `pnpm env:python-dead` from that merge onward, which is the last step the handoff's own rationale string had scripted. Rows and the now-orphaned `_TTS_CONTROL_PLANE_HANDOFF` constant deleted; the scanner-limitation comment citing those fields corrected to past tense. `env:python-dead` OK — 394 fields across 6 services, every one read, 4 allow-listed. |
+| 2026-09-05 | Lane C (TASK-878) merged at `dfd4102a6`; post-merge gates green; the two reds on `dev-2.2` attributed to TASK-869 (36th catalogue row → 8 database seed tests) and TASK-869/875 e2e-spec lint — none in a wave-2 file; worktree removed. Lanes A (TASK-876) and B (TASK-877) in flight. |
