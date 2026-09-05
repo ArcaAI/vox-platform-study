@@ -13,6 +13,7 @@ import {
   StreamingAvailability,
   StreamingSessionStatus,
   StreamingSessionTeardownSummary,
+  StreamingUsageSegment,
 } from './dto';
 
 /**
@@ -320,9 +321,10 @@ export class StreamingSessionService implements IStreamingSessionService {
    * Remove a streaming session (triggers finalization on STT).
    *
    * A REAL teardown now returns a usage-attribution summary
-   * (see `StreamingSessionTeardownSummary`), which this emits as ONE
-   * `transcribe.stream` ledger row (SESSION_SECOND + AUDIO_SECOND) through
-   * `IUsageLedgerService`. The idempotent "already gone" branch (204, no
+   * (see `StreamingSessionTeardownSummary`), which this emits as one
+   * `transcribe.stream` ledger row per ENGINE segment (SESSION_SECOND +
+   * AUDIO_SECOND each) through `IUsageLedgerService` — one row for a session
+   * that never switched engines, one per engine for a session that did. The idempotent "already gone" branch (204, no
    * body) has nothing to emit — a prior successful call already did (or
    * never got the chance to, in which case there is genuinely no usage to
    * record). `interrupted` is entirely a GATEWAY-side decision (STT has no
@@ -365,10 +367,48 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
+   * The engine segments to bill, newest wire shape first.
+   *
+   * TASK-874 — `apps/stt` now reports one entry per `(engine, deployment)` pair
+   * that actually served, so a session that failed over to the platform fallback
+   * bills its BYO minutes as `BYOK` and its fallback minutes as `CLOUD` instead
+   * of attributing the whole session to whichever engine finished. An STT that
+   * predates the field sends none, and the top-level scalars — which are exactly
+   * today's whole-session attribution — stand in, so metering is unchanged
+   * against an older worker.
+   *
+   * A zero-duration segment is dropped: a create-time fallback (the primary
+   * failed to LOAD) must never bill an engine that never ran.
+   */
+  private static usageSegments(summary: StreamingSessionTeardownSummary): StreamingUsageSegment[] {
+    const declared =
+      summary.segments && summary.segments.length > 0
+        ? summary.segments
+        : summary.engine && summary.deployment
+          ? [
+              {
+                engine: summary.engine,
+                deployment: summary.deployment,
+                audio_seconds: summary.audio_seconds,
+                session_seconds: summary.session_seconds,
+              },
+            ]
+          : [];
+    return declared.filter((segment) => segment.engine && segment.deployment && (segment.audio_seconds > 0 || segment.session_seconds > 0));
+  }
+
+  /**
    * Build and record the `transcribe.stream` usage rows from a teardown
    * summary. Never throws — emission is a metering side effect of work
    * already done and must never surface a failure to (or block) the caller
    * that just finished tearing the session down.
+   *
+   * ONE ledger batch per engine segment. The chronologically first segment keeps
+   * the unchanged `stt:session:<id>` key, so a session that never switched emits
+   * a byte-identical row to before (and no rolling-deploy double-bill hazard);
+   * later segments append their ordinal. Both keys stay intent-derived — the
+   * ordinal is the engine's first-appearance position in a session, never a
+   * counter minted at emission time.
    */
   private async emitStreamingUsage(summary: StreamingSessionTeardownSummary, interrupted: boolean): Promise<void> {
     if (!this.usageLedgerService) {
@@ -377,41 +417,50 @@ export class StreamingSessionService implements IStreamingSessionService {
     // Never guess a provider — no resolved engine means no ASR model was
     // ever loaded for this session (e.g. it failed before load), so there
     // is nothing meaningful to bill against (mirrors the batch path).
-    if (!summary.engine || !summary.deployment) {
+    const segments = StreamingSessionService.usageSegments(summary);
+    if (segments.length === 0) {
       return;
     }
+    const baseKey = UsageIdempotencyKey.sttStreamSession(summary.session_id);
 
     try {
-      await this.usageLedgerService.recordUsage({
-        common: {
-          tenantId: summary.tenant_id,
-          sessionId: summary.session_id,
-          consultationId: summary.consultation_id ?? null,
-          doctorId: summary.user_id ?? null,
-          idempotencyKey: UsageIdempotencyKey.sttStreamSession(summary.session_id),
-          occurredAt: summary.closed_at,
-          capability: AiCapability.STT,
-          operation: 'transcribe.stream',
-          provider: summary.engine,
-          model: null,
-          deployment: AiDeploymentKind[summary.deployment as keyof typeof AiDeploymentKind],
-          ...(summary.deployment === 'BYOK' ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
-          attributesJson: {
-            engine: summary.engine,
-            pipelineId: summary.pipeline_id,
-            languageMode: summary.language_mode ?? null,
-            // Real dual-/multi-mic signal from the teardown summary;
-            // defaults to 1 for a single mic or an older STT that omits it.
-            channelCount: summary.channel_count ?? 1,
-            streamKind: 'ws',
-            interrupted,
+      for (const [index, segment] of segments.entries()) {
+        await this.usageLedgerService.recordUsage({
+          common: {
+            tenantId: summary.tenant_id,
+            sessionId: summary.session_id,
+            consultationId: summary.consultation_id ?? null,
+            doctorId: summary.user_id ?? null,
+            idempotencyKey: index === 0 ? baseKey : `${baseKey}:${index}`,
+            occurredAt: summary.closed_at,
+            capability: AiCapability.STT,
+            operation: 'transcribe.stream',
+            provider: segment.engine,
+            model: null,
+            deployment: AiDeploymentKind[segment.deployment as keyof typeof AiDeploymentKind],
+            ...(segment.deployment === 'BYOK' ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
+            attributesJson: {
+              engine: segment.engine,
+              pipelineId: summary.pipeline_id,
+              languageMode: summary.language_mode ?? null,
+              // Real dual-/multi-mic signal from the teardown summary;
+              // defaults to 1 for a single mic or an older STT that omits it.
+              channelCount: summary.channel_count ?? 1,
+              streamKind: 'ws',
+              interrupted,
+              // NOT a segment index/count: `attributesJson` is a closed PHI
+              // allow-list (`usageLedger/usage-attributes.ts`) and a key that is
+              // not declared there is REJECTED at emission, not dropped. A
+              // failed-over session is already countable without one — its rows
+              // share `sessionId` and differ in `provider`/`deployment`.
+            },
           },
-        },
-        units: [
-          { unit: AiUsageUnit.SESSION_SECOND, quantity: summary.session_seconds },
-          { unit: AiUsageUnit.AUDIO_SECOND, quantity: summary.audio_seconds },
-        ],
-      });
+          units: [
+            { unit: AiUsageUnit.SESSION_SECOND, quantity: segment.session_seconds },
+            { unit: AiUsageUnit.AUDIO_SECOND, quantity: segment.audio_seconds },
+          ],
+        });
+      }
     } catch (error) {
       this.logger.error({
         message: 'stt.stream.usage_emit_failed — session torn down but the transcribe.stream usage row was not recorded',

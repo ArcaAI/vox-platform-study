@@ -1,5 +1,36 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+
+/**
+ * One engine's total time in the session — one `transcribe.stream` ledger row.
+ *
+ * TASK-874 — a session can change ASR engines mid-flight, and fallback to the
+ * platform default is a METERED platform HA capability, so billing follows
+ * ENGINE-TIME: the tenant's BYO minutes meter `BYOK` and the platform
+ * fallback's meter `CLOUD`. `deployment` is DERIVED by `apps/stt` from the
+ * credential row that actually served the span, never stamped here.
+ */
+export class SttStreamingUsageSegmentRequest {
+  @ApiProperty({ description: 'Usage-ledger engine id that served this segment.' })
+  @IsString()
+  engine!: string;
+
+  @ApiProperty({ description: 'Economic deployment kind of the engine that served this segment.', enum: ['SELF_HOSTED', 'CLOUD', 'BYOK'] })
+  @IsString()
+  @IsIn(['SELF_HOSTED', 'CLOUD', 'BYOK'])
+  deployment!: string;
+
+  @ApiProperty({ description: 'Decoded audio seconds on this engine.' })
+  @IsNumber()
+  @Min(0)
+  audio_seconds!: number;
+
+  @ApiProperty({ description: 'Wall-clock seconds on this engine.' })
+  @IsNumber()
+  @Min(0)
+  session_seconds!: number;
+}
 
 /**
  * Body of `POST /api/v1/internal/stt/streaming/usage`.
@@ -58,6 +89,19 @@ export class SttStreamingUsagePushbackRequest {
   @IsString()
   @IsOptional()
   deployment?: string | null;
+
+  @ApiPropertyOptional({
+    type: () => [SttStreamingUsageSegmentRequest],
+    description:
+      'Per-engine usage breakdown (TASK-874) — one ledger row each, summing to audio_seconds/session_seconds. ' +
+      'Absent from an STT that predates it, in which case the engine/deployment scalars above meter the whole session as before. ' +
+      'Whitelisted because the global pipe runs forbidNonWhitelisted: without it every push-back carrying segments would 400.',
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SttStreamingUsageSegmentRequest)
+  @IsOptional()
+  segments?: SttStreamingUsageSegmentRequest[];
 
   @ApiPropertyOptional({ nullable: true })
   @IsString()

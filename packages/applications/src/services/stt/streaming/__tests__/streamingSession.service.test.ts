@@ -1,5 +1,6 @@
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { validateUsageAttributes } from '../../../usageLedger/usage-attributes';
 import { StreamingSessionService } from '../streamingSession.service';
 
 describe('StreamingSessionService', () => {
@@ -37,7 +38,10 @@ describe('StreamingSessionService', () => {
 
     await service.checkAvailability();
 
-    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/availability', expect.objectContaining({ timeout: 5000 }));
+    expect(httpService.get).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/availability',
+      expect.objectContaining({ timeout: 5000 }),
+    );
   });
 
   it('falls back to localhost when STT_URL is missing', async () => {
@@ -110,7 +114,10 @@ describe('StreamingSessionService', () => {
 
     const result = await service.getSessionStatus('s-2');
 
-    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/sessions/s-2', expect.objectContaining({ timeout: 5000 }));
+    expect(httpService.get).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/sessions/s-2',
+      expect.objectContaining({ timeout: 5000 }),
+    );
     expect(result).toEqual({
       sessionId: 's-2',
       status: 'active',
@@ -193,9 +200,7 @@ describe('StreamingSessionService', () => {
   });
 
   it('forwards language_mode (snake_case) in createSession POST body', async () => {
-    httpService.post.mockReturnValue(
-      of({ data: { session_id: 's-7', status: 'active', max_concurrent: 4, current_active: 1 } }),
-    );
+    httpService.post.mockReturnValue(of({ data: { session_id: 's-7', status: 'active', max_concurrent: 4, current_active: 1 } }));
 
     const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
@@ -214,9 +219,7 @@ describe('StreamingSessionService', () => {
   });
 
   it('createSession sends language_mode: null when unset', async () => {
-    httpService.post.mockReturnValue(
-      of({ data: { session_id: 's-8', status: 'active', max_concurrent: 4, current_active: 1 } }),
-    );
+    httpService.post.mockReturnValue(of({ data: { session_id: 's-8', status: 'active', max_concurrent: 4, current_active: 1 } }));
 
     const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
@@ -230,9 +233,7 @@ describe('StreamingSessionService', () => {
   });
 
   it('forwards start_on (snake_case) in createSession POST body', async () => {
-    httpService.post.mockReturnValue(
-      of({ data: { session_id: 's-9', status: 'active', max_concurrent: 4, current_active: 1 } }),
-    );
+    httpService.post.mockReturnValue(of({ data: { session_id: 's-9', status: 'active', max_concurrent: 4, current_active: 1 } }));
 
     const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
@@ -251,9 +252,7 @@ describe('StreamingSessionService', () => {
   });
 
   it('createSession sends start_on: null when unset', async () => {
-    httpService.post.mockReturnValue(
-      of({ data: { session_id: 's-10', status: 'active', max_concurrent: 4, current_active: 1 } }),
-    );
+    httpService.post.mockReturnValue(of({ data: { session_id: 's-10', status: 'active', max_concurrent: 4, current_active: 1 } }));
 
     const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
@@ -272,7 +271,14 @@ describe('StreamingSessionService', () => {
         data: {
           modes: [
             { id: 'en', label: 'English', kind: 'single', primaryLanguage: 'en', secondaryLanguage: null, supportedEngines: ['OPENAI'] },
-            { id: 'ml-en', label: 'Malayalam + English', kind: 'code_switch', primaryLanguage: 'ml', secondaryLanguage: 'en', supportedEngines: ['SARVAM'] },
+            {
+              id: 'ml-en',
+              label: 'Malayalam + English',
+              kind: 'code_switch',
+              primaryLanguage: 'ml',
+              secondaryLanguage: 'en',
+              supportedEngines: ['SARVAM'],
+            },
           ],
         },
       }),
@@ -282,7 +288,10 @@ describe('StreamingSessionService', () => {
 
     const result = await service.getLanguageModes();
 
-    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/language-modes', expect.objectContaining({ timeout: 5000 }));
+    expect(httpService.get).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/language-modes',
+      expect.objectContaining({ timeout: 5000 }),
+    );
     expect(result.modes.map((m) => m.id)).toEqual(['en', 'ml-en']);
   });
 
@@ -520,6 +529,154 @@ describe('StreamingSessionService', () => {
       const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
 
       await expect(service.removeSession('s-1')).resolves.toBeUndefined();
+    });
+
+    // TASK-874 — fallback to the platform default is a metered HA capability, so
+    // a session that switched engines mid-flight bills ENGINE-TIME: one ledger row
+    // per engine, each with the funding derived from the row that served it. The
+    // whole-session-to-one-tier row is what mis-billed a BYO session that failed
+    // over (and, the other way, a platform session that switched back).
+    it('emits ONE ledger row per engine segment, each with its own engine/deployment/costBasis', async () => {
+      httpService.delete.mockReturnValue(
+        of({
+          status: 200,
+          data: teardownSummary({
+            engine: 'whisper_cpp',
+            deployment: 'SELF_HOSTED',
+            segments: [
+              { engine: 'azure-speech', deployment: 'BYOK', audio_seconds: 30.0, session_seconds: 60.0 },
+              { engine: 'sarvam', deployment: 'CLOUD', audio_seconds: 12.5, session_seconds: 30.0 },
+            ],
+          }),
+        }),
+      );
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(2);
+      const [byok] = usageLedgerService.recordUsage.mock.calls[0];
+      const [cloud] = usageLedgerService.recordUsage.mock.calls[1];
+
+      expect(byok.common.provider).toBe('azure-speech');
+      expect(byok.common.deployment).toBe('BYOK');
+      expect(byok.common.costBasis).toBe('BYOK_NOTIONAL');
+      // The chronologically FIRST segment keeps the unchanged session key, so a
+      // never-switching session emits a byte-identical row to before.
+      expect(byok.common.idempotencyKey).toBe('stt:session:s-1');
+      expect(byok.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'SESSION_SECOND', quantity: 60.0 },
+          { unit: 'AUDIO_SECOND', quantity: 30.0 },
+        ]),
+      );
+      expect(byok.common.attributesJson).toMatchObject({ engine: 'azure-speech' });
+
+      expect(cloud.common.provider).toBe('sarvam');
+      expect(cloud.common.deployment).toBe('CLOUD');
+      // Platform-funded fallback time is real COGS — never zeroed as BYOK_NOTIONAL.
+      expect(cloud.common.costBasis).toBeUndefined();
+      expect(cloud.common.idempotencyKey).toBe('stt:session:s-1:1');
+      expect(cloud.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'SESSION_SECOND', quantity: 30.0 },
+          { unit: 'AUDIO_SECOND', quantity: 12.5 },
+        ]),
+      );
+      expect(cloud.common.attributesJson).toMatchObject({ engine: 'sarvam' });
+      // A rollup counts fail-overs from the rows themselves: same sessionId,
+      // different provider. No new attributesJson key is needed (and none may be
+      // added from this lane — the allow-list is a PHI boundary).
+      expect(cloud.common.sessionId).toBe(byok.common.sessionId);
+    });
+
+    it('a single-segment summary (never switched) emits exactly the one legacy row and key', async () => {
+      httpService.delete.mockReturnValue(
+        of({
+          status: 200,
+          data: teardownSummary({ segments: [{ engine: 'whisper_cpp', deployment: 'SELF_HOSTED', audio_seconds: 42.5, session_seconds: 90.0 }] }),
+        }),
+      );
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common.idempotencyKey).toBe('stt:session:s-1');
+      expect(input.common.provider).toBe('whisper_cpp');
+      expect(input.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'SESSION_SECOND', quantity: 90.0 },
+          { unit: 'AUDIO_SECOND', quantity: 42.5 },
+        ]),
+      );
+    });
+
+    it('an older STT that sends no segments still meters from the top-level fields (backward compatible)', async () => {
+      httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary() }));
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common.idempotencyKey).toBe('stt:session:s-1');
+      expect(input.common.provider).toBe('whisper_cpp');
+      expect(input.common.attributesJson.engine).toBe('whisper_cpp');
+    });
+
+    it('drops a zero-duration segment rather than billing an engine that never served', async () => {
+      httpService.delete.mockReturnValue(
+        of({
+          status: 200,
+          data: teardownSummary({
+            segments: [
+              { engine: 'azure-speech', deployment: 'BYOK', audio_seconds: 0, session_seconds: 0 },
+              { engine: 'whisper_cpp', deployment: 'SELF_HOSTED', audio_seconds: 42.5, session_seconds: 90.0 },
+            ],
+          }),
+        }),
+      );
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common.provider).toBe('whisper_cpp');
+      expect(input.common.idempotencyKey).toBe('stt:session:s-1');
+    });
+
+    // `attributesJson` is a closed PHI allow-list, and an undeclared key is
+    // REJECTED by `recordUsage` (ArgumentInvalidException — nothing written), not
+    // dropped. A mocked ledger cannot see that, so run the real validator over
+    // what this emitter actually builds.
+    it('every emitted attributesJson bag passes the usage-ledger allow-list', async () => {
+      httpService.delete.mockReturnValue(
+        of({
+          status: 200,
+          data: teardownSummary({
+            segments: [
+              { engine: 'azure-speech', deployment: 'BYOK', audio_seconds: 30.0, session_seconds: 60.0 },
+              { engine: 'sarvam', deployment: 'CLOUD', audio_seconds: 12.5, session_seconds: 30.0 },
+            ],
+          }),
+        }),
+      );
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage.mock.calls).toHaveLength(2);
+      for (const [input] of usageLedgerService.recordUsage.mock.calls) {
+        expect(validateUsageAttributes(input.common.attributesJson)).toEqual([]);
+      }
     });
 
     it('a genuine 404 from STT still resolves without attempting emission (pre-existing idempotent-removal behaviour)', async () => {
