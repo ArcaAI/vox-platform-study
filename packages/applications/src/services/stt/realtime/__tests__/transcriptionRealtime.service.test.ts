@@ -248,6 +248,58 @@ describe('TranscriptionRealtimeService', () => {
   });
 
   // -----------------------------------------------------------------------
+  // dispatchDramatiqJob — voice profiles (TASK-887)
+  // -----------------------------------------------------------------------
+
+  describe('dispatchDramatiqJob voice profiles', () => {
+    const specWith = (opts: { enabled: boolean; embeddingSlug?: string }): any => ({
+      models: { asr: { slug: 'whisper' }, ...(opts.embeddingSlug ? { embedding: { slug: opts.embeddingSlug } } : {}) },
+      audioFrontEnd: { diarization: { enabled: opts.enabled } },
+    });
+
+    // `userId` is explicit, never defaulted: passing `undefined` to a defaulted parameter
+    // would silently restore the default and make the no-user case test nothing.
+    const dispatch = async (voiceProfileService: unknown, resolvedSpec: unknown, userId: string | undefined) => {
+      const svc = new TranscriptionRealtimeService(
+        mockRedisSubscriber as any,
+        mockTranscriptionJobService as any,
+        mockCacheService,
+        voiceProfileService as never,
+      );
+      await svc.dispatchDramatiqJob({
+        jobId: 'job-vp',
+        tenantId: 'tenant-1',
+        pipelineId: 'agent-version-1',
+        audioUri: 's3://hope-audio/x.wav',
+        userId,
+        resolvedSpec: resolvedSpec as never,
+      });
+      return JSON.parse((mockCacheService.hset as any).mock.calls[0][2]).kwargs as Record<string, unknown>;
+    };
+
+    it('carries the job user’s profiles for the agent’s embedding model', async () => {
+      const listForRuntime = vi.fn().mockResolvedValue([{ profile_id: 'vp-1', label: 'Dr Who', model_id: 'ecapa-tdnn-voxceleb', embedding: [0.1] }]);
+      const kwargs = await dispatch({ listForRuntime }, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }), 'user-1');
+
+      expect(listForRuntime).toHaveBeenCalledWith('user-1', 'tenant-1', 'ecapa-tdnn-voxceleb');
+      expect(kwargs.voice_profiles).toEqual([{ profile_id: 'vp-1', label: 'Dr Who', model_id: 'ecapa-tdnn-voxceleb', embedding: [0.1] }]);
+    });
+
+    it('OMITS the kwarg entirely when there is nothing to send — absence is the one encoding', async () => {
+      const kwargs = await dispatch({ listForRuntime: vi.fn().mockResolvedValue([]) }, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }), 'user-1');
+      expect(kwargs).not.toHaveProperty('voice_profiles');
+    });
+
+    it('does not query at all with diarization off, no embedding model, or no user', async () => {
+      const listForRuntime = vi.fn();
+      await dispatch({ listForRuntime }, specWith({ enabled: false, embeddingSlug: 'ecapa-tdnn-voxceleb' }), 'user-1');
+      await dispatch({ listForRuntime }, specWith({ enabled: true }), 'user-1');
+      await dispatch({ listForRuntime }, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }), undefined);
+      expect(listForRuntime).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // dispatchDramatiqJob — fallback pipeline
   //
   // `transcribe_file` re-runs a failed primary ASR on `fallback_pipeline_id`

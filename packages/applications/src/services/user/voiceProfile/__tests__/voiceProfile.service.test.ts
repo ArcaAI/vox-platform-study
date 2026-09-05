@@ -39,6 +39,7 @@ const mockEventEmitter = {
 };
 
 const mockVoiceProfileRepository = {
+  findActiveEmbeddingsForUser: vi.fn(),
   findById: vi.fn(),
   findAll: vi.fn(),
   findAllByUserId: vi.fn(),
@@ -59,6 +60,36 @@ const mockConfigService = {
     STT_URL: 'http://localhost:8861',
   },
 };
+
+/**
+ * TASK-887 — enrollment resolves the SAME agent a session would, and the agent names the
+ * speaker-embedding model the profile is stored in. This mock stands in for
+ * `AsrAgentResolverService`; the default answer is the SYSTEM ASR agent bound to the 256-d
+ * wespeaker row with diarization on.
+ */
+const AGENT_SLUG = 'platform-transcription';
+const EMBEDDING_SLUG = 'wespeaker-voxceleb-resnet34';
+const EMBEDDING_SOURCE_URI = 'pyannote/wespeaker-voxceleb-resnet34-LM';
+
+const mockAsrResolver = {
+  resolve: vi.fn(),
+};
+
+function asrSpec(overrides: { embedding?: unknown; enabled?: boolean; matchThreshold?: number | null } = {}) {
+  const embedding = 'embedding' in overrides ? overrides.embedding : { slug: EMBEDDING_SLUG, sourceUri: EMBEDDING_SOURCE_URI };
+  return {
+    spec: {
+      agent: { slug: AGENT_SLUG },
+      models: { embedding },
+      audioFrontEnd: {
+        diarization: {
+          enabled: overrides.enabled ?? true,
+          ...(overrides.matchThreshold === undefined ? {} : { matchThreshold: overrides.matchThreshold }),
+        },
+      },
+    },
+  };
+}
 
 // Helper to create mock voice profile entity
 const createMockVoiceProfileEntity = (overrides: Record<string, unknown> = {}) => {
@@ -92,6 +123,8 @@ function buildService(): VoiceProfileService {
     mockEventEmitter as any,
     mockClsService as any,
     mockConfigService as any,
+    undefined,
+    mockAsrResolver as any,
   );
 }
 
@@ -109,6 +142,7 @@ describe('VoiceProfileService', () => {
       if (key === 'tenantId') return 'tenant-1';
       return null;
     });
+    mockAsrResolver.resolve.mockResolvedValue(asrSpec());
     service = buildService();
   });
 
@@ -121,7 +155,8 @@ describe('VoiceProfileService', () => {
       const mockExtractionResponse = {
         data: {
           embedding: Array(256).fill(0.1),
-          model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM',
+          model_id: EMBEDDING_SOURCE_URI,
+          model_slug: EMBEDDING_SLUG,
         },
       };
 
@@ -173,7 +208,7 @@ describe('VoiceProfileService', () => {
     // tenant; reads (incl. the STT-v2 diarization preseed) filter on it.
     it('should stamp the enrolled profile with the CLS tenant', async () => {
       const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }));
+      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: EMBEDDING_SOURCE_URI, model_slug: EMBEDDING_SLUG } }));
       mockVoiceProfileRepository.createWithEmbedding.mockImplementation(async (entity: any) => entity);
 
       await service.enroll({
@@ -192,7 +227,7 @@ describe('VoiceProfileService', () => {
         return null; // no tenantId in CLS
       });
       const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }));
+      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: EMBEDDING_SOURCE_URI, model_slug: EMBEDDING_SLUG } }));
 
       await expect(
         service.enroll({
@@ -261,47 +296,79 @@ describe('VoiceProfileService', () => {
       });
     });
 
-    // Defense-in-depth: if STT-v2 ever returns a vector whose length does not
-    // match the DB column ``vector(256)``, fail BEFORE the raw-SQL insert
-    // instead of letting pgvector throw a cryptic 22000 error.
-    describe('embedding dimension guard', () => {
-      it('rejects 512-d embedding with a clear BadRequest BEFORE hitting the DB', async () => {
+    /**
+     * TASK-887 — the AGENT names the embedding space, and the profile records it.
+     *
+     * These replace the old "embedding dimension guard" block, which rejected anything that
+     * was not 256-d because the platform declared ONE embedding space
+     * (`stt.diarization.hfModelId` + a `vector(256)` column). Both are gone: the column is a
+     * dimension-agnostic `vector` and a profile is only ever matched by an agent bound to the
+     * model that embedded it, so the width is the model's business.
+     */
+    describe('the agent declares the embedding space', () => {
+      it('pushes the agent’s model + threshold to apps/stt and stamps the profile with the SLUG', async () => {
         const { of } = await import('rxjs');
-        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(512).fill(0.1), model_id: 'pyannote/embedding' } }));
+        mockAsrResolver.resolve.mockResolvedValue(asrSpec({ matchThreshold: 0.72 }));
+        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(192).fill(0.1), model_id: EMBEDDING_SOURCE_URI, model_slug: EMBEDDING_SLUG } }));
+        mockVoiceProfileRepository.createWithEmbedding.mockImplementation(async (entity: any) => entity);
+
+        await service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')], agentSlug: AGENT_SLUG });
+
+        expect(mockAsrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: AGENT_SLUG, departmentId: null });
+        const form = mockHttpService.post.mock.calls[0][1] as FormData;
+        expect(form.get('model_slug')).toBe(EMBEDDING_SLUG);
+        expect(form.get('model_source_uri')).toBe(EMBEDDING_SOURCE_URI);
+        expect(form.get('min_similarity')).toBe('0.72');
+
+        // The SLUG, not the HuggingFace repo id the response also carries: the slug is what an
+        // agent binds and what a session compares a profile against.
+        const [entityArg] = mockVoiceProfileRepository.createWithEmbedding.mock.calls[0];
+        expect(entityArg.modelId).toBe(EMBEDDING_SLUG);
+      });
+
+      it('accepts a 192-d vector — width is the model’s property, not the platform’s', async () => {
+        const { of } = await import('rxjs');
+        mockAsrResolver.resolve.mockResolvedValue(asrSpec({ embedding: { slug: 'ecapa-tdnn-voxceleb', sourceUri: 'speechbrain/spkrec-ecapa-voxceleb' } }));
+        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(192).fill(0.1), model_id: 'speechbrain/spkrec-ecapa-voxceleb', model_slug: 'ecapa-tdnn-voxceleb' } }));
+        mockVoiceProfileRepository.createWithEmbedding.mockImplementation(async (entity: any) => entity);
+
+        const created: any = await service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] });
+        expect(created.modelId).toBe('ecapa-tdnn-voxceleb');
+      });
+
+      it('omits min_similarity entirely when the agent declared no threshold', async () => {
+        const { of } = await import('rxjs');
+        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: EMBEDDING_SOURCE_URI, model_slug: EMBEDDING_SLUG } }));
+        mockVoiceProfileRepository.createWithEmbedding.mockImplementation(async (entity: any) => entity);
+
+        await service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] });
+        expect((mockHttpService.post.mock.calls[0][1] as FormData).get('min_similarity')).toBeNull();
+      });
+
+      it('refuses BEFORE any audio leaves the gateway when the agent declares no embedding model', async () => {
+        mockAsrResolver.resolve.mockResolvedValue(asrSpec({ embedding: undefined, enabled: false }));
 
         await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
           constructor: BadRequestException,
-          message: expect.stringMatching(/512.*256|256.*512|dimension/i),
+          message: expect.stringContaining('embeddingModelSlug'),
         });
-
+        expect(mockHttpService.post).not.toHaveBeenCalled();
         expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
       });
 
-      it('includes the offending model id in the error message', async () => {
-        const { of } = await import('rxjs');
-        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(192).fill(0.1), model_id: 'some/other-model' } }));
+      it('lets the resolver’s own 404 through — a foreign agent is not this user’s to enrol for', async () => {
+        const notFound = new Error('Agent not found');
+        mockAsrResolver.resolve.mockRejectedValue(notFound);
 
-        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
-          message: expect.stringContaining('some/other-model'),
-        });
-      });
-
-      it('accepts the correct 256-d embedding', async () => {
-        const { of } = await import('rxjs');
-        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }));
-        const created = createMockVoiceProfileEntity({ id: 'vp-ok', userId: 'user-id-1' });
-        mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);
-        mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
-
-        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).resolves.toBeDefined();
-        expect(mockVoiceProfileRepository.createWithEmbedding).toHaveBeenCalled();
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')], agentSlug: 'someone-elses' })).rejects.toBe(notFound);
+        expect(mockHttpService.post).not.toHaveBeenCalled();
       });
     });
 
     // Auto-activate the first enrolled profile.
     it('auto-activates the newly created profile when the user has no active profile yet', async () => {
       const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }));
+      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: EMBEDDING_SOURCE_URI, model_slug: EMBEDDING_SLUG } }));
 
       const created = createMockVoiceProfileEntity({ id: 'vp-new', userId: 'user-id-1', isActive: false });
       mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);
@@ -320,7 +387,7 @@ describe('VoiceProfileService', () => {
 
     it('does NOT auto-activate when the user already has an active profile', async () => {
       const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }));
+      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: EMBEDDING_SOURCE_URI, model_slug: EMBEDDING_SLUG } }));
 
       const created = createMockVoiceProfileEntity({ id: 'vp-new', userId: 'user-id-1', isActive: false });
       mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);
@@ -456,6 +523,57 @@ describe('VoiceProfileService', () => {
 
       await expect(service.deleteById('vp-1')).rejects.toBeInstanceOf(ForbiddenException);
       expect(mockVoiceProfileRepository.softDelete).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // enrollmentTarget / listForRuntime — TASK-887
+  // =========================================================================
+
+  describe('enrollmentTarget', () => {
+    it('reports the resolved agent’s embedding model and whether it diarizes', async () => {
+      mockAsrResolver.resolve.mockResolvedValue(asrSpec({ enabled: false, matchThreshold: 0.55 }));
+
+      await expect(service.enrollmentTarget()).resolves.toEqual({
+        agentSlug: AGENT_SLUG,
+        modelId: EMBEDDING_SLUG,
+        modelSourceUri: EMBEDDING_SOURCE_URI,
+        diarizationEnabled: false,
+        matchThreshold: 0.55,
+      });
+      // No slug given ⇒ the ASSIGNED agent, which is what a session with no explicit agent runs.
+      expect(mockAsrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null });
+    });
+
+    it('reports a null threshold when the agent declared none', async () => {
+      await expect(service.enrollmentTarget()).resolves.toMatchObject({ matchThreshold: null });
+    });
+  });
+
+  describe('listForRuntime', () => {
+    it('asks the repository for the user’s ACTIVE rows in ONE model’s space and maps them to the wire shape', async () => {
+      mockVoiceProfileRepository.findActiveEmbeddingsForUser.mockResolvedValue([
+        { id: 'vp-1', label: 'Dr Who', modelId: EMBEDDING_SLUG, embedding: [0.1, 0.2] },
+      ]);
+
+      await expect(service.listForRuntime('user-id-1', 'tenant-1', EMBEDDING_SLUG)).resolves.toEqual([
+        { profile_id: 'vp-1', label: 'Dr Who', model_id: EMBEDDING_SLUG, embedding: [0.1, 0.2] },
+      ]);
+      // The model is a WHERE clause, never a post-filter: vectors from another embedding space
+      // are not comparable, so they are not fetched at all.
+      expect(mockVoiceProfileRepository.findActiveEmbeddingsForUser).toHaveBeenCalledWith('user-id-1', 'tenant-1', EMBEDDING_SLUG);
+    });
+
+    it('never throws — a failed lookup costs generic speaker labels, not the session', async () => {
+      mockVoiceProfileRepository.findActiveEmbeddingsForUser.mockRejectedValue(new Error('pg down'));
+      await expect(service.listForRuntime('user-id-1', 'tenant-1', EMBEDDING_SLUG)).resolves.toEqual([]);
+    });
+
+    it('resolves nothing when any of user / tenant / model is missing', async () => {
+      await expect(service.listForRuntime('', 'tenant-1', EMBEDDING_SLUG)).resolves.toEqual([]);
+      await expect(service.listForRuntime('user-id-1', '', EMBEDDING_SLUG)).resolves.toEqual([]);
+      await expect(service.listForRuntime('user-id-1', 'tenant-1', '')).resolves.toEqual([]);
+      expect(mockVoiceProfileRepository.findActiveEmbeddingsForUser).not.toHaveBeenCalled();
     });
   });
 });
