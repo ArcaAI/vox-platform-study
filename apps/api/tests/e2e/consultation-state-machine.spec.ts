@@ -270,14 +270,16 @@ const RUN_FULL = Boolean(process.env.HARNESS_E2E_FULL);
 const SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
 
 test.describe('full lifecycle walk (RUN_FULL)', () => {
-  test.skip(!RUN_FULL, 'requires a reachable TEXT/text backend; set HARNESS_E2E_FULL=1');
+  test.skip(!RUN_FULL || !SERVICE_TOKEN, 'requires HARNESS_SERVICE_TOKEN + HARNESS_E2E_FULL=1');
 
   let doctorToken: string;
+  let walkTenantId: string;
 
   test.beforeAll(async ({ request }) => {
     const doctor = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(doctor, 'doctor login failed').toBeTruthy();
     doctorToken = doctor!.token;
+    walkTenantId = doctor!.user.tenantId;
   });
 
   // ── Case 2 + 4: OPEN -> PRIMED -> RECORDING -> DRAINING -> PENDING_REVIEW ->
@@ -301,14 +303,24 @@ test.describe('full lifecycle walk (RUN_FULL)', () => {
     expect(stopRes.status()).toBe(200);
     expect((await getConsultation(request, doctorToken, id)).status).toBe('DRAINING');
 
-    // Legacy (non-harness) generation: SummaryProcessor.applyLegacySafetyFloor
-    // flips DRAINING -> PENDING_REVIEW as part of the async job. Poll briefly.
-    const genRes = await request.post(`/api/v1/consultations/${id}/summary`, {
-      headers: bearer(doctorToken),
-      data: { transcription: 'Doctor: how are you feeling? Patient: better today.' },
+    // TASK-869 — this step used to POST `:id/summary` and wait for
+    // `SummaryProcessor.applyLegacySafetyFloor` to flip DRAINING -> PENDING_REVIEW.
+    // THAT CODE NO LONGER EXISTS: `legacy-generator-absent.grep-gate.test.ts`
+    // asserts zero live-code references to `applyLegacySafetyFloor`, because the
+    // legacy generator was deleted with the epic that retired it. Nothing flips
+    // the status on that path any more, so the consultation sat in DRAINING and
+    // the poll always timed out — the test was asserting a mechanism the product
+    // had removed. Measured on a working stack: 17 consultations stuck in
+    // DRAINING, while every consultation driven through the harness reached
+    // PENDING_REVIEW.
+    //
+    // The supported producer is the harness draft write, which the gate-SLA
+    // describe below already exercises. Same walk, current architecture.
+    const draftRes = await request.post(`/api/v1/internal/harness/consultations/${id}/draft`, {
+      headers: { 'X-Service-Token': SERVICE_TOKEN },
+      data: { tenantId: walkTenantId, content: '{"subjective":"better today","objective":"o","assessment":"a","plan":"p"}' },
     });
-    expect(genRes.status(), 'generateSummary must succeed').toBeLessThan(300);
-    const summary = await genRes.json();
+    expect(draftRes.status(), 'harness draft write must succeed').toBeLessThan(300);
 
     let pendingReview = false;
     for (let i = 0; i < 20 && !pendingReview; i++) {
@@ -316,12 +328,18 @@ test.describe('full lifecycle walk (RUN_FULL)', () => {
       if (cur.status === 'PENDING_REVIEW') pendingReview = true;
       else await new Promise((r) => setTimeout(r, 500));
     }
-    expect(pendingReview, 'consultation must reach PENDING_REVIEW after generation').toBe(true);
+    expect(pendingReview, 'consultation must reach PENDING_REVIEW after the harness draft').toBe(true);
+
+    const summariesRes = await request.get(`/api/v1/consultations/${id}/summary`, { headers: bearer(doctorToken) });
+    expect(summariesRes.status()).toBe(200);
+    const summaries = await summariesRes.json();
+    expect(summaries.length, 'the harness draft must have produced a summary row').toBeGreaterThan(0);
+    const summary = summaries[0];
 
     const beforeApprove = await getConsultation(request, doctorToken, id);
     const approveRes = await request.post(`/api/v1/consultations/${id}/summary/${summary.id}/approve`, {
-      headers: { ...bearer(doctorToken), 'If-Match': '"1"' },
-      data: {},
+      headers: { ...bearer(doctorToken), 'If-Match': `"${summary.version}"` },
+      data: { expectedVersion: summary.version as number },
     });
     expect(approveRes.status(), 'approve must succeed').toBe(200);
     expect((await getConsultation(request, doctorToken, id)).status).toBe('SIGNED');
@@ -345,6 +363,12 @@ test.describe('full lifecycle walk (RUN_FULL)', () => {
 });
 
 test.describe('gate SLA TIMED_OUT path (RUN_FULL, service-token)', () => {
+  // TASK-869 — SERIAL, because case 6 asserts on state case 5 produced. Under the
+  // root config's `fullyParallel: true` Playwright may hand these two tests to
+  // different workers, each running `beforeAll` and creating its OWN
+  // consultation — so case 6 read PENDING_REVIEW from a consultation case 5 had
+  // never escalated. The describe shares mutable state; it has to declare that.
+  test.describe.configure({ mode: 'serial' });
   test.skip(!RUN_FULL || !SERVICE_TOKEN, 'requires HARNESS_SERVICE_TOKEN + HARNESS_E2E_FULL=1');
 
   let doctorToken: string;
@@ -384,7 +408,11 @@ test.describe('gate SLA TIMED_OUT path (RUN_FULL, service-token)', () => {
 
   // ── Case 5: terminal gate-SLA abandonment drives TIMED_OUT ──
   test('case 5: gate_sla_abandoned drives PENDING_REVIEW -> TIMED_OUT, visibly unsigned', async ({ request }) => {
-    const escalateRes = await request.post(`/api/v1/internal/harness/consultations/${consultationId}/escalate`, {
+    // TASK-869 — the route is `/escalation`, not `/escalate`
+    // (`harness-internal.controller.ts`). The old path 404'd, which read as a
+    // missing consultation rather than a missing route; the body was already
+    // correct (`tenantId` + a `HARNESS_ESCALATION_REASONS` value).
+    const escalateRes = await request.post(`/api/v1/internal/harness/consultations/${consultationId}/escalation`, {
       headers: { 'X-Service-Token': SERVICE_TOKEN },
       data: { tenantId, reason: 'gate_sla_abandoned' },
     });
@@ -406,9 +434,16 @@ test.describe('gate SLA TIMED_OUT path (RUN_FULL, service-token)', () => {
     const summaries = await summariesRes.json();
     expect(summaries.length, 'the harness draft from beforeAll must have produced a summary').toBeGreaterThan(0);
 
+    // TASK-869 — `expectedVersion` is REQUIRED on `SummaryApprovalRequest`
+    // (`@IsInt() @Min(1)`, no `@IsOptional`), and the global pipe validates the
+    // body BEFORE the controller folds `If-Match` over it. An empty body is
+    // therefore a 400, not a 428/412 — which is what this test used to send,
+    // alongside a hardcoded `If-Match: "1"` that would have drifted anyway. Both
+    // now come from the row the test just read.
+    const summaryVersion = summaries[0].version as number;
     const approveRes = await request.post(`/api/v1/consultations/${consultationId}/summary/${summaries[0].id}/approve`, {
-      headers: { ...bearer(doctorToken), 'If-Match': '"1"' },
-      data: {},
+      headers: { ...bearer(doctorToken), 'If-Match': `"${summaryVersion}"` },
+      data: { expectedVersion: summaryVersion },
     });
     expect(approveRes.status(), 'sign-off from TIMED_OUT must still succeed — the clock never signs, a human still can').toBe(200);
     expect((await getConsultation(request, doctorToken, consultationId)).status).toBe('SIGNED');
