@@ -133,8 +133,11 @@ Orchestrator-owned in wave 2 (shared surfaces, serialised after the lanes): the 
 (`AiTaskDefault` table + trio + `CoreDatabaseModule` registration; the five `TenantFrontendConfig`
 client-AI columns; the three display-only `PlanEntitlement` columns; the per-tenant guardrail
 availability column) — the Prisma CLI refuses a Claude-invoked migration, so these go through
-the `prisma-local` MCP or the owner; `nlp.logging.*` removal once the deployment repo confirms
-stdout logging; post-merge artifact regeneration; the e2e matrix at close.
+the `prisma-local` MCP or the owner; `nlp.logging.*` removal — the deployment repo deploys
+Loki (`base/loki.yaml`) and mounts no log volume for nlp, so stdout is the shipping path and the
+eleven file/rotation keys are removable; no wave-2 lane owns `service-runtime.descriptors.ts`
++ `apps/nlp/core/logging.py`, so it is a wave-3 registry follow-up; post-merge artifact
+regeneration; the e2e matrix at close.
 
 Disjointness: A owns the agent schema file and B only reads its shape (`build-resolved-asr-spec`
 maps `parameters` it receives, testable with fixtures); B owns `stt-runtime.descriptors.ts`
