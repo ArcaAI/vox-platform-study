@@ -75,19 +75,15 @@ def azure_model_config():
 
 
 # Azure Speech is BYOK-only — the key comes from the gateway-injected
-# provider override, never env. Region still comes from settings.
+# provider override, never env. TASK-880 — so is the REGION: `stt.azureSpeech.region`
+# is deleted, and an override entry exists only behind an enabled, keyed
+# `AiProviderConnection(stt, azure-speech)` row, which is what carries `region`.
 _BYOK_OVERRIDE = {"azure-speech": {"api_key": "integration-test-key-12345"}}
 
-
-@pytest.fixture
-def mock_azure_settings():
-    """Patch settings to supply only the (non-secret) region — the key is BYOK."""
-    with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
-        mock_settings.return_value = MagicMock(
-            azure_speech_key=None,
-            azure_speech_region="westus2",
-        )
-        yield mock_settings
+# TASK-880 — the `mock_azure_settings` fixture that lived here patched
+# `azure_speech_loader.get_settings` to supply the non-secret REGION. The loader no
+# longer imports `get_settings` at all: every case below takes its region from the model
+# config, and the connection-row path is covered in `tests/unit/test_azure_speech_loader.py`.
 
 
 @pytest.fixture
@@ -123,7 +119,6 @@ class TestModelCacheAzureLoaderIntegration:
     async def test_cache_loads_azure_model_through_loader(
         self,
         azure_model_config,
-        mock_azure_settings,
         mock_speech_config_class,
     ):
         """Test full cache → loader → LoadedModel flow with real objects."""
@@ -148,7 +143,6 @@ class TestModelCacheAzureLoaderIntegration:
     async def test_cache_put_and_get_azure_model(
         self,
         azure_model_config,
-        mock_azure_settings,
         mock_speech_config_class,
     ):
         """Test caching an Azure model and retrieving it."""
@@ -175,7 +169,6 @@ class TestModelCacheAzureLoaderIntegration:
     async def test_cache_evict_azure_model_calls_unload(
         self,
         azure_model_config,
-        mock_azure_settings,
         mock_speech_config_class,
     ):
         """Test that evicting triggers unload which clears the SpeechConfig handle."""
@@ -210,7 +203,6 @@ class TestLoaderBatchServiceIntegration:
     async def test_batch_service_dispatches_azure_model_to_correct_path(
         self,
         azure_model_config,
-        mock_azure_settings,
         mock_speech_config_class,
     ):
         """Test that _run_inference correctly routes AZURE_SPEECH to Azure inference."""
@@ -248,7 +240,6 @@ class TestLoaderBatchServiceIntegration:
     async def test_language_normalization_flows_through_pipeline(
         self,
         azure_model_config,
-        mock_azure_settings,
         mock_speech_config_class,
     ):
         """Test that language normalization works end-to-end from config to Azure."""
@@ -287,13 +278,12 @@ class TestLoaderBatchServiceIntegration:
 
     @pytest.mark.asyncio
     async def test_auth_error_propagates_from_loader_to_caller(self):
-        """Test that missing credentials raise CloudASRAuthError at load time."""
-        with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(
-                azure_speech_key=None,
-                azure_speech_region=None,
-            )
+        """Test that missing credentials raise CloudASRAuthError at load time.
 
+        TASK-880 — no settings patch is needed (or possible): with no override entry
+        there is no credential and no region from anywhere.
+        """
+        if True:
             loader = AzureSpeechLoader()
             config = AiModelConfig(
                 id="m-fail",
@@ -326,7 +316,6 @@ class TestLoaderBatchServiceIntegration:
     async def test_transcription_error_propagates_from_sync_to_async(
         self,
         azure_model_config,
-        mock_azure_settings,
         mock_speech_config_class,
     ):
         """Test that errors in _azure_transcribe_sync propagate through to_thread."""
@@ -361,7 +350,6 @@ class TestFullAzurePipelineFlow:
     async def test_complete_flow_cache_to_transcription(
         self,
         azure_model_config,
-        mock_azure_settings,
         mock_speech_config_class,
     ):
         """Test complete flow: cache lookup → load → inference → result.
