@@ -13,7 +13,7 @@
  *
  * The hand-authored {@link AdminResource} base — the part that holds judgment
  * (pagination, `If-Match` plumbing, scope-aware error mapping) — is
- * re-exported first; the 51 generated per-area resources follow.
+ * re-exported first; the 50 generated per-area resources follow.
  *
  * ## Deliberately absent
  *
@@ -74,7 +74,6 @@ export { AdminKnowledgeResource } from './knowledge';
 export { AdminMcpServerResource } from './mcp-server';
 export { AdminNlpTaskInstructionsResource } from './nlp-task-instructions';
 export { AdminNotificationResource } from './notification';
-export { AdminPipelinePolicyResource } from './pipeline-policy';
 export { AdminPlatformMetricsResource } from './platform-metrics';
 export { AdminPromptTemplateResource } from './prompt-template';
 export { AdminPstudioResource } from './pstudio';

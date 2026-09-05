@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 354,
+  "distinctNames": 352,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -1115,18 +1115,6 @@
           "description": ""
         },
         {
-          "name": "HARNESS_ATOMIC_FACT_ENABLED",
-          "aliases": [],
-          "class": "Settings",
-          "field": "atomic_fact_enabled",
-          "prefix": "HARNESS_",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Reference-free atomic-fact verifier kill-switch (HARNESS_ATOMIC_FACT_ENABLED, default OFF). When ON, the ``run_inferential_sensors`` activity runs the DETERMINISTIC self-hosted-NLI atomic-fact verifier ALONGSIDE the LLM-judge groundedness sensor (a second, model-cheap groundedness gate). Read at runtime inside the (non-deterministic) activity \u2014 NOT the workflow body \u2014 so it adds no new command / snapshot / patch marker (the sensor result flows through the activity output; the workflow command sequence is byte-identical, replay-safe). Default OFF \u21d2 enabling it is an explicit ops rollout once a self-hosted NLI model (MiniCheck / AlignScore / HHEM-class) is provisioned; the hermetic default entailer (:class:`DeterministicOverlapEntailer`) needs no model and never auto-PASSes."
-        },
-        {
           "name": "HARNESS_ATOMIC_FACT_ENTAIL_THRESHOLD",
           "aliases": [],
           "class": "Settings",
@@ -1449,18 +1437,6 @@
           "dataType": "number",
           "default": 600,
           "description": "BOOTSTRAP FALLBACK ONLY \u2014 the runtime value comes from the control plane (`harness.modelCache.{ttlSeconds,maxModels}`), applied by `sensors.inferential.minicheck_entailer.configure_entailer_cache`. Env: HARNESS_MODEL_CACHE_TTL_SECONDS / HARNESS_MODEL_CACHE_MAX_MODELS. The 600 s default is an owner decision; maxModels 1 preserves today's residency exactly."
-        },
-        {
-          "name": "HARNESS_NER_PRIORS_ENABLED",
-          "aliases": [],
-          "class": "Settings",
-          "field": "ner_priors_enabled",
-          "prefix": "HARNESS_",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "NER-priors reuse kill-switch (HARNESS_NER_PRIORS_ENABLED, default OFF). When ON, the transcript ``extract_entities`` activity reuses already-persisted CODED NamedEntity rows as the NER priors instead of re-running the cold NLP pass \u2014 killing the redundant second transcript-NER pass. Read at runtime inside the (non-deterministic) activity, NOT the workflow body, so it needs no snapshot/patch marker; when OFF (or when no prior carries a code) the activity falls back to the cold extraction, so enabling it is an explicit ops rollout, never a silent default flip, and it is inert until coded entities are actually persisted elsewhere."
         },
         {
           "name": "HARNESS_NLP_BASE_URL",

@@ -33,7 +33,6 @@ import { AdminKnowledgeResource } from './knowledge';
 import { AdminMcpServerResource } from './mcp-server';
 import { AdminNlpTaskInstructionsResource } from './nlp-task-instructions';
 import { AdminNotificationResource } from './notification';
-import { AdminPipelinePolicyResource } from './pipeline-policy';
 import { AdminPlatformMetricsResource } from './platform-metrics';
 import { AdminPromptTemplateResource } from './prompt-template';
 import { AdminPstudioResource } from './pstudio';
@@ -63,7 +62,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (51 areas, 407 routes).
+ * per `svc:*` scope (50 areas, 404 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -134,8 +133,6 @@ export class AdminNamespace {
   readonly nlpTaskInstructions: AdminNlpTaskInstructionsResource;
   /** `svc:admin:notification:manage` — 4 routes. */
   readonly notification: AdminNotificationResource;
-  /** `svc:admin:pipeline-policy:manage` — 3 routes. */
-  readonly pipelinePolicy: AdminPipelinePolicyResource;
   /** `svc:admin:platform-metrics:read` — 3 routes. */
   readonly platformMetrics: AdminPlatformMetricsResource;
   /** `svc:admin:prompt-template:manage` — 16 routes. */
@@ -214,7 +211,6 @@ export class AdminNamespace {
     this.mcpServer = new AdminMcpServerResource(transport);
     this.nlpTaskInstructions = new AdminNlpTaskInstructionsResource(transport);
     this.notification = new AdminNotificationResource(transport);
-    this.pipelinePolicy = new AdminPipelinePolicyResource(transport);
     this.platformMetrics = new AdminPlatformMetricsResource(transport);
     this.promptTemplate = new AdminPromptTemplateResource(transport);
     this.pstudio = new AdminPstudioResource(transport);
