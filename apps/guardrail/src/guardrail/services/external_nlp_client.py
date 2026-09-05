@@ -172,8 +172,27 @@ class NlpGuardClient:
         # present it sheds load for a peer that is already down instead of paying
         # `max_attempts × timeout` on every request.
         self._breaker = breaker
+        #: The peer's OWN per-call usage from the most recent successful POST
+        #: (TASK-878/G2), or `None` when it reported none. `apps/nlp` runs local
+        #: weights and reports no usage today, so this is normally `None` — which
+        #: is the honest answer, and the reason it is `None` rather than a zeroed
+        #: block. Kept as the LAST value rather than a sum: the screen makes one
+        #: classify and one PII call, and each client holds its own.
+        self.last_usage_detail: dict[str, Any] | None = None
 
     # ── transport ────────────────────────────────────────────────────────
+
+    def record_usage_detail(self, usage: Any) -> None:
+        """Keep a peer-reported usage block, VERBATIM.
+
+        Never re-derived: `text` derives the funding tier from the credential that
+        served the call, and re-deriving it downstream is how a call site starts
+        mis-billing (the rule `external_text_client.py` already states for the
+        judge). Anything that is not a non-empty dict is not a usage block and is
+        ignored — silence is the correct report for a call that metered nothing.
+        """
+        if isinstance(usage, dict) and usage:
+            self.last_usage_detail = usage
 
     def _headers(self) -> dict[str, str]:
         headers = {"X-Tenant-Id": self._tenant_id}
@@ -204,7 +223,10 @@ class NlpGuardClient:
                 observe_peer_latency("nlp", what, time.monotonic() - started)
             if response.status_code < 400:
                 result = response.json()
-                return result if isinstance(result, dict) else {}
+                if not isinstance(result, dict):
+                    return {}
+                self.record_usage_detail(result.get("usage_detail"))
+                return result
             raise _PeerStatusError(response.status_code)
 
         last_error = ""

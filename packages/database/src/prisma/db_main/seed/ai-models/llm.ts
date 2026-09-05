@@ -102,9 +102,24 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // future LLM-judge second opinion on the inbound path). Deliberately NOT
     // seeded here: authoring criteria text for a check nothing resolves yet
     // would be unreviewed policy masquerading as shipped configuration.
+    //
+    // `judgeTemperature` / `judgeMaxTokens` (TASK-878, both `failMode: closed`)
+    // ARE seeded, because unlike the above they have a reader: they were
+    // `JudgePolicy.temperature = 0.05` and `.max_tokens = 300` in
+    // `apps/guardrail/src/guardrail/core/config.py`, and the values below are
+    // those literals transcribed verbatim, so moving them changed no behaviour.
+    // They belong on THIS row rather than on a platform setting because they are
+    // model-coupled: a decoding temperature and an output-token budget calibrated
+    // for this checkpoint's JSON verdict are meaningless against another, so they
+    // must resolve through the same tenant → SYSTEM cascade that chose the model.
+    // Fail-closed with no code default — an unseeded row makes
+    // `POST /medical/validate` answer 503 rather than judge at a temperature
+    // nobody chose (`GuardrailPolicy.require_number`).
     metaData: {
       hubArtifact: 'mradermacher/granite-guardian-4.1-8b-GGUF',
       policy: {
+        judgeTemperature: 0.05,
+        judgeMaxTokens: 300,
         medicalValidationCriteria:
           'You are a medical context validator. Your task is to determine if the provided text is related to medical documentation, clinical notes, patient care, or healthcare services. Analyze the text and respond ONLY with a JSON object in this exact format:\n{"is_medical": true/false, "confidence": 0.0-1.0, "context_type": "clinical/administrative/general", "reasoning": "brief explanation"}\n\nMedical context includes: patient records, clinical notes, diagnoses, treatments, medications, symptoms, medical procedures, healthcare consultations, referrals, prescriptions, vital signs, medical history, physical examinations, lab results, imaging reports, care plans, discharge summaries.\n\nNon-medical context includes: general conversation, business documents, technical documentation, entertainment content, personal communications unrelated to healthcare.',
       },

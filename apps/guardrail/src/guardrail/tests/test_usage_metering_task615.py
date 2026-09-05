@@ -52,6 +52,11 @@ def _judge_client(payload: dict[str, Any]) -> TextJudgeClient:
         model="guardian-1",
         tenant_id="11111111-1111-1111-1111-111111111111",
         criteria="you are a medical context validator",
+        # Resolved config, not defaults: TASK-878 removed the `JudgePolicy`
+        # literals, so the client requires what it can no longer invent.
+        temperature=0.05,
+        max_tokens=300,
+        timeout_s=60.0,
     )
 
 

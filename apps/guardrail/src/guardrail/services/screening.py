@@ -63,7 +63,18 @@ FAIL_CLOSED: Final = "closed"
 #: contract (they are the schema keys the safety model was trained on); the LABELS
 #: behind each name are configuration and come from the registry taxonomy.
 INBOUND_TASKS: Final = ("jailbreak_detection", "prompt_safety", "prompt_toxicity")
-OUTBOUND_TASKS: Final = ("response_safety", "response_toxicity", "response_refusal")
+#: `jailbreak_detection` is on BOTH directions (TASK-878/G1). A response that
+#: echoes — or complies with — an injected instruction is exactly what a
+#: post-receive check exists to catch, and it was inbound-only. It is APPENDED so
+#: `reasons[0]` keeps naming `response_safety` for every rejection that already
+#: had that label, and it costs no extra peer call: `_classify` sends the whole
+#: tuple in ONE delegated `classify`.
+OUTBOUND_TASKS: Final = (
+    "response_safety",
+    "response_toxicity",
+    "response_refusal",
+    "jailbreak_detection",
+)
 
 #: Every check DECLARES its posture here, once — not at the call site. All of them
 #: are fail-closed: each one gates content reaching, or produced for, a clinician.
@@ -126,6 +137,13 @@ class GuardrailDecision:
     #: The tier that supplied the policy — request tenant, or SYSTEM.
     policy_source_tenant_id: str | None = None
     sanitization: SanitizationReport | None = None
+    #: The delegated executor's OWN per-call usage, forwarded VERBATIM (TASK-878/G2).
+    #: Guardrail is a peer service with no gateway in front of it, so riding back on
+    #: the verdict is the only path a delegated call's spend has to the billing
+    #: plane. ``None`` — never ``{}`` and never zeros — when no delegated call
+    #: reported one: a zero row tells the billing plane the call was FREE rather
+    #: than that it never happened (the rule `_stats_of` states on /medical/validate).
+    usage_detail: dict[str, Any] | None = None
 
     @property
     def reasons(self) -> list[str]:
@@ -147,6 +165,7 @@ class GuardrailDecision:
             "sanitization": (
                 self.sanitization.to_dict() if self.sanitization is not None else None
             ),
+            "usageDetail": self.usage_detail,
         }
 
 
@@ -178,6 +197,22 @@ class Screener:
         policy = getattr(self._analyzer, "policy", None)
         labels = getattr(policy, "benign_labels", None)
         return labels if isinstance(labels, frozenset) and labels else _DEFAULT_BENIGN
+
+    def _usage_detail(self) -> dict[str, Any] | None:
+        """The delegated executor's own per-call usage, if it reported one.
+
+        Telemetry must never decide a safety verdict, so an analyzer that does not
+        expose the seam — or raises reaching for it — costs the caller its billing
+        row, not its decision.
+        """
+        getter = getattr(self._analyzer, "usage_detail", None)
+        if not callable(getter):
+            return None
+        try:
+            usage = getter()
+        except Exception:  # noqa: BLE001 — a telemetry read never breaks a decision
+            return None
+        return usage if isinstance(usage, dict) and usage else None
 
     def _model(self, check: str) -> str:
         getter = getattr(self._analyzer, "model_for", None)
@@ -251,6 +286,7 @@ class Screener:
             checks=checks,
             policy_source_tenant_id=self.policy_source_tenant_id,
             sanitization=report,
+            usage_detail=self._usage_detail(),
         )
         record_screening_decision(
             direction, decision.decision, decision.reasons[0] if blocked else "none"

@@ -251,6 +251,11 @@ def _judge(payload: dict, **kwargs):
         model="m",
         tenant_id=TENANT_A,
         criteria="you are a medical context validator",
+        # Resolved config, not defaults: TASK-878 removed the `JudgePolicy`
+        # literals, so the client requires what it can no longer invent.
+        temperature=0.05,
+        max_tokens=300,
+        timeout_s=60.0,
         **kwargs,
     )
     return client, http

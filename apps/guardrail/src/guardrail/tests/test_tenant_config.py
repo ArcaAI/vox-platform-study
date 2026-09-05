@@ -330,8 +330,14 @@ def _settings() -> Settings:
     return Settings()
 
 
-# criteria is CONFIG (failMode=closed) with no code default.
-_POLICY = {"medicalValidationCriteria": "you are a medical context validator"}
+# criteria is CONFIG (failMode=closed) with no code default. Since TASK-878 the
+# judge's two hyperparameters are the same: fail-CLOSED keys on the selected model
+# row, so a judge cannot be built at all until the row carries them.
+_POLICY = {
+    "medicalValidationCriteria": "you are a medical context validator",
+    "judgeTemperature": 0.05,
+    "judgeMaxTokens": 300,
+}
 
 
 def _client(cfg: GuardrailTenantConfig, settings: Settings | None = None):
