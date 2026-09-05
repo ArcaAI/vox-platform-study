@@ -93,7 +93,12 @@ async def test_db_config_enabled_overrides_model_from_tenant() -> None:
         GuardrailTenantConfig(
             provider="lm-studio",
             model="tenant-guardian-x",
-            policy={"medicalValidationCriteria": "you are a medical context validator"},
+            policy={
+                "medicalValidationCriteria": "you are a medical context validator",
+                # Fail-CLOSED since TASK-878: an unseeded row cannot build a judge.
+                "judgeTemperature": 0.05,
+                "judgeMaxTokens": 300,
+            },
         )
     )
 

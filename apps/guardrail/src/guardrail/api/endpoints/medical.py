@@ -212,15 +212,27 @@ async def get_medical_validation_config(
     Provider and model are deliberately absent: they are resolved per TENANT at
     request time from ``AiTaskDefault``, so there is no one answer to report from
     a process-wide config route.
+
+    ``temperature`` and ``max_tokens`` left for the SAME reason in TASK-878 — they
+    are now fail-CLOSED keys on the selected model row's ``_metadata.policy``, so
+    they too have no process-wide answer. ``timeout_s`` left because it is served
+    per process by the control plane (``guardrail.judge.timeoutSeconds``), and a
+    snapshot read is an async call this synchronous report has no business making.
+    Each is reported here as WHERE it resolves, which is what an operator asking
+    this route actually needs.
     """
     judge = settings.judge
     return {
         "delegate": "text",
         "min_confidence": judge.min_confidence,
-        "temperature": judge.temperature,
-        "max_tokens": judge.max_tokens,
-        "timeout_s": judge.timeout_s,
         "max_attempts": judge.max_attempts,
+        "resolved_per_request": {
+            "provider": "AiTaskDefault (tenant → SYSTEM)",
+            "model": "AiTaskDefault (tenant → SYSTEM)",
+            "temperature": "AiModel._metadata.policy.judgeTemperature (failMode: closed)",
+            "max_tokens": "AiModel._metadata.policy.judgeMaxTokens (failMode: closed)",
+            "timeout_s": "guardrail.judge.timeoutSeconds (global-kv, effective-config)",
+        },
     }
 
 

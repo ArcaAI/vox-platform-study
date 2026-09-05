@@ -142,6 +142,22 @@ class SafetyAnalyzer:
             )
         return await self._safety_client.classify_scored(wanted, text)
 
+    def usage_detail(self) -> dict[str, Any] | None:
+        """The delegated executors' own per-call usage, when one reported it.
+
+        Guardrail hosts no weights, so any spend a check incurs is the PEER's, and
+        this is the seam `services/screening.py` reads to ride it back to the
+        billing plane on the verdict (TASK-878/G2). `apps/nlp` runs local weights
+        and reports no usage today, so this is normally `None` — deliberately
+        `None` rather than a zeroed block, because a zero row says the call was
+        free rather than that it never happened.
+        """
+        for client in (self._safety_client, self._pii_client):
+            usage = getattr(client, "last_usage_detail", None)
+            if isinstance(usage, dict) and usage:
+                return usage
+        return None
+
     def model_for(self, check: str) -> str:
         """Which model answers a given check — part of every attributable verdict."""
         client = self._pii_client if check == "pii_leak" else self._safety_client

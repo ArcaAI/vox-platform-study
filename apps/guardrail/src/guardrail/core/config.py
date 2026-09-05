@@ -20,18 +20,28 @@ class JudgePolicy(BaseModel):
     platform fallback) and the credential from the tenant's ``llm``
     ``AiProviderConnection``, forwarded as an opaque ``provider_overrides`` blob.
 
-    What is left is POLICY (the confidence floor a verdict must clear) and pool
-    TUNING. These become ``guardrail.policy.*`` ``SettingDescriptor``s in Phase 4;
-    that half is blocked on the missing tenant-cascade read surface for
-    db-config keys ( G-01), so they sit here as code defaults
-    which is strictly better than the env surface they replaced, and reachable
-    from exactly one place when the descriptors land.
-    """
+    What is left is POLICY (the confidence floor a verdict must clear) and the
+    retry budget.
 
-    # Selection knobs the runtime profile may still override per provider.
-    temperature: float = 0.05
-    max_tokens: int = 300
-    timeout_s: float = 60.0
+    THREE FIELDS LEFT HERE IN TASK-878, each to the tier that fits it:
+
+    * ``temperature`` (was 0.05) and ``max_tokens`` (was 300) are MODEL-COUPLED —
+      calibrated for the JSON verdict of whichever guardian checkpoint the
+      ``guardrail.validate`` selection resolved — so they moved onto that row's
+      ``AiModel._metadata.policy`` (`core/policy.py`, keys ``judgeTemperature`` /
+      ``judgeMaxTokens``, fail-CLOSED) and resolve through the very same
+      tenant → SYSTEM cascade that chose the model.
+    * ``timeout_s`` (was 60.0) is a PEER-CALL BUDGET, a property of the
+      deployment's latency envelope rather than of any model row, so it is the
+      platform-scope ``guardrail.judge.timeoutSeconds`` descriptor served over
+      ``/internal/effective-config``. Its one declared default lives with the
+      pull client (``core/effective_config.DEFAULT_JUDGE_TIMEOUT_S``).
+
+    What remains below is deliberately NOT config: the confidence floor has its
+    own governed key (``judgeMinConfidence``) whose default is derived from here,
+    and the retry budget and input bound are contracts between guardrail and
+    ``text``'s judge lane rather than knobs an operator tunes.
+    """
 
     # A verdict below this confidence is logged, never silently trusted.
     min_confidence: float = 0.75

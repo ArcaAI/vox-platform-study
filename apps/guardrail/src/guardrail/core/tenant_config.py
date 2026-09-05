@@ -840,6 +840,7 @@ def build_judge_client(
     tenant_id: str,
     provider_overrides: dict[str, Any] | None = None,
     breaker: Any = None,
+    judge_timeout_s: float | None = None,
 ) -> Any:
     """Build the delegated guardian for a resolved per-tenant selection.
 
@@ -852,7 +853,20 @@ def build_judge_client(
     ``base_url`` and ``api_key`` are deliberately absent from the argument list.
     The endpoint is `text`'s (bootstrap transport) and the tenant's credential
     travels only as an opaque ``provider_overrides`` blob.
+
+    Three values that used to be `JudgePolicy` literals are resolved here instead
+    (TASK-878). Precedence is UNCHANGED — the winning row's `configJson` tuning
+    still wins where it carries one; what moved is what it falls back TO:
+
+    * ``temperature`` / ``max_tokens`` ← this row's ``_metadata.policy``
+      (``judgeTemperature`` / ``judgeMaxTokens``), fail-CLOSED, so an unseeded
+      row raises `GuardrailUndeterminedError` and the route answers 503 rather
+      than judging at a temperature nobody chose;
+    * ``timeout_s`` ← the platform ``guardrail.judge.timeoutSeconds``, passed in
+      by the caller (which owns the async control-plane read). ``None`` keeps the
+      declared default, so a caller with no control plane still builds a client.
     """
+    from guardrail.core.effective_config import DEFAULT_JUDGE_TIMEOUT_S
     from guardrail.core.policy import GuardrailPolicy
     from guardrail.services.external_text_client import TextJudgeClient
 
@@ -880,9 +894,17 @@ def build_judge_client(
         criteria=policy.require_criteria("medicalValidationCriteria"),
         policy=settings.judge,
         min_confidence=policy.judge_min_confidence,
-        temperature=tenant_cfg.temperature,
-        max_tokens=tenant_cfg.max_tokens,
-        timeout_s=(float(tenant_cfg.timeout_s) if tenant_cfg.timeout_s is not None else None),
+        temperature=(
+            policy.judge_temperature if tenant_cfg.temperature is None else tenant_cfg.temperature
+        ),
+        max_tokens=(
+            policy.judge_max_tokens if tenant_cfg.max_tokens is None else tenant_cfg.max_tokens
+        ),
+        timeout_s=(
+            float(tenant_cfg.timeout_s)
+            if tenant_cfg.timeout_s is not None
+            else (DEFAULT_JUDGE_TIMEOUT_S if judge_timeout_s is None else judge_timeout_s)
+        ),
         provider_overrides=provider_overrides,
         breaker=breaker,
     )

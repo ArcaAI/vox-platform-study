@@ -71,6 +71,15 @@ class ScreenResponse(BaseModel):
     tenant_id: str
     policy_source_tenant_id: str | None = None
     sanitization: dict[str, Any] | None = None
+    #: The delegated executor's OWN per-call usage for this screen, forwarded
+    #: VERBATIM (TASK-878/G2). Same shape and same ride-back channel as the
+    #: `usage_detail` `/api/medical/validate` carries, which `apps/text` already
+    #: lifts (`models/usage.guardrail_usage_from_verdict`). `null` when no
+    #: delegated call reported one — which is the case for every screen whose
+    #: executor is `apps/nlp`, since it runs local weights and meters nothing.
+    #: Never `{}` and never zeros: a zero row would tell the billing plane the
+    #: call was free rather than that it never happened.
+    usage_detail: dict[str, Any] | None = None
     envelope: str | None = Field(
         default=None, description="Nonce-fenced containment envelope (inbound only)"
     )
@@ -87,6 +96,7 @@ def _to_response(decision: Any, **extra: Any) -> ScreenResponse:
         tenant_id=payload["tenantId"],
         policy_source_tenant_id=payload["policySourceTenantId"],
         sanitization=payload["sanitization"],
+        usage_detail=payload["usageDetail"],
         **extra,
     )
 
