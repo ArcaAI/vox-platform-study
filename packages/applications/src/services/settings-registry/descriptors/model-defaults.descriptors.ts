@@ -139,7 +139,9 @@ const META: Record<CataloguedTaskKey, { label: string; description: string }> = 
   },
 };
 
-export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.filter((taskKey): taskKey is CataloguedTaskKey => !UNCATALOGUED.has(taskKey)).map<SettingDescriptor>((taskKey) => {
+export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.filter(
+  (taskKey): taskKey is CataloguedTaskKey => !UNCATALOGUED.has(taskKey),
+).map<SettingDescriptor>((taskKey) => {
   // Call the shared predicate rather than re-deriving it from the prefix list:
   // a second copy of the rule is how `SUPER_ADMIN_ONLY_TASK_KEYS` (the
   // key-level exceptions a prefix cannot express) would have been silently

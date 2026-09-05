@@ -163,5 +163,4 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // descriptor file for why the split falls that way (D-1).
   ...HARNESS_SENSOR_SETTINGS,
   HARNESS_CLAIM_CHECK_MIN_BYTES,
-
 ]);
