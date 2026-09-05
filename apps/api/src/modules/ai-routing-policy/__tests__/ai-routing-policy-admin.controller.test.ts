@@ -67,8 +67,8 @@ describe('tenant scoping', () => {
 
   it('lets a super admin address the SYSTEM platform-default row', async () => {
     const { controller, service } = makeController({ user: SUPER, tenantId: 'working-tenant' });
-    await controller.getEffective('text.finalize', SYSTEM_TENANT);
-    expect(service.getEffective).toHaveBeenCalledWith(SYSTEM_TENANT, 'text.finalize', expect.anything());
+    await controller.getEffective('harness.judge', SYSTEM_TENANT);
+    expect(service.getEffective).toHaveBeenCalledWith(SYSTEM_TENANT, 'harness.judge', expect.anything());
   });
 
   it('falls back to the working tenant elevated into the request context', async () => {
@@ -133,8 +133,8 @@ describe('effective-route query coercion', () => {
 
   it('coerces contextTokens and allowFallbacks off the query string', async () => {
     const { controller, service } = makeController({ user: SUPER, tenantId: 't1' });
-    await controller.getEffective('text.finalize', undefined, 'gpt-4o-class', '2048', 'azure', 'true');
-    expect(service.getEffective).toHaveBeenCalledWith('t1', 'text.finalize', {
+    await controller.getEffective('harness.judge', undefined, 'gpt-4o-class', '2048', 'azure', 'true');
+    expect(service.getEffective).toHaveBeenCalledWith('t1', 'harness.judge', {
       model: 'gpt-4o-class',
       contextTokens: 2048,
       explicitProvider: 'azure',
@@ -144,15 +144,15 @@ describe('effective-route query coercion', () => {
 
   it('400s a non-numeric contextTokens rather than passing NaN into the matcher', async () => {
     const { controller, service } = makeController({ user: SUPER, tenantId: 't1' });
-    await expect(controller.getEffective('text.finalize', undefined, undefined, 'lots')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(controller.getEffective('harness.judge', undefined, undefined, 'lots')).rejects.toBeInstanceOf(BadRequestException);
     expect(service.getEffective).not.toHaveBeenCalled();
   });
 
   it('treats any allowFallbacks value other than "true" as NOT opting in', async () => {
     // Opting in to fallbacks is a deliberate act; "1"/"yes"/absent are not it.
     const { controller, service } = makeController({ user: SUPER, tenantId: 't1' });
-    await controller.getEffective('text.finalize', undefined, undefined, undefined, 'azure', '1');
-    expect(service.getEffective).toHaveBeenCalledWith('t1', 'text.finalize', expect.objectContaining({ allowFallbacks: false }));
+    await controller.getEffective('harness.judge', undefined, undefined, undefined, 'azure', '1');
+    expect(service.getEffective).toHaveBeenCalledWith('t1', 'harness.judge', expect.objectContaining({ allowFallbacks: false }));
   });
 });
 

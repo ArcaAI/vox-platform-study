@@ -22,7 +22,7 @@ import {
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
-import { AI_TASK_KEYS } from '../ai-task-default/constants';
+import { AI_TASK_KEYS, AI_TASK_KIND_BY_TASK_KEY } from './constants';
 import { IProviderConnectionService, ProviderService } from '../ai-provider-connection/IProviderConnectionService';
 import {
   GenerationCapabilitySelector,
@@ -55,7 +55,6 @@ import {
   rowToCandidate,
   toExportedConfiguration,
 } from './provider-configuration';
-import { AI_TASK_KIND_BY_TASK_KEY } from '../ai-task-default/constants';
 
 /**
  * The capability discriminator a routing candidate's `connectionRef` resolves

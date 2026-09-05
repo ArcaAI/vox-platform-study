@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
 import { SettingsRegistry } from '../settings-registry';
 import type { SettingDescriptor } from '../registry.types';
-import { AI_TASK_MODEL_TASK_TYPES } from '../../ai-task-default/constants';
-import { ModelTaskType } from '@arcaai/domains';
 
 // The capability/settings registry: one typed catalog that
 // classifies every admin-controllable variable (tier / scope / sensitivity /
@@ -164,68 +162,13 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(ks.maxScope).toBe('system');
   });
 
-  // Task-model default descriptors (models.<taskKey>).
-  it('registers the AI task-model defaults as db-config strings, maxScope tenant', () => {
-    for (const key of [
-      'models.guardrail.validate',
-      'models.guardrail.safety',
-      'models.guardrail.groundedness',
-      'models.nlp.ner',
-      // `models.nlp.classification` was in this list until TASK-872 removed the
-      // descriptor — the seed calls its SYSTEM election "an explicitly DISABLED
-      // placeholder … (fails closed)", so no route resolves it.
-      'models.nlp.diagnosis',
-      'models.text.live',
-      'models.text.finalize',
-      'models.text.live.fallback',
-      'models.text.finalize.fallback',
-      'models.harness.judge',
-    ]) {
-      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key)).toMatchObject({
-        tier: 'db-config',
-        dataType: 'string',
-        sensitivity: 'internal',
-        maxScope: 'tenant',
-      });
-    }
-  });
-
-  // The two per-tenant TEXT fallback keys are TEXT_GENERATION.
-  it('maps the text fallback task keys to TEXT_GENERATION model task types', () => {
-    expect(AI_TASK_MODEL_TASK_TYPES['text.live.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
-    expect(AI_TASK_MODEL_TASK_TYPES['text.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
-  });
-
-  it('flags nlp.*/harness.*/guardrail.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
-    // These task-model defaults are platform-owned: nlp (revoked tenant
-    // writes), harness.judge, and — since owner decision #3 of 2026-09-05
-    // (TASK-872) — the whole guardrail safety plane. Guardrail is built-in and
-    // platform-only: it gates every text-generation request before send and
-    // every response after receive, so which model does the gating is not a
-    // tenant's choice. TEXT is NOT in this set — see the test below.
-    for (const key of [
-      'models.nlp.ner',
-      'models.nlp.diagnosis',
-      'models.harness.judge',
-      'models.guardrail.validate',
-      'models.guardrail.safety',
-      'models.guardrail.groundedness',
-    ]) {
-      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
-      expect(d.editableBy, key).toBe('all');
-      expect(d.globalOnly, key).toBe(true);
-    }
-  });
-
-  // TEXT summarization model selection (primary + per-tenant fallback) is what
-  // is LEFT of the tenant-configurable lane: those descriptors resolve to the
-  // tenant-editable AiTaskDefault resource and are NOT flagged globalOnly.
-  it('flags text.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
-    for (const key of ['models.text.live', 'models.text.finalize', 'models.text.live.fallback', 'models.text.finalize.fallback']) {
-      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
-      expect(d.editableBy, key).toBe('AiTaskDefault');
-      expect(d.globalOnly, key).toBeUndefined();
-    }
+  // TASK-881 — the `models.<taskKey>` descriptors are GONE with the
+  // `AiTaskDefault` facade. Model selection is not a setting; it resolves
+  // through `AiRoutingPolicyService.resolveDefault` (SYSTEM row, super-admin
+  // only for `guardrail.*` / `nlp.*` / `harness.*`). Pinned in
+  // `ai-routing-policy/__tests__/task-key-vocabulary.test.ts`.
+  it('registers no models.* descriptor', () => {
+    expect(HOPE_SETTINGS_REGISTRY.list().filter((d) => d.key.startsWith('models.'))).toEqual([]);
   });
 
   it('every descriptor carries the required classification fields', () => {
