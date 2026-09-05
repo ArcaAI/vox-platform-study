@@ -176,7 +176,10 @@ export interface SettingDescriptor {
    *    injection) instead, and naming a service here would turn one cached
    *    entry into one per tenant.
    *  • A `maxScope: 'tenant'` descriptor therefore must NOT declare
-   *    `consumedBy` — `guardrail.policy.*` is the worked example.
+   *    `consumedBy` — `text.guardrailPolicy.*` is the worked example: the same
+   *    two concepts exist at BOTH scopes as separate keys, the platform half
+   *    (`text.externalGuardrail.*`) riding the pull route and the tenant half
+   *    travelling per-request injection.
    *  • Secrets are never served regardless of what this says; the read service
    *    filters `sensitivity: 'secret'` out unconditionally.
    */

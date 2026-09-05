@@ -96,10 +96,23 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(() => HOPE_SETTINGS_REGISTRY.assertWithinMaxScope('pipeline.harnessEnabled', 'doctor')).toThrow(ArgumentInvalidException);
   });
 
-  it('registers the TTS BYO provider credentials as db-secret / secret sensitivity', () => {
-    const azure = HOPE_SETTINGS_REGISTRY.getOrThrow('tts.credential.azure');
-    expect(azure).toMatchObject({ tier: 'db-secret', dataType: 'secret', sensitivity: 'secret', maxScope: 'tenant' });
-    expect(HOPE_SETTINGS_REGISTRY.has('tts.credential.sarvam')).toBe(true);
+  // Was: "registers the TTS BYO provider credentials as db-secret / secret
+  // sensitivity" over `tts.credential.{azure,sarvam}`. TASK-872 removed those
+  // five `db-secret` descriptors (the three `stt.credential.*` twins with
+  // them), leaving the tier with no members at all — so the assertion is now
+  // the ABSENCE, which is the part that can regress. A `db-secret` descriptor
+  // is unreachable by construction: `EffectiveSettingsService` refuses any
+  // `sensitivity: 'secret'` read, and the write lane refuses the tier, so
+  // registering one describes a control surface the registry does not have.
+  // The per-tenant credentials themselves are unaffected — `TenantTtsConfig` /
+  // `TenantSttConfig` own their storage (Vault-Transit columns) and their
+  // write paths (their own DTOs).
+  it('registers NO db-secret descriptor — the tier has no read or write lane', () => {
+    const dbSecrets = HOPE_SETTINGS_REGISTRY.list().filter((d) => d.tier === 'db-secret');
+    expect(dbSecrets.map((d) => d.key)).toEqual([]);
+    for (const key of ['tts.credential.azure', 'tts.credential.sarvam', 'stt.credential.azure-speech', 'stt.credential.sarvam', 'stt.credential.openai']) {
+      expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(false);
+    }
   });
 
   // The two pipeline toggles that gate guardrail's primary caller (the
@@ -158,7 +171,9 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
       'models.guardrail.safety',
       'models.guardrail.groundedness',
       'models.nlp.ner',
-      'models.nlp.classification',
+      // `models.nlp.classification` was in this list until TASK-872 removed the
+      // descriptor — the seed calls its SYSTEM election "an explicitly DISABLED
+      // placeholder … (fails closed)", so no route resolves it.
       'models.nlp.diagnosis',
       'models.text.live',
       'models.text.finalize',
@@ -181,35 +196,32 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(AI_TASK_MODEL_TASK_TYPES['text.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
   });
 
-  it('flags nlp.*/harness.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
+  it('flags nlp.*/harness.*/guardrail.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
     // These task-model defaults are platform-owned: nlp (revoked tenant
-    // writes) and harness.judge. Both resolve to the super-admin resource
-    // and carry globalOnly. TEXT and, since (owner decision
-    // 2026-08-16, reversing the 2026-07-17 super-admin-only directive),
-    // guardrail are NOT in this set — see the test below.
-    for (const key of ['models.nlp.ner', 'models.nlp.classification', 'models.nlp.diagnosis', 'models.harness.judge']) {
+    // writes), harness.judge, and — since owner decision #3 of 2026-09-05
+    // (TASK-872) — the whole guardrail safety plane. Guardrail is built-in and
+    // platform-only: it gates every text-generation request before send and
+    // every response after receive, so which model does the gating is not a
+    // tenant's choice. TEXT is NOT in this set — see the test below.
+    for (const key of [
+      'models.nlp.ner',
+      'models.nlp.diagnosis',
+      'models.harness.judge',
+      'models.guardrail.validate',
+      'models.guardrail.safety',
+      'models.guardrail.groundedness',
+    ]) {
       const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
       expect(d.editableBy, key).toBe('all');
       expect(d.globalOnly, key).toBe(true);
     }
   });
 
-  // TEXT summarization model selection (primary + per-tenant fallback), and
-  // guardrail.* since, are tenant-admin configurable: the
-  // descriptors resolve to the tenant-editable AiTaskDefault resource and are
-  // NOT flagged globalOnly. (guardrail.* writes still pass through the D2
-  // platform-approved-list floor enforced in AiTaskDefaultService — this
-  // descriptor only governs WHO may attempt the write.)
-  it('flags text.* and guardrail.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
-    for (const key of [
-      'models.text.live',
-      'models.text.finalize',
-      'models.text.live.fallback',
-      'models.text.finalize.fallback',
-      'models.guardrail.validate',
-      'models.guardrail.safety',
-      'models.guardrail.groundedness',
-    ]) {
+  // TEXT summarization model selection (primary + per-tenant fallback) is what
+  // is LEFT of the tenant-configurable lane: those descriptors resolve to the
+  // tenant-editable AiTaskDefault resource and are NOT flagged globalOnly.
+  it('flags text.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
+    for (const key of ['models.text.live', 'models.text.finalize', 'models.text.live.fallback', 'models.text.finalize.fallback']) {
       const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
       expect(d.editableBy, key).toBe('AiTaskDefault');
       expect(d.globalOnly, key).toBeUndefined();

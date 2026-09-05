@@ -27,6 +27,7 @@ import {
   SysEventType,
 } from '@arcaai/domains';
 import { AiTaskDefaultService } from '../ai-task-default.service';
+import { TaskSelectionVetoedError } from '../../ai-routing-policy/task-selection-veto';
 
 const TENANT = 'tenant-abc';
 
@@ -83,24 +84,35 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
 }
 
 describe('AiTaskDefaultService — getEffective (facade over resolveDefault)', () => {
+  // `text.live` carries this case: it is what is LEFT of the tenant-configurable
+  // lane after TASK-872 pinned the guardrail plane to SYSTEM.
   it('projects the tenant-tier answer: slug from the FK model, configJson from the row, source tenant', async () => {
     const { svc, routingService } = makeService();
     const model = makeModel({ slug: 'tenant-guardian' });
-    routingService.resolveDefault.mockResolvedValue({ tenantId: TENANT, taskKey: 'guardrail.validate', source: 'tenant', policy: makePolicy({ configJson: { threshold: 0.7 } }), model });
+    routingService.resolveDefault.mockResolvedValue({ tenantId: TENANT, taskKey: 'text.live', source: 'tenant', policy: makePolicy({ configJson: { threshold: 0.7 } }), model });
 
-    const res = await svc.getEffective('guardrail.validate');
+    const res = await svc.getEffective('text.live');
 
-    expect(routingService.resolveDefault).toHaveBeenCalledWith(TENANT, 'guardrail.validate', { systemOnly: false });
+    expect(routingService.resolveDefault).toHaveBeenCalledWith(TENANT, 'text.live', { systemOnly: false });
     expect(res.source).toBe('tenant');
     expect(res.modelSlug).toBe('tenant-guardian');
     expect(res.configJson).toEqual({ threshold: 0.7 });
     expect(res.model?.slug).toBe('tenant-guardian');
   });
 
-  it('asks for SYSTEM only on the SUPER_ADMIN-only keys (nlp.*, harness.*)', async () => {
+  it('asks for SYSTEM only on the SUPER_ADMIN-only keys (nlp.*, harness.*, guardrail.*)', async () => {
     const { svc, routingService } = makeService();
     await svc.getEffective('nlp.ner');
     expect(routingService.resolveDefault).toHaveBeenCalledWith(TENANT, 'nlp.ner', { systemOnly: true });
+  });
+
+  // TASK-872, owner decision #3 (2026-09-05): guardrail is platform-only, so a
+  // tenant row for a `guardrail.*` key never wins at runtime — the read is
+  // pinned to SYSTEM exactly as it is for `nlp.*` / `harness.*`.
+  it('pins the guardrail safety plane to SYSTEM too', async () => {
+    const { svc, routingService } = makeService();
+    await svc.getEffective('guardrail.validate');
+    expect(routingService.resolveDefault).toHaveBeenCalledWith(TENANT, 'guardrail.validate', { systemOnly: true });
   });
 
   it('returns source null + null model when neither tier has a configuration', async () => {
@@ -124,10 +136,23 @@ describe('AiTaskDefaultService — getEffective (facade over resolveDefault)', (
     await expect(svc.getEffective('not.a.key')).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
+  // TASK-872 — the facade must PROPAGATE a tenant veto. It is a facade
+  // precisely so the resolution contract is the same on both sides; catching
+  // the veto here and projecting a null `modelSlug` would hand every caller
+  // "unconfigured" for a selection the tenant deliberately switched off.
+  it('propagates a TaskSelectionVetoedError rather than projecting it as an unconfigured selection', async () => {
+    const { svc, routingService } = makeService();
+    routingService.resolveDefault.mockRejectedValue(new TaskSelectionVetoedError(TENANT, 'text.live'));
+
+    await expect(svc.getEffective('text.live')).rejects.toBeInstanceOf(TaskSelectionVetoedError);
+  });
+
   it('honours an explicit tenantId (super admin acting on another tenant)', async () => {
     const { svc, routingService } = makeService({ roles: ['SUPER_ADMIN'] });
-    await svc.getEffective('guardrail.validate', 'tenant-other');
-    expect(routingService.resolveDefault).toHaveBeenCalledWith('tenant-other', 'guardrail.validate', { systemOnly: false });
+    // `text.live` rather than a guardrail key: guardrail resolves SYSTEM-only
+    // since TASK-872, so it can no longer demonstrate the tenant hand-off.
+    await svc.getEffective('text.live', 'tenant-other');
+    expect(routingService.resolveDefault).toHaveBeenCalledWith('tenant-other', 'text.live', { systemOnly: false });
   });
 });
 

@@ -51,8 +51,9 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * ADDITIONAL platform floor on top of that (D2, tighten-only): a tenant
  * write must name a `modelSlug` that resolves to a SYSTEM-tenant `AiModel`
  * row (the platform-approved list) — also a `ForbiddenException`. A
- * `featureGuardrailModelSelection` entitlement ceiling is catalogued but not
- * yet enforced (needs a DB migration outside 's scope).
+ * `featureGuardrailModelSelection` entitlement ceiling was CATALOGUED in the
+ * settings registry and never enforced; TASK-872 removed that descriptor,
+ * because enforcing it needs a `PlanEntitlement` column that does not exist.
  *
  * @deprecated TASK-862 — removed in R3. The service behind these routes is a
  * FACADE over `AiRoutingPolicy` (no `AiTaskDefault` row is read or written any

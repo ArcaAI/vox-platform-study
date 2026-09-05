@@ -63,11 +63,18 @@ describe('EffectiveSettingsService — the db-config lane', () => {
     });
   });
 
-  it('fails CLOSED for a db-config key that declares it (selection never falls back)', async () => {
-    // `stt.fallback.pipelineSlug` is db-config + failMode 'closed' and has no
-    // resolver wired: a selection key must RAISE, never quietly report null.
+  it('RAISES for a db-config key with no resolution lane, rather than reporting null', async () => {
+    // Specimen changed in TASK-872. It was `stt.fallback.pipelineSlug` — the
+    // registry's only db-config + `failMode: 'closed'` key — under the title
+    // "fails CLOSED … selection never falls back". That title overstated what
+    // ran: `failMode` is never consulted on this path. A db-config key that
+    // dispatches to no family resolver falls through every lane to the final
+    // throw, whatever its declared mode, and THAT is the contract worth
+    // pinning — a read surface must never answer "null" for a key it simply
+    // cannot resolve. `tts.defaultVoiceEn` is the specimen now: tenant-varying,
+    // so per D-1 it travels the push channel and deliberately has no lane here.
     const svc = service(storageResolver());
-    await expect(svc.resolveEffective('stt.fallback.pipelineSlug', ctx)).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(svc.resolveEffective('tts.defaultVoiceEn', ctx)).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('PROPAGATES a backend error rather than substituting the default', async () => {

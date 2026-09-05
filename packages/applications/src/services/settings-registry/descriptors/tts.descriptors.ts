@@ -1,32 +1,18 @@
 // TTS descriptors.
 //
-// The BYO provider credentials are the canonical data-class-2 example: per-tenant
-// secrets stored as Vault-Transit ciphertext in a DB column. Registered
-// here as `db-secret` / `secret` sensitivity so the catalog and any UI treat them
-// write-only and masked.
+// `tts.credential.{azure,sarvam}` were here — two `db-secret` descriptors
+// declared so a catalog or UI would treat the BYO keys as write-only and
+// masked. TASK-872 removed them: nothing ever resolved either key. The
+// credentials themselves are unaffected, because the registry was never their
+// storage or their write path — `TenantTtsConfigService` owns both, through its
+// own DTOs and its own Vault-Transit column, and the settings write lane
+// refuses a `db-secret` tier outright. A descriptor that describes a value the
+// registry can neither read nor write is documentation posing as a control
+// surface; the honest place for that documentation is the owning service.
 
 import { SettingDescriptor } from '../registry.types';
 
-// BYO providers that accept a tenant-supplied key (mirrors BYO_PROVIDERS in
-// tenant-tts-config/platform-limits). One db-secret descriptor per provider.
-const BYO_PROVIDERS = ['azure', 'sarvam'] as const;
-
 export const TTS_SETTINGS: SettingDescriptor[] = [
-  ...BYO_PROVIDERS.map<SettingDescriptor>((provider) => ({
-    key: `tts.credential.${provider}`,
-    tier: 'db-secret',
-    dataType: 'secret',
-    sensitivity: 'secret',
-    maxScope: 'tenant',
-    editableBy: 'TenantTtsConfig',
-    // Secret ⇒ fail-closed, enforced by `SettingsRegistry.register`. A BYO key
-    // that fell back would silently send this tenant's audio through the
-    // platform's own provider account.
-    failMode: 'closed',
-    category: 'Credentials',
-    label: `${provider[0].toUpperCase()}${provider.slice(1)} TTS API key (BYO)`,
-    description: `Tenant-supplied ${provider} key, encrypted at rest via Vault Transit; write-only, never returned.`,
-  })),
   {
     key: 'tts.defaultVoiceEn',
     tier: 'db-config',

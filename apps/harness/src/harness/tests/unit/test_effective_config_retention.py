@@ -31,7 +31,6 @@ def _payload(ttl_seconds: int | None = None, max_models: int | None = None) -> d
             "ttlSeconds": ttl_seconds,
             "maxModels": max_models,
             "maxMemoryMb": None,
-            "vramBudgetMb": None,
             "source": "db",
         },
     }

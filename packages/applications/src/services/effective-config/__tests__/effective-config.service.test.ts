@@ -109,7 +109,7 @@ describe('EffectiveConfigService', () => {
         source: 'db',
       });
       // Engine-retention hint only — no cache-shaped fields for a stateless gateway.
-      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: null, maxMemoryMb: null, vramBudgetMb: null });
+      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: null, maxMemoryMb: null });
     });
 
     it('serves nlp an EMPTY runtimeProfiles list (no connection plane) plus concurrency.maxConcurrent', async () => {
@@ -154,21 +154,38 @@ describe('EffectiveConfigService', () => {
       expect(res.runtimeProfiles).toBeUndefined();
     });
 
-    // The subsets deliberately RESERVED are now filled.
-    // Fields appeared; none changed meaning, so clients already polling these
-    // services are unaffected (the frozen-contract promise in
-    // IEffectiveConfigService).
-    it.each([
-      ['guardrail', 2],
-      ['harness', 1],
-      ['tts', 2],
-    ])('serves %s its model-cache retention subset', async (name, expectedMaxModels) => {
+    it('serves harness its model-cache retention subset', async () => {
       const svc = serviceWith(settingsStub(), [profile()]);
-      const res = await svc.resolveForService(name);
+      const res = await svc.resolveForService('harness');
 
-      expect(res.service).toBe(name);
-      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: expectedMaxModels });
-      // Still no runtime profiles / concurrency for these three.
+      expect(res.service).toBe('harness');
+      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: 1 });
+      expect(res.runtimeProfiles).toBeUndefined();
+      expect(res.concurrency).toBeUndefined();
+    });
+
+    // tts declares a TTL and no `maxModels`: its own client documents that
+    // "maxModels is meaningless here" (one pipeline per provider), so TASK-872
+    // removed the key rather than keep serving a number nothing reads.
+    it('serves tts a TTL-only retention group', async () => {
+      const svc = serviceWith(settingsStub(), [profile()]);
+      const res = await svc.resolveForService('tts');
+
+      expect(res.service).toBe('tts');
+      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: null });
+      expect(res.runtimeProfiles).toBeUndefined();
+      expect(res.concurrency).toBeUndefined();
+    });
+
+    // guardrail gets NO retention group at all since TASK-872 — all three of
+    // its `modelCache.*` keys fed a `retention()` accessor with zero callers.
+    // An absent group is what every client reads as "keep your own values".
+    it('serves guardrail no retention group', async () => {
+      const svc = serviceWith(settingsStub(), [profile()]);
+      const res = await svc.resolveForService('guardrail');
+
+      expect(res.service).toBe('guardrail');
+      expect(res.retention).toBeUndefined();
       expect(res.runtimeProfiles).toBeUndefined();
       expect(res.concurrency).toBeUndefined();
     });

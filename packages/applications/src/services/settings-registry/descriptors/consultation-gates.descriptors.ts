@@ -47,6 +47,13 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     // rollout gate, and a rollout that cannot be scoped to one tenant is not one.
     maxScope: 'tenant',
     editableBy: 'GlobalSetting',
+    // OWNER DECISION (2026-09-05, the graphExecutor amendment to #7): a rollout
+    // switch is the PLATFORM's, not the tenant's. `maxScope` stays `tenant` so a
+    // super admin can still roll the executor out one tenant at a time — the two
+    // fields answer different questions (WHERE a row may live vs. WHO may write
+    // it), and a per-tenant rollout a tenant could switch on for itself is not a
+    // rollout.
+    globalOnly: true,
     failMode: 'open-to-default',
     killSwitch: true,
     category: 'Feature Flags',

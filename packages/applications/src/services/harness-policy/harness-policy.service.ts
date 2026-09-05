@@ -16,6 +16,7 @@ import {
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
+import { TaskSelectionVetoedError } from '../ai-routing-policy/task-selection-veto';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { McpServerDtoMapper } from '../mcp-server/mcp-server.dto.mapper';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
@@ -516,6 +517,10 @@ export class HarnessPolicyService {
         return { judgeProvider: toJudgeProvider(model.provider), judgeModel: model.sourceUri };
       }
     } catch (error) {
+      // A VETO is not a lookup failure. The tenant switched its own selection
+      // off, and degrading to the env/code judge default would answer that by
+      // running the model it declined (TASK-872).
+      if (error instanceof TaskSelectionVetoedError) throw error;
       this.logger.warn({
         message: `AiTaskDefault judge lookup failed for '${JUDGE_TASK_KEY}' — harness will use its env/code judge default`,
         error: error instanceof Error ? error.message : String(error),
@@ -550,6 +555,13 @@ export class HarnessPolicyService {
         return { provider: model.provider === 'azure' ? 'azure-openai' : model.provider, model: model.sourceUri };
       }
     } catch (error) {
+      // A VETO propagates. Every seam below this one reads `null` as "no
+      // opinion here, apply your own fallback", which is exactly the answer a
+      // tenant that DISABLED its own selection must not get (TASK-872): it
+      // would substitute the platform's model for one the tenant refused. The
+      // other failure modes keep degrading, because they are genuinely
+      // "the lookup did not answer" rather than "the answer is no".
+      if (error instanceof TaskSelectionVetoedError) throw error;
       this.logger.warn({
         message: `AiTaskDefault lookup failed for '${taskKey}' — the caller's own fallback applies`,
         error: error instanceof Error ? error.message : String(error),

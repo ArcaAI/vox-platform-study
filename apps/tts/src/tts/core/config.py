@@ -80,10 +80,11 @@ class AzureSpeechConfig(BaseSettings):
     # on every request and `candidates()` skips any provider the voice is not
     # bound to, so these could never be consulted. One fact, one place: the
     # catalog (`catalog/voices.py`).
-    timeout_s: int = Field(default=30, validation_alias=moved_alias("TTS_AZURE_TIMEOUT_S"))
-    max_concurrent: int = Field(
-        default=10, validation_alias=moved_alias("TTS_AZURE_MAX_CONCURRENT")
-    )
+    # There are deliberately no `timeout_s` / `max_concurrent` fields either
+    # (TASK-872). Both were declared, served by the control plane, and read by
+    # NOTHING: `providers/azure_speech.py` builds its own SDK client and never
+    # consults them, so an operator could set a timeout that changed no
+    # request. Their descriptors went with them.
 
 
 class KokoroConfig(BaseSettings):
@@ -282,15 +283,15 @@ class SarvamConfig(BaseSettings):
     # No `voice_ml` / `voice_en`: both held `ishita`, which is the catalog's
     # sarvam binding for `ml-female-1`. The router passes it as
     # `req.provider_voice`, so the fallback was unreachable.
-    sample_rate: int = Field(default=24000, validation_alias=moved_alias("TTS_SARVAM_SAMPLE_RATE"))
+    # No `sample_rate`: the request carries it (`req.sample_rate`, from the
+    # service-wide `Settings.sample_rate`), and `providers/sarvam.py` sends that
+    # — the per-provider field was read by nobody (TASK-872).
     timeout_s: int = Field(default=30, validation_alias=moved_alias("TTS_SARVAM_TIMEOUT_S"))
-    max_concurrent: int = Field(
-        default=4, validation_alias=moved_alias("TTS_SARVAM_MAX_CONCURRENT")
-    )
-    # phase 2: WebSocket streaming API
-    use_streaming: bool = Field(
-        default=False, validation_alias=moved_alias("TTS_SARVAM_USE_STREAMING")
-    )
+    # No `max_concurrent` and no `use_streaming` (TASK-872): the first was
+    # never read at all, and the second only ever named a phase-2 WebSocket
+    # upgrade that is not implemented — a flag whose ON state does nothing is
+    # worse than an absent one. `timeout_s` stays because `providers/sarvam.py`
+    # really does build its client with it.
 
 
 class Settings(BaseSettings):
@@ -362,7 +363,9 @@ class Settings(BaseSettings):
 
     # Synthesis limits / defaults — control-plane owned.
     max_input_chars: int = Field(default=4096, validation_alias=moved_alias("TTS_MAX_INPUT_CHARS"))
-    default_format: str = Field(default="pcm", validation_alias=moved_alias("TTS_DEFAULT_FORMAT"))
+    # No `default_format` (TASK-872). The effective default format is resolved
+    # by the GATEWAY from `TenantTtsConfig` platform limits and arrives on every
+    # request as `response_format`; this field was read by no code path here.
     sample_rate: int = Field(default=24000, validation_alias=moved_alias("TTS_SAMPLE_RATE"))
 
     # NOTE: there is deliberately NO `routing_en` / `routing_ml` here ( /

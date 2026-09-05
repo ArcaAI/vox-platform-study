@@ -273,27 +273,31 @@ class TestOverlay:
         assert settings.sarvam.model == before
         assert applied == []
 
+    # Both specimens changed in TASK-872: these used to run on
+    # `tts.azure.timeoutS` / `tts.azure.maxConcurrent`, which were removed for
+    # having no reader. The numeric keys below are read for real, so the tests
+    # now pin type discipline on a knob that matters.
     def test_a_type_mismatch_is_refused_not_coerced(self) -> None:
         settings = Settings()
-        before = settings.azure.timeout_s
+        before = settings.sarvam.timeout_s
         apply_control_plane(
             settings,
             self._snapshot(
-                {"tts.azure.timeoutS": {"value": "soon", "dataType": "number", "source": "db"}}
+                {"tts.sarvam.timeoutS": {"value": "soon", "dataType": "number", "source": "db"}}
             ),
         )
-        assert settings.azure.timeout_s == before
+        assert settings.sarvam.timeout_s == before
 
     def test_a_bool_is_never_read_as_a_number(self) -> None:
         settings = Settings()
-        before = settings.azure.max_concurrent
+        before = settings.max_input_chars
         apply_control_plane(
             settings,
             self._snapshot(
-                {"tts.azure.maxConcurrent": {"value": True, "dataType": "number", "source": "db"}}
+                {"tts.limits.maxInputChars": {"value": True, "dataType": "number", "source": "db"}}
             ),
         )
-        assert settings.azure.max_concurrent == before
+        assert settings.max_input_chars == before
 
     def test_a_malformed_payload_changes_nothing(self) -> None:
         settings = Settings()

@@ -15,19 +15,14 @@
 //     default because reads never depend on it (`getCurrentUsage` is a live
 //     aggregate) — the job only warms a persisted snapshot table.
 //
-// `metering.reconcile.enabledDefault` is the ONE key here that is NOT a
-// runtime gate — mirrors `entitlements.enabledDefault`
-// (feature-flags.descriptors.ts) exactly: SEED-TIME ONLY, read by
-// `seed/15-entitlements.ts` to decide the value of the
-// `metering.reconcile.enabled` GlobalSetting row on a FRESH database.
-// POLICY: ON in every DEPLOYED environment (hope-v2-dev, staging,
-// production) — each sets `METERING_RECONCILE_ENABLED_DEFAULT=true` in its
-// host env / deploy overlay — and OFF only in LOCAL development (the committed
-// `.env.sample` default) and test/CI. Its migration path is the same as its
-// sibling's: DELETION, once seeding takes its default from the descriptor
-// instead of the environment.
+// Every key here is a runtime knob. The one exception —
+// `metering.reconcile.enabledDefault`, a seed-time-only companion — was
+// deleted in TASK-872 along with its `entitlements.enabledDefault` twin; see
+// the note where it stood. `seed/15-entitlements.ts` still honours the
+// `METERING_RECONCILE_ENABLED_DEFAULT` host-env override, which is where a
+// seed-time variable belongs.
 
-import { EDITABLE_BY_NONE, SettingDescriptor } from '../registry.types';
+import { SettingDescriptor } from '../registry.types';
 import {
   DRAIN_DEFAULTS,
   DRAIN_ENABLED_KEY,
@@ -98,21 +93,18 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
       'Enables the scheduled job that PERSISTS per-(tenant, metric, window) usage snapshots into TenantUsageMeter. Capability/usage READS (`MeteringService.getCurrentUsage`, quota assertions) are always a live Postgres aggregate and are correct even with this OFF — the job only warms the persisted snapshot table (history + a future fast-path). Fail-safe: defaults OFF, same shape as `audit-retention.enabled`.',
     default: METERING_DEFAULTS.enabled,
   },
-  {
-    key: 'metering.reconcile.enabledDefault',
-    tier: 'env',
-    targetTier: 'global-kv',
-    dataType: 'boolean',
-    sensitivity: 'internal',
-    maxScope: 'system',
-    editableBy: EDITABLE_BY_NONE,
-    failMode: 'open-to-default',
-    category: 'Platform Operations',
-    label: 'Metering reconcile seed default',
-    description:
-      'SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database. POLICY: reconcile is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets METERING_RECONCILE_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set). Keep this LOCAL default false so a developer laptop never runs the sweep; flip live via the admin control plane. The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment.',
-    default: false,
-  },
+  // `metering.reconcile.enabledDefault` was declared here, and its own
+  // description named the exit: "its migration is DELETION". TASK-872 took it,
+  // with the sibling `entitlements.enabledDefault`
+  // (feature-flags.descriptors.ts) that it mirrored.
+  //
+  // Seeding is unchanged: `seed/15-entitlements.ts` reads
+  // `process.env.METERING_RECONCILE_ENABLED_DEFAULT` as an explicit override
+  // over its own derived default (`isDeployedEnvironment()`), never this
+  // descriptor, and the variable stays in `turbo.json#globalEnv` because that
+  // read still exists. What goes is the generated `.env.sample` stanza — a
+  // committed declaration of a seed-time-only variable that no running process
+  // ever reads.
 
   // ── Shadow-metering drift report ────────────────────────────────────────
   {

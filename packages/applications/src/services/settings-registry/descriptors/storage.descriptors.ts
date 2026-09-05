@@ -88,7 +88,12 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.forcePathStyle',
     tier: 'db-config',
-    consumedBy: ['harness'],
+    // `consumedBy: ['harness']` was declared here until TASK-872. The KEY stays
+    // — the gateway's own storage resolver reads it — but the harness does not:
+    // it never parses this value off the effective-config pull route. A
+    // `consumedBy` entry is a promise that the named service reads the key on
+    // that route, and the governance test only checks that such a key is
+    // RESOLVABLE, not that anyone resolves it.
     dataType: 'boolean',
     sensitivity: 'internal',
     maxScope: 'system',

@@ -37,13 +37,15 @@ describe.each(['nlp.sentiment', 'nlp.toxicity'] as const)('%s task key', (taskKe
     expect(isSuperAdminOnlyTaskKey(taskKey)).toBe(true);
   });
 
-  it('registers a models.<taskKey> settings descriptor, db-config, fail-closed, super-admin-only', () => {
-    const d = HOPE_SETTINGS_REGISTRY.getOrThrow(`models.${taskKey}`);
-    expect(d.tier).toBe('db-config');
-    expect(d.dataType).toBe('string');
-    expect(d.maxScope).toBe('tenant');
-    expect(d.failMode).toBe('closed');
-    expect(d.editableBy).toBe('all');
-    expect(d.globalOnly).toBe(true);
+  // TASK-872 removed the `models.*` descriptor(s) for this key: no request
+  // path resolves it, so cataloguing it offered a SELECTION control with
+  // nothing on the other end. The task key itself is unchanged — it stays
+  // `AiRoutingPolicy` vocabulary with its own admin route and seed posture —
+  // so the assertion flips to the descriptor's ABSENCE.
+  // The seed records both of these as OPEN OWNER DECISIONS in
+  // `SYSTEM_TASK_DEFAULT_EXEMPTIONS`: no checkpoint selected, and no gateway
+  // route reaching the key.
+  it('registers NO models.<taskKey> descriptor — no route reaches the key yet', () => {
+    expect(HOPE_SETTINGS_REGISTRY.has(`models.${taskKey}`)).toBe(false);
   });
 });
