@@ -92,7 +92,9 @@ def moved_alias(env_var: str) -> str:
 #: operator grepping for ``TTS_SARVAM_MODEL`` must land on something that says
 #: WHERE the value went, and "the control plane" would send them to a settings
 #: key that no longer exists.
-MOVED_TO_ROW_SUFFIX = "__MOVED_TO_THE_REGISTRY_ROW"
+# The shape `scripts/python-env-surface.py` recognises as a CLOSED env path (`__ENV_REMOVED[_TASK_n]`):
+# a tombstone the generator omits, so the moved names never reappear in `.env.sample` / `turbo.json`.
+MOVED_TO_ROW_SUFFIX = "__ENV_REMOVED_TASK_879"
 
 
 def moved_to_row_alias(env_var: str) -> str:

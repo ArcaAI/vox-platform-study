@@ -36,7 +36,8 @@ export class InternalServiceTokenGuard implements CanActivate {
     nlp: 'NLP_SERVICE_TOKEN',
     guardrail: 'GUARDRAIL_SERVICE_TOKEN',
     harness: 'HARNESS_SERVICE_TOKEN',
-    tts: 'TTS_SERVICE_TOKEN',
+    // tts presents the ONE shared token since its private secret was retired (TASK-879/880).
+    tts: 'INTERNAL_ACCESS_TOKEN',
     stt: 'API_GATEWAY_KEY',
   };
 

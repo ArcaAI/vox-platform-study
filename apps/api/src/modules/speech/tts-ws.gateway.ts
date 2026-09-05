@@ -305,8 +305,8 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private async openBridge(client: WebSocket, sessionId: string, tenantId: string | null): Promise<void> {
     const headers: Record<string, string> = {};
-    // The ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is the migration fallback only.
-    const token = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    // The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880).
+    const token = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     if (token) {
       headers['X-Service-Token'] = token;
     }
