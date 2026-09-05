@@ -164,13 +164,15 @@ OTEL_METRICS_ENABLED=true
 
 ### Logging Configuration
 
+The service logs to **stdout only** (TASK-883). The deployment ships
+stdout -> Alloy -> Loki and mounts no log volume for `apps/nlp`, so the file and
+rotation handlers — and the eleven `nlp.logging.*` control-plane keys that
+steered them — were retired. The level is the one knob that remains, and it
+stays in env because it is what an operator reaches for first during an
+incident.
+
 ```bash
-LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, FATAL
-LOG_FORMAT=json  # json or text
-LOG_FILE_ENABLED=false
-LOG_FILE_PATH=./logs
-LOG_FILE_MAX_SIZE=10485760  # 10MB in bytes
-LOG_FILE_BACKUP_COUNT=5
+NLP_LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL (bare LOG_LEVEL is the fallback)
 ```
 
 ## Configuration Files
