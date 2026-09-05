@@ -490,7 +490,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       // JOB_QUEUE marker is the declared fallback rather than an absent header,
       // which would be indistinguishable from one dropped in transit.
       headers: internalServiceHeaders({
-        serviceToken: await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN'),
+        serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),
         tenantId: this.clsService.get<string>('tenantId'),
         tenantlessReason: TENANTLESS.JOB_QUEUE,
       }),

@@ -24,9 +24,18 @@ import { timingSafeEqual } from 'node:crypto';
 export class ServiceReleaseTokenGuard implements CanActivate {
   private readonly logger = new Logger(ServiceReleaseTokenGuard.name);
 
-  /** Secret names this guard will accept a match against — mirrors `InternalServiceTokenGuard`. */
+  /**
+   * Secret names this guard will accept a match against — mirrors `InternalServiceTokenGuard`.
+   *
+   * `INTERNAL_ACCESS_TOKEN` leads the list: it is the ONE shared credential every
+   * migrated service self-registers with (owner decision D-D). It was MISSING
+   * when `TTS_SERVICE_TOKEN` was struck from this list in TASK-879/880, which
+   * left a migrated TTS process able to register only when some other service's
+   * legacy secret happened to hold the same value; `text` joined the shared token
+   * in TASK-888 and would have hit the same wall.
+   */
   private static readonly KNOWN_SECRETS: readonly string[] = [
-    'TEXT_SERVICE_TOKEN',
+    'INTERNAL_ACCESS_TOKEN',
     'NLP_SERVICE_TOKEN',
     'GUARDRAIL_SERVICE_TOKEN',
     'HARNESS_SERVICE_TOKEN',

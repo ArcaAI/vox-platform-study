@@ -40,11 +40,13 @@
  * default.
  *
  * The internal `/api/v1/internal/effective-config` read is service-token
- * gated (`InternalServiceTokenGuard`) and no `*_SERVICE_TOKEN` secret is
+ * gated (`InternalServiceTokenGuard`) and no internal-token secret is
  * configured in `.env.test` by default, so that half is ENV-GATED and skipped
- * unless the operator sets `E2E_TEXT_SERVICE_TOKEN` to the same value
- * configured as `TEXT_SERVICE_TOKEN` on the running gateway (mirrors the
- * `HARNESS_SERVICE_TOKEN` gating pattern in `harness-gate.spec.ts`). The
+ * unless the operator sets `E2E_INTERNAL_ACCESS_TOKEN` to the same value
+ * configured as `INTERNAL_ACCESS_TOKEN` on the running gateway (TASK-888 —
+ * `service=text` resolves the ONE shared token, not the retired
+ * `TEXT_SERVICE_TOKEN`; mirrors the `HARNESS_SERVICE_TOKEN` gating pattern in
+ * `harness-gate.spec.ts`). The
  * always-on half of this spec uses the admin effective read
  * (`GET admin/settings/registry/:key`), which needs no such token.
  */
@@ -55,7 +57,7 @@ const REGISTRY_KEY = 'text.modelCache.ttlSeconds';
 const REGISTRY_ROUTE = `/api/v1/admin/settings/registry/${REGISTRY_KEY}`;
 const INTERNAL_EFFECTIVE_CONFIG = '/api/v1/internal/effective-config?service=text';
 
-const TEXT_SERVICE_TOKEN = process.env.E2E_TEXT_SERVICE_TOKEN ?? process.env.E2E_TEXT_V2_SERVICE_TOKEN ?? '';
+const INTERNAL_ACCESS_TOKEN = process.env.E2E_INTERNAL_ACCESS_TOKEN ?? '';
 
 interface RegistrySettingBody {
   key: string;
@@ -152,8 +154,8 @@ test.describe('model-cache retention TTL — write lane reaches the effective-co
 
   test.describe('internal effective-config read (env-gated)', () => {
     test.skip(
-      !TEXT_SERVICE_TOKEN,
-      'requires E2E_TEXT_SERVICE_TOKEN set to the same value as the running gateway’s TEXT_SERVICE_TOKEN secret ' +
+      !INTERNAL_ACCESS_TOKEN,
+      'requires E2E_INTERNAL_ACCESS_TOKEN set to the same value as the running gateway’s INTERNAL_ACCESS_TOKEN secret ' +
         '(the InternalServiceTokenGuard fails closed with no configured secret — see the file header)',
     );
 
@@ -163,7 +165,7 @@ test.describe('model-cache retention TTL — write lane reaches the effective-co
       const put = await writeKey(request, testValue);
       expect(put.status()).toBe(200);
 
-      const resp = await request.get(INTERNAL_EFFECTIVE_CONFIG, { headers: { 'X-Service-Token': TEXT_SERVICE_TOKEN } });
+      const resp = await request.get(INTERNAL_EFFECTIVE_CONFIG, { headers: { 'X-Service-Token': INTERNAL_ACCESS_TOKEN } });
       expect(resp.status()).toBe(200);
       const body = (await resp.json()) as EffectiveConfigBody;
       expect(body.service).toBe('text');

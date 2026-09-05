@@ -116,16 +116,20 @@ http_check optional "guardrail (8863)" "http://localhost:${GUARDRAIL_PORT:-8863}
 # /api/v1/providers sits behind the X-Service-Token middleware (only /health is
 # exempt), so resolve the same token the service reads (host env > .env.dev)
 # before probing it — otherwise every call 401s and reads as "zero providers".
-text_token="${TEXT_SERVICE_TOKEN:-}"
+# text accepts the ONE shared INTERNAL_ACCESS_TOKEN and nothing else (owner
+# decision D-D); the per-service TEXT_SERVICE_TOKEN this probed until TASK-888
+# had already stopped authenticating anything, so the check always read
+# "zero providers" on a box that set only the shared token.
+text_token="${INTERNAL_ACCESS_TOKEN:-}"
 if [ -z "$text_token" ] && [ -f .env.dev ]; then
-    text_token="$(grep -m1 '^TEXT_SERVICE_TOKEN=' .env.dev | cut -d= -f2-)"
+    text_token="$(grep -m1 '^INTERNAL_ACCESS_TOKEN=' .env.dev | cut -d= -f2-)"
 fi
 providers="$(curl -s --connect-timeout 2 --max-time 5 -H "X-Service-Token: ${text_token}" "http://localhost:${TEXT_PORT:-8862}/api/v1/providers" 2>/dev/null)" || providers=""
 if printf '%s' "$providers" | grep -q '"name"'; then
     # top-level provider entries are the ones carrying a display_name
     pass "text providers registered" "$(printf '%s' "$providers" | grep -oE '"name":"[^"]*","display_name"' | cut -d'"' -f4 | sort -u | tr '\n' ' ')"
 elif printf '%s' "$providers" | grep -q 'service token'; then
-    fail "text providers registered" "TEXT_SERVICE_TOKEN mismatch — doctor's .env.dev value doesn't match the running text process's"
+    fail "text providers registered" "INTERNAL_ACCESS_TOKEN mismatch — doctor's .env.dev value doesn't match the running text process's"
 else
     fail "text providers registered" "none — start text via 'pnpm text:dev' (registers the LM Studio provider)"
 fi

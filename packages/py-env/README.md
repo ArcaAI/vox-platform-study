@@ -81,16 +81,17 @@ would outrank a freshly re-rendered Vault file.
 ```
 /vault/secrets/
 ├── JWT_SECRET_KEY            # -> Settings(env_prefix="")     jwt_secret_key
-├── TEXT_SERVICE_TOKEN         # -> Settings(env_prefix="TEXT_") service_token
-├── GUARDRAIL_SERVICE_TOKEN
+├── GUARDRAIL_SERVICE_TOKEN    # -> Settings(env_prefix="GUARDRAIL_") service_token
 ├── AZURE_SPEECH_KEY
 └── HUGGINGFACE_TOKEN
 ```
 
 The filename is the full env var name because pydantic applies the class's
 `env_prefix` when looking a secret up: a field `service_token` on a class with
-`env_prefix="TEXT_"` is read from the file `TEXT_SERVICE_TOKEN`. A file named
-`SERVICE_TOKEN` would be ignored. Both directions are pinned by tests.
+`env_prefix="GUARDRAIL_"` is read from the file `GUARDRAIL_SERVICE_TOKEN`. A file
+named `SERVICE_TOKEN` would be ignored. Both directions are pinned by tests.
+(A field declared with an explicit `validation_alias` bypasses the prefix
+entirely — that is how the unprefixed, shared `INTERNAL_ACCESS_TOKEN` is read.)
 
 **An absent directory is a silent no-op** — no warning, no error. That is the
 path every developer takes: `/vault/secrets` does not exist locally, so the

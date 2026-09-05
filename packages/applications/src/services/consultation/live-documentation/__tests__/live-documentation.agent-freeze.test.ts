@@ -97,7 +97,7 @@ function buildService(opts: {
     // Without one the durable-snapshot write is (correctly) refused.
     //
     // `getSecretOptional` is REQUIRED, not decorative: `callText` resolves
-    // `TEXT_SERVICE_TOKEN` through it for the authenticated gateway→TEXT hop
+    // `INTERNAL_ACCESS_TOKEN` through it for the authenticated gateway→TEXT hop
     // A stand-in missing the method throws inside the flush's try,
     // which the catch turns into "TEXT failed" — so every assertion about the
     // TEXT payload silently sees zero calls instead of failing loudly.
@@ -116,7 +116,7 @@ const settle = async (): Promise<void> => {
 };
 
 describe('The gateway→TEXT hop is authenticated', () => {
-  it('sends X-Service-Token resolved from TEXT_SERVICE_TOKEN', async () => {
+  it('sends X-Service-Token resolved from INTERNAL_ACCESS_TOKEN', async () => {
     const calls: TextCall[] = [];
     const http = recordingHttpMock(calls);
     const service = buildService({ http });

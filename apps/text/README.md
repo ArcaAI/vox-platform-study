@@ -57,7 +57,8 @@ pnpm stack:dev -- text worker
 - **Metrics**: http://127.0.0.1:8862/metrics
 
 Env is the BOOTSTRAP FLOOR only: `TEXT_PORT` (8862), `TEXT_URL` (gateway → this service),
-`TEXT_SERVICE_TOKEN` (`X-Service-Token`; empty = local-dev bypass). Copy `apps/text/.env.sample`
+`INTERNAL_ACCESS_TOKEN` (`X-Service-Token`; empty = local-dev bypass — the ONE shared internal
+credential, unprefixed on purpose; the per-service `TEXT_SERVICE_TOKEN` is retired). Copy `apps/text/.env.sample`
 for the full set — nine fields, and **no provider block, model id, endpoint or credential**
 (`core/config.py`, locked by `test_task799_config_surface.py`). Provider connections and model
 selection are DB/Vault-tier, resolved per request; there is no `.env.prod`. Host env wins;
