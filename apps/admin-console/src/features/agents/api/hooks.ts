@@ -2,11 +2,14 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  cloneAgent,
   createAgent,
   createAgentAssignment,
   deleteAgent,
   deprecateAgent,
+  exportAgent,
   getAgent,
+  importAgent,
   listAgentAssignments,
   listAgentVersions,
   listAgents,
@@ -21,7 +24,16 @@ import {
   validateAgent,
 } from './client';
 import { agentKeys } from './keys';
-import type { AgentTask, CreateAgentRequest, NewAgentVersionRequest, PublishAgentRequest, UpdateAgentRequest, UpsertAgentAssignmentRequest } from './types';
+import type {
+  AgentTask,
+  CloneAgentRequest,
+  CreateAgentRequest,
+  ImportAgentRequest,
+  NewAgentVersionRequest,
+  PublishAgentRequest,
+  UpdateAgentRequest,
+  UpsertAgentAssignmentRequest,
+} from './types';
 
 export function useAgents(task?: AgentTask) {
   return useQuery({ queryKey: agentKeys.list(task), queryFn: () => listAgents(task) });
@@ -89,6 +101,23 @@ export function useNewAgentVersion() {
 export function useDeprecateAgent() {
   const invalidate = useInvalidateAgents();
   return useMutation({ mutationFn: (id: string) => deprecateAgent(id), onSuccess: invalidate });
+}
+
+// TASK-884 — portability. Export is a MUTATION rather than a query on purpose: it is an action
+// a person takes (a download), not state the screen renders, so it must not be cached, refetched
+// on focus, or run because a drawer opened.
+export function useExportAgent() {
+  return useMutation({ mutationFn: ({ slug, versionNumber }: { slug: string; versionNumber?: number }) => exportAgent(slug, versionNumber) });
+}
+
+export function useCloneAgent() {
+  const invalidate = useInvalidateAgents();
+  return useMutation({ mutationFn: ({ slug, body }: { slug: string; body: CloneAgentRequest }) => cloneAgent(slug, body), onSuccess: invalidate });
+}
+
+export function useImportAgent() {
+  const invalidate = useInvalidateAgents();
+  return useMutation({ mutationFn: (body: ImportAgentRequest) => importAgent(body), onSuccess: invalidate });
 }
 
 export function useUpsertAgentAssignment() {
