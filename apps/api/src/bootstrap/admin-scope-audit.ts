@@ -57,7 +57,6 @@ import { AiModelAdminController } from '../modules/ai-model/ai-model-admin.contr
 import { AiModelDiscoveryController } from '../modules/ai-model/ai-model-discovery.controller';
 import { ProviderConnectionController } from '../modules/ai-provider-connection/ai-provider-connection.controller';
 import { AiServiceAdminController } from '../modules/ai-service-admin/ai-service-admin.controller';
-import { AiTaskDefaultAdminController } from '../modules/ai-task-default/ai-task-default-admin.controller';
 import { ApiKeyController } from '../modules/api-key/api-key.controller';
 import { AuditLogController } from '../modules/audit-log/audit-log.controller';
 import { AdminImpersonationController } from '../modules/auth/admin-impersonation.controller';
@@ -155,7 +154,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: AiModelAdminController, expect: 'FORBID' },
   { controller: AiModelDiscoveryController, expect: 'FORBID' },
   { controller: AiServiceAdminController, expect: 'FORBID' },
-  { controller: AiTaskDefaultAdminController, expect: 'FORBID' },
   { controller: ApiKeyController, expect: 'FORBID' },
   { controller: AudioPipelineController, expect: 'FORBID' },
   { controller: AuditLogController, expect: 'FORBID' },

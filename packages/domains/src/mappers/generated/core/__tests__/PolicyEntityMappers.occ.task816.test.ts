@@ -49,8 +49,6 @@ const harnessRow = (version = 7): HarnessPolicy =>
     safetyEnabled: true,
     phiEnabled: true,
     phiFailClosed: true,
-    textProvider: null,
-    textModel: null,
     maxRegen: 2,
     gateSlaSeconds: 86_400,
     gateEscalationSeconds: 43_200,

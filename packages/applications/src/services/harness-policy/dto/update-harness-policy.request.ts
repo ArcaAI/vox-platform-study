@@ -9,9 +9,11 @@ import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, MaxLeng
  * integers. `expectedVersion` is the OCC token (folded from the `If-Match`
  * header by the controller; body fallback for service-to-service callers).
  *
- * Sending `null` for `textProvider` / `textModel` / `toolAllowlist` explicitly
- * clears the field ("let the service choose" / "no tool restriction"); OMITTING
- * a field leaves it unchanged.
+ * Sending `null` for `toolAllowlist` explicitly clears the field ("no tool
+ * restriction"); OMITTING a field leaves it unchanged. `textProvider` /
+ * `textModel` are NOT accepted (TASK-881 dropped the columns): text selection
+ * is the tenant's assigned TEXT_GENERATION agent, and the strict validation
+ * pipe rejects the fields as unknown.
  */
 export class UpdateHarnessPolicyRequest {
   @ApiPropertyOptional({ description: 'Entity-faithfulness sensor threshold (fraction in [0,1]).', minimum: 0, maximum: 1, example: 1.0 })
@@ -63,18 +65,6 @@ export class UpdateHarnessPolicyRequest {
   @IsOptional()
   @IsBoolean()
   phiFailClosed?: boolean;
-
-  @ApiPropertyOptional({ description: 'TEXT generation provider id (null = let the TEXT service choose).', nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  textProvider?: string | null;
-
-  @ApiPropertyOptional({ description: 'TEXT generation model id (null = let the TEXT service choose).', nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  textModel?: string | null;
 
   @ApiPropertyOptional({ description: 'Bounded-regen budget (non-negative integer).', minimum: 0, example: 2 })
   @IsOptional()

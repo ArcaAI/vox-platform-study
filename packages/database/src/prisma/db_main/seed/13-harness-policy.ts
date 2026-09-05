@@ -2,36 +2,27 @@ import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
- * HarnessPolicy Seed (TEXT default wiring)
+ * HarnessPolicy Seed — the SYSTEM global-default row.
  *
  * The reserved system tenant (`00000000-…`, SYSTEM_TENANT_ID) owns the
  * GLOBAL-DEFAULT HarnessPolicy row that the clinical documentation loop reads
- * via its `fetch_policy` activity (apps/harness). This seed sets the TEXT
- * generation default on that row:
- *   - textProvider = 'lm-studio'
- *   - textModel    = 'gemma-4-e2b-it-qat'
- * (both were NULL → "let the TEXT service choose"; the model
- * default moved from `gemma-4-e2b-it-sft-rlvr-medical` to the owner-declared
- * platform default `gemma-4-e2b-it-qat` — registry row `lms-gemma-4-e2b-it-qat`).
+ * via its `fetch_policy` activity (apps/harness) and that every tenant's
+ * effective policy widens to. This seed ensures that row EXISTS; every knob
+ * comes from the Prisma column `@default`s.
  *
- * This step writes ONLY those two columns and is idempotent. It ALSO records a
- * WORM `HarnessPolicyChange` audit entry for the default-set, mirroring the
- * runtime HarnessPolicyService.upsert mechanism (before/after knob snapshots;
- * `beforeJson = null` denotes the row was created by this change). The
- * HarnessPolicyChange table is append-only (the migration REVOKEs UPDATE/DELETE
- * from the app role), so only INSERTs happen here.
+ * TASK-881: it used to ALSO write the TEXT generation default
+ * (`textProvider = 'lm-studio'`, `textModel = 'gemma-4-e2b-it-qat'`) onto the
+ * row. Both columns are dropped — text selection is the tenant's assigned
+ * TEXT_GENERATION agent (TASK-876), and the effective-policy response derives
+ * `textProvider` / `textModel` from that agent's primary. What survives is the
+ * CREATE-ONLY posture and the WORM `HarnessPolicyChange` audit entry for the
+ * creation (`beforeJson = null` denotes the row was created by this change).
+ * The HarnessPolicyChange table is append-only (the migration REVOKEs
+ * UPDATE/DELETE from the app role), so only INSERTs happen here.
  *
- * Scope guard: this seed touches NO gating/threshold/safety columns. It only sets the
- * two TEXT columns.
+ * Scope guard: this seed touches NO gating/threshold/safety columns and never
+ * updates an existing row — an admin's runtime edits survive a re-seed.
  */
-
-/** The agreed TEXT system default (overrides the NULL "service chooses"). */
-export const SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS = {
-  textProvider: 'lm-studio',
-  // Owner decision (2026-07-17) — the platform summarization
-  // default is gemma-4-e2b-it-qat (was gemma-4-e2b-it-sft-rlvr-medical).
-  textModel: 'gemma-4-e2b-it-qat',
-} as const;
 
 /**
  * The HarnessPolicy runtime knobs, with their code defaults. Kept in
@@ -49,8 +40,6 @@ const HARNESS_POLICY_KNOB_DEFAULTS = {
   safetyEnabled: true,
   phiEnabled: true,
   phiFailClosed: true,
-  textProvider: null as string | null,
-  textModel: null as string | null,
   maxRegen: 2,
   gateSlaSeconds: 86400,
   gateEscalationSeconds: 43200,
@@ -60,10 +49,9 @@ const HARNESS_POLICY_KNOB_DEFAULTS = {
 type HarnessPolicyKnobs = Record<keyof typeof HARNESS_POLICY_KNOB_DEFAULTS, unknown>;
 
 /**
- * Build a full 16-knob snapshot from a (possibly partial) policy row, falling
+ * Build a full knob snapshot from a (possibly partial) policy row, falling
  * back to the code defaults for any column the row does not carry. `??` is used
- * so a legitimate `false`/`0`/explicit `null` is preserved (the TEXT defaults are
- * `null`, so a null row value collapses to the null default either way).
+ * so a legitimate `false`/`0`/explicit `null` is preserved.
  */
 function snapshotKnobs(row: Record<string, unknown>): HarnessPolicyKnobs {
   const out = {} as HarnessPolicyKnobs;
@@ -73,74 +61,43 @@ function snapshotKnobs(row: Record<string, unknown>): HarnessPolicyKnobs {
   return out;
 }
 
-const SEED_CHANGE_REASON = ' seed: set TEXT system default (lm-studio / gemma-4-e2b-it-qat)';
+const SEED_CHANGE_REASON = ' seed: create the SYSTEM global-default HarnessPolicy row';
 
 /**
- * Idempotently set the SYSTEM HarnessPolicy TEXT default + record a WORM change.
+ * Idempotently ensure the SYSTEM HarnessPolicy row exists + record a WORM change on creation.
  *
  * Returns the action taken so callers/tests can assert behaviour:
- *   - 'created' — no SYSTEM row existed; created with the TEXT default (+ WORM, beforeJson=null)
- *   - 'updated' — a row existed without the TEXT default; only the two TEXT columns written (+ WORM before/after)
- *   - 'noop'    — the TEXT default was already set; nothing written
+ *   - 'created' — no SYSTEM row existed; created from the column defaults (+ WORM, beforeJson=null)
+ *   - 'noop'    — the SYSTEM row already exists; nothing written (CREATE-ONLY, never an update)
  */
-export const seedHarnessPolicy = async (
-  client: CorePrismaClient,
-): Promise<{ success: true; action: 'created' | 'updated' | 'noop'; changeWritten: boolean }> => {
-  console.log('Seeding SYSTEM HarnessPolicy TEXT default (Phase 2)...');
+export const seedHarnessPolicy = async (client: CorePrismaClient): Promise<{ success: true; action: 'created' | 'noop'; changeWritten: boolean }> => {
+  console.log('Seeding SYSTEM HarnessPolicy global-default row ...');
 
-  const { textProvider, textModel } = SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS;
   const existing = await client.harnessPolicy.findFirst({
     where: { tenantId: SYSTEM_TENANT_ID },
   });
 
-  // Idempotent: the TEXT default is already set — nothing to write or audit.
-  if (existing && existing.textProvider === textProvider && existing.textModel === textModel) {
-    console.log('  SYSTEM HarnessPolicy TEXT default already set, skipping');
+  if (existing) {
+    console.log('  SYSTEM HarnessPolicy row exists — KEPT AS IS (create-only)');
     return { success: true, action: 'noop', changeWritten: false };
   }
 
-  if (!existing) {
-    // Create the SYSTEM row with the TEXT default. All other knobs come from
-    // the Prisma column @defaults (granite safety model, code thresholds…).
-    const created = await client.harnessPolicy.create({
-      data: {
-        tenantId: SYSTEM_TENANT_ID,
-        textProvider,
-        textModel,
-        createdBy: SYSTEM_USER_ID,
-      },
-    });
-    await client.harnessPolicyChange.create({
-      data: {
-        tenantId: SYSTEM_TENANT_ID,
-        changedBy: SYSTEM_USER_ID,
-        policyVersion: (created as { version?: number }).version ?? null,
-        beforeJson: null as unknown as object,
-        afterJson: snapshotKnobs(created as Record<string, unknown>) as unknown as object,
-        reason: SEED_CHANGE_REASON,
-      },
-    });
-    console.log('  Created SYSTEM HarnessPolicy with TEXT default + WORM change');
-    return { success: true, action: 'created', changeWritten: true };
-  }
-
-  // A row exists but the TEXT default is unset/stale — write ONLY the two TEXT
-  // columns (never clobber other admin-changed knobs) + a before/after WORM.
-  const before = snapshotKnobs(existing as Record<string, unknown>);
-  const updated = await client.harnessPolicy.update({
-    where: { id: (existing as { id: string }).id },
-    data: { textProvider, textModel },
+  const created = await client.harnessPolicy.create({
+    data: {
+      tenantId: SYSTEM_TENANT_ID,
+      createdBy: SYSTEM_USER_ID,
+    },
   });
   await client.harnessPolicyChange.create({
     data: {
       tenantId: SYSTEM_TENANT_ID,
       changedBy: SYSTEM_USER_ID,
-      policyVersion: (updated as { version?: number }).version ?? null,
-      beforeJson: before as unknown as object,
-      afterJson: snapshotKnobs(updated as Record<string, unknown>) as unknown as object,
+      policyVersion: (created as { version?: number }).version ?? null,
+      beforeJson: null as unknown as object,
+      afterJson: snapshotKnobs(created as Record<string, unknown>) as unknown as object,
       reason: SEED_CHANGE_REASON,
     },
   });
-  console.log('  Updated SYSTEM HarnessPolicy TEXT default + WORM change');
-  return { success: true, action: 'updated', changeWritten: true };
+  console.log('  Created SYSTEM HarnessPolicy row + WORM change');
+  return { success: true, action: 'created', changeWritten: true };
 };

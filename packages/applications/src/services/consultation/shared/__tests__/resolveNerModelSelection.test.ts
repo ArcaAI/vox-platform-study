@@ -38,7 +38,7 @@ describe('resolveNerModelInjection', () => {
     warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
   });
 
-  it('throws naming the key when the AiTaskDefault service is not wired — fail-closed', async () => {
+  it('throws naming the key when the routing-policy service is not wired — fail-closed', async () => {
     const cls = createMockClsService({ tenantId: 'tenant-real' });
 
     await expect(resolveNerModelInjection(undefined, cls as any, logger)).rejects.toBeInstanceOf(ServiceUnavailableException);
@@ -47,20 +47,20 @@ describe('resolveNerModelInjection', () => {
   });
 
   it('throws naming the key when there is no CLS scope to pin the SYSTEM-only read to — fail-closed', async () => {
-    const aiTaskDefaultService = {
-      getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'some/model' } }),
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'some/model' } }),
     };
 
-    await expect(resolveNerModelInjection(aiTaskDefaultService as any, undefined, logger)).rejects.toBeInstanceOf(ServiceUnavailableException);
-    await expect(resolveNerModelInjection(aiTaskDefaultService as any, undefined, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
+    await expect(resolveNerModelInjection(routingPolicies as any, undefined, logger)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(resolveNerModelInjection(routingPolicies as any, undefined, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
     // The SYSTEM row is never read under whatever ambient tenant happens to apply.
-    expect(aiTaskDefaultService.getEffective).not.toHaveBeenCalled();
+    expect(routingPolicies.resolveDefault).not.toHaveBeenCalled();
   });
 
-  it('resolves model_name from the effective nlp.ner AiTaskDefault row', async () => {
+  it('resolves model_name from the SYSTEM nlp.ner routing election', async () => {
     const cls = createMockClsService({ tenantId: 'tenant-real' });
-    const aiTaskDefaultService = {
-      getEffective: vi.fn().mockResolvedValue({
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockResolvedValue({
         tenantId: SYSTEM_TENANT_ID,
         taskKey: NLP_NER_TASK_KEY,
         modelSlug: 'blaze-medical-ner',
@@ -69,19 +69,19 @@ describe('resolveNerModelInjection', () => {
       }),
     };
 
-    const result = await resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger);
+    const result = await resolveNerModelInjection(routingPolicies as any, cls as any, logger);
 
     expect(result).toEqual({ model_name: 'blaze999/Medical-NER' });
-    expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith(NLP_NER_TASK_KEY, SYSTEM_TENANT_ID);
+    expect(routingPolicies.resolveDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID, NLP_NER_TASK_KEY, { systemOnly: true });
   });
 
   it('pins the read to a nested CLS scope with tenantId=SYSTEM_TENANT_ID rather than the ambient caller tenant', async () => {
     const cls = createMockClsService({ tenantId: 'tenant-real' });
-    const aiTaskDefaultService = {
-      getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'some/model' } }),
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'some/model' } }),
     };
 
-    await resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger);
+    await resolveNerModelInjection(routingPolicies as any, cls as any, logger);
 
     // A NESTED cls.run() scope was opened for the read (not a bare ambient call).
     expect(cls.run).toHaveBeenCalledTimes(1);
@@ -90,28 +90,28 @@ describe('resolveNerModelInjection', () => {
     expect(cls.setOrder).toContainEqual(['tenantId', SYSTEM_TENANT_ID]);
   });
 
-  it('throws naming the key when the resolved AiTaskDefault has no ENABLED model — fail-closed', async () => {
+  it('throws naming the key when the elected routing row names no ENABLED model — fail-closed', async () => {
     const cls = createMockClsService({ tenantId: 'tenant-real' });
-    const aiTaskDefaultService = {
-      getEffective: vi.fn().mockResolvedValue({ model: null }),
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockResolvedValue({ model: null }),
     };
 
-    await expect(resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger)).rejects.toBeInstanceOf(
+    await expect(resolveNerModelInjection(routingPolicies as any, cls as any, logger)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
-    await expect(resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
+    await expect(resolveNerModelInjection(routingPolicies as any, cls as any, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
   });
 
   it('throws naming the key, and logs, when resolution fails — fail-closed', async () => {
     const cls = createMockClsService({ tenantId: 'tenant-real' });
-    const aiTaskDefaultService = {
-      getEffective: vi.fn().mockRejectedValue(new Error('registry read failed')),
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockRejectedValue(new Error('registry read failed')),
     };
 
-    await expect(resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger)).rejects.toBeInstanceOf(
+    await expect(resolveNerModelInjection(routingPolicies as any, cls as any, logger)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
-    await expect(resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
+    await expect(resolveNerModelInjection(routingPolicies as any, cls as any, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
     expect(warnSpy).toHaveBeenCalled();
   });
 });

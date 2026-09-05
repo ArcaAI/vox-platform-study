@@ -32,10 +32,12 @@
  *    ceiling (`assertScopeCeiling`), and a tenant admin reaching for another
  *    tenant's configuration.
  *
- * 3. **Config resolution is exactly two tiers: request tenant → SYSTEM.** Proven
- *    as an invariant over the WHOLE `AI_TASK_KEYS` registry rather than one
- *    hand-picked key, and READ-ONLY (this surface has no delete route, so a
- *    write would leave residue).
+ * 3. (MOVED by TASK-881) The "config resolution is exactly two tiers" invariant
+ *    used to be proven here over `/admin/ai-task-defaults`; that facade and its
+ *    routes are gone. The rule now lives on `AiRoutingPolicyService.resolveDefault`
+ *    and is pinned by `ai-routing-policy.resolve-default.test.ts` in
+ *    `packages/applications` (the routing-policy admin `effective` route is
+ *    super-admin-only, so it has no tenant-admin e2e equivalent).
  *
  * Prerequisites: API running against the test DB and seeded. Run with
  * `RESET_DB=false` against an already-seeded stack.
@@ -204,82 +206,16 @@ test.describe(' policy — the contrasting 403 PRIVILEGE boundaries', () => {
   test('a tenant admin reaching for ANOTHER tenant’s configuration is 403 — the config plane is a privilege boundary, not an existence one', async ({
     request,
   }) => {
-    const response = await request.get(`/api/v1/admin/ai-task-defaults?taskKey=guardrail.validate&tenantId=${foreignTenantId}`, {
+    // TASK-881: the same privilege boundary on the surviving tenant-scoped
+    // config surface (`/admin/nlp-task-instructions` mirrors the retired
+    // ai-task-defaults controller's `?tenantId=` scoping, 403 for a tenant admin).
+    const response = await request.get(`/api/v1/admin/nlp-task-instructions/row?taskKey=nlp.topic&tenantId=${foreignTenantId}`, {
       headers: bearer(tenantAdminToken),
     });
     expect(response.status(), 'tenant admins are pinned to their own tenant').toBe(403);
   });
 });
 
-test.describe(' policy — config resolution is exactly two tiers: request tenant → SYSTEM', () => {
-  /** Every registered AI task key, discovered from the API itself (400 message) rather than hardcoded. */
-  async function allTaskKeys(request: APIRequestContext): Promise<string[]> {
-    const response = await request.get('/api/v1/admin/ai-task-defaults?taskKey=__t779_unknown__', { headers: bearer(tenantAdminToken) });
-    expect(response.status(), 'an unknown task key is rejected 400 (registry is closed)').toBe(400);
-    const message = (await response.json()).message as string;
-    const keys = message
-      .replace(/^.*Valid task keys:\s*/s, '')
-      .split(',')
-      .map((k) => k.trim())
-      .filter(Boolean);
-    expect(keys.length, 'the 400 message must enumerate the task-key registry').toBeGreaterThan(3);
-    return keys;
-  }
-
-  test('a platform admin with no tenant scope gets 400 — resolution NEVER silently defaults to a customer tenant', async ({ request }) => {
-    const response = await request.get('/api/v1/admin/ai-task-defaults?taskKey=guardrail.validate', { headers: bearer(superAdminToken) });
-    expect(response.status(), 'no tenant context must be an error, not a default').toBe(400);
-    expect((await response.json()).message).toContain('tenantId');
-  });
-
-  test('for EVERY task key and BOTH customer tenants: the answer is the tenant asked for, and system-sourced ⟺ no tenant row exists', async ({
-    request,
-  }) => {
-    const keys = await allTaskKeys(request);
-
-    for (const tenantId of [ownTenantId, foreignTenantId]) {
-      for (const taskKey of keys) {
-        const effective = await request.get(`/api/v1/admin/ai-task-defaults?taskKey=${taskKey}&tenantId=${tenantId}`, {
-          headers: bearer(superAdminToken),
-        });
-        expect(effective.status(), `effective ${taskKey} @ ${tenantId}`).toBe(200);
-        const body = await effective.json();
-
-        // (a) The cascade answers for the tenant that was ASKED FOR. A response
-        // carrying a different customer tenant's id would be the cross-tenant
-        // leak this rule exists to prevent.
-        expect(body.tenantId, `${taskKey}: resolution must answer for the requested tenant`).toBe(tenantId);
-
-        // (b) There are TWO tiers and only two, plus the documented UNRESOLVED
-        // state. `source: null` means neither tier has an opinion (the consuming
-        // service falls back to its own bootstrap default) — it is NOT a third
-        // tier, and in particular it is never a customer tenant. What must never
-        // appear here is a 'global'/'default' source.
-        expect(['tenant', 'system', null], `${taskKey}: unexpected resolution source '${body.source}'`).toContain(body.source);
-
-        // (c) Widening to SYSTEM happens ONLY on absence. `GET /row` returns the
-        // raw tenant row, or a `version: 0` placeholder when there is none — so
-        // the biconditional below is the whole "tenant wins, SYSTEM is the
-        // fallback" rule expressed as one checkable statement.
-        const row = await request.get(`/api/v1/admin/ai-task-defaults/row?taskKey=${taskKey}&tenantId=${tenantId}`, {
-          headers: bearer(superAdminToken),
-        });
-        expect(row.status(), `row ${taskKey} @ ${tenantId}`).toBe(200);
-        const rowBody = await row.json();
-        expect(rowBody.tenantId, `${taskKey}: raw row must belong to the requested tenant`).toBe(tenantId);
-
-        if (body.source === null) {
-          // Unresolved at BOTH tiers: no tenant row, and nothing served.
-          expect(rowBody.version, `${taskKey} @ ${tenantId}: unresolved, so the tenant cannot have a row`).toBe(0);
-          expect(body.modelSlug, `${taskKey} @ ${tenantId}: an unresolved key must not carry a model slug`).toBeNull();
-        } else if (body.source === 'system') {
-          expect(rowBody.version, `${taskKey} @ ${tenantId}: resolved from SYSTEM, so the tenant must have NO row of its own`).toBe(0);
-          expect(body.modelSlug, `${taskKey} @ ${tenantId}: a SYSTEM-resolved key serves a real slug`).toBeTruthy();
-        } else {
-          expect(rowBody.version, `${taskKey} @ ${tenantId}: resolved from the tenant, so a real tenant row must exist`).toBeGreaterThan(0);
-          expect(rowBody.modelSlug, `${taskKey} @ ${tenantId}: the tenant row is what was served`).toBe(body.modelSlug);
-        }
-      }
-    }
-  });
-});
+// TASK-881: the two-tier resolution describe that walked every `AI_TASK_KEYS`
+// entry through `/admin/ai-task-defaults` (+ `/row`) is gone with that surface;
+// see header item 3 for where the invariant is now pinned.

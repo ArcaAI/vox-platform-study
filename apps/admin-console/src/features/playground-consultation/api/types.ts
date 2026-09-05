@@ -165,7 +165,7 @@ export interface LiveSummaryEntity {
  * the TEXT engine — absent on a legacy idempotency-cache hit; never fabricated.
  */
 export interface LiveSummaryStats {
-  /** the resolved AiTaskDefault key behind an interpreter-produced summary. */
+  /** The workflow node's `taskKey` an interpreter-produced summary was stamped with (telemetry — selection is the assigned agent). */
   task_key?: string | null;
   total_ms?: number | null;
   ttft_ms?: number | null;

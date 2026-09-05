@@ -9,10 +9,9 @@
  * read — only the assigned agent's primary.
  *
  * Two halves:
- *  1. The registration points the bench depends on outside the service itself. (`text.test` is
- *     still a registered AiTaskDefault key with a tenant-editable descriptor — retiring the ROW
- *     is orchestrator-owned, and the descriptor lives in another lane's file — but nothing in
- *     this service reads it any more.)
+ *  1. (RETIRED by TASK-881) `text.test` is no longer a registered task key — the `AiTaskDefault`
+ *     facade, its `models.text.test` descriptor and the SYSTEM election are gone; the absence is
+ *     pinned in `ai-routing-policy/__tests__/task-key-vocabulary.test.ts`.
  *  2. Resolution goes through `TextAgentResolverService`; a MISS (no agent at any tier ⇒
  *     fail-closed 400) is distinguished from a lookup ERROR (rethrown), and a caller-supplied
  *     pair still wins outright.
@@ -20,36 +19,7 @@
 import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ModelTaskType } from '@arcaai/domains';
-import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, isSuperAdminOnlyTaskKey } from '../../ai-task-default/constants';
-import { MODEL_DEFAULT_SETTINGS } from '../../settings-registry/descriptors/model-defaults.descriptors';
 import { PromptManagementService } from '../prompt-management.service';
-
-describe('text.test routing tier', () => {
-  it('registers text.test as an AiTaskDefault task key mapped to TEXT_GENERATION', () => {
-    expect(AI_TASK_KEYS).toContain('text.test');
-    expect(AI_TASK_MODEL_TASK_TYPES['text.test']).toBe(ModelTaskType.TEXT_GENERATION);
-  });
-
-  it('keeps text.test tenant-writable (NOT under SUPER_ADMIN_ONLY_TASK_PREFIXES)', () => {
-    expect(isSuperAdminOnlyTaskKey('text.test')).toBe(false);
-  });
-
-  it('registers the models.text.test descriptor as tenant-editable db-config, fail-closed', () => {
-    const descriptor = MODEL_DEFAULT_SETTINGS.find((d) => d.key === 'models.text.test');
-    expect(descriptor).toBeDefined();
-    expect(descriptor).toMatchObject({
-      tier: 'db-config',
-      dataType: 'string',
-      sensitivity: 'internal',
-      maxScope: 'tenant',
-      editableBy: 'AiTaskDefault',
-      failMode: 'closed',
-      category: 'Models',
-    });
-    expect(descriptor?.globalOnly).toBeUndefined();
-  });
-});
 
 // ─── TASK-876: the assigned TEXT_GENERATION agent resolves the bench's model ───
 

@@ -25,8 +25,6 @@ export interface IHarnessPolicyEntity extends IBaseTenantEntity {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
-  textProvider?: string | null;
-  textModel?: string | null;
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
@@ -55,8 +53,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
   private _safetyEnabled: IHarnessPolicyEntity['safetyEnabled'];
   private _phiEnabled: IHarnessPolicyEntity['phiEnabled'];
   private _phiFailClosed: IHarnessPolicyEntity['phiFailClosed'];
-  private _textProvider?: IHarnessPolicyEntity['textProvider'];
-  private _textModel?: IHarnessPolicyEntity['textModel'];
   private _maxRegen: IHarnessPolicyEntity['maxRegen'];
   private _gateSlaSeconds: IHarnessPolicyEntity['gateSlaSeconds'];
   private _gateEscalationSeconds: IHarnessPolicyEntity['gateEscalationSeconds'];
@@ -80,8 +76,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this._safetyEnabled = init.safetyEnabled;
     this._phiEnabled = init.phiEnabled;
     this._phiFailClosed = init.phiFailClosed;
-    this._textProvider = init.textProvider;
-    this._textModel = init.textModel;
     this._maxRegen = init.maxRegen;
     this._gateSlaSeconds = init.gateSlaSeconds;
     this._gateEscalationSeconds = init.gateEscalationSeconds;
@@ -158,22 +152,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
 
   set phiFailClosed(value: IHarnessPolicyEntity['phiFailClosed']) {
     this.setProperty('phiFailClosed', value);
-  }
-
-  get textProvider(): IHarnessPolicyEntity['textProvider'] {
-    return this._textProvider;
-  }
-
-  set textProvider(value: IHarnessPolicyEntity['textProvider']) {
-    this.setProperty('textProvider', value);
-  }
-
-  get textModel(): IHarnessPolicyEntity['textModel'] {
-    return this._textModel;
-  }
-
-  set textModel(value: IHarnessPolicyEntity['textModel']) {
-    this.setProperty('textModel', value);
   }
 
   get maxRegen(): IHarnessPolicyEntity['maxRegen'] {

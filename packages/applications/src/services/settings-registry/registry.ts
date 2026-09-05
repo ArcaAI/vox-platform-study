@@ -21,7 +21,6 @@ import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
-import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
 import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
 import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
@@ -69,7 +68,6 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // TenantUsageMeter reconcile-sweep kill-switch + its seed-time-only default.
   ...METERING_SETTINGS,
   // AI task-model defaults (guardrail/NLP/TEXT).
-  ...MODEL_DEFAULT_SETTINGS,
   // `GUARDRAIL_POLICY_SETTINGS` (13 `guardrail.policy.*` keys) was here. Every
   // one was UNREAD — nothing on any path resolved them — so they were removed
   // by TASK-872 rather than left as a control surface an admin could set with

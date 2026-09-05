@@ -1,11 +1,16 @@
 /**
  * SYSTEM task-default ELECTIONS on `AiRoutingPolicy` (TASK-862).
  *
- * Replaces `16-ai-task-default.ts`: the `AiTaskDefault` table is retired
- * (deprecation register, R3) and nothing reads it any more — `apps/guardrail`
- * and `AiTaskDefaultService` both resolve the elected `isDefault = true`
- * `AiRoutingPolicy` row per `(SYSTEM, taskKey)`. This seed writes exactly those
- * rows, so a cold database answers "which model serves task X" on day 1.
+ * Replaces `16-ai-task-default.ts`: the `AiTaskDefault` table is GONE
+ * (TASK-881) — `apps/guardrail` and every gateway reader resolve the elected
+ * `isDefault = true` `AiRoutingPolicy` row per `(SYSTEM, taskKey)` through
+ * `AiRoutingPolicyService.resolveDefault`. This seed writes exactly those rows,
+ * so a cold database answers "which model serves task X" on day 1.
+ *
+ * The five `text.*` keys (`text.live`, `text.finalize`, `text.test` and the
+ * two `.fallback` variants) are no longer seeded (TASK-881): text generation
+ * selects through the tenant's assigned TEXT_GENERATION agent (TASK-876), so a
+ * routing election for them had nothing left to serve.
  *
  * One row per task key, CREATE-ONLY: an existing elected default for a key is
  * never overwritten (an admin's runtime election survives a re-seed). The
@@ -27,16 +32,11 @@ import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
- * `taskKey` → `taskKind`, mirrored from `AI_TASK_KIND_BY_TASK_KEY` in the
- * applications layer (the seed cannot import from it). `?? null` is
- * fail-closed — an unrecognised key stays unclassified rather than guessed.
+ * `taskKey` → `taskKind`, mirrored from `AI_TASK_KIND_BY_TASK_KEY` in
+ * `ai-routing-policy/constants.ts` (the seed cannot import from it). `?? null`
+ * is fail-closed — an unrecognised key stays unclassified rather than guessed.
  */
 const AI_TASK_KIND_BY_SEEDED_TASK_KEY: Record<string, AiTaskKind> = {
-  'text.live': 'TEXT_GENERATION',
-  'text.finalize': 'TEXT_GENERATION',
-  'text.live.fallback': 'TEXT_GENERATION',
-  'text.finalize.fallback': 'TEXT_GENERATION',
-  'text.test': 'TEXT_GENERATION',
   'harness.judge': 'TEXT_GENERATION',
   'vlm.extract': 'VISION_EXTRACTION',
   'nlp.ner': 'NAMED_ENTITY_RECOGNITION',
@@ -68,14 +68,12 @@ export interface TaskDefaultRoutingSeed {
  * a gap.
  */
 export const SYSTEM_TASK_DEFAULT_EXEMPTIONS: Record<string, string> = {
-  'text.live.fallback': 'Opt-in per-tenant fallback (fail-open): a SYSTEM row would switch a second provider on for every tenant and bill them for it.',
-  'text.finalize.fallback': 'Opt-in per-tenant fallback, identical reasoning to `text.live.fallback`.',
   'vlm.extract': 'No deployable vision model is loaded on the LM Studio instance; a SYSTEM default would replace a clean 503 with an upstream 404.',
   'nlp.sentiment': 'No checkpoint has been selected and no gateway route reaches the key — an OPEN OWNER DECISION.',
   'nlp.toxicity': 'No checkpoint has been selected (multi-label, needs a per-label head + `labelTaxonomy.cls_threshold`) — an OPEN OWNER DECISION.',
 };
 
-/** The twelve SYSTEM elected defaults — carried over verbatim from the retired `16-ai-task-default.ts`. */
+/** The nine SYSTEM elected defaults — the retired seed's twelve minus the three `text.*` elections (TASK-881). */
 export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   { id: '89000000-0000-0000-0000-000000000001', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'granite-guardian-4.1-8b' },
   { id: '89000000-0000-0000-0000-000000000002', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.ner', modelSlug: 'medical-ner' },
@@ -83,11 +81,11 @@ export const SYSTEM_TASK_DEFAULT_ROUTING: TaskDefaultRoutingSeed[] = [
   // placeholder until a real doc-type model is seeded (fails closed).
   { id: '89000000-0000-0000-0000-000000000003', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.classification', modelSlug: 'nlp-doc-type-classifier' },
   { id: '89000000-0000-0000-0000-000000000009', tenantId: SYSTEM_TENANT_ID, taskKey: 'nlp.diagnosis', modelSlug: 'symps-disease-bert-v3-c41' },
-  // OWNER DIRECTIVE 2026-09-03: every text-generation task routes to LM Studio
-  // `gemma-4-e2b-it-qat` (registry slug `lms-gemma-4-e2b-it-qat`).
-  { id: '89000000-0000-0000-0000-000000000004', tenantId: SYSTEM_TENANT_ID, taskKey: 'text.live', modelSlug: 'lms-gemma-4-e2b-it-qat' },
-  { id: '89000000-0000-0000-0000-000000000005', tenantId: SYSTEM_TENANT_ID, taskKey: 'text.finalize', modelSlug: 'lms-gemma-4-e2b-it-qat' },
-  { id: '89000000-0000-0000-0000-000000000010', tenantId: SYSTEM_TENANT_ID, taskKey: 'text.test', modelSlug: 'lms-gemma-4-e2b-it-qat' },
+  // TASK-881: the `text.live` / `text.finalize` / `text.test` elections
+  // (ids …004 / …005 / …010) are gone — text generation selects through the
+  // assigned TEXT_GENERATION agent. OWNER DIRECTIVE 2026-09-03 (every
+  // text-generation task on LM Studio `gemma-4-e2b-it-qat`) now lives on the
+  // SYSTEM text agent's primary and on `harness.judge` below.
   { id: '89000000-0000-0000-0000-000000000006', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.safety', modelSlug: 'gliguard-llm-guardrails-300m' },
   { id: '89000000-0000-0000-0000-000000000011', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.pii', modelSlug: 'gliner2-privacy-filter-pii-multi' },
   { id: '89000000-0000-0000-0000-000000000012', tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.pii.spans', modelSlug: 'gliner2-guardrails-pii-multi' },

@@ -354,18 +354,18 @@ model HarnessPolicy {
   // nothing: the safety screen is built from `settings.guardrail_base_url` alone
   // (`activities.py::_safety_screen_client`) and `GuardrailClient.analyze` POSTs only
   // `{text, guardrail_type, request_id}` — `apps/guardrail` resolves its own provider and
-  // model tenant-first from the `guardrail.safety` AiTaskDefault, fail-closed, which is the
-  // correct home for that selection since /736. Their `@default`s were also the last
-  // hardcoded engine name + model id in this model, which rule 00 §Configuration Principles
-  // forbids. Do not reintroduce them here; the selection belongs in `AiTaskDefault`.
+  // model from the SYSTEM `guardrail.safety` routing election (`AiRoutingPolicy`), fail-closed,
+  // which is the correct home for that selection since /736. Their `@default`s were also the
+  // last hardcoded engine name + model id in this model, which rule 00 §Configuration
+  // Principles forbids. Do not reintroduce them here; the selection belongs in `AiRoutingPolicy`.
   safetyEnabled Boolean @default(true)
   phiEnabled    Boolean @default(true)
   phiFailClosed Boolean @default(true)
 
-  // Text-generation defaults (null => let the text service choose). Mirrors
-  // Settings.text_provider / text_model.
-  textProvider String?
-  textModel    String?
+  // TASK-881 dropped `textProvider` / `textModel` (nullable text-generation
+  // defaults). Text selection is the tenant's assigned TEXT_GENERATION agent
+  // (TASK-876); the effective-policy RESPONSE still carries `textProvider` /
+  // `textModel`, DERIVED from that agent's primary — never from a column.
 
   // Bounded-regen budget + clinician-gate timing (durable, deterministic).
   // Mirrors Settings.max_regen / gate_sla_seconds / gate_escalation_seconds.
@@ -378,8 +378,8 @@ model HarnessPolicy {
   toolAllowlist Json? @db.JsonB
 
   // agentic loop knobs the workflow reads. ADDITIVE + NULLABLE:
-  // null ⇒ the harness env/code default applies (per-field fallthrough, mirroring the
-  // textProvider/textModel precedent in harness-policy.service.ts). Phase 6 consumes the
+  // null ⇒ the harness env/code default applies (per-field fallthrough in
+  // harness-policy.service.ts). Phase 6 consumes the
   // behaviour; 3A only makes them DB-editable and threads them onto the effective policy.
   optimisticDeliveryEnabled Boolean?
   atomicFactEnabled         Boolean?

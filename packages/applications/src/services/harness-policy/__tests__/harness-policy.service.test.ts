@@ -52,21 +52,19 @@ function makeService(): HarnessPolicyService {
   return new HarnessPolicyService(policyRepository as never, policyChangeRepository as never, databaseService as never, cls as never);
 }
 
-// service with the AiTaskDefault-first TEXT routing wired.
-const aiTaskDefaultService = {
-  getEffective: vi.fn(),
-  getRow: vi.fn(),
-  upsertRow: vi.fn(),
+// service with the routing-policy (judge election) resolver wired.
+const routingPolicies = {
+  resolveDefault: vi.fn(),
 };
 
-function makeServiceWithAiTaskDefault(): HarnessPolicyService {
+function makeServiceWithRoutingPolicies(): HarnessPolicyService {
   return new HarnessPolicyService(
     policyRepository as never,
     policyChangeRepository as never,
     databaseService as never,
     cls as never,
     undefined, // secretsService
-    aiTaskDefaultService as never,
+    routingPolicies as never,
   );
 }
 
@@ -89,14 +87,11 @@ describe('HarnessPolicyService', () => {
 
   describe('getEffectivePolicy', () => {
     it('returns the tenant own row (source=tenant) when present', async () => {
-      // TEXT fields non-null so the field-level fallthrough is
-      // a no-op here: this case asserts the SYSTEM default is NOT consulted when
-      // the own row is fully populated.
+      // This case asserts the SYSTEM default is NOT consulted when the own
+      // row is fully populated.
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         coverageThreshold: 0.55,
-        textProvider: 'tenant-prov',
-        textModel: 'tenant-model',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(null);
@@ -137,21 +132,17 @@ describe('HarnessPolicyService', () => {
     });
 
     // ── TASK-876: the two TEXT columns are no longer a selection source ──
-    // They used to cascade tenant-row → SYSTEM row. Selection is now the tenant's ASSIGNED
-    // TEXT_GENERATION agent, overlaid UNCONDITIONALLY; with no resolver wired (this fixture)
-    // both fields are NULLED so the Python node degrades `no_text_selection` rather than
-    // generating on whatever the retired columns still hold.
-    it('never serves the retired HarnessPolicy TEXT columns as a selection — both fields are NULLED (fail closed)', async () => {
+    // They used to cascade tenant-row → SYSTEM row through two policy columns that TASK-881
+    // dropped. Selection is the tenant's ASSIGNED TEXT_GENERATION agent, overlaid
+    // UNCONDITIONALLY; with no resolver wired (this fixture) both fields are NULLED so the
+    // Python node degrades `no_text_selection` rather than generating on a guess.
+    it('serves no policy-row text selection — both derived fields are NULLED without an agent resolver (fail closed)', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         coverageThreshold: 0.55,
-        textProvider: 'ollama',
-        textModel: 'tenant-pinned-model',
       });
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
-        textProvider: 'lm-studio',
-        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
@@ -179,11 +170,11 @@ describe('HarnessPolicyService', () => {
       expect(result.judgeModel).toBeNull();
     });
 
-    it('resolves harness.judge from the SYSTEM AiTaskDefault and maps lm-studio → openai_compat', async () => {
-      const svc = makeServiceWithAiTaskDefault();
+    it('resolves harness.judge from the SYSTEM routing election and maps lm-studio → openai_compat', async () => {
+      const svc = makeServiceWithRoutingPolicies();
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
-      aiTaskDefaultService.getEffective.mockResolvedValue({
+      routingPolicies.resolveDefault.mockResolvedValue({
         taskKey: 'harness.judge',
         modelSlug: 'lms-gemma-4-e4b',
         source: 'system',
@@ -192,16 +183,16 @@ describe('HarnessPolicyService', () => {
 
       const result = await svc.getEffectivePolicy('tenant-1');
 
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('harness.judge', 'tenant-1');
+      expect(routingPolicies.resolveDefault).toHaveBeenCalledWith('tenant-1', 'harness.judge', { systemOnly: true });
       expect(result.judgeProvider).toBe('openai_compat');
       expect(result.judgeModel).toBe('google/gemma-4-e4b');
     });
 
     it('passes a non-lm-studio judge provider through verbatim (e.g. bedrock)', async () => {
-      const svc = makeServiceWithAiTaskDefault();
+      const svc = makeServiceWithRoutingPolicies();
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
-      aiTaskDefaultService.getEffective.mockResolvedValue({
+      routingPolicies.resolveDefault.mockResolvedValue({
         model: { provider: 'bedrock', sourceUri: 'anthropic.claude-3-5-haiku-20241022-v1:0' },
       });
 
@@ -211,11 +202,11 @@ describe('HarnessPolicyService', () => {
       expect(result.judgeModel).toBe('anthropic.claude-3-5-haiku-20241022-v1:0');
     });
 
-    it('leaves judge null (fail-safe) when the AiTaskDefault lookup throws', async () => {
-      const svc = makeServiceWithAiTaskDefault();
+    it('leaves judge null (fail-safe) when the routing-election lookup throws', async () => {
+      const svc = makeServiceWithRoutingPolicies();
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
-      aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
+      routingPolicies.resolveDefault.mockRejectedValue(new Error('unknown task key'));
 
       const result = await svc.getEffectivePolicy('tenant-1');
 
@@ -249,8 +240,6 @@ describe('HarnessPolicyService', () => {
     it('overlays SYSTEM agentic knobs over tenant-row values on the effective policy', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
-        textProvider: 'lm-studio',
-        textModel: 'm',
         optimisticDeliveryEnabled: true,
         maxEditReruns: 3,
         retrievalEnabled: false,
@@ -275,7 +264,7 @@ describe('HarnessPolicyService', () => {
     });
 
     it('rejects a tenant updatePolicy that patches agentic/selection knobs (403)', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, textProvider: 'lm-studio', textModel: 'm' });
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT });
       policyRepository.findForExactTenant.mockResolvedValue(own);
 
       await expect(service.updatePolicy({ atomicFactEnabled: true, maxEditReruns: 5, expectedVersion: 1 } as never, 1)).rejects.toBeInstanceOf(

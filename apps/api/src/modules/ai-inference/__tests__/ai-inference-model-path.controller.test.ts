@@ -14,11 +14,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { AiInferenceController } from '../ai-inference.controller';
 
 function makeController(
-  aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
+  routingPolicies?: { resolveDefault: ReturnType<typeof vi.fn> },
   aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> },
 ) {
   const client = { analyzeGuardrail: vi.fn(), classifyTokens: vi.fn(), suggestDiagnosis: vi.fn() };
-  const controller = new AiInferenceController(client as never, aiTaskDefaults as never, aiModels as never);
+  const controller = new AiInferenceController(client as never, routingPolicies as never, aiModels as never);
   return { controller, client };
 }
 
@@ -43,10 +43,10 @@ const effective = (taskKey: string, sourceUri: string, localPath?: string | null
 
 describe('model_path injection (NER)', () => {
   it('injects model_path when the registry row carries a localPath', async () => {
-    const aiTaskDefaults = {
-      getEffective: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', '/opt/hope/models/ner')),
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', '/opt/hope/models/ner')),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
     client.classifyTokens.mockResolvedValue({});
 
     await controller.extractEntities({ text: 'aspirin 100mg' });
@@ -59,10 +59,10 @@ describe('model_path injection (NER)', () => {
   });
 
   it('omits model_path entirely when the row has none (payload identical to pre-527)', async () => {
-    const aiTaskDefaults = {
-      getEffective: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', null)),
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', null)),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
     client.classifyTokens.mockResolvedValue({});
 
     await controller.extractEntities({ text: 'aspirin 100mg' });
@@ -76,10 +76,10 @@ describe('model_path injection (NER)', () => {
   });
 
   it('omits model_path when localPath is an empty string (cleared override)', async () => {
-    const aiTaskDefaults = {
-      getEffective: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', '')),
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', '')),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
     client.classifyTokens.mockResolvedValue({});
 
     await controller.extractEntities({ text: 'x' });
@@ -93,14 +93,14 @@ describe('model_path injection (diagnosis)', () => {
     // The route resolves TWO keys, so each weight path must come
     // from ITS OWN registry row — a blanket mock would let one row's localPath
     // satisfy both assertions and hide a crossed pair.
-    const aiTaskDefaults = {
-      getEffective: vi.fn(async (taskKey: string) =>
+    const routingPolicies = {
+      resolveDefault: vi.fn(async (_tenantId: string, taskKey: string) =>
         taskKey === 'nlp.ner'
           ? effective('nlp.ner', 'blaze999/Medical-NER', '/opt/hope/models/ner')
           : effective('nlp.diagnosis', 'some/diagnosis-model', '/opt/hope/models/dx'),
       ),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
     client.suggestDiagnosis.mockResolvedValue({});
 
     await controller.suggestDiagnosis({ text: 'chest pain' });
@@ -115,14 +115,14 @@ describe('model_path injection (diagnosis)', () => {
   });
 
   it('omits BOTH model_path fields when neither diagnosis row has one', async () => {
-    const aiTaskDefaults = {
-      getEffective: vi.fn(async (taskKey: string) =>
+    const routingPolicies = {
+      resolveDefault: vi.fn(async (_tenantId: string, taskKey: string) =>
         taskKey === 'nlp.ner'
           ? effective('nlp.ner', 'blaze999/Medical-NER', null)
           : effective('nlp.diagnosis', 'some/diagnosis-model', null),
       ),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
     client.suggestDiagnosis.mockResolvedValue({});
 
     await controller.suggestDiagnosis({ text: 'chest pain' });

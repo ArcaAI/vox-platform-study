@@ -111,7 +111,7 @@ function makeService(overrides: { usageLedger?: unknown; unitOfWork?: unknown } 
     undefined, // configResolver
     undefined, // entitlements
     undefined, // trajectoryService
-    undefined, // aiTaskDefaultService
+    undefined, // routingPolicies
     undefined, // transcriptSegmentRepository
     usageLedger as never,
     unitOfWork as never,

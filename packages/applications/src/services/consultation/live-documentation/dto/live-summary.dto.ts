@@ -185,7 +185,7 @@ export class LiveSummaryStatsDto {
 
   @ApiPropertyOptional({
     description:
-      "The AiTaskDefault routing key this flush's TEXT call resolved through (Lane B) — 'text.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
+      "The workflow-node task key this flush's TEXT call was stamped with — 'text.live' for the live running-note tier. Telemetry only since TASK-876/881: selection is the assigned TEXT_GENERATION agent, never a routing key. Lets the console/stat cards tell the live tier from the one-shot/finalize tier.",
   })
   task_key?: string | null;
 

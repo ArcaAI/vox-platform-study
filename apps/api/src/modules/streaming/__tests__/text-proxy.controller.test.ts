@@ -138,7 +138,7 @@ describe('TextProxyController', () => {
       undefined, // secretsService
       undefined, // harnessPolicyService
       undefined, // aiModelService
-      undefined, // aiTaskDefaultService
+      undefined, // routingPolicies
       undefined, // aiProviderConnectionService
       undefined, // usageLedger
       mockDnaWritingStyleService as any,
@@ -717,11 +717,11 @@ describe('TextProxyController', () => {
   // the /providers transition fallback when the registry has zero rows.
 
   const createMockAiModelService = () => ({ getByTaskTypeSharedRead: vi.fn(async (_taskType: string) => []) });
-  const createMockAiTaskDefaultService = () => ({ getEffective: vi.fn() });
+  const createMockRoutingPolicyService = () => ({ resolveDefault: vi.fn() });
 
   const buildProvidersController = (opts: {
     aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> };
-    aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> };
+    routingPolicies?: { resolveDefault: ReturnType<typeof vi.fn> };
     harnessPolicy?: { resolveTextSelection: ReturnType<typeof vi.fn> };
   }) =>
     new TextProxyController(
@@ -738,7 +738,7 @@ describe('TextProxyController', () => {
       undefined, // secretsService (@Optional)
       (opts.harnessPolicy ?? undefined) as any,
       (opts.aiModels ?? undefined) as any,
-      (opts.aiTaskDefaults ?? undefined) as any,
+      (opts.routingPolicies ?? undefined) as any,
     );
 
   const registryRow = (over: Record<string, unknown>) => ({
@@ -976,8 +976,8 @@ describe('TextProxyController', () => {
         }),
         registryRow({ slug: 'ollama-guardian', provider: 'ollama', sourceUri: 'granite3-guardian:8b', taskType: ModelTaskType.GUARDRAIL }),
       ]);
-      const aiTaskDefaults = createMockAiTaskDefaultService();
-      aiTaskDefaults.getEffective.mockResolvedValue({
+      const routingPolicies = createMockRoutingPolicyService();
+      routingPolicies.resolveDefault.mockResolvedValue({
         tenantId: 'tenant-1',
         taskKey: 'guardrail.validate',
         modelSlug: 'granite-guardian-4.1-8b',
@@ -994,12 +994,12 @@ describe('TextProxyController', () => {
           sourceUri: 'granite-guardian-4.1-8b',
         },
       });
-      const ctrl = buildProvidersController({ aiModels, aiTaskDefaults });
+      const ctrl = buildProvidersController({ aiModels, routingPolicies });
 
       const result = await ctrl.getGuardrailProviders();
 
       expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith(ModelTaskType.GUARDRAIL);
-      expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('guardrail.validate', 'tenant-1');
+      expect(routingPolicies.resolveDefault).toHaveBeenCalledWith('tenant-1', 'guardrail.validate', { systemOnly: true });
       expect(result).toEqual([
         {
           name: 'lm-studio',
@@ -1019,7 +1019,7 @@ describe('TextProxyController', () => {
     });
 
     it('does NOT fall back to the TEXT /providers upstream on an empty registry', async () => {
-      const ctrl = buildProvidersController({ aiModels: createMockAiModelService(), aiTaskDefaults: createMockAiTaskDefaultService() });
+      const ctrl = buildProvidersController({ aiModels: createMockAiModelService(), routingPolicies: createMockRoutingPolicyService() });
 
       const result = await ctrl.getGuardrailProviders();
 
@@ -1037,9 +1037,9 @@ describe('TextProxyController', () => {
           taskType: ModelTaskType.GUARDRAIL,
         }),
       ]);
-      const aiTaskDefaults = createMockAiTaskDefaultService();
-      aiTaskDefaults.getEffective.mockRejectedValue(new Error('resolver down'));
-      const ctrl = buildProvidersController({ aiModels, aiTaskDefaults });
+      const routingPolicies = createMockRoutingPolicyService();
+      routingPolicies.resolveDefault.mockRejectedValue(new Error('resolver down'));
+      const ctrl = buildProvidersController({ aiModels, routingPolicies });
 
       const result = await ctrl.getGuardrailProviders();
 
@@ -1063,8 +1063,8 @@ describe('TextProxyController', () => {
           taskType: ModelTaskType.GUARDRAIL,
         }),
       ]);
-      const aiTaskDefaults = createMockAiTaskDefaultService();
-      aiTaskDefaults.getEffective.mockResolvedValue({
+      const routingPolicies = createMockRoutingPolicyService();
+      routingPolicies.resolveDefault.mockResolvedValue({
         tenantId: 'global-tenant',
         taskKey: 'guardrail.validate',
         modelSlug: null,
@@ -1072,12 +1072,12 @@ describe('TextProxyController', () => {
         configJson: null,
         model: null,
       });
-      const ctrl = buildProvidersController({ aiModels, aiTaskDefaults });
+      const ctrl = buildProvidersController({ aiModels, routingPolicies });
 
       await ctrl.getGuardrailProviders('__GLOBAL__');
 
       expect(mockTenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
-      expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('guardrail.validate', 'global-tenant');
+      expect(routingPolicies.resolveDefault).toHaveBeenCalledWith('global-tenant', 'guardrail.validate', { systemOnly: true });
     });
 
     it('non-SUPER_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {

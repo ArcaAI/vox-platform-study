@@ -31,7 +31,7 @@ const policyRepository = {
 const policyChangeRepository = { create: vi.fn(async (entity: unknown) => entity) };
 const databaseService = { baseClient: { $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb({})) } };
 const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : undefined)) };
-const aiTaskDefaultService = { getEffective: vi.fn(), getRow: vi.fn(), upsertRow: vi.fn(), resolveModelBySlug: vi.fn() };
+const routingPolicies = { resolveDefault: vi.fn() };
 const textAgents = { resolve: vi.fn() };
 
 const candidate = (over: Record<string, unknown> = {}) => ({
@@ -67,23 +67,23 @@ function makeService(withResolver = true): HarnessPolicyService {
     databaseService as never,
     cls as never,
     undefined,
-    aiTaskDefaultService as never,
+    routingPolicies as never,
     undefined,
     undefined,
     withResolver ? (textAgents as never) : undefined,
   );
 }
 
-/** A SYSTEM policy row STILL carrying the legacy columns — they must never select again. */
+/** A SYSTEM policy row. It carries NO selection columns any more (TASK-881 dropped them). */
 function systemRow() {
-  return HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: SYSTEM_TENANT_ID, textProvider: 'lm-studio', textModel: 'policy-column-model' });
+  return HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: SYSTEM_TENANT_ID });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   policyRepository.findForExactTenant.mockResolvedValue(null);
   policyRepository.findSystemDefault.mockResolvedValue(systemRow());
-  aiTaskDefaultService.getEffective.mockResolvedValue({ model: null });
+  routingPolicies.resolveDefault.mockResolvedValue({ model: null });
   textAgents.resolve.mockResolvedValue(spec());
 });
 
@@ -105,12 +105,11 @@ describe('resolveTextSelection — the assigned TEXT_GENERATION agent is the ONE
     const test = await svc.resolveTextSelection(TENANT, 'test');
     expect(live).toEqual(finalize);
     expect(finalize).toEqual(test);
-    // No AiTaskDefault text key is consulted any more (the judge key is a different selection).
-    expect(aiTaskDefaultService.getEffective).not.toHaveBeenCalledWith(expect.stringMatching(/^text\./), expect.anything());
-    expect(aiTaskDefaultService.resolveModelBySlug).not.toHaveBeenCalled();
+    // No text routing key is consulted any more (the judge key is a different selection).
+    expect(routingPolicies.resolveDefault).not.toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/^text\./), expect.anything());
   });
 
-  it('the legacy HarnessPolicy.textProvider/textModel columns are NEVER a selection source', async () => {
+  it('no policy row can select any more — an unassigned tenant fails closed rather than falling back to a row', async () => {
     textAgents.resolve.mockRejectedValue(new NotFoundException('No published TEXT_GENERATION agent is assigned for this tenant.'));
     await expect(makeService().resolveTextSelection(TENANT)).rejects.toBeInstanceOf(BadRequestException);
     expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
@@ -157,8 +156,8 @@ describe('resolveTextFallbackSelection — the resolved chain, gated by the per-
     textAgents.resolve.mockRejectedValue(new Error('db down'));
     await expect(makeService().resolveTextFallbackSelection(TENANT)).resolves.toBeNull();
     await expect(makeService(false).resolveTextFallbackSelection(TENANT)).resolves.toBeNull();
-    // No text.*.fallback AiTaskDefault key is consulted any more.
-    expect(aiTaskDefaultService.getEffective).not.toHaveBeenCalled();
+    // No text.*.fallback routing key is consulted any more.
+    expect(routingPolicies.resolveDefault).not.toHaveBeenCalled();
   });
 });
 
@@ -230,7 +229,8 @@ describe('getEffectivePolicy — the assigned-agent overlay is UNCONDITIONAL (th
   it('the retired `modelSlug` option (a node`s llmBinding) is INERT — accepted for the wire, consulted by nothing', async () => {
     const resp = await makeService().getEffectivePolicy(TENANT, { taskKey: 'text.live', modelSlug: 'tenant-medgemma' });
     expect(resp.textModel).toBe('gemma-4-e2b-it-qat');
-    expect(aiTaskDefaultService.resolveModelBySlug).not.toHaveBeenCalled();
+    // The only routing read on this path is the judge election, never a slug lookup for the node.
+    expect(routingPolicies.resolveDefault.mock.calls.every(([, key]) => key === 'harness.judge')).toBe(true);
   });
 
   // The `AgentAssignment` key has no role dimension, so the task key never gated WHICH agent

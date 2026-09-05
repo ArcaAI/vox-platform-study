@@ -2,7 +2,6 @@ export * from './AgentPromotionEntity';
 export * from './AgentTrajectoryStepEntity';
 export * from './AiModelEntity';
 export * from './AiProviderConnectionEntity';
-export * from './AiTaskDefaultEntity';
 export * from './ApiKeyEntity';
 export * from './AsrPipelineEntity';
 export * from './AsrPipelineVersionEntity';

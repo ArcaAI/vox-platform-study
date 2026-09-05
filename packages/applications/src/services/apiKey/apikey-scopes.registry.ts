@@ -423,12 +423,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'all' }],
     reserved: true,
   },
-  'admin:ai-task-default:manage': {
-    description: 'Manage AI task defaults (some sub-routes are additionally SUPER_ADMIN-only via SUPER_ADMIN_ONLY_TASK_PREFIXES)',
-    category: 'Admin',
-    implies: [{ action: 'manage', subject: 'AiTaskDefault' }],
-    reserved: true,
-  },
   'admin:billing:manage': {
     description: 'Manage billing invoices and rate cards',
     category: 'Admin',

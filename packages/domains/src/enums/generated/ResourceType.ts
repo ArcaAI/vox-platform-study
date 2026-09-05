@@ -46,6 +46,9 @@ export enum ResourceType {
   TenantTtsConfig = 'TenantTtsConfig',
   TenantIdentityProvider = 'TenantIdentityProvider',
   FederatedIdentity = 'FederatedIdentity',
+  // RETIRED (TASK-881): the `AiTaskDefault` table is dropped and nothing emits
+  // this type. The member stays because a Postgres enum value cannot be dropped
+  // in place (audit.prisma keeps its twin); historical AuditLog rows still name it.
   AiTaskDefault = 'AiTaskDefault',
   McpServer = 'McpServer',
   // Config-plane core (kept in lock-step with the database enum in

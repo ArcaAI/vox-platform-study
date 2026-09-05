@@ -39,8 +39,8 @@ const NOTE = 'Subjective: patient reports cough and takes aspirin\nObjective:\nA
  * scope to pin the SYSTEM-only read to — an absent either is a 503, not a
  * silent post without `model_name`.
  */
-const nerAiTaskDefaultDouble = () => ({
-  getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
+const nerRoutingElectionDouble = () => ({
+  resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
 });
 const nerClsDouble = () => ({ run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() });
 
@@ -107,7 +107,7 @@ function buildService(opts: { http: unknown; env?: Record<string, unknown>; reso
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
     undefined, // trajectoryService
     undefined, // effectiveSettings
-    nerAiTaskDefaultDouble() as never,
+    nerRoutingElectionDouble() as never,
     nerClsDouble() as never,
     opts.resolver as never,
   );

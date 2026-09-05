@@ -7,7 +7,9 @@
 
 import type { HarnessPolicy, UpdateHarnessPolicyRequest } from '../api';
 
-export type PolicyFieldKind = 'fraction' | 'integer' | 'switch' | 'text' | 'nullable-text' | 'list';
+// TASK-881: the `text` / `nullable-text` kinds went with the two text-generation
+// controls; every surviving knob is a number, a switch or a list.
+export type PolicyFieldKind = 'fraction' | 'integer' | 'switch' | 'list';
 
 export interface PolicyField {
   key: keyof HarnessPolicy & keyof UpdateHarnessPolicyRequest;
@@ -36,8 +38,9 @@ export interface PolicyFieldGroup {
  * actually renders — the remaining locked keys (TEXT routing, agentic loop
  * knobs) have no tenant-tab control, so there is nothing to disable.
  *
- * `safetyProvider`/`safetyModel` are NOT in this list because removed
- * their controls outright. Locking is the right answer for a key the tenant may not write
+ * `safetyProvider`/`safetyModel` (and, since TASK-881, `textProvider`/`textModel`)
+ * are NOT in this list because their controls were removed outright with their
+ * columns. Locking is the right answer for a key the tenant may not write
  * but a super admin may; those two backed dropped columns, so the GLOBAL tab — which passes
  * no locked keys — would have patched a column that no longer exists. A control nobody may
  * successfully use is deleted, not disabled.
@@ -46,13 +49,6 @@ export const TENANT_LOCKED_POLICY_KEYS = [
   'safetyEnabled',
   'phiEnabled',
   'phiFailClosed',
-  // both are in the backend's `SUPER_ADMIN_ONLY_POLICY_KEYS`, so
-  // the tenant PATCH rejects them with a 403. They were rendered unlocked with
-  // no super-admin hint, and because the patch is sparse the 403 fired exactly
-  // when a tenant admin edited one — the same defect class this list was
-  // created for.
-  'textProvider',
-  'textModel',
 ] as const satisfies readonly PolicyField['key'][];
 
 /** The copy shown under every locked control (rule 11 §5: visible reason). */
@@ -79,11 +75,10 @@ export const POLICY_FIELD_GROUPS: PolicyFieldGroup[] = [
   },
   {
     title: 'Generation',
-    fields: [
-      { key: 'textProvider', label: 'Text-generation provider', kind: 'nullable-text', hint: 'empty = let the text service choose' },
-      { key: 'textModel', label: 'Text-generation model', kind: 'nullable-text', hint: 'empty = let the text service choose' },
-      { key: 'maxRegen', label: 'Max regen budget', kind: 'integer' },
-    ],
+    // TASK-881: the `textProvider` / `textModel` controls are gone with their
+    // columns — text selection is the assigned TEXT_GENERATION agent
+    // (`/agents`), and the summary card above shows the derived value.
+    fields: [{ key: 'maxRegen', label: 'Max regen budget', kind: 'integer' }],
   },
   {
     title: 'Clinician gate',
@@ -108,8 +103,6 @@ export function fieldDraftValue(field: PolicyField, policy: HarnessPolicy): stri
       return Boolean(value);
     case 'list':
       return ((value as string[] | null) ?? []).join(', ');
-    case 'nullable-text':
-      return (value as string | null) ?? '';
     default:
       return value === null || value === undefined ? '' : String(value);
   }
@@ -123,7 +116,7 @@ export function fieldDisplayValue(field: PolicyField, policy: HarnessPolicy): st
     const list = value as string[] | null;
     return list && list.length > 0 ? list.join(', ') : '\u2014';
   }
-  if (value === null || value === undefined || value === '') return '\u2014';
+  if (value === null || value === undefined) return '\u2014';
   return String(value);
 }
 
@@ -138,14 +131,6 @@ function parseDraft(field: PolicyField, draft: string | boolean): UpdateHarnessP
       if (text === '') return undefined;
       const parsed = Number(text);
       return Number.isFinite(parsed) ? parsed : undefined;
-    }
-    case 'text': {
-      const text = String(draft).trim();
-      return text === '' ? undefined : text;
-    }
-    case 'nullable-text': {
-      const text = String(draft).trim();
-      return text === '' ? null : text;
     }
     case 'list': {
       const items = String(draft)

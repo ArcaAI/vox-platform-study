@@ -16,7 +16,7 @@ import {
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
 import { NotFoundException } from '@nestjs/common';
-import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
+import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
 import { TaskSelectionVetoedError } from '../ai-routing-policy/task-selection-veto';
 import { TextAgentResolverService } from '../agent/text-agent-resolver.service';
 import type { ResolvedTextFallback } from '../agent/text-generation-spec';
@@ -42,10 +42,11 @@ import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest 
 export type TextRoutingTask = 'live' | 'finalize' | 'test';
 
 /**
- * the SYSTEM-only AiTaskDefault key that selects the harness
+ * The SYSTEM-only routing-policy task key that selects the harness
  * LLM-as-judge. SUPER_ADMIN-managed (the `harness.` prefix is super-admin-only
- * in {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}); tenants can only USE the platform
- * default, so `getEffective` resolves the SYSTEM row regardless of tenant.
+ * in `SUPER_ADMIN_ONLY_TASK_PREFIXES`, `ai-routing-policy/constants.ts`);
+ * tenants can only USE the platform default, so `resolveDefault` is pinned to
+ * the SYSTEM tier (`systemOnly`) regardless of tenant.
  */
 const JUDGE_TASK_KEY = 'harness.judge';
 
@@ -87,8 +88,6 @@ export interface HarnessPolicyKnobs {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
-  textProvider: string | null;
-  textModel: string | null;
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
@@ -120,11 +119,12 @@ export interface HarnessPolicyKnobs {
 }
 
 /**
- * Selection + agentic knobs AND the guardrail/PHI on-off switches are
- * SUPER_ADMIN / SYSTEM-only. Tenant admins may patch clinical THRESHOLDS
- * (faithfulness, coverage, numeric-dose, …) ONLY — they must not set
- * model/provider routing, agentic loop knobs, or turn the safety and PHI gates
- * off for their tenant.
+ * Agentic knobs AND the guardrail/PHI on-off switches are SUPER_ADMIN /
+ * SYSTEM-only. Tenant admins may patch clinical THRESHOLDS (faithfulness,
+ * coverage, numeric-dose, …) ONLY — they must not set agentic loop knobs or
+ * turn the safety and PHI gates off for their tenant. (The `textProvider` /
+ * `textModel` selection columns that used to head this list were dropped by
+ * TASK-881 — selection is the assigned TEXT_GENERATION agent, not a policy knob.)
  *
  * Includes `safetyEnabled`/`phiEnabled`/`phiFailClosed`:
  * guardrail and NLP are controlled by super admins only. Because this list
@@ -133,8 +133,6 @@ export interface HarnessPolicyKnobs {
  * not deleted — removing a key here restores the tenant row's effect).
  */
 const SUPER_ADMIN_ONLY_POLICY_KEYS = [
-  'textProvider',
-  'textModel',
   'optimisticDeliveryEnabled',
   'atomicFactEnabled',
   'retrievalEnabled',
@@ -180,8 +178,6 @@ function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
     safetyEnabled: e.safetyEnabled,
     phiEnabled: e.phiEnabled,
     phiFailClosed: e.phiFailClosed,
-    textProvider: e.textProvider ?? null,
-    textModel: e.textModel ?? null,
     maxRegen: e.maxRegen,
     gateSlaSeconds: e.gateSlaSeconds,
     gateEscalationSeconds: e.gateEscalationSeconds,
@@ -251,10 +247,11 @@ export class HarnessPolicyService {
     // Optional so fixtures keep their 4-arg construction and
     // non-Vault deployments degrade to plaintext WORM change rows.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // optional so existing fixtures keep their 4/5-arg construction. Since TASK-876 it
-    // serves ONLY the SYSTEM-only `harness.judge` selection — text selection is the assigned
-    // TEXT_GENERATION agent (`textAgents`, below).
-    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // optional so existing fixtures keep their 4/5-arg construction. Serves ONLY the
+    // SYSTEM-only `harness.judge` routing election (TASK-881: `resolveDefault` directly, the
+    // `AiTaskDefault` facade is gone) — text selection is the assigned TEXT_GENERATION agent
+    // (`textAgents`, below).
+    @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicies?: IAiRoutingPolicyService,
     // The SYSTEM-shared MCP registry the worker resolves tool
     // calls against. Optional + trailing so existing fixtures keep their arity;
     // absent ⇒ `mcpServers: []`, i.e. nothing callable (the safe default).
@@ -407,7 +404,7 @@ export class HarnessPolicyService {
     };
 
     // the judge provider/model come from the SYSTEM-only
-    // `harness.judge` AiTaskDefault, independent of which policy row wins. Resolve
+    // `harness.judge` routing election, independent of which policy row wins. Resolve
     // once and overlay onto whichever response we return (mirrors the SYSTEM
     // selection-knob overlay below). Null when unconfigured ⇒ the harness falls
     // back to its env/code judge default.
@@ -465,19 +462,21 @@ export class HarnessPolicyService {
   }
 
   /**
-   * resolve the SYSTEM-only `harness.judge` AiTaskDefault into a
+   * resolve the SYSTEM-only `harness.judge` routing election into a
    * harness-consumable `{ judgeProvider, judgeModel }`. `judgeModel` is the
    * model's `sourceUri` (the id the judge client sends); `judgeProvider` is the
    * model's provider normalised to a `JudgeProvider` value. Best-effort: a
-   * missing/misconfigured key (or an un-wired AiTaskDefault service in fixtures)
-   * yields `{ null, null }` so the harness falls back to its env/code default —
-   * never sinks the effective-policy read (mirrors `resolveTextSelection`).
+   * missing/misconfigured key (or an un-wired routing-policy service in
+   * fixtures) yields `{ null, null }` so the harness falls back to its env/code
+   * default — never sinks the effective-policy read (mirrors
+   * `resolveTextSelection`). `systemOnly`: `harness.*` is platform-only, so a
+   * tenant row never wins and never vetoes.
    */
   private async resolveJudgeSelection(tenantId?: string): Promise<{ judgeProvider: string | null; judgeModel: string | null }> {
-    if (!this.aiTaskDefaultService) return { judgeProvider: null, judgeModel: null };
+    if (!this.routingPolicies) return { judgeProvider: null, judgeModel: null };
     try {
-      const eff = await this.aiTaskDefaultService.getEffective(JUDGE_TASK_KEY, tenantId);
-      const model = eff.model;
+      const resolved = await this.routingPolicies.resolveDefault(tenantId ?? SYSTEM_TENANT_ID, JUDGE_TASK_KEY, { systemOnly: true });
+      const model = resolved.model;
       if (model?.provider && model.sourceUri) {
         return { judgeProvider: toJudgeProvider(model.provider), judgeModel: model.sourceUri };
       }
@@ -487,7 +486,7 @@ export class HarnessPolicyService {
       // running the model it declined (TASK-872).
       if (error instanceof TaskSelectionVetoedError) throw error;
       this.logger.warn({
-        message: `AiTaskDefault judge lookup failed for '${JUDGE_TASK_KEY}' — harness will use its env/code judge default`,
+        message: `Routing election lookup failed for '${JUDGE_TASK_KEY}' — harness will use its env/code judge default`,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -787,7 +786,7 @@ function toResponse(e: HarnessPolicyEntity, source: HarnessPolicySource): Harnes
     source,
     ...entityToKnobs(e),
     // judge selection is overlaid by `getEffectivePolicy` from the
-    // SYSTEM `harness.judge` AiTaskDefault; null here (not a policy-row field).
+    // SYSTEM `harness.judge` routing election; null here (not a policy-row field).
     judgeProvider: null,
     judgeModel: null,
     // overlaid by `getEffectivePolicy` from the SYSTEM-shared registry.

@@ -112,7 +112,7 @@ test.describe('Invoice lifecycle', () => {
     expect(ga, 'super admin login failed').toBeTruthy();
     superAdminToken = ga!.token;
 
-    const row = await request.get('/api/v1/admin/ai-task-defaults/row?taskKey=nlp.ner', { headers: bearer(superAdminToken) });
+    const row = await request.get('/api/v1/admin/nlp-task-instructions/row?taskKey=nlp.topic', { headers: bearer(superAdminToken) });
     expect(row.status()).toBe(200);
     tenantId = ((await row.json()) as { tenantId: string }).tenantId;
 

@@ -39,7 +39,6 @@ export * from './config-resolver';
 // Capability/settings registry (typed catalog of admin-controllable settings).
 export * from './settings-registry';
 // Per-tenant AI task-model defaults (guardrail/NLP), tenant → SYSTEM cascade.
-export * from './ai-task-default';
 // Config-plane core (provider connections + runtime profiles).
 export * from './ai-provider-connection';
 // The ordered N-way candidate chain over those two: which providers serve a

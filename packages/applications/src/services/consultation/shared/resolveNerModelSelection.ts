@@ -2,9 +2,9 @@ import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
-import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
+import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 
-/** The AiTaskDefault key clinical NER routes through (SUPER_ADMIN-only, SYSTEM-row resolution only). */
+/** The routing-policy task key clinical NER selects through (SUPER_ADMIN-only, SYSTEM-row resolution only). */
 export const NLP_NER_TASK_KEY = 'nlp.ner';
 
 /** The `_metadata` key the NER plane's configuration lives under. */
@@ -55,7 +55,8 @@ function readClinicalTaxonomy(metadata: unknown): Record<string, unknown> | unde
  * attributed to the NLP service instead of to the unresolved key.
  *
  * SYSTEM-PIN — `nlp.*` is SUPER_ADMIN_ONLY (system-row-only resolution;
- * `isSuperAdminOnlyTaskKey('nlp.ner')` in `ai-task-default/constants.ts`), but
+ * `isSuperAdminOnlyTaskKey('nlp.ner')` in `ai-routing-policy/constants.ts`, made
+ * explicit here as `resolveDefault(…, { systemOnly: true })`), but
  * the three callers run in worker/event/in-request contexts whose ambient CLS
  * tenant is the CALLING tenant — or, in a service-token/event context, no
  * tenant at all. Reading a SYSTEM-only key must not depend on what that
@@ -100,28 +101,28 @@ function readClinicalTaxonomy(metadata: unknown): Record<string, unknown> | unde
  * ENABLED model.
  */
 export async function resolveNerModelInjection(
-  aiTaskDefaultService: IAiTaskDefaultService | undefined,
+  routingPolicies: IAiRoutingPolicyService | undefined,
   cls: ClsService<IActiveUserContext> | undefined,
   logger: Logger,
 ): Promise<NerModelInjection> {
-  if (!aiTaskDefaultService) {
-    throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' is unavailable (AiTaskDefaultService not wired).`);
+  if (!routingPolicies) {
+    throw new ServiceUnavailableException(`SYSTEM routing election for '${NLP_NER_TASK_KEY}' is unavailable (AiRoutingPolicyService not wired).`);
   }
   if (!cls) {
     throw new ServiceUnavailableException(
-      `SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' is unavailable (no CLS scope to pin the SYSTEM-only read to).`,
+      `SYSTEM routing election for '${NLP_NER_TASK_KEY}' is unavailable (no CLS scope to pin the SYSTEM-only read to).`,
     );
   }
   try {
-    const effective = await cls.run(async () => {
+    const resolved = await cls.run(async () => {
       cls.set('tenantId', SYSTEM_TENANT_ID);
-      return aiTaskDefaultService.getEffective(NLP_NER_TASK_KEY, SYSTEM_TENANT_ID);
+      return routingPolicies.resolveDefault(SYSTEM_TENANT_ID, NLP_NER_TASK_KEY, { systemOnly: true });
     });
-    const sourceUri = effective.model?.sourceUri;
+    const sourceUri = resolved.model?.sourceUri;
     if (!sourceUri) {
-      throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' is missing or has no ENABLED model. Run db:seed.`);
+      throw new ServiceUnavailableException(`SYSTEM routing election for '${NLP_NER_TASK_KEY}' is missing or names no ENABLED model. Run db:seed.`);
     }
-    const clinicalTaxonomy = readClinicalTaxonomy(effective.model?.metadata);
+    const clinicalTaxonomy = readClinicalTaxonomy(resolved.model?.metaData);
     return {
       model_name: sourceUri,
       ...(clinicalTaxonomy ? { clinical_taxonomy: clinicalTaxonomy } : {}),
@@ -129,9 +130,9 @@ export async function resolveNerModelInjection(
   } catch (error) {
     if (error instanceof ServiceUnavailableException) throw error;
     logger.warn({
-      message: `AiTaskDefault '${NLP_NER_TASK_KEY}' resolution failed (fail-closed)`,
+      message: `Routing election '${NLP_NER_TASK_KEY}' resolution failed (fail-closed)`,
       error: error instanceof Error ? error.message : String(error),
     });
-    throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' could not be resolved.`);
+    throw new ServiceUnavailableException(`SYSTEM routing election for '${NLP_NER_TASK_KEY}' could not be resolved.`);
   }
 }
