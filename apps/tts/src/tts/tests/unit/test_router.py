@@ -363,3 +363,39 @@ class TestAnEngineThisImageDoesNotContain:
         router = _router({})
         with pytest.raises(AllProvidersUnavailableError):
             await _collect(router, _en_spec("indic_parler"))
+
+
+class TestKeylessCloudEngine:
+    """A registered cloud engine with no credential is not a candidate — it would 401.
+
+    Registration says what this PROCESS contains; the connection row says what may serve; and
+    this says whether the engine can actually authenticate. All three are separate questions, and
+    only the third can be answered by the engine itself.
+    """
+
+    @pytest.mark.asyncio
+    async def test_it_is_walked_past(self) -> None:
+        azure = FakeEngine("azure", configured=False)
+        kokoro = FakeEngine("kokoro", chunks=1)
+        router = _router({"azure": azure, "kokoro": kokoro})
+        chunks = await _collect(router, _en_spec("azure", "kokoro"))
+        assert azure.calls == 0
+        assert [c.provider for c in chunks] == ["kokoro"]
+
+    @pytest.mark.asyncio
+    async def test_a_chain_of_only_keyless_engines_fails_closed(self) -> None:
+        router = _router({"azure": FakeEngine("azure", configured=False)})
+        with pytest.raises(AllProvidersUnavailableError):
+            await _collect(router, _en_spec("azure"))
+
+    @pytest.mark.asyncio
+    async def test_a_tenant_that_brings_its_own_key_makes_it_available(self, monkeypatch) -> None:
+        keyed = FakeEngine("azure", chunks=1)
+        monkeypatch.setattr(
+            router_mod,
+            "_build_spec_engine",
+            lambda _s, _c, override: keyed if override.get("api_key") else None,
+        )
+        router = _router({"azure": FakeEngine("azure", configured=False)})
+        chunks = await _collect(router, _en_spec("azure"), provider_overrides={"azure": {"api_key": "byo"}})
+        assert [c.provider for c in chunks] == ["azure"] and keyed.calls == 1

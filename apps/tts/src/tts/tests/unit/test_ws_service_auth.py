@@ -25,7 +25,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from tts.core.config import Settings
 from tts.main import create_app
-from tts.tests.fakes import FakeEngine
+from tts.tests.fakes import FakeEngine, candidate, spec_json, voice_binding
 
 SHARED = "shared-internal-access-token-xyz"  # noqa: S105 — test constant
 LEGACY = "legacy-tts-service-token-abc"  # noqa: S105 — test constant
@@ -68,7 +68,7 @@ def _init_frame() -> dict:
         "type": "init",
         "voice": "en-female-1",
         "format": "pcm",
-        "routing_en": ["azure", "kokoro"],
+        "resolved_spec": spec_json(candidate("azure", voices=[voice_binding("en-female-1", locale="en-IN")], voice="en-female-1")),
     }
 
 

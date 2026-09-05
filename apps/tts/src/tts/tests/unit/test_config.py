@@ -15,7 +15,11 @@ class TestDefaults:
     def test_synthesis_defaults(self) -> None:
         s = Settings()
         assert s.max_input_chars == 4096
-        assert s.sample_rate == 24000
+        # `sample_rate` was asserted here until TASK-879 removed the field. The output rate is a
+        # per-CAPABILITY fact — an agent narrating a discharge summary and one reading a
+        # medication list can legitimately want different rates — so it arrives on the resolved
+        # spec (`parameters.sampleRate`), with `tts.spec.DEFAULT_SAMPLE_RATE` as the one code
+        # default. A service-wide value could only have served one agent correctly.
         # `default_format` was asserted here until TASK-872 removed the field.
         # The effective default format is the gateway's, resolved from
         # `TenantTtsConfig` platform limits and sent as `response_format` on
@@ -74,34 +78,49 @@ class TestAzureCredentialByok:
         monkeypatch.setenv("AZURE_SPEECH_KEY", "shared-key-123")
         assert AzureSpeechConfig().api_key.get_secret_value() == ""
 
-    def test_region_is_control_plane_owned_not_env_sourced(self, monkeypatch) -> None:
-        """The region left env with the rest of the connection ( lane C).
+    def test_region_is_row_owned_not_env_sourced(self, monkeypatch) -> None:
+        """The region left env with the rest of the connection, and then left the control plane too.
 
-        Same mechanism as the KEY above, different reason: the key is closed
-        because it is a secret, the region because region is a DATA RESIDENCY
-        decision for a service that synthesises clinical text — it belongs to a
-        platform admin with an audit trail, not to whoever edits the env file.
+        Same mechanism as the KEY above, different reason: the key is closed because it is a
+        secret, the region because an Azure Speech request is ADDRESSED per region — it is part of
+        the endpoint, and for a service that synthesises clinical text it is a DATA-RESIDENCY
+        decision. TASK-879 finished the move: it is a column on the `AiProviderConnection` row a
+        super admin edits, resolved per request into the spec's `connection` block, so one
+        tenant's residency can never be a process-wide default another tenant inherits.
         """
-        from tts.core.control_plane import apply_control_plane
+        from tts.providers.azure_speech import AzureSpeechProvider
+        from tts.tests.fakes import candidate
 
         monkeypatch.delenv("TTS_AZURE_REGION", raising=False)
         monkeypatch.setenv("AZURE_SPEECH_REGION", "centralindia")
-        assert AzureSpeechConfig().region == "eastus"
+        # No env path, and no process default to inherit.
+        assert AzureSpeechConfig().region == ""
 
         settings = Settings()
-        apply_control_plane(
+        built = AzureSpeechProvider.from_spec(
             settings,
-            {
-                "settings": {
-                    "tts.azure.region": {
-                        "value": "centralindia",
-                        "dataType": "string",
-                        "source": "db",
-                    }
-                }
-            },
+            candidate("azure", source_uri="azure://neural-voices", region="centralindia"),
+            {"api_key": "tenant-byo-key"},
         )
-        assert settings.azure.region == "centralindia"
+        assert built is not None
+        assert built._region == "centralindia"
+
+    def test_a_candidate_with_no_region_is_refused_rather_than_defaulted(self) -> None:
+        """There is nowhere left to fall back to, and that is the point.
+
+        A synthesis served from whatever region the process happened to be configured with is the
+        residency failure this move exists to prevent — so an unaddressable candidate is refused
+        and the chain walks on.
+        """
+        from tts.providers.azure_speech import AzureSpeechProvider
+        from tts.tests.fakes import candidate
+
+        assert (
+            AzureSpeechProvider.from_spec(
+                Settings(), candidate("azure", source_uri="azure://neural-voices", region=None), {"api_key": "k"}
+            )
+            is None
+        )
 
 
 class TestSarvamCredentialByok:

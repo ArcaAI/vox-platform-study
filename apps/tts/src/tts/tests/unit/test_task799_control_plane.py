@@ -151,25 +151,43 @@ class TestEnvPathIsStructurallyClosed:
         several providers at once and tell an operator grepping for
         `TTS_AZURE_REGION` nothing at all.
         """
-        alias = type(Settings().azure).model_fields["region"].validation_alias
-        assert alias == moved_alias("TTS_AZURE_REGION")
+        alias = type(Settings()).model_fields["max_input_chars"].validation_alias
+        assert alias == moved_alias("TTS_MAX_INPUT_CHARS")
+
+    def test_a_value_that_moved_onto_a_ROW_says_so_rather_than_naming_the_control_plane(
+        self,
+    ) -> None:
+        """Two dead-alias suffixes, because they send an operator to two different places.
+
+        TASK-879 moved a second class of value off env — not to the control plane but onto the
+        registry model, its provider connection or the agent. An operator grepping for
+        `TTS_SARVAM_MODEL` must land on something that says WHERE the value went; pointing them at
+        "the control plane" would send them to a settings key that no longer exists.
+        """
+        from tts.core.control_plane import moved_to_row_alias
+
+        for owner, field, env_var in (
+            (Settings().sarvam, "model", "TTS_SARVAM_MODEL"),
+            (Settings().sarvam, "base_url", "TTS_SARVAM_BASE_URL"),
+            (Settings().azure, "region", "TTS_AZURE_REGION"),
+            (Settings().indic_parler, "hf_model", "TTS_PARLER_HF_MODEL"),
+            (Settings().indic_f5, "ref_audio_path", "TTS_INDICF5_REF_AUDIO_PATH"),
+        ):
+            assert type(owner).model_fields[field].validation_alias == moved_to_row_alias(env_var)
 
 
-class TestProviderEnableFlagsKeepTheirEnvBootstrap:
-    """The five `*_ENABLED` flags are SERVED by the control plane (lane H) and
-    are STILL settable from env — deliberately both, not by oversight.
+class TestProviderEnableFlagsAreGone:
+    """The five `*_ENABLED` flags left the service entirely (TASK-879).
 
-    Lane H did steps 1 and the read half of 3 of the coordinated change: the
-    `GlobalSetting` rows are seeded (`seed/11d-tts-engine-flags.ts`) and
-    `apply_control_plane` honours a `db`-sourced value. Step 2 — updating the
-    k8s ConfigMaps — lives in `arca/hope-v2-deployment` and cannot be done from
-    this repository, so the env read stays OPEN: `TTS_KOKORO_ENABLED=true` in
-    the live manifest is what makes a keyless deployment reach `/health/ready`
-    at all (`test_keyless_readiness_task642`), and closing it while the manifest
-    still supplies it puts `hope-tts` back to 503 forever.
+    They were the one HALF-migrated family here: served by the control plane AND still readable
+    from env, because closing the env path needed the k8s ConfigMaps in
+    `arca/hope-v2-deployment` to stop setting `TTS_KOKORO_ENABLED` first — and doing it in the
+    wrong order put `hope-tts` back to answering 503 forever with no Service endpoints.
 
-    The precedence rule that lets both be true — only a `db`-sourced value
-    overrides env — is pinned in `test_task799_tts_enable_flags.py`.
+    TASK-879 dissolved the coupling instead of sequencing it. "May this engine serve" is an
+    `AiProviderConnection` row's three-state `enabled`, resolved per request into the pushed
+    spec's `connection` block, so there is no field, no key, no environment variable and no
+    manifest left to coordinate. A stale `TTS_KOKORO_ENABLED` is simply ignored.
     """
 
     @pytest.mark.parametrize(
@@ -182,28 +200,25 @@ class TestProviderEnableFlagsKeepTheirEnvBootstrap:
             ("indic_f5", "TTS_INDICF5_ENABLED"),
         ],
     )
-    def test_the_flag_is_still_settable_from_env(
+    def test_the_field_is_gone_and_a_stale_env_var_reaches_nothing(
         self, group: str, env_var: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        assert getattr(Settings(), group).enabled is False
         monkeypatch.setenv(env_var, "true")
-        assert getattr(Settings(), group).enabled is True
+        assert not hasattr(getattr(Settings(), group), "enabled")
 
-    def test_every_enable_flag_is_on_the_control_plane_key_table(self) -> None:
-        """The inverse of what this asserted before lane H, on purpose.
+    def test_no_enable_flag_is_left_on_the_control_plane_key_table(self) -> None:
+        assert {p for p in CONTROL_PLANE_KEYS if p.endswith(".enabled")} == set()
 
-        Being in BOTH places is not the "configured in two places" defect while
-        one of them is declared subordinate: `ENV_BOOTSTRAP_KEYS` names env as
-        the BOOTSTRAP fallback and gives the database the only overriding vote.
-        The defect would be two peers with no stated precedence.
+    def test_nothing_is_half_migrated_any_more(self) -> None:
+        """`ENV_BOOTSTRAP_KEYS` is empty, and empty is the finished state.
+
+        The mechanism stays: a future half-migrated key belongs here, and must leave in the SAME
+        change that closes its env path. What must not stay is a key whose env path nobody
+        remembers to close.
         """
-        assert {p for p in CONTROL_PLANE_KEYS if p.endswith(".enabled")} == {
-            "azure.enabled",
-            "sarvam.enabled",
-            "kokoro.enabled",
-            "indic_parler.enabled",
-            "indic_f5.enabled",
-        }
+        from tts.core.control_plane import ENV_BOOTSTRAP_KEYS
+
+        assert ENV_BOOTSTRAP_KEYS == frozenset()
 
 
 class TestVoiceNamesLiveOnlyInTheCatalog:
@@ -250,19 +265,19 @@ class TestOverlay:
         apply_control_plane(
             settings,
             self._snapshot(
-                {"tts.sarvam.model": {"value": "bulbul:v2", "dataType": "string", "source": "db"}}
+                {"tts.indicParler.device": {"value": "cuda", "dataType": "string", "source": "db"}}
             ),
         )
-        assert settings.sarvam.model == "bulbul:v2"
+        assert settings.indic_parler.device == "cuda"
 
     def test_a_null_value_keeps_the_bootstrap_value(self) -> None:
         settings = Settings()
-        before = settings.sarvam.model
+        before = settings.indic_parler.device
         applied = apply_control_plane(
             settings,
             self._snapshot(
                 {
-                    "tts.sarvam.model": {
+                    "tts.indicParler.device": {
                         "value": None,
                         "dataType": "string",
                         "source": "env-fallback",
@@ -270,23 +285,23 @@ class TestOverlay:
                 }
             ),
         )
-        assert settings.sarvam.model == before
+        assert settings.indic_parler.device == before
         assert applied == []
 
-    # Both specimens changed in TASK-872: these used to run on
-    # `tts.azure.timeoutS` / `tts.azure.maxConcurrent`, which were removed for
-    # having no reader. The numeric keys below are read for real, so the tests
-    # now pin type discipline on a knob that matters.
+    # The specimen has changed twice: `tts.azure.timeoutS` (removed by TASK-872 for having no
+    # reader) then `tts.sarvam.timeoutS` (moved onto the connection row by TASK-879). The
+    # remaining numeric key is read for real, so the test still pins type discipline on a knob
+    # that matters.
     def test_a_type_mismatch_is_refused_not_coerced(self) -> None:
         settings = Settings()
-        before = settings.sarvam.timeout_s
+        before = settings.max_input_chars
         apply_control_plane(
             settings,
             self._snapshot(
-                {"tts.sarvam.timeoutS": {"value": "soon", "dataType": "number", "source": "db"}}
+                {"tts.limits.maxInputChars": {"value": "soon", "dataType": "number", "source": "db"}}
             ),
         )
-        assert settings.sarvam.timeout_s == before
+        assert settings.max_input_chars == before
 
     def test_a_bool_is_never_read_as_a_number(self) -> None:
         settings = Settings()
@@ -308,24 +323,21 @@ class TestOverlay:
     def test_a_key_this_service_does_not_declare_is_ignored(self) -> None:
         """An unrecognised key contributes nothing — no attribute is invented.
 
-        `tts.indicF5.enabled` is the useful specimen: it is a plausible MISSPELLING
-        of the registered `tts.indicf5.enabled` (the flag keeps the lowercase
-        spelling it was registered with, beside its camelCase `tts.indicF5.*`
-        siblings). Before lane H this case passed for the wrong reason — the
-        module honoured no enable flag at all, so a typo and a correct key were
-        indistinguishable. Now that the correct key DOES take effect, this pins
-        that the near-miss still does not.
+        The useful specimen is a key that MOVED: `tts.sarvam.model` was served here until
+        TASK-879 put it on the registry row the agent binds. A stale control plane still serving
+        it must change nothing — otherwise a retired key could quietly override what the spec
+        said, which is the two-authorities failure the move exists to end.
         """
         settings = Settings()
-        assert settings.indic_f5.enabled is False
+        before = settings.sarvam.model
         applied = apply_control_plane(
             settings,
             self._snapshot(
-                {"tts.indicF5.enabled": {"value": True, "dataType": "boolean", "source": "db"}}
+                {"tts.sarvam.model": {"value": "bulbul:v2", "dataType": "string", "source": "db"}}
             ),
         )
         assert applied == []
-        assert settings.indic_f5.enabled is False
+        assert settings.sarvam.model == before
 
 
 class TestKeyTable:

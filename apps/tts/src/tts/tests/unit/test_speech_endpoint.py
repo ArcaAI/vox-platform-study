@@ -10,7 +10,18 @@ from httpx import ASGITransport, AsyncClient
 
 from tts.core.config import Settings
 from tts.main import create_app
-from tts.tests.fakes import FakeEngine
+from tts.tests.fakes import FakeEngine, candidate, spec_json, voice_binding
+
+# The gateway-resolved TEXT_TO_SPEECH agent every request now carries (TASK-879). It replaced the
+# `routing_en` / `routing_ml` / `allowed_providers` / `voice_bindings` fold: the engine chain, the
+# model, the voices and the connection that serves each engine are all properties of the agent,
+# and they arrive resolved. `en-IN` is the binding's locale, which is what the Prometheus labels
+# below are keyed on.
+_EN = voice_binding("en-female-1", locale="en-IN")
+
+
+def _spec(engine: str = "azure", **kwargs) -> dict:
+    return spec_json(candidate(engine, voices=[_EN], voice=_EN.id, **kwargs))
 
 
 def _app(providers: dict | None = None):
@@ -40,7 +51,7 @@ class TestBatch:
                 "input": "Hello.",
                 "voice": "en-female-1",
                 "response_format": "pcm",
-                "routing_en": ["azure", "kokoro"],
+                "resolved_spec": _spec(),
             },
         )
         assert r.status_code == 200
@@ -55,7 +66,7 @@ class TestBatch:
                 "input": "Hi.",
                 "voice": "en-female-1",
                 "response_format": "mp3",
-                "routing_en": ["azure", "kokoro"],
+                "resolved_spec": _spec(),
             },
         )
         assert r.status_code == 200
@@ -71,7 +82,7 @@ class TestStreaming:
                 "input": "Hi.",
                 "voice": "en-female-1",
                 "stream_format": "audio",
-                "routing_en": ["azure", "kokoro"],
+                "resolved_spec": _spec(),
             },
         )
         assert r.status_code == 200
@@ -86,7 +97,7 @@ class TestStreaming:
                 "input": "Hi.",
                 "voice": "en-female-1",
                 "stream_format": "sse",
-                "routing_en": ["azure", "kokoro"],
+                "resolved_spec": _spec(),
             },
         )
         assert r.status_code == 200
@@ -100,14 +111,24 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_empty_input_422(self, client_with_azure):
         r = await client_with_azure.post(
-            "/api/v1/audio/speech", json={"input": "", "voice": "en-female-1"}
+            "/api/v1/audio/speech", json={"input": "", "voice": "en-female-1", "resolved_spec": _spec()}
+        )
+        assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_a_request_with_no_resolved_spec_is_refused(self, client_with_azure):
+        """FAIL CLOSED. This service reads no selection of its own, so a request with no spec
+        could only be served on a guessed vendor — which is the whole failure mode the agent-first
+        speech path exists to remove."""
+        r = await client_with_azure.post(
+            "/api/v1/audio/speech", json={"input": "Hi.", "voice": "en-female-1"}
         )
         assert r.status_code == 422
 
     @pytest.mark.asyncio
     async def test_unknown_voice_404(self, client_with_azure):
         r = await client_with_azure.post(
-            "/api/v1/audio/speech", json={"input": "Hi.", "voice": "nope-1"}
+            "/api/v1/audio/speech", json={"input": "Hi.", "voice": "nope-1", "resolved_spec": _spec()}
         )
         assert r.status_code == 404
 
@@ -117,7 +138,7 @@ class TestValidation:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             r = await c.post(
                 "/api/v1/audio/speech",
-                json={"input": "x" * 5000, "voice": "en-female-1"},
+                json={"input": "x" * 5000, "voice": "en-female-1", "resolved_spec": _spec()},
             )
         assert r.status_code == 413
 
@@ -127,7 +148,7 @@ class TestUnavailable:
     async def test_no_provider_returns_503(self):
         app = _app()  # no providers registered
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            r = await c.post("/api/v1/audio/speech", json={"input": "Hi.", "voice": "en-female-1"})
+            r = await c.post("/api/v1/audio/speech", json={"input": "Hi.", "voice": "en-female-1", "resolved_spec": _spec()})
         assert r.status_code == 503
 
 
@@ -154,7 +175,7 @@ class TestUsageMetering:
                 "input": "Hello.",
                 "voice": "en-female-1",
                 "response_format": "pcm",
-                "routing_en": ["azure", "kokoro"],
+                "resolved_spec": _spec(),
             },
         )
         assert r.status_code == 200
@@ -171,7 +192,7 @@ class TestUsageMetering:
         text = "നമസ്കാരം \U0001f600"
         r = await client_with_azure.post(
             "/api/v1/audio/speech",
-            json={"input": text, "voice": "en-female-1", "routing_en": ["azure", "kokoro"]},
+            json={"input": text, "voice": "en-female-1", "resolved_spec": _spec()},
         )
         assert r.status_code == 200
         assert r.headers["x-tts-characters"] == str(len(text))
@@ -191,7 +212,7 @@ class TestUsageMetering:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             r = await c.post(
                 "/api/v1/audio/speech",
-                json={"input": "x" * 5000, "voice": "en-female-1"},
+                json={"input": "x" * 5000, "voice": "en-female-1", "resolved_spec": _spec()},
             )
         assert r.status_code == 413
         assert "x-tts-characters" not in r.headers
@@ -210,7 +231,7 @@ class TestUsageMetering:
                 "input": "Hi.",
                 "voice": "en-female-1",
                 "stream_format": "audio",
-                "routing_en": ["azure", "kokoro"],
+                "resolved_spec": _spec(),
             },
         )
         assert r.status_code == 200
@@ -228,7 +249,7 @@ class TestUsageMetering:
                 "input": "Hi.",
                 "voice": "en-female-1",
                 "stream_format": "sse",
-                "routing_en": ["azure", "kokoro"],
+                "resolved_spec": _spec(),
             },
         )
         assert r.status_code == 200
@@ -246,7 +267,7 @@ class TestUsageMetering:
 
         await client_with_azure.post(
             "/api/v1/audio/speech",
-            json={"input": "Hi.", "voice": "en-female-1", "routing_en": ["azure", "kokoro"]},
+            json={"input": "Hi.", "voice": "en-female-1", "resolved_spec": _spec()},
         )
 
         after_chars = REGISTRY.get_sample_value("tts_characters_total", labels)

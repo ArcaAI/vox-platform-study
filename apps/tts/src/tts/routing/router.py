@@ -246,12 +246,18 @@ class TTSRouter:
             engine = _build_spec_engine(self._settings, candidate, override)
             if engine is not None:
                 self._spec_engines[key] = engine
-        if engine is not None:
-            return engine
-        try:
-            return self._registry.get(name)
-        except ProviderNotFoundError:
-            return None
+        if engine is None:
+            try:
+                engine = self._registry.get(name)
+            except ProviderNotFoundError:
+                return None
+        # A registered CLOUD engine with no credential is not a usable candidate — it would 401
+        # the live API. Since TASK-879 every engine the image contains is registered (registration
+        # says what this PROCESS holds, the connection row says what may serve), so this is the
+        # check that keeps a keyless vendor engine out of the chain: without it, a boot-registered
+        # Azure with an empty subscription key would be handed a session and fail on the first
+        # sentence instead of being walked past before `ready`.
+        return engine if getattr(engine, "is_configured", True) else None
 
     def _request_for(self, candidate: ResolvedTtsCandidate, *, text: str, voice_id: str | None, fmt: AudioFormat, speed: float, request_id: str) -> SynthesisRequest:
         """One provider-ready request, resolved entirely from THIS candidate.
@@ -372,8 +378,13 @@ class TTSRouter:
         still applies). All other engines are driven per-sentence via ``SentenceAdapter`` with
         before-first-byte failover; the engine is locked once the first audio frame ships.
         """
-        candidates = self.candidates(spec, voice_id=voice_id)
         requested_voice = voice_id or spec.primary.parameters.voice or ""
+        # Buildability is resolved EAGERLY on this path, unlike `synthesize`. A duplex session
+        # answers `ready` before any text arrives, so "no engine here can serve you" has to be
+        # known now — a `ready` followed by a failure on the first sentence is a worse answer than
+        # an up-front error. Building is cheap and cached, so this costs nothing the first
+        # sentence would not have paid anyway.
+        candidates = [c for c in self.candidates(spec, voice_id=voice_id) if self._engine_for(c, provider_overrides) is not None]
         if not candidates:
             TTS_REQUESTS.labels(provider="none", locale="", status="unavailable").inc()
             raise TtsRoutingUnconfiguredError(requested_voice)
