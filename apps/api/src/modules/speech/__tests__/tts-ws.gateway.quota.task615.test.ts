@@ -70,8 +70,7 @@ describe('TtsWsGateway — TTS character quota pre-flight', () => {
       ticketService as never,
       config as never,
       secrets as never,
-      undefined, // tenantTtsConfig
-      undefined, // providerConnectionService
+      undefined, // ttsAgentResolver
       undefined, // usageLedger
       entitlements as never,
     );

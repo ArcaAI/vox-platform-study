@@ -2,7 +2,7 @@ import {
   AiProviderConnectionServiceModule,
   EntitlementsServiceModule,
   OriginRegistryServiceModule,
-  TenantTtsConfigServiceModule,
+  TtsAgentResolverServiceModule,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
@@ -13,7 +13,7 @@ import { TtsWsGateway } from './tts-ws.gateway';
 
 // IConfigService + SecretsService are provided app-wide by CommonServiceModule
 // (under the app's @Global core), and StreamTicketService is @Global, so this
-// module only needs the HTTP client, the per-tenant TTS spec resolver, the
+// module only needs the HTTP client, the TEXT_TO_SPEECH agent resolver, the
 // unified provider-connection plane (BYO credential injection, `service='tts'`,
 // ), the usage-ledger emission port, the
 // entitlements quota port (monthlyTtsCharacters pre-flight
@@ -25,7 +25,12 @@ import { TtsWsGateway } from './tts-ws.gateway';
       timeout: 120000,
       maxRedirects: 3,
     }),
-    TenantTtsConfigServiceModule,
+    // TASK-879 — the ONE TEXT_TO_SPEECH resolution: the `AgentAssignment` cascade (or an explicit
+    // `agentSlug`), the bound model with its mirror/artifacts/voices, the connection row that
+    // serves each engine, and the funding-gated fallback chain. It replaced
+    // `TenantTtsConfigServiceModule`, whose effective spec (routing chains, allowed providers,
+    // voice bindings, format/speed/rate defaults) was the pre-agent shape of the same question.
+    TtsAgentResolverServiceModule,
     AiProviderConnectionServiceModule,
     UsageLedgerServiceModule,
     EntitlementsServiceModule,

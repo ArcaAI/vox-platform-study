@@ -56,8 +56,7 @@ function buildController(opts: { entitlements?: unknown; cls?: unknown } = {}) {
     http as any,
     config as any,
     createMockSecrets('svc-token') as any,
-    undefined, // tenantTtsConfig
-    undefined, // providerConnectionService
+    undefined, // ttsAgentResolver
     cls as any,
     undefined, // usageLedger
     entitlements as any,

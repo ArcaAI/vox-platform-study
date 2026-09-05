@@ -73,11 +73,10 @@ function make(overrides: Record<string, unknown> = {}) {
     deps.cls as never,
     {} as never,
     { getConfigValue: () => 'http://tts' } as never,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
+    undefined, // secretsService
+    undefined, // ttsResolver
+    undefined, // entitlementsService
+    undefined, // usageLedger
     deps.jobService as never,
     deps.realtimeService as never,
     deps.mediaService as never,

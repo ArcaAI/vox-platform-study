@@ -3,12 +3,12 @@ import {
   IActiveUserContext,
   IConfigService,
   IEntitlementsService,
-  IProviderConnectionService,
-  ITenantTtsConfigService,
   IUsageLedgerService,
   SecretsService,
+  TtsAgentResolverService,
   UsageIdempotencyKey,
 } from '@arcaai/applications';
+import type { ResolvedTtsSpec } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
@@ -19,7 +19,7 @@ import type { AxiosError } from 'axios';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import type { Response } from 'express';
 import { type ProviderFunding, classifyTtsProvider } from './tts-provider-classification';
-import { resolveTtsTenantConfig } from './tts-tenant-config';
+import { resolveTtsRequestConfig } from './tts-tenant-config';
 import { RequiredScopes } from '../../decorators';
 
 // Raw s16le mono PCM: 2 bytes/sample. WAV carries the same payload behind a
@@ -33,23 +33,35 @@ const WAV_HEADER_BYTES = 44;
 // preserving pass-through (mirrors TextProxyController).
 interface SpeechSynthesizeRequest {
   input: string;
-  voice: string;
+  /**
+   * OPTIONAL since TASK-879. Absent ⇒ the resolved agent's own `parameters.voice`, which is what
+   * a caller that has not chosen a voice should get: the tenant's configured voice, not a service
+   * default. When present it must be one the resolved model declares — `apps/tts` answers 404
+   * rather than substituting a voice nobody asked for.
+   */
+  voice?: string;
   response_format?: 'pcm' | 'wav' | 'mp3';
   speed?: number;
   stream_format?: 'audio' | 'sse';
   model?: string;
-  // Injected by the gateway from the tenant's resolved config.
-  routing_en?: string[];
-  routing_ml?: string[];
-  allowed_providers?: string[];
+  /**
+   * The caller's explicit TEXT_TO_SPEECH agent (a lineage slug). Absent ⇒ the tenant → department
+   * → SYSTEM `AgentAssignment` cascade decides. Stripped before forwarding: it is a SELECTOR for
+   * this gateway, and what `apps/tts` receives is the RESOLUTION.
+   */
+  agentSlug?: string;
+  // ── Injected by the gateway; never accepted from a caller ────────────────────────────────
+  /**
+   * The resolved TEXT_TO_SPEECH agent: engine chain, model (with mirror, artifacts and voices),
+   * connections and the funding-gated fallback governance. It REPLACED `routing_en` /
+   * `routing_ml` / `allowed_providers` / `voice_bindings`, which were the `TenantTtsConfig` fold.
+   */
+  resolved_spec?: ResolvedTtsSpec;
   // `funding` labels WHO PAID for the credential: the caller
   // tenant's own connection row, or the SYSTEM-tenant platform default. tts
   // ignores it (it reads named credential keys only); the gateway reads it back
   // when it stamps the usage row. Absent ⇒ `'tenant'`.
   provider_overrides?: Record<string, { api_key: string; region?: string; base_url?: string; funding?: ProviderFunding }>;
-  // Resolved voice bindings ({internalVoiceId: {provider: providerVoiceName}});
-  // tts falls back to its built-in DEFAULT_VOICES when absent.
-  voice_bindings?: Record<string, Record<string, string>>;
 }
 
 interface UpstreamErrorPayload {
@@ -78,13 +90,10 @@ export class SpeechProxyController {
     private readonly httpService: HttpService,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolve the caller tenant's TTS spec + inject it downstream.
-    // Optional so positional test construction (and internal service-token calls
-    // without a tenant context) still work; injection is a no-op when absent.
-    @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
-    // BYO provider credential injection (`service='tts'`) — the
-    // unified provider-connection plane. Optional for the same reason as above.
-    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
+    // Resolve the caller tenant's TEXT_TO_SPEECH agent and inject the resolved spec + its
+    // credentials downstream. Optional so positional test construction (and internal
+    // service-token calls without a tenant context) still work; injection is a no-op when absent.
+    @Optional() private readonly ttsAgentResolver?: TtsAgentResolverService,
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
     // Emits CHARACTER + AUDIO_SECOND usage rows at stream
     // teardown. Optional/trailing so existing positional test fixtures keep
@@ -100,42 +109,35 @@ export class SpeechProxyController {
     @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
   ) {}
 
-  /**
-   * Resolve the caller tenant's effective TTS spec and fold it into
-   * the forwarded body: fill omitted format/speed from the tenant defaults, and
-   * always pass the resolved provider chains + whitelist. Fails OPEN — a config
-   * lookup error never blocks synthesis; tts falls back to its own settings.
+/**
+   * Resolve the caller tenant's TEXT_TO_SPEECH agent and fold it into the forwarded body.
+   *
+   * The RESOLVE is shared with the WS-duplex gateway and the harness's internal synthesis route
+   * (`tts-tenant-config.ts`); the MAPPING stays here, because this route honours a
+   * caller-supplied format/speed and the other two take their own caller's.
+   *
+   * FAILS CLOSED, unlike the `TenantTtsConfig` fold it replaces. There is no service-side default
+   * left to degrade to — `apps/tts` reads no selection of its own and refuses a request with no
+   * spec — so an unresolvable agent must surface as the 404/409 it is (an unknown or foreign
+   * `agentSlug`, an agent that binds no runnable model, a vetoed provider) rather than as an
+   * opaque 503 from a service that was handed nothing to do.
    */
-  private async applyTenantConfig(body: SpeechSynthesizeRequest): Promise<SpeechSynthesizeRequest> {
+  private async applyAgentSpec(body: SpeechSynthesizeRequest): Promise<SpeechSynthesizeRequest> {
     const tenantId = this.cls?.get('tenantId');
-    if (!this.tenantTtsConfig || !tenantId) return body;
-    try {
-      // The RESOLVE is shared with the harness's internal synthesis route
-      // (`tts-tenant-config.ts`); the MAPPING below stays here, because this route honours a
-      // caller-supplied format/speed and that one takes the workflow node's config.
-      const { eff, overrides } = await resolveTtsTenantConfig(tenantId, {
-        tenantTtsConfig: this.tenantTtsConfig,
-        providerConnectionService: this.providerConnectionService,
-      });
-      return {
-        ...body,
-        response_format: body.response_format ?? (eff.defaultFormat as 'pcm' | 'wav' | 'mp3'),
-        speed: body.speed ?? eff.defaultSpeed,
-        routing_en: eff.routingEn,
-        routing_ml: eff.routingMl,
-        allowed_providers: eff.allowedProviders,
-        ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
-        // Resolved voice bindings (tenant over SYSTEM merge); only
-        // injected when non-empty so tts keeps its built-in defaults otherwise.
-        ...(eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0 ? { voice_bindings: eff.voiceBindings } : {}),
-      };
-    } catch (err) {
-      this.logger.warn({
-        message: 'Tenant TTS config resolve failed; forwarding with service defaults',
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return body;
-    }
+    const { agentSlug, ...forwarded } = body;
+    if (!this.ttsAgentResolver || !tenantId) return forwarded;
+    const { spec, overrides } = await resolveTtsRequestConfig(tenantId, {
+      ttsAgentResolver: this.ttsAgentResolver,
+      agentSlug,
+    });
+    return {
+      ...forwarded,
+      // The agent's own parameters are the defaults; a caller that named one keeps it.
+      response_format: forwarded.response_format ?? ((spec.primary.parameters.format ?? undefined) as 'pcm' | 'wav' | 'mp3' | undefined),
+      speed: forwarded.speed ?? (spec.primary.parameters.speed ?? undefined),
+      resolved_spec: spec,
+      ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
+    };
   }
 
   // TTS base URL resolves through the typed IConfigService accessor; direct
@@ -144,9 +146,16 @@ export class SpeechProxyController {
     return this.configService.getConfigValue('TTS_URL');
   }
 
+  /**
+   * TASK-879 — the ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is consulted only as
+   * the migration fallback, matching what `text-proxy` / `text-compat` already do. Both lookups
+   * are the SYNC cache read warmed at bootstrap, so the existing fail-open-on-miss behaviour is
+   * unchanged: a deployment that configured only the legacy token keeps working.
+   */
   private getForwardHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const serviceToken = this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    const serviceToken =
+      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }
@@ -255,10 +264,10 @@ export class SpeechProxyController {
   @ApiOperation({ summary: 'Synthesize speech via TTS (batch audio, streamed audio, or SSE)' })
   async synthesize(@Body() body: SpeechSynthesizeRequest, @Res() res: Response): Promise<void> {
     const base = this.getTtsBaseUrl();
-    const forwardBody = await this.applyTenantConfig(body);
+    const forwardBody = await this.applyAgentSpec(body);
 
     // PRE-FLIGHT monthlyTtsCharacters check, before any
-    // upstream call. `applyTenantConfig` never touches `input`, so this counts
+    // upstream call. `applyAgentSpec` never touches `input`, so this counts
     // the same text that will actually be synthesized. Unicode CODE POINTS
     // (`[...input].length`), matching the CHARACTER unit's counting rule
     // (no CJK/Indic double-counting) — `.length` would over-count surrogate

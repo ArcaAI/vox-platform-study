@@ -41,19 +41,40 @@ const createCls = () => {
   };
 };
 
-const createTenantTtsConfig = () => ({
-  getEffective: vi.fn().mockResolvedValue({
-    defaultFormat: 'wav',
-    defaultSpeed: 1.1,
-    routingEn: ['azure', 'kokoro'],
-    routingMl: ['sarvam'],
-    allowedProviders: ['azure', 'kokoro', 'sarvam'],
-    voiceBindings: { 'clinical-en-1': { azure: 'en-US-JennyNeural' } },
-  }),
-});
+const AGENT = { slug: 'clinic-voice', versionId: 'a1', versionNumber: 2, tenantId: 'tenant-a', source: 'tenant' };
 
-const createProviderConnections = () => ({
-  resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { azure: { api_key: 'k', region: 'eastus', funding: 'tenant' } } }),
+const SPEC = {
+  schemaVersion: 1,
+  agent: AGENT,
+  primary: {
+    kind: 'primary',
+    runtimeKey: 'a1',
+    agent: AGENT,
+    model: {
+      role: 'primary',
+      slug: 'azure-neural-voices',
+      taskType: 'TEXT_TO_SPEECH',
+      format: 'AZURE_SPEECH',
+      sourceUri: 'azure://neural-voices',
+      sourceRevision: null,
+      localPath: null,
+      checksum: null,
+      computeType: null,
+      provider: 'azure',
+      tenantId: '00000000-0000-0000-0000-000000000000',
+      artifacts: {},
+      voices: [{ id: 'clinical-en-1', locale: 'en-US', providerVoice: 'en-US-JennyNeural', refAudioPath: null, refText: null }],
+    },
+    parameters: { voice: 'clinical-en-1', language: 'en', speed: 1.1, format: 'wav', sampleRate: 24000, ssml: false },
+    voice: { id: 'clinical-en-1', locale: 'en-US', providerVoice: 'en-US-JennyNeural', refAudioPath: null, refText: null },
+    connection: { provider: 'azure', baseUrl: null, region: 'eastus', timeoutS: null, funding: 'tenant' },
+    fundingTier: 'tenant',
+  },
+  fallback: { autoSwitch: true, chain: [] },
+};
+
+const createTtsAgentResolver = () => ({
+  resolve: vi.fn().mockResolvedValue({ spec: SPEC, providerOverrides: { azure: { api_key: 'k', region: 'eastus', funding: 'tenant' } } }),
 });
 
 const createUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 1 }) });
@@ -65,8 +86,7 @@ const build = (over: Partial<Record<string, unknown>> = {}) => {
     config: createConfig(),
     cls: createCls(),
     secrets: { getSecretSync: vi.fn(() => 'tts-token') },
-    ttsConfig: createTenantTtsConfig(),
-    providers: createProviderConnections(),
+    resolver: createTtsAgentResolver(),
     ledger: createUsageLedger(),
     entitlements: createEntitlements(),
     ...over,
@@ -76,8 +96,7 @@ const build = (over: Partial<Record<string, unknown>> = {}) => {
     deps.config,
     deps.cls,
     deps.secrets,
-    deps.ttsConfig,
-    deps.providers,
+    deps.resolver,
     deps.ledger,
     deps.entitlements,
   );
@@ -103,25 +122,26 @@ describe('HarnessTtsInternalController — the agentic.tts synthesis dispatch', 
     expect(deps.cls.set).toHaveBeenCalledWith('tenantId', 'tenant-a');
   });
 
-  it('injects the TENANT`s resolved configuration — chains, allow-list, BYO credential, voice bindings', async () => {
+  it('injects the tenant`s resolved TEXT_TO_SPEECH agent and its credentials', async () => {
     const { controller, deps } = build();
     await controller.synthesize(REQUEST);
+    expect(deps.resolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-a', agentSlug: null, departmentId: null });
     const [, body] = deps.http.axiosRef.post.mock.calls[0];
     expect(body).toMatchObject({
       input: 'Take two tablets daily.',
       voice: 'clinical-en-1',
       response_format: 'wav',
       speed: 1.1,
-      routing_en: ['azure', 'kokoro'],
-      routing_ml: ['sarvam'],
-      allowed_providers: ['azure', 'kokoro', 'sarvam'],
+      resolved_spec: SPEC,
       provider_overrides: { azure: { api_key: 'k', region: 'eastus', funding: 'tenant' } },
-      voice_bindings: { 'clinical-en-1': { azure: 'en-US-JennyNeural' } },
     });
-    expect(deps.providers.resolveTenantCloudOverrides).toHaveBeenCalledWith('tts', 'tenant-a');
+    // The `TenantTtsConfig` fold is gone, not merely unused.
+    for (const gone of ['routing_en', 'routing_ml', 'allowed_providers', 'voice_bindings']) {
+      expect(gone in body).toBe(false);
+    }
   });
 
-  it('lets the node`s own format and speed win over the tenant defaults', async () => {
+  it('lets the node`s own format and speed win over the agent`s parameters', async () => {
     const { controller, deps } = build();
     await controller.synthesize({ ...REQUEST, format: 'pcm', speed: 0.75 });
     const [, body] = deps.http.axiosRef.post.mock.calls[0];
@@ -129,12 +149,22 @@ describe('HarnessTtsInternalController — the agentic.tts synthesis dispatch', 
     expect(body.speed).toBe(0.75);
   });
 
-  it('presents the TTS service token, never a user credential', async () => {
+  it('presents the SHARED internal token, never a user credential', async () => {
     const { controller, deps } = build();
     await controller.synthesize(REQUEST);
     const [, , options] = deps.http.axiosRef.post.mock.calls[0];
     expect(options.headers['X-Service-Token']).toBe('tts-token');
     expect(options.responseType).toBe('arraybuffer');
+    // TASK-879 — `INTERNAL_ACCESS_TOKEN` is consulted FIRST; `TTS_SERVICE_TOKEN` survives only as
+    // the migration fallback, so a deployment that configured only the legacy name keeps working.
+    expect(deps.secrets.getSecretSync).toHaveBeenCalledWith('INTERNAL_ACCESS_TOKEN');
+  });
+
+  it('falls back to the legacy per-service token when only that one is configured', async () => {
+    const secrets = { getSecretSync: vi.fn((key: string) => (key === 'TTS_SERVICE_TOKEN' ? 'legacy' : undefined)) };
+    const { controller, deps } = build({ secrets });
+    await controller.synthesize(REQUEST);
+    expect(deps.http.axiosRef.post.mock.calls[0][2].headers['X-Service-Token']).toBe('legacy');
   });
 
   it('checks the monthly character allowance BEFORE any upstream call', async () => {
@@ -180,13 +210,13 @@ describe('HarnessTtsInternalController — the agentic.tts synthesis dispatch', 
     await expect(controller.synthesize(REQUEST)).resolves.toBeDefined();
   });
 
-  it('fails OPEN on a config-resolution error — apps/tts falls back to its own settings', async () => {
-    const ttsConfig = { getEffective: vi.fn().mockRejectedValue(new Error('control plane down')) };
-    const { controller, deps } = build({ ttsConfig });
-    const result = await controller.synthesize(REQUEST);
-    expect(result.contentType).toBe('audio/wav');
-    const [, body] = deps.http.axiosRef.post.mock.calls[0];
-    expect(body).toEqual({ input: 'Take two tablets daily.', voice: 'clinical-en-1' });
+  it('fails CLOSED on an agent-resolution error — there is no service-side default left', async () => {
+    // `apps/tts` refuses a request with no resolved spec, so degrading here would turn an
+    // attributable 404/409 into an opaque downstream 503 in a Temporal activity's logs.
+    const resolver = { resolve: vi.fn().mockRejectedValue(new Error('No published TEXT_TO_SPEECH agent is assigned for this tenant.')) };
+    const { controller, deps } = build({ resolver });
+    await expect(controller.synthesize(REQUEST)).rejects.toThrow('No published TEXT_TO_SPEECH agent');
+    expect(deps.http.axiosRef.post).not.toHaveBeenCalled();
   });
 
   it('maps an upstream failure to an HTTP error and never echoes the upstream body (PHI)', async () => {
