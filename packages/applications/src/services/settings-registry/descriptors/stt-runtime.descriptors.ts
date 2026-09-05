@@ -163,27 +163,17 @@ const KNOBS: Record<string, SttKnob> = {
   // platform-authored prompt in front of the agent's own.
 
   // ── VAD (Silero v5) ──────────────────────────────────────────────────────
-  'stt.vad.modelPath': {
-    dataType: 'string',
-    default: '',
-    label: 'Silero VAD model path',
-    description: 'Path to the Silero VAD ONNX model. Empty = auto-download on first use.',
-    category: 'STT Audio',
-  },
-  // `stt.vad.threshold`, `stt.vad.minSpeechDurationMs` and
-  // `stt.vad.minSilenceDurationMs` were declared here until TASK-872. They are
-  // SHADOWED on the live path: every session and every batch job now arrives
-  // with a `ResolvedAsrSpec` that carries its own VAD parameters (TASK-861), so
-  // a control-plane value could only ever have moved a bootstrap default the
-  // spec then overrode. `modelPath` and `speechPadMs` stay — nothing in the
-  // spec supplies those.
-  'stt.vad.speechPadMs': {
-    dataType: 'number',
-    default: 200,
-    label: 'VAD segment padding (ms)',
-    description: 'Padding applied to both ends of a detected segment (200ms per production ASR guidance).',
-    category: 'STT Audio',
-  },
+  // NOTHING is left here. `stt.vad.threshold`, `stt.vad.minSpeechDurationMs` and
+  // `stt.vad.minSilenceDurationMs` went in TASK-872 (shadowed by the spec's own VAD
+  // parameters), and TASK-880 took the last two:
+  //
+  //  • `stt.vad.modelPath` named the ONNX weights. The weights are an `AiModel`
+  //    (`VOICE_ACTIVITY_DETECTION`) row whose `localPath` ALREADY travels on every
+  //    session as `ResolvedAsrSpec.models.vad.localPath` — the platform key was a
+  //    second way to say the same thing, and the only one the loader read.
+  //  • `stt.vad.speechPadMs` is segment padding: a tuning choice beside the three
+  //    knobs above it, all of which the agent has owned since TASK-861. It is
+  //    `audioFrontEnd.vad.speechPadMs` now.
 
   // ── diarization / voice profiles ─────────────────────────────────────────
   'stt.diarization.hfModelId': {

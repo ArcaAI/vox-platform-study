@@ -118,6 +118,8 @@ describe('STT_RUNTIME_SETTINGS', () => {
    */
   const MOVED_AWAY_TASK_880: ReadonlyArray<[key: string, newHome: string]> = [
     ['stt.whisperCpp.consultationPromptEnabled', "the agent's instruction.initialPrompt"],
+    ['stt.vad.modelPath', 'AiModel(VOICE_ACTIVITY_DETECTION).localPath, already on the spec'],
+    ['stt.vad.speechPadMs', 'agent audioFrontEnd.vad.speechPadMs'],
     ['stt.whisperCpp.maxAudioSeconds', 'AiModel._metadata.asr.maxDecodeWindowSec'],
     ['stt.streaming.partialWindowS', 'AiModel._metadata.asr.partialWindowSec'],
   ];

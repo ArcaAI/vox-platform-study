@@ -159,7 +159,7 @@ class TestSettings:
             settings = Settings(_env_file=None)
             assert settings.worker_threads == 4
             assert settings.whisper_cpp_num_threads == 8
-            assert settings.vad_speech_pad_ms == 200
+            assert settings.vad_threshold == 0.5
             assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
 
     def test_env_override(self):
@@ -375,11 +375,9 @@ class TestSettings:
         """
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings(_env_file=None)
-            assert settings.vad_model_path is None
             assert settings.vad_threshold == 0.5
             assert settings.vad_min_speech_duration_ms == 100
             assert settings.vad_min_silence_duration_ms == 500
-            assert settings.vad_speech_pad_ms == 200
 
     def test_vad_is_control_plane_owned_not_env_owned(self):
         """the five VAD knobs no longer have an env path.
@@ -397,43 +395,28 @@ class TestSettings:
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
-            assert settings.vad_model_path is None
             assert settings.vad_threshold == 0.5
             assert settings.vad_min_speech_duration_ms == 100
             assert settings.vad_min_silence_duration_ms == 500
-            assert settings.vad_speech_pad_ms == 200
+            # TASK-880 — `VAD_MODEL_PATH` and `VAD_SPEECH_PAD_MS` cannot land anywhere
+            # at all now: their fields are gone, not merely un-settable from env.
+            assert "vad_model_path" not in Settings.model_fields
+            assert "vad_speech_pad_ms" not in Settings.model_fields
 
-    def test_vad_is_settable_from_the_control_plane(self):
-        from stt.core.control_plane import apply_control_plane
+    def test_vad_is_no_longer_settable_from_the_control_plane(self):
+        """TASK-880 — the VAD family has NO control-plane keys left.
 
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
-            apply_control_plane(
-                settings,
-                {
-                    "settings": {
-                        "stt.vad.modelPath": {
-                            "value": "/custom/vad.onnx",
-                            "dataType": "string",
-                            "source": "db",
-                        },
-                        "stt.vad.speechPadMs": {
-                            "value": 250,
-                            "dataType": "number",
-                            "source": "db",
-                        },
-                    }
-                },
-            )
-            assert settings.vad_model_path == "/custom/vad.onnx"
-            assert settings.vad_speech_pad_ms == 250
-            # `stt.vad.threshold` / `minSpeechDurationMs` / `minSilenceDurationMs`
-            # were exercised here until TASK-872 removed them: the live path
-            # takes its VAD parameters from `ResolvedAsrSpec`, so those three
-            # keys could only move a bootstrap default the spec then overrode.
-            # The fields survive as that default and are simply no longer
-            # settable from the control plane.
-            assert settings.vad_threshold == 0.5
+        `stt.vad.threshold` / `minSpeechDurationMs` / `minSilenceDurationMs` went in
+        TASK-872: the live path takes its VAD parameters from `ResolvedAsrSpec`, so
+        those three could only move a bootstrap default the spec then overrode (the
+        FIELDS survive as that default). TASK-880 took the last two outright —
+        `stt.vad.modelPath`, because the weights are an `AiModel` row whose `localPath`
+        already travels on the spec, and `stt.vad.speechPadMs`, because padding is an
+        agent tuning knob beside the three above it.
+        """
+        from stt.core.control_plane import CONTROL_PLANE_KEYS
+
+        assert [k for k in CONTROL_PLANE_KEYS.values() if k.startswith("stt.vad.")] == []
 
     def test_diarization_defaults(self):
         """Test Pyannote diarization default configuration."""

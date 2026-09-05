@@ -665,7 +665,7 @@
     }
   },
   "agentOwnedStreamingBehaviour": {
-    "$comment": "TASK-877 — the fields the runtime used to DROP. A tenant agent that asks for semantic endpointing, tunes it, binds an `endpointing` (end-of-utterance) model, sets its own partial cadence and utterance cap, turns the engine's own `vadFilter` on, and sets per-agent batch chunking. Every one of these replaced a platform key that TASK-877 deleted (`stt.streaming.partialIntervalS`, `stt.semanticEndpoint.*`). The three additive wire fields — `decoding.{chunkLengthSec,strideLengthSec}` and `streaming.semantic` — are OPTIONAL: the other two cases omit them entirely, which is what keeps the two halves deployable in either order against `extra='forbid'`.",
+    "$comment": "TASK-877 — the fields the runtime used to DROP. A tenant agent that asks for semantic endpointing, tunes it, binds an `endpointing` (end-of-utterance) model, sets its own partial cadence and utterance cap, turns the engine's own `vadFilter` on, and sets per-agent batch chunking. Every one of these replaced a platform key that TASK-877 deleted (`stt.streaming.partialIntervalS`, `stt.semanticEndpoint.*`). The three additive wire fields — `decoding.{chunkLengthSec,strideLengthSec}` and `streaming.semantic` — are OPTIONAL: the other two cases omit them entirely, which is what keeps the two halves deployable in either order against `extra='forbid'`. TASK-880 adds `audioFrontEnd.vad.speechPadMs`, which replaces the platform key `stt.vad.speechPadMs` and follows the same omit-when-absent rule — the other two cases set no padding, so the key is absent from their `audioFrontEnd.vad` blocks entirely.",
     "input": {
       "agent": {
         "agentId": "0199a861-0000-7000-8000-000000000021",
@@ -688,6 +688,11 @@
           "instruction": null,
           "resolvedPrompt": null,
           "parameters": {
+            "audioFrontEnd": {
+              "vad": {
+                "speechPadMs": 320
+              }
+            },
             "decoding": {
               "languageMode": "en",
               "wordTimestamps": true,
@@ -797,7 +802,8 @@
           "enabled": true,
           "threshold": null,
           "minSpeechMs": null,
-          "minSilenceMs": null
+          "minSilenceMs": null,
+          "speechPadMs": 320
         },
         "denoise": {
           "enabled": false,
