@@ -35900,7 +35900,7 @@
             "description": "Updated department prompt config"
           },
           "403": {
-            "description": "Forbidden - caller lacks manage Department ability"
+            "description": "Forbidden - caller lacks the update Department ability"
           },
           "404": {
             "description": "Department not found (or cross-tenant)"

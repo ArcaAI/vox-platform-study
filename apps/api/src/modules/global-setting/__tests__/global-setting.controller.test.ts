@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
+import { REQUIRED_PERMISSIONS_KEY, SERVICE_ACCOUNT_FORBIDDEN, SERVICE_ACCOUNT_REQUIRED_SCOPES } from '@arcaai/applications';
 import { GlobalSettingController } from '../global-setting.controller';
 
 // The real GlobalSettingDtoMapper.ToResponse (AutoClassMapper) runs against
@@ -200,6 +200,25 @@ describe('GlobalSettingController', () => {
       const classMeta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, GlobalSettingController) as
         Array<{ action: string; subject: string }> | undefined;
       expect(classMeta).toEqual([{ action: 'manage', subject: 'GlobalSetting' }]);
+    });
+
+    // TASK-873 — the machine class is closed on reveal AND rotate, overriding the
+    // class-level svc scope. Not a policy preference: both service methods
+    // re-authenticate the CALLER'S OWN account password against its bcrypt hash
+    // after asserting `isSuperAdmin`, and a service account has neither a user
+    // row nor a password. Without the decorator the route advertises itself as
+    // machine-reachable (class scope) and then refuses every machine token at the
+    // CASL gate, because `manage:all` — the only ability that satisfies it — is
+    // the wildcard no scope may imply.
+    it.each(['reveal', 'rotate'] as const)('%s is machine-CLOSED via @ForbidServiceAccount(), overriding the class svc scope', (method) => {
+      const handler = GlobalSettingController.prototype[method];
+      expect(Reflect.getMetadata(SERVICE_ACCOUNT_FORBIDDEN, handler)).toBe(true);
+
+      // The class still declares the scope for every OTHER route on this
+      // controller — the method-level forbid is an override, not a conflict
+      // (the shape boot audits G and H explicitly permit).
+      expect(Reflect.getMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, GlobalSettingController)).toEqual(['svc:admin:settings:manage']);
+      expect(Reflect.getMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, handler)).toBeUndefined();
     });
   });
 });

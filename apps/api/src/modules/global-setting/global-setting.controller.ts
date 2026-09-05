@@ -27,6 +27,7 @@ import {
   ExpectedVersion,
   RequiresIfMatch,
   ForbidApiKey,
+  ForbidServiceAccount,
   RequiredSvcScopes,
 } from '../../decorators';
 
@@ -203,6 +204,20 @@ export class GlobalSettingController {
   @Post(':id/reveal')
   @HttpCode(200)
   @Authorize(['manage', 'all'])
+  // AUTH-NOTE (TASK-873): machine-CLOSED, overriding the class-level
+  // `@RequiredSvcScopes('svc:admin:settings:manage')`. This is not a policy
+  // choice — it is what the route already IS. `revealSecret` demands
+  // `isSuperAdmin(this.requestUser)` and then re-authenticates the caller's own
+  // account password against its bcrypt hash; a service account has no user row
+  // and no password, so no machine identity can ever satisfy it. Declaring the
+  // closure makes the refusal a first-checked, explained 403 (the guard resolves
+  // FORBIDDEN before the scope gate) instead of a scope-gate pass followed by an
+  // unexplained CASL denial. The alternative — teaching
+  // `admin:settings:manage` to imply `manage:all` — was rejected outright:
+  // `manage:all` is the CASL wildcard and would make one admin scope a
+  // platform-wide grant. A method-level forbid over a class-level scope is the
+  // sanctioned override shape (boot audits G and H both permit it).
+  @ForbidServiceAccount()
   @ApiOperation({
     summary: 'Reveal a secret setting (super-admin, step-up re-auth, audited)',
     description:
@@ -248,6 +263,10 @@ export class GlobalSettingController {
   @Post(':id/rotate')
   @HttpCode(200)
   @Authorize(['manage', 'all'])
+  // AUTH-NOTE (TASK-873): machine-CLOSED for the same reason as `reveal` above —
+  // `rotateSecret` runs the identical super-admin + step-up password check, which
+  // no machine identity can satisfy.
+  @ForbidServiceAccount()
   @RequiresIfMatch()
   @ApiOperation({
     summary: 'Rotate a secret setting (super-admin, step-up re-auth, OCC, audited)',
