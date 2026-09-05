@@ -268,6 +268,80 @@ services:
     networks:
       - hope-test-network
 
+  # ---------------------------------------------------------------------------
+  # Temporal (TASK-869) — the test stack had none, so the harness durable
+  # workflows could not run and `task-704-generator-seam` dispatched jobs that
+  # sat at PENDING forever. The suite read that as an env-gated skip; it was a
+  # missing service.
+  #
+  # Schemas first (admin-tools runs to completion), then the server. Both point
+  # at hope-postgres-test and use DEDICATED databases, so the app's `hope_test`
+  # is never touched. Ports are the test convention: dev + 100.
+  # ---------------------------------------------------------------------------
+  temporal-admin-tools-test:
+    container_name: hope-temporal-admin-tools-test
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.31.2}
+    networks:
+      - hope-test-network
+    restart: on-failure:6
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=test
+      - POSTGRES_PWD=test
+      - POSTGRES_SEEDS=postgres-test
+      - SQL_PASSWORD=test
+      - DBNAME=temporal_test
+      - VISIBILITY_DBNAME=temporal_visibility_test
+    volumes:
+      - ../infrastructure/docker/configs/temporal/scripts:/scripts:ro
+    entrypoint: ['/bin/sh']
+    command: ['/scripts/setup-postgres.sh']
+
+  temporal-test:
+    container_name: hope-temporal-test
+    image: temporalio/server:${TEMPORAL_VERSION:-1.31.2}
+    networks:
+      - hope-test-network
+    restart: unless-stopped
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      temporal-admin-tools-test:
+        condition: service_completed_successfully
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=test
+      - POSTGRES_PWD=test
+      - POSTGRES_SEEDS=postgres-test
+      - BIND_ON_IP=0.0.0.0
+      - DBNAME=temporal_test
+      - VISIBILITY_DBNAME=temporal_visibility_test
+      # The test Postgres runs max_connections=100 shared with the app and the
+      # suite's own pools; keep Temporal well under its share.
+      - SQL_MAX_CONNS=8
+      - SQL_MAX_IDLE_CONNS=8
+      - SQL_VIS_MAX_CONNS=4
+      - SQL_VIS_MAX_IDLE_CONNS=4
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - '7333:7233'
+    volumes:
+      - ../infrastructure/docker/configs/temporal/development-sql.yaml:/etc/temporal/config/dynamicconfig/development-sql.yaml:ro
+    healthcheck:
+      test: ['CMD', 'nc', '-z', 'localhost', '7233']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
 networks:
   hope-test-network:
     driver: bridge

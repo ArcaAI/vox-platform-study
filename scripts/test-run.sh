@@ -99,11 +99,16 @@ case "$SUITE" in
         DEFAULT_SERVICES=() ;;
     e2e)
         SUITE_CMD=(pnpm test:e2e)
-        # Full stack minus the Temporal worker: the isolated test infra
-        # (tests/docker-compose.test.yml) has no Temporal, so the worker cannot
-        # connect. The harness FastAPI app itself boots fine without it.
+        # The FULL stack, worker included (TASK-869). The old comment here said
+        # the isolated test infra has no Temporal so the worker could not
+        # connect — true until this ticket added `temporal-test` (port 7333,
+        # dedicated databases) to tests/docker-compose.test.yml. Without the
+        # worker the harness dispatches durable workflows that nothing executes:
+        # `task-704-generator-seam` created a job and watched it sit at PENDING
+        # until it timed out, which read as a missing env flag rather than a
+        # missing service.
         # Override ad-hoc by passing services, e.g. `test:e2e:managed -- api text`.
-        DEFAULT_SERVICES=(api stt text guardrail nlp harness) ;;
+        DEFAULT_SERVICES=(api stt text guardrail nlp harness worker) ;;
     py)
         SUITE_CMD=(pnpm test:py)
         DEFAULT_SERVICES=() ;;
