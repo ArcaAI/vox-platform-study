@@ -26,10 +26,9 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
   imports: [
     VisitTypeServiceModule,
     CoreDatabaseModule,
-    // Supplies ConfigService for the
-    // warm-start env FALLBACK (HARNESS_WARM_START_ENABLED). The authority is now
-    // HarnessPolicy.warmStartEnabled via HarnessPolicyServiceModule below; both
-    // HarnessInternalService and the PromptAssemblyService provided here resolve it.
+    // ConfigService for the providers below that still read bootstrap env. The warm-start
+    // switch is NOT one of them any more: `HarnessPolicy.warmStartEnabled` (via
+    // HarnessPolicyServiceModule below) is its only source since TASK-882.
     ConfigModule,
     PromptResolutionServiceModule,
     HarnessAuditServiceModule,

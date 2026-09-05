@@ -41,7 +41,6 @@ function buildService(withConnections = true) {
     { run: vi.fn(async (cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() } as never, // cls
     undefined as never, // jobService
     undefined as never, // highlightRepository
-    { get: vi.fn() } as never, // configService
     undefined as never, // assuranceService
     undefined as never, // configResolver
     undefined as never, // contextItemVersionRepository
@@ -84,7 +83,6 @@ function buildServiceWithCls(cls: { run: unknown; set: unknown; get: unknown }) 
     cls as never,
     undefined as never,
     undefined as never,
-    { get: vi.fn() } as never,
     undefined as never,
     undefined as never,
     undefined as never,

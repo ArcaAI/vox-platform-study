@@ -96,14 +96,10 @@ const FLAGS: FlagSpec[] = [
   // enforcement off on every laptop, reversing the 2026-08-22 owner decision
   // that local dev runs with enforcement ON. A stale declaration that beats the
   // code it documents is worse than no declaration.
-  {
-    key: 'harness.warmStartEnabled',
-    label: 'Harness warm start',
-    description:
-      'Env FALLBACK for harness warm-start; `HarnessInternalService` treats the DB/policy value as the authority and consults this only when that is absent. Being a fallback for a policy value is itself an argument for moving it out of env.',
-    default: false,
-    killSwitch: true,
-  },
+  // `harness.warmStartEnabled`, `harness.nerPriorsEnabled` and `harness.atomicFactEnabled` were
+  // here as env FALLBACKS for three SUPER_ADMIN_ONLY `HarnessPolicy` columns of the same name.
+  // TASK-882 removed them: the column is the one source, a null column is the code default
+  // (OFF), and no reader — TS or Python — consults an env variable for them any more.
   {
     key: 'liveDoc.groundedness.enabled',
     label: 'Live-doc groundedness gate',
@@ -131,21 +127,6 @@ const FLAGS: FlagSpec[] = [
   // alongside the rest of TEXT's moderation posture, so turning moderation on
   // for a clinical deployment takes effect on the next request rather than the
   // next restart.
-  {
-    key: 'harness.nerPriorsEnabled',
-    label: 'Harness NER priors reuse',
-    description:
-      'Gates reuse of already-persisted CODED NER priors inside harness activities. A workflow-policy value may override it per run; this is the fallback when the policy says nothing.',
-    default: false,
-    killSwitch: true,
-  },
-  {
-    key: 'harness.atomicFactEnabled',
-    label: 'Harness atomic-fact sensors',
-    description: 'Gates the `run_inferential_sensors` atomic-fact path. Same policy-overrides-env shape as the NER-priors flag.',
-    default: false,
-    killSwitch: true,
-  },
   // `semanticEndpoint.enabled` (bare `SEMANTIC_ENDPOINT_ENABLED`) was here — the
   // eighth duplicate of the `stt.semanticEndpoint.*` family. TASK-877 deleted its
   // only reader, the `Settings.semantic_endpoint_enabled` field, so nothing reads

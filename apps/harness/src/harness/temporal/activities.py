@@ -1057,7 +1057,7 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
     """Run medical NER over ``text`` via the NLP service.
 
     NER-priors reuse: on the TRANSCRIPT pass (``reuse_priors``) and
-    when ``HARNESS_NER_PRIORS_ENABLED`` is on, first try to reuse already-persisted CODED
+    when the effective ``HarnessPolicy.nerPriorsEnabled`` is on, first try to reuse already-persisted CODED
     ``NamedEntity`` rows as the transcript entities instead of re-running the
     cold NLP extraction — killing the redundant second NER pass. Falls back to the cold
     NLP extraction when the flag is off, the priors are absent/unreachable, or none carry
@@ -1068,11 +1068,9 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
     settings = get_settings()
     started = _now()
     batch = _TrajectoryBatch(settings, payload.trajectory)
-    # the policy override (when non-null) wins over the env
-    # kill-switch; None falls through to ``HARNESS_NER_PRIORS_ENABLED``.
-    ner_priors_enabled = _resolve_flag(
-        payload.ner_priors_enabled, env_default=settings.ner_priors_enabled
-    )
+    # TASK-882: the ``HarnessPolicy.nerPriorsEnabled`` column threaded onto the input is the
+    # ONLY source; a null column is the code default (OFF). No env fallback.
+    ner_priors_enabled = payload.ner_priors_enabled is True
     if payload.reuse_priors and ner_priors_enabled:
         priors = await _load_coded_priors(settings, payload)
         if priors:
@@ -2501,9 +2499,9 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         # kill-switch (default OFF). It uses a SELF-HOSTED NLI (NOT the judge), so it adds
         # no cloud egress; a degraded backend degrades (never auto-PASS). Read at runtime
         # here — not the workflow — so it adds no new workflow command (replay-safe).
-        # the policy override (when non-null) wins over the env
-        # kill-switch; None falls through to ``HARNESS_ATOMIC_FACT_ENABLED``.
-        if _resolve_flag(payload.atomic_fact_enabled, env_default=settings.atomic_fact_enabled):
+        # TASK-882: the ``HarnessPolicy.atomicFactEnabled`` column threaded onto the input is
+        # the ONLY source; a null column is the code default (OFF). No env fallback.
+        if payload.atomic_fact_enabled is True:
             tasks.append(_run_atomic_fact_sensor(settings, ctx, thresholds.atomic_fact_threshold))
         results = list(await asyncio.gather(*tasks))
         return await _emit(_assemble_inferential_output(results, verdict_cache))

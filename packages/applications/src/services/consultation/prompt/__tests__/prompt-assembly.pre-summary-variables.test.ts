@@ -35,12 +35,10 @@ const mockDepartmentRepository = { findById: vi.fn() };
 
 async function getService(cls?: { get: (key: string) => unknown }) {
   const { PromptAssemblyService } = await import('../prompt-assembly.service');
-  const configService = { get: vi.fn(() => undefined) };
   return new PromptAssemblyService(
     mockPromptResolutionService as any,
     mockPromptTemplateRepository as any,
     mockDnaWritingStyleRepository as any,
-    configService as any,
     undefined, // harnessPolicyService
     cls as any,
     undefined, // exemplarRetriever
