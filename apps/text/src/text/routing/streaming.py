@@ -341,7 +341,7 @@ async def run_generation_producer(
                 completion=assemble_completion("".join(content_parts), "".join(reasoning_parts)),
                 source_context=source_context_of(request_body),
                 tenant_id=tenant_id,
-                tenant_policy=getattr(request_body, "guardrail_policy", None),
+                tenant_policy=request_body.guardrail_policy,
                 app_state=app_state,
                 where="streaming.run_generation_producer",
             )

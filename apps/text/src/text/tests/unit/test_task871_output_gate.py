@@ -468,6 +468,36 @@ class TestNonStreamingPath:
         assert kwargs["tenant_id"] == "tenant-42"
 
     @pytest.mark.asyncio
+    async def test_provider_permit_is_released_before_the_output_gate(
+        self, mock_registry, mock_task_manager
+    ) -> None:
+        """The gate is a network call with guardrail's retry ceiling; holding the
+        provider's concurrency slot across it would let a guardrail outage starve
+        every other request for that provider."""
+        from text.services.resizable_semaphore import ResizableSemaphore
+
+        semaphore = ResizableSemaphore(1)
+        seen_in_flight: list[int] = []
+
+        async def _screen(**_kwargs: Any) -> dict[str, Any]:
+            seen_in_flight.append(semaphore.in_flight)
+            return _allow()
+
+        guardrail = _guardrail()
+        guardrail.screen_output = AsyncMock(side_effect=_screen)
+        app = _make_app(mock_registry, mock_task_manager, guardrail)
+        app.state.provider_semaphores = {_PROVIDER: semaphore}
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                "/api/v1/generate", json={"prompt": "note", "model": "m", "provider": _PROVIDER}
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert seen_in_flight == [0]
+        assert semaphore.in_flight == 0
+
+    @pytest.mark.asyncio
     async def test_unwired_client_with_posture_off_is_the_dev_bypass(
         self, client_factory, mock_provider
     ) -> None:
