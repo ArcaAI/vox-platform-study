@@ -149,15 +149,28 @@ const KNOBS: Record<string, SttKnob> = {
   //    `audioFrontEnd.vad.speechPadMs` now.
 
   // ── diarization / voice profiles ─────────────────────────────────────────
+  // DELIBERATELY KEPT, and the one `stt.*` key TASK-880 examined and did not move
+  // (owner default assumption, option 1). Every other model id in this service became
+  // an `AiModel` the agent binds; this one is different because it does not merely
+  // SELECT a model — it declares the vector SPACE that already-enrolled
+  // `UserVoiceProfile` rows live in. `UserVoiceProfile.embedding` is `vector(256)`,
+  // written by this 256-d model; a per-agent choice of a 192-d model would not be a
+  // different preference, it would be data the column cannot hold. So the platform
+  // declares the space, an agent may pick only within it, and
+  // `buildResolvedAsrSpec` refuses a declared mismatch at resolve time
+  // (`ASR_AGENT_EMBEDDING_SPACE_MISMATCH`, 409) rather than shipping a spec whose every
+  // enrolment fails. Changing this value is a re-enrolment exercise, not a config edit.
   'stt.diarization.hfModelId': {
     dataType: 'string',
     default: 'pyannote/wespeaker-voxceleb-resnet34-LM',
-    label: 'Speaker-embedding model',
+    label: 'Speaker-embedding space (platform)',
     description:
-      'HuggingFace model id for speaker-embedding extraction. Changing it changes the embedding ' +
-      'SPACE, so enrolled voice profiles do not transfer — a swap is a re-enrolment exercise, and ' +
-      'a model whose output dimension differs from the deployed UserVoiceProfile.embedding column ' +
-      'will fail every enrollment.',
+      'HuggingFace model id for speaker-embedding extraction — the embedding SPACE the platform ' +
+      'enrolls voice profiles in, not a per-agent choice. Changing it invalidates every enrolled ' +
+      'UserVoiceProfile: the vectors do not transfer, and a model whose output dimension differs ' +
+      'from the deployed UserVoiceProfile.embedding column (vector(256)) fails every enrollment. ' +
+      'An agent may bind a SPEAKER_EMBEDDING model only within this space; one that declares a ' +
+      'different width is refused when its ASR spec is resolved. Treat a change as a migration.',
     category: 'STT Audio',
   },
   'stt.diarization.device': {

@@ -188,3 +188,58 @@ describe('buildResolvedAsrSpec — AiModel._metadata.asr rides each model', () =
     expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).models.asr).not.toHaveProperty('metadata');
   });
 });
+
+/**
+ * TASK-880 — the diarization guard.
+ *
+ * `stt.diarization.hfModelId` is deliberately NOT moved onto the agent (owner default
+ * assumption, option 1): it declares the embedding SPACE that enrolled
+ * `UserVoiceProfile` rows live in — `vector(256)`, written by the 256-d wespeaker
+ * model. TASK-877 found the other half of this: the runtime dropped an agent's
+ * `models.embedding` entirely, so nobody had noticed that letting it through would feed
+ * 192-d ECAPA vectors into a `vector(256)` column and fail every enrollment.
+ *
+ * With the runtime half fixed, the producer must refuse the mismatch rather than ship a
+ * spec that cannot enroll.
+ */
+describe('buildResolvedAsrSpec — the agent may not re-space diarization', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  const withEmbeddingDimension = (dimension: number | undefined): ResolvedAgent => ({
+    ...base,
+    models: base.models.map((m) => (m.role === 'embedding' ? { ...m, metaData: dimension === undefined ? undefined : { embedding: { dimension } } } : m)),
+  });
+
+  it('refuses an embedding model whose declared width the voice-profile column cannot hold', () => {
+    let thrown: unknown;
+    try {
+      buildResolvedAsrSpec({ agent: withEmbeddingDimension(192), fallbackAgent: null });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(AsrSpecBuildError);
+    expect((thrown as AsrSpecBuildError).code).toBe('ASR_AGENT_EMBEDDING_SPACE_MISMATCH');
+    // The message must name both numbers and the consequence — an operator reading a
+    // 409 needs to know this is an enrolment problem, not a missing model.
+    expect((thrown as AsrSpecBuildError).message).toContain('192');
+    expect((thrown as AsrSpecBuildError).message).toContain('256');
+    expect((thrown as AsrSpecBuildError).message).toMatch(/enrol/i);
+  });
+
+  it('accepts the platform embedding space', () => {
+    expect(() => buildResolvedAsrSpec({ agent: withEmbeddingDimension(256), fallbackAgent: null })).not.toThrow();
+  });
+
+  it('cannot judge a row that declares no width, so it does not refuse one', () => {
+    // Every SYSTEM catalogue row declares its dimension (seeded in `ai-models/audio.ts`),
+    // so the only undeclared rows are tenant-authored. Refusing on absence would make an
+    // agent unrunnable over a fact nobody stated; the enrolment itself still rejects a
+    // wrong-width vector at the column.
+    expect(() => buildResolvedAsrSpec({ agent: withEmbeddingDimension(undefined), fallbackAgent: null })).not.toThrow();
+  });
+
+  it('checks the FALLBACK chain too — a fallback agent may not re-space it either', () => {
+    const fallbackAgent = withEmbeddingDimension(192);
+    expect(() => buildResolvedAsrSpec({ agent: base, fallbackAgent })).toThrow(AsrSpecBuildError);
+  });
+});

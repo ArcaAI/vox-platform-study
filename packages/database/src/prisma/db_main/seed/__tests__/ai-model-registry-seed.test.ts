@@ -32,6 +32,7 @@ import {
   seedAiModels,
   shouldRetireAiModelSlug,
 } from '../06-ai-models';
+import { AiModelFormat, ModelTaskType } from '../ai-models/shared';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../00-constants';
 
 // =============================================================================
@@ -221,6 +222,35 @@ describe('the platform model catalogue (35 SYSTEM rows)', () => {
     expect(bySlug('kokoro')?.metaData?.voices?.length).toBeGreaterThan(0);
     expect(bySlug('azure-neural-voices')?.metaData?.voices?.length).toBe(4);
     expect(bySlug('sarvam-bulbul')?.metaData?.voices?.length).toBe(2);
+  });
+
+  it('gives every whisper.cpp row the decode geometry that used to be a platform key (TASK-880)', () => {
+    // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` applied ONE
+    // number to every engine on the box. They are model facts — the ml-en fine-tune is
+    // accurate to ~6-7s, the CT2 turbo row is not — so they ride the row and travel on
+    // `ResolvedAsrSpec.models.asr.metadata`. Every WHISPER_CPP row must declare them, or
+    // that engine silently loses its split guard when the key goes.
+    const whisperCpp = catalog.filter((m) => m.format === AiModelFormat.WHISPER_CPP);
+    expect(whisperCpp.length).toBeGreaterThan(0);
+    whisperCpp.forEach((m) => {
+      expect(m.metaData?.asr?.maxDecodeWindowSec, m.slug).toBe(7);
+      expect(m.metaData?.asr?.partialWindowSec, m.slug).toBe(6);
+    });
+  });
+
+  it('declares the embedding WIDTH on every speaker-embedding row (TASK-880)', () => {
+    // Load-bearing, not documentation: `buildResolvedAsrSpec` refuses an agent whose
+    // `models.embedding` declares a width the deployed `UserVoiceProfile.embedding`
+    // column (`vector(256)`) cannot hold, rather than shipping a spec whose every
+    // enrollment fails. An undeclared row cannot be judged, so every catalogue row
+    // declares one.
+    const embedders = catalog.filter((m) => m.taskType === ModelTaskType.SPEAKER_EMBEDDING);
+    expect(embedders.map((m) => m.slug).sort()).toEqual(['ecapa-tdnn-voxceleb', 'wespeaker-voxceleb-resnet34']);
+    embedders.forEach((m) => expect(typeof m.metaData?.embedding?.dimension, m.slug).toBe('number'));
+    // The platform embedding space `stt.diarization.hfModelId` names, and the one the
+    // enrollment seed writes with, is the 256-d wespeaker row.
+    expect(bySlug('wespeaker-voxceleb-resnet34')?.metaData?.embedding?.dimension).toBe(256);
+    expect(bySlug('ecapa-tdnn-voxceleb')?.metaData?.embedding?.dimension).toBe(192);
   });
 });
 
