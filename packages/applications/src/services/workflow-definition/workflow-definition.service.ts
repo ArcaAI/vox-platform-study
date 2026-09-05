@@ -5,6 +5,8 @@ import {
   AgentRepository,
   AiModelRepository,
   CoreDatabaseService,
+  DocumentTemplateRepository,
+  McpServerRepository,
   PromptTemplateRepository,
   PromptVersionFactory,
   PromptVersionRepository,
@@ -48,6 +50,7 @@ import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import {
   CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
+  ImportWorkflowDefinitionRequest,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
   PaginatedWorkflowDefinitionResponse,
@@ -55,17 +58,47 @@ import {
   SandboxCompileResult,
   UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
+  WorkflowDefinitionBundle,
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
 } from './dto';
 import { collectGenerationBindings, type NodeGenerationBindingRef } from './node-generation-binding';
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
+import { WORKFLOW_DEFINITION_BUNDLE_KIND, WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION, type PortableSourceTenantKind } from './portable-bundle.contract';
+import {
+  collectPortableReferences,
+  collectRowReferences,
+  referenceMapKey,
+  toPortableGraph,
+  toTenantGraph,
+  type PortableReference,
+  type RowReference,
+} from './portable-graph';
 import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
 import type { IAiRoutingPolicyService as IAiRoutingPolicyServicePort } from '../ai-routing-policy/IAiRoutingPolicyService';
 import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
 import { WorkflowDefinitionDtoMapper } from './workflow-definition.dto.mapper';
 
 const WORKFLOW_DEFINITION_FILTER_MODEL = 'WorkflowDefinition';
+
+/**
+ * TASK-885 — the Global build tenant.
+ *
+ * `50000000-…` is a CUSTOMER TENANT that the platform admin uses as a build-and-test playground
+ * (`00-project-context.md` §"The two reserved tenants are NOT two config tiers"). It is NEVER a
+ * configuration tier and must never appear in a runtime cascade; it appears here only as the
+ * declared SOURCE of the promote-into-SYSTEM path the owner named. Declared locally, following
+ * `ServiceAccountService`'s `GLOBAL_PLAYGROUND_TENANT_ID` — there is no shared constant, and
+ * exporting one would invite exactly the cascade use this comment forbids.
+ */
+const GLOBAL_PLAYGROUND_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+
+/** Provenance for an export: which TIER authored it. A tenant id never travels in a bundle. */
+function tenantKindOf(tenantId: string): PortableSourceTenantKind {
+  if (tenantId === SYSTEM_TENANT_ID) return 'system';
+  if (tenantId === GLOBAL_PLAYGROUND_TENANT_ID) return 'global';
+  return 'tenant';
+}
 
 /** `WorkflowFinding.ruleId` `validate()` stamps when `workflowGraphProblems` short-circuits the
  *  rule catalogue (`validate().ts`) — the ONLY finding source that is always publish()/write-blocking. */
@@ -207,6 +240,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // every dependency above (positional unit fixtures); absent ⇒ the set is UNKNOWN (WARNING).
     @Optional() @Inject(AgentRepository) private readonly agentRepository?: AgentRepository,
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
+    // TASK-885 — the two remaining catalogues a node config can reference by ROW ID
+    // (`documentTemplateId`, `tools[].mcpServerId`). `@Optional()` + trailing for the same reason
+    // as every dependency above (positional unit fixtures); production DI supplies both via
+    // `CoreDatabaseModule`. Absent ⇒ that reference kind cannot be resolved, which surfaces as a
+    // refused export or a named 409 on import — never as a silently dropped binding.
+    @Optional() @Inject(DocumentTemplateRepository) private readonly documentTemplateRepository?: DocumentTemplateRepository,
+    @Optional() @Inject(McpServerRepository) private readonly mcpServerRepository?: McpServerRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -419,6 +459,274 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     });
 
     return WorkflowDefinitionDtoMapper.toResponse(saved);
+  }
+
+  // ============================================================
+  // TASK-885 (owner #4) — import / export
+  // ============================================================
+
+  /**
+   * Export ONE version as a portable bundle. VALUES ONLY — see
+   * `WorkflowDefinitionBundlePayload` for the full "what never travels" table and
+   * `portable-graph.ts` for how each row id becomes a portable key.
+   *
+   * A reference the graph makes that no longer RESOLVES is a 400, not a silent omission. The
+   * alternative is an export that looks complete and imports as a workflow missing a prompt —
+   * discovered later, by someone who did not author it. This is the same "fail LOUDLY rather
+   * than strip or copy" call `assertNoUnresolvableCatalogBindings` makes on the clone path.
+   */
+  async exportDefinition(id: string): Promise<WorkflowDefinitionBundle> {
+    const entity = await this.workflowDefinitionRepository.findById(id);
+    assertEqualTenants(entity, { tenantId: this.tenantId });
+
+    const graph = this.parseGraphOrThrow(entity.graph as unknown as Record<string, unknown>);
+    const keyById = await this.resolveRowReferenceKeys(collectRowReferences(graph), entity.tenantId);
+    const portable = toPortableGraph(graph, keyById);
+
+    if (portable.unresolved.length > 0) {
+      throw new BadRequestException({
+        message:
+          'This workflow references rows that no longer resolve, so it cannot be exported without silently losing them. ' +
+          'Repair the bindings on the named nodes and export again.',
+        code: 'WORKFLOW_EXPORT_UNRESOLVED_REFERENCES',
+        unresolvedReferences: portable.unresolved.map((reference) => ({ nodeId: reference.nodeId, kind: reference.kind })),
+      });
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: entity.id,
+      data: { action: 'export', slug: entity.slug, versionNumber: entity.versionNumber, references: portable.references.length },
+    });
+
+    return {
+      kind: WORKFLOW_DEFINITION_BUNDLE_KIND,
+      schemaVersion: WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      source: { tenantKind: tenantKindOf(entity.tenantId), slug: entity.slug, versionNumber: entity.versionNumber },
+      payload: {
+        name: entity.name,
+        description: entity.description ?? null,
+        paletteKey: entity.paletteKey,
+        graph: portable.graph as unknown as Record<string, unknown>,
+        references: portable.references,
+      },
+    };
+  }
+
+  /**
+   * Import a bundle into the caller's tenant as a NEW DRAFT lineage.
+   *
+   * Three properties are the whole contract, and each one is a decision:
+   *
+   * 1. **Resolution is against the CALLER's visible catalogue**, never the bundle's. A bundle
+   *    carries keys precisely so that the importing tenant's own prompt template of that name is
+   *    what the node ends up bound to.
+   * 2. **Unresolvable references refuse the WHOLE bundle**, naming every one, with a 409. Not a
+   *    partial import (a workflow with a missing binding is a workflow that fails at run time,
+   *    far from the person who could fix it) and not a silent drop. This deliberately differs
+   *    from `IAiRoutingPolicyService.importConfigurations`, which SKIPS an unresolvable model:
+   *    a routing artifact is a set of independent rows, while a graph is one artifact whose
+   *    parts are not independently useful.
+   * 3. **The report is recomputed and the row lands DRAFT.** Every publish artifact stays at its
+   *    factory default, exactly as on the clone path — an import has been reviewed by nobody.
+   */
+  async importDefinition(dto: ImportWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new ArgumentInvalidException('Tenant context required');
+    }
+
+    const { bundle } = dto;
+    if (bundle?.kind !== WORKFLOW_DEFINITION_BUNDLE_KIND) {
+      throw new BadRequestException(`This document is not a workflow export (kind '${String(bundle?.kind)}').`);
+    }
+    if (bundle.schemaVersion !== WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION) {
+      throw new BadRequestException(
+        `Unsupported bundle schemaVersion ${String(bundle.schemaVersion)} — this deployment implements ${WORKFLOW_DEFINITION_BUNDLE_SCHEMA_VERSION}.`,
+      );
+    }
+
+    // Byte-for-byte the precheck `create` and `clone` run: an import writes a row, so an import
+    // path that skipped this would be a `maxWorkflowDefinitions` bypass with extra steps.
+    if (this.entitlements?.isEnforcementEnabled()) {
+      const currentCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
+      await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
+    }
+
+    this.assertKnownPaletteKey(bundle.payload.paletteKey);
+
+    const bundledGraph = this.parseGraphOrThrow(bundle.payload.graph);
+    const { graph, unresolved } = await this.resolveBundleReferences(bundledGraph, tenantId);
+    if (unresolved.length > 0) {
+      throw new ConflictException({
+        message:
+          'This workflow references catalogue entries your tenant does not have. Create them (or import them first) and try again — ' +
+          'nothing was imported.',
+        code: 'WORKFLOW_IMPORT_UNRESOLVED_REFERENCES',
+        unresolvedReferences: unresolved,
+      });
+    }
+
+    const report = await this.validateGraph(graph, bundle.payload.paletteKey, tenantId);
+    if (reportIsShapeBroken(report)) {
+      throw new BadRequestException({ message: 'The imported workflow graph is not valid.', findings: report.findings });
+    }
+
+    const saved = await this.databaseService.baseClient.$transaction(async (tx) => {
+      // The collision check IS the version mint, read from the TX client — `clone`'s reasoning
+      // verbatim: an import must never land as version N+1 of a lineage that may be published
+      // and serving traffic.
+      const maxVersionNumber = await this.workflowDefinitionRepository.findMaxVersionNumber(tenantId, dto.targetSlug, tx);
+      if (maxVersionNumber > 0) {
+        throw new ConflictException(
+          `Slug '${dto.targetSlug}' is already in use by this tenant. Choose another slug, or open that workflow and create a new version of it instead.`,
+        );
+      }
+
+      const entity = WorkflowDefinitionFactory.CreateDefinition({
+        tenantId,
+        slug: dto.targetSlug,
+        name: dto.name ?? bundle.payload.name,
+        description: bundle.payload.description ?? null,
+        paletteKey: bundle.payload.paletteKey,
+        versionNumber: maxVersionNumber + 1,
+        parentVersionId: null,
+        graph: graph as unknown as JsonValue,
+        graphChecksum: graphChecksum(graph),
+        validationReport: report as unknown as JsonValue,
+        validatedAt: new Date(),
+        createdBy: this.requestUserId ?? undefined,
+      });
+
+      this.compileGraphOrThrow(entity, graph, null);
+
+      return this.workflowDefinitionRepository.create(entity, tx);
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: {
+        slug: saved.slug,
+        versionNumber: saved.versionNumber,
+        paletteKey: saved.paletteKey,
+        importedFrom: bundle.source,
+        importedAt: bundle.exportedAt,
+      },
+    });
+
+    return WorkflowDefinitionDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * ROW ID -> portable key, for the four id-keyed reference kinds. One read per DISTINCT id.
+   *
+   * A read that throws (a deleted row, a row in another tenant) resolves to ABSENT rather than
+   * propagating: the caller turns absence into the named 400, which says something an admin can
+   * act on, where a raw `DataNotFoundException` would name a row id they have never seen.
+   */
+  private async resolveRowReferenceKeys(references: RowReference[], tenantId: string): Promise<Map<string, string>> {
+    const resolved = new Map<string, string>();
+
+    await Promise.all(
+      [...new Map(references.map((reference) => [referenceMapKey(reference.kind, reference.id), reference])).values()].map(async (reference) => {
+        const key = await this.portableKeyFor(reference, tenantId);
+        if (key) resolved.set(referenceMapKey(reference.kind, reference.id), key);
+      }),
+    );
+
+    return resolved;
+  }
+
+  private async portableKeyFor(reference: RowReference, tenantId: string): Promise<string | null> {
+    try {
+      switch (reference.kind) {
+        case 'promptTemplate':
+          return (await this.promptTemplateRepository?.findById(reference.id))?.name ?? null;
+        case 'documentTemplate':
+          return (await this.documentTemplateRepository?.findById(reference.id))?.slug ?? null;
+        case 'mcpServer':
+          return (await this.mcpServerRepository?.findById(reference.id))?.name ?? null;
+        case 'routingPolicy':
+          return (await this.routingPolicyService?.getById(reference.id, tenantId))?.taskKey ?? null;
+        default:
+          return null;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Portable key -> this tenant's rows.
+   *
+   * The three REWRITTEN kinds are resolved into row ids by `toTenantGraph`; the three
+   * already-portable kinds (`agent`, `model`, `routingTask`) are only VERIFIED — the graph keeps
+   * the key, but importing a graph that names an agent this tenant cannot see would produce a
+   * definition that fails at run time, so absence is an unresolved reference exactly like a
+   * missing prompt template.
+   */
+  private async resolveBundleReferences(
+    graph: WorkflowGraph,
+    tenantId: string,
+  ): Promise<{ graph: WorkflowGraph; unresolved: PortableReference[] }> {
+    const references = collectPortableReferences(graph);
+
+    const idByKey = new Map<string, string>();
+    const verificationFailures: PortableReference[] = [];
+
+    await Promise.all(
+      [...new Map(references.map((reference) => [referenceMapKey(reference.kind, reference.key), reference])).values()].map(async (reference) => {
+        const outcome = await this.resolveImportReference(reference, tenantId);
+        if (outcome === null) {
+          verificationFailures.push(reference);
+          return;
+        }
+        if (outcome !== true) idByKey.set(referenceMapKey(reference.kind, reference.key), outcome);
+      }),
+    );
+
+    const resolvedGraph = toTenantGraph(graph, idByKey);
+
+    // Reported in AUTHORED NODE ORDER, not in resolution order — `Promise.all` settles
+    // non-deterministically, and a 409 whose list reorders between two identical requests is a
+    // 409 nobody can write a test against.
+    const unresolvable = new Set(
+      [...resolvedGraph.unresolved, ...verificationFailures].map((reference) => referenceMapKey(reference.kind, reference.key)),
+    );
+
+    return {
+      graph: resolvedGraph.graph,
+      unresolved: references.filter((reference) => unresolvable.has(referenceMapKey(reference.kind, reference.key))),
+    };
+  }
+
+  /** `true` = verified in place, a string = the row id to rewrite to, `null` = unresolvable. */
+  private async resolveImportReference(reference: PortableReference, tenantId: string): Promise<string | true | null> {
+    try {
+      switch (reference.kind) {
+        case 'promptTemplate':
+          return (await this.promptTemplateRepository?.findByName(tenantId, reference.key))?.id ?? null;
+        case 'documentTemplate':
+          return (await this.documentTemplateRepository?.findByTenantAndSlug(tenantId, reference.key))?.id ?? null;
+        case 'mcpServer':
+          return (await this.mcpServerRepository?.findByTenantAndName(tenantId, reference.key))?.id ?? null;
+        case 'agent':
+          return (await this.agentRepository?.findPublishedActiveBySlug(tenantId, reference.key)) ? true : null;
+        case 'model':
+          return (await this.aiModelRepository?.findBySlug(tenantId, reference.key)) ? true : null;
+        case 'routingTask':
+          // The elected default for the task key, on the tenant -> SYSTEM cascade. A tenant that
+          // has VETOED the task (`TaskSelectionVetoedError`) is caught here and reported as
+          // unresolvable, which is the honest answer: the import would produce a node that
+          // fails closed at run time.
+          return (await this.routingPolicyService?.resolveDefault(tenantId, reference.key)) ? true : null;
+        default:
+          return null;
+      }
+    } catch {
+      return null;
+    }
   }
 
   /** the SYSTEM template library, read-only. */
