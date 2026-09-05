@@ -9123,6 +9123,32 @@
         ],
         "type": "object"
       },
+      "ImportWorkflowDefinitionRequest": {
+        "properties": {
+          "bundle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowDefinitionBundle"
+              }
+            ],
+            "description": "The exported bundle, verbatim."
+          },
+          "name": {
+            "description": "Override the bundle’s name. Defaults to the exported name.",
+            "type": "string"
+          },
+          "targetSlug": {
+            "description": "Slug for the NEW lineage in the caller’s tenant. A slug already in use is rejected 409, never silently versioned.",
+            "example": "discharge_summary_imported",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetSlug",
+          "bundle"
+        ],
+        "type": "object"
+      },
       "InvokeWorkflowRequest": {
         "properties": {
           "input": {
@@ -13193,6 +13219,73 @@
         ],
         "type": "object"
       },
+      "PromoteWorkflowToSystemRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Free-text note recorded on the promotion record.",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "definitionVersionNumber": {
+            "description": "Which immutable Global version to promote. Defaults to Global’s ACTIVE PUBLISHED version.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "sourceDefinitionSlug": {
+            "description": "The workflow to promote, by slug, in the Global build tenant.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceDefinitionSlug"
+        ],
+        "type": "object"
+      },
+      "PromoteWorkflowToSystemResponse": {
+        "properties": {
+          "evalGateMode": {
+            "description": "The eval promotion gate’s verdict on this path. `warn` is the default here (owner #7): the Global → SYSTEM path must not block on evaluation evidence that does not exist yet. A platform admin who writes `agentic.eval.promotionGate` = `block` gets a blocking gate back.",
+            "type": "string"
+          },
+          "promotionId": {
+            "description": "The immutable promotion record id (the WORM audit row in SYSTEM).",
+            "type": "string"
+          },
+          "published": {
+            "description": "True once the SYSTEM row is PUBLISHED and active — i.e. it is now the platform template.",
+            "type": "boolean"
+          },
+          "slug": {
+            "description": "The template lineage slug in SYSTEM.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The version number minted in SYSTEM’s lineage. The previous version stays as history.",
+            "type": "number"
+          },
+          "warnings": {
+            "description": "Non-blocking operator alerts — the promotion’s own warnings plus any eval failure recorded in warn mode.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "workflowDefinitionId": {
+            "description": "The SYSTEM WorkflowDefinition row this promotion created and published.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "promotionId",
+          "workflowDefinitionId",
+          "slug",
+          "versionNumber",
+          "published",
+          "evalGateMode",
+          "warnings"
+        ],
+        "type": "object"
+      },
       "PromptDiffChangeDto": {
         "properties": {
           "added": {
@@ -17260,6 +17353,36 @@
         },
         "required": [
           "session_data"
+        ],
+        "type": "object"
+      },
+      "SyncWorkflowDefinitionRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Free-text note recorded on each target’s creation event.",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "sourceTenantId": {
+            "description": "Tenant the workflow is synced FROM. Required — and required for the reason `PromoteWorkflowRequest.fromTenantId` is: deriving it would force a read BEFORE authorization, and the 403/404 difference between \"that workflow does not exist\" and \"you may not touch that tenant\" would then be an existence oracle over another tenant’s data.",
+            "type": "string"
+          },
+          "targetTenantIds": {
+            "description": "Tenants to sync INTO. The caller must hold manage:WorkflowDefinition in every one; any other id is a 404.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "versionNumber": {
+            "description": "Which immutable version to sync. Defaults to the source tenant’s ACTIVE PUBLISHED version — never simply the newest, which may be an unfinished draft.",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "sourceTenantId",
+          "targetTenantIds"
         ],
         "type": "object"
       },
@@ -22283,6 +22406,95 @@
         ],
         "type": "object"
       },
+      "WorkflowDefinitionBundle": {
+        "properties": {
+          "exportedAt": {
+            "description": "ISO-8601 instant the export was taken.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Always `workflow-definition`.",
+            "example": "workflow-definition",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WorkflowDefinitionBundlePayload"
+          },
+          "schemaVersion": {
+            "description": "Payload shape version. An import refuses a version it does not implement.",
+            "example": 1,
+            "type": "number"
+          },
+          "source": {
+            "$ref": "#/components/schemas/WorkflowDefinitionBundleSource"
+          }
+        },
+        "required": [
+          "kind",
+          "schemaVersion",
+          "exportedAt",
+          "source",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinitionBundlePayload": {
+        "properties": {
+          "description": {
+            "description": "Free-text description.",
+            "nullable": true,
+            "type": "string"
+          },
+          "graph": {
+            "description": "The authored graph, with every row id replaced by a portable key.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Human-readable name of the exported definition.",
+            "type": "string"
+          },
+          "paletteKey": {
+            "description": "The palette the definition targets. Must be a palette the importing deployment’s node registry declares.",
+            "type": "string"
+          },
+          "references": {
+            "description": "Every portable reference the graph makes — prompt templates by name, document templates and agents by slug, models by slug, routing by task key. An import resolves each against the caller’s visible catalogue and refuses the whole bundle, naming them, if any cannot be resolved.",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "paletteKey",
+          "graph",
+          "references"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinitionBundleSource": {
+        "properties": {
+          "slug": {
+            "description": "The exported definition’s slug.",
+            "type": "string"
+          },
+          "tenantKind": {
+            "description": "Which tier authored the export: the platform template library, the platform build tenant, or a customer tenant.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The exact version row exported.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantKind",
+          "slug",
+          "versionNumber"
+        ],
+        "type": "object"
+      },
       "WorkflowDefinitionResponse": {
         "properties": {
           "compiledConfig": {
@@ -22943,6 +23155,66 @@
           "name",
           "paletteKey",
           "versionNumber"
+        ],
+        "type": "object"
+      },
+      "WorkflowSyncResponse": {
+        "properties": {
+          "slug": {
+            "description": "The source lineage slug.",
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "description": "The exact immutable source version that was synced.",
+            "type": "number"
+          },
+          "targets": {
+            "description": "One row per target tenant, in the order requested.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSyncTargetResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "slug",
+          "sourceVersionNumber",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "WorkflowSyncTargetResponse": {
+        "properties": {
+          "findings": {
+            "description": "Findings from recompiling the graph against THAT tenant’s catalogue and invariant rules. Non-blocking findings are reported here rather than swallowed — the graph is the source tenant’s, and a rule the target adds is exactly what an admin needs to see.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "slug": {
+            "description": "The lineage slug in that tenant.",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "The tenant this row reports on.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The version number minted in that tenant’s lineage.",
+            "type": "number"
+          },
+          "workflowDefinitionId": {
+            "description": "The DRAFT definition row written in that tenant.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "workflowDefinitionId",
+          "slug",
+          "versionNumber",
+          "findings"
         ],
         "type": "object"
       },
@@ -51875,6 +52147,208 @@
         ]
       }
     },
+    "/api/v1/admin/workflow-definitions/import": {
+      "post": {
+        "description": "The mirror of `GET :id/export`. Every reference the bundle makes — prompt templates by name, document templates, agents and models by slug, routing by task key — is resolved against YOUR tenant’s catalogue. If any cannot be resolved the whole bundle is refused with a 409 that names them, and nothing is written: a workflow with a missing binding fails at run time, far from whoever could fix it. The graph is then recompiled and validated here, and lands as version 1 of a NEW lineage — DRAFT and inactive, because an import has been reviewed by nobody. Consumes the `maxWorkflowDefinitions` quota exactly as create does.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_import",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportWorkflowDefinitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Not a workflow bundle, an unimplemented schemaVersion, an unknown palette, or a graph that fails the shape/engine gate."
+          },
+          "409": {
+            "description": "Unresolvable references (`WORKFLOW_IMPORT_UNRESOLVED_REFERENCES`), a targetSlug already in use, or the quota."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Import a workflow bundle as a new DRAFT workflow",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-definitions/promote-to-system": {
+      "post": {
+        "description": "The platform-admin path of owner decision #4: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), which is the template every customer tenant refers to and the tenant template for new tenants. The cross-tenant copy is the existing promotion (`POST admin/agent-promotions`) — prompt templates deep-copied, `evalGate` stripped, a tenant-owned document-template binding blocking, one WORM audit record — and this route adds the half promotion deliberately omits: the SYSTEM row is recompiled against SYSTEM’s own catalogue and PUBLISHED. The previously active SYSTEM version is demoted, never deleted, so the lineage keeps its history. The eval promotion gate runs against the GLOBAL source and defaults to `warn` on this path (owner #7) — set `agentic.eval.promotionGate` to `block` for a blocking gate. Requires a platform administrator and an elevated tenant-less context.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_promoteToSystem",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteWorkflowToSystemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromoteWorkflowToSystemResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a platform administrator, or the context is not elevated and tenant-less."
+          },
+          "404": {
+            "description": "The Global build tenant has no such workflow version."
+          },
+          "409": {
+            "description": "The eval promotion gate failed and is configured to block (`EVAL_GATE_FAILED`)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Promote a workflow from the Global build tenant into the SYSTEM template library",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-definitions/slug/{slug}/sync": {
+      "post": {
+        "description": "Owner decision #4: a tenant admin who manages several tenants syncs among their OWN tenants. Each target receives a DRAFT of the SAME lineage — its next version, never published and never active, so a sync can never re-point another tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. Requires an elevated tenant-less context.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_sync",
+        "parameters": [
+          {
+            "description": "WorkflowDefinition slug (the lineage key) in the source tenant",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncWorkflowDefinitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowSyncResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "A target equals the source, or the source graph references rows that no longer resolve."
+          },
+          "403": {
+            "description": "No manage rights on the source tenant, or the context is not elevated and tenant-less."
+          },
+          "404": {
+            "description": "A target tenant the caller does not manage, or no such source version."
+          },
+          "409": {
+            "description": "A target cannot resolve a reference (`WORKFLOW_SYNC_UNRESOLVED_REFERENCES`)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Sync one workflow version into other tenants you manage",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
     "/api/v1/admin/workflow-definitions/slug/{slug}/webhook-secret": {
       "post": {
         "description": "Mints the HMAC secret external systems sign `POST /hooks/workflows/{hookId}` deliveries with, and the `hookUrl` they POST to. The raw secret is returned ONCE; only reversible ciphertext is persisted. Rotating invalidates the previous secret immediately. The Trigger node must declare the `webhook` kind for deliveries to be accepted.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -52487,6 +52961,67 @@
           }
         ],
         "summary": "Clone an existing workflow (or a platform template) into a NEW draft workflow",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-definitions/{id}/export": {
+      "get": {
+        "description": "Owner decision #4 — tenant admins export/import workflows as JSON. The bundle carries VALUES ONLY: the authored definition, its node configuration, and its catalogue bindings expressed as PORTABLE KEYS (prompt template by name, document template / agent / model by slug, routing by task key). It carries NO row id (they are meaningless in another tenant), NO credential, and NO `evalGate` — a `goldenSetId` names a corpus of encrypted PHI, so not even the pointer leaves the tenant. The derived `compiledConfig` and validation report are not exported either: they are recomputed on import against the importing tenant’s registry and rule set.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_export",
+        "parameters": [
+          {
+            "description": "WorkflowDefinition id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionBundle"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The graph references a row that no longer resolves, so the export would silently lose the binding."
+          },
+          "404": {
+            "description": "Not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export one workflow version as a portable JSON bundle",
         "tags": [
           "admin-workflow-definitions"
         ],

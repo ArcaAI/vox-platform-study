@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 372 component schemas the generated surface transitively
+ * Only the 381 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2312,6 +2312,15 @@ export interface HarnessPolicyResponse {
   warmStartEnabled?: boolean | null;
 }
 
+export interface ImportWorkflowDefinitionRequest {
+  /** The exported bundle, verbatim. */
+  bundle: WorkflowDefinitionBundle;
+  /** Override the bundle’s name. Defaults to the exported name. */
+  name?: string;
+  /** Slug for the NEW lineage in the caller’s tenant. A slug already in use is rejected 409, never silently versioned. */
+  targetSlug: string;
+}
+
 export interface JobDetailResponse {
   attempts: number;
   /** PII-redacted job payload. */
@@ -3460,6 +3469,32 @@ export interface PromoteWorkflowRequest {
   toTenantId: string;
 }
 
+export interface PromoteWorkflowToSystemRequest {
+  /** Free-text note recorded on the promotion record. */
+  changeReason?: string;
+  /** Which immutable Global version to promote. Defaults to Global’s ACTIVE PUBLISHED version. */
+  definitionVersionNumber?: number;
+  /** The workflow to promote, by slug, in the Global build tenant. */
+  sourceDefinitionSlug: string;
+}
+
+export interface PromoteWorkflowToSystemResponse {
+  /** The eval promotion gate’s verdict on this path. `warn` is the default here (owner #7): the Global → SYSTEM path must not block on evaluation evidence that does not exist yet. A platform admin who writes `agentic.eval.promotionGate` = `block` gets a blocking gate back. */
+  evalGateMode: string;
+  /** The immutable promotion record id (the WORM audit row in SYSTEM). */
+  promotionId: string;
+  /** True once the SYSTEM row is PUBLISHED and active — i.e. it is now the platform template. */
+  published: boolean;
+  /** The template lineage slug in SYSTEM. */
+  slug: string;
+  /** The version number minted in SYSTEM’s lineage. The previous version stays as history. */
+  versionNumber: number;
+  /** Non-blocking operator alerts — the promotion’s own warnings plus any eval failure recorded in warn mode. */
+  warnings: string[];
+  /** The SYSTEM WorkflowDefinition row this promotion created and published. */
+  workflowDefinitionId: string;
+}
+
 export interface PromptDiffChangeDto {
   /** True when this segment was added in the "to" version */
   added?: boolean;
@@ -4428,6 +4463,17 @@ export interface SupersedeSellRateRequest {
 export interface SyncDirectoryUsersResponse {
   /** BullMQ job id for this directory sync run */
   jobId: string;
+}
+
+export interface SyncWorkflowDefinitionRequest {
+  /** Free-text note recorded on each target’s creation event. */
+  changeReason?: string;
+  /** Tenant the workflow is synced FROM. Required — and required for the reason `PromoteWorkflowRequest.fromTenantId` is: deriving it would force a read BEFORE authorization, and the 403/404 difference between "that workflow does not exist" and "you may not touch that tenant" would then be an existence oracle over another tenant’s data. */
+  sourceTenantId: string;
+  /** Tenants to sync INTO. The caller must hold manage:WorkflowDefinition in every one; any other id is a 404. */
+  targetTenantIds: string[];
+  /** Which immutable version to sync. Defaults to the source tenant’s ACTIVE PUBLISHED version — never simply the newest, which may be an unfinished draft. */
+  versionNumber?: number;
 }
 
 export interface TenantAllowedOriginResponse {
@@ -6090,6 +6136,39 @@ export interface WorkflowAssignmentResponse {
   workflowDefinitionSlug: string;
 }
 
+export interface WorkflowDefinitionBundle {
+  /** ISO-8601 instant the export was taken. */
+  exportedAt: string;
+  /** Always `workflow-definition`. */
+  kind: string;
+  payload: WorkflowDefinitionBundlePayload;
+  /** Payload shape version. An import refuses a version it does not implement. */
+  schemaVersion: number;
+  source: WorkflowDefinitionBundleSource;
+}
+
+export interface WorkflowDefinitionBundlePayload {
+  /** Free-text description. */
+  description?: string | null;
+  /** The authored graph, with every row id replaced by a portable key. */
+  graph: Record<string, unknown>;
+  /** Human-readable name of the exported definition. */
+  name: string;
+  /** The palette the definition targets. Must be a palette the importing deployment’s node registry declares. */
+  paletteKey: string;
+  /** Every portable reference the graph makes — prompt templates by name, document templates and agents by slug, models by slug, routing by task key. An import resolves each against the caller’s visible catalogue and refuses the whole bundle, naming them, if any cannot be resolved. */
+  references: Array<Record<string, unknown>>;
+}
+
+export interface WorkflowDefinitionBundleSource {
+  /** The exported definition’s slug. */
+  slug: string;
+  /** Which tier authored the export: the platform template library, the platform build tenant, or a customer tenant. */
+  tenantKind: string;
+  /** The exact version row exported. */
+  versionNumber: number;
+}
+
 export interface WorkflowDefinitionResponse {
   /** Server-produced interpreter input contract. Null until PUBLISHED. */
   compiledConfig?: Record<string, unknown> | null;
@@ -6238,6 +6317,28 @@ export interface WorkflowRunResponse {
   /** WorkflowDefinition.id of the exact PUBLISHED, immutable version row pinned for this run. */
   workflowVersionId: string;
   workflowVersionNumber: number;
+}
+
+export interface WorkflowSyncResponse {
+  /** The source lineage slug. */
+  slug: string;
+  /** The exact immutable source version that was synced. */
+  sourceVersionNumber: number;
+  /** One row per target tenant, in the order requested. */
+  targets: WorkflowSyncTargetResponse[];
+}
+
+export interface WorkflowSyncTargetResponse {
+  /** Findings from recompiling the graph against THAT tenant’s catalogue and invariant rules. Non-blocking findings are reported here rather than swallowed — the graph is the source tenant’s, and a rule the target adds is exactly what an admin needs to see. */
+  findings: string[];
+  /** The lineage slug in that tenant. */
+  slug: string;
+  /** The tenant this row reports on. */
+  tenantId: string;
+  /** The version number minted in that tenant’s lineage. */
+  versionNumber: number;
+  /** The DRAFT definition row written in that tenant. */
+  workflowDefinitionId: string;
 }
 
 export interface WorkflowTestFixtureResponse {

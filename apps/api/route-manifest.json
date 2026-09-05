@@ -9750,6 +9750,29 @@
     },
     {
       "controller": "WorkflowDefinitionController",
+      "handler": "export",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-definitions/{id}/export",
+      "routePath": "/admin/workflow-definitions/:id/export",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
       "handler": "updateNodePrompt",
       "method": "PUT",
       "path": "/api/v1/admin/workflow-definitions/{id}/nodes/{nodeId}/prompt",
@@ -9846,6 +9869,75 @@
       "method": "GET",
       "path": "/api/v1/admin/workflow-definitions/{id}/versions",
       "routePath": "/admin/workflow-definitions/:id/versions",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
+      "handler": "import",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/import",
+      "routePath": "/admin/workflow-definitions/import",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
+      "handler": "promoteToSystem",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/promote-to-system",
+      "routePath": "/admin/workflow-definitions/promote-to-system",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
+      "handler": "sync",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/slug/{slug}/sync",
+      "routePath": "/admin/workflow-definitions/slug/:slug/sync",
       "svcScopes": [
         "svc:admin:workflow-definition:manage"
       ],
