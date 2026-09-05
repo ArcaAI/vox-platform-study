@@ -181,32 +181,13 @@ const KNOBS: Record<string, SttKnob> = {
     description: 'Path to the Silero VAD ONNX model. Empty = auto-download on first use.',
     category: 'STT Audio',
   },
-  'stt.vad.threshold': {
-    dataType: 'number',
-    default: 0.5,
-    label: 'VAD speech threshold',
-    description:
-      'Silero VAD speech-detection threshold (0.0–1.0). Lower catches more quiet speech at the cost ' +
-      'of more false triggers; this is the knob a deployment retunes against its own microphone ' +
-      'estate, which is why it must not require a redeploy.',
-    category: 'STT Audio',
-  },
-  'stt.vad.minSpeechDurationMs': {
-    dataType: 'number',
-    default: 100,
-    label: 'VAD minimum speech duration (ms)',
-    description:
-      'Shortest segment VAD will report as speech. 100ms so short clinical confirmations ("mm", ' +
-      '"yes") survive rather than being discarded as noise.',
-    category: 'STT Audio',
-  },
-  'stt.vad.minSilenceDurationMs': {
-    dataType: 'number',
-    default: 500,
-    label: 'VAD minimum silence duration (ms)',
-    description: 'Silence required to end a speech segment.',
-    category: 'STT Audio',
-  },
+  // `stt.vad.threshold`, `stt.vad.minSpeechDurationMs` and
+  // `stt.vad.minSilenceDurationMs` were declared here until TASK-872. They are
+  // SHADOWED on the live path: every session and every batch job now arrives
+  // with a `ResolvedAsrSpec` that carries its own VAD parameters (TASK-861), so
+  // a control-plane value could only ever have moved a bootstrap default the
+  // spec then overrode. `modelPath` and `speechPadMs` stay — nothing in the
+  // spec supplies those.
   'stt.vad.speechPadMs': {
     dataType: 'number',
     default: 200,
@@ -344,27 +325,12 @@ const KNOBS: Record<string, SttKnob> = {
     description: 'Maximum batch size for the dynamic batch scheduler (GPU inference). 0 = auto-detect from the ' + 'hardware execution profile.',
     category: 'STT Streaming',
   },
-  'stt.streaming.batchWaitMs': {
-    dataType: 'number',
-    default: 0,
-    label: 'Streaming batch wait (ms)',
-    description: 'How long the batch scheduler waits before dispatching an incomplete batch. 0 = auto-detect.',
-    category: 'STT Streaming',
-  },
-  'stt.streaming.embeddingDevice': {
-    dataType: 'string',
-    default: 'auto',
-    label: 'Streaming embedding device',
-    description: "Device for speaker-embedding extraction during streaming. 'auto' picks from the hardware " + 'profile (e.g. cuda:1, cpu, mps).',
-    category: 'STT Streaming',
-  },
-  'stt.streaming.multiGpuStrategy': {
-    dataType: 'string',
-    default: 'auto',
-    label: 'Streaming multi-GPU strategy',
-    description: 'auto (detect) | replicate (same model on each GPU) | split (ASR on GPU 0, embeddings on GPU 1) ' + '| none (single GPU or CPU).',
-    category: 'STT Streaming',
-  },
+  // `stt.streaming.batchWaitMs` was here (TASK-872): the batch scheduler takes
+  // its wait from the hardware execution profile, and no code read the knob.
+  // `stt.streaming.embeddingDevice` and `stt.streaming.multiGpuStrategy` were
+  // here (TASK-872). Device placement is decided by the hardware execution
+  // profile and, for the embedding model, by the `ResolvedAsrSpec`; neither
+  // string reached a reader.
   'stt.streaming.sessionPersistIntervalS': {
     dataType: 'number',
     default: 5.0,

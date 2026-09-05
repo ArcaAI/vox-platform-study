@@ -121,9 +121,12 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "whisper_cpp_consultation_prompt_enabled": "stt.whisperCpp.consultationPromptEnabled",
     # ── VAD (Silero v5) ──────────────────────────────────────────────────────
     "vad_model_path": "stt.vad.modelPath",
-    "vad_threshold": "stt.vad.threshold",
-    "vad_min_speech_duration_ms": "stt.vad.minSpeechDurationMs",
-    "vad_min_silence_duration_ms": "stt.vad.minSilenceDurationMs",
+    # `vad_threshold`, `vad_min_speech_duration_ms` and
+    # `vad_min_silence_duration_ms` were mapped here until TASK-872. Their
+    # descriptors are gone: the live path is fed by `ResolvedAsrSpec`, which
+    # carries its own VAD parameters, so a control-plane value could only move a
+    # bootstrap default the spec then overrode. The FIELDS stay — they are that
+    # bootstrap default — but the control plane no longer pretends to own them.
     "vad_speech_pad_ms": "stt.vad.speechPadMs",
     # ── diarization / voice profiles ─────────────────────────────────────────
     "diarization_hf_model_id": "stt.diarization.hfModelId",
@@ -146,9 +149,11 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "api_gateway_timeout": "stt.gateway.timeoutSeconds",
     # ── streaming ────────────────────────────────────────────────────────────
     "streaming_max_batch_size": "stt.streaming.maxBatchSize",
-    "streaming_batch_wait_ms": "stt.streaming.batchWaitMs",
-    "streaming_embedding_device": "stt.streaming.embeddingDevice",
-    "streaming_multi_gpu_strategy": "stt.streaming.multiGpuStrategy",
+    # `streaming_batch_wait_ms`, `streaming_embedding_device` and
+    # `streaming_multi_gpu_strategy` were mapped here until TASK-872. Batch
+    # timing and device placement come from the hardware execution profile (and,
+    # for the embedding model, from `ResolvedAsrSpec`), so the three registry
+    # keys reached no reader and were removed with this mapping.
     "streaming_session_persist_interval_s": "stt.streaming.sessionPersistIntervalS",
     "streaming_snapshot_interval_s": "stt.streaming.snapshotIntervalS",
     "streaming_max_audio_buffer_bytes": "stt.streaming.maxAudioBufferBytes",
