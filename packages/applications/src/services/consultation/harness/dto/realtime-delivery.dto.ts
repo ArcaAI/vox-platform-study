@@ -131,7 +131,7 @@ export class HarnessLiveSummaryRequest {
   @IsString()
   model?: string;
 
-  @ApiPropertyOptional({ description: 'The AiTaskDefault routing key this generation resolved through' })
+  @ApiPropertyOptional({ description: 'The task key this generation was requested under (selection is the assigned TEXT_GENERATION agent since TASK-876)' })
   @IsOptional()
   @IsString()
   taskKey?: string;

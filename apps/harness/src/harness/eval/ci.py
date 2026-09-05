@@ -208,7 +208,7 @@ def main(
         from harness.eval.metrics.faithfulness import build_faithfulness_evaluator
 
         # Judge SELECTION is DB-resident and fail-closed (owner decision D-B): the
-        # provider/model come from the SYSTEM ``harness.judge`` AiTaskDefault, exactly
+        # provider/model come from the SYSTEM ``harness.judge`` AiRoutingPolicy default row, exactly
         # as the Temporal runtime resolves them. Env keeps supplying only the
         # CONNECTION config (base_url / api_key / decoding knobs). There is no env
         # fallback for the selection — a gate that grades with a different judge than

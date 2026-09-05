@@ -66,7 +66,7 @@ run_py() {
 }
 
 # The judge SELECTION is DB-resident and fail-closed (owner decision D-B): it comes
-# from the SYSTEM `harness.judge` AiTaskDefault -> AiModel, exactly as the Temporal
+# from the SYSTEM `harness.judge` AiRoutingPolicy default row -> AiModel, exactly as the Temporal
 # runtime resolves it. There is deliberately NO hardcoded default here — the gate must
 # grade with the judge the platform selects, or refuse to run.
 if [ -z "${JUDGE_MODEL:-}" ]; then
@@ -75,7 +75,7 @@ if [ -z "${JUDGE_MODEL:-}" ]; then
     echo "FAILED: could not resolve the judge selection from the database." >&2
     echo "        The eval gate fails closed rather than grading with an env-supplied" >&2
     echo "        model id. Check DATABASE_URL and the SYSTEM 'harness.judge'" >&2
-    echo "        AiTaskDefault row (it must be ENABLED and point at an ENABLED AiModel)." >&2
+    echo "        AiRoutingPolicy default row (enabled, ACTIVE, pointing at an ENABLED AiModel)." >&2
     exit 2
   fi
   echo "judge selection (from DB, SYSTEM harness.judge): $JUDGE_MODEL"
