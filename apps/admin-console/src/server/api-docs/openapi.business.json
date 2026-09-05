@@ -9123,6 +9123,32 @@
         ],
         "type": "object"
       },
+      "ImportWorkflowDefinitionRequest": {
+        "properties": {
+          "bundle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowDefinitionBundle"
+              }
+            ],
+            "description": "The exported bundle, verbatim."
+          },
+          "name": {
+            "description": "Override the bundle’s name. Defaults to the exported name.",
+            "type": "string"
+          },
+          "targetSlug": {
+            "description": "Slug for the NEW lineage in the caller’s tenant. A slug already in use is rejected 409, never silently versioned.",
+            "example": "discharge_summary_imported",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetSlug",
+          "bundle"
+        ],
+        "type": "object"
+      },
       "InvokeWorkflowRequest": {
         "properties": {
           "input": {
@@ -13193,6 +13219,73 @@
         ],
         "type": "object"
       },
+      "PromoteWorkflowToSystemRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Free-text note recorded on the promotion record.",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "definitionVersionNumber": {
+            "description": "Which immutable Global version to promote. Defaults to Global’s ACTIVE PUBLISHED version.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "sourceDefinitionSlug": {
+            "description": "The workflow to promote, by slug, in the Global build tenant.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceDefinitionSlug"
+        ],
+        "type": "object"
+      },
+      "PromoteWorkflowToSystemResponse": {
+        "properties": {
+          "evalGateMode": {
+            "description": "The eval promotion gate’s verdict on this path. `warn` is the default here (owner #7): the Global → SYSTEM path must not block on evaluation evidence that does not exist yet. A platform admin who writes `agentic.eval.promotionGate` = `block` gets a blocking gate back.",
+            "type": "string"
+          },
+          "promotionId": {
+            "description": "The immutable promotion record id (the WORM audit row in SYSTEM).",
+            "type": "string"
+          },
+          "published": {
+            "description": "True once the SYSTEM row is PUBLISHED and active — i.e. it is now the platform template.",
+            "type": "boolean"
+          },
+          "slug": {
+            "description": "The template lineage slug in SYSTEM.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The version number minted in SYSTEM’s lineage. The previous version stays as history.",
+            "type": "number"
+          },
+          "warnings": {
+            "description": "Non-blocking operator alerts — the promotion’s own warnings plus any eval failure recorded in warn mode.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "workflowDefinitionId": {
+            "description": "The SYSTEM WorkflowDefinition row this promotion created and published.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "promotionId",
+          "workflowDefinitionId",
+          "slug",
+          "versionNumber",
+          "published",
+          "evalGateMode",
+          "warnings"
+        ],
+        "type": "object"
+      },
       "PromptDiffChangeDto": {
         "properties": {
           "added": {
@@ -17260,6 +17353,36 @@
         },
         "required": [
           "session_data"
+        ],
+        "type": "object"
+      },
+      "SyncWorkflowDefinitionRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Free-text note recorded on each target’s creation event.",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "sourceTenantId": {
+            "description": "Tenant the workflow is synced FROM. Required — and required for the reason `PromoteWorkflowRequest.fromTenantId` is: deriving it would force a read BEFORE authorization, and the 403/404 difference between \"that workflow does not exist\" and \"you may not touch that tenant\" would then be an existence oracle over another tenant’s data.",
+            "type": "string"
+          },
+          "targetTenantIds": {
+            "description": "Tenants to sync INTO. The caller must hold manage:WorkflowDefinition in every one; any other id is a 404.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "versionNumber": {
+            "description": "Which immutable version to sync. Defaults to the source tenant’s ACTIVE PUBLISHED version — never simply the newest, which may be an unfinished draft.",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "sourceTenantId",
+          "targetTenantIds"
         ],
         "type": "object"
       },
@@ -22283,6 +22406,95 @@
         ],
         "type": "object"
       },
+      "WorkflowDefinitionBundle": {
+        "properties": {
+          "exportedAt": {
+            "description": "ISO-8601 instant the export was taken.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Always `workflow-definition`.",
+            "example": "workflow-definition",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WorkflowDefinitionBundlePayload"
+          },
+          "schemaVersion": {
+            "description": "Payload shape version. An import refuses a version it does not implement.",
+            "example": 1,
+            "type": "number"
+          },
+          "source": {
+            "$ref": "#/components/schemas/WorkflowDefinitionBundleSource"
+          }
+        },
+        "required": [
+          "kind",
+          "schemaVersion",
+          "exportedAt",
+          "source",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinitionBundlePayload": {
+        "properties": {
+          "description": {
+            "description": "Free-text description.",
+            "nullable": true,
+            "type": "string"
+          },
+          "graph": {
+            "description": "The authored graph, with every row id replaced by a portable key.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Human-readable name of the exported definition.",
+            "type": "string"
+          },
+          "paletteKey": {
+            "description": "The palette the definition targets. Must be a palette the importing deployment’s node registry declares.",
+            "type": "string"
+          },
+          "references": {
+            "description": "Every portable reference the graph makes — prompt templates by name, document templates and agents by slug, models by slug, routing by task key. An import resolves each against the caller’s visible catalogue and refuses the whole bundle, naming them, if any cannot be resolved.",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "paletteKey",
+          "graph",
+          "references"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinitionBundleSource": {
+        "properties": {
+          "slug": {
+            "description": "The exported definition’s slug.",
+            "type": "string"
+          },
+          "tenantKind": {
+            "description": "Which tier authored the export: the platform template library, the platform build tenant, or a customer tenant.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The exact version row exported.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantKind",
+          "slug",
+          "versionNumber"
+        ],
+        "type": "object"
+      },
       "WorkflowDefinitionResponse": {
         "properties": {
           "compiledConfig": {
@@ -22943,6 +23155,66 @@
           "name",
           "paletteKey",
           "versionNumber"
+        ],
+        "type": "object"
+      },
+      "WorkflowSyncResponse": {
+        "properties": {
+          "slug": {
+            "description": "The source lineage slug.",
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "description": "The exact immutable source version that was synced.",
+            "type": "number"
+          },
+          "targets": {
+            "description": "One row per target tenant, in the order requested.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSyncTargetResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "slug",
+          "sourceVersionNumber",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "WorkflowSyncTargetResponse": {
+        "properties": {
+          "findings": {
+            "description": "Findings from recompiling the graph against THAT tenant’s catalogue and invariant rules. Non-blocking findings are reported here rather than swallowed — the graph is the source tenant’s, and a rule the target adds is exactly what an admin needs to see.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "slug": {
+            "description": "The lineage slug in that tenant.",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "The tenant this row reports on.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The version number minted in that tenant’s lineage.",
+            "type": "number"
+          },
+          "workflowDefinitionId": {
+            "description": "The DRAFT definition row written in that tenant.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "workflowDefinitionId",
+          "slug",
+          "versionNumber",
+          "findings"
         ],
         "type": "object"
       },

@@ -14,18 +14,24 @@ import type { AdminListOptions, AdminListQuery, AdminRequestOptions, IfMatchPrec
 import type {
   CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
+  ImportWorkflowDefinitionRequest,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
+  PromoteWorkflowToSystemRequest,
+  PromoteWorkflowToSystemResponse,
   PublishWorkflowDefinitionRequest,
   SandboxRunCancelResponse,
   SandboxRunResponse,
   SandboxRunStatusResponse,
   StartSandboxRunRequest,
+  SyncWorkflowDefinitionRequest,
   UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
   UpsertWorkflowAssignmentRequest,
   WorkflowAssignmentResponse,
+  WorkflowDefinitionBundle,
   WorkflowDefinitionResponse,
+  WorkflowSyncResponse,
   WorkflowWebhookSecretResponseDto,
 } from './schemas';
 
@@ -37,7 +43,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers WorkflowAssignmentController, WorkflowDefinitionController, WorkflowSandboxRunController
- * (22 routes). Several controllers sharing one scope share one
+ * (26 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -304,6 +310,22 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   }
 
   /**
+   * Export one workflow version as a portable JSON bundle
+   *
+   * Owner decision #4 — tenant admins export/import workflows as JSON. The bundle carries VALUES ONLY: the authored definition, its node configuration, and its catalogue bindings expressed as PORTABLE KEYS (prompt template by name, document template / agent / model by slug, routing by task key). It carries NO row id (they are meaningless in another tenant), NO credential, and NO `evalGate` — a `goldenSetId` names a corpus of encrypted PHI, so not even the pointer leaves the tenant. The derived `compiledConfig` and validation report are not exported either: they are recomputed on import against the importing tenant’s registry and rule set.
+   *
+   * `GET /api/v1/admin/workflow-definitions/{id}/export` — `WorkflowDefinitionController.export`.
+   */
+  export(id: string, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionBundle> {
+    return this.request<WorkflowDefinitionBundle>({
+      method: 'GET',
+      path: `admin/workflow-definitions/${encodePathSegment(String(id))}/export`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Edit a node’s prompt from within the node: mint a new version if the content changed, and move this node’s pin
    *
    * One of DD-11’s TWO update paths, and the only one that moves a pin. When `content` (and `variables`) differ from the template’s latest version, both writes happen in a single transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would leave either a version nothing points at, or a pin naming a version that was never created. Other nodes bound to the same template are untouched. ADOPTING is not authoring: when the submitted content is byte-identical to the template’s latest version, NOTHING is minted — the pin simply moves to that existing version, and the shared template head is left alone. Because an out-of-band template edit deliberately moves no pin, adoption is the COMMON path, and minting a duplicate on each one made the version list unreadable exactly where an admin goes to read it. Read `promptVersionMinted` on the response to tell the two outcomes apart. Only a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED, and is checked on BOTH branches: an unchanged body never buys a stale client a silent 200.
@@ -386,6 +408,57 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
     return this.request<WorkflowDefinitionResponse[]>({
       method: 'GET',
       path: `admin/workflow-definitions/${encodePathSegment(String(id))}/versions`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Import a workflow bundle as a new DRAFT workflow
+   *
+   * The mirror of `GET :id/export`. Every reference the bundle makes — prompt templates by name, document templates, agents and models by slug, routing by task key — is resolved against YOUR tenant’s catalogue. If any cannot be resolved the whole bundle is refused with a 409 that names them, and nothing is written: a workflow with a missing binding fails at run time, far from whoever could fix it. The graph is then recompiled and validated here, and lands as version 1 of a NEW lineage — DRAFT and inactive, because an import has been reviewed by nobody. Consumes the `maxWorkflowDefinitions` quota exactly as create does.
+   *
+   * `POST /api/v1/admin/workflow-definitions/import` — `WorkflowDefinitionController.import`.
+   */
+  import(body: ImportWorkflowDefinitionRequest, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
+    return this.request<WorkflowDefinitionResponse>({
+      method: 'POST',
+      path: 'admin/workflow-definitions/import',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Promote a workflow from the Global build tenant into the SYSTEM template library
+   *
+   * The platform-admin path of owner decision #4: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), which is the template every customer tenant refers to and the tenant template for new tenants. The cross-tenant copy is the existing promotion (`POST admin/agent-promotions`) — prompt templates deep-copied, `evalGate` stripped, a tenant-owned document-template binding blocking, one WORM audit record — and this route adds the half promotion deliberately omits: the SYSTEM row is recompiled against SYSTEM’s own catalogue and PUBLISHED. The previously active SYSTEM version is demoted, never deleted, so the lineage keeps its history. The eval promotion gate runs against the GLOBAL source and defaults to `warn` on this path (owner #7) — set `agentic.eval.promotionGate` to `block` for a blocking gate. Requires a platform administrator and an elevated tenant-less context.
+   *
+   * `POST /api/v1/admin/workflow-definitions/promote-to-system` — `WorkflowDefinitionController.promoteToSystem`.
+   */
+  promoteToSystem(body: PromoteWorkflowToSystemRequest, options: AdminRequestOptions = {}): Promise<PromoteWorkflowToSystemResponse> {
+    return this.request<PromoteWorkflowToSystemResponse>({
+      method: 'POST',
+      path: 'admin/workflow-definitions/promote-to-system',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Sync one workflow version into other tenants you manage
+   *
+   * Owner decision #4: a tenant admin who manages several tenants syncs among their OWN tenants. Each target receives a DRAFT of the SAME lineage — its next version, never published and never active, so a sync can never re-point another tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. Requires an elevated tenant-less context.
+   *
+   * `POST /api/v1/admin/workflow-definitions/slug/{slug}/sync` — `WorkflowDefinitionController.sync`.
+   */
+  sync(slug: string, body: SyncWorkflowDefinitionRequest, options: AdminRequestOptions = {}): Promise<WorkflowSyncResponse> {
+    return this.request<WorkflowSyncResponse>({
+      method: 'POST',
+      path: `admin/workflow-definitions/slug/${encodePathSegment(String(slug))}/sync`,
+      body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
