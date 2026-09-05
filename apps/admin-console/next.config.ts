@@ -58,6 +58,25 @@ const nextConfig: NextConfig = {
     // registries); rewrite barrel imports to direct ones so a screen only
     // compiles/bundles the components it uses.
     optimizePackageImports: ['@arcaai/ui'],
+    // Audio uploads (POST /api/hope/audio/transcription-jobs/transcribe) pass
+    // through proxy.ts, and Next buffers the client body for a proxied request
+    // at 10 MB by default. Past that it forwards ONLY THE FIRST 10 MB rather
+    // than failing, so a large multipart upload arrives at the gateway with its
+    // closing boundary missing and busboy answers the misleading
+    // `Multipart: Unexpected end of form` 400.
+    //
+    // Matched to the gateway's MAX_UPLOAD_HARD_CEILING
+    // (`modules/streaming/dto/transcription-job.dto.ts`) ON PURPOSE: the BFF
+    // must never be a second, lower, SILENT limit. The real ceiling is the
+    // admin-configurable `stt.batch.maxFileSizeMb` (default 250 MB), enforced in
+    // the gateway handler, which rejects an oversized file with an explanatory
+    // 400 — so anything the gateway would refuse must reach it intact to be
+    // refused properly.
+    //
+    // The deprecated spelling is `middlewareClientMaxBodySize` (what the
+    // dev-server warning still prints); this app uses proxy.ts, so the current
+    // key applies.
+    proxyClientMaxBodySize: '1gb',
   },
   output: 'standalone',
   // `next build` traces the files the server will need by following STATIC
