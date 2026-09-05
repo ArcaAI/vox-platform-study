@@ -440,6 +440,20 @@ describe('syncToTenants', () => {
     expect(agentRepository.create).not.toHaveBeenCalled();
   });
 
+  // SYSTEM's existence is not a secret — every tenant reads its templates — so hiding the refusal
+  // behind a 404 would conceal nothing and mislead the caller about WHY the push failed.
+  it('403s — not 404s — when the target is SYSTEM and the caller is not a platform administrator', async () => {
+    manages(PARTNER);
+    await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [SYSTEM_TENANT_ID] })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [SYSTEM_TENANT_ID] })).rejects.toThrow(/platform administrator/);
+  });
+
+  it('lets a caller who DOES manage SYSTEM push into it — the promotion path a platform admin uses', async () => {
+    manages(SYSTEM_TENANT_ID);
+    const result = await makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [SYSTEM_TENANT_ID] });
+    expect(result.targets.map((t) => t.tenantId)).toEqual([SYSTEM_TENANT_ID]);
+  });
+
   it('fails CLOSED when the authorization engine is unwired rather than writing cross-tenant', async () => {
     const service = new AgentService(
       agentRepository as never,
