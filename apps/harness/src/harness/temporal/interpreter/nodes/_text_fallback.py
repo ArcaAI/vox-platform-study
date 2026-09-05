@@ -19,16 +19,20 @@ activity switches to the next candidate on a ``TextServiceError`` only while it 
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+from temporalio import activity
 
 from harness.temporal.interpreter.models import ResolvedAgent, ResolvedPrompt
 
 __all__ = [
+    "ActivityBudget",
     "TextFallbackBlock",
     "TextFallbackCandidate",
     "candidate_as_resolved_agent",
+    "chain_candidates",
     "read_text_fallback",
     "read_text_primary",
     "wire_provider",
@@ -164,3 +168,60 @@ def candidate_as_resolved_agent(candidate: TextFallbackCandidate) -> ResolvedAge
             "fundingTier": candidate.funding_tier,
         }
     )
+
+
+def chain_candidates(block: TextFallbackBlock | None) -> list[TextFallbackCandidate]:
+    """The fallback candidates a call may run, in order — EMPTY when the switch is off.
+
+    The ONE place both text lanes (the `core.agent` activity and the durable `generate`
+    activity) ask "may I switch, and to what?". ``auto_switch`` on the block is already the
+    EFFECTIVE decision: the gateway funding-gates it (a tenant may disable platform HA only for
+    a primary it funds), so nothing here re-derives funding to second-guess it.
+
+    A candidate with no wire provider or no model id is dropped: it could only 503.
+    """
+    if block is None or not block.auto_switch:
+        return []
+    return [c for c in block.chain if wire_provider(c.provider) and c.model]
+
+
+class ActivityBudget:
+    """Whether ANOTHER candidate's call can still finish inside this activity's budget.
+
+    The whole chain walk runs inside ONE activity's ``start_to_close_timeout``. Without this
+    guard a switch late in the budget is started anyway, the activity times out mid-call, and
+    Temporal re-runs it FROM THE PRIMARY — re-billing a generation that already completed and
+    losing the fallback's work. So a candidate is only STARTED when its own per-call timeout
+    still fits in what is left; on exhaustion the walker stops and the node degrades, never
+    raises (a raise is what makes Temporal retry).
+
+    The FIRST candidate is always allowed: the budget governs SWITCHING, not the attempt the
+    activity exists to make. Outside an activity context (unit fixtures) there is no declared
+    budget and the guard is inert.
+    """
+
+    def __init__(self, per_call_seconds: float, total_seconds: float | None) -> None:
+        self._per_call = per_call_seconds
+        self._total = total_seconds
+        self._start = time.monotonic()
+
+    @classmethod
+    def for_activity(cls, per_call_seconds: float) -> ActivityBudget:
+        total: float | None = None
+        try:
+            timeout = activity.info().start_to_close_timeout
+        except RuntimeError:
+            timeout = None
+        if timeout is not None:
+            total = timeout.total_seconds()
+        return cls(per_call_seconds, total)
+
+    @property
+    def remaining_seconds(self) -> float | None:
+        if self._total is None:
+            return None
+        return self._total - (time.monotonic() - self._start)
+
+    def allows_another(self) -> bool:
+        remaining = self.remaining_seconds
+        return remaining is None or remaining >= self._per_call

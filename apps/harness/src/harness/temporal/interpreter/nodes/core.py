@@ -62,9 +62,11 @@ from harness.temporal.interpreter.nodes._shared import (
     resolve_dotted_path,
 )
 from harness.temporal.interpreter.nodes._text_fallback import (
+    ActivityBudget,
     TextFallbackBlock,
     TextFallbackCandidate,
     candidate_as_resolved_agent,
+    chain_candidates,
     read_text_fallback,
     read_text_primary,
     wire_provider,
@@ -527,16 +529,23 @@ async def _run_text_generation(
         else resolved.model_copy(update={"funding_tier": primary.funding_tier})
     )
     candidates: list[tuple[str, ResolvedAgent]] = [("agent", primary_agent)]
-    if fallback is not None and fallback.auto_switch:
-        candidates.extend(
-            ("agent-fallback", candidate_as_resolved_agent(candidate))
-            for candidate in fallback.chain
-        )
+    candidates.extend(
+        ("agent-fallback", candidate_as_resolved_agent(candidate))
+        for candidate in chain_candidates(fallback)
+    )
 
+    # The whole walk runs inside ONE activity budget: a switch started too late times the
+    # activity out mid-call and Temporal re-runs it FROM THE PRIMARY, re-billing a generation
+    # that already completed. Never start a candidate whose call cannot finish in what is left.
+    budget = ActivityBudget.for_activity(settings.text_timeout_s)
     run_context = _run_context(payload)
     redactor = _phi_redactor()
     last_error: TextServiceError | None = None
-    for selection_source, candidate in candidates:
+    exhausted = False
+    for index, (selection_source, candidate) in enumerate(candidates):
+        if index > 0 and not budget.allows_another():
+            exhausted = True
+            break
         provider = wire_provider(candidate.model.provider)
         model = candidate.model.source_uri or candidate.model.slug
         if not provider or not model:
@@ -617,6 +626,19 @@ async def _run_text_generation(
         await record_and_flush(payload, status=STATUS_OK, started=started)
         return NodeActivityResult(status="SUCCEEDED", output=output)
 
+    if exhausted:
+        # DEGRADED, never a raise: raising is what makes Temporal retry the activity from the
+        # primary, which is exactly the double-spend this guard exists to prevent.
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code="text_budget_exhausted"
+        )
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason=(
+                "core.agent: activity budget exhausted before the next fallback candidate could "
+                f"be started (last error: {last_error})"
+            ),
+        )
     await record_and_flush(
         payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"
     )

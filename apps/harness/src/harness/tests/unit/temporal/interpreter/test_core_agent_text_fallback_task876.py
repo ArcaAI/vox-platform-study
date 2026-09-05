@@ -34,6 +34,8 @@ from harness.temporal.interpreter.nodes import core
 from harness.temporal.interpreter.nodes import guards as guards_mod
 from harness.temporal.interpreter.nodes import text_generate as text_generate_mod
 from harness.temporal.interpreter.nodes._text_fallback import (
+    ActivityBudget,
+    chain_candidates,
     read_text_fallback,
     read_text_primary,
     wire_provider,
@@ -367,3 +369,50 @@ class TestLlmBindingIsRetired:
         source = __import__("inspect").getsource(module)
         assert "read_model_slug(" not in source
         assert "model_slug=" not in source
+
+
+class TestActivityBudget:
+    """The chain walk runs inside ONE activity's `start_to_close_timeout`. A candidate started
+    too late times the activity out mid-call, and Temporal re-runs it FROM THE PRIMARY —
+    re-billing a generation that already completed."""
+
+    def test_never_blocks_the_first_attempt_and_stops_switching_when_the_call_cannot_fit(
+        self,
+    ) -> None:
+        # 30s of budget left, a 120s per-call timeout: no further candidate can finish.
+        assert ActivityBudget(per_call_seconds=120.0, total_seconds=30.0).allows_another() is False
+        assert ActivityBudget(per_call_seconds=10.0, total_seconds=30.0).allows_another() is True
+        # No declared budget (outside an activity context) ⇒ the guard is inert.
+        assert ActivityBudget(per_call_seconds=120.0, total_seconds=None).allows_another() is True
+        assert ActivityBudget(120.0, None).remaining_seconds is None
+
+    def test_chain_candidates_is_the_one_may_i_switch_answer(self) -> None:
+        block = read_text_fallback(_wire())
+        assert [c.agent.slug for c in chain_candidates(block)] == ["platform-summarization"]
+        assert chain_candidates(read_text_fallback(_wire(auto_switch=False))) == []
+        assert chain_candidates(None) == []
+
+    @pytest.mark.asyncio
+    async def test_an_exhausted_budget_degrades_instead_of_starting_a_doomed_switch(
+        self, harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        text = harness(_wire(), failing={"azure-openai"})
+
+        class _Spent:
+            @classmethod
+            def for_activity(cls, _per_call: float) -> "_Spent":
+                return cls()
+
+            def allows_another(self) -> bool:
+                return False
+
+        monkeypatch.setattr(core, "ActivityBudget", _Spent)
+
+        result = await core.interpreter_core_agent(_payload())
+
+        # The primary still ran (the budget governs SWITCHING, not the attempt the activity
+        # exists to make); the fallback was never started, and the node DEGRADED rather than
+        # raising — a raise is what makes Temporal retry from the primary.
+        assert len(text.calls) == 1
+        assert result.status == "DEGRADED"
+        assert "activity budget exhausted" in (result.reason or "")
