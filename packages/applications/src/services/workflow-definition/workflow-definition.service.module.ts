@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
+import { AgentPromotionServiceModule } from '../agentPromotion/agentPromotion.service.module';
+import { AuthorizationModule } from '../../authorization/authorization.module';
+import { EvalServiceModule } from '../eval/eval.service.module';
 import { AiRoutingPolicyServiceModule } from '../ai-routing-policy/ai-routing-policy.service.module';
 import { ConsultationContextSchemaServiceModule } from '../consultation-context-schema/consultation-context-schema.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
@@ -41,6 +44,20 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  *   silently ignored at runtime. That module imports `CommonServiceModule` + `CoreDatabaseModule`
  *   + `AiProviderConnectionServiceModule`, none of which reach back here, so this closes no cycle.
  *
+ * TASK-885 — the three cross-tenant dependencies:
+ *
+ * - AgentPromotionServiceModule -> `IAgentPromotionService`. The Global -> SYSTEM path IS that
+ *   service's promotion plus a publish; this module CONSUMES it and never reimplements it.
+ * - EvalServiceModule -> `EvalPromotionGateService`, which gates that path (owner #7).
+ * - AuthorizationModule -> `PolicyEngine`, which is what makes "the actor holds manage rights in
+ *   that OTHER tenant" answerable from a service. A decorator can express `action + subject`; it
+ *   cannot express "…and also over there". Same precedent `AgentPromotionServiceModule` cites.
+ *
+ * None of the three reaches back here — `AgentPromotionServiceModule` imports
+ * `CommonServiceModule` + `CoreDatabaseModule` + `EvalServiceModule` + `AuthorizationModule`,
+ * `EvalServiceModule` imports `HarnessGatewayServiceModule` (`ConfigModule` + `HttpModule`) and
+ * `AuthorizationModule` imports `ApiKeyServiceModule` — so these imports close no cycle.
+ *
  * `SttPipelineResolverService` is exported (not just provided) because its consumer — the
  * session/consultation-open call site that resolves `pipelineId` — is a FUTURE, separate wiring
  * pass ( Task 6; deliberately not diff, proved by
@@ -48,11 +65,14 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  */
 @Module({
   imports: [
+    AgentPromotionServiceModule,
     AiRoutingPolicyServiceModule,
+    AuthorizationModule,
     CommonServiceModule,
     ConsultationContextSchemaServiceModule,
     CoreDatabaseModule,
     EntitlementsServiceModule,
+    EvalServiceModule,
     PipelineServiceModule,
     WorkflowValidatorServiceModule,
   ],

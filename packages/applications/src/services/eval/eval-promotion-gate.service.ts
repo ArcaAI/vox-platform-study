@@ -4,6 +4,7 @@ import { WORKFLOW_NODE_REGISTRY, type WorkflowGraph, type WorkflowGraphNode, typ
 import {
   AGENTIC_EVAL_PROMOTION_GATE_DEFAULT,
   AGENTIC_EVAL_PROMOTION_GATE_KEY,
+  AGENTIC_EVAL_WORKFLOW_PROMOTION_GATE_DEFAULT,
   EvalPromotionGateMode,
 } from '../settings-registry/descriptors/agentic-eval.descriptors';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
@@ -70,6 +71,23 @@ export interface EvaluatePromotionInput {
   agentId?: string;
   /** What triggered the gate — audit/telemetry only. */
   trigger: 'approve' | 'pin';
+}
+
+/**
+ * TASK-885 — the WORKFLOW promotion path (Global → SYSTEM).
+ *
+ * The graph is passed IN rather than looked up, because the artifact being gated is one exact
+ * immutable version chosen by the caller — not "whatever this tenant currently publishes".
+ * Reading a stored definition here would gate a different graph from the one about to be
+ * promoted, which is the one failure mode a promotion gate must not have.
+ */
+export interface EvaluateWorkflowPromotionInput {
+  /** The SOURCE tenant. Its gates, its golden sets — a corpus never crosses a tenant boundary. */
+  tenantId: string;
+  /** The lineage being promoted. Audit/telemetry only. */
+  definitionSlug: string;
+  /** The exact graph being promoted. */
+  graph: unknown;
 }
 
 export interface PromotionGateVerdict {
@@ -220,16 +238,100 @@ export class EvalPromotionGateService {
     return { mode, evaluated: true, passed: allPassed, blocked, failures, runIds, aggregates };
   }
 
-  private async resolveMode(tenantId: string): Promise<EvalPromotionGateMode> {
+  /**
+   * TASK-885 / owner #7 — gate a WORKFLOW promotion (Global → SYSTEM).
+   *
+   * Same three modes, same eval, same "no golden set ⇒ proceed with a recorded warning" as the
+   * template path. Two things differ, and both follow from what is being promoted:
+   *
+   *   - **Discovery is the GRAPH's own `evalGate` bindings**, not "nodes bound to template X".
+   *     A workflow promotion is not about one prompt.
+   *   - **The default mode is `warn`** (`AGENTIC_EVAL_WORKFLOW_PROMOTION_GATE_DEFAULT`) when
+   *     nobody has written the key. The eval still runs and is still recorded; a failure is a
+   *     warning on the promotion rather than a 409. A platform admin who writes `block` gets a
+   *     blocking gate back on this path too.
+   */
+  async evaluateWorkflowPromotion(input: EvaluateWorkflowPromotionInput): Promise<PromotionGateVerdict> {
+    const mode = await this.resolveMode(input.tenantId, AGENTIC_EVAL_WORKFLOW_PROMOTION_GATE_DEFAULT);
+
+    const empty: PromotionGateVerdict = { mode, evaluated: false, passed: true, blocked: false, failures: [], runIds: [], aggregates: {} };
+    if (mode === 'off') return empty;
+
+    const goldenSetIds: string[] = [];
+    const seen = new Set<string>();
+    for (const node of graphNodes(input.graph)) {
+      const gate = resolveNodeEvalGate(node);
+      if (!gate?.enabled || gate.goldenSetId.length === 0) continue;
+      if (seen.has(gate.goldenSetId)) continue;
+      seen.add(gate.goldenSetId);
+      goldenSetIds.push(gate.goldenSetId);
+    }
+
+    if (goldenSetIds.length === 0) {
+      return {
+        ...empty,
+        warning: `No golden set is attached to an enabled eval gate on '${input.definitionSlug}' — the promotion proceeded ungated.`,
+      };
+    }
+
+    const failures: string[] = [];
+    const runIds: string[] = [];
+    let aggregates: Record<string, number> = {};
+    let allPassed = true;
+
+    for (const goldenSetId of goldenSetIds) {
+      const outcome = await this.evalRunService.runGoldenSet({ goldenSetId, tenantId: input.tenantId, triggerType: 'PROMOTION' });
+      runIds.push(outcome.run.id);
+      aggregates = { ...aggregates, ...outcome.aggregates };
+      if (!outcome.passed) {
+        allPassed = false;
+        failures.push(...outcome.failures);
+      }
+    }
+
+    const blocked = mode === 'block' && !allPassed;
+    if (!allPassed) {
+      this.logger.warn(
+        `Workflow promotion gate ${blocked ? 'BLOCKED' : 'WARNED'} (mode=${mode}, workflow=${input.definitionSlug}): ${failures.join('; ')}`,
+      );
+    }
+
+    return { mode, evaluated: true, passed: allPassed, blocked, failures, runIds, aggregates };
+  }
+
+  /**
+   * The gate's mode for ONE path.
+   *
+   * `codeDefault` is what this path falls back to when NOBODY has written
+   * `agentic.eval.promotionGate` — `block` for template approval / pin re-point (OD-3), `warn`
+   * for the Global → SYSTEM workflow path (TASK-885 / owner #7). A WRITTEN value always wins, on
+   * every path: that is what "keeping `block` available" means.
+   *
+   * The distinction is read off `sourceScope`, which the resolver reports as the tier that
+   * actually answered — `'code-default'` exactly when no row did. Only that literal is treated
+   * as "no opinion": a resolved value with any other scope is a value someone wrote. (The
+   * production resolver always reports the field; the narrow test keeps a fixture that stubs
+   * only `{ value }` meaning what it plainly says.)
+   *
+   * On a resolver failure this returns the PATH's own default rather than `block` universally.
+   * For the approval path that is unchanged behaviour (its default IS `block`); for the workflow
+   * path, blocking a promotion because the SETTINGS resolver was unavailable would be exactly the
+   * "blocked on evidence that does not exist" outcome owner #7 ruled out — and the artifact a
+   * blocked promotion would have produced is a SYSTEM template that re-points nobody's live
+   * traffic on its own.
+   */
+  private async resolveMode(
+    tenantId: string,
+    codeDefault: EvalPromotionGateMode = AGENTIC_EVAL_PROMOTION_GATE_DEFAULT,
+  ): Promise<EvalPromotionGateMode> {
     try {
       const resolved = await this.effectiveSettings.resolveEffective(AGENTIC_EVAL_PROMOTION_GATE_KEY, { tenantId });
+      if (resolved.sourceScope === 'code-default') return codeDefault;
       const value = resolved.value;
       if (value === 'block' || value === 'warn' || value === 'off') return value;
-      return AGENTIC_EVAL_PROMOTION_GATE_DEFAULT;
+      return codeDefault;
     } catch {
-      // Fail-safe toward the mandatory default (block) — a resolver outage must
-      // never silently disable the gate.
-      return AGENTIC_EVAL_PROMOTION_GATE_DEFAULT;
+      return codeDefault;
     }
   }
 }

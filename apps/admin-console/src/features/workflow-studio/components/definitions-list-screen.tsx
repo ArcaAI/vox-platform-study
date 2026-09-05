@@ -7,7 +7,7 @@
  * the same program, already built against a real `admin/workflow-*` endpoint.
  */
 import { useState } from 'react';
-import { IconCopy, IconLayoutGrid, IconListTree, IconPlus, IconRefresh, IconTemplate } from '@tabler/icons-react';
+import { IconCopy, IconFileImport, IconLayoutGrid, IconListTree, IconPlus, IconRefresh, IconTemplate } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -20,9 +20,10 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { workflowStudioKeys, useCloneWorkflowDefinition, useWorkflowDefinitions, useWorkflowTemplates } from '../api';
+import { workflowStudioKeys, useCloneWorkflowDefinition, useImportWorkflowDefinition, useWorkflowDefinitions, useWorkflowTemplates } from '../api';
 import type { WorkflowDefinition } from '../api/types';
 import { CloneDefinitionDialog, type CloneDefinitionSubmission } from './clone-definition-dialog';
+import { ImportDefinitionDialog, type ImportDefinitionSubmission } from './import-definition-dialog';
 import { GatewayError } from '@/shared/api';
 import { toast } from 'sonner';
 
@@ -45,12 +46,17 @@ function DefinitionsListBody() {
   const [cloneOpen, setCloneOpen] = useState(false);
   const [cloneSource, setCloneSource] = useState<WorkflowDefinition | null>(null);
   const [cloneError, setCloneError] = useState<string | null>(null);
+  // TASK-885 — import is the LIST's action (owner #4): it creates a workflow, so it belongs
+  // where workflows are created, not inside an editor for a workflow that already exists.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const definitionsQuery = useWorkflowDefinitions({ page, limit: PAGE_SIZE });
   // Deferred until the dialog opens — the library is a cross-tenant read nobody needs on a
   // page load that may never reach the clone flow.
   const templatesQuery = useWorkflowTemplates(cloneOpen && cloneSource === null);
   const cloneMutation = useCloneWorkflowDefinition();
+  const importMutation = useImportWorkflowDefinition();
 
   function openClone(source: WorkflowDefinition | null) {
     setCloneSource(source);
@@ -73,6 +79,22 @@ function DefinitionsListBody() {
       toast.error(message);
     }
   }
+  async function handleImport({ targetSlug, name, bundle }: ImportDefinitionSubmission) {
+    setImportError(null);
+    try {
+      const created = await importMutation.mutateAsync({ targetSlug, name, bundle });
+      setImportOpen(false);
+      toast.success(`Imported “${created.name}” as a draft — validate it before publishing.`);
+      router.push(`/workflow-studio/${encodeURIComponent(created.id)}`);
+    } catch (cause) {
+      // Surfaced VERBATIM: the gateway's 409 names the references this tenant is missing, and a
+      // paraphrase would drop exactly the part that makes it actionable.
+      const message = cause instanceof GatewayError ? cause.message : 'Failed to import the workflow.';
+      setImportError(message);
+      toast.error(message);
+    }
+  }
+
   const rows = definitionsQuery.data?.data ?? [];
 
   const queryState: DataQueryState = { pagination: { mode: 'offset', page, limit: PAGE_SIZE }, sorting: [], filters: [], globalSearch: undefined };
@@ -170,6 +192,16 @@ function DefinitionsListBody() {
                 <IconTemplate aria-hidden />
                 Start from template
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setImportError(null);
+                  setImportOpen(true);
+                }}
+              >
+                <IconFileImport aria-hidden />
+                Import
+              </Button>
               <Button variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: workflowStudioKeys.root })}>
                 <IconRefresh aria-hidden />
                 Refresh
@@ -252,6 +284,16 @@ function DefinitionsListBody() {
         onConfirm={(submission) => void handleClone(submission)}
         confirming={cloneMutation.isPending}
         error={cloneError}
+      />
+      <ImportDefinitionDialog
+        open={importOpen}
+        onOpenChange={(next) => {
+          setImportOpen(next);
+          if (!next) setImportError(null);
+        }}
+        onConfirm={(submission) => void handleImport(submission)}
+        confirming={importMutation.isPending}
+        error={importError}
       />
     </ScreenTemplate>
   );
