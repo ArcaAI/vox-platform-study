@@ -1094,7 +1094,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   /**
    * The capability set that bounds one binding. A legacy `providerConfigRef` resolves through the
    * routing plane (tenant → SYSTEM cascade, `IAiRoutingPolicyService`); a TASK-876 `agentRef`
-   * resolves through the AGENT — its ACTIVE published version visible to the tenant, then its
+   * resolves through the AGENT — the PINNED version when the node names one, else its ACTIVE
+   * published version, visible to the tenant — then its
    * model row's `_metadata.capabilities.supportedGenerationParams`, exactly the read
    * `AgentService.capabilitiesOf` makes when the agent itself is published — so the two gates
    * cannot disagree. `undefined` = unknown (WARNING); the runtime fails closed on an
@@ -1103,7 +1104,16 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   private async generationCapabilitiesFor(binding: NodeGenerationBindingRef, tenantId: string): Promise<ProviderGenerationCapabilities | undefined> {
     if (binding.agentRef) {
       if (!this.agentRepository || !this.aiModelRepository) return undefined;
-      const agent = await this.agentRepository.findPublishedActiveBySlug(tenantId, binding.agentRef.slug);
+      // A PINNED `agentRef.versionNumber` names the version this node will actually run
+      // (`TextAgentResolverService` refuses any other, 409). Reading the ACTIVE version instead
+      // would clamp against a capability set the node never sees — and LABEL the finding with a
+      // version number the author did not write. An unresolvable pin is an unknown capability
+      // set (WARNING), the same as an unresolvable slug.
+      const pin = binding.agentRef.versionNumber;
+      const agent =
+        typeof pin === 'number'
+          ? await this.agentRepository.findPublishedVisibleBySlugVersion(tenantId, binding.agentRef.slug, pin)
+          : await this.agentRepository.findPublishedActiveBySlug(tenantId, binding.agentRef.slug);
       const modelId = (agent?.compiledConfig as { model?: { id?: unknown } } | null)?.model?.id;
       if (!agent || typeof modelId !== 'string') return undefined;
       const model = await this.aiModelRepository.findById(modelId).catch(() => null);
