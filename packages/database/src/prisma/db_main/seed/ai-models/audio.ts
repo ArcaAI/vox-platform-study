@@ -147,6 +147,65 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
+    // PUBLIC whisper.cpp GGUF of the stock `whisper-large-v3-turbo`, q8_0.
+    //
+    // WHY A PUBLIC ROW EXISTS AT ALL. Every other WHISPER_CPP row above is an
+    // ArcaAI fine-tune in a PRIVATE Hub repo, and the SYSTEM
+    // `model-registry:huggingface` connection is seeded blank + disabled
+    // (`17-ai-provider-connection.ts`), so an anonymous pull 401s. That is
+    // correct for the product and fatal for the e2e suite: `createSession`
+    // loads the model INLINE and the gateway's call to STT has a hard 15s
+    // budget (`streamingSession.service.ts`), so a stack with no Hub token
+    // cannot open a streaming session at all and every live-session spec
+    // skips. This row is the licence-clean, credential-free fixture those
+    // specs name explicitly via `agentSlug`.
+    //
+    // NOT a platform default: `isPlatformDefaultFor` is deliberately absent, so
+    // the SYSTEM cascade still lands on the in-house fine-tune. Nothing but a
+    // test that asks for it by name resolves this row.
+    //
+    // The slug is NOT `whisper-large-v3-turbo-gguf` — that one is in the
+    // never-reuse ledger (`retired.ts`). `q8_0` matches the quant that
+    // `whisper_cpp_loader._select_gguf_file` requires in the filename
+    // (`ggml-large-v3-turbo-q8_0.bin`, ~834 MiB).
+    id: '80000000-0000-0000-0001-000000000025',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'Whisper Large V3 Turbo (whisper.cpp GGUF q8_0, public)',
+    slug: 'whisper-large-v3-turbo-q8_0',
+    description:
+      'Stock OpenAI Whisper Large V3 Turbo, GGUF (q8_0) for the whisper.cpp ggml runtime via pywhispercpp. Public, credential-free — the e2e live-session fixture.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.HUGGINGFACE,
+    sourceUri: 'ggerganov/whisper.cpp',
+    sourceRevision: 'main',
+    // STAGED LOCALLY, and it has to be. `resolve_for_model_config` honours
+    // `local_path` BEFORE any credential and with `allow_network=False`; without
+    // it the resolver snapshot-downloads the WHOLE `ggerganov/whisper.cpp` repo —
+    // 47 files, measured at ~25 minutes — inside the gateway's 15s session-create
+    // budget, so every live-session spec times out at exactly 15011ms and reports
+    // "is STT running?". Caching the one .bin is NOT enough: a snapshot fetches
+    // the repo, not the file.
+    //
+    // Env-driven and NULL by default, so this row behaves like any other
+    // catalogue entry in the cluster (fetch by `sourceUri`) and only a stack that
+    // has staged the weights points at them. `scripts/stage-e2e-stt-model.sh`
+    // stages the directory and prints the value.
+    localPath: process.env.SEED_STT_FIXTURE_LOCAL_PATH?.trim() || null,
+    format: AiModelFormat.WHISPER_CPP,
+    libraryName: 'whisper.cpp',
+    servedBy: 'stt',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    baseModel: 'openai/whisper-large-v3-turbo',
+    languages: ['en', 'ml'],
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 900,
+    computeType: 'q8_0',
+    tags: ['multilingual', 'ggml', 'whisper.cpp', 'public', 'e2e-fixture'],
+  },
+  {
     // Same fine-tune, fp16 safetensor checkpoint served via transformers.
     id: '80000000-0000-0000-0001-000000000020',
     tenantId: SYSTEM_TENANT_ID,

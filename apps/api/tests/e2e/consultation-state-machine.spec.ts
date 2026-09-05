@@ -21,7 +21,7 @@
  *     reopen walk (case 2) and the gate-SLA TIMED_OUT path (case 5) need a
  *     reachable text-generation backend (TEXT) and the harness's internal
  *     service-token callback respectively; both are gated behind
- *     `TASK711_E2E_FULL=1` (+ `HARNESS_SERVICE_TOKEN` for case 5) so CI never
+ *     `HARNESS_E2E_FULL` (+ `HARNESS_SERVICE_TOKEN` for case 5) so CI never
  *     reports a fabricated pass when those aren't wired up.
  *
  * Cases covered :
@@ -258,14 +258,19 @@ test.describe('session state machine (RUNNABLE-HERE, apps/api + Postgres only)',
 // =============================================================================
 // RUN_FULL-gated — needs a reachable text-generation backend (TEXT) for case 2/4,
 // and the harness's internal X-Service-Token callback + HARNESS_SERVICE_TOKEN
-// for case 5/6. SKIPPED unless TASK711_E2E_FULL=1, so CI never reports a
-// fabricated pass (mirrors harness-gate.spec.ts's RUN_FULL gating).
+// for case 5/6. SKIPPED unless HARNESS_E2E_FULL is set, so CI never reports a
+// fabricated pass.
+//
+// TASK-869: this used to read `TASK711_E2E_FULL`, a SECOND flag doing the same
+// job as `harness-gate.spec.ts`'s `HARNESS_E2E_FULL` — so a managed run that set
+// one still skipped the other's tests. There is now exactly ONE switch, and
+// `scripts/test-run.sh` sets it for every managed e2e run.
 // =============================================================================
-const RUN_FULL = process.env.TASK711_E2E_FULL === '1';
+const RUN_FULL = Boolean(process.env.HARNESS_E2E_FULL);
 const SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
 
 test.describe('full lifecycle walk (RUN_FULL)', () => {
-  test.skip(!RUN_FULL, 'requires a reachable TEXT/text backend; set TASK711_E2E_FULL=1');
+  test.skip(!RUN_FULL, 'requires a reachable TEXT/text backend; set HARNESS_E2E_FULL=1');
 
   let doctorToken: string;
 
@@ -340,7 +345,7 @@ test.describe('full lifecycle walk (RUN_FULL)', () => {
 });
 
 test.describe('gate SLA TIMED_OUT path (RUN_FULL, service-token)', () => {
-  test.skip(!RUN_FULL || !SERVICE_TOKEN, 'requires HARNESS_SERVICE_TOKEN + TASK711_E2E_FULL=1');
+  test.skip(!RUN_FULL || !SERVICE_TOKEN, 'requires HARNESS_SERVICE_TOKEN + HARNESS_E2E_FULL=1');
 
   let doctorToken: string;
   let tenantId: string;
