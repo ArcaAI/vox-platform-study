@@ -174,6 +174,18 @@ export const AI_MODEL_PROVIDERS = [
   'built-in',
   'sarvam',
   'openai',
+  // Cloud tenant-BYO ASR vendors. `azure` above is the LLM-plane spelling and
+  // it is NOT one of these: an Azure OpenAI resource and an Azure Speech
+  // resource are different credentials with different residency postures, and
+  // `CLOUD_BYO_PROVIDERS.stt` has always said so. The two cloud ASR catalogue
+  // rows nonetheless declared `provider: 'azure'`, so
+  // `AsrAgentResolverService.resolveCredentials` — which gates on
+  // `isCloudByoProvider('stt', spec.models.asr.provider)` — resolved NO
+  // credential for a streaming session on an Azure ASR agent (TASK-880
+  // DEFERRED-1, closed by TASK-888). Neither seeds an `llm` connection row;
+  // `config-plane-seed.test.ts` excludes them alongside `sarvam`.
+  'azure-speech',
+  'azure-foundry',
   // Cloud tenant-BYO LLM providers. `openai` above already served
   // the STT OpenAI ASR engine; these two are net-new. Governance lives in
   // `CLOUD_BYO_PROVIDERS.llm` (@arcaai/applications); their TEXT adapters are

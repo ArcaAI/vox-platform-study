@@ -168,10 +168,9 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
     expect(tenant?.label).toBe('Speech & Voice');
     expect(tenant?.tier).toBe('30-49');
-    expect(tenant?.required).toEqual([
-      ['read', 'TenantSttConfig'],
-      ['read', 'TenantTtsConfig'],
-    ]);
+    // TASK-888 dropped the `TenantTtsConfig` read with the model: the Voice tab
+    // reads nothing now and is gated on `Agent` inside the screen.
+    expect(tenant?.required).toEqual([['read', 'TenantSttConfig']]);
     expect(tenant?.implemented).toBe(true);
   });
 
@@ -599,14 +598,12 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   [
     // NARROWED this entry: the Models (`AiTaskDefault`) and Providers
     // (`GlobalSetting`) reads left with the tabs that made them, both now on
-    // `/ai-platform`. The URL, tier and domain are untouched — this table
-    // exists to make exactly that kind of narrowing visible in a diff.
+    // `/ai-platform`; TASK-888 took `TenantTtsConfig` with the model. The URL,
+    // tier and domain are untouched — this table exists to make exactly that
+    // kind of narrowing visible in a diff.
     '/ai-configuration',
     '30-49',
-    [
-      ['read', 'TenantSttConfig'],
-      ['read', 'TenantTtsConfig'],
-    ],
+    [['read', 'TenantSttConfig']],
   ],
   ['/consultations', '30-49', [['manage', 'Consultation']]],
   ['/playground/consultation', '50-59', []],

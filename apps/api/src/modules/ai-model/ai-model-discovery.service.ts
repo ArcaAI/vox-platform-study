@@ -348,15 +348,16 @@ export class AiModelDiscoveryService {
    * no tenant; that case DECLARES itself with the `tenantless:platform-operator`
    * marker rather than sending nothing.
    *
-   * D-D: the token is the ONE shared `INTERNAL_ACCESS_TOKEN`; `TEXT_SERVICE_TOKEN`
-   * is consulted only as the migration fallback (TEXT no longer accepts it alone).
+   * D-D: the token is the ONE shared `INTERNAL_ACCESS_TOKEN`. The per-service
+   * `TEXT_SERVICE_TOKEN` fallback was retired with its descriptor (TASK-888); TEXT
+   * stopped accepting it long before that.
    */
   private async probeText(
     connections: Record<string, ProbeConnectionWire>,
     sources: Record<string, DiscoveryConnectionSource>,
   ): Promise<[TextProviderEntry[], DiscoveryProbe[]]> {
     const base = this.configService.getConfigValue('TEXT_URL');
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     const headers = internalServiceHeaders({
       serviceToken,
       tenantId: this.clsService?.get('tenantId'),

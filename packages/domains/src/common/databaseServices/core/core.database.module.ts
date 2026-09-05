@@ -80,7 +80,6 @@ import { TenantNlpTaskInstructionsRepository } from '../../../repositories/gener
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
 import { TenantSttConfigRepository } from '../../../repositories/generated/core/TenantSttConfigRepository';
-import { TenantTtsConfigRepository } from '../../../repositories/generated/core/TenantTtsConfigRepository';
 import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
 import { DocumentSectionRepository } from '../../../repositories/generated/core/DocumentSectionRepository';
@@ -224,7 +223,6 @@ const repositories = [
   // Per-tenant TTS configuration (credential rows live in the unified
   // AiProviderConnection plane, service='tts' — dropped
   // TenantTtsProviderCredential)
-  TenantTtsConfigRepository,
   // Clinical documentation harness domain
   GoldenSetRepository,
   GoldenCaseRepository,

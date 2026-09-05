@@ -1,10 +1,11 @@
 /**
- * Speech & Voice (`/ai-configuration`, tier 30-49) — the two bindings tabs that
- * survive until TASK-861/863 retire them. TASK-862 relocated the screen out of
- * the deleted `features/ai-task-defaults`; these specs pin what it still is:
+ * Speech & Voice (`/ai-configuration`, tier 30-49). TASK-862 relocated the
+ * screen out of the deleted `features/ai-task-defaults`; TASK-888 moved it again,
+ * into `features/tenant-stt-config`, when `TenantTtsConfig` was retired and the
+ * Voice tab stopped reading anything at all. These specs pin what it still is:
  * two `<RequirePermission>`-gated tabs, the working-tenant gate, the link to
- * `/ai-providers` (where the provider keys went), and a clean axe run in both
- * themes.
+ * `/ai-providers` (where the provider keys went), the links to the agents that
+ * own voice now, and a clean axe run in both themes.
  */
 
 import { cleanup, screen, waitFor } from '@testing-library/react';
@@ -46,22 +47,6 @@ const ELEVATED_NO_TENANT_SESSION = {
 
 const STT_EFFECTIVE = { tenantId: 'tnt-1', fallbackPipelineId: null, autoSwitchEnabled: false, consecutiveFailureThreshold: 3 };
 const STT_ROW = { tenantId: 'tnt-1', autoSwitchEnabled: false, consecutiveFailureThreshold: 3, version: 0 };
-const TTS_EFFECTIVE = {
-  tenantId: 'tnt-1',
-  routingEn: ['azure'],
-  routingMl: ['sarvam'],
-  allowedProviders: ['azure', 'sarvam'],
-  defaultVoiceEn: 'en-female-1',
-  defaultVoiceMl: 'ml-female-1',
-  defaultFormat: 'wav',
-  defaultSpeed: 1,
-  sampleRate: 24000,
-  maxInputChars: 2000,
-  sarvamPublicApiAllowed: false,
-  voiceBindings: {},
-};
-const TTS_ROW = { tenantId: 'tnt-1', routingEn: ['azure'], routingMl: ['sarvam'], allowedProviders: ['azure', 'sarvam'], sarvamPublicApiAllowed: false, version: 0 };
-const TTS_CATALOG = { providers: [{ provider: 'azure', slug: 'azure', name: 'Azure', voices: [{ id: 'en-female-1', locale: 'en', name: 'Aria' }] }] };
 
 function stubFetch({ session = TENANT_SESSION, permissions = ALL }: { session?: typeof TENANT_SESSION; permissions?: PermissionRule[] } = {}) {
   vi.stubGlobal(
@@ -75,11 +60,9 @@ function stubFetch({ session = TENANT_SESSION, permissions = ALL }: { session?: 
       if (method === 'GET' && path === '/api/hope/admin/stt-config') return Response.json(STT_EFFECTIVE);
       if (method === 'GET' && path === '/api/hope/admin/stt-config/row') return Response.json(STT_ROW);
       if (method === 'GET' && path === '/api/hope/admin/stt-config/fallback-candidates') return Response.json([]);
-      if (method === 'GET' && path === '/api/hope/admin/tts-config') return Response.json(TTS_EFFECTIVE);
-      // The row and catalog reads went with the editor (TASK-879); left stubbed so a regression
-      // that re-introduces them surfaces here as an unexpected call rather than a fetch error.
-      if (method === 'GET' && path === '/api/hope/admin/tts-config/row') return Response.json(TTS_ROW);
-      if (method === 'GET' && path === '/api/hope/admin/tts-config/catalog') return Response.json(TTS_CATALOG);
+      // No `admin/tts-config*` stub at all: TASK-888 deleted the routes with the
+      // model, so a regression that re-introduces a read surfaces here as an
+      // unhandled fetch rather than quietly passing.
       throw new Error(`Unhandled fetch: ${method} ${raw}`);
     }),
   );
@@ -110,7 +93,7 @@ describe('SpeechAndVoiceScreen — structure', () => {
     expect(link.getAttribute('href')).toBe('/ai-providers');
   });
 
-  it('renders a retirement notice on BOTH tabs — neither binding is editable any more', async () => {
+  it('renders a retirement notice on BOTH tabs — neither surface is editable any more', async () => {
     stubFetch();
     renderWithProviders(<SpeechAndVoiceScreen />, { searchParams: '?tab=speech' });
     expect(await screen.findByRole('heading', { name: /Speech fallback moved to the ASR agent/i })).toBeDefined();
@@ -121,17 +104,17 @@ describe('SpeechAndVoiceScreen — structure', () => {
     expect(await screen.findByRole('heading', { name: /Voice settings moved to the text-to-speech agent/i })).toBeDefined();
   });
 
-  it('the Voice tab is READ-ONLY and points at the agent that owns each setting now', async () => {
-    // TASK-879 — a form that writes a row nothing reads is worse than no form: an operator would
-    // change a value, see it saved, and hear no difference. The summary stays so the old row is
-    // still legible while it is migrated.
+  it('the Voice tab reads NOTHING and is only the way through to the agents', async () => {
+    // TASK-879 made the speech path agent-first and TASK-888 dropped the row, so
+    // there is nothing left to show — but the links are the reason an admin who
+    // knows this screen still comes back to it.
     stubFetch();
     renderWithProviders(<SpeechAndVoiceScreen />, { searchParams: '?tab=voice' });
 
-    expect(await screen.findByRole('heading', { name: /Retired TTS config row/i })).toBeDefined();
-    expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
-    const link = screen.getByRole('link', { name: /open text-to-speech agents/i });
+    const link = await screen.findByRole('link', { name: /open text-to-speech agents/i });
     expect(link.getAttribute('href')).toBe('/agents?task=TEXT_TO_SPEECH');
+    expect(screen.queryByRole('heading', { name: /Retired TTS config row/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
   });
 
   it('shows only the tab whose resource the caller can read', async () => {

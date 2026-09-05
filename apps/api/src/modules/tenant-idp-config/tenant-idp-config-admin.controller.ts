@@ -19,7 +19,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * TenantIdpConfigAdminController — the admin surface for a
  * tenant's external OIDC identity provider config, mounted at
  * `/admin/tenant-idp-config` (global prefix → `/api/v1/admin/tenant-idp-config`).
- * Mirrors `TenantTtsConfigAdminController`: `@Authorize`, `If-Match` OCC, CLS
+ * Mirrors `TenantSttConfigAdminController` (the `TenantTtsConfigAdminController` this was written against was retired with its model in TASK-888): `@Authorize`, `If-Match` OCC, CLS
  * tenant resolution, 404-over-403 tenant scoping.
  */
 @ApiBearerAuth()

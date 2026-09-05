@@ -456,8 +456,8 @@ def _verify_dir_checksum(
 # Atomic-fact weight resolution
 # ---------------------------------------------------------------------------
 
-# Harness's MiniCheck use has NO `AiTaskDefault` task key (it is not one of the
-# nine), so it resolves BY SLUG through the control plane's `modelWeights` map.
+# Harness's MiniCheck use has NO routing task key of its own, so it resolves BY
+# SLUG through the control plane's `modelWeights` map.
 ATOMIC_FACT_MODEL_SLUG = "minicheck-flan-t5-large"
 
 

@@ -103,7 +103,7 @@ export class AgentInvocationService {
     await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
 
     const headers = internalServiceHeaders({
-      serviceToken: await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN'),
+      serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),
       tenantId,
       tenantlessReason: TENANTLESS.CONTROL_PLANE,
     });

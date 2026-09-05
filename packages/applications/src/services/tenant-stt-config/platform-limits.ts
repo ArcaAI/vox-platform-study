@@ -41,6 +41,12 @@ export const STT_FALLBACK_DEFAULTS = {
  * Cloud STT providers (the `provider::model` shorthand prefix, lower-cased) and
  * cloud AiModel formats. A fallback pipeline must be backed by one of these —
  * a local GPU pipeline is not a meaningful outage escape.
+ *
+ * This is the SHORTHAND-PREFIX vocabulary a tenant may type into a fallback
+ * pointer, NOT `AiModel.provider`. That is why the bare `azure` survives
+ * TASK-888's identity fix: the catalogue rows now say `azure-speech` /
+ * `azure-foundry`, but an existing pointer written `azure::…` must keep
+ * resolving. Nothing here gates a credential — `CLOUD_BYO_PROVIDERS.stt` does.
  */
 export const CLOUD_STT_PROVIDERS: ReadonlySet<string> = new Set(['azure', 'azure-speech', 'azure-foundry', 'sarvam', 'openai']);
 

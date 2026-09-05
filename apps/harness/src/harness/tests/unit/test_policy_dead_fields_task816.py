@@ -8,7 +8,7 @@ DTOs, the admin-console controls and these two pydantic fields all went together
 Why nothing was lost. The real safety screen is built from ``settings.guardrail_base_url``
 alone (``activities.py::_safety_screen_client``) and ``GuardrailClient.analyze`` POSTs only
 ``{text, guardrail_type, request_id}``. ``apps/guardrail`` resolves its own provider and model
-tenant-first from the ``guardrail.safety`` ``AiTaskDefault``, fail-closed — the correct home for
+tenant-first from the ``guardrail.safety`` ``AiRoutingPolicy`` row, fail-closed — the correct home for
 that selection since /736, and precisely why these two had nothing left to do.
 
 Why the fields could not simply be left in place. Their defaults were the literal engine name
@@ -40,7 +40,7 @@ def test_the_retired_field_is_no_longer_a_policy_field(field: str) -> None:
     assert field not in HarnessPolicy.model_fields, (
         f"`HarnessPolicy.{field}` was retired in  Phase 4 together with its Prisma "
         "column. Re-adding it re-creates a hardcoded engine/model selection with no reader — "
-        "the guardrail selection lives in the `guardrail.safety` AiTaskDefault, resolved by "
+        "the guardrail selection lives in the `guardrail.safety` AiRoutingPolicy row, resolved by "
         "apps/guardrail tenant-first. If this is deliberate wiring, delete this test WITH the "
         "ticket that justifies it."
     )

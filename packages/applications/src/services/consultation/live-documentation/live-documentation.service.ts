@@ -3428,19 +3428,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload);
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
-    // every environment where `TEXT_SERVICE_TOKEN` is non-empty — the live loop
+    // every environment where the internal token is non-empty — the live loop
     // was rejected with `invalid_or_missing_token` and the flush degraded to an
     // empty note. It "worked" only in dev, where an empty token
     // trips TEXT's bypass. Same resolution the sibling TEXT callers use
     // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
     // ''` preserves the dev bypass when no secret is configured.
-    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-    // migration fallback).: `X-Tenant-Id` is MANDATORY — TEXT resolves the
+    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
+    // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY — TEXT resolves the
     // tenant's BYOK provider/credential from it, and derives
     // `funding`/`cost_basis` from whichever tier supplied that credential, so a
     // dropped header mis-bills silently as well as mis-configuring the call. This is
     // the highest-volume internal hop in the platform (every live-doc flush).
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
       timeout: this.textTimeoutMs,
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
@@ -3505,7 +3505,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
       timeout: this.textTimeoutMs,
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
@@ -3604,7 +3604,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
-    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
       timeout: this.textTimeoutMs,
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),

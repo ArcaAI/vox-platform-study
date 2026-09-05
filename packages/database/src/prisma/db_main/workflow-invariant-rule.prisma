@@ -27,12 +27,13 @@
 // for a service to read a DIFFERENT tenant's rows (SYSTEM's) "in code" without
 // either the unscoped admin client (lint-banned outside seeds/scripts) or
 // this allow-list. `SYSTEM_SHARED_READ_MODELS` is precisely the widening this
-// union needs and is the SAME mechanism `HarnessPolicy`/`PipelinePolicy` use
-// for their own "SYSTEM default + tenant override" reads (`findSystemDefault()`
-// passing an EXPLICIT `tenantId: SYSTEM_TENANT_ID` is only legal because those
-// two models are on this list). `WorkflowValidatorService.findApplicable()`
-// therefore issues two explicit-tenantId reads (own tenant + SYSTEM), exactly
-// mirroring `PipelinePolicyRepository.findCascadeRows` / `findSystemDefault`.
+// union needs and is the SAME mechanism `HarnessPolicy` uses for its own
+// "SYSTEM default + tenant override" reads (`findSystemDefault()` passing an
+// EXPLICIT `tenantId: SYSTEM_TENANT_ID` is only legal because that model is on
+// this list). `WorkflowValidatorService.findApplicable()` therefore issues two
+// explicit-tenantId reads (own tenant + SYSTEM), exactly mirroring
+// `HarnessPolicyRepository`'s cascade. (`PipelinePolicy` was the other
+// exemplar until TASK-882 retired it.)
 // Writes are NOT widened by this list (see tenant-scope.ts's own doc comment)
 // — a tenant can read but never mutate a SYSTEM-owned row, which is exactly
 // the one-way-strictness rule above.

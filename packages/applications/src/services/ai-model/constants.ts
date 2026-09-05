@@ -22,6 +22,12 @@ export const AI_MODEL_PROVIDERS = [
   'built-in',
   'sarvam',
   'openai',
+  // Cloud tenant-BYO ASR vendors — distinct from the LLM-plane `azure` above
+  // (different resource, different credential, different residency posture).
+  // `CLOUD_BYO_PROVIDERS.stt` names these two; a catalogue row that said
+  // `azure` instead resolved no BYO credential at all (TASK-888).
+  'azure-speech',
+  'azure-foundry',
   // Cloud tenant-BYO LLM providers.
   'anthropic',
   'vertex',

@@ -88,10 +88,11 @@ export interface AgenticInstructionsParams {
   /** Resolve the prompt tier against a department (omit = tenant baseline). */
   departmentId?: string;
   /**
-   * A PHASE selector (`pre-summary`, `live`) or a VISIT-TYPE key from the
-   * tenant's own `consultation.visitTypes` catalogue. Stopped being a closed
-   * union at row 3 — visit type is tenant-admin defined, so the
-   * three literals could only ever name the platform's own defaults.
+   * A PHASE selector (`pre-summary`, `live`) or a free-text prompt key. It
+   * stopped being a closed union at row 3, when visit type was still
+   * tenant-admin defined; TASK-882 retired that catalogue outright (workflow
+   * authors branch, and tenants align agents by `Agent.tags`), so the field is
+   * now simply an open key and never a closed vocabulary.
  */
   promptType?: string;
 }

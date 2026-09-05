@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { parseAsString, useQueryState } from 'nuqs';
 import { IconExternalLink } from '@tabler/icons-react';
+import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { RequirePermission } from '@/shared/auth/require-permission';
@@ -11,25 +12,24 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { TenantScopeBanner } from '@/shared/tenant-scope/tenant-scope-banner';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { SttFallbackTab } from '@/features/tenant-stt-config/components/stt-fallback-tab';
-import { TtsConfigTab } from './tts-config-tab';
+import { SttFallbackTab } from './stt-fallback-tab';
 
 const TAB_VALUES = ['speech', 'voice'] as const;
 
 /**
  * Tenant speech &amp; voice configuration (`/ai-configuration`, tier 30-49).
  *
- * @deprecated TASK-862 — removed in R4 (with `TenantTtsConfig` / `TenantSttConfig`;
- * the route becomes a one-release `redirect('/agents')` after TASK-861/863 land).
+ * @deprecated TASK-862 — removed in R4 with `TenantSttConfig`; the route then
+ * becomes a one-release `redirect('/agents')`.
  *
- * TASK-862 relocated this screen out of the deleted `features/ai-task-defaults`
- * (it carried no task-default UI any more — only these two bindings tabs). The
- * `tenant-stt-config` import is the SAME cross-feature edge the screen always
- * had, moved rather than multiplied; both features retire together.
+ * TASK-888 retired `TenantTtsConfig` outright, so the screen moved here, into
+ * the feature of the one binding it still reads. Its Voice half is no longer a
+ * row at all — every field that row carried lives on the TEXT_TO_SPEECH agent
+ * or its provider connection — so that tab is now purely the way through to
+ * those surfaces. The Speech half is unchanged.
  *
- * `TenantSttConfig` and `TenantTtsConfig` are pipeline and voice BINDINGS —
- * which pipeline to run, when to auto-switch, which voice speaks which
- * language — not provider configuration; the provider keys live on
+ * `TenantSttConfig` is a pipeline BINDING — which pipeline to run, when to
+ * auto-switch — not provider configuration; the provider keys live on
  * `/ai-providers`, which the header links to.
  */
 export function SpeechAndVoiceScreen() {
@@ -67,7 +67,7 @@ export function SpeechAndVoiceScreen() {
               <RequirePermission action="read" subject="TenantSttConfig">
                 <TabsTrigger value="speech">Speech</TabsTrigger>
               </RequirePermission>
-              <RequirePermission action="read" subject="TenantTtsConfig">
+              <RequirePermission action="read" subject="Agent">
                 <TabsTrigger value="voice">Voice</TabsTrigger>
               </RequirePermission>
             </TabsList>
@@ -76,7 +76,7 @@ export function SpeechAndVoiceScreen() {
             <StatusFooter
               end={
                 <span aria-hidden className="font-mono">
-                  speech + voice: tenant-owned · deprecated (TASK-862) — replaced by agents · provider keys on /ai-providers
+                  speech: tenant-owned · deprecated (TASK-862) — replaced by agents · voice: agent-owned · provider keys on /ai-providers
                 </span>
               }
             />
@@ -88,12 +88,54 @@ export function SpeechAndVoiceScreen() {
             </RequirePermission>
           </TabsContent>
           <TabsContent value="voice">
-            <RequirePermission action="read" subject="TenantTtsConfig">
-              <TtsConfigTab />
+            <RequirePermission action="read" subject="Agent">
+              <VoiceMovedToAgentsPanel />
             </RequirePermission>
           </TabsContent>
         </ScreenTemplate>
       </Tabs>
     </WorkingTenantGate>
+  );
+}
+
+/**
+ * Voice tab — the way through to the surfaces that own voice configuration now.
+ *
+ * TASK-879 made the speech path agent-first and TASK-888 dropped the
+ * `TenantTtsConfig` row itself, so there is nothing left to display, let alone
+ * edit:
+ *
+ *   voice / format / speed / sample rate  → the agent's `parameters`
+ *   routing chains + allowed providers    → the agent's model chain and the
+ *                                           connection rows' three-state `enabled`
+ *   voice bindings                        → `AiModel._metadata.voices`
+ *
+ * The read-only summary of the old row went with the row. The links stay: they
+ * are the only reason an admin who knows this screen comes back to it.
+ */
+function VoiceMovedToAgentsPanel() {
+  return (
+    <div className="flex flex-col gap-4 py-4">
+      <h2 className="text-base font-semibold">Voice settings moved to the text-to-speech agent</h2>
+      <Alert>
+        <AlertTitle>Retired (TASK-879/888)</AlertTitle>
+        <AlertDescription>
+          The tenant TTS config row is gone. The voice, format, speed and sample rate are the text-to-speech agent&apos;s{' '}
+          <span className="font-mono">parameters</span>; the provider order is the agent&apos;s model chain and its fallback block; which
+          engines may serve, and on whose key, is the provider connection.
+        </AlertDescription>
+      </Alert>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild>
+          <Link href="/agents?task=TEXT_TO_SPEECH">Open text-to-speech agents</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/workflow-studio/assignments">Agent assignments</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/ai-providers">Providers &amp; keys</Link>
+        </Button>
+      </div>
+    </div>
   );
 }

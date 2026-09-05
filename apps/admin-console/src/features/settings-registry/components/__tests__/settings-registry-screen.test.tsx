@@ -19,7 +19,7 @@ import { SettingsRegistryScreen } from '../settings-registry-screen';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const NUMBER_KEY = 'rate-limit.maxRequests';
-const FLAG_KEY = 'pipeline.harnessEnabled';
+const FLAG_KEY = 'workflowExposure.enabled';
 const ENV_KEY = 'storage.minio.endpoint';
 const LIST_KEY = 'guardrail.policy.categories';
 

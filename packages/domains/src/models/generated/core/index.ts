@@ -84,7 +84,6 @@ export * from './TenantNlpTaskInstructionsModel';
 export * from './TenantPlanHistoryModel';
 export * from './TenantStorageConfigModel';
 export * from './TenantSttConfigModel';
-export * from './TenantTtsConfigModel';
 export * from './TenantUsageMeterModel';
 export * from './TranscriptionJobModel';
 export * from './TranscriptSegmentModel';

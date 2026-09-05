@@ -491,7 +491,7 @@ The owner's 3b-1b decision to keep `gemma-4-e4b-it-qat` and rebuild the referenc
 therefore supported by measurement, and the gate had been running a **different model**
 (`google/gemma-4-e4b`) than the platform's own `harness.judge` selection. That divergence
 is now structurally impossible: the gate resolves provider+model from the SYSTEM
-`harness.judge` `AiTaskDefault` and fails closed (see _Judge selection_ below).
+`harness.judge` `AiRoutingPolicy` default row and fails closed (see _Judge selection_ below).
 
 ## Judge selection is DB-resident and fail-closed
 
@@ -503,8 +503,8 @@ the platform does not select. That is exactly what had happened.
 `harness/eval/judge/selection.py` now resolves the same row the runtime resolves:
 
 ```
-AiTaskDefault(taskKey='harness.judge', ENABLED) -> modelSlug
-  -> AiModel(slug, ENABLED) -> (provider, sourceUri)
+AiRoutingPolicy(taskKey='harness.judge', isDefault, enabled, ACTIVE) -> modelId
+  -> AiModel(id, ENABLED) -> (provider, sourceUri)
 ```
 
 - **Order is tenant → SYSTEM, two tiers.** With no request tenant (the gate's normal case)
