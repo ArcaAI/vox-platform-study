@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 155 |
-| … of which required (`failMode: closed`) | 29 |
-| … of which secret | 28 |
-| … tier `env` | 122 |
+| Declared keys (distinct) | 151 |
+| … of which required (`failMode: closed`) | 28 |
+| … of which secret | 27 |
+| … tier `env` | 119 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 24 |
-| Python declared fields | 355 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 404 |
-| `turbo.json#globalEnv` entries | 532 |
+| … tier `vault-kv` | 23 |
+| Python declared fields | 358 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 407 |
+| `turbo.json#globalEnv` entries | 533 |
 
 ## Variables — the TypeScript platform surface
 
@@ -45,12 +45,10 @@ disagree with those declarations.
 | `DEBUG` | `env` | no | `false` | `apps/api` | Enables verbose config/service debug logging. |
 | `DIRECT_URL` | `env` | no | — | `apps/api` | Migrations-only, un-pooled PostgreSQL endpoint (`packages/database/src/migration-url.ts`). Falls back to `DATABASE_URL` when unset, which is correct in dev but wrong behind a transaction-mode pooler — production must set it explicitly. |
 | `ENABLE_PRISMA_STUDIO` | `env` | no | `false` | `apps/api` | Mounts the Prisma Studio module (`app.module.ts`). ON in this dev-shaped sample so `pnpm setup:dev` leaves /db-studio working with no extra step; access still requires the dedicated `manage:PrismaStudio` ability (SUPER_ADMIN policy set). Deployed environments read host env only and leave it unset, which keeps the module off. |
-| `ENTITLEMENTS_ENABLED_DEFAULT` | `env` | no | `false` | `apps/api` | SEED-TIME ONLY, and the only key in this file that is not a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `entitlements.enabled` GlobalSetting row on a FRESH database. POLICY: quota enforcement is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets ENTITLEMENTS_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set), so a developer never fights quota locally and the shared E2E baseline stays deterministic. Keep this LOCAL default false; an operator flips it live via `PUT /admin/entitlements/enabled`. The live control plane is `entitlements.enabled` (already cataloged, tier `global-kv`, kill-switch). Its migration is therefore NOT to redis-flag but DELETION, once seeding takes its default from the descriptor instead of the environment. |
 | `ENV_FILE_PATH` | `env` | no | — | `apps/api` | Overrides the NODE_ENV→file map used by `loadEnv()`. Unset in every normal deployment. |
 | `GUARDRAIL_PORT` | `env` | no | `8863` | `apps/guardrail` | Port apps/guardrail binds (test: 8963). |
 | `GUARDRAIL_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔guardrail hop (`X-Service-Token`). |
 | `GUARDRAIL_URL` | `env` | no | `http://localhost:8863` | `apps/api` | Safety-engine base URL (apps/guardrail, port 8863). |
-| `GUARDRAIL_V2_GROUNDEDNESS_ENABLED` | `env` | no | `false` | `apps/guardrail` | Gates the guardrail NLI groundedness gate (`GUARDRAIL_V2_GROUNDEDNESS_` prefix). OFF is the dev/hermetic-CI bypass: the gate answers honestly with `unverified` and never loads a model. Fail posture is FAIL-CLOSED throughout — a disabled gate, an un-staged model and a scoring error all degrade to `unverified`, and no path yields `grounded` without the model actually entailing the segment. Turning it ON requires the self-hosted MiniCheck-class model staged on the host (no cloud PHI). |
 | `HARNESS_ATOMIC_FACT_ENABLED` | `env` | no | `false` | `apps/harness` | Gates the `run_inferential_sensors` atomic-fact path. Same policy-overrides-env shape as the NER-priors flag. |
 | `HARNESS_CLAIM_CHECK_ACCESS_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/harness` | S3/MinIO access key for the harness claim-check blob store. The offloaded payloads are clinical content, so the store is SELF-HOSTED by contract — this credential must never address a cloud bucket. |
 | `HARNESS_CLAIM_CHECK_ENABLED` | `env` | no | `true` | `apps/harness` | Moves large clinical blobs OUT of Temporal workflow history into a self-hosted content-addressed store, protecting the ~50 MB history budget. DEFAULTS **ON**, and is therefore NOT marked `killSwitch` — it is a PROTECTION, so turning it off REMOVES a safeguard (unbounded history growth) rather than disabling an enforcement path. Marking it a kill-switch would violate the defaults-OFF invariant and fail registry assembly. Same polarity as `rate-limit.enabled`. Turning it off is a deliberate acceptance of unbounded Temporal history, exactly as the harness startup validator states. |
@@ -86,7 +84,6 @@ disagree with those declarations.
 | `LOKI_HOST` | `env` | no | — | `apps/api` | Loki base URL; the transport appends `/loki/api/v1/push`. Unset disables the transport. |
 | `LOKI_LABELS` | `env` | no | — | `apps/api` | Comma-separated `key=value` pairs merged into every stream label set. Keep LOW-cardinality — never a tenant, user, or request id. |
 | `LOKI_TIMEOUT` | `env` | no | `30000` | `apps/api` | Per-push HTTP timeout. |
-| `METERING_RECONCILE_ENABLED_DEFAULT` | `env` | no | `false` | `apps/api` | SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database. POLICY: reconcile is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets METERING_RECONCILE_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set). Keep this LOCAL default false so a developer laptop never runs the sweep; flip live via the admin control plane. The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment. |
 | `METRICS_COLLECT_INTERVAL` | `env` | no | `15000` | `apps/api` | Interval of the simplified monitoring collector. |
 | `METRICS_PREFIX` | `env` | no | — | `apps/api` | Prefix for Prometheus metric names; defaults to the sanitized service name. |
 | `MINIO_ACCESS_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | MinIO/S3 access key for platform object storage. NOTE: the per-tenant / platform-default STORAGE CONFIG (endpoint, region, path style, prefix) is a separate concern owned by `TenantStorageConfig`; only the credential lives here, referenced by `credentialsRef`. |
@@ -102,7 +99,6 @@ disagree with those declarations.
 | `NEST_DEBUG` | `env` | no | `false` | `apps/api` | Enables NestJS-internal debug logging. |
 | `NEXT_PUBLIC_API_HOST` | `env` | no | `http://localhost:8868` | `apps/admin-console` | Origin the BROWSER connects to directly for SSE/WS streams (authenticated with single-use stream tickets). Inlined into the client bundle by Next.js, so it must be non-secret (`src/config/public-env.ts`). |
 | `NLP_PORT` | `env` | no | `8864` | `apps/nlp` | Port apps/nlp binds. |
-| `NLP_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔NLP hop (`X-Service-Token`). |
 | `NLP_URL` | `env` | no | `http://localhost:8864` | `apps/api` | Medical-NLP base URL (apps/nlp, port 8864). |
 | `NODE_ENV` | `env` | no | `development` | `apps/api` | Selects the env file `loadEnv()` reads (`.env.dev` / `.env.test` / `.env.production`); CI and production load NO file and use host env only. |
 | `OTEL_DEBUG` | `env` | no | `false` | `apps/api` | Enables the OpenTelemetry diagnostic logger. |
@@ -207,6 +203,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `AZURE_STORAGE_CONNECTION_STRING` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `AZURE_STORAGE_ENDPOINT_SUFFIX` | `apps/stt` | no | no | `core.windows.net` | commented | — |
 | `CORS_ORIGINS` | `apps/stt` | no | no | `[]` | commented | — |
+| `DATABASE_ENABLED` | `apps/stt` | no | no | `false` | commented | — |
 | `DATABASE_MAX_OVERFLOW` | `apps/stt` | no | no | `10` | commented | — |
 | `DATABASE_POOL_SIZE` | `apps/stt` | no | no | `5` | commented | — |
 | `DATABASE_URL` | `apps/stt` | no | no | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` | commented | — |
@@ -273,6 +270,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_HOST` | `apps/harness` | no | no | `0.0.0.0` | commented | — |
 | `HARNESS_INTERNAL_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_ANCHORED` | `apps/harness` | no | no | `false` | commented | — |
+| `HARNESS_JUDGE_AZURE_API_KEY__ENV_REMOVED` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_AZURE_API_VERSION` | `apps/harness` | no | no | `2024-12-01-preview` | commented | — |
 | `HARNESS_JUDGE_AZURE_DEPLOYMENT` | `apps/harness` | no | no | `` | commented | — |
 | `HARNESS_JUDGE_AZURE_ENDPOINT` | `apps/harness` | no | no | `` | commented | — |
@@ -282,6 +280,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_JUDGE_MAX_RETRIES` | `apps/harness` | no | no | `2` | commented | — |
 | `HARNESS_JUDGE_MAX_TOKENS` | `apps/harness` | no | no | `8192` | commented | — |
 | `HARNESS_JUDGE_MODEL` | `apps/harness` | no | no | `gemma-4-e2b-it-qat` | commented | — |
+| `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY__ENV_REMOVED` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL` | `apps/harness` | no | no | `http://localhost:1234/v1` | commented | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT` | `apps/harness` | no | no | `json_object` | live | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_ORGANIZATION` | `apps/harness` | no | no | — | commented | — |
@@ -328,6 +327,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_RETRIEVAL_EMBEDDINGS_MODEL` | `apps/harness` | no | no | `text-embedding-bge-m3` | commented | — |
 | `HARNESS_RETRIEVAL_EMBEDDINGS_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_RETRIEVAL_ENABLED` | `apps/harness` | no | no | `false` | commented | — |
+| `HARNESS_RETRIEVAL_QDRANT_API_KEY__ENV_REMOVED` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_RETRIEVAL_QDRANT_TIMEOUT_S` | `apps/harness` | no | no | `10` | commented | — |
 | `HARNESS_RETRIEVAL_QDRANT_URL` | `apps/harness` | no | no | `http://localhost:6333` | commented | — |
 | `HARNESS_RETRIEVAL_RERANKER_BASE_URL` | `apps/harness` | no | no | `http://localhost:8870` | commented | — |
@@ -350,7 +350,8 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_TEXT_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_TEXT_TIMEOUT_S` | `apps/harness` | no | no | `120` | commented | — |
 | `HF_HOME` | `apps/nlp` | no | no | `` | live | `NLP_HF_HOME` |
-| `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `/Volumes/aillusion/huggingface` | commented | — |
+| `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `<home>/.cache/huggingface/hub` | commented | — |
+| `HUGGINGFACE_TOKEN__ENV_REMOVED` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/nlp` | no | yes | `CHANGE_ME` | live | `NLP_INTERNAL_ACCESS_TOKEN` |
@@ -467,6 +468,9 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `STT_DEBUG` | `apps/stt` | no | no | `false` | commented | `DEBUG` |
 | `STT_HOST` | `apps/stt` | no | no | `0.0.0.0` | commented | `HOST` |
 | `STT_LOG_LEVEL` | `apps/stt` | no | no | `INFO` | commented | `LOG_LEVEL` |
+| `STT_MODEL_S3_ACCESS_KEY__ENV_REMOVED` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
+| `STT_MODEL_S3_ENDPOINT__ENV_REMOVED` | `apps/stt` | no | no | — | commented | — |
+| `STT_MODEL_S3_SECRET_KEY__ENV_REMOVED` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `STT_MODEL_S3_SECURE` | `apps/stt` | no | no | `true` | commented | — |
 | `STT_OTEL_SERVICE_NAME` | `apps/stt` | no | no | `stt` | commented | `OTEL_SERVICE_NAME` |
 | `STT_PORT` | `apps/stt` | no | no | `8861` | commented | `PORT` |
@@ -491,13 +495,10 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TRANSCRIPTION_STRIDE_LENGTH_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `4,2` | commented | — |
 | `TRANSCRIPTION_TIMEOUT_SECONDS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `600` | commented | — |
 | `TTS_AZURE_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_AZURE_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `10` | commented | — |
 | `TTS_AZURE_REGION__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `eastus` | commented | — |
-| `TTS_AZURE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `30` | commented | — |
 | `TTS_CORS_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
 | `TTS_CORS_ORIGINS` | `apps/tts` | no | no | `[]` | commented | — |
 | `TTS_DEBUG` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_DEFAULT_FORMAT__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `pcm` | commented | — |
 | `TTS_GATEWAY_URL` | `apps/tts` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `TTS_HOST` | `apps/tts` | no | no | `0.0.0.0` | commented | — |
 | `TTS_INDICF5_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `cpu` | commented | — |
@@ -508,6 +509,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TTS_INDICF5_REF_TEXT__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_KOKORO_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `cpu` | commented | — |
 | `TTS_KOKORO_ENABLED` | `apps/tts` | no | no | `false` | live | — |
+| `TTS_KOKORO_MODEL_PATH__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_LOG_LEVEL` | `apps/tts` | no | no | `info` | commented | — |
 | `TTS_MAX_INPUT_CHARS__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `4096` | commented | — |
 | `TTS_METRICS_ENABLED` | `apps/tts` | no | no | `true` | commented | — |
@@ -529,11 +531,8 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TTS_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `24000` | commented | — |
 | `TTS_SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `https://api.sarvam.ai` | commented | — |
 | `TTS_SARVAM_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_SARVAM_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `4` | commented | — |
 | `TTS_SARVAM_MODEL__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `bulbul:v3` | commented | — |
-| `TTS_SARVAM_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `24000` | commented | — |
 | `TTS_SARVAM_TIMEOUT_S__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `30` | commented | — |
-| `TTS_SARVAM_USE_STREAMING__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `false` | commented | — |
 | `TTS_WARMUP_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `false` | commented | — |
 | `VAD_MIN_SILENCE_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500` | commented | — |
 | `VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `100` | commented | — |
