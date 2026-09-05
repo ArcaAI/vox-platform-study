@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 150 |
-| … of which required (`failMode: closed`) | 28 |
-| … of which secret | 27 |
+| Declared keys (distinct) | 149 |
+| … of which required (`failMode: closed`) | 27 |
+| … of which secret | 26 |
 | … tier `env` | 118 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 23 |
+| … tier `vault-kv` | 22 |
 | Python declared fields | 327 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 374 |
-| `turbo.json#globalEnv` entries | 503 |
+| `turbo.json#globalEnv` entries | 502 |
 
 ## Variables — the TypeScript platform surface
 
@@ -156,7 +156,6 @@ disagree with those declarations.
 | `TEXT_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check. |
 | `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Text service base URL (apps/text, port 8862). |
 | `TTS_PORT` | `env` | no | `8865` | `apps/tts` | Port apps/tts binds. |
-| `TTS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TTS hop (`X-Service-Token`). |
 | `TTS_URL` | `env` | no | `http://localhost:8865` | `apps/api` | Text-to-speech base URL (apps/tts, port 8865). |
 | `TTS_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/tts` | Buffered-amount threshold above which TTS audio frames are dropped. |
 | `URL` | `env` | no | `http://localhost` | `apps/api` | Public base URL the gateway advertises for itself. |
@@ -480,7 +479,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TTS_INDICF5_REF_AUDIO_PATH__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_INDICF5_REF_TEXT__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_KOKORO_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `cpu` | commented | — |
-| `TTS_KOKORO_ENABLED` | `apps/tts` | no | no | `false` | live | — |
+| `TTS_KOKORO_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
 | `TTS_KOKORO_MODEL_PATH__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_LOG_LEVEL` | `apps/tts` | no | no | `info` | commented | — |
 | `TTS_MAX_INPUT_CHARS__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `4096` | commented | — |

@@ -30,7 +30,6 @@ export class ServiceReleaseTokenGuard implements CanActivate {
     'NLP_SERVICE_TOKEN',
     'GUARDRAIL_SERVICE_TOKEN',
     'HARNESS_SERVICE_TOKEN',
-    'TTS_SERVICE_TOKEN',
     'API_GATEWAY_KEY',
   ];
 

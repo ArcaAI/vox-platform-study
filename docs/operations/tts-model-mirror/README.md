@@ -31,7 +31,7 @@ cache hydrated before startup):
 1. An authorized operator does **one** gated `snapshot_download` (token used here **only**).
 2. Upload the snapshot to a new MinIO prefix `models/indic-parler-tts/<sha>/` and `models/flan-t5-large/<sha>/`.
 3. The Parler GPU pod's **init-container** hydrates a node-local dir from MinIO (idempotent — skip if present).
-4. Runtime loads fully offline via `TTS_PARLER_MODEL_PATH` / `TTS_PARLER_DESC_ENCODER_PATH` + `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`.
+4. Runtime loads fully offline from the `AiModel(indic-parler)` registry row — `localPath` (the weights) and the description-encoder artifact path on `_metadata` (TASK-879 moved both off the retired `TTS_PARLER_*` env vars) — plus `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`.
 
 Rejected: Option B (bake into the GPU image) reintroduces a build-time gated pull +
 token and bloats every image ~+3.76 GB. Option C (OCI artifact via ORAS + Cosign)
@@ -89,19 +89,17 @@ The base deployment keeps Parler OFF. In the GPU overlay, an init-container copi
 node-local `hostPath` (e.g. `/models`), then the container runs with:
 
 ```yaml
-- name: TTS_PARLER_ENABLED
-  value: "true"
-- name: TTS_PARLER_MODEL_PATH
-  value: "/models/indic-parler-tts/<sha>"
-- name: TTS_PARLER_DESC_ENCODER_PATH
-  value: "/models/flan-t5-large/<sha>"
+# Whether Parler may serve is the SYSTEM `AiProviderConnection(tts, parler)` row's `enabled`; the
+# node-local paths are `AiModel(indic-parler).localPath` = /models/indic-parler-tts/<sha> and its
+# `_metadata` description-encoder path = /models/flan-t5-large/<sha> (seeded in `seed/ai-models/tts.ts`,
+# per-cluster values set on the row — there is no `TTS_PARLER_*` env var since TASK-879).
 - name: HF_HUB_OFFLINE          # belt-and-suspenders: fail loudly if anything still reaches hf.co
   value: "1"
 - name: TRANSFORMERS_OFFLINE
   value: "1"
 ```
 
-When `TTS_PARLER_MODEL_PATH` is set the provider loads with `local_files_only=True`
+When the model row carries a `localPath` the provider loads with `local_files_only=True`
 (`_resolve_model_source` / `_resolve_desc_source` in `providers/indic_parler.py`), so
 nothing touches the gated hub. Leaving the paths empty falls back to the gated pull
 (dev only).
@@ -112,12 +110,12 @@ nothing touches the gated hub. Leaving the paths empty falls back to the gated p
   auth (no `HF_TOKEN` in the pod), then run a synth smoke on the clinical strings.
   On the first offline load confirm: DAC is not separately fetched; the baked
   `text_encoder._name_or_path` is exactly `google/flan-t5-large` (not `-base`).
-- **Dev:** leave `TTS_PARLER_MODEL_PATH`/`_DESC_ENCODER_PATH` empty and set a personal
+- **Dev:** leave the row's `localPath` / description-encoder path empty and set a personal
   `HF_TOKEN` (after accepting the gate) — the gated pull path is unchanged.
 
 ## 8. Re-sync / rollback
 
 Pin a revision deliberately — do not auto-track upstream. To adopt a new upstream
 fix: re-run §3 with the new sha (new `models/<name>/<newsha>/` prefix), verify,
-then flip the overlay `TTS_PARLER_MODEL_PATH` to the new sha. The old prefix stays
+then point the model row's `localPath` at the new sha. The old prefix stays
 for instant rollback. Re-confirm `google/flan-t5-large` is still ungated at sync time.

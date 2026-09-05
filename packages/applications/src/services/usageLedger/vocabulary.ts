@@ -80,6 +80,7 @@ export const KNOWN_PROVIDERS = [
   'openai',
   'azure',
   'azure-speech',
+  'azure-foundry',
   'anthropic',
   'bedrock',
   'vertex',

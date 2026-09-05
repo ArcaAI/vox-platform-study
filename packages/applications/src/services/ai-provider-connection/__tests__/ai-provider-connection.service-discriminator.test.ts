@@ -72,7 +72,7 @@ describe('CLOUD_BYO_PROVIDERS — the frozen C5 map', () => {
   it('is exactly the per-service map from the program contract', () => {
     expect(CLOUD_BYO_PROVIDERS).toEqual({
       llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
-      stt: ['azure-speech', 'sarvam', 'openai'],
+      stt: ['azure-speech', 'azure-foundry', 'sarvam', 'openai'],
       tts: ['azure', 'sarvam'],
       // C — the integration capabilities. `rerank` is deliberately
       // EMPTY: the only reranker is the self-hosted TEI service, so there is no

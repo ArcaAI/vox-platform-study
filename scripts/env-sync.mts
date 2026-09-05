@@ -172,9 +172,6 @@ const PYTHON_LOCAL_DEV_VALUES: ReadonlyArray<readonly [name: string, value: stri
     // is empty (= the upstream library default, which captures), so leaving it
     // unset locally would put clinical text in telemetry.
     ['OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT', 'NO_CONTENT', 'keeps clinical text out of spans'],
-    // The local TTS engine. Off by default because a cluster deploy has no
-    // Kokoro weights mounted; a laptop that ran `pnpm tts:setup` does.
-    ['TTS_KOKORO_ENABLED', 'true', 'local Kokoro weights are present after `pnpm tts:setup`'],
     // WHERE Hugging Face caches weights, never WHICH checkpoint runs. It must
     // be declared rather than inherited from an interactive login shell:
     // `~/.zshrc` is not sourced by services, CI jobs or coding agents, so every
