@@ -105,10 +105,12 @@ ALTER TABLE core."UserVoiceProfile" ALTER COLUMN "modelId" SET NOT NULL;
 
 ## Implementation Summary
 
-All five deliverables landed. Registry **198 → 196** — `stt.diarization.hfModelId` and
+All five deliverables landed. **Two keys fewer**: `stt.diarization.hfModelId` and
 `stt.voiceProfile.minSimilarity` are gone from the descriptor file, the `Settings` class, the
-control-plane map and every reader; `stt.diarization.device` stays, because where a model runs
-is a property of the box and not of the agent.
+control-plane map and every reader. The tests assert both are ABSENT rather than pinning a
+registry total — the total is a wave-level number several lanes move, and pinning it here would
+make this ticket's tests fail on a sibling lane's merge. `stt.diarization.device` stays, because
+where a model runs is a property of the box and not of the agent.
 
 ### The shape of the change
 
