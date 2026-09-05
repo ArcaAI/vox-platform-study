@@ -136,35 +136,15 @@ describe('HarnessPolicyService', () => {
       expect(result.id).toBeNull();
     });
 
-    // ── field-level fallthrough for the two TEXT fields ──
-    it('fills null TEXT fields on the tenant own row from the SYSTEM default (field-level fallthrough)', async () => {
+    // ── TASK-876: the two TEXT columns are no longer a selection source ──
+    // They used to cascade tenant-row → SYSTEM row. Selection is now the tenant's ASSIGNED
+    // TEXT_GENERATION agent, overlaid UNCONDITIONALLY; with no resolver wired (this fixture)
+    // both fields are NULLED so the Python node degrades `no_text_selection` rather than
+    // generating on whatever the retired columns still hold.
+    it('never serves the retired HarnessPolicy TEXT columns as a selection — both fields are NULLED (fail closed)', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         coverageThreshold: 0.55,
-        // Pre-Phase-2 tenant row: TEXT selection was never set.
-        textProvider: null,
-        textModel: null,
-      });
-      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
-        tenantId: SYSTEM_TENANT_ID,
-        textProvider: 'lm-studio',
-        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
-      });
-      policyRepository.findForExactTenant.mockResolvedValue(own);
-      policyRepository.findSystemDefault.mockResolvedValue(sys);
-
-      const result = await service.getEffectivePolicy();
-
-      // Still the tenant's own row (source unchanged) but TEXT fields inherited.
-      expect(result.source).toBe('tenant');
-      expect(result.coverageThreshold).toBe(0.55);
-      expect(result.textProvider).toBe('lm-studio');
-      expect(result.textModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
-    });
-
-    it('SYSTEM TEXT selection wins over a non-null tenant-row TEXT field', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({
-        tenantId: TENANT,
         textProvider: 'ollama',
         textModel: 'tenant-pinned-model',
       });
@@ -178,8 +158,11 @@ describe('HarnessPolicyService', () => {
 
       const result = await service.getEffectivePolicy();
 
-      expect(result.textProvider).toBe('lm-studio');
-      expect(result.textModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+      // Still the tenant's own row, and every non-selection field is untouched.
+      expect(result.source).toBe('tenant');
+      expect(result.coverageThreshold).toBe(0.55);
+      expect(result.textProvider).toBeNull();
+      expect(result.textModel).toBeNull();
     });
   });
 

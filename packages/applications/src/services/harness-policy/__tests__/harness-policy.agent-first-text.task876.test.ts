@@ -163,7 +163,7 @@ describe('resolveTextFallbackSelection — the resolved chain, gated by the per-
   });
 });
 
-describe('getEffectivePolicy — the taskKey overlay reads the assigned agent (the Python lane)', () => {
+describe('getEffectivePolicy — the assigned-agent overlay is UNCONDITIONAL (the Python lane)', () => {
   it('with a taskKey, textProvider/textModel come from the resolved primary, never from the policy columns', async () => {
     const resp = await makeService().getEffectivePolicy(TENANT, { taskKey: 'text.live' });
     expect(resp.textProvider).toBe('lm-studio');
@@ -189,10 +189,27 @@ describe('getEffectivePolicy — the taskKey overlay reads the assigned agent (t
     expect(aiTaskDefaultService.resolveModelBySlug).not.toHaveBeenCalled();
   });
 
-  it('without a taskKey the response is byte-identical to before (the columns pass through; core.agent reads only the PHI flags)', async () => {
+  // The `AgentAssignment` key has no role dimension, so the task key never gated WHICH agent
+  // serves — and the durable lane (`fetch_policy` → `workflows.py`) never sends one. Gating the
+  // overlay on it left that lane selecting from the retired `HarnessPolicy` columns.
+  it('WITHOUT a taskKey the overlay still applies — the durable workflow never sees the retired columns', async () => {
     const resp = await makeService().getEffectivePolicy(TENANT);
     expect(resp.textProvider).toBe('lm-studio');
-    expect(resp.textModel).toBe('policy-column-model');
-    expect(textAgents.resolve).not.toHaveBeenCalled();
+    expect(resp.textModel).toBe('gemma-4-e2b-it-qat');
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT });
+  });
+
+  it('WITHOUT a taskKey and no agent anywhere, the columns are NULLED (a configuration error, never a silent pass-through)', async () => {
+    textAgents.resolve.mockRejectedValue(new NotFoundException('nothing assigned'));
+    const resp = await makeService().getEffectivePolicy(TENANT);
+    expect(resp.textProvider).toBeNull();
+    expect(resp.textModel).toBeNull();
+  });
+
+  it('the SYSTEM-default return path is overlaid too (no tenant row of its own)', async () => {
+    policyRepository.findForExactTenant.mockResolvedValue(null);
+    const resp = await makeService().getEffectivePolicy(TENANT);
+    expect(resp.source).toBe('system-default');
+    expect(resp.textModel).toBe('gemma-4-e2b-it-qat');
   });
 });
