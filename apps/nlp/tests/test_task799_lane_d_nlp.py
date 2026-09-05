@@ -15,9 +15,9 @@ Five reductions, each of a different kind:
 * D.1c — `NLP_EXTERNAL_TEXT_BASE_URL` duplicated the repo-wide `TEXT_URL`
   (guardrail already aliases it), and two legacy service tokens duplicated
   `INTERNAL_ACCESS_TOKEN`.
-* D.1d — nine `LOG_*` file/rotation knobs move to a `global-kv` group, and the
-  `LOG_CONSOLE_JSON_FORMAT` / `LOG_FILE_JSON_FORMAT` split defaults are made
-  explicit rather than accidental.
+* D.1d — nine `LOG_*` file/rotation knobs moved to a `global-kv` group. That
+  group was RETIRED WHOLE in TASK-883 (stdout is the only sink this service
+  ships to), so its cases live in `test_task883_logging_retirement.py` now.
 * D.1e — `core/model_source.py` is deleted: ~400 lines whose only importer was
   its own test, and whose error text told operators to set S3 credential
   variables that no settings class has ever declared.
@@ -178,49 +178,6 @@ class TestPeerAddressAndTokenAreNotDuplicated:
     ) -> None:
         monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "shared-secret")
         assert NLPServiceConfig().peer_service_token() == "shared-secret"
-
-
-class TestLoggingSinksAreConfigured:
-    """D.1d — the file/rotation knobs, and the JSON-format mismatch."""
-
-    def test_the_two_json_switches_are_declared_together(self) -> None:
-        """They were sibling toggles with OPPOSITE defaults and no explanation:
-        `LOG_FILE_JSON_FORMAT` defaulted True, `LOG_CONSOLE_JSON_FORMAT` False.
-        The split is intentional (files are machine-read, consoles are
-        human-read) — so it is now declared in one place instead of inferred
-        from two scattered `os.getenv` calls."""
-        from nlp.core.logging import LOG_SINK_DEFAULTS
-
-        assert LOG_SINK_DEFAULTS["file_json_format"] is True
-        assert LOG_SINK_DEFAULTS["console_json_format"] is False
-
-    def test_every_file_rotation_knob_has_a_declared_default(self) -> None:
-        from nlp.core.logging import LOG_SINK_DEFAULTS
-
-        for key in (
-            "file_enabled",
-            "file_max_size",
-            "file_max_files",
-            "file_separate_error",
-            "console_enabled",
-            "rotation_when",
-            "rotation_interval",
-            "rotation_backup_count",
-            "use_daily_rotation",
-        ):
-            assert key in LOG_SINK_DEFAULTS, f"{key} has no declared default"
-
-    def test_the_control_plane_can_move_them(self) -> None:
-        served = _snapshot(
-            **{
-                "nlp.logging.fileEnabled": True,
-                "nlp.logging.rotationBackupCount": 14,
-            }
-        ).logging()
-        assert served == {"file_enabled": True, "rotation_backup_count": 14}
-
-    def test_no_opinion_leaves_the_declared_defaults(self) -> None:
-        assert EffectiveConfigSnapshot(raw={}, ok=False).logging() == {}
 
 
 class TestModelSourceIsDeleted:
