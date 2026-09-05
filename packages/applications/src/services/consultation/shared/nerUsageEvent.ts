@@ -30,7 +30,7 @@ export interface NerUsageEventParams {
   doctorId?: string | null;
   /** Character count of the text SENT to NLP for THIS call. */
   charCount: number;
-  /** The resolved AiTaskDefault model_name, or null when resolution fail-opened (unknown, never guessed). */
+  /** The resolved AiRoutingPolicy model name, or null when resolution fail-opened (unknown, never guessed). */
   model: string | null;
 }
 

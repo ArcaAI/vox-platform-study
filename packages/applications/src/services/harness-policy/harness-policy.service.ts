@@ -384,7 +384,7 @@ export class HarnessPolicyService {
    * columns are never served as a selection again.
    *
    * EVERY field of `_opts` is now inert — hence the underscore. `consultationId` stopped
-   * selecting with the retired per-agent overlay, `taskKey` with the gate above, and `modelSlug`
+   * selecting with the retired per-agent overlay, `taskKey` with the gate above.
    * with the node `llmBinding`. The parameter survives because
    * `harness-internal.controller.ts` threads all three from a wire route this ticket does not
    * own; removing the query parameters is a follow-on for that module.
@@ -392,7 +392,7 @@ export class HarnessPolicyService {
   async getEffectivePolicy(
     tenantId?: string,
     /** @deprecated TASK-876 — every field is accepted for the wire and consulted by nothing. */
-    _opts?: { consultationId?: string; taskKey?: string; modelSlug?: string },
+    _opts?: { consultationId?: string; taskKey?: string },
   ): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');

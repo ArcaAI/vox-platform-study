@@ -9,7 +9,7 @@
 
 /** Per-flush generation stats (subset of the gateway `LiveSummaryStatsDto`). */
 export interface LiveSummaryStats {
-  /** the resolved AiTaskDefault key behind an interpreter-produced summary. */
+  /** the task key behind an interpreter-produced summary (selection is the assigned agent since TASK-876). */
   task_key?: string | null;
   total_ms?: number | null;
   ttft_ms?: number | null;

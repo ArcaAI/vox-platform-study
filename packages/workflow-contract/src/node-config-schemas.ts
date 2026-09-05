@@ -748,10 +748,10 @@ const CONSULTATION_SYNTHESIZE_SCHEMA: NodeConfigSchema = Object.freeze({
 
 /** `consultation.sensors` (deterministic) and `consultation.inferentialSensors` (LLM judge).
  *  Neither activity reads `payload.config` beyond the palette-wide error policy — model and
- *  provider selection is `AiTaskDefault`'s, resolved tenant → SYSTEM, never a node literal
+ *  provider selection is `AiRoutingPolicy`'s (SYSTEM default row), never a node literal
  *  (`consultation_verify.py`'s own docstring makes that explicit). */
 const CONSULTATION_SENSORS_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation sensor node config (N-9/N-10 — verification, provider/model resolved by AiTaskDefault)',
+  title: 'consultation sensor node config (N-9/N-10 — verification, provider/model resolved by AiRoutingPolicy)',
   type: 'object',
   additionalProperties: false,
   required: ['onError'],
@@ -784,7 +784,7 @@ const CONSULTATION_FINALIZE_ASSURANCE_SCHEMA: NodeConfigSchema = Object.freeze({
 // -----------------------------------------------------------------------------------------
 // W3 — the three live-assist nodes. All three call a language model through
 // `apps/text`, so all three expose the same generation knobs; provider and model themselves are
-// NEVER node config (tenant → SYSTEM `AiTaskDefault` selection, fail-closed).
+// NEVER node config (SYSTEM `AiRoutingPolicy` default selection, fail-closed).
 //
 // `responseFormat` is typed as the same string enum the committed `generate.text` schema uses.
 // The activities additionally accept a full json-schema OBJECT and fall back to the code-owned

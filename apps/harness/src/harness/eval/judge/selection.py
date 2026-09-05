@@ -69,16 +69,18 @@ _PROVIDER_MAP: dict[str, JudgeProvider] = {
 }
 
 _SELECT_SQL = """
-SELECT m.provider   AS provider,
+SELECT m.provider    AS provider,
        m."sourceUri" AS model_id,
-       d."modelSlug" AS model_slug
-  FROM core."AiTaskDefault" d
-  JOIN core."AiModel"       m ON m.slug = d."modelSlug"
- WHERE d."taskKey"        = $1
-   AND d."tenantId"       = $2
-   AND d."resourceStatus" = 'ENABLED'
+       m.slug        AS model_slug
+  FROM core."AiRoutingPolicy" p
+  JOIN core."AiModel"         m ON m.id = p."modelId"
+ WHERE p."taskKey"        = $1
+   AND p."tenantId"       = $2
+   AND p."isDefault"      = true
+   AND p.enabled          = true
+   AND p.status           = 'ACTIVE'
+   AND p."resourceStatus" = 'ENABLED'
    AND m."resourceStatus" = 'ENABLED'
- ORDER BY (m."tenantId" = $2) DESC
  LIMIT 1
 """
 

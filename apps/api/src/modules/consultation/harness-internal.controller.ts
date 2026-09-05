@@ -365,14 +365,14 @@ export class HarnessInternalController {
     description: 'Optional — overlay the consultation department default agent tenant-tier harnessOverrides.',
   })
   // the `generate.text` interpreter node passes its
-  // `config.taskKey` so the AiTaskDefault row for THAT key (tenant → SYSTEM)
+  // `config.taskKey` so the assigned TEXT_GENERATION agent (tenant → department → SYSTEM)
   // selects `textProvider`/`textModel`. Before this, every workflow node
   // resolved the same model regardless of task key and the seeded rows were
   // inert on the Python path. Omitted ⇒ byte-identical prior behaviour.
   @ApiQuery({
     name: 'taskKey',
     required: false,
-    description: 'Optional — resolve textProvider/textModel from the AiTaskDefault row for this task key (e.g. `text.live`).',
+    description: 'Optional — accepted for compatibility; textProvider/textModel resolve from the assigned TEXT_GENERATION agent regardless of the key (TASK-876).',
   })
   // `modelSlug` (the executing node's `llmBinding.modelSlug`) used to be a third query parameter
   // here. TASK-882 removed it from the wire: the node `llmBinding` is gone from the schemas and

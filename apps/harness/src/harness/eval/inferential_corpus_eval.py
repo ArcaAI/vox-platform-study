@@ -300,7 +300,7 @@ async def run_eval(
     """Score every case (sequentially) and return ``{aggregate, cases, judge_model}``."""
     judge = build_judge_client(get_runtime_judge_config())
     # The guardian's provider + model are resolved by `apps/guardrail` from the
-    # `guardrail.safety` AiTaskDefault (tenant -> SYSTEM), fail-closed. This tool no
+    # `guardrail.safety` AiRoutingPolicy default (SYSTEM row), fail-closed. This tool no
     # longer resolves a selection itself: it screens through the same service the
     # Temporal activity does, so an eval verdict and a production verdict come from one
     # policy. Screening with a different guardian than the platform selects would make

@@ -12,7 +12,7 @@ import { IsOptional, IsString, IsInt, IsBoolean, IsUUID, Min } from 'class-valid
  * now belong.
  *
  *  - `provider`/`model` — caller-selected LLM (forwarded verbatim; omit both to
- *    resolve the `text.test` AiTaskDefault, tenant row → SYSTEM row. There is no
+ *    resolve the assigned TEXT_GENERATION agent (tenant → department → SYSTEM, TASK-876). There is no
  *    `text.finalize` fallback: that was harness coupling, removed here).
  *  - `dryRun` — assemble and return the prompt WITHOUT generating anything at
  *    all (no TEXT call, no job, no tokens billed).
@@ -44,7 +44,7 @@ export class TestPromptTemplateRequest {
   @ApiPropertyOptional({
     description:
       'Caller-selected LLM provider, forwarded to TEXT verbatim (must be paired with `model`). ' +
-      'Omit both to resolve the `text.test` AiTaskDefault (tenant row → SYSTEM row).',
+      'Omit both to resolve the assigned TEXT_GENERATION agent (tenant → department → SYSTEM).',
     example: 'lm-studio',
   })
   @IsOptional()
