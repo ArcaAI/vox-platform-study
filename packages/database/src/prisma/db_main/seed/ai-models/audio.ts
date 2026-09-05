@@ -410,8 +410,10 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['cloud', 'azure', 'multilingual'],
   },
   {
-    // PREVIEW service — engine disabled unless AZURE_FOUNDRY_ENABLED; batch
-    // only. `MAI-Transcribe-1` was deprecated by Microsoft on 2026-08-20.
+    // PREVIEW service, batch-only. TASK-880 — the engine's gate is its own
+    // `AiProviderConnection(stt, azure-foundry)` row (SYSTEM-seeded disabled), not the
+    // deleted `AZURE_FOUNDRY_ENABLED` / `stt.azureFoundry.enabled` platform flag.
+    // `MAI-Transcribe-1` was deprecated by Microsoft on 2026-08-20.
     id: '80000000-0000-0000-0001-000000000011',
     tenantId: SYSTEM_TENANT_ID,
     name: 'Azure MAI-Transcribe 1.5',
