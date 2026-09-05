@@ -224,27 +224,12 @@ export interface PromptAssemblyParams {
    * on a pre-summary body.
    *
    * Supplied by the caller because assembly cannot see the consultation. Native
-   * callers now pass the LABEL of the visit type resolved from the tenant's
-   * `consultation.visitTypes` catalogue (`VisitTypeService.forConsultation`),
-   * which is where the vocabulary lives since row 3 — it used to be
-   * a `parentConsultationId ? 'revisit': 'new-visit'` literal at each call
-   * site. Absent ⇒ v1's own default, `'Medical examination'`.
+   * callers pass the LABEL of the visit type `VisitTypeService.forConsultation`
+   * derives from the parent link — it used to be a `parentConsultationId ?
+   * 'revisit': 'new-visit'` literal at each call site. Absent ⇒ v1's own
+   * default, `'Medical examination'`.
    */
   visitType?: string;
-  /**
-   * The visit type as an IDENTIFIER, on its own axis — a catalogue key or alias,
-   * NOT the human label `visitType` above carries.
-   *
-   * The two are deliberately separate fields because they do different jobs:
-   * `visitType` is DATA that fills the `{visit_type}` placeholder, while this
-   * one is a SELECTOR that, paired with the task, chooses which instructions and
-   * which context composition to resolve at all (owner directive, 2026-08-29 —
-   * see `PromptResolutionParams.visitTypeKey`). Collapsing them would make a
-   * tenant's display wording change which prompt is served.
-   *
-   * Optional: absent ⇒ the visit type is derived from `promptType`, as before.
-   */
-  visitTypeKey?: string;
   transcript: string;
   conversationLanguage: string;
   dnaStyleId?: string;
@@ -476,7 +461,6 @@ export class PromptAssemblyService {
       // The visit-type axis, stated explicitly. This is what lets the
       // PRE-SUMMARY chain see a visit type at all — its `promptType` is the
       // phase, so before this the axis could not reach the resolver.
-      visitTypeKey: params.visitTypeKey,
       preSummaryVariant: params.preSummaryVariant,
       explicitTemplate: params.explicitTemplate,
       preferredPromptTemplateId: params.preferredPromptTemplateId,

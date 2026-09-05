@@ -225,11 +225,10 @@ export class HarnessInternalService {
     // which is the FAIL-CLOSED direction (never `absent`, which would let a
     // consumer proceed unauthenticated because the gateway was misconfigured).
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
-    // the tenant's VISIT-TYPE catalogue, which replaces the
+    // the VISIT-TYPE vocabulary, which replaces the
     // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
     // + trailing so existing positional fixtures keep their arity; an unwired
-    // resolver serves the two shipped visit types, whose keys and follow-up rule
-    // are byte-identical to the ternary it replaces.
+    // resolver serves the same two visit types.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {}
 
@@ -741,10 +740,8 @@ export class HarnessInternalService {
         // (the harness runs outside the API-edge CLS middleware).
         tenantId,
         departmentId: consultation?.departmentId ?? undefined,
-        // The visit type comes from the TENANT's catalogue now, not a literal:
-        // `parentConsultationId` still supplies the follow-up signal, but WHICH
-        // visit type that selects — and what it is called — is tenant-configured
-        // .
+        // The visit type comes from the shared vocabulary, not a literal:
+        // `parentConsultationId` supplies the follow-up signal.
         promptType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
           isFollowUp: Boolean(consultation?.parentConsultationId),
         }).key,
