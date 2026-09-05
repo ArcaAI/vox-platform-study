@@ -21,7 +21,7 @@ the owner's explicit pre-production authorization.
 
 | Piece | What | Where |
 |---|---|---|
-| The flip | One `PipelinePolicy` row's `harnessEnabled` boolean, per tenant | `apps/api/src/modules/pipeline-policy-admin/` (`PUT admin/harness/pipeline-policy/row`) |
+| The flip | HISTORICAL. `PipelinePolicy` and its `harnessEnabled` boolean were retired by TASK-882 — the harness generator is the only one, so there is no flip left to make. The rest of this runbook is kept as the record of how the migration was performed. | — (`apps/api/src/modules/pipeline-policy-admin/` is deleted) |
 | The cascade | DOCTOR → DEPARTMENT → TENANT → SYSTEM-tenant default → code-default | `ConfigResolver.resolvePipelineToggles` (`packages/applications/src/services/config-resolver/`) |
 | The seam | The ONE runtime reader of `harnessEnabled` for note generation | `NoteGenerationService.generate` (`packages/applications/src/services/consultation/note-generation/`) |
 | Per-consultation override | `metadata.pipelineConfig.harnessEnabled` — wins over the cascade | Read at `consultation-event.handler.ts`'s `resolveConfig` chain (via the seam) |

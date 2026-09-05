@@ -4,6 +4,16 @@
 **Repo:** `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2`, branch `feat/loop`. Static-code evidence only.
 **Adjudicator method:** every conflict below was settled by reading the code directly, not by averaging lane opinions. Searches excluded `.claude/worktrees/**`, `**/dist/**`, `**/node_modules/**`, `**/.venv/**`, `**/__pycache__/**`.
 
+> **SNAPSHOT — one central finding is superseded (noted 2026-09-06, TASK-888).**
+> This is a dated audit of branch `feat/loop`, kept as the record of what was
+> found. Its most consequential claim — that `pipeline.harnessEnabled` defaults
+> `false` and therefore routes the default tenant's note through the legacy
+> BullMQ generator — no longer describes the platform: TASK-882 removed
+> `PipelinePolicy`, the `harnessEnabled` key and the legacy generator outright,
+> so the harness path is the ONLY path and there is no per-tenant opt-in left to
+> miss. Read §0, §4.2 and the `pipeline.harnessEnabled` rows as history. The
+> findings that do not depend on that flag stand until re-audited.
+
 ---
 
 ## 0. The one-paragraph result

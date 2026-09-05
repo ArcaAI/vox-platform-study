@@ -8,6 +8,41 @@
 
 Status values: `planned` (ticket not started) · `marked` (marker landed) · `removed`.
 
+## Wave 3a (TASK-879..883, 887, 888) — what was removed outright vs. deprecated
+
+One entry for the whole wave, because the split is a POSTURE, not a per-item
+judgement. HOPE is pre-production: there is no customer data behind any of these
+surfaces, so a redundant old-architecture setting is removed COMPLETELY rather
+than dual-homed behind a flag (owner directive, target model item 7). The two
+exceptions below are deprecated rather than removed because something OUTSIDE
+the platform still points at them.
+
+**Removed outright in wave 3a** — descriptor, reader, `Settings` field, seed and
+console reader in the same change, with no deprecation window:
+
+| Removed | Ticket |
+|---|---|
+| 18 `tts.*` descriptors (7 to the agent, 8 to `AiProviderConnection`, 3 to `AiModel._metadata`) and the five TTS engine kill-switches | TASK-879 |
+| 12 `stt.*` descriptors (5 to the agent, 5 to `AiProviderConnection`, 2 to `AiModel._metadata`) | TASK-880 |
+| the whole `models.*` family (12 keys) with the `AiTaskDefault` table, service, routes, scope and domain trio | TASK-881 |
+| `pipeline.{autoNerEnabled,harnessEnabled,dnaRedactionEnabled,autoSummaryEnabled,dnaStyleEnabled}`, `consultation.visitTypes`, `agentic.revisit.carryForwardEnabled`, `consultation.endpoint.actions`, `harness.{warmStartEnabled,nerPriorsEnabled,atomicFactEnabled}`, and `PipelinePolicy` + `PipelinePolicyChange` | TASK-882 |
+| `TenantFrontendConfig.{asrModel,noiseCancel,vad,voiceEnrollment,diarization}`, `PlanEntitlement.{featureDnaReports,featureVoiceEnrollment,featureMonitoringAccess}` + their `TenantEntitlement` twins, the 11 `nlp.logging.*` keys | TASK-883 |
+| `stt.diarization.hfModelId`, `stt.voiceProfile.minSimilarity` | TASK-887 |
+| `TenantTtsConfig` (model, service, routes, scope, seed, console feature); `text.serviceToken` / `TEXT_SERVICE_TOKEN` (descriptor, 13 gateway readers, warm list, both secret scripts) | TASK-888 |
+
+**Deprecated, not removed** — each keeps a window because a consumer the wave
+does not own still reaches it. Both come out in **R4**:
+
+| Deprecated | Ticket | Why it is not removed with the rest |
+|---|---|---|
+| `pipeline.templateResync.{enabled,cron}` and `pipeline-template-resync.cron.service.ts` | TASK-882 | The cron is inert (its `AsrPipeline` templates are retired) but the SERVICE is still constructed, and deleting a scheduled job is a deploy-shaped change, not a config one |
+| the `/harness/pipeline-policy` console redirect page | TASK-882 | A retired route keeps a `redirect()` for one release so a bookmark does not 404. (TASK-882's handoff also named `apps/admin-console/tests/e2e/pipeline-policy.spec.ts` — verified 2026-09-06: that spec is already gone, so only the page is left to remove.) |
+
+Two more items look like exceptions and are not: `ResourceType.AiTaskDefault`
+and `ResourceType.TenantTtsConfig` stay in both enums permanently, because a
+Postgres enum value cannot be dropped in place and historical `AuditLog` rows
+name them. They are tombstones, not deprecations.
+
 ## Data model
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
@@ -19,7 +54,7 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `Tenant.transcriptionMode`, `Tenant.captureMode` | TASK-861 (OD-13) | R2 | R4 | — (local transcription no longer exists) | planned (untouched by the TASK-861 branch — OD-13 still open) |
 | `AiTaskDefault` (table, `AiTaskDefaultService`, `admin/ai-task-defaults`, `vox-node` admin resource) | TASK-862 | R1 | R3 | `AiRoutingPolicy.resolveDefault` (non-agent task defaults) + `Agent.modelId` | **removed (TASK-881, 2026-09-06)** — every reader repointed to `IAiRoutingPolicyService.resolveDefault`, the `models.*` descriptor family deleted with the facade, the routes/scope/CASL grant/domain trio gone, the table drop in the orchestrator's wave-3a migration; the generated `vox-node` admin resource follows the next `gen:admin` |
 | `AiRuntimeProfile` (all layers, `/ai-runtime-profiles`) | TASK-862 | R1 (**removed outright** — deviation 2) | — | `Agent.parameters` (hyper-parameters) + `AiProviderConnection` ceilings | removed (`ResourceType.AiRuntimeProfile` enum member left in place) |
-| `TenantTtsConfig` (+ `admin/tts-config/**`, `/ai-configuration` Voice tab) | TASK-862 / 863 | R1 | R3 | TTS Agent + `AgentAssignment` | marked (`@deprecated` on service/interface, `Deprecation` headers on every `admin/tts-config` route; credential facade already removed) |
+| `TenantTtsConfig` (+ `admin/tts-config/**`, `/ai-configuration` Voice tab) | TASK-862 / 863 | R1 | **REMOVED — TASK-888** | TTS Agent + `AgentAssignment` (`ResolvedTtsSpec`); BYO keys on `AiProviderConnection(service='tts')` | REMOVED 2026-09-06 (pre-production posture: a redundant old-architecture surface is removed completely, not dual-homed). The Prisma model, the domain trio, the `CoreDatabaseModule` registration, both tenant-scope allow-list entries, `TenantTtsConfigService` + DTOs + module, the 4 `admin/tts-config` routes, the `admin:tenant-tts-config:manage` scope, the CASL grant, `seed/19-tenant-tts-config.ts` and the console feature are gone. `ResourceType.TenantTtsConfig` STAYS in both enums (a Postgres enum value cannot be dropped; historical AuditLog rows name it). `/ai-configuration` is NOT retired — its Speech tab still reads the live `TenantSttConfig` — so the screen moved into `features/tenant-stt-config` and the Voice tab became the links to `/agents?task=TEXT_TO_SPEECH`. Migration SQL: `DROP TABLE core."TenantTtsConfig";` (orchestrator-authored) |
 | `AiRoutingPolicy.candidatesJson` | TASK-862 | R1 | R3 | candidate rows | planned (untouched by the TASK-862 wave — already `@deprecated` on the entity) |
 | `AiModel.downloadStatus`, `downloadedAt`, `fileSizeMb`; free-text `localPath`; `AiModelFormat` cloud pseudo-values (`CLOUD_API`, `AZURE_SPEECH`, `AZURE_FOUNDRY`, `SARVAM`, `OPENAI`); `AiModelSource.MLFLOW`, `GITHUB` | TASK-860 | R1 | R3 | `availability`, derived `localPath` from `bucketPrefix`, `deploymentKind` + `libraryName` | marked |
 | Customer-tenant clones of the model catalogue (`backfillCustomerTenantAiModels`) | TASK-860 | R1 (deleted — seed data) | — | SYSTEM-only catalogue with shared read | removed |
@@ -52,11 +87,11 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `/ai-platform` (hub) + `features/ai-platform` | TASK-862 | R1 (redirect) | R3 | `/ai-providers`, `/ai-models`, `/agents`, `/ai-services/*` | marked — `redirect('/ai-providers')` stub; feature folder deleted |
 | `/ai-task-defaults` redirect stub | TASK-862 | — | R1 | — | removed |
 | `/ai-runtime-profiles` | TASK-862 | R1 | R1 (no nav entry) | — | removed |
-| `/ai-configuration` (Speech & Voice) | TASK-861/862 | R2 (redirect) | R4 | `/agents` | marked (TASK-861: the Speech tab is a retirement notice pointing at `/agents?task=SPEECH_TO_TEXT`; the route still renders `SpeechAndVoiceScreen` for the Voice tab — the `redirect('/agents')` lands when the TTS binding retires with TASK-863) |
+| `/ai-configuration` (Speech & Voice) | TASK-861/862 | R2 (redirect) | R4 | `/agents` | marked (TASK-861: the Speech tab is a retirement notice pointing at `/agents?task=SPEECH_TO_TEXT`; TASK-888: the Voice tab is now only links to `/agents?task=TEXT_TO_SPEECH` — the row behind it is gone. The route still renders `SpeechAndVoiceScreen` because the Speech tab reads the LIVE `TenantSttConfig`; the `redirect('/agents')` lands when THAT binding retires) |
 | `/ai-operations/reconciliation` | TASK-862 | R1 (redirect) | R3 | `/ai-operations/consumption` | marked — redirect stub |
 | `/audio/pipelines`, `features/audio-pipelines` | TASK-861 | R2 (redirect) | R4 | `/agents?task=SPEECH_TO_TEXT` | marked — `page.tsx` is `redirect('/agents?task=SPEECH_TO_TEXT')` (`loading.tsx` deleted), nav entry removed; `features/audio-pipelines` kept with `@deprecated` on the api index + screen (no route mounts it) — `useAudioPipelines` still feeds the two playgrounds until TASK-865 gives `audio.start` an `agentSlug` |
 | `/harness/pipeline-policy`, `features/pipeline-policy` | TASK-861 | R2 (redirect) | R4 | workflow assignments | marked — `page.tsx` is `redirect('/workflow-studio/assignments')` (`loading.tsx` deleted), nav entry removed; feature folder kept with `@deprecated` on the api index + screen |
-| `features/tenant-stt-config`, `features/tenant-tts-config` | TASK-861/862 | R1–R2 | R3–R4 | agents | marked (TASK-862: dead credential hooks removed; `speech-and-voice-screen` relocated into `tenant-tts-config`, `@deprecated`; TASK-861: `stt-fallback-form.tsx` deleted, `stt-fallback-tab.tsx` is a retirement notice, `features/tenant-stt-config/api` `@deprecated`) |
+| `features/tenant-stt-config` | TASK-861/862 | R1–R2 | R3–R4 | agents | marked (TASK-861: `stt-fallback-form.tsx` deleted, `stt-fallback-tab.tsx` is a retirement notice, `features/tenant-stt-config/api` `@deprecated`). `features/tenant-tts-config` is **REMOVED (TASK-888)**; `speech-and-voice-screen` moved here, into the feature of the one binding it still reads |
 | `/agents` redirect to `/prompt-templates` | TASK-863 | — | R1 (route becomes the Agents screen) | `/agents` Agents screen (`features/agents`); prompt-template components live under `features/prompt-templates` | removed |
 | `/prompt-studio`, `/pstudio` redirect stubs | pre-existing | — | R1 | — | marked |
 | `/ai-model-defaults` redirect stub | pre-existing | — | R1 | — | marked |
@@ -78,6 +113,6 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | Item | Ticket |
 |---|---|
 | `14-pipeline-policy.ts`, `23a-realtime-transcription-agent{,.generated}.ts`, regen script + their seed tests — DONE; `06-stt.ts` pipeline half (`DEFAULT_ASR_PIPELINES`, the four per-tenant / Global sets, `seedAsrPipelines`, `switchDefaultSttPipelineToGgufTurbo`, `retireRetiredAsrPipelines`) + `seedTenantSttConfig` — DONE (step 11 follow-up, after the TASK-860 file split; `06-stt.ts` now seeds STT Global Settings only). The six seeded `TranscriptionJob` rows are re-keyed to `agentVersionId` (`09-consultation.ts`); `seed.test.ts`, `managed-asr-addon-posture.test.ts` (now asserts the SYSTEM-assigned ASR agent is self-hosted, fallbacks included) and `ai-model-registry-seed.test.ts` re-pointed; e2e `pipeline-template-governance` / `pipeline-clone-resync-cross-tenant` DELETED 2026-09-05 (they probed only the seeded template copies, so once those went they asserted nothing; the code they covered stays live until R4 and keeps its unit suites) | TASK-861 |
-| `16-ai-task-default.ts` (replaced by `16-ai-routing-policy.ts`), `18-ai-runtime-profile.ts`, `llm:sarvam` connection row — DONE; `19-tenant-tts-config.ts` — with TASK-863 | TASK-862 |
+| `16-ai-task-default.ts` (replaced by `16-ai-routing-policy.ts`), `18-ai-runtime-profile.ts`, `llm:sarvam` connection row — DONE; `19-tenant-tts-config.ts` + `tenant-tts-config-seed.test.ts` — DONE (TASK-888) | TASK-862 |
 | 10 catalogue rows not in the owner's list; `RETIRED_AI_MODEL_SLUGS` ledger extended | TASK-860 |
 | `21`, `23`, `24` workflow seeds rewritten in `core.*` — NOT DONE in the first TASK-864 landing: their derived blobs were regenerated for the core registry (checksums), the authoring sources still use the legacy palettes (owner question: the consultation rule set `CR-*` keys on `consultation.*` types, so a `core.action` rewrite needs the rules retargeted first) | TASK-864 |

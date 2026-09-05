@@ -93,7 +93,6 @@ capability rows (or marked console-only). "Owned here" = a capability row in AC1
 | `settings` | `/settings` | 20–29 | [`tenancy-provisioning.md`](./tenancy-provisioning.md) (TP6) |
 | `storage` | `/tenants/storage` | 10–19 | [`storage.md`](./storage.md) (S2) |
 | `storage-browser` | `/storage` | 30–49 | [`storage.md`](./storage.md) (S3) |
-| `tenant-tts-config` | `/tts-config` | 30–49 | [`tts.md`](./tts.md) (T3) |
 | `tenants` | `/tenants`, `/tenants/[id]` | 10–19 | [`tenancy-provisioning.md`](./tenancy-provisioning.md) (TP1) |
 | `tools-mcp` | `/tools-mcp` | 10–19 | [`harness.md`](./harness.md) (H7) |
 | `transcription-jobs` | `/audio/transcription-jobs` | 30–49 | [`transcription.md`](./transcription.md) |
