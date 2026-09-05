@@ -166,6 +166,7 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
             tenant_id,
             provider_overrides=_provider_overrides(request),
             breaker=_breaker(request.app.state, "text"),
+            judge_timeout_s=await resolve_judge_timeout_s(request.app.state),
         )
     except GuardrailUndeterminedError as exc:
         # A fail-CLOSED policy key (the criteria that decides the verdict) is
@@ -189,6 +190,36 @@ def _breaker(app_state: Any, peer: str) -> Any:
     """The process-wide breaker for a peer (``None`` in tests that never build one)."""
     breakers = getattr(app_state, "circuit_breakers", None)
     return breakers.get(peer) if isinstance(breakers, dict) else None
+
+
+async def resolve_judge_timeout_s(app_state: Any) -> float:
+    """The platform per-call budget for a delegated peer call (TASK-878).
+
+    `guardrail.judge.timeoutSeconds`, `global-kv` / `globalOnly` /
+    `open-to-default`, served on the pull route. It replaced
+    `JudgePolicy.timeout_s`, which had TWO readers — the judge client and the nlp
+    client's fallback — and both read this instead, because both are the same
+    thing: how long guardrail waits on a peer it delegated to.
+
+    NEVER raises. A config-plane outage must not take a safety route down, so
+    every failure keeps the declared default — the same posture
+    `_groundedness_gate` states for the gate's geometry.
+    """
+    from guardrail.core.effective_config import DEFAULT_JUDGE_TIMEOUT_S
+
+    client = getattr(app_state, "effective_config_client", None)
+    if client is None:
+        return DEFAULT_JUDGE_TIMEOUT_S
+    try:
+        snapshot = await client.get()
+        return float(snapshot.judge_timeout_s())
+    except Exception as exc:  # noqa: BLE001 — a config refresh never breaks the judge
+        logger.warning(
+            "guardrail.judge.timeout_refresh_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return DEFAULT_JUDGE_TIMEOUT_S
 
 
 def get_gate(request: Request, name: str = "request") -> Any:
@@ -314,8 +345,15 @@ def _nlp_client(
     *,
     labels: list[str] | None = None,
     threshold: float = 0.5,
+    peer_timeout_s: float,
 ) -> NlpGuardClientT:
-    """Build a tenant-bound `apps/nlp` client for one resolved selection."""
+    """Build a tenant-bound `apps/nlp` client for one resolved selection.
+
+    ``peer_timeout_s`` is the platform ``guardrail.judge.timeoutSeconds``, resolved
+    by the async caller (`resolve_judge_timeout_s`). It is the same budget the
+    delegated judgement uses and was the same `JudgePolicy.timeout_s` literal
+    before TASK-878 — one number for "how long guardrail waits on a peer".
+    """
     from guardrail.services.external_nlp_client import NlpGuardClient
 
     settings = cast("Settings", app_state.settings)
@@ -334,7 +372,7 @@ def _nlp_client(
         # working, which is why this travels with the selection rather than
         # being configured independently on either side.
         calibration=getattr(cfg, "entailment", None),
-        timeout_s=float(cfg.timeout_s or settings.judge.timeout_s),
+        timeout_s=float(cfg.timeout_s or peer_timeout_s),
         breaker=_breaker(app_state, "nlp"),
     )
 
@@ -392,10 +430,15 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             policy_kwargs[key] = float(value)
 
     policy = SafetyPolicy(**policy_kwargs)
+    peer_timeout_s = await resolve_judge_timeout_s(app_state)
     return SafetyAnalyzer(
         policy,
         safety_client=_nlp_client(
-            app_state, tenant_id, safety_cfg, threshold=policy.classification_threshold
+            app_state,
+            tenant_id,
+            safety_cfg,
+            threshold=policy.classification_threshold,
+            peer_timeout_s=peer_timeout_s,
         ),
         pii_client=_nlp_client(
             app_state,
@@ -403,6 +446,7 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             pii_cfg,
             labels=policy.pii_labels,
             threshold=policy.pii_threshold,
+            peer_timeout_s=peer_timeout_s,
         ),
     )
 
@@ -606,7 +650,9 @@ async def acquire_groundedness_verifier(
 
     yield GroundednessNliVerifier(
         gate.model_copy(update={"entailment_threshold": threshold}),
-        scorer=_nlp_client(app_state, tenant_id, cfg),
+        scorer=_nlp_client(
+            app_state, tenant_id, cfg, peer_timeout_s=await resolve_judge_timeout_s(app_state)
+        ),
     )
 
 
