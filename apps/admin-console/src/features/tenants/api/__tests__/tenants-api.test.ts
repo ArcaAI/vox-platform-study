@@ -138,7 +138,7 @@ describe('tenants client', () => {
     const calls = installFetchMock(() => Response.json({ id: 'cfg', tenantId: 't-1', version: 2 }, { headers: { etag: '"2"' } }));
     const read = await getFrontendConfig('t-1');
     expect(read.etag).toBe('"2"');
-    await updateFrontendConfig({ vad: true, expectedVersion: 2 }, '"2"', 't-1');
+    await updateFrontendConfig({ captureRawAudio: true, expectedVersion: 2 }, '"2"', 't-1');
     expect(calls[0].url).toBe('/api/hope/admin/tenant-frontend-config?tenantId=t-1');
     expect(calls[1].method).toBe('PUT');
     expect(calls[1].url).toBe('/api/hope/admin/tenant-frontend-config?tenantId=t-1');

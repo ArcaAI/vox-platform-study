@@ -46,7 +46,7 @@ describe('useTenantFrontendConfig', () => {
 
   describe('get', () => {
     it('GETs the config (no tenantId → tenant-admin CLS scope) and stores it', async () => {
-      const cfg = { id: 'c1', tenantId: 't1', noiseCancel: true, vad: true, voiceEnrollment: false, diarization: false, version: 1 };
+      const cfg = { id: 'c1', tenantId: 't1', captureRawAudio: true, transcriptionModeLocked: false, version: 1 };
       mockGet.mockResolvedValue(cfg);
       const { result } = renderHook(() => useTenantFrontendConfig());
 
@@ -88,8 +88,8 @@ describe('useTenantFrontendConfig', () => {
 
   describe('save', () => {
     it('PUTs the input and stores the returned config', async () => {
-      const input = { asrModel: 'whisper-large-v3', noiseCancel: true, configJson: { vadThreshold: 0.5 } };
-      const saved = { id: 'c1', tenantId: 't1', ...input, vad: true, voiceEnrollment: false, diarization: false, version: 2 };
+      const input = { captureRawAudio: true, configJson: { sampleRate: 16000 } };
+      const saved = { id: 'c1', tenantId: 't1', ...input, transcriptionModeLocked: false, version: 2 };
       mockPut.mockResolvedValue(saved);
       const { result } = renderHook(() => useTenantFrontendConfig());
 
@@ -108,7 +108,7 @@ describe('useTenantFrontendConfig', () => {
       const { result } = renderHook(() => useTenantFrontendConfig());
 
       await act(async () => {
-        await result.current.save({ vad: false }, 't-2');
+        await result.current.save({ captureRawAudio: false }, 't-2');
       });
 
       const [url] = mockPut.mock.calls[0];
@@ -127,10 +127,6 @@ describe('useTenantFrontendConfig', () => {
       const saved = {
         id: 'c1',
         tenantId: 't1',
-        noiseCancel: false,
-        vad: false,
-        voiceEnrollment: false,
-        diarization: false,
         captureRawAudio: true,
         platformRawCaptureCapable: true,
         transcriptionMode: 'LOCAL' as const,
@@ -161,7 +157,7 @@ describe('useTenantFrontendConfig', () => {
 
       await act(async () => {
         try {
-          await result.current.save({ vad: true, expectedVersion: 1 });
+          await result.current.save({ captureRawAudio: true, expectedVersion: 1 });
         } catch {
           /* expected */
         }

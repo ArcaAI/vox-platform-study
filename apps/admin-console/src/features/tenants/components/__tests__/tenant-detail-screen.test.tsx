@@ -77,11 +77,6 @@ const CONFIG: TenantConfig = {
 const FRONTEND: TenantFrontendConfig = {
   id: 'fc-1',
   tenantId: 't-1',
-  asrModel: 'large-v3',
-  noiseCancel: true,
-  vad: true,
-  voiceEnrollment: false,
-  diarization: true,
   captureRawAudio: false,
   platformRawCaptureCapable: true,
   transcriptionMode: 'BACKEND',
@@ -257,12 +252,12 @@ describe('TenantDetailScreen', () => {
     renderWithProviders(<TenantDetailScreen id="t-1" />, { searchParams: '?tab=frontend-config' });
 
     const editor = await screen.findByLabelText(/frontend config json/i);
-    fireEvent.change(editor, { target: { value: '{"vad": false}' } });
+    fireEvent.change(editor, { target: { value: '{"captureRawAudio": true}' } });
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     await waitFor(() => {
       const put = calls.find((call) => call.method === 'PUT' && call.url.startsWith('/api/hope/admin/tenant-frontend-config'));
-      expect(put?.body).toEqual({ vad: false, expectedVersion: 2 });
+      expect(put?.body).toEqual({ captureRawAudio: true, expectedVersion: 2 });
       expect(put?.headers.get('if-match')).toBe('"2"');
       expect(new URL(put?.url ?? '', 'http://test.local').searchParams.get('tenantId')).toBe('t-1');
     });
@@ -290,7 +285,7 @@ describe('TenantDetailScreen', () => {
     renderWithProviders(<TenantDetailScreen id="t-1" />, { searchParams: '?tab=frontend-config' });
 
     const editor = await screen.findByLabelText(/frontend config json/i);
-    fireEvent.change(editor, { target: { value: '{"vad": false}' } });
+    fireEvent.change(editor, { target: { value: '{"captureRawAudio": true}' } });
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     expect(await screen.findByText(/412 precondition failed/i)).toBeDefined();

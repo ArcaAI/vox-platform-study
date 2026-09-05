@@ -187,9 +187,9 @@ interface PlanEntitlementSeed {
   monthlyTtsCharacters: bigint | null;
   monthlyNlpTextUnits: bigint | null;
   monthlyEmbeddingTokens: bigint | null;
-  featureDnaReports: boolean;
-  featureVoiceEnrollment: boolean;
-  featureMonitoringAccess: boolean;
+  // Feature flags. Every one is ENFORCING — TASK-883 retired the three
+  // display-only booleans that used to head this block.
+  //
   // May this plan's tenants consume the PLATFORM-DEFAULT
   // (SYSTEM-tenant) provider credential? `false` on every plan: the
   // grant is sold per tenant via `TenantEntitlement`, because a plan-level
@@ -231,9 +231,6 @@ const PRO_VALUES = {
   monthlyTtsCharacters: 1_000_000n, // 250 × 2,000 × 2
   monthlyNlpTextUnits: 15_000n, // 250 × 30 × 2
   monthlyEmbeddingTokens: 750_000n, // 250 × 1,500 × 2
-  featureDnaReports: true,
-  featureVoiceEnrollment: true,
-  featureMonitoringAccess: false,
   featurePlatformDefaultCredential: false,
   featurePaletteStt: true,
   featureAgenticLoop: true,
@@ -284,9 +281,6 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     monthlyTtsCharacters: 200_000n, // 50 × 2,000 × 2
     monthlyNlpTextUnits: 3_000n, // 50 × 30 × 2
     monthlyEmbeddingTokens: 150_000n, // 50 × 1,500 × 2
-    featureDnaReports: false,
-    featureVoiceEnrollment: false,
-    featureMonitoringAccess: false,
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
     featureAgenticLoop: false,
@@ -319,9 +313,6 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     monthlyTtsCharacters: null,
     monthlyNlpTextUnits: null,
     monthlyEmbeddingTokens: null,
-    featureDnaReports: true,
-    featureVoiceEnrollment: true,
-    featureMonitoringAccess: true,
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
     featureAgenticLoop: true,

@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { IconClockExclamation, IconFilterOff, IconLicense } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
-import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { Label } from '@arcaai/ui/components/shadcn/label';
@@ -25,7 +24,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useEnforcementEnabled, usePlanEntitlements, useRunTrialExpiry, useSetEnforcementEnabled } from '../api/hooks';
 import type { PlanEntitlement } from '../api/types';
 import { PlanEditDialog } from './plan-edit-dialog';
-import { FEATURE_FIELDS, PLAN_LABELS, planSummary } from './plan-meta';
+import { PLAN_LABELS, planSummary } from './plan-meta';
 import { TenantOverridePanel } from './tenant-override-panel';
 
 /** Platform-wide enforcement kill-switch — disabling requires a confirm. */
@@ -84,7 +83,6 @@ function EnforcementCard() {
 }
 
 /** Feature chips shown before the +N overflow badge (single-line cell). */
-const FEATURE_BADGE_LIMIT = 2;
 
 /** Frame 13 plans table: fill-height grid with in-toolbar search over the fixed plan set. */
 function PlansTab() {
@@ -110,30 +108,6 @@ function PlansTab() {
       cell: ({ row }) => <span className="text-muted-foreground">{planSummary(row.original)}</span>,
       size: 320,
       minSize: 220,
-    },
-    {
-      id: 'features',
-      header: 'Features',
-      enableSorting: false,
-      meta: { label: 'Features' },
-      // Single line, capped at +N — wrapping badges outgrow the fixed-height grid row.
-      cell: ({ row }) => {
-        const enabled = FEATURE_FIELDS.filter((field) => row.original[field.key]);
-        if (enabled.length === 0) return <span className="text-muted-foreground">{'\u2014'}</span>;
-        const shown = enabled.slice(0, FEATURE_BADGE_LIMIT);
-        const extra = enabled.length - shown.length;
-        return (
-          <span className="flex items-center gap-1">
-            {shown.map((field) => (
-              <Badge key={field.key} variant="secondary">
-                {field.label}
-              </Badge>
-            ))}
-            {extra > 0 ? <Badge variant="outline">+{extra}</Badge> : null}
-          </span>
-        );
-      },
-      size: 260,
     },
     {
       accessorKey: 'modelTier',

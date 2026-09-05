@@ -22,6 +22,18 @@ import { useClearTenantOverride, useTenantEntitlements, useTenantOverride, useTr
 import type { CapabilityUsageRow, TenantEntitlement, UpsertTenantEntitlementRequest } from '../api/types';
 import { PLAN_LABELS, PLAN_VALUES, formatLimit } from './plan-meta';
 
+/**
+ * Display names for the resolved capability keys. The payload is rendered
+ * key-driven rather than field-by-field: TASK-883 retired three of them, and
+ * the response DTO under-declares others it actually carries, so an unknown
+ * key shows as itself instead of silently disappearing.
+ */
+const FEATURE_LABELS: Record<string, string> = {
+  platformDefaultCredential: 'Platform-default credential',
+  paletteStt: 'STT palette',
+  agenticLoop: 'Agentic loop',
+};
+
 /** The PUT-able subset of the override row (id/tenantId/version stay out). */
 const OVERRIDE_KEYS = [
   'maxUsers',
@@ -34,9 +46,6 @@ const OVERRIDE_KEYS = [
   'monthlyConsultations',
   'monthlyTranscriptionMinutes',
   'monthlySummaries',
-  'featureDnaReports',
-  'featureVoiceEnrollment',
-  'featureMonitoringAccess',
   'modelTier',
   'rateLimitTier',
   'rateLimitPerMinute',
@@ -127,13 +136,11 @@ function EffectiveEntitlementsCard({ tenantId }: { tenantId: string }) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={data.features.dnaReports ? 'secondary' : 'outline'}>DNA reports {data.features.dnaReports ? 'on' : 'off'}</Badge>
-        <Badge variant={data.features.voiceEnrollment ? 'secondary' : 'outline'}>
-          Voice enrollment {data.features.voiceEnrollment ? 'on' : 'off'}
-        </Badge>
-        <Badge variant={data.features.monitoringAccess ? 'secondary' : 'outline'}>
-          Monitoring access {data.features.monitoringAccess ? 'on' : 'off'}
-        </Badge>
+        {Object.entries(data.features).map(([key, on]) => (
+          <Badge key={key} variant={on ? 'secondary' : 'outline'}>
+            {FEATURE_LABELS[key] ?? key} {on ? 'on' : 'off'}
+          </Badge>
+        ))}
       </div>
     </Card>
   );

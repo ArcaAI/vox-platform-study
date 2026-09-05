@@ -1,29 +1,30 @@
 /**
- * @arcaai/vox - Frontend pipeline config types
+ * @arcaai/vox - Frontend capture-policy config types
  *
- * Per-tenant FRONTEND audio-pipeline defaults applied to every user in the
- * tenant. Mirrors the backend `TenantFrontendConfigResponse` /
+ * Per-tenant FRONTEND capture defaults applied to every user in the tenant.
+ * Mirrors the backend `TenantFrontendConfigResponse` /
  * `UpsertTenantFrontendConfigRequest` DTOs and the typed `configJson` shape
  * (`FrontendPipelineConfigJson`).
+ *
+ * TASK-883 retired the client-AI switches (`asrModel` / `noiseCancel` / `vad` /
+ * `voiceEnrollment` / `diarization`) and the four `configJson` knobs that tuned
+ * them. Owner directive 2026-09-04: the browser never runs a model — VAD,
+ * denoise, diarization and ASR selection are decisions the tenant's published
+ * Agents make server-side. This is orthogonal to the SDK's hard-off gate
+ * (`DEFAULT_AUDIO_CONFIG` + `audio.clientInference`), which is untouched: that
+ * gate refuses to RUN a local stage, this removes the tenant-level switch that
+ * could ask for one.
  */
 
 /**
  * Typed shape of `TenantFrontendConfig.configJson` (Q5 — typed JSON, not `any`).
- * Advanced, fine-grained capture tuning that complements the boolean feature
- * switches. All fields optional; absent fields fall back to client defaults.
+ * Advanced, fine-grained CAPTURE tuning. All fields optional; absent fields
+ * fall back to client defaults.
  */
 export interface FrontendPipelineConfigJson {
-  /** Noise-cancellation aggressiveness when `noiseCancel` is on. */
-  noiseCancelLevel?: 'low' | 'medium' | 'high';
-  /** VAD speech-probability threshold (0–1) when `vad` is on. */
-  vadThreshold?: number;
-  /** Minimum trailing silence (ms) before VAD closes a segment. */
-  vadMinSilenceMs?: number;
-  /** Upper bound on speakers when `diarization` is on. */
-  diarizationMaxSpeakers?: number;
   /** Capture sample rate in Hz (e.g. 16000). */
   sampleRate?: number;
-  /** Forced ASR language (BCP-47), or null to auto-detect. */
+  /** Language hint (BCP-47) forwarded to the server-side ASR, or null to auto-detect. */
   language?: string | null;
 }
 
@@ -40,15 +41,10 @@ export type TranscriptionMode = 'LOCAL' | 'BACKEND';
  */
 export type CaptureMode = 'RAW_AND_PROCESSED' | 'RAW_ONLY' | 'PROCESSED_ONLY' | 'NONE';
 
-/** A tenant's stored frontend pipeline config (one row per tenant). */
+/** A tenant's stored frontend capture policy (one row per tenant). */
 export interface TenantFrontendConfig {
   id: string;
   tenantId: string;
-  asrModel?: string | null;
-  noiseCancel: boolean;
-  vad: boolean;
-  voiceEnrollment: boolean;
-  diarization: boolean;
   /**
    * Tenant toggle for local raw-stream audio capture (persisted).
    * Only takes effect when `platformRawCaptureCapable` is also true.
@@ -78,13 +74,8 @@ export interface TenantFrontendConfig {
   version: number;
 }
 
-/** Create-or-update payload for the tenant frontend pipeline config. */
+/** Create-or-update payload for the tenant frontend capture policy. */
 export interface UpsertTenantFrontendConfigInput {
-  asrModel?: string | null;
-  noiseCancel?: boolean;
-  vad?: boolean;
-  voiceEnrollment?: boolean;
-  diarization?: boolean;
   /** Tenant toggle for local raw-stream audio capture. */
   captureRawAudio?: boolean;
   /** Tenant default transcription mode (LOCAL | BACKEND). */

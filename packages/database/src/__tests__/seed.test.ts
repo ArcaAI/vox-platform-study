@@ -1686,14 +1686,18 @@ describe('Tenant Frontend Config Seed', () => {
     expect(new Set(tenantIds).size).toBe(tenantIds.length);
   });
 
-  it('should use reasonable boolean frontend defaults on every row', () => {
+  it('should seed capture policy only — TASK-883 retired the client-AI columns', () => {
     TENANT_FRONTEND_CONFIGS.forEach((cfg) => {
-      expect(typeof cfg.noiseCancel).toBe('boolean');
-      expect(typeof cfg.vad).toBe('boolean');
-      expect(typeof cfg.voiceEnrollment).toBe('boolean');
-      expect(typeof cfg.diarization).toBe('boolean');
-      expect(cfg).toHaveProperty('asrModel');
+      expect(typeof cfg.captureRawAudio).toBe('boolean');
+      expect(typeof cfg.transcriptionModeLocked).toBe('boolean');
+      expect(cfg).toHaveProperty('transcriptionMode');
       expect(cfg).toHaveProperty('configJson');
+      // The browser never runs a model: VAD, denoise, diarization and ASR
+      // selection are server-side agent decisions, so a seeded row must not
+      // carry a switch for any of them.
+      for (const retired of ['asrModel', 'noiseCancel', 'vad', 'voiceEnrollment', 'diarization']) {
+        expect(cfg, retired).not.toHaveProperty(retired);
+      }
     });
   });
 });
@@ -2208,8 +2212,9 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
 // =============================================================================
 // The 7 browser-local whisper rows were retired: the SDK's model lists are
 // hardcoded (`constants.task210.test.ts` locks the removed /ai-models fetch)
-// and `TenantFrontendConfig.asrModel` is free-text, so no runtime path reads
-// these catalog rows. `retireLegacyAiModels` soft-deletes existing copies.
+// and the free-text `TenantFrontendConfig.asrModel` that could have named one
+// is itself gone (TASK-883), so no runtime path reads these catalog rows.
+// `retireLegacyAiModels` soft-deletes existing copies.
 
 describe('STT Local Processing Models retired', () => {
   it('should seed NO local-processing rows in the consolidated catalog', () => {

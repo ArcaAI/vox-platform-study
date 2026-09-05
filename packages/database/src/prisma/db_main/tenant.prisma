@@ -51,12 +51,17 @@ model TenantFrontendConfig {
   // multi tenant fields (one config per tenant)
   tenantId String @unique
 
-  // core fields — frontend audio pipeline defaults
-  asrModel                String?
-  noiseCancel             Boolean           @default(false)
-  vad                     Boolean           @default(false)
-  voiceEnrollment         Boolean           @default(false)
-  diarization             Boolean           @default(false)
+  // core fields — frontend CAPTURE policy.
+  //
+  // TASK-883 removed `asrModel` / `noiseCancel` / `vad` / `voiceEnrollment` /
+  // `diarization`. Owner directive 2026-09-04: the browser never runs a model —
+  // VAD, denoise, diarization and ASR selection are server-side decisions made
+  // by the tenant's published Agents. A column instructing the browser to run
+  // one was a control an admin could set with no effect at all.
+  //
+  // What a tenant still decides here is what the browser CAPTURES and how the
+  // transcription mode is pinned, which are real browser concerns.
+
   // Tenant toggle for local raw-stream dual-capture. The effective
   // SDK flag is platformCapability(GlobalSetting) AND this column, computed
   // server-side in GET /tenant/me/config.

@@ -128,7 +128,7 @@ const ENTITLEMENTS: EntitlementCapabilities = {
     },
   ],
   meters: [{ key: 'monthlyConsultations', limit: 1000, used: 310, remaining: 690, unlimited: false, nearLimit: false, exceeded: false }],
-  features: { dnaReports: true, voiceEnrollment: true, monitoringAccess: false },
+  features: { platformDefaultCredential: false, paletteStt: true, agenticLoop: true },
   modelTier: 'full',
   rateLimitTier: 'relaxed',
   rateLimitPerMinute: null,

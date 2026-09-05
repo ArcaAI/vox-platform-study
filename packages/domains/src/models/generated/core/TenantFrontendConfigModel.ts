@@ -8,11 +8,6 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class TenantFrontendConfig extends BaseTenantDataModel {
-  public asrModel: string | null;
-  public noiseCancel: boolean;
-  public vad: boolean;
-  public voiceEnrollment: boolean;
-  public diarization: boolean;
   public captureRawAudio: boolean;
   public transcriptionMode: Enums.TranscriptionMode;
   public transcriptionModeLocked: boolean;
@@ -24,11 +19,6 @@ export class TenantFrontendConfig extends BaseTenantDataModel {
 
   constructor(data: TenantFrontendConfig & BaseTenantDataModel) {
     super(data);
-    this.asrModel = data.asrModel;
-    this.noiseCancel = data.noiseCancel;
-    this.vad = data.vad;
-    this.voiceEnrollment = data.voiceEnrollment;
-    this.diarization = data.diarization;
     this.captureRawAudio = data.captureRawAudio;
     this.transcriptionMode = data.transcriptionMode;
     this.transcriptionModeLocked = data.transcriptionModeLocked;

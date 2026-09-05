@@ -906,13 +906,13 @@ export class TextCompatController {
    * here that legitimately lacks a tenant — the marker is a compile-time
    * fallback only.
    *
-   * D-D: the token is the ONE shared `INTERNAL_ACCESS_TOKEN`; `TEXT_SERVICE_TOKEN`
-   * is consulted only as the migration fallback. Both are the SYNC cache read
-   * warmed at bootstrap, preserving the existing fail-open-on-miss behaviour.
+   * D-D: the token is the ONE shared `INTERNAL_ACCESS_TOKEN`. The per-service
+   * `TEXT_SERVICE_TOKEN` fallback was retired once the shared token was
+   * deployed everywhere. The lookup is the SYNC cache read warmed at bootstrap,
+   * preserving the existing fail-open-on-miss behaviour.
    */
   private getForwardHeaders(tenantId: string): Record<string, string> {
-    const serviceToken =
-      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TEXT_SERVICE_TOKEN') || '';
+    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     return internalServiceHeaders({
       serviceToken,
       tenantId,

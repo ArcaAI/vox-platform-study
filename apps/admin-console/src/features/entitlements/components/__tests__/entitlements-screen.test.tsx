@@ -29,9 +29,6 @@ function planEntitlement(overrides: Partial<PlanEntitlement> = {}): PlanEntitlem
     monthlyConsultations: 200,
     monthlyTranscriptionMinutes: 1200,
     monthlySummaries: 400,
-    featureDnaReports: false,
-    featureVoiceEnrollment: false,
-    featureMonitoringAccess: false,
     modelTier: 'standard',
     rateLimitTier: 'basic',
     version: 3,
@@ -46,8 +43,6 @@ const PLANS: PlanEntitlement[] = [
     plan: 'PRO',
     maxUsers: 50,
     monthlyTranscriptionMinutes: 12000,
-    featureDnaReports: true,
-    featureMonitoringAccess: true,
     modelTier: 'advanced',
     rateLimitTier: 'elevated',
     version: 5,
@@ -58,9 +53,6 @@ const PLANS: PlanEntitlement[] = [
     maxUsers: null,
     storageQuotaBytes: null,
     monthlyTranscriptionMinutes: null,
-    featureDnaReports: true,
-    featureVoiceEnrollment: true,
-    featureMonitoringAccess: true,
     modelTier: 'premium',
     rateLimitTier: 'unlimited',
     version: 2,
@@ -77,7 +69,7 @@ const CAPABILITIES: EntitlementCapabilities = {
     { key: 'maxApiKeys', limit: 10, used: 12, remaining: 0, unlimited: false, nearLimit: false, exceeded: true },
   ],
   meters: [{ key: 'monthlyConsultations', limit: 2000, used: 150, remaining: 1850, unlimited: false, nearLimit: false, exceeded: false }],
-  features: { dnaReports: true, voiceEnrollment: false, monitoringAccess: true },
+  features: { platformDefaultCredential: false, paletteStt: true, agenticLoop: true },
   modelTier: 'advanced',
   rateLimitTier: 'elevated',
   rateLimitPerMinute: 120,
@@ -97,9 +89,6 @@ const OVERRIDE: TenantEntitlement = {
   monthlyConsultations: null,
   monthlyTranscriptionMinutes: null,
   monthlySummaries: null,
-  featureDnaReports: null,
-  featureVoiceEnrollment: null,
-  featureMonitoringAccess: null,
   modelTier: null,
   rateLimitTier: null,
   rateLimitPerMinute: null,
@@ -171,18 +160,18 @@ describe('EntitlementsScreen', () => {
     await waitFor(() => expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true'));
   });
 
-  it('caps the feature badges at two with a +N overflow on a single line', async () => {
+  it('shows no plan-feature column — TASK-883 left the plan row with no display flag', async () => {
     stubEntitlements();
     renderWithProviders(<EntitlementsScreen />);
 
-    // Enterprise enables all 3 features → 2 badges + "+1"; an uncapped wrapping
-    // list grows past the fixed-height virtual row and paints over border-b.
-    const enterpriseRow = (await screen.findByText('Enterprise')).closest('[role="row"]') as HTMLElement;
-    const dnaBadge = within(enterpriseRow).getByText('DNA reports');
-    expect(within(enterpriseRow).getByText('Voice enrollment')).toBeDefined();
-    expect(within(enterpriseRow).getByText('+1')).toBeDefined();
-    expect(within(enterpriseRow).queryByText('Monitoring access')).toBeNull();
-    expect((dnaBadge.parentElement as HTMLElement).className).not.toContain('flex-wrap');
+    await screen.findByText('Enterprise');
+    // The column rendered `featureDnaReports` / `featureVoiceEnrollment` /
+    // `featureMonitoringAccess`; with those columns gone it could only ever
+    // render an em dash, so the column went too rather than becoming a
+    // permanently empty one.
+    expect(screen.queryByText('DNA reports')).toBeNull();
+    expect(screen.queryByText('Voice enrollment')).toBeNull();
+    expect(screen.queryByText('Monitoring access')).toBeNull();
   });
 
   it('keeps the layout skeleton while the queries are in flight', () => {
