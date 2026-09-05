@@ -65,9 +65,45 @@ export interface ResolveTextSpecInput {
  * Replaces, for every text caller: `AiTaskDefaultService.getEffective('text.*')`,
  * `HarnessPolicy.textProvider/textModel`, a node's `llmBinding`, and the frozen `liveLlm`.
  */
+/**
+ * How long a resolved spec may be reused. Short on purpose: the live loop flushes every few
+ * seconds, so this collapses a burst of flushes into ONE resolution while keeping the worst-case
+ * staleness of an agent publish, an `AgentAssignment` write or a credential rotation to seconds.
+ */
+export const TEXT_SPEC_CACHE_TTL_MS = 15_000;
+
+/** Bound on distinct keys held per process (tenant × department × explicit slug). */
+const TEXT_SPEC_CACHE_MAX_ENTRIES = 500;
+
 @Injectable()
 export class TextAgentResolverService {
   private readonly logger = new Logger(TextAgentResolverService.name);
+
+  /**
+   * Per-process, TTL-only cache of `resolve()`.
+   *
+   * WHY: a live flush resolved the whole spec from scratch — the assignment cascade, the agent
+   * row and its models, the prompt, the platform-default agent, and a credential per cloud
+   * candidate — roughly ten round trips, four times per flush on the live documentation lane.
+   *
+   * KEYED BY `tenantId::departmentId::agentSlug`. **`tenantId` leads and is never optional**
+   * (rule 09 §Config caches M1): a cache keyed by anything less serves one tenant's agent — and
+   * one tenant's credential — to another. A version PIN is deliberately NOT in the key: the pin
+   * is enforced AFTER resolution against the cached spec's `versionNumber`, so a pinned call
+   * still fails closed on drift while sharing the entry.
+   *
+   * TTL-ONLY, and that is a decision, not an omission: no invalidation channel in this monorepo
+   * covers an agent publish or an `AgentAssignment` write (`app-settings:invalidate` carries
+   * `GlobalSetting` writes, `arca:secrets:invalidate` carries secret rotations; neither is
+   * published by `AgentService.publish` or the assignment writer). Wiring one is a follow-on;
+   * until then the TTL above is the whole propagation bound — including for a rotated cloud
+   * credential carried on a candidate's one-hop `providerOverride`.
+   *
+   * Entries are cloned on read so a consumer cannot mutate another caller's spec.
+   */
+  private readonly specCache = new Map<string, { expiresAt: number; spec: ResolvedTextGenerationSpec }>();
+  /** In-flight resolutions, so concurrent flushes share ONE round trip instead of racing. */
+  private readonly inFlight = new Map<string, Promise<ResolvedTextGenerationSpec>>();
 
   constructor(
     private readonly agents: AgentResolverService,
@@ -79,19 +115,58 @@ export class TextAgentResolverService {
 
   async resolve(input: ResolveTextSpecInput): Promise<ResolvedTextGenerationSpec> {
     const { tenantId } = input;
-    const agent = await this.agents.resolve({
-      tenantId,
-      task: AgentTask.TEXT_GENERATION,
-      agentSlug: input.agentSlug ?? null,
-      departmentId: input.departmentId ?? null,
-    });
-    if (typeof input.versionNumber === 'number' && agent.versionNumber !== input.versionNumber) {
+    const key = `${tenantId}::${input.departmentId ?? ''}::${input.agentSlug ?? ''}`;
+    const spec = await this.cached(key, tenantId, input);
+    // Enforced on the CACHED spec, so a pinned call shares the entry and still fails CLOSED.
+    if (typeof input.versionNumber === 'number' && spec.agent.versionNumber !== input.versionNumber) {
       throw new ConflictException({
         code: 'AGENT_VERSION_DRIFT',
-        message: `Agent '${agent.slug}' is pinned to v${input.versionNumber} but the active published version is v${agent.versionNumber}.`,
+        message: `Agent '${spec.agent.slug}' is pinned to v${input.versionNumber} but the active published version is v${spec.agent.versionNumber}.`,
       });
     }
-    return this.resolveFromAgent(agent, tenantId);
+    return spec;
+  }
+
+  /** The cache + single-flight wrapper around one full resolution. Errors are never cached. */
+  private async cached(key: string, tenantId: string, input: ResolveTextSpecInput): Promise<ResolvedTextGenerationSpec> {
+    const now = Date.now();
+    const hit = this.specCache.get(key);
+    if (hit && hit.expiresAt > now) return structuredClone(hit.spec);
+    if (hit) this.specCache.delete(key);
+
+    const pending = this.inFlight.get(key);
+    if (pending) return structuredClone(await pending);
+
+    const work = (async () => {
+      const agent = await this.agents.resolve({
+        tenantId,
+        task: AgentTask.TEXT_GENERATION,
+        agentSlug: input.agentSlug ?? null,
+        departmentId: input.departmentId ?? null,
+      });
+      return this.resolveFromAgent(agent, tenantId);
+    })();
+    this.inFlight.set(key, work);
+    try {
+      const spec = await work;
+      this.pruneCache(now);
+      this.specCache.set(key, { expiresAt: Date.now() + TEXT_SPEC_CACHE_TTL_MS, spec });
+      return structuredClone(spec);
+    } finally {
+      this.inFlight.delete(key);
+    }
+  }
+
+  /** Drop expired entries, then the oldest, so a long-lived process cannot grow this map without bound. */
+  private pruneCache(now: number): void {
+    for (const [key, entry] of this.specCache) {
+      if (entry.expiresAt <= now) this.specCache.delete(key);
+    }
+    while (this.specCache.size >= TEXT_SPEC_CACHE_MAX_ENTRIES) {
+      const oldest = this.specCache.keys().next();
+      if (oldest.done) break;
+      this.specCache.delete(oldest.value);
+    }
   }
 
   /** The chain for an agent the caller already resolved (the internal resolve route, which must not resolve twice). */
