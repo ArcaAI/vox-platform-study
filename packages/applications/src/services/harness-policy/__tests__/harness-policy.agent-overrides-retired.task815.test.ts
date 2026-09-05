@@ -66,8 +66,6 @@ function tenantOwnRow() {
     gateSlaSeconds: 3600,
     gateEscalationSeconds: 1800,
     toolAllowlist: ['nlp'],
-    textProvider: 'tenant-prov',
-    textModel: 'tenant-model',
   });
 }
 

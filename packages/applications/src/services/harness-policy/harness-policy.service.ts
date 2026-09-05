@@ -88,8 +88,6 @@ export interface HarnessPolicyKnobs {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
-  textProvider: string | null;
-  textModel: string | null;
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
@@ -121,11 +119,12 @@ export interface HarnessPolicyKnobs {
 }
 
 /**
- * Selection + agentic knobs AND the guardrail/PHI on-off switches are
- * SUPER_ADMIN / SYSTEM-only. Tenant admins may patch clinical THRESHOLDS
- * (faithfulness, coverage, numeric-dose, …) ONLY — they must not set
- * model/provider routing, agentic loop knobs, or turn the safety and PHI gates
- * off for their tenant.
+ * Agentic knobs AND the guardrail/PHI on-off switches are SUPER_ADMIN /
+ * SYSTEM-only. Tenant admins may patch clinical THRESHOLDS (faithfulness,
+ * coverage, numeric-dose, …) ONLY — they must not set agentic loop knobs or
+ * turn the safety and PHI gates off for their tenant. (The `textProvider` /
+ * `textModel` selection columns that used to head this list were dropped by
+ * TASK-881 — selection is the assigned TEXT_GENERATION agent, not a policy knob.)
  *
  * Includes `safetyEnabled`/`phiEnabled`/`phiFailClosed`:
  * guardrail and NLP are controlled by super admins only. Because this list
@@ -134,8 +133,6 @@ export interface HarnessPolicyKnobs {
  * not deleted — removing a key here restores the tenant row's effect).
  */
 const SUPER_ADMIN_ONLY_POLICY_KEYS = [
-  'textProvider',
-  'textModel',
   'optimisticDeliveryEnabled',
   'atomicFactEnabled',
   'retrievalEnabled',
@@ -181,8 +178,6 @@ function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
     safetyEnabled: e.safetyEnabled,
     phiEnabled: e.phiEnabled,
     phiFailClosed: e.phiFailClosed,
-    textProvider: e.textProvider ?? null,
-    textModel: e.textModel ?? null,
     maxRegen: e.maxRegen,
     gateSlaSeconds: e.gateSlaSeconds,
     gateEscalationSeconds: e.gateEscalationSeconds,

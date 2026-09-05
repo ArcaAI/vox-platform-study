@@ -38,7 +38,7 @@ import { PRE_SUMMARY_CONTENT, SURGERY_NEW_REFERRAL_CONTENT } from '../prisma/db_
 import { DEFAULT_STT_SETTINGS, AiModelSource, AiModelFormat, ModelCategory, ModelTaskType, ModelType } from '../prisma/db_main/seed/06-stt';
 import { DEFAULT_AI_MODELS, RETIRED_AI_MODEL_SLUGS, retireCustomerTenantAiModels } from '../prisma/db_main/seed/06-ai-models';
 import { ALL_SETTINGS, PLATFORM_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
-import { seedHarnessPolicy, SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS } from '../prisma/db_main/seed/13-harness-policy';
+import { seedHarnessPolicy } from '../prisma/db_main/seed/13-harness-policy';
 import { TENANT_FRONTEND_CONFIGS } from '../prisma/db_main/seed/05-tenant';
 import { DEFAULT_PROMPT_TEMPLATES, DEFAULT_PROMPT_VERSIONS } from '../prisma/db_main/seed/07-prompt-template';
 import {
@@ -2254,10 +2254,12 @@ describe('Non-SYSTEM AI model rows are retired (registry is SYSTEM-only, TASK-86
 // SYSTEM HarnessPolicy TEXT default + WORM audit
 // =============================================================================
 
-describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
+describe('seedHarnessPolicy — the SYSTEM global-default row (create-only + WORM)', () => {
+  // TASK-881: the seed no longer writes `textProvider` / `textModel` (the
+  // columns are dropped; text selection is the assigned TEXT_GENERATION agent).
+  // What survives is the row's existence and the creation audit entry.
   const makeMockClient = (existing: Record<string, unknown> | null) => {
     const created: Array<{ data: Record<string, unknown> }> = [];
-    const updated: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
     const changes: Array<{ data: Record<string, unknown> }> = [];
     const client = {
       harnessPolicy: {
@@ -2265,12 +2267,9 @@ describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
         create: vi.fn(async (args: { data: Record<string, unknown> }) => {
           created.push(args);
           // Real Prisma returns the full row incl. column defaults.
-          return { id: 'new-policy-id', version: 1, ...args.data };
+          return { id: 'new-policy-id', version: 1, maxRegen: 2, ...args.data };
         }),
-        update: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
-          updated.push(args);
-          return { id: 'existing-id', version: 2, ...existing, ...args.data };
-        }),
+        update: vi.fn(),
       },
       harnessPolicyChange: {
         create: vi.fn(async (args: { data: Record<string, unknown> }) => {
@@ -2279,15 +2278,10 @@ describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
         }),
       },
     };
-    return { client, created, updated, changes };
+    return { client, created, changes };
   };
 
-  it('exposes the agreed TEXT defaults (lm-studio + gemma-4-e2b-it-qat)', () => {
-    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textProvider).toBe('lm-studio');
-    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel).toBe('gemma-4-e2b-it-qat');
-  });
-
-  it('creates the SYSTEM policy row with the TEXT defaults and writes a WORM change (beforeJson=null)', async () => {
+  it('creates the SYSTEM policy row from the column defaults and writes a WORM change (beforeJson=null)', async () => {
     const { client, created, changes } = makeMockClient(null);
     const result = await seedHarnessPolicy(client as never);
 
@@ -2296,27 +2290,22 @@ describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
 
     expect(client.harnessPolicy.create).toHaveBeenCalledTimes(1);
     expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
-    expect(created[0].data.textProvider).toBe('lm-studio');
-    expect(created[0].data.textModel).toBe('gemma-4-e2b-it-qat');
+    // No selection column is written — the retired text default is gone.
+    expect(Object.keys(created[0].data).sort()).toEqual(['createdBy', 'tenantId']);
 
-    // WORM audit entry (HarnessPolicyChange) recorded for the default-set.
+    // WORM audit entry (HarnessPolicyChange) recorded for the creation.
     expect(client.harnessPolicyChange.create).toHaveBeenCalledTimes(1);
     const change = changes[0].data;
     expect(change.tenantId).toBe(SYSTEM_TENANT_ID);
     expect(change.beforeJson).toBeNull();
-    expect((change.afterJson as Record<string, unknown>).textProvider).toBe('lm-studio');
-    expect((change.afterJson as Record<string, unknown>).textModel).toBe('gemma-4-e2b-it-qat');
+    expect((change.afterJson as Record<string, unknown>).maxRegen).toBe(2);
+    expect(change.afterJson as Record<string, unknown>).not.toHaveProperty('textProvider');
+    expect(change.afterJson as Record<string, unknown>).not.toHaveProperty('textModel');
     expect(change.changedBy).toBe(SYSTEM_USER_ID);
   });
 
-  it('is idempotent — no write/WORM when the SYSTEM policy already has the TEXT defaults', async () => {
-    const { client } = makeMockClient({
-      id: 'existing-id',
-      tenantId: SYSTEM_TENANT_ID,
-      version: 3,
-      textProvider: 'lm-studio',
-      textModel: 'gemma-4-e2b-it-qat',
-    });
+  it('is create-only — no write/WORM when the SYSTEM policy row already exists, whatever it holds', async () => {
+    const { client } = makeMockClient({ id: 'existing-id', tenantId: SYSTEM_TENANT_ID, version: 3, maxRegen: 5 });
     const result = await seedHarnessPolicy(client as never);
 
     expect(result.action).toBe('noop');
@@ -2324,33 +2313,6 @@ describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
     expect(client.harnessPolicy.create).not.toHaveBeenCalled();
     expect(client.harnessPolicy.update).not.toHaveBeenCalled();
     expect(client.harnessPolicyChange.create).not.toHaveBeenCalled();
-  });
-
-  it('updates ONLY the two TEXT columns on an existing NULL-TEXT row and writes a before/after WORM change', async () => {
-    const { client, updated, changes } = makeMockClient({
-      id: 'existing-id',
-      tenantId: SYSTEM_TENANT_ID,
-      version: 1,
-      textProvider: null,
-      textModel: null,
-      maxRegen: 5,
-    });
-    const result = await seedHarnessPolicy(client as never);
-
-    expect(result.action).toBe('updated');
-    expect(result.changeWritten).toBe(true);
-
-    expect(client.harnessPolicy.update).toHaveBeenCalledTimes(1);
-    // Writes ONLY the two TEXT columns (does not clobber other admin knobs).
-    expect(Object.keys(updated[0].data).sort()).toEqual(['textModel', 'textProvider']);
-    expect(updated[0].data.textProvider).toBe('lm-studio');
-    expect(updated[0].data.textModel).toBe('gemma-4-e2b-it-qat');
-
-    const change = changes[0].data;
-    expect((change.beforeJson as Record<string, unknown>).textModel).toBeNull();
-    expect((change.afterJson as Record<string, unknown>).textModel).toBe('gemma-4-e2b-it-qat');
-    // The audit snapshot preserves untouched knobs (the regen budget).
-    expect((change.afterJson as Record<string, unknown>).maxRegen).toBe(5);
   });
 });
 
