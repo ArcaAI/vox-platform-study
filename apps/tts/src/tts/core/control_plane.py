@@ -37,6 +37,16 @@ WHAT IS DELIBERATELY ABSENT
 * **Per-provider VOICE names.** They are not config at all any more: the voice
   catalog is the single source (see ``catalog/voices.py``), and the router
   already passes the resolved binding as ``req.provider_voice``.
+* **Seven knobs removed by TASK-872**, because a served value that reaches no
+  reader is a control an operator can move with no effect: ``azure.timeout_s``
+  and ``azure.max_concurrent`` (the Azure client builds neither),
+  ``sarvam.sample_rate`` (the rate rides the request), ``sarvam.max_concurrent``
+  (unread), ``sarvam.use_streaming`` (named an unimplemented phase-2 upgrade),
+  ``kokoro.device`` (still a live FIELD read by the loader — only its
+  control-plane path went, because ``providers/kokoro.py`` reads it at
+  construction and the pull lands after) and ``default_format`` (the effective
+  format is resolved by the GATEWAY from ``TenantTtsConfig`` and arrives per
+  request). Their registry descriptors were deleted in the same change.
 
 WHAT IS HALF-PRESENT, AND WHY THAT IS THE INTENDED STATE
 ---------------------------------------------------------
@@ -84,17 +94,10 @@ def moved_alias(env_var: str) -> str:
 CONTROL_PLANE_KEYS: dict[str, str] = {
     # ── Azure Speech (managed cloud; BYOK key excluded by design) ────────────
     "azure.region": "tts.azure.region",
-    "azure.timeout_s": "tts.azure.timeoutS",
-    "azure.max_concurrent": "tts.azure.maxConcurrent",
     # ── Sarvam (cloud; BYOK key excluded by design) ──────────────────────────
     "sarvam.base_url": "tts.sarvam.baseUrl",
     "sarvam.model": "tts.sarvam.model",
-    "sarvam.sample_rate": "tts.sarvam.sampleRate",
     "sarvam.timeout_s": "tts.sarvam.timeoutS",
-    "sarvam.max_concurrent": "tts.sarvam.maxConcurrent",
-    "sarvam.use_streaming": "tts.sarvam.useStreaming",
-    # ── Kokoro (self-hosted, English) ────────────────────────────────────────
-    "kokoro.device": "tts.kokoro.device",
     # ── Indic Parler (self-hosted, Malayalam) ────────────────────────────────
     "indic_parler.hf_model": "tts.indicParler.hfModel",
     "indic_parler.device": "tts.indicParler.device",
@@ -108,7 +111,6 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "indic_f5.ref_text": "tts.indicF5.refText",
     # ── service-wide synthesis limits ────────────────────────────────────────
     "max_input_chars": "tts.limits.maxInputChars",
-    "default_format": "tts.limits.defaultFormat",
     "sample_rate": "tts.limits.sampleRate",
     "warmup_enabled": "tts.warmupEnabled",
     # ── provider/engine enable flags ───────────────────────

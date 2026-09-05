@@ -40,7 +40,6 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'stt.modelCache.maxModels': 5,
   'stt.modelCache.ttlSeconds': 600,
   'stt.modelCache.maxMemoryMb': 10000,
-  'stt.modelCache.vramBudgetMb': 0,
   'stt.workers.concurrency': 4,
   'stt.streaming.maxConcurrent': 0,
   'nlp.inference.maxConcurrent': 4,
@@ -108,20 +107,20 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   // pure redundancy.
   //
   // `maxModels` values are transcribed verbatim from each service's own code
-  // default, so residency is behaviour-preserving. `vramBudgetMb: 0` means
-  // "unset" — no VRAM budget, the estimates path applies.
+  // default, so residency is behaviour-preserving.
+  //
+  // TASK-872 removed the knobs no service ever READ, and what is left is
+  // exactly what each service consumes: `vramBudgetMb` (all five) was parsed by
+  // nobody; `tts.modelCache.maxModels` was declared against a client whose own
+  // `retention()` documents that "maxModels is meaningless here"; and the three
+  // `guardrail.modelCache.*` keys fed a `retention()` accessor with zero
+  // callers. A knob an operator can set that reaches no reader is worse than an
+  // absent one — it reports success and changes nothing.
   'nlp.modelCache.ttlSeconds': 600,
   'nlp.modelCache.maxModels': 3,
-  'nlp.modelCache.vramBudgetMb': 0,
-  'guardrail.modelCache.ttlSeconds': 600,
-  'guardrail.modelCache.maxModels': 2,
-  'guardrail.modelCache.vramBudgetMb': 0,
   'harness.modelCache.ttlSeconds': 600,
   'harness.modelCache.maxModels': 1,
-  'harness.modelCache.vramBudgetMb': 0,
   'tts.modelCache.ttlSeconds': 600,
-  'tts.modelCache.maxModels': 2,
-  'tts.modelCache.vramBudgetMb': 0,
   'text.modelCache.ttlSeconds': 600,
 
   // ── guardrail PHI redaction ──────────────────────────────────────────────
@@ -156,20 +155,43 @@ export const SERVICE_RUNTIME_DEFAULTS = {
 export type ServiceRuntimeKey = keyof typeof SERVICE_RUNTIME_DEFAULTS;
 
 /**
- * The in-process caches this registry family governs. `text` is deliberately ABSENT: it
- * holds no weights — its `text.modelCache.ttlSeconds` is forwarded to
- * server-managed engines (Ollama `keep_alive`, LM Studio `ttl`), so it has no
- * `maxModels`/`vramBudgetMb` to speak of.
+ * The services with an in-process cache this registry family still governs —
+ * i.e. the ones that get a `retention` group on the pull route.
+ *
+ * `text` is deliberately ABSENT: it holds no weights, and its
+ * `text.modelCache.ttlSeconds` is forwarded to server-managed engines (Ollama
+ * `keep_alive`, LM Studio `ttl`) rather than bounding a cache of its own.
+ *
+ * `guardrail` LEFT this list in TASK-872, when its three `modelCache.*` keys
+ * were removed for having no reader — see {@link MODEL_WEIGHT_SERVICES} for why
+ * that is not the same as leaving the weights plane.
  */
-export const MODEL_CACHE_SERVICES = ['stt', 'nlp', 'guardrail', 'harness', 'tts'] as const;
+export const MODEL_CACHE_SERVICES = ['stt', 'nlp', 'harness', 'tts'] as const;
 
 export type ModelCacheService = (typeof MODEL_CACHE_SERVICES)[number];
+
+/**
+ * The services that hold model WEIGHTS in their own process, and therefore
+ * receive the `modelWeights` block on the pull route (slug → source/localPath/
+ * checksum for the models their task keys select).
+ *
+ * SPLIT from {@link MODEL_CACHE_SERVICES} by TASK-872. One constant was doing
+ * two jobs — driving the retention-descriptor generator AND gating
+ * `EffectiveConfigService.resolveModelWeights` — and the two only ever agreed
+ * by coincidence. They answer different questions: "does this service expose
+ * cache-retention knobs" and "does this service need to be told where its
+ * weights live". Removing guardrail's dead cache knobs would otherwise have
+ * silently stopped serving guardrail its weights block, which is a real
+ * behaviour change hiding inside a cleanup.
+ */
+export const MODEL_WEIGHT_SERVICES = ['stt', 'nlp', 'guardrail', 'harness', 'tts'] as const;
+
+export type ModelWeightService = (typeof MODEL_WEIGHT_SERVICES)[number];
 
 /** Human-facing service names for the generated retention descriptions. */
 const SERVICE_LABEL: Record<ModelCacheService, string> = {
   stt: 'stt',
   nlp: 'nlp',
-  guardrail: 'guardrail',
   harness: 'harness',
   tts: 'tts',
 };
@@ -183,25 +205,28 @@ const MAX_MODELS_DESCRIPTION = (service: string): string =>
   `Maximum number of models held resident in the ${service} LRU cache. Under all-pinned load the cache ` +
   'deliberately exceeds this ceiling rather than drop a model serving a request.';
 
-const VRAM_DESCRIPTION = (service: string): string =>
-  `Per-service VRAM budget in MB for ${service}. 0 = unset (no VRAM budget — the memory-estimate path ` +
-  'applies). Only takes effect where an NVML probe is available; CPU-only hosts ignore it.';
-
 type KeyMeta = { label: string; description: string };
 
 /**
- * Retention metadata for the four services added here, generated so
- * the wording can never drift between them. stt's three pre-existing entries
- * keep their hand-written text below (they are equivalent in substance).
+ * Retention metadata, generated so the wording can never drift between
+ * services. stt's pre-existing entries keep their hand-written text below (they
+ * are equivalent in substance).
+ *
+ * Filtered against `SERVICE_RUNTIME_DEFAULTS` rather than emitted blindly per
+ * service: the knob set is no longer uniform (tts declares a TTL and no
+ * `maxModels`, because its own client documents `maxModels` as meaningless
+ * there), and generating metadata for a key that does not exist would leave a
+ * label describing a control nobody can reach.
  */
 const RETENTION_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = Object.fromEntries(
   MODEL_CACHE_SERVICES.flatMap((service) => {
     const label = SERVICE_LABEL[service];
-    return [
-      [`${service}.modelCache.ttlSeconds`, { label: `${label} model cache idle TTL (s)`, description: TTL_DESCRIPTION(label) }],
-      [`${service}.modelCache.maxModels`, { label: `${label} model cache size`, description: MAX_MODELS_DESCRIPTION(label) }],
-      [`${service}.modelCache.vramBudgetMb`, { label: `${label} VRAM budget (MB)`, description: VRAM_DESCRIPTION(label) }],
-    ];
+    return (
+      [
+        [`${service}.modelCache.ttlSeconds`, { label: `${label} model cache idle TTL (s)`, description: TTL_DESCRIPTION(label) }],
+        [`${service}.modelCache.maxModels`, { label: `${label} model cache size`, description: MAX_MODELS_DESCRIPTION(label) }],
+      ] as const
+    ).filter(([key]) => key in SERVICE_RUNTIME_DEFAULTS);
   }),
 ) as Partial<Record<ServiceRuntimeKey, KeyMeta>>;
 

@@ -48,19 +48,22 @@ export interface EffectiveRuntimeProfile {
 }
 
 /**
- * Model-cache retention knobs, covering every in-process service
- * (nlp/guardrail/harness/tts/stt) plus text, whose
- * `ttlSeconds` is forwarded to server-managed engines rather than a cache.
+ * Model-cache retention knobs, covering the in-process services that declare
+ * them (stt/nlp/harness/tts) plus text, whose `ttlSeconds` is forwarded to
+ * server-managed engines rather than a cache.
  *
  * Every field is nullable BY CONTRACT: null/omitted means "the service keeps its
  * own env/bootstrap value". `maxMemoryMb` is stt-only (its historical MB
- * budget); `vramBudgetMb` is the generalized, opt-in VRAM bound (0/null = unset).
+ * budget).
+ *
+ * `vramBudgetMb` was here until TASK-872. No client ever parsed it — the field
+ * was served to five services and read by none — so it was removed with its
+ * five descriptors rather than left as a wire field that looks like a control.
  */
 export interface EffectiveRetention {
   ttlSeconds: number | null;
   maxModels: number | null;
   maxMemoryMb: number | null;
-  vramBudgetMb: number | null;
   source: EffectiveConfigSource;
 }
 

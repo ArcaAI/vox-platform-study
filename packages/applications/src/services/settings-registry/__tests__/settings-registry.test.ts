@@ -96,10 +96,23 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(() => HOPE_SETTINGS_REGISTRY.assertWithinMaxScope('pipeline.harnessEnabled', 'doctor')).toThrow(ArgumentInvalidException);
   });
 
-  it('registers the TTS BYO provider credentials as db-secret / secret sensitivity', () => {
-    const azure = HOPE_SETTINGS_REGISTRY.getOrThrow('tts.credential.azure');
-    expect(azure).toMatchObject({ tier: 'db-secret', dataType: 'secret', sensitivity: 'secret', maxScope: 'tenant' });
-    expect(HOPE_SETTINGS_REGISTRY.has('tts.credential.sarvam')).toBe(true);
+  // Was: "registers the TTS BYO provider credentials as db-secret / secret
+  // sensitivity" over `tts.credential.{azure,sarvam}`. TASK-872 removed those
+  // five `db-secret` descriptors (the three `stt.credential.*` twins with
+  // them), leaving the tier with no members at all — so the assertion is now
+  // the ABSENCE, which is the part that can regress. A `db-secret` descriptor
+  // is unreachable by construction: `EffectiveSettingsService` refuses any
+  // `sensitivity: 'secret'` read, and the write lane refuses the tier, so
+  // registering one describes a control surface the registry does not have.
+  // The per-tenant credentials themselves are unaffected — `TenantTtsConfig` /
+  // `TenantSttConfig` own their storage (Vault-Transit columns) and their
+  // write paths (their own DTOs).
+  it('registers NO db-secret descriptor — the tier has no read or write lane', () => {
+    const dbSecrets = HOPE_SETTINGS_REGISTRY.list().filter((d) => d.tier === 'db-secret');
+    expect(dbSecrets.map((d) => d.key)).toEqual([]);
+    for (const key of ['tts.credential.azure', 'tts.credential.sarvam', 'stt.credential.azure-speech', 'stt.credential.sarvam', 'stt.credential.openai']) {
+      expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(false);
+    }
   });
 
   // The two pipeline toggles that gate guardrail's primary caller (the

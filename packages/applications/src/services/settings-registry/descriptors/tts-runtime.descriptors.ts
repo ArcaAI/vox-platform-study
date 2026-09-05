@@ -23,8 +23,11 @@
 // pins them to a `validation_alias` naming a variable nobody will ever set, with
 // `populate_by_name` off, so no environment path to a cloud key exists even if an
 // operator tries. The assessment calls that "the pattern F-01 should be fixed
-// *to*". Their per-tenant homes are the `tts.credential.*` db-secret descriptors,
-// and the gateway injects the selected one per request.
+// *to*". Their per-tenant home is `TenantTtsProviderCredential` (Vault-Transit
+// ciphertext, written through `TenantTtsConfigService`), and the gateway injects
+// the selected one per request. TASK-872 removed the `tts.credential.*`
+// descriptors that used to describe them here: the registry could neither read
+// nor write those rows, so they catalogued a control surface that did not exist.
 //
 // **Per-provider VOICE names.** `TTS_KOKORO_VOICE`, `TTS_PARLER_SPEAKER_ML/_EN`,
 // `TTS_AZURE_VOICE_EN/_ML` and `TTS_SARVAM_VOICE_ML/_EN` are GONE, not migrated.
@@ -167,20 +170,6 @@ const KNOBS: Record<string, TtsKnob> = {
       'admin with an audit trail rather than to whoever edits the env file.',
     category: 'TTS Providers',
   },
-  'tts.azure.timeoutS': {
-    dataType: 'number',
-    default: 30,
-    label: 'Azure Speech timeout (s)',
-    description: 'Per-request timeout for Azure Speech synthesis.',
-    category: 'TTS Providers',
-  },
-  'tts.azure.maxConcurrent': {
-    dataType: 'number',
-    default: 10,
-    label: 'Azure Speech concurrency',
-    description: 'Ceiling on concurrent in-flight Azure Speech syntheses.',
-    category: 'TTS Providers',
-  },
 
   // ── Sarvam (cloud) ───────────────────────────────────────────────────────
   'tts.sarvam.baseUrl': {
@@ -202,42 +191,12 @@ const KNOBS: Record<string, TtsKnob> = {
       'prefix enables server-side preprocessing.',
     category: 'TTS Providers',
   },
-  'tts.sarvam.sampleRate': {
-    dataType: 'number',
-    default: 24000,
-    label: 'Sarvam sample rate (Hz)',
-    description: 'Sample rate requested from Sarvam.',
-    category: 'TTS Providers',
-  },
   'tts.sarvam.timeoutS': {
     dataType: 'number',
     default: 30,
     label: 'Sarvam timeout (s)',
     description: 'Per-request timeout for Sarvam synthesis.',
     category: 'TTS Providers',
-  },
-  'tts.sarvam.maxConcurrent': {
-    dataType: 'number',
-    default: 4,
-    label: 'Sarvam concurrency',
-    description: 'Ceiling on concurrent in-flight Sarvam syntheses.',
-    category: 'TTS Providers',
-  },
-  'tts.sarvam.useStreaming': {
-    dataType: 'boolean',
-    default: false,
-    label: 'Sarvam WebSocket streaming',
-    description: "Use Sarvam's WebSocket streaming API instead of the request/response endpoint.",
-    category: 'TTS Providers',
-  },
-
-  // ── Kokoro (self-hosted, English) ────────────────────────────────────────
-  'tts.kokoro.device': {
-    dataType: 'string',
-    default: 'cpu',
-    label: 'Kokoro device',
-    description: 'Torch device for Kokoro inference.',
-    category: 'TTS Engines',
   },
 
   // ── Indic Parler (self-hosted, Malayalam) ────────────────────────────────
@@ -326,13 +285,6 @@ const KNOBS: Record<string, TtsKnob> = {
     default: 4096,
     label: 'Max input characters',
     description: 'Longest text accepted for one synthesis request.',
-    category: 'TTS Runtime',
-  },
-  'tts.limits.defaultFormat': {
-    dataType: 'string',
-    default: 'pcm',
-    label: 'Default audio format',
-    description: 'Audio format used when a request names none: pcm | wav | mp3.',
     category: 'TTS Runtime',
   },
   'tts.limits.sampleRate': {

@@ -18,8 +18,8 @@
 // WHY `open-to-default` everywhere. A missing `GlobalSetting` row must degrade
 // to the code defaults below — the same numbers the SDK ships — never to a
 // failed upload. Nothing here is a SELECTION (no provider, model, or pipeline is
-// chosen), so the fail-closed rule that governs `stt.fallback.pipelineSlug` does
-// not apply. Nothing here is a kill-switch either: these bound enforcement, they
+// chosen), so the fail-closed rule that governs the `models.*` selection keys
+// does not apply. Nothing here is a kill-switch either: these bound enforcement, they
 // do not turn it on or off.
 
 import { SettingDescriptor } from '../registry.types';

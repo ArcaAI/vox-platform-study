@@ -35,7 +35,7 @@ import { AI_TASK_KEYS, type AiTaskKey } from '../ai-task-default/constants';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import type { AiModelService } from '../ai-model/aiModel.service';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
-import { MODEL_CACHE_SERVICES } from '../settings-registry/descriptors/service-runtime.descriptors';
+import { MODEL_WEIGHT_SERVICES } from '../settings-registry/descriptors/service-runtime.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from '../settings-registry/registry';
 import type { SettingDataType, SettingDescriptor } from '../settings-registry/registry.types';
 import {
@@ -238,21 +238,24 @@ export class EffectiveConfigService implements IEffectiveConfigService {
   /**
    * The frozen `retention` view over the already-resolved map.
    *
-   * `text` gets ttlSeconds ONLY: it owns no cache, so `maxModels`/`maxMemoryMb`/
-   * `vramBudgetMb` are meaningless there and stay null rather than being
-   * invented. `maxMemoryMb` remains stt-only (its historical MB budget);
-   * every other service uses the generalized `vramBudgetMb`.
+   * `text` gets ttlSeconds ONLY: it owns no cache, so `maxModels`/`maxMemoryMb`
+   * are meaningless there and stay null rather than being invented.
+   * `maxMemoryMb` remains stt-only (its historical MB budget).
+   *
+   * A service with no `modelCache.ttlSeconds` descriptor gets NO `retention`
+   * group at all, which every client reads as "leave your own values alone".
+   * Since TASK-872 that is guardrail's case: its three cache keys were removed
+   * for having no reader, so the group is simply absent for it.
    */
   private retentionView(service: EffectiveConfigServiceName, resolved: Map<string, ResolvedKey>): { retention?: EffectiveRetention } {
     const ttl = resolved.get(`${service}.modelCache.ttlSeconds`);
     if (!ttl) return {};
 
     if (service === 'text') {
-      return { retention: { ttlSeconds: numberOrNull(ttl), maxModels: null, maxMemoryMb: null, vramBudgetMb: null, source: ttl.source } };
+      return { retention: { ttlSeconds: numberOrNull(ttl), maxModels: null, maxMemoryMb: null, source: ttl.source } };
     }
 
     const maxModels = resolved.get(`${service}.modelCache.maxModels`);
-    const vramBudgetMb = resolved.get(`${service}.modelCache.vramBudgetMb`);
     const maxMemoryMb = resolved.get(`${service}.modelCache.maxMemoryMb`);
 
     return {
@@ -260,8 +263,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
         ttlSeconds: numberOrNull(ttl),
         maxModels: numberOrNull(maxModels),
         maxMemoryMb: numberOrNull(maxMemoryMb),
-        vramBudgetMb: numberOrNull(vramBudgetMb),
-        source: groupSource([ttl, maxModels, vramBudgetMb, maxMemoryMb]),
+        source: groupSource([ttl, maxModels, maxMemoryMb]),
       },
     };
   }
@@ -371,9 +373,13 @@ export class EffectiveConfigService implements IEffectiveConfigService {
    * service's `AiTaskDefault` rows select.
    *
    * Served only to services that hold weights in their OWN process
-   * (`MODEL_CACHE_SERVICES`) — `text` is excluded because it holds none, its
+   * (`MODEL_WEIGHT_SERVICES`) — `text` is excluded because it holds none, its
    * models being served by remote engines. Resolution is SYSTEM-tenant, like
    * everything else on this route (D-1): these are the platform's selections.
+   *
+   * That list is deliberately NOT `MODEL_CACHE_SERVICES` (TASK-872): guardrail
+   * declares no cache-retention knobs any more and still needs to be told where
+   * its weights live.
    *
    * Fail-SAFE throughout. A task with no selection, a slug with no registry row,
    * or a resolver that throws each contributes nothing rather than failing the
@@ -382,7 +388,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
    */
   private async resolveModelWeights(service: EffectiveConfigServiceName): Promise<Record<string, EffectiveModelWeight> | undefined> {
     if (!this.taskDefaults || !this.aiModels) return undefined;
-    if (!(MODEL_CACHE_SERVICES as readonly string[]).includes(service)) return undefined;
+    if (!(MODEL_WEIGHT_SERVICES as readonly string[]).includes(service)) return undefined;
 
     const taskKeys = [...AI_TASK_KEYS.filter((key) => key.startsWith(`${service}.`)), ...(CROSS_SERVICE_MODEL_WEIGHT_KEYS[service] ?? [])];
     if (taskKeys.length === 0) return undefined;
