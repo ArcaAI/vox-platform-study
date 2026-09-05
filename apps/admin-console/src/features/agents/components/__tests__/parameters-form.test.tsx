@@ -4,9 +4,31 @@
  * admin touched — untouched knobs stay absent so the runtime default wins.
  */
 import { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderWithProviders } from '@/test/render';
 import { ParametersForm } from '../parameters-form';
+
+/**
+ * TASK-887 — a property annotated `modelTaskType` renders a picker over the tenant's registry
+ * (`GET admin/ai-models`), so the form now needs a QueryClient. Every test renders through the
+ * shared provider harness for that reason; `fetch` is stubbed per test.
+ */
+const REGISTRY_MODELS = [
+  { id: 'm-1', name: 'WeSpeaker ResNet34', slug: 'wespeaker-voxceleb-resnet34', taskType: 'SPEAKER_EMBEDDING', resourceStatus: 'ENABLED', tenantId: 'sys' },
+  { id: 'm-2', name: 'ECAPA-TDNN', slug: 'ecapa-tdnn-voxceleb', taskType: 'SPEAKER_EMBEDDING', resourceStatus: 'ENABLED', tenantId: 'sys' },
+  { id: 'm-3', name: 'Silero VAD', slug: 'silero-vad', taskType: 'VOICE_ACTIVITY_DETECTION', resourceStatus: 'ENABLED', tenantId: 'sys' },
+];
+
+function stubRegistry(models: unknown[] = REGISTRY_MODELS) {
+  vi.stubGlobal(
+    'fetch',
+    // `getJson` returns the parsed body itself — `GET admin/ai-models` answers a bare array.
+    vi.fn(async () => new Response(JSON.stringify(models), { status: 200, headers: { 'content-type': 'application/json' } })),
+  );
+}
+
+const render = (ui: React.ReactElement) => renderWithProviders(ui);
 
 /** A controlled host, so a cleared field really re-renders as empty (React skips a no-op change). */
 function Host({ task, onChange }: { task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH'; onChange: (next: Record<string, unknown>) => void }) {
@@ -23,7 +45,12 @@ function Host({ task, onChange }: { task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' |
   );
 }
 
-afterEach(cleanup);
+beforeEach(() => stubRegistry());
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('ParametersForm', () => {
   it('TEXT_TO_SPEECH: renders voice/language/speed/format/sampleRate/ssml from the contract schema', () => {
@@ -53,6 +80,69 @@ describe('ParametersForm', () => {
     expect(screen.getByRole('group', { name: 'Decoding' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Beam Size'), { target: { value: '5' } });
     expect(onChange).toHaveBeenLastCalledWith({ decoding: { beamSize: 5 } });
+  });
+
+  /**
+   * TASK-887 — diarization is a declared agent option, and the model it names IS the vector
+   * space the tenant's users enrol their voice profiles in. A typo there is not a validation
+   * error; it is a silently unmatchable set of profiles. So the slug is PICKED.
+   */
+  describe('SPEECH_TO_TEXT diarization (TASK-887)', () => {
+    it('exposes the whole block, off by default, with the agent-owned match threshold', () => {
+      render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={() => undefined} />);
+      const block = within(screen.getByRole('group', { name: 'Diarization' }));
+      expect(block.getByLabelText('Enabled')).toBeTruthy();
+      expect(block.getByLabelText('Backend')).toBeTruthy();
+      expect(block.getByLabelText('Max Speakers').getAttribute('type')).toBe('number');
+      // The knob that replaced the platform key `stt.voiceProfile.minSimilarity`.
+      expect(block.getByLabelText('Match Threshold').getAttribute('type')).toBe('number');
+      // OFF by default: nothing is written until the admin touches it.
+      expect(block.getByLabelText('Enabled').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('renders the embedding model as a picker showing the registry row’s name', async () => {
+      render(
+        <ParametersForm
+          task="SPEECH_TO_TEXT"
+          value={{ audioFrontEnd: { diarization: { embeddingModelSlug: 'ecapa-tdnn-voxceleb' } } }}
+          onChange={() => undefined}
+        />,
+      );
+
+      // A combobox (Radix Select trigger), not a text input, and it displays what the REGISTRY
+      // calls the row — proof the options came from `GET admin/ai-models`, not from the schema.
+      await waitFor(() => expect(screen.getByLabelText('Embedding Model Slug').getAttribute('role')).toBe('combobox'));
+      expect(screen.getByLabelText('Embedding Model Slug').textContent).toContain('ECAPA-TDNN');
+    });
+
+    it('offers SPEAKER_EMBEDDING rows only — a VAD slug is not a selectable option', async () => {
+      // `silero-vad` IS in the catalogue, but not as a speaker-embedding model, so it is not an
+      // option here and the field degrades to free text rather than silently dropping the value.
+      render(
+        <ParametersForm
+          task="SPEECH_TO_TEXT"
+          value={{ audioFrontEnd: { diarization: { embeddingModelSlug: 'silero-vad' } } }}
+          onChange={() => undefined}
+        />,
+      );
+
+      await waitFor(() => expect((screen.getByLabelText('Embedding Model Slug') as HTMLInputElement).value).toBe('silero-vad'));
+      expect(screen.getByLabelText('Embedding Model Slug').getAttribute('role')).not.toBe('combobox');
+    });
+
+    it('falls back to a free-text field for a slug the catalogue does not contain', async () => {
+      // A saved agent referencing a row this tenant can no longer see must stay EDITABLE —
+      // silently dropping it would rewrite the agent on the next save.
+      render(
+        <ParametersForm
+          task="SPEECH_TO_TEXT"
+          value={{ audioFrontEnd: { diarization: { embeddingModelSlug: 'a-model-that-vanished' } } }}
+          onChange={() => undefined}
+        />,
+      );
+
+      await waitFor(() => expect((screen.getByLabelText('Embedding Model Slug') as HTMLInputElement).value).toBe('a-model-that-vanished'));
+    });
   });
 
   it('TEXT_GENERATION: exposes the generation hyper-parameters and the free-form responseSchema as JSON', () => {

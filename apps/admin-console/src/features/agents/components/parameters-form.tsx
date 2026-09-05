@@ -7,6 +7,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import type { AgentTask } from '../api';
+import { useRegistryModels } from '../api';
 import { JsonField } from './json-field';
 
 type Schema = Record<string, unknown>;
@@ -43,6 +44,67 @@ function setPath(value: Value, path: string[], next: unknown): Value {
   if (Object.keys(child).length === 0) delete copy[head];
   else copy[head] = child;
   return copy;
+}
+
+/**
+ * TASK-887 — a registry-model REFERENCE, picked rather than typed.
+ *
+ * The agent parameter schemas annotate such properties with `modelTaskType` (a schema
+ * annotation, not a validation keyword): it says which `AiModel` rows are selectable here.
+ * `audioFrontEnd.diarization.embeddingModelSlug` is the first — the model it names IS the
+ * vector space the tenant's users enrol their voice profiles in, so a typo there is not a
+ * validation error, it is a silently unmatchable set of profiles.
+ *
+ * Falls back to the plain text input while the catalogue is loading or if the row a saved
+ * agent references is not in it — an unrecognised slug must stay editable, never be dropped.
+ */
+function ModelSlugField({
+  id,
+  name,
+  schema,
+  taskType,
+  value,
+  onChange,
+}: {
+  id: string;
+  name: string;
+  schema: Schema;
+  taskType: string;
+  value: unknown;
+  onChange: (next: unknown) => void;
+}) {
+  const models = useRegistryModels();
+  const description = typeof schema.description === 'string' ? schema.description : undefined;
+  const options = (models.data ?? []).filter((model) => model.taskType === taskType);
+  const current = value === undefined ? '' : String(value);
+  const knownSlug = current === '' || options.some((model) => model.slug === current);
+
+  if (models.isPending || models.isError || !knownSlug) {
+    return <ScalarField id={id} name={name} schema={schema} value={value} onChange={onChange} />;
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{labelOf(name)}</Label>
+      <Select value={current} onValueChange={(next) => onChange(next === '' ? undefined : next)}>
+        <SelectTrigger id={id} aria-describedby={description ? `${id}-desc` : undefined}>
+          <SelectValue placeholder={options.length ? 'Default' : `No ${taskType} models available`} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((model) => (
+            <SelectItem key={model.slug} value={model.slug}>
+              {model.name} ({model.slug})
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {description ? (
+        <p id={`${id}-desc`} className="text-muted-foreground text-xs">
+          {description}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function ScalarField({ id, name, schema, value, onChange }: { id: string; name: string; schema: Schema; value: unknown; onChange: (next: unknown) => void }) {
@@ -181,6 +243,22 @@ function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: s
               value={current && typeof current === 'object' ? (current as Value) : null}
               onChange={(next) => onChange(setPath(value, childPath, next ?? undefined))}
               rows={6}
+            />
+          );
+        }
+        // TASK-887 — a property annotated with `modelTaskType` is a registry REFERENCE, so
+        // the admin picks from the tenant's catalogue instead of typing a slug.
+        const modelTaskType = typeof child.modelTaskType === 'string' ? child.modelTaskType : undefined;
+        if (modelTaskType) {
+          return (
+            <ModelSlugField
+              key={name}
+              id={id}
+              name={name}
+              schema={child}
+              taskType={modelTaskType}
+              value={getPath(value, childPath)}
+              onChange={(next) => onChange(setPath(value, childPath, next))}
             />
           );
         }
