@@ -54,7 +54,15 @@ describe('EvalPromotionGateService.evaluateWorkflowPromotion (TASK-885 / owner #
 
   it('leaves the template-approval gate at its `block` default — owner #7 relaxed ONE path', async () => {
     mockWorkflowDefinitionRepository.findActivePublishedByTenant.mockResolvedValue([
-      { id: 'd1', slug: 'soap', graph: { version: 1, nodes: [{ id: 'n', type: 'generate.text', config: { promptTemplateId: 'tpl-1', evalGate: { goldenSetId: 'set-1', enabled: true } } }], edges: [] } },
+      {
+        id: 'd1',
+        slug: 'soap',
+        graph: {
+          version: 1,
+          nodes: [{ id: 'n', type: 'generate.text', config: { promptTemplateId: 'tpl-1', evalGate: { goldenSetId: 'set-1', enabled: true } } }],
+          edges: [],
+        },
+      },
     ]);
 
     const verdict = await service.evaluatePromotion({ tenantId: TENANT, promptTemplateId: 'tpl-1', trigger: 'approve' });
@@ -107,7 +115,9 @@ describe('EvalPromotionGateService.evaluateWorkflowPromotion (TASK-885 / owner #
     const verdict = await service.evaluateWorkflowPromotion({ tenantId: TENANT, definitionSlug: 'soap', graph: gatedGraph('set-1') });
 
     expect(mockWorkflowDefinitionRepository.findActivePublishedByTenant).not.toHaveBeenCalled();
-    expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledWith(expect.objectContaining({ goldenSetId: 'set-1', tenantId: TENANT, triggerType: 'PROMOTION' }));
+    expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledWith(
+      expect.objectContaining({ goldenSetId: 'set-1', tenantId: TENANT, triggerType: 'PROMOTION' }),
+    );
     expect(verdict.runIds).toEqual(['run-9']);
     expect(verdict.passed).toBe(true);
   });

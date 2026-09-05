@@ -6,7 +6,15 @@
  * (`publishBlockedReason`, Task 14) — the client validator is never the gate.
  */
 import { Badge, Button, ToggleGroup, ToggleGroupItem } from '@arcaai/ui';
-import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconFileExport, IconFlask, IconLayoutDistributeHorizontal, IconUpload } from '@tabler/icons-react';
+import {
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconDownload,
+  IconFileExport,
+  IconFlask,
+  IconLayoutDistributeHorizontal,
+  IconUpload,
+} from '@tabler/icons-react';
 import { useId, useRef } from 'react';
 import type { AutosaveState, WorkflowStudioViewMode } from '../store/types';
 
@@ -131,10 +139,26 @@ export function StudioToolbar({
       <div className="flex items-center gap-2">
         {!readOnly ? (
           <div className="flex items-center gap-1">
-            <Button type="button" variant="outline" size="icon-sm" aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={onUndo}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Undo (Ctrl+Z)"
+              title="Undo (Ctrl+Z)"
+              disabled={!canUndo}
+              onClick={onUndo}
+            >
               <IconArrowBackUp aria-hidden="true" />
             </Button>
-            <Button type="button" variant="outline" size="icon-sm" aria-label="Redo (Ctrl+Shift+Z)" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={onRedo}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Redo (Ctrl+Shift+Z)"
+              title="Redo (Ctrl+Shift+Z)"
+              disabled={!canRedo}
+              onClick={onRedo}
+            >
               <IconArrowForwardUp aria-hidden="true" />
             </Button>
           </div>
@@ -180,7 +204,13 @@ export function StudioToolbar({
                 void file.text().then(onImport);
               }}
             />
-            <Button type="button" variant="outline" size="sm" onClick={() => importInputRef.current?.click()} title="Replace this graph with a JSON file (undoable)">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => importInputRef.current?.click()}
+              title="Replace this graph with a JSON file (undoable)"
+            >
               <IconUpload aria-hidden="true" />
               Import
             </Button>

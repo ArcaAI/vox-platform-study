@@ -291,7 +291,9 @@ export class EvalPromotionGateService {
 
     const blocked = mode === 'block' && !allPassed;
     if (!allPassed) {
-      this.logger.warn(`Workflow promotion gate ${blocked ? 'BLOCKED' : 'WARNED'} (mode=${mode}, workflow=${input.definitionSlug}): ${failures.join('; ')}`);
+      this.logger.warn(
+        `Workflow promotion gate ${blocked ? 'BLOCKED' : 'WARNED'} (mode=${mode}, workflow=${input.definitionSlug}): ${failures.join('; ')}`,
+      );
     }
 
     return { mode, evaluated: true, passed: allPassed, blocked, failures, runIds, aggregates };
@@ -318,7 +320,10 @@ export class EvalPromotionGateService {
    * blocked promotion would have produced is a SYSTEM template that re-points nobody's live
    * traffic on its own.
    */
-  private async resolveMode(tenantId: string, codeDefault: EvalPromotionGateMode = AGENTIC_EVAL_PROMOTION_GATE_DEFAULT): Promise<EvalPromotionGateMode> {
+  private async resolveMode(
+    tenantId: string,
+    codeDefault: EvalPromotionGateMode = AGENTIC_EVAL_PROMOTION_GATE_DEFAULT,
+  ): Promise<EvalPromotionGateMode> {
     try {
       const resolved = await this.effectiveSettings.resolveEffective(AGENTIC_EVAL_PROMOTION_GATE_KEY, { tenantId });
       if (resolved.sourceScope === 'code-default') return codeDefault;

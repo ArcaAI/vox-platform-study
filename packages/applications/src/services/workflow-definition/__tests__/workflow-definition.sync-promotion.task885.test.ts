@@ -37,7 +37,11 @@ const mockRepository = {
 };
 
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
-const mockEntitlements = { isEnforcementEnabled: vi.fn(() => false), assertQuantityQuota: vi.fn(), isFeatureEnabled: vi.fn(() => Promise.resolve(true)) };
+const mockEntitlements = {
+  isEnforcementEnabled: vi.fn(() => false),
+  assertQuantityQuota: vi.fn(),
+  isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
+};
 const mockPromptTemplateRepository = { findById: vi.fn(), findByName: vi.fn() };
 const mockAgentPromotion = { promote: vi.fn() };
 const mockEvalGate = { evaluateWorkflowPromotion: vi.fn() };
@@ -150,9 +154,7 @@ describe('WorkflowDefinitionService — sync among own tenants (TASK-885)', () =
   });
 
   it('is a 404 for a target the caller does NOT manage — never a 403, which would confirm the tenant exists', async () => {
-    mockPolicyEngine.buildAbility.mockImplementation(({ tenantId }: { tenantId: string }) =>
-      Promise.resolve({ can: () => tenantId !== 'tenant-x' }),
-    );
+    mockPolicyEngine.buildAbility.mockImplementation(({ tenantId }: { tenantId: string }) => Promise.resolve({ can: () => tenantId !== 'tenant-x' }));
 
     await expect(service.syncToTenants('soap', { sourceTenantId: 'tenant-a', targetTenantIds: ['tenant-b', 'tenant-x'] })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -161,9 +163,7 @@ describe('WorkflowDefinitionService — sync among own tenants (TASK-885)', () =
   });
 
   it('is a 403 when the caller does not manage the SOURCE — a privilege they claimed, not a tenant they probed', async () => {
-    mockPolicyEngine.buildAbility.mockImplementation(({ tenantId }: { tenantId: string }) =>
-      Promise.resolve({ can: () => tenantId !== 'tenant-a' }),
-    );
+    mockPolicyEngine.buildAbility.mockImplementation(({ tenantId }: { tenantId: string }) => Promise.resolve({ can: () => tenantId !== 'tenant-a' }));
 
     await expect(service.syncToTenants('soap', { sourceTenantId: 'tenant-a', targetTenantIds: ['tenant-b'] })).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -215,16 +215,29 @@ describe('WorkflowDefinitionService — Global -> SYSTEM promotion (TASK-885)', 
     // The GLOBAL source, and SYSTEM's previously-published template of the same slug.
     mockRepository.findPublishedBySlug.mockImplementation((tenantId: string) =>
       Promise.resolve(
-        tenantId === GLOBAL
-          ? entity({ tenantId: GLOBAL })
-          : entity({ id: 'sys-v1', tenantId: SYSTEM_TENANT_ID, versionNumber: 1, isActive: true }),
+        tenantId === GLOBAL ? entity({ tenantId: GLOBAL }) : entity({ id: 'sys-v1', tenantId: SYSTEM_TENANT_ID, versionNumber: 1, isActive: true }),
       ),
     );
-    mockRepository.findById.mockResolvedValue(entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false }));
+    mockRepository.findById.mockResolvedValue(
+      entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false }),
+    );
     mockRepository.update.mockImplementation((_id: string, updated: unknown) => Promise.resolve(updated));
     mockRepository.findAllVersionsBySlug.mockResolvedValue([]);
-    mockAgentPromotion.promote.mockResolvedValue({ id: 'promo-1', targetDefinitionVersionId: 'sys-draft-1', targetDefinitionSlug: 'soap', warnings: [] });
-    mockEvalGate.evaluateWorkflowPromotion.mockResolvedValue({ mode: 'warn', evaluated: true, passed: true, blocked: false, failures: [], runIds: [], aggregates: {} });
+    mockAgentPromotion.promote.mockResolvedValue({
+      id: 'promo-1',
+      targetDefinitionVersionId: 'sys-draft-1',
+      targetDefinitionSlug: 'soap',
+      warnings: [],
+    });
+    mockEvalGate.evaluateWorkflowPromotion.mockResolvedValue({
+      mode: 'warn',
+      evaluated: true,
+      passed: true,
+      blocked: false,
+      failures: [],
+      runIds: [],
+      aggregates: {},
+    });
     elevated();
     service = construct();
   });

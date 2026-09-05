@@ -58,6 +58,9 @@ export class PromoteWorkflowToSystemResponse {
   })
   evalGateMode: string;
 
-  @ApiProperty({ description: 'Non-blocking operator alerts — the promotion’s own warnings plus any eval failure recorded in warn mode.', type: [String] })
+  @ApiProperty({
+    description: 'Non-blocking operator alerts — the promotion’s own warnings plus any eval failure recorded in warn mode.',
+    type: [String],
+  })
   warnings: string[];
 }

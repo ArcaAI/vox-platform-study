@@ -37,7 +37,11 @@ const mockDatabaseService = {
   baseClient: { $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback({})) },
 };
 
-const mockEntitlements = { isEnforcementEnabled: vi.fn(() => false), assertQuantityQuota: vi.fn(), isFeatureEnabled: vi.fn(() => Promise.resolve(true)) };
+const mockEntitlements = {
+  isEnforcementEnabled: vi.fn(() => false),
+  assertQuantityQuota: vi.fn(),
+  isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
+};
 
 const mockPromptTemplateRepository = { findById: vi.fn(), findByName: vi.fn() };
 const mockDocumentTemplateRepository = { findById: vi.fn(), findByTenantAndSlug: vi.fn() };
