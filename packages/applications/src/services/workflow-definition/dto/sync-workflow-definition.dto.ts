@@ -22,6 +22,15 @@ import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsOptional, IsString, MaxLe
  */
 export class SyncWorkflowDefinitionRequest {
   @ApiProperty({
+    description:
+      'Tenant the workflow is synced FROM. Required — and required for the reason `PromoteWorkflowRequest.fromTenantId` is: ' +
+      'deriving it would force a read BEFORE authorization, and the 403/404 difference between "that workflow does not exist" ' +
+      'and "you may not touch that tenant" would then be an existence oracle over another tenant’s data.',
+  })
+  @IsString()
+  sourceTenantId: string;
+
+  @ApiProperty({
     description: 'Tenants to sync INTO. The caller must hold manage:WorkflowDefinition in every one; any other id is a 404.',
     type: [String],
   })
