@@ -117,6 +117,15 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'whisper',
     memorySizeMb: 1700,
     computeType: 'f16',
+    // TASK-880 — the decode geometry that used to be the platform keys
+    // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
+    // ONE number to every engine on the box; they describe THIS runtime, so they ride
+    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
+    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
+    // not segment continuous clinical speech); 6s is the matching force-emit window, so
+    // the last partial and the final decode the SAME audio and the final stops visibly
+    // rephrasing the partial.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -144,6 +153,15 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'whisper',
     memorySizeMb: 900,
     computeType: 'q8_0',
+    // TASK-880 — the decode geometry that used to be the platform keys
+    // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
+    // ONE number to every engine on the box; they describe THIS runtime, so they ride
+    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
+    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
+    // not segment continuous clinical speech); 6s is the matching force-emit window, so
+    // the last partial and the final decode the SAME audio and the final stops visibly
+    // rephrasing the partial.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -203,6 +221,15 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'whisper',
     memorySizeMb: 900,
     computeType: 'q8_0',
+    // TASK-880 — the decode geometry that used to be the platform keys
+    // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
+    // ONE number to every engine on the box; they describe THIS runtime, so they ride
+    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
+    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
+    // not segment continuous clinical speech); 6s is the matching force-emit window, so
+    // the last partial and the final decode the SAME audio and the final stops visibly
+    // rephrasing the partial.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
     tags: ['multilingual', 'ggml', 'whisper.cpp', 'public', 'e2e-fixture'],
   },
   {
@@ -280,6 +307,15 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'whisper',
     memorySizeMb: 1700,
     computeType: 'f16',
+    // TASK-880 — the decode geometry that used to be the platform keys
+    // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
+    // ONE number to every engine on the box; they describe THIS runtime, so they ride
+    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
+    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
+    // not segment continuous clinical speech); 6s is the matching force-emit window, so
+    // the last partial and the final decode the SAME audio and the final stops visibly
+    // rephrasing the partial.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -308,6 +344,15 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'whisper',
     memorySizeMb: 1700,
     computeType: 'q8_0',
+    // TASK-880 — the decode geometry that used to be the platform keys
+    // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
+    // ONE number to every engine on the box; they describe THIS runtime, so they ride
+    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
+    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
+    // not segment continuous clinical speech); 6s is the matching force-emit window, so
+    // the last partial and the final decode the SAME audio and the final stops visibly
+    // rephrasing the partial.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'q8_0', 'private-repo'],
   },
   {
@@ -570,6 +615,12 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'ecapa-tdnn',
     memorySizeMb: 96,
     computeType: 'float32',
+    // TASK-880 — 192-d, and that is LOAD-BEARING, not documentation. The deployed
+    // `UserVoiceProfile.embedding` column is `vector(256)` and is enrolled with the
+    // wespeaker row below, so an agent that binds THIS row for diarization would fail
+    // every enrollment. `buildResolvedAsrSpec` refuses the mismatch at resolve time
+    // instead of shipping a spec that cannot enroll.
+    metaData: { embedding: { dimension: 192 } },
     tags: ['diarization', 'speaker-embedding', 'ecapa'],
   },
   {
@@ -594,6 +645,11 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'wespeaker',
     memorySizeMb: 96,
     computeType: 'float32',
+    // TASK-880 — 256-d: THE platform embedding space. It matches the deployed
+    // `UserVoiceProfile.embedding` column (`vector(256)`) and the enrollment seed, which
+    // is why `stt.diarization.hfModelId` is deliberately NOT moved onto the agent —
+    // changing it re-spaces every enrolled voice profile.
+    metaData: { embedding: { dimension: 256 } },
     tags: ['diarization', 'speaker-embedding', 'wespeaker', 'default'],
   },
 

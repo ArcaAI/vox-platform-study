@@ -134,6 +134,22 @@ describe('STT_RUNTIME_SETTINGS', () => {
     expect(STT_RUNTIME_SETTINGS.map((d) => d.key)).not.toContain(key);
   });
 
+  it('keeps stt.diarization.hfModelId as a PLATFORM-scope key, on purpose (TASK-880)', () => {
+    // The one `stt.*` model id that did NOT move onto the agent. It does not merely
+    // select a model: it declares the vector SPACE enrolled `UserVoiceProfile` rows
+    // live in (`vector(256)`), so a per-agent choice of another width would be data the
+    // column cannot hold. The platform declares the space; an agent picks within it,
+    // and `buildResolvedAsrSpec` refuses a declared mismatch with a 409.
+    const key = HOPE_SETTINGS_REGISTRY.get('stt.diarization.hfModelId');
+    expect(key).toBeDefined();
+    expect(key?.maxScope).toBe('system');
+    expect(key?.globalOnly).toBe(true);
+    expect(key?.default).toBe('pyannote/wespeaker-voxceleb-resnet34-LM');
+    // The description must say WHY it is platform-scope, or the next reader moves it.
+    expect(key?.description).toMatch(/SPACE/);
+    expect(key?.description).toMatch(/vector\(256\)/);
+  });
+
   it('leaves the storage keys to the db-config cascade rather than re-declaring them here', () => {
     // `STORAGE_PROVIDER` / `AZURE_STORAGE_*` belong in the
     // `storage.platformDefault.*` cascade — a `TenantStorageConfig` row, which
