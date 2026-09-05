@@ -186,6 +186,26 @@ assertion fails on every unrelated descriptor addition and teaches people to bum
 per-family ABSENCE assertions added here (no `db-secret` descriptor, no `vramBudgetMb`, no
 `models.guardrail.pii.spans`, no seed-time-only companion) name what must not come back.
 
+### Gate results (2026-09-05, run from this worktree)
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/applications test` | `Test Files 658 passed \| 1 skipped (659)` · `Tests 11076 passed \| 4 skipped (11080)` — exit 0 |
+| `pnpm --filter @arcaai/applications build` | exit 0 |
+| `pnpm --filter @arcaai/applications lint` | `213 problems (0 errors, 213 warnings)` — exit 0. Every warning is pre-existing prettier drift in one of 71 files this lane never opened; the set intersection with the lane's changed files is EMPTY (the three that were in it are fixed in `028c8c8cc`). |
+| `pnpm --filter @arcaai/domains test` | `Test Files 161 passed \| 2 skipped (163)` · `Tests 1919 passed \| 2 skipped \| 9 todo` — exit 0 |
+| `pnpm --filter @arcaai/domains build` | exit 0 |
+| `pnpm --filter @arcaai/database test` | `Test Files 79 passed (79)` · `Tests 1767 passed (1767)` — exit 0 |
+| `pnpm stt:test` | `1 failed, 3170 passed, 6 skipped, 3 xfailed, 210 errors` of 3390 collected. The one failure is the declared pre-existing `test_task799_env_surface.py::test_minio_credentials_default_to_empty`; the 210 errors are `tests/integration/` + `tests/e2e/` with no test database. Matches the baseline. |
+| `pnpm tts:test` | `459 passed, 3 skipped, 2 deselected` — exit 0 |
+| `pnpm guardrail:test` | `426 passed` — exit 0 |
+| `pnpm harness:test` | `6 failed, 2091 passed`. **Pre-existing, out of scope.** All six are Temporal replay-compat (`test_replay_compat.py`, `test_gating_consolidation_replay.py`), failing with `[TMPRL1100] Nondeterminism error: Non-deprecated patch marker encountered for change task-355-optimistic-delivery`. This lane's entire `apps/harness` footprint is a generated `.env.sample` and one removed field in a test payload dict — neither is workflow code. |
+| `pnpm nlp:test` | `2 failed, 583 passed`. **Pre-existing, out of scope.** Both are `test_metrics_endpoint_task636.py` asserting `/metrics` is mounted; it answers 404. This lane changed no file under `apps/nlp` or `packages/py-env`. |
+| `pnpm lint` (repo-wide) | `Tasks: 39 successful, 39 total` — exit 0 |
+| `apps/api` settings-catalog unit test | `Test Files 1 passed` · `Tests 7 passed` — the one `apps/api` unit test this lane edited, outside the package filters above |
+
+Every Python suite resolved its sources from THIS worktree on its first run: each `pytest` reported `rootdir: …/hope-v2-task-872/apps/<svc>`, and the `assert_source_tree` guard in each `tests/conftest.py` aborts the run (non-zero exit, zero tests collected) when a package resolves outside the invoking tree — no suite did.
+
 ## Deviations from the removal list
 
 Both are refusals, both on evidence found while doing the work, and both are reported to the
