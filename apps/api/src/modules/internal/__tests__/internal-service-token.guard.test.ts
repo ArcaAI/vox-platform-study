@@ -18,7 +18,7 @@ const SECRETS: Record<string, string> = {
   NLP_SERVICE_TOKEN: 'nlp-token',
   GUARDRAIL_SERVICE_TOKEN: 'guardrail-token',
   HARNESS_SERVICE_TOKEN: 'harness-token',
-  TTS_SERVICE_TOKEN: 'tts-token',
+  INTERNAL_ACCESS_TOKEN: 'shared-token',
   API_GATEWAY_KEY: 'stt-key',
 };
 
@@ -37,7 +37,7 @@ describe('InternalServiceTokenGuard', () => {
       ['nlp', 'nlp-token'],
       ['guardrail', 'guardrail-token'],
       ['harness', 'harness-token'],
-      ['tts', 'tts-token'],
+      ['tts', 'shared-token'],
     ])('allows %s with its own service token', async (service, token) => {
       const guard = guardWith();
       await expect(guard.canActivate(makeContext({ 'x-service-token': token }, { service }))).resolves.toBe(true);

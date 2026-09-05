@@ -213,11 +213,12 @@ describe('AsrAgentResolverService.resolveProviderOverrides — the batch-worker 
     credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
       if (provider === 'azure-speech') return binding('tenant', { api_key: 'k-azure', region: 'eastus' });
       if (provider === 'sarvam') return binding('platform', { api_key: 'k-sarvam', base_url: 'https://api.sarvam.ai', model: 'saarika:v2' });
-      return null;
+      return null; // azure-foundry, openai: no row at either tier
     });
     const out = await make().resolveProviderOverrides(TENANT);
     expect(credentials.resolve.mock.calls).toEqual([
       ['stt', 'azure-speech', TENANT],
+      ['stt', 'azure-foundry', TENANT],
       ['stt', 'sarvam', TENANT],
       ['stt', 'openai', TENANT],
     ]);
@@ -232,11 +233,12 @@ describe('AsrAgentResolverService.resolveProviderOverrides — the batch-worker 
   it('a veto (DISABLED tenant row) leaves THAT provider out — no tier serves it — while the others still resolve', async () => {
     credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
       if (provider === 'sarvam') throw new ProviderVetoedException('stt', 'sarvam', TENANT);
+      if (provider === 'azure-foundry') return null; // the seeded SYSTEM veto row: no tier serves it
       return binding('platform', { api_key: `k-${provider}` });
     });
     const out = await make().resolveProviderOverrides(TENANT);
     expect(Object.keys(out).sort()).toEqual(['azure-speech', 'openai']);
-    expect(credentials.resolve).toHaveBeenCalledTimes(3);
+    expect(credentials.resolve).toHaveBeenCalledTimes(4);
   });
 
   it('an entitlement refusal of the platform default leaves that provider out — never a substituted credential', async () => {
@@ -244,6 +246,7 @@ describe('AsrAgentResolverService.resolveProviderOverrides — the batch-worker 
       if (provider === 'openai') {
         throw new QuotaExceededException('not entitled', { capability: 'platformDefaultCredential', limit: 0, used: 0, requested: 1 });
       }
+      if (provider === 'azure-foundry') return null;
       return binding('tenant', { api_key: `k-${provider}` });
     });
     const out = await make().resolveProviderOverrides(TENANT);

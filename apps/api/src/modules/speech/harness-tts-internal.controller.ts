@@ -236,10 +236,10 @@ export class HarnessTtsInternalController {
     };
   }
 
-  /** The ONE shared `INTERNAL_ACCESS_TOKEN`; `TTS_SERVICE_TOKEN` is the migration fallback only. */
+  /** The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880). */
   private forwardHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream' };
-    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }

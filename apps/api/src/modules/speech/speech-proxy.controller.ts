@@ -154,7 +154,8 @@ export class SpeechProxyController {
    */
   private getForwardHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    // The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880).
+    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }

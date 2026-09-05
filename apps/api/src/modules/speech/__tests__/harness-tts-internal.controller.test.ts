@@ -147,17 +147,11 @@ describe('HarnessTtsInternalController — the agentic.tts synthesis dispatch', 
     const [, , options] = deps.http.axiosRef.post.mock.calls[0];
     expect(options.headers['X-Service-Token']).toBe('tts-token');
     expect(options.responseType).toBe('arraybuffer');
-    // TASK-879 — `INTERNAL_ACCESS_TOKEN` is consulted FIRST; `TTS_SERVICE_TOKEN` survives only as
+    // TASK-879/880 — the ONE shared `INTERNAL_ACCESS_TOKEN`; the per-service `TTS_SERVICE_TOKEN` fallback is retired.
     // the migration fallback, so a deployment that configured only the legacy name keeps working.
     expect(deps.secrets.getSecretSync).toHaveBeenCalledWith('INTERNAL_ACCESS_TOKEN');
   });
 
-  it('falls back to the legacy per-service token when only that one is configured', async () => {
-    const secrets = { getSecretSync: vi.fn((key: string) => (key === 'TTS_SERVICE_TOKEN' ? 'legacy' : undefined)) };
-    const { controller, deps } = build({ secrets });
-    await controller.synthesize(REQUEST);
-    expect(deps.http.axiosRef.post.mock.calls[0][2].headers['X-Service-Token']).toBe('legacy');
-  });
 
   it('checks the monthly character allowance BEFORE any upstream call', async () => {
     const order: string[] = [];

@@ -150,7 +150,7 @@ describe('SttInternalController.getProviderOverrides', () => {
     credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
       if (provider === 'azure-speech') return binding('tenant', { api_key: 'k-tenant', region: 'eastus' });
       if (provider === 'sarvam') return binding('platform', { api_key: 'k-platform', base_url: 'https://api.sarvam.ai', model: 'saarika:v2' });
-      return null; // openai: no row at either tier
+      return null; // azure-foundry, openai: no row at either tier
     });
 
     const result = await controller.getProviderOverrides(request, TENANT);
@@ -159,6 +159,7 @@ describe('SttInternalController.getProviderOverrides', () => {
     expect(cls.set).toHaveBeenCalledWith('tenantId', TENANT);
     expect(credentials.resolve.mock.calls).toEqual([
       ['stt', 'azure-speech', TENANT],
+      ['stt', 'azure-foundry', TENANT],
       ['stt', 'sarvam', TENANT],
       ['stt', 'openai', TENANT],
     ]);
@@ -175,6 +176,7 @@ describe('SttInternalController.getProviderOverrides', () => {
     credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
       if (provider === 'sarvam') throw new ProviderVetoedException('stt', 'sarvam', TENANT);
       if (provider === 'azure-speech') return binding('tenant', { api_key: 'k-tenant', region: 'eastus' });
+      if (provider === 'azure-foundry') return null; // the seeded SYSTEM veto row
       return binding('platform', { api_key: 'k-openai-platform' });
     });
 
@@ -182,8 +184,8 @@ describe('SttInternalController.getProviderOverrides', () => {
 
     expect(Object.keys(result).sort()).toEqual(['azure-speech', 'openai']);
     expect(result.sarvam).toBeUndefined();
-    // A veto on one provider does not block the pull for the others.
-    expect(credentials.resolve).toHaveBeenCalledTimes(3);
+    // A veto on one provider does not block the pull for the others (four providers since TASK-880).
+    expect(credentials.resolve).toHaveBeenCalledTimes(4);
   });
 
   it('an unentitled platform default is a refusal for that provider only (absent) — never a substituted credential', async () => {
@@ -191,6 +193,7 @@ describe('SttInternalController.getProviderOverrides', () => {
       if (provider === 'openai') {
         throw new QuotaExceededException('not entitled', { capability: 'platformDefaultCredential', limit: 0, used: 0, requested: 1 });
       }
+      if (provider === 'azure-foundry') return null; // the seeded SYSTEM veto row
       return binding('tenant', { api_key: `k-${provider}` });
     });
     const result = await controller.getProviderOverrides(request, TENANT);

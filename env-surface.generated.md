@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 118 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 321 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 368 |
-| `turbo.json#globalEnv` entries | 496 |
+| Python declared fields | 309 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 356 |
+| `turbo.json#globalEnv` entries | 484 |
 
 ## Variables — the TypeScript platform surface
 
@@ -465,19 +465,13 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TORCH_NUM_INTEROP_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `1` | commented | — |
 | `TORCH_NUM_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
 | `TRANSCRIPTION_TIMEOUT_SECONDS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `600` | commented | — |
-| `TTS_AZURE_REGION__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_CORS_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
 | `TTS_CORS_ORIGINS` | `apps/tts` | no | no | `[]` | commented | — |
 | `TTS_DEBUG` | `apps/tts` | no | no | `false` | commented | — |
 | `TTS_GATEWAY_URL` | `apps/tts` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `TTS_HOST` | `apps/tts` | no | no | `0.0.0.0` | commented | — |
 | `TTS_INDICF5_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `cpu` | commented | — |
-| `TTS_INDICF5_HF_MODEL__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_INDICF5_MODEL_PATH__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_INDICF5_REF_AUDIO_PATH__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_INDICF5_REF_TEXT__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_KOKORO_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `cpu` | commented | — |
-| `TTS_KOKORO_MODEL_PATH__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_LOG_LEVEL` | `apps/tts` | no | no | `info` | commented | — |
 | `TTS_MAX_INPUT_CHARS__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `4096` | commented | — |
 | `TTS_METRICS_ENABLED` | `apps/tts` | no | no | `true` | commented | — |
@@ -489,15 +483,9 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TTS_OTEL_LOGS_ENABLED` | `apps/tts` | no | no | `true` | commented | — |
 | `TTS_OTEL_SERVICE_NAME` | `apps/tts` | no | no | `tts` | commented | — |
 | `TTS_OTEL_SERVICE_NAMESPACE` | `apps/tts` | no | no | `hope` | commented | — |
-| `TTS_PARLER_DESC_ENCODER_PATH__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_PARLER_DEVICE__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `cpu` | commented | — |
-| `TTS_PARLER_HF_MODEL__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_PARLER_MODEL_PATH__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_PORT` | `apps/tts` | no | no | `8865` | commented | — |
 | `TTS_REDIS_URL` | `apps/tts` | no | no | `redis://localhost:6379/0` | commented | — |
-| `TTS_SARVAM_BASE_URL__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_SARVAM_MODEL__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_SARVAM_TIMEOUT_S__MOVED_TO_THE_REGISTRY_ROW` | `apps/tts` | no | no | `30` | commented | — |
 | `TTS_WARMUP_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `false` | commented | — |
 | `VAD_MIN_SILENCE_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500` | commented | — |
 | `VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `100` | commented | — |
