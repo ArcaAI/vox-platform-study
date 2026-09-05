@@ -23,8 +23,10 @@ function fakeCls() {
 }
 
 function make() {
-  const resolver = { resolve: vi.fn(async (input: unknown) => ({ input })) };
-  const textAgents = { resolveFromAgent: vi.fn(async () => ({ fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 2, chain: [] } })) };
+  const resolver = { resolve: vi.fn(async (input: unknown): Promise<unknown> => ({ input })) };
+  const textAgents = {
+    resolveFromAgent: vi.fn(async (): Promise<unknown> => ({ fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 2, chain: [] } })),
+  };
   const cls = fakeCls();
   return { controller: new AgentInternalController(resolver as never, cls as never, textAgents as never), resolver, textAgents, cls };
 }
@@ -66,7 +68,7 @@ describe('AgentInternalController', () => {
     ];
     textAgents.resolveFromAgent.mockResolvedValueOnce({ fallback: { autoSwitch: false, switchAfterConsecutiveFailures: 3, chain } });
 
-    const answer = (await controller.resolve(undefined, undefined, 'clinic-summarizer', undefined, 't1')) as Record<string, unknown>;
+    const answer = (await controller.resolve(undefined, undefined, 'clinic-summarizer', undefined, 't1')) as unknown as Record<string, unknown>;
 
     expect(textAgents.resolveFromAgent).toHaveBeenCalledWith(agent, 't1');
     expect(resolver.resolve).toHaveBeenCalledTimes(1);
