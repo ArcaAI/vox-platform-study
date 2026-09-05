@@ -25,6 +25,7 @@ export interface HarnessPolicy {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
+  /** DERIVED from the assigned TEXT_GENERATION agent (TASK-876/881) — read-only, never a PATCH field. */
   textProvider: string | null;
   textModel: string | null;
   maxRegen: number;
@@ -37,7 +38,7 @@ export interface HarnessPolicy {
 
 /**
  * PATCH body (UpdateHarnessPolicyRequest): sparse patch — omit = unchanged;
- * `null` clears textProvider/textModel/toolAllowlist. `reason` is the free-text
+ * `null` clears toolAllowlist. `reason` is the free-text
  * note recorded on the WORM HarnessPolicyChange row. `expectedVersion` is
  * folded from If-Match server-side; the client sends both.
  */
@@ -50,8 +51,6 @@ export interface UpdateHarnessPolicyRequest {
   safetyEnabled?: boolean;
   phiEnabled?: boolean;
   phiFailClosed?: boolean;
-  textProvider?: string | null;
-  textModel?: string | null;
   maxRegen?: number;
   gateSlaSeconds?: number;
   gateEscalationSeconds?: number;

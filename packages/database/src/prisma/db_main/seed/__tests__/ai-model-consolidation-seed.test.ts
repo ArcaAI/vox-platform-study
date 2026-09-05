@@ -5,11 +5,11 @@
  * following the conventions of `seed.test.ts` (this dir) and
  * `src/__tests__/seed.test.ts`:
  *
- *   1. The SYSTEM `AiTaskDefault` seed rows reference catalogue slugs with the
- *      compatible `taskType` (or a slug in the retirement ledger — a retired
- *      selection fails closed exactly as a DISABLED one did), and the seed
- *      step is CREATE-ONLY.
- *   2. Companion updates: HarnessPolicy TEXT default → `gemma-4-e2b-it-qat`;
+ *   1. The SYSTEM routing elections (`16-ai-routing-policy.ts`) reference
+ *      catalogue slugs with the compatible `taskType` (or a slug in the
+ *      retirement ledger — a retired selection fails closed exactly as a
+ *      DISABLED one did), and the seed step is CREATE-ONLY.
+ *   2. Companion updates: the HarnessPolicy TEXT default is GONE (TASK-881);
  *      the six superseded GlobalSetting keys are gone from the seeded arrays
  *      and covered by the idempotent soft-retire sweep; the retired
  *      `AiTaskDefault` subject carries no tenant grant (TASK-881).
@@ -24,7 +24,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { DEFAULT_AI_MODELS, RETIRED_AI_MODEL_SLUGS } from '../06-ai-models';
 import { ModelTaskType } from '../ai-models/shared';
 import * as globalSetting from '../11-global-setting';
-import { SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS } from '../13-harness-policy';
 import { DEFAULT_POLICIES } from '../01-policy';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../00-constants';
 
@@ -42,19 +41,14 @@ const catalog = DEFAULT_AI_MODELS as readonly SeedModel[];
 const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 
 // =============================================================================
-// 1. AiTaskDefault SYSTEM seed
+// 1. SYSTEM routing elections (the retired AiTaskDefault seed's successor)
 // =============================================================================
 
-describe('AiTaskDefault SYSTEM seed', () => {
+describe('SYSTEM routing-election seed', () => {
   const TASK_KEY_TO_TASK_TYPE: Record<string, string> = {
     'guardrail.validate': ModelTaskType.GUARDRAIL,
     'nlp.ner': 'TOKEN_CLASSIFICATION',
     'nlp.classification': 'TEXT_CLASSIFICATION',
-    // TEXT generation routing keys.
-    'text.live': 'TEXT_GENERATION',
-    'text.finalize': 'TEXT_GENERATION',
-    // BUG-018 — prompt-template Test routing, independent of harness.
-    'text.test': 'TEXT_GENERATION',
     // guardrail safety/groundedness, harness judge, diagnosis.
     // the safety plane split in two: moderation is a
     // multi-task TEXT classifier, PII spans are TOKEN classification.
@@ -82,26 +76,21 @@ describe('AiTaskDefault SYSTEM seed', () => {
       seedAiRoutingPolicy: (client: unknown) => Promise<{ created: number; skipped: number; unresolved: number }>;
     }>;
 
-  it('seeds exactly the twelve SYSTEM task defaults with deterministic ids', async () => {
+  it('seeds exactly the nine SYSTEM elections with deterministic ids — no text.* key (TASK-881)', async () => {
     const { SYSTEM_TASK_DEFAULT_ROUTING: SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((r) => [r.taskKey, r]));
-    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(12);
+    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(9);
     expect(byKey.get('guardrail.validate')?.modelSlug).toBe('granite-guardian-4.1-8b');
     expect(byKey.get('nlp.ner')?.modelSlug).toBe('medical-ner');
     // nlp.classification is the doc-type classifier (fail-closed
     // placeholder); the diagnosis suggester moved to nlp.diagnosis.
     expect(byKey.get('nlp.classification')?.modelSlug).toBe('nlp-doc-type-classifier');
     expect(byKey.get('nlp.diagnosis')?.modelSlug).toBe('symps-disease-bert-v3-c41');
-    // TEXT live/finalize routing. OWNER DIRECTIVE 2026-09-03 :
-    // every text-generation task routes to LM Studio `gemma-4-e2b-it-qat`
-    // (owner correction 2026-09-03,: E2B is the ONLY LM Studio model).
-    expect(byKey.get('text.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
-    expect(byKey.get('text.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
-    // BUG-018 — the prompt-template Test key. Seeded so the Test path
-    // resolves through AiTaskDefault ALONE and never falls through to the
-    // harness `text.finalize` cascade to find a model. Same model as the
-    // clinical paths, or the Test button answers a question nobody asked.
-    expect(byKey.get('text.test')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    // TASK-881: no text.* election — text generation selects through the
+    // assigned TEXT_GENERATION agent; a routing row for it served nothing.
+    for (const key of ['text.live', 'text.finalize', 'text.test', 'text.live.fallback', 'text.finalize.fallback']) {
+      expect(byKey.has(key), key).toBe(false);
+    }
     // guardrail safety/groundedness + harness judge selection.
     expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliguard-llm-guardrails-300m');
     expect(byKey.get('guardrail.pii')?.modelSlug).toBe('gliner2-privacy-filter-pii-multi');
@@ -119,7 +108,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
-    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(12);
+    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(9);
   });
 
   it('references catalog slugs whose taskType matches the task key', async () => {
@@ -132,7 +121,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
         // to no ENABLED model — the same fail-closed 503 the DISABLED row
         // produced — so the reference is tolerated ONLY through the ledger.
         // `16-ai-task-default.ts` itself is retired by TASK-862.
-        expect(RETIRED_AI_MODEL_SLUGS, `AiTaskDefault ${row.taskKey} references unknown slug ${row.modelSlug}`).toContain(row.modelSlug);
+        expect(RETIRED_AI_MODEL_SLUGS, `routing election ${row.taskKey} references unknown slug ${row.modelSlug}`).toContain(row.modelSlug);
         return;
       }
       expect(model.taskType).toBe(TASK_KEY_TO_TASK_TYPE[row.taskKey]);
@@ -151,7 +140,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
     };
     const result = await seedAiRoutingPolicy(client as never);
     expect(result.created).toBe(0);
-    expect(result.skipped).toBe(12);
+    expect(result.skipped).toBe(9);
     expect(client.aiRoutingPolicy.create).not.toHaveBeenCalled();
     expect(client.aiRoutingPolicy.update).not.toHaveBeenCalled();
     expect(client.aiModel.findFirst).not.toHaveBeenCalled();
@@ -171,7 +160,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
       aiModel: { findFirst: vi.fn(async ({ where }: { where: { slug: string } }) => ({ id: `model:${where.slug}`, slug: where.slug })) },
     };
     const result = await seedAiRoutingPolicy(client as never);
-    expect(result.created).toBe(12);
+    expect(result.created).toBe(9);
     expect(result.unresolved).toBe(0);
     created.forEach(({ data }) => {
       expect(data.tenantId).toBe(SYSTEM_TENANT_ID);
@@ -192,7 +181,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
     };
     const result = await seedAiRoutingPolicy(client as never);
     expect(result.created).toBe(0);
-    expect(result.unresolved).toBe(12);
+    expect(result.unresolved).toBe(9);
     expect(client.aiRoutingPolicy.create).not.toHaveBeenCalled();
   });
 });
@@ -202,15 +191,12 @@ describe('AiTaskDefault SYSTEM seed', () => {
 // =============================================================================
 
 describe('companion seed updates', () => {
-  it('moves the SYSTEM HarnessPolicy TEXT default to gemma-4-e2b-it-qat (provider lm-studio)', () => {
-    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textProvider).toBe('lm-studio');
-    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel).toBe('gemma-4-e2b-it-qat');
-  });
-
-  it('keeps the new TEXT default resolvable against the registry (lm-studio row, matching sourceUri)', () => {
-    const row = catalog.find((m) => m.provider === 'lm-studio' && m.sourceUri === SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel);
-    expect(row).toBeDefined();
-    expect(row?.slug).toBe('lms-gemma-4-e2b-it-qat');
+  // TASK-881: `SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS` is gone with the two
+  // HarnessPolicy text columns. The platform text default is the SYSTEM
+  // TEXT_GENERATION agent's primary (TASK-876), pinned by the agent seed tests.
+  it('exports no HarnessPolicy TEXT default any more', async () => {
+    const mod = (await import('../13-harness-policy')) as Record<string, unknown>;
+    expect(mod.SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS).toBeUndefined();
   });
 
   it('removes the six superseded GlobalSetting keys from the seeded arrays', () => {

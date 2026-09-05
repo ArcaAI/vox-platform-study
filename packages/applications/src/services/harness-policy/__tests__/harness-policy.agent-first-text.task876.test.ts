@@ -74,9 +74,9 @@ function makeService(withResolver = true): HarnessPolicyService {
   );
 }
 
-/** A SYSTEM policy row STILL carrying the legacy columns — they must never select again. */
+/** A SYSTEM policy row. It carries NO selection columns any more (TASK-881 dropped them). */
 function systemRow() {
-  return HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: SYSTEM_TENANT_ID, textProvider: 'lm-studio', textModel: 'policy-column-model' });
+  return HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: SYSTEM_TENANT_ID });
 }
 
 beforeEach(() => {
@@ -109,7 +109,7 @@ describe('resolveTextSelection — the assigned TEXT_GENERATION agent is the ONE
     expect(routingPolicies.resolveDefault).not.toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/^text\./), expect.anything());
   });
 
-  it('the legacy HarnessPolicy.textProvider/textModel columns are NEVER a selection source', async () => {
+  it('no policy row can select any more — an unassigned tenant fails closed rather than falling back to a row', async () => {
     textAgents.resolve.mockRejectedValue(new NotFoundException('No published TEXT_GENERATION agent is assigned for this tenant.'));
     await expect(makeService().resolveTextSelection(TENANT)).rejects.toBeInstanceOf(BadRequestException);
     expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();

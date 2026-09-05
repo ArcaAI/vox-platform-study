@@ -156,7 +156,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +4 (90): Agent, AgentModelFallback, AgentAssignment, AgentAssignmentChange (TASK-863).
     // +1 (91): WorkflowWebhookSecret — TASK-864's per-definition inbound
     // webhook HMAC secret, keyed (tenantId, workflowSlug).
-    expect(TENANT_SCOPED_MODELS.size).toBe(91);
+    // -1 (90): AiTaskDefault — TASK-881 dropped the table (the facade over
+    // AiRoutingPolicy is gone; selection resolves through resolveDefault).
+    expect(TENANT_SCOPED_MODELS.size).toBe(90);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

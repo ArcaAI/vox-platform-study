@@ -28,7 +28,9 @@ import { LLM_AI_MODELS } from '../ai-models/llm';
 import { SYSTEM_TENANT_ID } from '../00-constants';
 
 const TARGET_SLUG = 'lms-gemma-4-e2b-it-qat';
-const TEXT_TASK_KEYS = ['text.live', 'text.finalize', 'text.test', 'harness.judge'] as const;
+// TASK-881: the three `text.*` elections are gone (text selects through the assigned agent);
+// `harness.judge` is the one text-generation routing election left.
+const TEXT_TASK_KEYS = ['harness.judge'] as const;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(HERE, '../../migrations');
@@ -58,12 +60,8 @@ describe(' D4 — the SYSTEM text-generation defaults', () => {
     expect(model?.sourceUri).toBe('gemma-4-e2b-it-qat');
   });
 
-  it('judgement and documentation resolve ONE model identity, not two', () => {
-    // Before this change `harness.judge` named `lms-gemma-4-e4b` (the
-    // un-quantized `google/gemma-4-e4b`) while the `text.*` keys named the E2B
-    // sibling — three different LM Studio identities across four keys that all
-    // do text generation.
-    expect(new Set(TEXT_TASK_KEYS.map((k) => byKey.get(k)?.modelSlug)).size).toBe(1);
+  it('the retired text.* elections are not seeded', () => {
+    for (const key of ['text.live', 'text.finalize', 'text.test']) expect(byKey.has(key), key).toBe(false);
   });
 });
 
