@@ -25,8 +25,9 @@ duplication to be tidied away.
 
 Nothing here hosts a model. LLM judgement goes to ``apps/text`` through the same ``TextClient``
 every other node uses, and provider/model SELECTION resolves tenant -> SYSTEM through
-``get_policy(task_key=...)`` and **fails CLOSED** — an unresolved selection degrades the node
-rather than substituting an env default (00-project-context.md Principles).
+``get_policy(task_key=...)`` — since TASK-876 the tenant's ASSIGNED TEXT_GENERATION agent — and
+**fails CLOSED**: an unresolved selection degrades the node rather than substituting an env
+default (00-project-context.md Principles).
 
 ## The instruction is never a literal
 
@@ -121,25 +122,23 @@ def parse_json_object(content: str) -> dict[str, Any] | None:
 
 
 async def resolve_text_selection(
-    tenant_id: str, task_key: str, model_slug: str | None = None
+    tenant_id: str, task_key: str
 ) -> tuple[LlmJudgement | None, str | None]:
     """``(judgement, error_code)`` — provider/model resolved tenant -> SYSTEM, FAIL-CLOSED.
 
     ``error_code`` non-``None`` means the caller must degrade. There is deliberately no env
     fallback: selection is ``failMode: closed``.
 
-    (DD-10): model_slug is the node's own llmBinding.modelSlug and outranks
-    ``task_key``. It is threaded to the gateway rather than resolved here — one model resolution,
-    shared with every TypeScript caller. A bound slug that resolves to nothing 400s there and
-    arrives as ``no_text_selection`` here, so the node DEGRADES with a named code instead of
-    silently generating on the tenant default.
+    TASK-876: the selection the gateway overlays on the policy for ``task_key`` is the tenant's
+    ASSIGNED TEXT_GENERATION agent (`department -> tenant -> SYSTEM`); the task key no longer
+    selects a model of its own and the node ``llmBinding`` is retired. A tenant with no agent
+    assigned at any tier arrives as ``no_text_selection`` here, so the node DEGRADES with a
+    named code instead of silently generating on a substituted default.
     """
     if task_key not in ALLOWED_TASK_KEYS:
         return None, "invalid_task_key"
     try:
-        raw_policy = await _api_client(get_settings()).get_policy(
-            tenant_id, task_key=task_key, model_slug=model_slug
-        )
+        raw_policy = await _api_client(get_settings()).get_policy(tenant_id, task_key=task_key)
     except ApiServiceError:
         return None, "policy_fetch_unreachable"
 

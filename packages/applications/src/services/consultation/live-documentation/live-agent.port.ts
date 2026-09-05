@@ -85,8 +85,6 @@ export interface FrozenLiveAgentSnapshot {
   /** The TEXT `system_prompt` served on every flush. */
   systemPrompt: string;
   toolPlan: ResolvedToolPlan;
-  /** Frozen per-task LLM override; null ⇒ per-flush `resolveTextSelection(tenantId,'live')` as today. */
-  liveLlm: { provider: string; model: string } | null;
   frozenAt: string;
 }
 
@@ -101,7 +99,6 @@ export interface PersistedLiveAgentLineage {
   promptTemplateId: string | null;
   promptVersionNumber: number | null;
   resolvedFrom: LiveAgentTier;
-  liveLlm?: { provider: string; model: string } | null;
   frozenAt: string;
 }
 

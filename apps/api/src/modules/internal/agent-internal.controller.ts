@@ -1,5 +1,5 @@
-import { AgentResolverService, AgentTask, IActiveUserContext } from '@arcaai/applications';
-import type { ResolvedAgent } from '@arcaai/applications';
+import { AgentResolverService, AgentTask, IActiveUserContext, TextAgentResolverService } from '@arcaai/applications';
+import type { ResolvedAgent, ResolvedTextGenerationAgent } from '@arcaai/applications';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { Controller, Get, Headers, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiTags } from '@nestjs/swagger';
@@ -21,6 +21,15 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
  * service-to-service by the class-level guard); CLS is re-established pinned to the CALLER'S
  * tenant so the tenant-scope extension widens reads to [tenant, SYSTEM] exactly as it would
  * for a user request — never to SYSTEM alone, never to every tenant.
+ *
+ * TASK-876: a TEXT_GENERATION answer additionally carries `textPrimary` + `textFallback` — the
+ * resolved PRIMARY candidate, and the agent's fallback governance and ORDERED chain (explicit
+ * fallback agent | its own model chain, then the SYSTEM platform default), funding DERIVED per
+ * candidate — built from the SAME resolved agent (`TextAgentResolverService.resolveFromAgent`, no
+ * second resolution), so the harness `core.agent` activity can switch on primary failure without
+ * another round trip. `textPrimary` is what makes the PRIMARY attempt attributable: bare
+ * `ResolvedAgent.fundingTier` is populated only for a cloud BYO override, so a self-hosted
+ * platform primary would otherwise meter as `null` while its own fallback metered `platform`.
  */
 @ApiExcludeController()
 @ApiTags('internal-agents')
@@ -31,6 +40,7 @@ export class AgentInternalController {
   constructor(
     private readonly resolver: AgentResolverService,
     private readonly cls: ClsService<IActiveUserContext>,
+    private readonly textAgents: TextAgentResolverService,
   ) {}
 
   @Get('resolve')
@@ -40,7 +50,7 @@ export class AgentInternalController {
     @Query('agentSlug') agentSlug: string | undefined,
     @Query('departmentId') departmentId: string | undefined,
     @Headers('x-tenant-id') tenantIdHeader: string | undefined,
-  ): Promise<ResolvedAgent> {
+  ): Promise<ResolvedAgent | ResolvedTextGenerationAgent> {
     const tenantId = tenantIdHeader?.trim() || tenantIdQuery?.trim();
     if (!tenantId) {
       throw new ArgumentInvalidException('`X-Tenant-Id` (or `tenantId`) is required — internal agent resolution is always tenant-scoped.');
@@ -56,12 +66,15 @@ export class AgentInternalController {
     }
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      return this.resolver.resolve({
+      const resolved = await this.resolver.resolve({
         tenantId,
         task: task as AgentTask | undefined,
         agentSlug: agentSlug || null,
         departmentId: departmentId || null,
       });
+      if (resolved.task !== AgentTask.TEXT_GENERATION) return resolved;
+      const spec = await this.textAgents.resolveFromAgent(resolved, tenantId);
+      return { ...resolved, textPrimary: spec.primary, textFallback: spec.fallback };
     });
   }
 }

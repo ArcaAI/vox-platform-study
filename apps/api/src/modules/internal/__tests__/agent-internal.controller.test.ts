@@ -23,9 +23,14 @@ function fakeCls() {
 }
 
 function make() {
-  const resolver = { resolve: vi.fn(async (input: unknown) => ({ input })) };
+  const resolver = { resolve: vi.fn(async (input: unknown): Promise<unknown> => ({ input })) };
+  const textAgents = {
+    resolveFromAgent: vi.fn(
+      async (): Promise<unknown> => ({ primary: { kind: 'primary', fundingTier: 'platform' }, fallback: { autoSwitch: true, chain: [] } }),
+    ),
+  };
   const cls = fakeCls();
-  return { controller: new AgentInternalController(resolver as never, cls as never), resolver, cls };
+  return { controller: new AgentInternalController(resolver as never, cls as never, textAgents as never), resolver, textAgents, cls };
 }
 
 describe('AgentInternalController', () => {
@@ -51,5 +56,40 @@ describe('AgentInternalController', () => {
     expect(resolver.resolve).toHaveBeenCalledWith({ tenantId: 't1', task: 'SPEECH_TO_TEXT', agentSlug: null, departmentId: 'dept-1' });
     await controller.resolve('t1', undefined, 'platform-tts', undefined, undefined);
     expect(resolver.resolve).toHaveBeenLastCalledWith({ tenantId: 't1', task: undefined, agentSlug: 'platform-tts', departmentId: null });
+  });
+
+  // TASK-876 — a TEXT_GENERATION answer carries the resolved PRIMARY and the fallback block so
+  // the harness `core.agent` activity can walk the chain (explicit fallback agent | own model
+  // chain, then the SYSTEM platform default) without a second resolution. Other tasks untouched.
+  it('attaches `textPrimary` + `textFallback` to a TEXT_GENERATION agent, from the SAME agent (no second resolution)', async () => {
+    const { controller, resolver, textAgents } = make();
+    const agent = { slug: 'clinic-summarizer', task: 'TEXT_GENERATION', versionNumber: 3 };
+    resolver.resolve.mockResolvedValueOnce(agent);
+    const chain = [
+      { kind: 'platform-default', agent: { slug: 'platform-summarization' }, provider: 'lm-studio', model: 'gemma', fundingTier: 'platform' },
+    ];
+    // A self-hosted PLATFORM primary: `ResolvedAgent.fundingTier` is absent (it is set only for a
+    // cloud BYO override), so the DERIVED tier must travel on `textPrimary` or the primary
+    // attempt meters `null` while its own fallback meters `platform`.
+    const primary = { kind: 'primary', agent: { slug: 'clinic-summarizer' }, provider: 'lm-studio', model: 'gemma', fundingTier: 'platform' };
+    textAgents.resolveFromAgent.mockResolvedValueOnce({ primary, fallback: { autoSwitch: false, chain } });
+
+    const answer = (await controller.resolve(undefined, undefined, 'clinic-summarizer', undefined, 't1')) as unknown as Record<string, unknown>;
+
+    expect(textAgents.resolveFromAgent).toHaveBeenCalledWith(agent, 't1');
+    expect(resolver.resolve).toHaveBeenCalledTimes(1);
+    expect(answer).toMatchObject({
+      slug: 'clinic-summarizer',
+      textPrimary: primary,
+      textFallback: { autoSwitch: false, chain },
+    });
+  });
+
+  it('leaves a SPEECH_TO_TEXT / TEXT_TO_SPEECH answer exactly as the resolver returned it', async () => {
+    const { controller, resolver, textAgents } = make();
+    resolver.resolve.mockResolvedValueOnce({ slug: 'platform-tts', task: 'TEXT_TO_SPEECH' });
+    const answer = await controller.resolve(undefined, undefined, 'platform-tts', undefined, 't1');
+    expect(textAgents.resolveFromAgent).not.toHaveBeenCalled();
+    expect(answer).toEqual({ slug: 'platform-tts', task: 'TEXT_TO_SPEECH' });
   });
 });

@@ -578,11 +578,12 @@ describe('LiveDocumentationService', () => {
       });
     });
 
-    // The live plane routes through the `text.live`
-    // AiTaskDefault key (not `text.finalize`); surface that provenance on the
-    // flush's stats so the console/ stat cards can show WHICH tier
-    // (and therefore which admin-managed model) served this flush.
-    it('stamps metadata.stats.task_key as text.live (provenance)', async () => {
+    // `task_key` is the live TIER this flush belongs to (`text.live`, not `text.finalize`) —
+    // telemetry since TASK-876, not a selector. `selection_source` says WHAT chose the model:
+    // on this legacy (non-`core.agent`) flush it is the tenant's ASSIGNED TEXT_GENERATION
+    // agent. It read `task-default` until TASK-876 — the name of the retired `AiTaskDefault`
+    // tier, which no longer selects anything.
+    it('stamps metadata.stats.task_key as text.live and selection_source as assigned-agent (provenance)', async () => {
       const { service } = buildDeps(statsHttpMock(POPULATED_STATS));
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
@@ -590,6 +591,7 @@ describe('LiveDocumentationService', () => {
       const payload = await service.flush(CID);
 
       expect(payload!.metadata?.stats?.task_key).toBe('text.live');
+      expect(payload!.metadata?.stats?.selection_source).toBe('assigned-agent');
     });
 
     it('publishes the stats to the live-summary channel', async () => {
@@ -859,10 +861,8 @@ describe('LiveDocumentationService', () => {
       // Provider+model come from the policy cascade (keyed by the session tenant),
       // not LIVE_DOC_TEXT_PROVIDER/MODEL env. The live flush must ask
       // for the LIVE tier ('text.live'), not the default finalize tier.
-      // `undefined` is the third arg because no graph NODE made this call (legacy
-      // flush), so no `llmBinding` applies and the tenant `text.live` AiTaskDefault resolves
-      // exactly as it always did.
-      expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live', undefined);
+      // Two arguments (TASK-876): the retired node `llmBinding` never travels on the legacy flush.
+      expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live');
       const textCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
       const body = textCall[1] as { max_tokens?: number; provider?: string; model?: string; response_format?: { type?: string } };
       const config = textCall[2] as { timeout?: number };

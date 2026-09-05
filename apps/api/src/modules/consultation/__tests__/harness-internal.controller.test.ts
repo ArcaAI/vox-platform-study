@@ -151,7 +151,7 @@ describe('HarnessInternalController', () => {
   // consultationId so the department default agent's tenant-tier
   // harnessOverrides overlay onto the effective policy.
   describe('GET internal/harness/policy (fetch_policy)', () => {
-    const mockPolicyService = { getEffectivePolicy: vi.fn() };
+    const mockPolicyService = { getEffectivePolicy: vi.fn(), resolveTextFallbackChain: vi.fn(async () => null) };
     // CLS fake mirroring effective-config.controller.test.ts: run executes the
     // callback synchronously in a store; set/get operate on it, so the tests can
     // assert the tenant context the service read executed under (set-before-read).
@@ -190,7 +190,7 @@ describe('HarnessInternalController', () => {
       const result = await buildController(cls).getEffectivePolicy('t-1', 'consult-1');
 
       expect(mockPolicyService.getEffectivePolicy).toHaveBeenCalledWith('t-1', { consultationId: 'consult-1' });
-      expect(result).toEqual(policy);
+      expect(result).toEqual({ ...policy, textFallback: null });
     });
 
     it('preserves the no-consultationId behaviour (undefined consultationId ⇒ same second arg, still passed)', async () => {
@@ -224,6 +224,26 @@ describe('HarnessInternalController', () => {
       const cls = fakeCls();
       await expect(buildController(cls).getEffectivePolicy(undefined, 'consult-1')).rejects.toThrow();
       expect(mockPolicyService.getEffectivePolicy).not.toHaveBeenCalled();
+    });
+
+    // TASK-876 — the DURABLE lane gets the platform-HA capability the realtime lane and
+    // `core.agent` already had. The chain rides on the worker's policy read (this route is
+    // `@ApiExcludeController()`), the workflow snapshots it, and `generate` walks it. It is NOT a
+    // field on `HarnessPolicyResponse`: that DTO is the public admin-policy shape.
+    it('composes the resolved textFallback chain onto the worker answer', async () => {
+      const cls = fakeCls();
+      const policy = { source: 'tenant', tenantId: 't-1' };
+      const fallback = {
+        autoSwitch: true,
+        chain: [{ kind: 'platform-default', provider: 'lm-studio', model: 'gemma', fundingTier: 'platform' }],
+      };
+      mockPolicyService.getEffectivePolicy.mockResolvedValue(policy);
+      mockPolicyService.resolveTextFallbackChain.mockResolvedValue(fallback);
+
+      const result = await buildController(cls).getEffectivePolicy('t-1', undefined);
+
+      expect(mockPolicyService.resolveTextFallbackChain).toHaveBeenCalledWith('t-1');
+      expect(result).toEqual({ ...policy, textFallback: fallback });
     });
   });
 

@@ -103,6 +103,12 @@ from harness.temporal.claim_check import (
     resolve_claim_check_location,
     resolve_min_bytes,
 )
+from harness.temporal.interpreter.nodes._text_fallback import (
+    ActivityBudget,
+    chain_candidates,
+    read_text_fallback,
+    wire_provider,
+)
 from harness.temporal.models import (
     AGENT_ROLE_SPECIALIST,
     LOOP_EVENT_ADJUDICATED,
@@ -1490,76 +1496,133 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     else:
         system_prompt_in = payload.system_prompt
 
-    # Enforce the fail-closed PHI egress guard before any cloud Text call.
-    # Local providers (the default) are a pure pass-through. A fail-closed block
-    # raises PhiEgressBlocked, which propagates and fails the workflow — no draft is
-    # ever persisted (the Text failure-propagation invariant), never a silent leak.
+    # TASK-876 — the run-effective candidates: the snapshotted primary, then the gateway-resolved
+    # fallback chain (empty unless the tenant's EFFECTIVE `autoSwitch` is on — the gateway already
+    # funding-gated that, so nothing here re-derives it). The SAME walker `core.agent` uses.
+    fallback_block = read_text_fallback({"textFallback": payload.text_fallback})
+    attempts: list[tuple[str | None, str | None]] = [(payload.provider, payload.model)]
+    attempts.extend(
+        (wire_provider(candidate.provider), candidate.model)
+        for candidate in chain_candidates(fallback_block)
+    )
+    # The whole walk shares ONE activity budget: a candidate started too late times the activity
+    # out mid-call and Temporal re-runs it FROM THE PRIMARY, re-billing a generation that already
+    # completed. Never start one whose per-call timeout cannot fit in what is left.
+    budget = ActivityBudget.for_activity(settings.text_timeout_s)
+
     redactor = _phi_redactor()
-    try:
-        prompt = ensure_egress_safe(
-            user_prompt,
-            provider=payload.provider,
-            settings=settings,
-            phi_enabled=payload.phi_enabled,
-            phi_fail_closed=payload.phi_fail_closed,
-            redactor=redactor,
-        )
-        system_prompt = (
-            ensure_egress_safe(
-                system_prompt_in,
-                provider=payload.provider,
+    result = None
+    last_exc: TextServiceError | None = None
+    exhausted = False
+    for index, (attempt_provider, attempt_model) in enumerate(attempts):
+        if index > 0 and not budget.allows_another():
+            activity.logger.warning(
+                "harness.text_fallback.budget_exhausted",
+                extra={"provider": attempt_provider, "remaining_s": budget.remaining_seconds},
+            )
+            exhausted = True
+            break
+
+        # Enforce the fail-closed PHI egress guard before any cloud Text call.
+        # Local providers (the default) are a pure pass-through. A fail-closed block
+        # raises PhiEgressBlocked, which propagates and fails the workflow — no draft is
+        # ever persisted (the Text failure-propagation invariant), never a silent leak.
+        # Re-screened PER CANDIDATE: the chain can lead from a local primary to a cloud
+        # fallback, so one screening of the primary's provider would be no screening at all.
+        try:
+            prompt = ensure_egress_safe(
+                user_prompt,
+                provider=attempt_provider,
                 settings=settings,
                 phi_enabled=payload.phi_enabled,
                 phi_fail_closed=payload.phi_fail_closed,
                 redactor=redactor,
             )
-            if system_prompt_in is not None
-            else None
-        )
-    except PhiEgressBlocked as exc:
-        activity.logger.warning(
-            "harness.phi_egress.blocked",
-            extra={"provider": exc.provider, "reason": exc.reason, "stage": "generate"},
-        )
-        raise
+            system_prompt = (
+                ensure_egress_safe(
+                    system_prompt_in,
+                    provider=attempt_provider,
+                    settings=settings,
+                    phi_enabled=payload.phi_enabled,
+                    phi_fail_closed=payload.phi_fail_closed,
+                    redactor=redactor,
+                )
+                if system_prompt_in is not None
+                else None
+            )
+        except PhiEgressBlocked as exc:
+            activity.logger.warning(
+                "harness.phi_egress.blocked",
+                extra={"provider": exc.provider, "reason": exc.reason, "stage": "generate"},
+            )
+            # The PRIMARY keeps the pre-876 contract: a blocked prompt fails the run. A FALLBACK
+            # that may not legally receive the prompt is simply not a usable candidate — it is
+            # dropped, exactly as the gateway drops a fallback with no credential.
+            if index == 0:
+                raise
+            continue
 
-    # F-19 — measure the prompt ACTUALLY dispatched (assembled user prompt incl.
-    # the RAG / segment-citation / regen-feedback blocks, plus the system
-    # prompt). Observation ONLY: clinical content is never compacted or
-    # truncated to fit a budget, so an oversized prompt is made LOUD instead.
-    # Emitted before the call so a prompt that then blows the context window is
-    # still visible in the logs.
-    prompt_chars = len(prompt) + len(system_prompt or "")
-    prompt_tokens_est = prompt_chars // 4
-    if prompt_chars > settings.prompt_size_warn_chars:
-        activity.logger.warning(
-            "harness.prompt_size_warn",
-            extra={
-                "prompt_chars": prompt_chars,
-                "prompt_tokens_est": prompt_tokens_est,
-                "threshold_chars": settings.prompt_size_warn_chars,
-                "provider": payload.provider,
-                "model": payload.model,
-            },
-        )
+        # F-19 — measure the prompt ACTUALLY dispatched (assembled user prompt incl.
+        # the RAG / segment-citation / regen-feedback blocks, plus the system
+        # prompt). Observation ONLY: clinical content is never compacted or
+        # truncated to fit a budget, so an oversized prompt is made LOUD instead.
+        # Emitted before the call so a prompt that then blows the context window is
+        # still visible in the logs.
+        prompt_chars = len(prompt) + len(system_prompt or "")
+        prompt_tokens_est = prompt_chars // 4
+        if prompt_chars > settings.prompt_size_warn_chars:
+            activity.logger.warning(
+                "harness.prompt_size_warn",
+                extra={
+                    "prompt_chars": prompt_chars,
+                    "prompt_tokens_est": prompt_tokens_est,
+                    "threshold_chars": settings.prompt_size_warn_chars,
+                    "provider": attempt_provider,
+                    "model": attempt_model,
+                },
+            )
 
-    try:
-        result = await _text_client(settings).generate(
-            tenant_id=_required_tenant(payload.tenant_id, "generate"),
-            prompt=prompt,
-            system_prompt=system_prompt,
-            provider=payload.provider,
-            model=payload.model,
-            temperature=hp.get("temperature"),
-            max_tokens=hp.get("max_tokens"),
-            top_p=hp.get("top_p"),
-            response_format=payload.response_format,
-            # A deterministic key (workflow_run:activity_id, stable across
-            # worker-crash re-delivery) so Text dedups a replayed generate — the durable half
-            # of the fix on top of the in-process retry narrowing.
-            idempotency_key=_idempotency_key(),
-        )
-    except TextServiceError as exc:
+        try:
+            result = await _text_client(settings).generate(
+                tenant_id=_required_tenant(payload.tenant_id, "generate"),
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=attempt_provider,
+                model=attempt_model,
+                temperature=hp.get("temperature"),
+                max_tokens=hp.get("max_tokens"),
+                top_p=hp.get("top_p"),
+                response_format=payload.response_format,
+                # A deterministic key (workflow_run:activity_id, stable across
+                # worker-crash re-delivery) so Text dedups a replayed generate — the durable half
+                # of the fix on top of the in-process retry narrowing. A FALLBACK attempt is a
+                # DIFFERENT generation inside the same activity, so it takes its own suffix —
+                # sharing the key would make Text replay the primary`s (failed) result.
+                idempotency_key=_idempotency_key() if index == 0 else _idempotency_key(f"fallback:{index}"),
+            )
+            break
+        except TextServiceError as exc:
+            last_exc = exc
+            if index + 1 < len(attempts):
+                activity.logger.warning(
+                    "harness.text_fallback.switching",
+                    extra={"from_provider": attempt_provider, "attempt": index},
+                )
+
+    if result is None:
+        if exhausted:
+            # The budget ran out before another candidate could be STARTED. Failing NON-RETRYABLY
+            # is the durable-lane equivalent of `core.agent`'s DEGRADED: a retryable failure is
+            # exactly what makes Temporal re-run this activity from the primary and re-bill a
+            # generation that already completed. The Text-failure invariant is unchanged — no
+            # draft is persisted.
+            raise ApplicationError(
+                f"text generate exhausted the activity budget after {len(attempts)} resolved "
+                f"candidate(s): {last_exc}",
+                type="TextBudgetExhausted",
+                non_retryable=True,
+            )
+        assert last_exc is not None  # noqa: S101 — every exit above sets it or returns a result
         # ``after_send`` means the request reached Text and the model MAY have
         # generated — a dropped-read transport loss OR the governor's per-call timeout
         # firing mid-request (both closed in ``text_client``). Re-running the activity
@@ -1574,9 +1637,14 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
         # The one residual (documented, accepted): an Text 5xx / LM-Studio
         # ``terminated`` 400 arriving AFTER the model ran but BEFORE the response was cached —
         # the governor retries it and there is no cached result to replay.
-        if exc.after_send:
-            raise ApplicationError(str(exc), type="TextResponseLost", non_retryable=True) from exc
-        raise
+        #
+        # Judged on the LAST error of the walk: a fallback that also lost its response after
+        # sending is the same double-spend hazard as a primary that did.
+        if last_exc.after_send:
+            raise ApplicationError(
+                str(last_exc), type="TextResponseLost", non_retryable=True
+            ) from last_exc
+        raise last_exc
 
     # Offload the generated note so the (large) content stays OUT of Temporal
     # history; on offload the inline ``content`` is emptied and the workflow threads

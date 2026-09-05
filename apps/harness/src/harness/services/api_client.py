@@ -358,7 +358,6 @@ class ApiClient:
         tenant_id: str,
         consultation_id: str | None = None,
         task_key: str | None = None,
-        model_slug: str | None = None,
     ) -> dict[str, Any]:
         """Read the effective harness policy for ``tenant_id`` (worker fetch).
 
@@ -379,20 +378,16 @@ class ApiClient:
                 what makes a workflow node's ``config.taskKey`` actually select a model;
                 without it every node resolved the same one. Omitted ⇒ unchanged behaviour.
 
-                (DD-10): model_slug is the executing node's OWN
-                ``config.llmBinding.modelSlug`` and OUTRANKS ``task_key`` — a node that names a
-                model has stated something no tenant-level row can. Unlike ``task_key`` it is
-                fail-CLOSED: a slug resolving to no ENABLED model returns 400 rather than quietly
-                serving the task default, so an explicitly-bound node can never generate on a
-                different model in silence. Omitted ⇒ unchanged behaviour.
+                TASK-876: with a ``task_key`` the gateway overlays the tenant's ASSIGNED
+                TEXT_GENERATION agent (`department -> tenant -> SYSTEM`) — the key no longer
+                selects a model of its own, and the former ``model_slug`` (the node's
+                ``llmBinding``) is retired: the query parameter is gone from this client.
         """
         params: dict[str, Any] = {"tenantId": tenant_id}
         if consultation_id:
             params["consultationId"] = consultation_id
         if task_key:
             params["taskKey"] = task_key
-        if model_slug:
-            params["modelSlug"] = model_slug
         return await self._get("/policy", params)
 
     async def resolve_agent(self, *, slug: str, tenant_id: str) -> dict[str, Any]:
@@ -405,7 +400,14 @@ class ApiClient:
             GET /api/v1/internal/agents/resolve?tenantId=<uuid>&agentSlug=<slug>
             headers: X-Service-Token, X-Tenant-Id
             200 -> ResolvedAgent JSON (`packages/types/src/agent.ts`, mirrored by
-                   `interpreter/models.py::ResolvedAgent`)
+                   `interpreter/models.py::ResolvedAgent`). TASK-876: a TEXT_GENERATION
+                   answer additionally carries ``textPrimary`` — the PRIMARY candidate with
+                   its DERIVED funding tier (bare ``fundingTier`` is set only for a cloud
+                   BYO override, so it cannot attribute a self-hosted platform primary) —
+                   and ``textFallback``, the agent's fallback governance plus the ORDERED,
+                   gateway-resolved chain (explicit fallback agent | own model chain, then
+                   the SYSTEM platform default), both read by ``nodes/_text_fallback.py`` so
+                   `core.agent` switches without a second resolution
             400 -> neither `task` nor `agentSlug` given, or header/query tenant disagreement
             404 -> unknown / unpublished / foreign slug (one answer, 404-over-403)
 

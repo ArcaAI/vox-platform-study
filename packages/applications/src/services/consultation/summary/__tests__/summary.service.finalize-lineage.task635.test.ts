@@ -228,7 +228,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
 
       await svc.generateSummary('c-1', {} as never, 'user-1');
 
-      expect(resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
       expect(JSON.stringify(textOptions())).toContain('tenant-model');
     });
 
@@ -237,7 +237,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
 
       await svc.generateSummary('c-1', {} as never, 'user-1');
 
-      expect(resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize', null);
       expect(JSON.stringify(textOptions())).toContain('tenant-model');
     });
   });

@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
+  AgentRepository,
+  AiModelRepository,
   CoreDatabaseService,
   PromptTemplateRepository,
   PromptVersionFactory,
@@ -26,7 +28,14 @@ import {
   WORKFLOW_NODE_REGISTRY,
   workflowNodeClassLookup,
 } from '@arcaai/workflow-contract';
-import type { CompiledWorkflowConfig, CompilerContext, WorkflowFinding, WorkflowGraph, WorkflowValidationReport } from '@arcaai/workflow-contract';
+import type {
+  CompiledWorkflowConfig,
+  CompilerContext,
+  ProviderGenerationCapabilities,
+  WorkflowFinding,
+  WorkflowGraph,
+  WorkflowValidationReport,
+} from '@arcaai/workflow-contract';
 import { createHash } from 'node:crypto';
 import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
@@ -49,7 +58,7 @@ import {
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
 } from './dto';
-import { collectGenerationBindings } from './node-generation-binding';
+import { collectGenerationBindings, type NodeGenerationBindingRef } from './node-generation-binding';
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
 import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
 import type { IAiRoutingPolicyService as IAiRoutingPolicyServicePort } from '../ai-routing-policy/IAiRoutingPolicyService';
@@ -70,6 +79,10 @@ const SHAPE_FINDING_RULE_ID = 'WF-SHAPE';
  * (blocking) apart, exactly as `SHAPE_FINDING_RULE_ID` separates a malformed graph from both.
  */
 const HYPERPARAMETER_CAPABILITY_RULE_ID = 'WF-CAP-001';
+
+function asPlainObject(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
 
 /**
  * Server-authored compile()/validate() metadata ( flow). Bumping either
@@ -188,6 +201,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // which is the same posture as an unprofiled configuration, and strictly safer than a gate
     // that fails a publish() because its own dependency was missing.
     @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicyService?: IAiRoutingPolicyServicePort,
+    // TASK-876 — the publish-time clamp on `core.agent.overrides.generation` resolves the bound
+    // agent (ACTIVE published, [tenant, SYSTEM]) to its model row and reads the SAME capability
+    // set `AgentService.capabilitiesOf` reads. `@Optional()` + trailing for the same reason as
+    // every dependency above (positional unit fixtures); absent ⇒ the set is UNKNOWN (WARNING).
+    @Optional() @Inject(AgentRepository) private readonly agentRepository?: AgentRepository,
+    @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -1049,15 +1068,14 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    */
   private async hyperparameterCapabilityFindings(graph: WorkflowGraph, tenantId: string): Promise<WorkflowFinding[]> {
     const bindings = collectGenerationBindings(graph);
-    if (bindings.length === 0 || !this.routingPolicyService) return [];
-    const routingPolicyService = this.routingPolicyService;
+    if (bindings.length === 0) return [];
 
     const resolved = await Promise.all(
       bindings.map(async (binding) => ({
         binding,
         // A resolution failure is an UNKNOWN capability set, never a failed publish() — the
         // service already contracts not to throw, and this is the belt to that suspenders.
-        capabilities: await routingPolicyService.resolveGenerationCapabilities(tenantId, binding.providerConfigRef).catch(() => undefined),
+        capabilities: await this.generationCapabilitiesFor(binding, tenantId).catch(() => undefined),
       })),
     );
 
@@ -1067,10 +1085,49 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         ruleClass: 'invariant' as const,
         severity: problem.severity,
         nodeId: binding.nodeId,
-        path: `/config/generation/${problem.parameter}`,
+        path: `${binding.path}/${problem.parameter}`,
         message: problem.message,
       })),
     );
+  }
+
+  /**
+   * The capability set that bounds one binding. A legacy `providerConfigRef` resolves through the
+   * routing plane (tenant → SYSTEM cascade, `IAiRoutingPolicyService`); a TASK-876 `agentRef`
+   * resolves through the AGENT — the PINNED version when the node names one, else its ACTIVE
+   * published version, visible to the tenant — then its
+   * model row's `_metadata.capabilities.supportedGenerationParams`, exactly the read
+   * `AgentService.capabilitiesOf` makes when the agent itself is published — so the two gates
+   * cannot disagree. `undefined` = unknown (WARNING); the runtime fails closed on an
+   * unresolvable agent regardless.
+   */
+  private async generationCapabilitiesFor(binding: NodeGenerationBindingRef, tenantId: string): Promise<ProviderGenerationCapabilities | undefined> {
+    if (binding.agentRef) {
+      if (!this.agentRepository || !this.aiModelRepository) return undefined;
+      // A PINNED `agentRef.versionNumber` names the version this node will actually run
+      // (`TextAgentResolverService` refuses any other, 409). Reading the ACTIVE version instead
+      // would clamp against a capability set the node never sees — and LABEL the finding with a
+      // version number the author did not write. An unresolvable pin is an unknown capability
+      // set (WARNING), the same as an unresolvable slug.
+      const pin = binding.agentRef.versionNumber;
+      const agent =
+        typeof pin === 'number'
+          ? await this.agentRepository.findPublishedVisibleBySlugVersion(tenantId, binding.agentRef.slug, pin)
+          : await this.agentRepository.findPublishedActiveBySlug(tenantId, binding.agentRef.slug);
+      const modelId = (agent?.compiledConfig as { model?: { id?: unknown } } | null)?.model?.id;
+      if (!agent || typeof modelId !== 'string') return undefined;
+      const model = await this.aiModelRepository.findById(modelId).catch(() => null);
+      if (!model) return undefined;
+      const meta = asPlainObject(model.metaData) ?? {};
+      const caps = asPlainObject(meta.capabilities) ?? meta;
+      const supported = Array.isArray(caps.supportedGenerationParams) ? (caps.supportedGenerationParams as string[]) : undefined;
+      return {
+        supportedGenerationParams: supported,
+        label: `agent ${agent.slug} v${agent.versionNumber} → ${model.provider ?? 'local'}/${model.slug}`,
+      };
+    }
+    if (!this.routingPolicyService || !binding.providerConfigRef) return undefined;
+    return this.routingPolicyService.resolveGenerationCapabilities(tenantId, binding.providerConfigRef);
   }
 
   /**
