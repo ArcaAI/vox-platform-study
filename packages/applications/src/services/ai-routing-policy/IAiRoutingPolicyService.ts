@@ -58,9 +58,17 @@ export interface ResolvedGenerationCapabilities {
 
 /** How `resolveDefault` reads the two tiers. Both default to the ordinary cascade. */
 export interface ResolveDefaultOptions {
-  /** Read the SYSTEM tier only — for the SUPER_ADMIN-only task keys (`nlp.*`, `harness.*`) whose tenant rows never win at runtime. */
+  /**
+   * Read the SYSTEM tier only — for the SUPER_ADMIN-only task keys (`nlp.*`,
+   * `harness.*`, `guardrail.*`) whose tenant rows never win at runtime. The
+   * tenant tier is not consulted, so it also cannot VETO.
+   */
   systemOnly?: boolean;
-  /** Read the target tenant's OWN rows only, never widening — the "raw editable row" read behind `getRow`. */
+  /**
+   * Read the target tenant's OWN rows only, never widening — the "raw editable
+   * row" read behind `getRow`. A parked election still vetoes here: the tenant
+   * tier IS the answer under this option, so a refusal must surface as one.
+   */
   noWiden?: boolean;
 }
 
@@ -176,6 +184,16 @@ export interface IAiRoutingPolicyService {
    * (tenant → SYSTEM, widening only on absence). Replaces
    * `AiTaskDefaultService.getEffective` as the one "default model for task X"
    * resolution; agents (TASK-863) bind a model directly and never come here.
+   *
+   * TASK-872 — widening on ABSENCE means exactly that. A tenant whose own
+   * elected row is PARKED (`resourceStatus: DISABLED`, or `enabled: false`) has
+   * expressed the third state of the platform's three-state rule — a VETO — and
+   * this method throws {@link TaskSelectionVetoedError} instead of falling
+   * through to SYSTEM. Callers fail closed on it; none should catch it to
+   * substitute a value.
+   *
+   * @throws TaskSelectionVetoedError when the tenant has disabled its own
+   * elected configuration for `taskKey`.
    */
   resolveDefault(tenantId: string, taskKey: string, options?: ResolveDefaultOptions): Promise<ResolvedTaskDefault>;
 

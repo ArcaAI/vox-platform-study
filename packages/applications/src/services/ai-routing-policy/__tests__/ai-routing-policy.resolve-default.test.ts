@@ -6,11 +6,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AiRoutingPolicyFactory, AiRoutingPolicyStatus, ResourceStatusType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiRoutingPolicyService } from '../ai-routing-policy.service';
+import { TaskSelectionVetoedError } from '../task-selection-veto';
 
 const TENANT = 'tenant-abc';
 
 function row(over: Record<string, any> = {}) {
-  return AiRoutingPolicyFactory.CreateAiRoutingPolicy({
+  const entity = AiRoutingPolicyFactory.CreateAiRoutingPolicy({
     tenantId: over.tenantId ?? SYSTEM_TENANT_ID,
     taskKey: over.taskKey ?? 'guardrail.validate',
     modelId: over.modelId ?? 'model-1',
@@ -19,13 +20,29 @@ function row(over: Record<string, any> = {}) {
     priority: over.priority ?? 0,
     status: over.status ?? AiRoutingPolicyStatus.ACTIVE,
   });
+  if (over.resourceStatus) {
+    // `resourceStatus` is read-only on the entity by design — soft-delete and
+    // restore are repository operations, and the factory does not forward it.
+    // A test that needs a PARKED row therefore seeds the backing field.
+    (entity as unknown as { _resourceStatus: ResourceStatusType })._resourceStatus = over.resourceStatus;
+  }
+  return entity;
+}
+
+/** True when a row is LIVE, mirroring the repository's default filter. */
+function isLive(r: any): boolean {
+  return r.resourceStatus === ResourceStatusType.ENABLED && r.enabled === true;
 }
 
 function makeService(opts: { rows?: any[]; models?: Record<string, any>; roles?: string[]; clsTenantId?: string } = {}) {
   const rows = opts.rows ?? [];
   const repo = {
-    findCandidates: vi.fn(async (tenantIds: string[], taskKey: string) =>
-      rows.filter((r) => tenantIds.includes(r.tenantId) && r.taskKey === taskKey && r.status === AiRoutingPolicyStatus.ACTIVE && r.enabled),
+    // Mirrors `AiRoutingPolicyRepository.findCandidates`: ACTIVE by default,
+    // and LIVE-only unless the caller asks for parked rows as well.
+    findCandidates: vi.fn(async (tenantIds: string[], taskKey: string, _tx?: unknown, options: { includeParked?: boolean } = {}) =>
+      rows
+        .filter((r) => tenantIds.includes(r.tenantId) && r.taskKey === taskKey && r.status === AiRoutingPolicyStatus.ACTIVE)
+        .filter((r) => options.includeParked === true || isLive(r)),
     ),
   };
   const models = opts.models ?? { 'model-1': { id: 'model-1', slug: 'granite', resourceStatus: ResourceStatusType.ENABLED } };
@@ -102,5 +119,107 @@ describe('AiRoutingPolicyService.resolveDefault', () => {
   it('rejects an unknown task key', async () => {
     const { svc } = makeService();
     await expect(svc.resolveDefault(TENANT, 'not.a.key')).rejects.toThrow(/Unknown AI task key/);
+  });
+});
+
+/**
+ * TASK-872 — the THREE-STATE rule, applied to the routing plane.
+ *
+ * `AiProviderConnection` states it and `apps/guardrail` already implements it
+ * (`TenantSelectionVetoedError`): absent = no opinion, so SYSTEM applies;
+ * enabled = the tenant's row wins; DISABLED = a VETO, and the resolver fails
+ * closed rather than folding through to SYSTEM.
+ *
+ * `resolveDefault` used to get the third state wrong in the quietest possible
+ * way. `findCandidates` hard-filtered parked rows out, so a tenant that had
+ * switched its OWN elected configuration off read as an EMPTY tenant tier —
+ * indistinguishable from "never configured" — and the resolver widened to
+ * SYSTEM with `source: 'system'`. The tenant got the platform's model for a
+ * selection it had explicitly disabled.
+ */
+describe('AiRoutingPolicyService.resolveDefault — the tenant VETO (three-state parity)', () => {
+  it('a DISABLED elected tenant row is a VETO: it raises and never widens to SYSTEM', async () => {
+    const parked = row({ tenantId: TENANT, isDefault: true, resourceStatus: ResourceStatusType.DISABLED });
+    const { svc } = makeService({ rows: [row({ tenantId: SYSTEM_TENANT_ID, modelId: 'model-1' }), parked] });
+
+    await expect(svc.resolveDefault(TENANT, 'guardrail.validate')).rejects.toBeInstanceOf(TaskSelectionVetoedError);
+  });
+
+  it('an elected tenant row with enabled:false is the same VETO', async () => {
+    const parked = row({ tenantId: TENANT, isDefault: true, enabled: false });
+    const { svc } = makeService({ rows: [row({ tenantId: SYSTEM_TENANT_ID }), parked] });
+
+    await expect(svc.resolveDefault(TENANT, 'guardrail.validate')).rejects.toBeInstanceOf(TaskSelectionVetoedError);
+  });
+
+  it('names the tenant and the task key, so the refusal is actionable', async () => {
+    const { svc } = makeService({ rows: [row({ tenantId: TENANT, isDefault: true, enabled: false })] });
+
+    await expect(svc.resolveDefault(TENANT, 'guardrail.validate')).rejects.toMatchObject({
+      tenantId: TENANT,
+      taskKey: 'guardrail.validate',
+    });
+  });
+
+  it('an ABSENT tenant row still widens to SYSTEM — absence is not a veto', async () => {
+    const sys = row({ tenantId: SYSTEM_TENANT_ID });
+    const { svc } = makeService({ rows: [sys] });
+
+    const r = await svc.resolveDefault(TENANT, 'guardrail.validate');
+    expect(r.source).toBe('system');
+    expect(r.policy?.id).toBe(sys.id);
+  });
+
+  it('an ENABLED tenant row still wins', async () => {
+    const own = row({ tenantId: TENANT });
+    const { svc } = makeService({ rows: [row({ tenantId: SYSTEM_TENANT_ID }), own] });
+
+    const r = await svc.resolveDefault(TENANT, 'guardrail.validate');
+    expect(r.source).toBe('tenant');
+    expect(r.policy?.id).toBe(own.id);
+  });
+
+  it('a parked row the tenant never ELECTED is not a veto — only the election speaks', async () => {
+    // A candidate someone parked while authoring says nothing about the
+    // selection; the tenant has expressed no opinion, so SYSTEM applies.
+    const sys = row({ tenantId: SYSTEM_TENANT_ID });
+    const { svc } = makeService({ rows: [sys, row({ tenantId: TENANT, isDefault: false, enabled: false })] });
+
+    const r = await svc.resolveDefault(TENANT, 'guardrail.validate');
+    expect(r.source).toBe('system');
+    expect(r.policy?.id).toBe(sys.id);
+  });
+
+  it('a LIVE tenant row alongside a parked sibling still wins — the veto is only about an empty live tier', async () => {
+    const live = row({ tenantId: TENANT, isDefault: true });
+    const { svc } = makeService({ rows: [live, row({ tenantId: TENANT, isDefault: false, enabled: false })] });
+
+    const r = await svc.resolveDefault(TENANT, 'guardrail.validate');
+    expect(r.source).toBe('tenant');
+    expect(r.policy?.id).toBe(live.id);
+  });
+
+  it('a parked SYSTEM row is ABSENCE, not a veto — there is no tier left to widen to', async () => {
+    // SYSTEM is the last tier: a caller reading `source: null` already fails
+    // closed, and raising here would turn every unconfigured platform task into
+    // a different error for the same condition.
+    const { svc } = makeService({ rows: [row({ tenantId: SYSTEM_TENANT_ID, resourceStatus: ResourceStatusType.DISABLED })] });
+
+    const r = await svc.resolveDefault(TENANT, 'guardrail.validate');
+    expect(r.source).toBeNull();
+    expect(r.policy).toBeNull();
+  });
+
+  it('systemOnly never vetoes: the tenant tier is not consulted at all', async () => {
+    const { svc } = makeService({ rows: [row({ tenantId: TENANT, taskKey: 'nlp.ner', enabled: false }), row({ taskKey: 'nlp.ner' })] });
+
+    const r = await svc.resolveDefault(TENANT, 'nlp.ner', { systemOnly: true });
+    expect(r.source).toBe('system');
+  });
+
+  it('noWiden vetoes too — the tenant tier IS the answer there', async () => {
+    const { svc } = makeService({ rows: [row({ tenantId: TENANT, isDefault: true, enabled: false })] });
+
+    await expect(svc.resolveDefault(TENANT, 'guardrail.validate', { noWiden: true })).rejects.toBeInstanceOf(TaskSelectionVetoedError);
   });
 });
