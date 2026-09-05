@@ -1,7 +1,7 @@
 import {
   AiModelServiceModule,
   AiProviderConnectionServiceModule,
-  AiTaskDefaultServiceModule,
+  AiRoutingPolicyServiceModule,
   AsrAgentResolverServiceModule,
   DnaWritingStyleServiceModule,
   EffectiveSettingsModule,
@@ -57,10 +57,10 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
     // `speech.module.ts`.
     OriginRegistryServiceModule,
     // Registry-backed providers listings on TextProxyController:
-    // AiModelService lists ENABLED rows per taskType; AiTaskDefaultService
-    // resolves the effective `guardrail.validate` default.
+    // AiModelService lists ENABLED rows per taskType; AiRoutingPolicyService
+    // resolves the SYSTEM `guardrail.validate` election.
     AiModelServiceModule,
-    AiTaskDefaultServiceModule,
+    AiRoutingPolicyServiceModule,
     // Tenant BYO cloud-credential resolver for the TEXT proxy's
     // cloud-only, minimal-exposure, fail-open `provider_overrides` injection.
     AiProviderConnectionServiceModule,

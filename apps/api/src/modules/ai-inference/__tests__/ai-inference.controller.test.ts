@@ -1,16 +1,17 @@
 /**
  * AiInferenceController unit tests. The
  * controller maps the validated camelCase DTOs to the upstream snake_case body
- * (with defaults), resolves the tenant's default NLP model via
- * `IAiTaskDefaultService` (fail-open), and proxies the client response verbatim.
+ * (with defaults), resolves the SYSTEM `nlp.*` routing election via
+ * `IAiRoutingPolicyService.resolveDefault` (fail-closed), and proxies the client response verbatim.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
+import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiInferenceController } from '../ai-inference.controller';
 import { SafetyCheckController } from '../safety-check.controller';
 
 function makeController(
-  aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
+  routingPolicies?: { resolveDefault: ReturnType<typeof vi.fn> },
   aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> },
   cls?: { get: ReturnType<typeof vi.fn> },
   usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> },
@@ -19,7 +20,7 @@ function makeController(
   const client = { analyzeGuardrail: vi.fn(), classifyTokens: vi.fn(), suggestDiagnosis: vi.fn(), classifyTopic: vi.fn(), classifyIntent: vi.fn() };
   const controller = new AiInferenceController(
     client as never,
-    aiTaskDefaults as never,
+    routingPolicies as never,
     aiModels as never,
     cls as never,
     usageLedgerService as never,
@@ -54,7 +55,7 @@ const effectiveWithModel = (taskKey: string, sourceUri: string, localPath: strin
  * instead of silently receiving the wrong model.
  */
 const effectiveByKey = (byKey: Record<string, unknown>) =>
-  vi.fn(async (taskKey: string) => {
+  vi.fn(async (_tenantId: string, taskKey: string) => {
     if (!(taskKey in byKey)) throw new Error(`unexpected taskKey '${taskKey}'`);
     return byKey[taskKey];
   });
@@ -94,8 +95,8 @@ describe('AiInferenceController — NER entities', () => {
   // `nlp.ner` at a checkpoint with different conventions had no effect. Absent a
   // caller value the field is omitted and the row's declaration governs.
   it('forwards aggregationStrategy when given, and omits it entirely when not', async () => {
-    const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const routingPolicies = { resolveDefault: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
+    const { controller, client } = makeController(routingPolicies);
     const entities = { entities: [], model_version: 'v1' };
     client.classifyTokens.mockResolvedValue(entities);
 
@@ -109,8 +110,8 @@ describe('AiInferenceController — NER entities', () => {
   });
 
   it('forwards language and a custom aggregation strategy when supplied', async () => {
-    const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const routingPolicies = { resolveDefault: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
+    const { controller, client } = makeController(routingPolicies);
     client.classifyTokens.mockResolvedValue({});
     await controller.extractEntities({ text: 'x', aggregationStrategy: 'max', language: 'vi' });
     expect(client.classifyTokens).toHaveBeenCalledWith({
@@ -122,13 +123,13 @@ describe('AiInferenceController — NER entities', () => {
   });
 
   it('injects model_name from the effective nlp.ner default when the caller supplies no model', async () => {
-    const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const routingPolicies = { resolveDefault: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
+    const { controller, client } = makeController(routingPolicies);
     client.classifyTokens.mockResolvedValue({});
 
     await controller.extractEntities({ text: 'x' });
 
-    expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('nlp.ner');
+    expect(routingPolicies.resolveDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', { systemOnly: true });
     expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'blaze999/Medical-NER' });
   });
 
@@ -145,15 +146,15 @@ describe('AiInferenceController — NER entities', () => {
     ];
 
     it('a registry SLUG override is forwarded as that row sourceUri', async () => {
-      const aiTaskDefaults = { getEffective: vi.fn() };
+      const routingPolicies = { resolveDefault: vi.fn() };
       const aiModels = { getByTaskTypeSharedRead: vi.fn().mockResolvedValue(registryRows) };
-      const { controller, client } = makeController(aiTaskDefaults, aiModels);
+      const { controller, client } = makeController(routingPolicies, aiModels);
       client.classifyTokens.mockResolvedValue({});
 
       await controller.extractEntities({ text: 'x', modelName: 'medical-ner' });
 
       expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith('TOKEN_CLASSIFICATION');
-      expect(aiTaskDefaults.getEffective).not.toHaveBeenCalled();
+      expect(routingPolicies.resolveDefault).not.toHaveBeenCalled();
       expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'blaze999/Medical-NER' });
     });
 
@@ -193,10 +194,10 @@ describe('AiInferenceController — NER entities', () => {
 
   it('FAILS CLOSED: null SYSTEM default → 503, never forwards without model_name', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const aiTaskDefaults = {
-      getEffective: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.ner', modelSlug: null, source: null, configJson: null, model: null }),
+    const routingPolicies = {
+      resolveDefault: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.ner', modelSlug: null, source: null, configJson: null, model: null }),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
 
     await expect(controller.extractEntities({ text: 'x' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.classifyTokens).not.toHaveBeenCalled();
@@ -204,14 +205,14 @@ describe('AiInferenceController — NER entities', () => {
 
   it('FAILS CLOSED when default resolution throws → 503', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const aiTaskDefaults = { getEffective: vi.fn().mockRejectedValue(new Error('db down')) };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const routingPolicies = { resolveDefault: vi.fn().mockRejectedValue(new Error('db down')) };
+    const { controller, client } = makeController(routingPolicies);
 
     await expect(controller.extractEntities({ text: 'x' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.classifyTokens).not.toHaveBeenCalled();
   });
 
-  it('FAILS CLOSED without the AiTaskDefault service wired → 503', async () => {
+  it('FAILS CLOSED without the routing-policy service wired → 503', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
     const { controller, client } = makeController(undefined);
 
@@ -222,7 +223,7 @@ describe('AiInferenceController — NER entities', () => {
 
 //  — playground NER usage-ledger emission.
 describe('AiInferenceController — NER usage-ledger emission', () => {
-  const aiTaskDefaults = () => ({ getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) });
+  const routingPolicies = () => ({ resolveDefault: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) });
   const clsFor = (user: { id: string; roles?: string[] } | undefined, tenantId = 't1') => ({
     get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : key === 'user' ? user : undefined)),
   });
@@ -230,7 +231,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('emits a TEXT_UNIT + REQUEST row with an nlp:<generated requestId> key and NO consultation attribution', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'user-1', roles: [] });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'aspirin 100mg' });
@@ -251,7 +252,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('attributes doctorId when the CLS user is a clinician (DOCTOR/SPECIALIST/CONSULTANT)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'doctor-9', roles: ['DOCTOR'] });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -263,7 +264,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('omits doctorId when the CLS user has no clinician role (e.g. a SUPER_ADMIN using the playground)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'admin-1', roles: ['SUPER_ADMIN'] });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -275,7 +276,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('does not emit when no tenantId is available in CLS', async () => {
     const usageLedgerService = { recordUsage: vi.fn() };
     const cls = clsFor({ id: 'user-1' }, null as never);
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -285,7 +286,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
 
   it('does not emit when no usage-ledger service is wired (test-fixture ergonomics, unaffected proxying)', async () => {
     const cls = clsFor({ id: 'user-1' });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, undefined);
+    const { controller, client } = makeController(routingPolicies(), undefined, cls, undefined);
     const entities = { entities: [], model_version: 'v1' };
     client.classifyTokens.mockResolvedValue(entities);
 
@@ -296,7 +297,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('never fails extractEntities when the ledger rejects (best-effort, like every other emitter in this codebase)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox unavailable')) };
     const cls = clsFor({ id: 'user-1' });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(routingPolicies(), undefined, cls, usageLedgerService);
     const entities = { entities: [], model_version: 'v1' };
     client.classifyTokens.mockResolvedValue(entities);
 
@@ -318,15 +319,15 @@ const DIAGNOSIS_KEYS = {
 
 describe('AiInferenceController — diagnosis suggestions', () => {
   it('maps minConfidence → min_confidence, forwards language, injects BOTH model selections', async () => {
-    const aiTaskDefaults = { getEffective: effectiveByKey(DIAGNOSIS_KEYS) };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const routingPolicies = { resolveDefault: effectiveByKey(DIAGNOSIS_KEYS) };
+    const { controller, client } = makeController(routingPolicies);
     const suggestions = { suggestions: [{ diagnosis: 'flu', confidence: 0.8 }] };
     client.suggestDiagnosis.mockResolvedValue(suggestions);
 
     const result = await controller.suggestDiagnosis({ text: 'fever and cough', minConfidence: 0.3, language: 'en' });
 
-    expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('nlp.diagnosis');
-    expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('nlp.ner');
+    expect(routingPolicies.resolveDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.diagnosis', { systemOnly: true });
+    expect(routingPolicies.resolveDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', { systemOnly: true });
     expect(client.suggestDiagnosis).toHaveBeenCalledWith({
       text: 'fever and cough',
       min_confidence: 0.3,
@@ -338,13 +339,13 @@ describe('AiInferenceController — diagnosis suggestions', () => {
   });
 
   it('forwards ner_model_path from the NER registry row when it carries a localPath', async () => {
-    const aiTaskDefaults = {
-      getEffective: effectiveByKey({
+    const routingPolicies = {
+      resolveDefault: effectiveByKey({
         'nlp.diagnosis': effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41', '/weights/symps'),
         'nlp.ner': effectiveWithModel('nlp.ner', 'blaze999/Medical-NER', '/weights/medical-ner'),
       }),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
     client.suggestDiagnosis.mockResolvedValue({});
 
     await controller.suggestDiagnosis({ text: 'fever' });
@@ -360,14 +361,14 @@ describe('AiInferenceController — diagnosis suggestions', () => {
 
   it('FAILS CLOSED when the NER half is unresolved → 503, never a partial call', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const aiTaskDefaults = {
-      getEffective: effectiveByKey({
+    const routingPolicies = {
+      resolveDefault: effectiveByKey({
         'nlp.diagnosis': effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41'),
         // Row exists but has no ENABLED model — the fail-closed case.
         'nlp.ner': { ...effectiveWithModel('nlp.ner', 'x'), model: null },
       }),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
 
     await expect(controller.suggestDiagnosis({ text: 'headache' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.suggestDiagnosis).not.toHaveBeenCalled();
@@ -375,13 +376,13 @@ describe('AiInferenceController — diagnosis suggestions', () => {
 
   it('FAILS CLOSED when NER resolution throws → 503', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const aiTaskDefaults = {
-      getEffective: vi.fn(async (taskKey: string) => {
+    const routingPolicies = {
+      resolveDefault: vi.fn(async (_tenantId: string, taskKey: string) => {
         if (taskKey === 'nlp.ner') throw new Error('resolver down');
         return effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41');
       }),
     };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const { controller, client } = makeController(routingPolicies);
 
     await expect(controller.suggestDiagnosis({ text: 'headache' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.suggestDiagnosis).not.toHaveBeenCalled();
@@ -389,16 +390,16 @@ describe('AiInferenceController — diagnosis suggestions', () => {
 
   it('FAILS CLOSED on resolution error for diagnosis → 503', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const aiTaskDefaults = { getEffective: vi.fn().mockRejectedValue(new Error('resolver down')) };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const routingPolicies = { resolveDefault: vi.fn().mockRejectedValue(new Error('resolver down')) };
+    const { controller, client } = makeController(routingPolicies);
 
     await expect(controller.suggestDiagnosis({ text: 'headache' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.suggestDiagnosis).not.toHaveBeenCalled();
   });
 
   it('forwards minConfidence: 0 (falsy but valid) when SYSTEM default resolves', async () => {
-    const aiTaskDefaults = { getEffective: effectiveByKey(DIAGNOSIS_KEYS) };
-    const { controller, client } = makeController(aiTaskDefaults);
+    const routingPolicies = { resolveDefault: effectiveByKey(DIAGNOSIS_KEYS) };
+    const { controller, client } = makeController(routingPolicies);
     client.suggestDiagnosis.mockResolvedValue({});
     await controller.suggestDiagnosis({ text: 'x', minConfidence: 0 });
     expect(client.suggestDiagnosis).toHaveBeenCalledWith({
