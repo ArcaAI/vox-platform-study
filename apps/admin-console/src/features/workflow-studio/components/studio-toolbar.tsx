@@ -6,7 +6,15 @@
  * (`publishBlockedReason`, Task 14) — the client validator is never the gate.
  */
 import { Badge, Button, ToggleGroup, ToggleGroupItem } from '@arcaai/ui';
-import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconFlask, IconLayoutDistributeHorizontal, IconUpload } from '@tabler/icons-react';
+import {
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconDownload,
+  IconFileExport,
+  IconFlask,
+  IconLayoutDistributeHorizontal,
+  IconUpload,
+} from '@tabler/icons-react';
 import { useId, useRef } from 'react';
 import type { AutosaveState, WorkflowStudioViewMode } from '../store/types';
 
@@ -72,6 +80,16 @@ export interface StudioToolbarProps {
   onExport?: () => void;
   /** TASK-864 B1 — receives the chosen file's text; the caller parses and refuses. Absent = no button. */
   onImport?: (text: string) => void;
+  /**
+   * TASK-885 (owner #4) — download the whole DEFINITION as a portable bundle.
+   *
+   * Distinct from `onExport` above, and the labels say so: `Export` writes THIS GRAPH's nodes and
+   * edges with the tenant's own row ids in them (a working file for this tenant); `Export bundle`
+   * writes the definition — name, palette, graph AND its catalogue bindings translated into
+   * portable keys — which is the artifact another tenant can import. Absent = no button.
+   */
+  onExportBundle?: () => void;
+  exportingBundle?: boolean;
 }
 
 export function StudioToolbar({
@@ -92,6 +110,8 @@ export function StudioToolbar({
   onAutoLayout,
   onExport,
   onImport,
+  onExportBundle,
+  exportingBundle,
 }: StudioToolbarProps) {
   const sandboxBlockedReason = SANDBOX_BLOCKED_REASON[autosaveState] ?? null;
   const importInputId = useId();
@@ -119,10 +139,26 @@ export function StudioToolbar({
       <div className="flex items-center gap-2">
         {!readOnly ? (
           <div className="flex items-center gap-1">
-            <Button type="button" variant="outline" size="icon-sm" aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={onUndo}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Undo (Ctrl+Z)"
+              title="Undo (Ctrl+Z)"
+              disabled={!canUndo}
+              onClick={onUndo}
+            >
               <IconArrowBackUp aria-hidden="true" />
             </Button>
-            <Button type="button" variant="outline" size="icon-sm" aria-label="Redo (Ctrl+Shift+Z)" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={onRedo}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Redo (Ctrl+Shift+Z)"
+              title="Redo (Ctrl+Shift+Z)"
+              disabled={!canRedo}
+              onClick={onRedo}
+            >
               <IconArrowForwardUp aria-hidden="true" />
             </Button>
           </div>
@@ -137,6 +173,19 @@ export function StudioToolbar({
           <Button type="button" variant="outline" size="sm" onClick={onExport} title="Download this graph as JSON">
             <IconDownload aria-hidden="true" />
             Export
+          </Button>
+        ) : null}
+        {onExportBundle ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onExportBundle}
+            disabled={exportingBundle}
+            title="Download the whole workflow as a portable bundle — another tenant can import this file"
+          >
+            <IconFileExport aria-hidden="true" />
+            {exportingBundle ? 'Exporting…' : 'Export bundle'}
           </Button>
         ) : null}
         {!readOnly && onImport ? (
@@ -155,7 +204,13 @@ export function StudioToolbar({
                 void file.text().then(onImport);
               }}
             />
-            <Button type="button" variant="outline" size="sm" onClick={() => importInputRef.current?.click()} title="Replace this graph with a JSON file (undoable)">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => importInputRef.current?.click()}
+              title="Replace this graph with a JSON file (undoable)"
+            >
               <IconUpload aria-hidden="true" />
               Import
             </Button>

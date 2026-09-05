@@ -9,3 +9,7 @@ export * from './workflow-definition.service.module';
 // PromptVersion, and the pure pin-move used by the in-node edit path.
 export * from './node-generation-binding';
 export * from './node-prompt-binding';
+// TASK-885 — the portable-bundle envelope alias (lane F owns the shared shape) and the pure
+// row-id <-> portable-key rewrite import/export is built on.
+export * from './portable-bundle.contract';
+export * from './portable-graph';

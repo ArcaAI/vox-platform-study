@@ -23,16 +23,23 @@ import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { Button, Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@arcaai/ui';
 import { IconPencil, IconPlus, IconTopologyStar3 } from '@tabler/icons-react';
-import { WorkflowCanvas, layoutWorkflowGraph, type WorkflowCanvasEdge, type WorkflowCanvasNode, type WorkflowCanvasPort } from '@arcaai/ui/components/workflow-canvas';
+import {
+  WorkflowCanvas,
+  layoutWorkflowGraph,
+  type WorkflowCanvasEdge,
+  type WorkflowCanvasNode,
+  type WorkflowCanvasPort,
+} from '@arcaai/ui/components/workflow-canvas';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { useAutosave, useStudioShortcuts, useUnsavedChangesGuard } from '../hooks';
-import { useCreateWorkflowDefinition } from '../api';
+import { useCreateWorkflowDefinition, useExportWorkflowDefinition } from '../api';
 import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/client';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
 import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
+import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
 import { actionKeyOf, effectiveNodePorts } from '../lib/core-ports';
 import { humanizeKey } from '../lib/schema-form';
 import {
@@ -68,10 +75,18 @@ const LOOP_NODE_TYPE = 'core.loop';
 const ACTION_NODE_TYPE = 'core.action';
 
 /** A descriptor's ports for THIS instance, in the canvas's per-handle shape (TASK-864 B1). */
-function canvasPortsFor(descriptorByType: ReadonlyMap<string, WorkflowNodeDescriptor>, type: string, config: Record<string, unknown>): WorkflowCanvasNode['ports'] {
+function canvasPortsFor(
+  descriptorByType: ReadonlyMap<string, WorkflowNodeDescriptor>,
+  type: string,
+  config: Record<string, unknown>,
+): WorkflowCanvasNode['ports'] {
   const ports = effectiveNodePorts(descriptorByType, type, config);
   if (!ports) return undefined;
-  const toPort = (port: { name: string; primitive: string }): WorkflowCanvasPort => ({ id: port.name, kind: port.primitive === 'control' ? 'control' : 'data', primitive: port.primitive });
+  const toPort = (port: { name: string; primitive: string }): WorkflowCanvasPort => ({
+    id: port.name,
+    kind: port.primitive === 'control' ? 'control' : 'data',
+    primitive: port.primitive,
+  });
   return { inputs: ports.inputs.map(toPort), outputs: ports.outputs.map(toPort) };
 }
 
@@ -134,6 +149,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const [metadataDirty, setMetadataDirty] = useState(false);
   const readOnly = definition.status === 'PUBLISHED' || definition.status === 'DEPRECATED';
   const createNewVersion = useCreateWorkflowDefinition();
+  // TASK-885 — the portable-bundle export of the SERVER's stored version (see handleExportBundle).
+  const exportBundle = useExportWorkflowDefinition();
 
   // Keyed once per registry fetch, not per hydrate — the inspector needs it live for whichever
   // node is currently selected, not just at hydration time.
@@ -149,7 +166,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         .sort((a, b) => a.label.localeCompare(b.label)),
     [registryNodes],
   );
-  const selectedActionSchema = selectedNode?.type === ACTION_NODE_TYPE ? (descriptorByType.get(actionKeyOf(selectedNode.config) ?? '')?.configSchema ?? undefined) : undefined;
+  const selectedActionSchema =
+    selectedNode?.type === ACTION_NODE_TYPE ? (descriptorByType.get(actionKeyOf(selectedNode.config) ?? '')?.configSchema ?? undefined) : undefined;
   const celReferences = useMemo(() => celReferencesOf(nodes), [nodes]);
 
   const hydratedRef = useRef<string | null>(null);
@@ -313,6 +331,24 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     downloadText(GRAPH_EXPORT_FILENAME(definition.slug, definition.versionNumber), exportGraphJson(current, currentEdges));
     toast.success('Graph exported.');
   }
+  /**
+   * TASK-885 (owner #4) — download the whole definition as a portable bundle.
+   *
+   * Exports the SERVER's stored version, not the editor buffer: the bundle names a
+   * `(slug, versionNumber)` as its provenance, and a file that claims to be v3 while carrying
+   * unsaved edits would be a lie an importer has no way to detect. The graph export above is the
+   * one that follows the canvas.
+   */
+  async function handleExportBundle() {
+    try {
+      const bundle = await exportBundle.mutateAsync(definition.id);
+      downloadJson(BUNDLE_EXPORT_FILENAME(definition.slug, definition.versionNumber), bundle);
+      toast.success('Workflow bundle exported.');
+    } catch (cause) {
+      // The gateway's own message names the nodes whose bindings no longer resolve.
+      toast.error(cause instanceof Error ? cause.message : 'Failed to export the workflow bundle.');
+    }
+  }
   function handleImport(text: string) {
     const parsed = parseGraphJson(text);
     if (!parsed.ok) {
@@ -333,7 +369,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     try {
       const updated = await validateWorkflowDefinition(definition.id);
       setReport(updated.validationReport);
-      toast[updated.validationReport?.ok ? 'success' : 'error'](updated.validationReport?.ok ? 'Validation passed.' : 'Validation found problems — see the rail.');
+      toast[updated.validationReport?.ok ? 'success' : 'error'](
+        updated.validationReport?.ok ? 'Validation passed.' : 'Validation found problems — see the rail.',
+      );
     } catch {
       toast.error('Validate failed.');
     } finally {
@@ -373,10 +411,19 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     problem: (() => {
       const findings = problemsByNodeId.get(node.id);
       if (!findings || findings.length === 0) return undefined;
-      return { severity: findings.some((f: WorkflowFinding) => f.severity === 'ERROR') ? ('ERROR' as const) : ('WARNING' as const), messages: findings.map((f: WorkflowFinding) => f.message) };
+      return {
+        severity: findings.some((f: WorkflowFinding) => f.severity === 'ERROR') ? ('ERROR' as const) : ('WARNING' as const),
+        messages: findings.map((f: WorkflowFinding) => f.message),
+      };
     })(),
   }));
-  const canvasEdges: WorkflowCanvasEdge[] = edges.map((edge) => ({ id: edge.id, source: edge.source, sourceHandle: edge.sourceHandle, target: edge.target, targetHandle: edge.targetHandle }));
+  const canvasEdges: WorkflowCanvasEdge[] = edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    sourceHandle: edge.sourceHandle,
+    target: edge.target,
+    targetHandle: edge.targetHandle,
+  }));
 
   return (
     <ScreenTemplate
@@ -384,7 +431,11 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       header={
         <PageHeader
           title={name}
-          meta={<span className="font-mono text-xs">{definition.slug} · v{definition.versionNumber} · {definition.status}</span>}
+          meta={
+            <span className="font-mono text-xs">
+              {definition.slug} · v{definition.versionNumber} · {definition.status}
+            </span>
+          }
           actions={
             <Button type="button" variant="outline" size="sm" onClick={() => setMetadataOpen(true)}>
               <IconPencil aria-hidden />
@@ -395,7 +446,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       }
       statusBanner={
         <>
-          {autosave.paused ? <OccConflictAlert error={autosave.lastError} onReload={() => router.refresh()} onOverwrite={() => autosave.resume()} /> : null}
+          {autosave.paused ? (
+            <OccConflictAlert error={autosave.lastError} onReload={() => router.refresh()} onOverwrite={() => autosave.resume()} />
+          ) : null}
           {readOnly ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p role="status" className="text-muted-foreground text-sm">
@@ -428,6 +481,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           onAutoLayout={() => void handleAutoLayout()}
           onExport={handleExport}
           onImport={handleImport}
+          onExportBundle={() => void handleExportBundle()}
+          exportingBundle={exportBundle.isPending}
         />
       }
       footer={
@@ -439,7 +494,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                 {nodes.length} node{nodes.length === 1 ? '' : 's'} · {edges.length} connection{edges.length === 1 ? '' : 's'}
               </span>
               <span className={errorCount > 0 ? 'text-destructive' : undefined}>
-                {report ? `${errorCount} error${errorCount === 1 ? '' : 's'}, ${warningCount} warning${warningCount === 1 ? '' : 's'}` : 'Not yet validated'}
+                {report
+                  ? `${errorCount} error${errorCount === 1 ? '' : 's'}, ${warningCount} warning${warningCount === 1 ? '' : 's'}`
+                  : 'Not yet validated'}
               </span>
             </>
           }
@@ -461,7 +518,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               const parent = selectedNode?.type === LOOP_NODE_TYPE ? selectedNode : undefined;
               const siblings = parent ? nodes.filter((node) => node.parentId === parent.id).length : nodes.length;
               const position = parent ? { x: 24 + siblings * 260, y: 56 } : { x: 120, y: 120 + siblings * 100 };
-              storeApi.getState().addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position, parent ? { parentId: parent.id } : undefined);
+              storeApi
+                .getState()
+                .addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position, parent ? { parentId: parent.id } : undefined);
             }}
           />
         </aside>
@@ -529,7 +588,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             />
           )}
         </div>
-        <aside className="flex min-h-0 flex-col gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Inspector and validation panel">
+        <aside
+          className="flex min-h-0 flex-col gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto"
+          aria-label="Inspector and validation panel"
+        >
           <InspectorPanel
             node={selectedNode}
             configSchema={selectedNodeConfigSchema}
@@ -550,7 +612,12 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
         </aside>
       </div>
-      <PublishDialog open={publishOpen} onOpenChange={setPublishOpen} onConfirm={(activate) => void handlePublish(activate)} confirming={publishing} />
+      <PublishDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        onConfirm={(activate) => void handlePublish(activate)}
+        confirming={publishing}
+      />
       <DefinitionMetadataForm
         open={metadataOpen}
         onOpenChange={setMetadataOpen}

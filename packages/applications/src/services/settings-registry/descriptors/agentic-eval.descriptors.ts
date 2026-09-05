@@ -22,8 +22,33 @@ export type EvalPromotionGateMode = 'block' | 'warn' | 'off';
 
 export const AGENTIC_EVAL_PROMOTION_GATE_KEY = 'agentic.eval.promotionGate';
 
-/** Code default — mandatory blocking per OD-3. */
+/** Code default — mandatory blocking per OD-3. Governs template APPROVAL and prompt PIN re-point. */
 export const AGENTIC_EVAL_PROMOTION_GATE_DEFAULT: EvalPromotionGateMode = 'block';
+
+/**
+ * TASK-885 / owner #7 — the PATH-SCOPED default for WORKFLOW promotion (Global → SYSTEM).
+ *
+ * The owner's decision, in substance: *the eval promotion gate must not block the Global → SYSTEM
+ * path on evaluation evidence that does not exist yet — relax it to `warn` by default for that
+ * path while keeping `block` available.*
+ *
+ * Three things about the shape of that change, each deliberate:
+ *
+ * 1. **Same key, second default — not a second key.** A new registry key would need its own owner
+ *    decision and would move the program's key count; a path-scoped default expresses exactly
+ *    what was asked and nothing more. `EvalPromotionGateService.evaluateWorkflowPromotion` uses
+ *    this value ONLY when nobody has written `agentic.eval.promotionGate` (the resolver reports
+ *    `sourceScope: 'code-default'`). A written value wins on both paths, so `block` stays
+ *    available exactly as the owner required.
+ * 2. **The template-approval default is UNCHANGED.** Owner #7 relaxed the workflow-promotion
+ *    path. Approval is the OD-3 clinical control on a prompt that will generate clinical text,
+ *    and lowering it would be a safety regression nobody asked for.
+ * 3. **Relaxing this path is not "no gate".** The eval still RUNS and is still recorded; a
+ *    failure is reported as a warning on the promotion response instead of a 409. And what the
+ *    promotion produces is a SYSTEM template — it does not re-point any tenant's live traffic by
+ *    itself.
+ */
+export const AGENTIC_EVAL_WORKFLOW_PROMOTION_GATE_DEFAULT: EvalPromotionGateMode = 'warn';
 
 export const AGENTIC_EVAL_SETTINGS: SettingDescriptor[] = [
   {
@@ -40,7 +65,10 @@ export const AGENTIC_EVAL_SETTINGS: SettingDescriptor[] = [
     failMode: 'open-to-default',
     category: 'Agentic Eval',
     label: 'Eval promotion gate',
-    description: 'Governs the eval gate on template approval / agent pin re-point: block (fail → 409), warn (record only), or off.',
+    description:
+      'Governs the eval gate on template approval / agent pin re-point: block (fail → 409), warn (record only), or off. ' +
+      'Unset, the Global → SYSTEM workflow-promotion path resolves `warn` instead (TASK-885 / owner #7); any value written ' +
+      'here governs BOTH paths.',
     default: AGENTIC_EVAL_PROMOTION_GATE_DEFAULT,
   },
 ];

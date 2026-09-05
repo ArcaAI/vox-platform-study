@@ -111,9 +111,9 @@ export interface CreateWorkflowDefinitionRequest {
 }
 
 /**
-* `POST admin/workflow-definitions/:id/clone`. Deliberately carries NO `graph` or
+ * `POST admin/workflow-definitions/:id/clone`. Deliberately carries NO `graph` or
  *  `paletteKey`: both are derived server-side from the source row, so a caller can never pair
- *  one definition's provenance with another definition's bytes. 
+ *  one definition's provenance with another definition's bytes.
  */
 export interface CloneWorkflowDefinitionRequest {
   targetSlug: string;
@@ -164,7 +164,7 @@ export interface WorkflowNodePort {
 }
 
 /**
-* `WorkflowNodeDescriptor`'s wire projection (`WorkflowNodeResponse`). No `label` field yet
+ * `WorkflowNodeDescriptor`'s wire projection (`WorkflowNodeResponse`). No `label` field yet
  *  (registry.contract.md) — the Studio still derives a display label from `type`
  *  (`humanizeKey`). `configSchema` IS now on the delivered DTO (registry.contract.md's
  * resolution path #1: " adds a `configSchema` field… when it adds real palette node
@@ -175,7 +175,7 @@ export interface WorkflowNodePort {
  * `inputs`/`outputs` are the only other newly-delivered fields mirrored
  *  here — `trigger`/`lane`/`requires`/`idempotent`/`schemaVersion`/`evalGate` also landed on
  *  the wire DTO but have no Studio consumer yet, so they are left unmirrored rather than added
- *  speculatively; add them, hand-mirrored the same way, when a task actually reads them. 
+ *  speculatively; add them, hand-mirrored the same way, when a task actually reads them.
  */
 export interface WorkflowNodeDescriptor {
   type: string;
@@ -352,4 +352,33 @@ export interface AgentOption {
   versionNumber?: number;
   tenantId?: string;
   description?: string | null;
+}
+
+/**
+ * TASK-885 (owner #4) — the portable JSON a tenant admin exports and imports.
+ *
+ * Mirrored field-for-field from `WorkflowDefinitionBundle` on the server; the console never
+ * constructs one (export downloads what the gateway returned, import uploads what the user
+ * chose), so this type exists to keep the import dialog's shape check honest rather than to
+ * build a payload.
+ */
+export interface WorkflowDefinitionBundle {
+  kind: 'workflow-definition';
+  schemaVersion: number;
+  exportedAt: string;
+  source: { tenantKind: 'system' | 'global' | 'tenant'; slug: string; versionNumber: number };
+  payload: {
+    name: string;
+    description?: string | null;
+    paletteKey: string;
+    graph: Record<string, unknown>;
+    /** Prompt templates by name, document templates / agents / models by slug, routing by task key. */
+    references: { nodeId: string; kind: string; key: string }[];
+  };
+}
+
+export interface ImportWorkflowDefinitionRequest {
+  targetSlug: string;
+  name?: string;
+  bundle: WorkflowDefinitionBundle;
 }
