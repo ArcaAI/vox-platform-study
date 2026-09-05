@@ -6,7 +6,7 @@ import { IPromptManagementService } from './IPromptManagementService';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { DepartmentServiceModule } from '../department/department.service.module';
-import { AiTaskDefaultServiceModule } from '../ai-task-default/ai-task-default.service.module';
+import { AgentServiceModule } from '../agent/agent.service.module';
 import { TextRequestServiceModule } from '../text-request/text-request.service.module';
 import { UserProfileServiceModule } from '../user/userProfile/userProfile.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
@@ -15,8 +15,9 @@ import { EvalServiceModule } from '../eval/eval.service.module';
 @Module({
   // HttpModule + ConfigModule wire the TEXT/text-generation client
   // used by the prompt-test endpoint (mirrors SummaryServiceModule).
-  // BUG-018: AiTaskDefaultServiceModule supplies the `text.test` model resolver
-  // (replacing the harness policy module — the test bench is not harness), and
+  // TASK-876: AgentServiceModule supplies `TextAgentResolverService` — the test bench runs on
+  // the tenant's ASSIGNED TEXT_GENERATION agent, the same resolution every real generation
+  // makes (it used to select through the retired `text.test` AiTaskDefault key). And
   // TextRequestServiceModule supplies the shared tenant-credential + runtime-profile
   // enrichment the TEXT proxy uses.
   // UserProfileServiceModule supplies the preferred-template write.
@@ -27,7 +28,7 @@ import { EvalServiceModule } from '../eval/eval.service.module';
     DepartmentServiceModule,
     ConfigModule,
     HttpModule,
-    AiTaskDefaultServiceModule,
+    AgentServiceModule,
     TextRequestServiceModule,
     UserProfileServiceModule,
     EntitlementsServiceModule,
