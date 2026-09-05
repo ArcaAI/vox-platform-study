@@ -69,18 +69,9 @@ export class PlanEntitlementResponse {
   @ApiPropertyOptional({ description: 'Monthly embedding tokens allowance (D11); null = unlimited', nullable: true })
   monthlyEmbeddingTokens?: number | null;
 
-  @ApiProperty({ description: 'DNA writing-style + reports enabled' })
-  featureDnaReports: boolean;
-
-  @ApiProperty({ description: 'Voice enrollment / diarization enabled' })
-  featureVoiceEnrollment: boolean;
-
-  @ApiProperty({ description: 'Monitoring / telemetry access enabled' })
-  featureMonitoringAccess: boolean;
-
   @ApiProperty({
     description:
-      "May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED, not display-only. false on every plan — the grant is issued per tenant via the tenant-entitlement override.",
+      "May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED — it decides platform SPEND. false on every plan — the grant is issued per tenant via the tenant-entitlement override.",
   })
   featurePlatformDefaultCredential: boolean;
 
@@ -214,21 +205,6 @@ export class UpdatePlanEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlyEmbeddingTokens?: number | null;
-
-  @ApiPropertyOptional({ description: 'DNA writing-style + reports enabled' })
-  @IsOptional()
-  @IsBoolean()
-  featureDnaReports?: boolean;
-
-  @ApiPropertyOptional({ description: 'Voice enrollment / diarization enabled' })
-  @IsOptional()
-  @IsBoolean()
-  featureVoiceEnrollment?: boolean;
-
-  @ApiPropertyOptional({ description: 'Monitoring / telemetry access enabled' })
-  @IsOptional()
-  @IsBoolean()
-  featureMonitoringAccess?: boolean;
 
   @ApiPropertyOptional({
     description:

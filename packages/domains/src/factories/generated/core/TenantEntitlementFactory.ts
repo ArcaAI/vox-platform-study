@@ -25,9 +25,6 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   monthlyNlpTextUnits?: ITenantEntitlementEntity['monthlyNlpTextUnits'];
   monthlyEmbeddingTokens?: ITenantEntitlementEntity['monthlyEmbeddingTokens'];
   monthlySpendLimitMicros?: ITenantEntitlementEntity['monthlySpendLimitMicros'];
-  featureDnaReports?: ITenantEntitlementEntity['featureDnaReports'];
-  featureVoiceEnrollment?: ITenantEntitlementEntity['featureVoiceEnrollment'];
-  featureMonitoringAccess?: ITenantEntitlementEntity['featureMonitoringAccess'];
   featurePlatformDefaultCredential?: ITenantEntitlementEntity['featurePlatformDefaultCredential'];
   featurePaletteStt?: ITenantEntitlementEntity['featurePaletteStt'];
   featureAgenticLoop?: ITenantEntitlementEntity['featureAgenticLoop'];
@@ -73,9 +70,6 @@ export class TenantEntitlementFactory {
       monthlyNlpTextUnits: props.monthlyNlpTextUnits ?? null,
       monthlyEmbeddingTokens: props.monthlyEmbeddingTokens ?? null,
       monthlySpendLimitMicros: props.monthlySpendLimitMicros ?? null,
-      featureDnaReports: props.featureDnaReports ?? null,
-      featureVoiceEnrollment: props.featureVoiceEnrollment ?? null,
-      featureMonitoringAccess: props.featureMonitoringAccess ?? null,
       // `null` = inherit the plan (which is itself `false`), NOT deny —
       // the tri-state's three states are all load-bearing here.
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? null,

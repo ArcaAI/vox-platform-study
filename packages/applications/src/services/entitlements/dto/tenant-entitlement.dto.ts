@@ -65,15 +65,6 @@ export class TenantEntitlementResponse {
   @ApiPropertyOptional({ description: 'Override monthly embedding tokens allowance (D11); null = inherit', nullable: true })
   monthlyEmbeddingTokens?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override DNA reports feature; null = inherit', nullable: true })
-  featureDnaReports?: boolean | null;
-
-  @ApiPropertyOptional({ description: 'Override voice enrollment feature; null = inherit', nullable: true })
-  featureVoiceEnrollment?: boolean | null;
-
-  @ApiPropertyOptional({ description: 'Override monitoring access feature; null = inherit', nullable: true })
-  featureMonitoringAccess?: boolean | null;
-
   @ApiPropertyOptional({
     description:
       "Override the PLATFORM-DEFAULT (SYSTEM-tenant) provider-credential grant; null = inherit the plan (false on every plan), true = grant, false = explicit deny. A tenant's own DISABLED provider row is a stronger per-provider veto this grant never overrides.",
@@ -203,21 +194,6 @@ export class UpsertTenantEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlyEmbeddingTokens?: number | null;
-
-  @ApiPropertyOptional({ description: 'Override DNA reports feature; null = inherit', nullable: true })
-  @IsOptional()
-  @IsBoolean()
-  featureDnaReports?: boolean | null;
-
-  @ApiPropertyOptional({ description: 'Override voice enrollment feature; null = inherit', nullable: true })
-  @IsOptional()
-  @IsBoolean()
-  featureVoiceEnrollment?: boolean | null;
-
-  @ApiPropertyOptional({ description: 'Override monitoring access feature; null = inherit', nullable: true })
-  @IsOptional()
-  @IsBoolean()
-  featureMonitoringAccess?: boolean | null;
 
   @ApiPropertyOptional({
     description:

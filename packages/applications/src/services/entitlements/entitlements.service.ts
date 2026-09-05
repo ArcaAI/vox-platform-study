@@ -560,9 +560,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyBigIntField(request.monthlyTtsCharacters, (v) => (row.monthlyTtsCharacters = v));
     this.applyBigIntField(request.monthlyNlpTextUnits, (v) => (row.monthlyNlpTextUnits = v));
     this.applyBigIntField(request.monthlyEmbeddingTokens, (v) => (row.monthlyEmbeddingTokens = v));
-    if (request.featureDnaReports !== undefined) row.featureDnaReports = request.featureDnaReports;
-    if (request.featureVoiceEnrollment !== undefined) row.featureVoiceEnrollment = request.featureVoiceEnrollment;
-    if (request.featureMonitoringAccess !== undefined) row.featureMonitoringAccess = request.featureMonitoringAccess;
     if (request.featurePlatformDefaultCredential !== undefined) row.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) row.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) row.rateLimitTier = request.rateLimitTier;
@@ -636,9 +633,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
         request.monthlyNlpTextUnits === null || request.monthlyNlpTextUnits === undefined ? null : BigInt(request.monthlyNlpTextUnits),
       monthlyEmbeddingTokens:
         request.monthlyEmbeddingTokens === null || request.monthlyEmbeddingTokens === undefined ? null : BigInt(request.monthlyEmbeddingTokens),
-      featureDnaReports: request.featureDnaReports ?? null,
-      featureVoiceEnrollment: request.featureVoiceEnrollment ?? null,
-      featureMonitoringAccess: request.featureMonitoringAccess ?? null,
       featurePlatformDefaultCredential: request.featurePlatformDefaultCredential ?? null,
       modelTier: request.modelTier ?? null,
       rateLimitTier: request.rateLimitTier ?? null,
@@ -679,9 +673,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.monthlyTtsCharacters = null;
     existing.monthlyNlpTextUnits = null;
     existing.monthlyEmbeddingTokens = null;
-    existing.featureDnaReports = null;
-    existing.featureVoiceEnrollment = null;
-    existing.featureMonitoringAccess = null;
     existing.featurePlatformDefaultCredential = null;
     existing.modelTier = null;
     existing.rateLimitTier = null;
@@ -752,9 +743,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyBigIntField(request.monthlyTtsCharacters, (v) => (entity.monthlyTtsCharacters = v));
     this.applyBigIntField(request.monthlyNlpTextUnits, (v) => (entity.monthlyNlpTextUnits = v));
     this.applyBigIntField(request.monthlyEmbeddingTokens, (v) => (entity.monthlyEmbeddingTokens = v));
-    if (request.featureDnaReports !== undefined) entity.featureDnaReports = request.featureDnaReports;
-    if (request.featureVoiceEnrollment !== undefined) entity.featureVoiceEnrollment = request.featureVoiceEnrollment;
-    if (request.featureMonitoringAccess !== undefined) entity.featureMonitoringAccess = request.featureMonitoringAccess;
     if (request.featurePlatformDefaultCredential !== undefined) entity.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) entity.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) entity.rateLimitTier = request.rateLimitTier;
@@ -801,9 +789,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyTtsCharacters: toAllowanceNumber(row.monthlyTtsCharacters),
       monthlyNlpTextUnits: toAllowanceNumber(row.monthlyNlpTextUnits),
       monthlyEmbeddingTokens: toAllowanceNumber(row.monthlyEmbeddingTokens),
-      featureDnaReports: row.featureDnaReports,
-      featureVoiceEnrollment: row.featureVoiceEnrollment,
-      featureMonitoringAccess: row.featureMonitoringAccess,
       featurePlatformDefaultCredential: row.featurePlatformDefaultCredential,
       modelTier: row.modelTier,
       rateLimitTier: row.rateLimitTier,
@@ -832,9 +817,6 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyTtsCharacters: toAllowanceNumber(row.monthlyTtsCharacters),
       monthlyNlpTextUnits: toAllowanceNumber(row.monthlyNlpTextUnits),
       monthlyEmbeddingTokens: toAllowanceNumber(row.monthlyEmbeddingTokens),
-      featureDnaReports: row.featureDnaReports ?? null,
-      featureVoiceEnrollment: row.featureVoiceEnrollment ?? null,
-      featureMonitoringAccess: row.featureMonitoringAccess ?? null,
       featurePlatformDefaultCredential: row.featurePlatformDefaultCredential ?? null,
       modelTier: row.modelTier ?? null,
       rateLimitTier: row.rateLimitTier ?? null,

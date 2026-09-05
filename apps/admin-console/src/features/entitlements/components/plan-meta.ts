@@ -57,13 +57,4 @@ export const LIMIT_FIELDS: LimitField[] = [
   { key: 'storageQuotaBytes', label: 'Storage quota (bytes)' },
 ];
 
-export interface FeatureField {
-  key: 'featureDnaReports' | 'featureVoiceEnrollment' | 'featureMonitoringAccess';
-  label: string;
-}
 
-export const FEATURE_FIELDS: FeatureField[] = [
-  { key: 'featureDnaReports', label: 'DNA reports' },
-  { key: 'featureVoiceEnrollment', label: 'Voice enrollment' },
-  { key: 'featureMonitoringAccess', label: 'Monitoring access' },
-];

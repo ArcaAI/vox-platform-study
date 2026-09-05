@@ -8,18 +8,21 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { GatewayError } from '@/shared/api';
 import type { TenantPlan } from '@/features/tenants/api/types';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { usePlanEntitlement, useUpdatePlanEntitlement } from '../api/hooks';
 import type { PlanEntitlement, UpdatePlanEntitlementRequest } from '../api/types';
-import { FEATURE_FIELDS, LIMIT_FIELDS, PLAN_LABELS } from './plan-meta';
+import { LIMIT_FIELDS, PLAN_LABELS } from './plan-meta';
 
+/**
+ * TASK-883 retired the three display-only plan booleans, and every surviving
+ * `PlanEntitlement` feature flag is enforcing and platform-owned rather than
+ * plan-editable — so this form has limits and tiers, and no feature switches.
+ */
 interface PlanFormValues {
   limits: Record<string, string>;
-  features: Record<string, boolean>;
   modelTier: string;
   rateLimitTier: string;
 }
@@ -30,11 +33,7 @@ function toFormValues(entitlement: PlanEntitlement): PlanFormValues {
     const value = entitlement[field.key];
     limits[field.key] = value === null || value === undefined ? '' : String(value);
   }
-  const features: Record<string, boolean> = {};
-  for (const field of FEATURE_FIELDS) {
-    features[field.key] = entitlement[field.key];
-  }
-  return { limits, features, modelTier: entitlement.modelTier, rateLimitTier: entitlement.rateLimitTier };
+  return { limits, modelTier: entitlement.modelTier, rateLimitTier: entitlement.rateLimitTier };
 }
 
 function isOccError(error: unknown): boolean {
@@ -74,9 +73,6 @@ function PlanEditForm({
       modelTier: values.modelTier.trim(),
       rateLimitTier: values.rateLimitTier.trim(),
     };
-    for (const field of FEATURE_FIELDS) {
-      body[field.key] = values.features[field.key];
-    }
     for (const field of LIMIT_FIELDS) {
       const raw = values.limits[field.key].trim();
       if (raw === '') {
@@ -145,18 +141,6 @@ function PlanEditForm({
             className="font-mono"
           />
         </div>
-        {FEATURE_FIELDS.map((field) => (
-          <div key={field.key} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
-            <Label htmlFor={`plan-edit-${field.key}`} className="font-normal">
-              {field.label}
-            </Label>
-            <Switch
-              id={`plan-edit-${field.key}`}
-              checked={values.features[field.key]}
-              onCheckedChange={(next) => setValues((current) => ({ ...current, features: { ...current.features, [field.key]: next } }))}
-            />
-          </div>
-        ))}
       </div>
       {fieldError ? (
         <p role="alert" className="text-destructive text-sm">

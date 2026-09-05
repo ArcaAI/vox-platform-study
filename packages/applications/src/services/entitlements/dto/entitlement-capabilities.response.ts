@@ -44,20 +44,17 @@ export class CapabilityUsageRow {
   exceeded: boolean;
 }
 
+/**
+ * The resolved feature capabilities served to the console and the SDK.
+ *
+ * TASK-883 removed `dnaReports` / `voiceEnrollment` / `monitoringAccess` from
+ * this payload: they were display-only — three console badges and no gate.
+ */
 export class ResolvedFeaturesResponse {
-  @ApiProperty({ description: 'DNA writing-style + reports (F2)' })
-  dnaReports: boolean;
-
-  @ApiProperty({ description: 'Voice enrollment / diarization (F3)' })
-  voiceEnrollment: boolean;
-
-  @ApiProperty({ description: 'Monitoring / telemetry access (F5)' })
-  monitoringAccess: boolean;
-
   /**
    * whether the tenant's plan includes the harness agentic loop.
    * Declared here so the console and SDK can render the loop as what it is: a
-   * subscription feature. Note this class still under-declares two older
+   * subscription feature. Note this class still under-declares two other
    * booleans the runtime payload carries (`platformDefaultCredential`,
    * `paletteStt`); adding them belongs to whoever owns those features.
    */

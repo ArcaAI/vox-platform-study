@@ -106,9 +106,6 @@ const fakePlanEntity = (o: Record<string, unknown> = {}) => ({
   monthlyTtsCharacters: null as bigint | null,
   monthlyNlpTextUnits: null as bigint | null,
   monthlyEmbeddingTokens: null as bigint | null,
-  featureDnaReports: false,
-  featureVoiceEnrollment: false,
-  featureMonitoringAccess: false,
   modelTier: 'base',
   rateLimitTier: 'strict',
   version: 1,
@@ -134,9 +131,6 @@ const fakeTenantEntity = (o: Record<string, unknown> = {}) => ({
   monthlyTtsCharacters: null as bigint | null,
   monthlyNlpTextUnits: null as bigint | null,
   monthlyEmbeddingTokens: null as bigint | null,
-  featureDnaReports: null,
-  featureVoiceEnrollment: null,
-  featureMonitoringAccess: null,
   modelTier: null,
   rateLimitTier: null,
   rateLimitPerMinute: null,
@@ -261,9 +255,10 @@ describe('EntitlementsService', () => {
   });
 
   /*
-   * `isFeatureEnabled`, the first ENFORCING read of a boolean
-   * entitlement (the three pre-existing feature booleans are
-   * display-only, read by nothing but `getCapabilities` and the console).
+   * `isFeatureEnabled`, the ENFORCING read of a boolean entitlement. It was
+   * the FIRST such read: the three display-only booleans that preceded it were
+   * consulted by nothing but `getCapabilities` and the console, and TASK-883
+   * retired them.
    *
    * Non-throwing by design: the caller (`AiProviderConnectionService.cascadeRows`)
    * uses it to SHAPE a credential cascade, at a point where nobody yet knows
@@ -295,9 +290,9 @@ describe('EntitlementsService', () => {
     it('reads the other feature booleans through the same path', async () => {
       values.set('entitlements.enabled', true);
       arrangeTenant(null);
-      // PRO seeds dnaReports=true, monitoringAccess=false.
-      await expect(makeService().isFeatureEnabled('tenant-1', 'dnaReports')).resolves.toBe(true);
-      await expect(makeService().isFeatureEnabled('tenant-1', 'monitoringAccess')).resolves.toBe(false);
+      // PRO seeds paletteStt=true, agenticLoop=true; STARTER seeds agenticLoop=false.
+      await expect(makeService().isFeatureEnabled('tenant-1', 'paletteStt')).resolves.toBe(true);
+      await expect(makeService().isFeatureEnabled('tenant-1', 'agenticLoop')).resolves.toBe(true);
     });
 
     /*
