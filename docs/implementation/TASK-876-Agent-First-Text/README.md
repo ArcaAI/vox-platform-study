@@ -255,7 +255,7 @@ Re-run after the review round (2026-09-05):
 | `pnpm --filter @arcaai/workflow-contract test` | 35 files / 1492 tests passed |
 | `pnpm --filter @arcaai/applications test` | 661 files / 11559 tests passed (1 file, 4 tests skipped) |
 | `pnpm --filter @arcaai/applications lint` | 0 errors, 213 warnings (the pre-existing prettier/only-warn set — unchanged count) |
-| `pnpm --filter @arcaai/api typecheck` / `test` | clean; 280 files / 4219 tests passed (2 files, 4 tests skipped) |
+| `pnpm --filter @arcaai/api typecheck` / `test` | clean; 280 files / 4214 tests passed (2 files, 4 tests skipped) — +1 on the 4213 baseline: the `textPrimary` composition case on `harness-internal.controller.test.ts` |
 | `pnpm harness:test` | 6 failed / 2099 passed — the SAME six pre-existing replay failures. +15 on the baseline 2084: `test_core_agent_text_fallback_task876.py` 12 → 17 (the derived-tier attribution case, the `read_text_primary` tolerance case, and `TestActivityBudget` ×3) and the new `test_generate_text_fallback_task876.py` (10). No test removed. |
 | `pnpm harness:lint` / `pnpm harness:typecheck` | ruff clean; mypy "no issues found in 148 source files" |
 
