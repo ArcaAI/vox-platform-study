@@ -16,6 +16,7 @@ import { CONSULTATION_ENDPOINT_SETTINGS } from './descriptors/consultation-endpo
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
+import { GUARDRAIL_JUDGE_SETTINGS } from './descriptors/guardrail-judge.descriptors';
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
@@ -72,7 +73,11 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // `AiModel._metadata` (`policy` / `labelTaxonomy`) and are resolved by the
   // same cascade that chose the model — a threshold calibrated for one
   // checkpoint is meaningless against another. The two judge hyper-parameters
-  // and the judge timeout get their homes in wave 2; see the ticket README.
+  // and the judge timeout got their homes in wave 2 (TASK-878): the two
+  // hyper-parameters are MODEL-COUPLED and ride `AiModel._metadata.policy`
+  // (fail-closed, resolved by the cascade that chose the model), and the timeout
+  // is the platform-scope peer-call budget below.
+  ...GUARDRAIL_JUDGE_SETTINGS,
   // The tenant's VISIT-TYPE catalogue — the label set that
   // used to be a derived literal in nine places. `maxScope: 'tenant'`, so a
   // tenant defines its own and one with no opinion inherits the two shipped

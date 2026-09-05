@@ -56,6 +56,30 @@ describe('SYSTEM granite-guardian-4.1-8b row carries the guardrail policy blob',
     expect(row.metaData?.policy?.injectionScreeningCriteria).toBeUndefined();
   });
 
+  // TASK-878 — the two judge hyperparameters. Unlike injectionScreeningCriteria
+  // above they DO have a reader (`core/tenant_config.build_judge_client`), which
+  // is the whole distinction: a fail-closed key without a reader is unreviewed
+  // policy, a fail-closed key without a SEEDED VALUE is a permanent 503.
+  it('seeds judgeTemperature and judgeMaxTokens at the JudgePolicy literals they replaced', () => {
+    const row = findGraniteRow();
+    // Verbatim from `apps/guardrail/src/guardrail/core/config.py::JudgePolicy`
+    // before TASK-878 deleted them (`temperature = 0.05`, `max_tokens = 300`),
+    // so moving them off the code default changed no behaviour.
+    expect(row.metaData?.policy?.judgeTemperature).toBe(0.05);
+    expect(row.metaData?.policy?.judgeMaxTokens).toBe(300);
+  });
+
+  it('keeps both inside the declared bounds of core/policy.py::_SPECS', () => {
+    // `judgeTemperature` [0.0, 2.0], `judgeMaxTokens` [1, 100000]. A fail-closed
+    // key is never clamped — an out-of-range seed would 503 the validate route
+    // exactly as an absent one does, so the bounds are checked on this side too.
+    const policy = findGraniteRow().metaData!.policy!;
+    expect(policy.judgeTemperature).toBeGreaterThanOrEqual(0);
+    expect(policy.judgeTemperature).toBeLessThanOrEqual(2);
+    expect(policy.judgeMaxTokens).toBeGreaterThanOrEqual(1);
+    expect(policy.judgeMaxTokens).toBeLessThanOrEqual(100_000);
+  });
+
   it('is the only DEFAULT_AI_MODELS row carrying a policy blob (no accidental spread onto other rows)', () => {
     const withPolicy = DEFAULT_AI_MODELS.filter((m) => m.metaData?.policy !== undefined);
     expect(withPolicy.map((m) => `${m.tenantId}::${m.slug}`)).toEqual([`${SYSTEM_TENANT_ID}::granite-guardian-4.1-8b`]);
@@ -106,7 +130,14 @@ describe('seedAiModels propagates the policy blob to an existing AiModel row', (
     // TASK-860 added the publisher's `hubArtifact` next to the policy blob;
     // the policy itself must still travel verbatim.
     expect(update!.data.metaData).toMatchObject({
-      policy: { medicalValidationCriteria: RECOVERED_MEDICAL_VALIDATION_CRITERIA },
+      policy: {
+        medicalValidationCriteria: RECOVERED_MEDICAL_VALIDATION_CRITERIA,
+        // TASK-878: the judge hyperparameters ride the SAME full-column write —
+        // a `db:seed` re-run against a dev DB that already has this row must
+        // propagate them, or the validate route 503s on an existing install.
+        judgeTemperature: 0.05,
+        judgeMaxTokens: 300,
+      },
     });
   });
 
