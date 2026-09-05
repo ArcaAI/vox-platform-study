@@ -56,5 +56,3 @@ export const LIMIT_FIELDS: LimitField[] = [
   { key: 'monthlySummaries', label: 'Monthly summaries' },
   { key: 'storageQuotaBytes', label: 'Storage quota (bytes)' },
 ];
-
-
