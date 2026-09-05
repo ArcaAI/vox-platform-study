@@ -451,12 +451,47 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
     )
 
 
+async def _resolve_availability(app_state: Any, tenant_id: str) -> Any:
+    """Resolve WHICH screening policies apply to ``tenant_id`` (TASK-886).
+
+    Falls back to the FULL declared set — never an empty one — when the resolver
+    is not wired or the read fails. That is deliberately UNLIKE `_resolve_selection`
+    above, which raises: an unresolved model SELECTION means there is nothing to
+    run at all, whereas an unresolved AVAILABILITY has a strictest answer
+    available in code (`PLATFORM_DEFAULT_AVAILABILITY`). Screening more than the
+    tenant selected is the safe direction; screening less is not, and 503-ing a
+    request whose gate could have run is worse than both.
+
+    The fallback is LOGGED, because "every check ran" and "we could not read
+    which checks to run" must be distinguishable after the fact.
+    """
+    from guardrail.core.availability import PLATFORM_DEFAULT_AVAILABILITY
+
+    resolver = getattr(app_state, "tenant_config_resolver", None)
+    if resolver is None:
+        return PLATFORM_DEFAULT_AVAILABILITY
+    try:
+        return await resolver.resolve_availability(tenant_id)
+    except Exception as exc:  # noqa: BLE001 — see the docstring: strictest set, logged
+        logger.warning(
+            "guardrail.availability.unavailable",
+            tenant_id=tenant_id,
+            error=type(exc).__name__,
+        )
+        return PLATFORM_DEFAULT_AVAILABILITY
+
+
 async def build_screener(app_state: Any, tenant_id: str) -> Any:
     """Build the bidirectional screener for one tenant.
 
     Reuses `build_safety_analyzer` verbatim — one selection path, one taxonomy,
     one fail-closed posture — and layers the screening policy (containment size
     bound, PII-leak score floor) resolved through the SAME two-tier cascade.
+
+    TASK-886 adds the AVAILABILITY set on the same two tiers. Both screens
+    (`/guardrail/screen/inbound` and `/guardrail/screen/outbound`) are built
+    HERE, so honouring the selection on both is structural rather than two
+    call sites remembering to do it.
     """
     from guardrail.core.policy import GuardrailPolicy
     from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
@@ -474,6 +509,7 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
         policy_source_tenant_id=policy.source_tenant_id,
         max_untrusted_chars=policy.max_untrusted_chars,
         pii_leak_min_score=policy.pii_leak_min_score,
+        availability=await _resolve_availability(app_state, tenant_id),
     )
 
 

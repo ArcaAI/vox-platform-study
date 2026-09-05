@@ -97,11 +97,13 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // present at commit 567d4baf5^, deleted by 567d4baf5). Not paraphrased —
     // a fabricated clinical-validator prompt would be worse than none.
     //
-    // `injectionScreeningCriteria` (also `failMode: closed`) is declared in
-    // `core/policy.py` but UNUSED by any call site today (reserved for a
-    // future LLM-judge second opinion on the inbound path). Deliberately NOT
-    // seeded here: authoring criteria text for a check nothing resolves yet
-    // would be unreviewed policy masquerading as shipped configuration.
+    // `injectionScreeningCriteria` is GONE (TASK-886). It was declared in
+    // `core/policy.py` with no reader anywhere — reserved for an inbound
+    // LLM-judge second opinion that was never built — and was deliberately
+    // never seeded here for that reason. The declaration itself has now been
+    // removed too: a fail-closed key with no reader advertises a control an
+    // admin cannot move, which is worse than an absent one. If that lane is
+    // ever built, the key returns IN THE SAME CHANGE as its reader.
     //
     // `judgeTemperature` / `judgeMaxTokens` (TASK-878, both `failMode: closed`)
     // ARE seeded, because unlike the above they have a reader: they were
