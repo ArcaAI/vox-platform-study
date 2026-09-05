@@ -25,7 +25,10 @@ describe('SettingsCatalogController.getCatalog', () => {
     expect(res.items.some((i) => i.key === 'entitlements.enabled')).toBe(false);
     expect(res.items.every((i) => !i.globalOnly)).toBe(true);
     expect(res.items.some((i) => i.key === 'pipeline.autoSummaryEnabled')).toBe(true);
-    expect(res.items.some((i) => i.key === 'tts.credential.azure')).toBe(true);
+    // Specimen changed in TASK-872: `tts.credential.azure` was removed with the
+    // rest of the `db-secret` tier. `tts.defaultVoiceEn` is the same shape for
+    // this assertion — tenant-editable, not `globalOnly`.
+    expect(res.items.some((i) => i.key === 'tts.defaultVoiceEn')).toBe(true);
   });
 
   it('categories are distinct and sorted', () => {

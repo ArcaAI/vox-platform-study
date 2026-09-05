@@ -83,21 +83,31 @@ export class AiRoutingPolicyRepository extends Repository<AiRoutingPolicyEntity,
    * so the newest authored revision wins a tie. The ELECTED default is picked
    * out by the service, not by this ordering, because `isDefault` outranks
    * `priority`.
+   *
+   * `includeParked` (TASK-872) widens the read to rows a tenant has switched
+   * OFF — `resourceStatus: DISABLED` or `enabled: false`. It exists because
+   * those two states are NOT absence: under the platform's three-state rule a
+   * tenant's own disabled selection is a VETO, and a resolver that cannot SEE
+   * the parked row cannot tell "vetoed" from "never configured" and widens to
+   * SYSTEM. Deciding which of the two it is stays in the application service —
+   * this option only stops the row disappearing before the service can look.
+   * DELETED rows are still excluded: a soft-deleted configuration is gone, not
+   * parked.
  */
   async findCandidates(
     tenantIds: string[],
     taskKey: string,
     tx?: Prisma.TransactionClient | any,
-    options: { activeOnly?: boolean; enabledOnly?: boolean } = {},
+    options: { activeOnly?: boolean; enabledOnly?: boolean; includeParked?: boolean } = {},
   ): Promise<AiRoutingPolicyEntity[]> {
-    const { activeOnly = true, enabledOnly = true } = options;
+    const { activeOnly = true, enabledOnly = true, includeParked = false } = options;
     const where: Record<string, unknown> = {
       tenantId: { in: tenantIds },
       taskKey,
-      resourceStatus: ResourceStatusType.ENABLED,
+      resourceStatus: includeParked ? { not: ResourceStatusType.DELETED } : ResourceStatusType.ENABLED,
     };
     if (activeOnly) where.status = AiRoutingPolicyStatus.ACTIVE;
-    if (enabledOnly) where.enabled = true;
+    if (enabledOnly && !includeParked) where.enabled = true;
 
     const orderBy = [{ priority: 'asc' as const }, { policyVersion: 'desc' as const }];
     // `this.db` is the EXTENDED delegate (tenant-scope + soft-delete

@@ -1,25 +1,72 @@
 // AI task-model default descriptors.
 //
-// One `models.<taskKey>` descriptor per `AiTaskDefault` task key. The value is
-// a registry model slug (dataType `string`) living in the dedicated
-// `AiTaskDefault` table (tier `db-config`, tenant → SYSTEM cascade resolved by
-// `AiTaskDefaultService.getEffective`).
+// One `models.<taskKey>` descriptor per `AiTaskDefault` task key that a request
+// path actually resolves — see `UNCATALOGUED_TASK_KEYS` below for the five that
+// TASK-872 excluded and why. The value is a registry model slug (dataType
+// `string`) living in the dedicated `AiTaskDefault` table (tier `db-config`,
+// tenant → SYSTEM cascade resolved by `AiTaskDefaultService.getEffective`).
 //
-// Governance: `nlp.*` and `harness.*` keys are SUPER_ADMIN-ONLY —
+// Governance: `nlp.*`, `harness.*` and — since owner decision #3 of
+// 2026-09-05 (TASK-872) — `guardrail.*` keys are SUPER_ADMIN-ONLY.
 // `editableBy` points at the super-admin resource (`'all'`, the CASL
 // manage-everything subject) and the descriptor is flagged `globalOnly`.
-// `text.*` and, since (owner decision 2026-08-16,
-// reversing the 2026-07-17 super-admin-only directive), `guardrail.*` are
-// tenant-admin configurable: their descriptors resolve to the tenant-editable
-// `AiTaskDefault` resource and are NOT flagged `globalOnly` (driven by
-// `SUPER_ADMIN_ONLY_TASK_PREFIXES`). `guardrail.*` writes still pass through
-// the D2 platform-approved-list floor enforced in `AiTaskDefaultService` —
-// this descriptor only governs WHO may attempt the write, not WHICH slugs.
+//
+// That reverses the 2026-08-16 decision this file used to record. The reason
+// is stated positively rather than as a swing: guardrail is BUILT-IN and
+// PLATFORM-ONLY. It gates every text-generation request before send and every
+// response after receive, for built-in and BYO providers alike, so no tenant
+// admin manages any guardrail setting — including which model does the
+// gating. Only `text.*` and `vlm.*` remain tenant-admin configurable: their
+// descriptors resolve to the tenant-editable `AiTaskDefault` resource and are
+// NOT flagged `globalOnly`.
+//
+// One predicate decides all of it — `isSuperAdminOnlyTaskKey`
+// (`ai-task-default/constants.ts`) — so the catalog, the write gate and the
+// runtime read resolution can never disagree about who owns a key. The D2
+// platform-approved-list floor in `AiTaskDefaultService.upsertRow` is
+// unchanged and still layered on top: it bounds WHICH slug may be bound, not
+// WHO may bind it.
 
 import { AI_TASK_KEYS, AiTaskKey, isSuperAdminOnlyTaskKey } from '../../ai-task-default/constants';
 import { SettingDescriptor } from '../registry.types';
 
-const META: Record<AiTaskKey, { label: string; description: string }> = {
+/**
+ * Task keys that get NO `models.<taskKey>` descriptor (TASK-872).
+ *
+ * A `models.*` descriptor offers an admin a SELECTION control on the settings
+ * surface. For these five there is nothing on the other end of it: no request
+ * path resolves the key, so a value written here would be stored, listed, and
+ * never consulted — the failure mode this registry's own fail-closed posture
+ * exists to prevent, arriving quietly instead of as a 503.
+ *
+ * The evidence, per key:
+ *   - `guardrail.pii.spans` — guardrail resolves `guardrail.pii` and only that
+ *     (`core/dependencies.py` → `TASK_KEY_GUARDRAIL_PII`). The `.spans` variant
+ *     has no reader in any service.
+ *   - `nlp.classification` — the seed calls its own SYSTEM election "an
+ *     explicitly DISABLED placeholder until a real doc-type model is seeded
+ *     (fails closed)".
+ *   - `nlp.sentiment`, `nlp.toxicity` — `SYSTEM_TASK_DEFAULT_EXEMPTIONS` in the
+ *     seed records both as OPEN OWNER DECISIONS: "no checkpoint has been
+ *     selected and no gateway route reaches the key".
+ *   - `vlm.extract` — same exemption list: "no deployable vision model is
+ *     loaded on the LM Studio instance".
+ *
+ * The TASK KEYS themselves stay in `AI_TASK_KEYS`, deliberately. They are
+ * `AiRoutingPolicy` domain vocabulary with their own admin routes, their own
+ * OpenAPI enum, their own console catalog and their own seed exemptions
+ * recording decisions the owner has not yet made. What is removed is only this
+ * registry's claim to be a control surface for them. When a reader appears for
+ * one, delete its line here and the descriptor comes back.
+ */
+const UNCATALOGUED_TASK_KEYS = ['guardrail.pii.spans', 'nlp.classification', 'nlp.sentiment', 'nlp.toxicity', 'vlm.extract'] as const;
+
+type UncataloguedTaskKey = (typeof UNCATALOGUED_TASK_KEYS)[number];
+type CataloguedTaskKey = Exclude<AiTaskKey, UncataloguedTaskKey>;
+
+const UNCATALOGUED = new Set<string>(UNCATALOGUED_TASK_KEYS);
+
+const META: Record<CataloguedTaskKey, { label: string; description: string }> = {
   // Tenant-admin configurable since, subject to the
   // platform-approved-list floor (a SYSTEM-tenant AiModel row is required).
   'guardrail.validate': {
@@ -37,44 +84,24 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     description:
       'Default MiniCheck NLI/entailment fact-checker used by the safety engine for groundedness verification. Selection is limited to the platform-approved model catalog.',
   },
-  // PII redaction selections. SUPER_ADMIN-only by owner decision
-  // (2026-08-24) via `SUPER_ADMIN_ONLY_TASK_KEYS`, not by the `guardrail.`
-  // prefix, which stays tenant-configurable: these two select nlp-hosted
-  // TOKEN_CLASSIFICATION models, and D-4 makes nlp-hosted models
-  // platform-shared. So `superAdminOnly` below resolves true for them and the
-  // descriptor is flagged `globalOnly`, exactly like `nlp.*`.
+  // PII redaction selection. SUPER_ADMIN-only — since owner decision #3 of
+  // 2026-09-05 that follows from the locked `guardrail.` prefix, so
+  // `superAdminOnly` below resolves true and the descriptor is flagged
+  // `globalOnly`, exactly like `nlp.*`. Its `guardrail.pii.spans` sibling is in
+  // `UNCATALOGUED_TASK_KEYS`: guardrail resolves this key and never that one.
   'guardrail.pii': {
     label: 'PII redaction model',
     description:
       'Default GLiNER2 span extractor used to detect and redact PII. Platform-wide: one vetted model serves every tenant (super admins only).',
   },
-  'guardrail.pii.spans': {
-    label: 'PII + safety span model',
-    description:
-      'Default GLiNER2 model returning PII spans and safety labels in one pass. Platform-wide: one vetted model serves every tenant (super admins only).',
-  },
   'nlp.ner': {
     label: 'Medical NER model',
     description: 'Default token-classification model used for medical entity extraction.',
-  },
-  'nlp.classification': {
-    label: 'Document-type classification model',
-    description: 'Default text-classification model used by the /classify/text document-type classifier (super admins only).',
   },
   // diagnosis suggester, split out of the doc-type classifier key.
   'nlp.diagnosis': {
     label: 'Diagnosis suggestion model',
     description: 'Default text-classification model used for symptom→disease diagnosis suggestions (super admins only).',
-  },
-  // sentiment / toxicity classifiers — same generic /classify/text
-  // path as nlp.classification/nlp.diagnosis (super admins only).
-  'nlp.sentiment': {
-    label: 'Sentiment classification model',
-    description: 'Default text-classification model used for sentiment classification (super admins only).',
-  },
-  'nlp.toxicity': {
-    label: 'Toxicity classification model',
-    description: 'Default text-classification model used for toxicity classification (super admins only).',
   },
   // TEXT generation routing (tenant-admin configurable).
   'text.live': {
@@ -110,15 +137,11 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Harness judge model',
     description: 'Default text-generation model used as the LLM-as-judge by the clinical documentation harness (super admins only).',
   },
-  // vision extraction — tenant-admin configurable, same
-  // governance class as text.*.
-  'vlm.extract': {
-    label: 'Vision extraction model',
-    description: 'Default vision-language model used to extract text/findings from an image attachment.',
-  },
 };
 
-export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.map<SettingDescriptor>((taskKey) => {
+export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.filter(
+  (taskKey): taskKey is CataloguedTaskKey => !UNCATALOGUED.has(taskKey),
+).map<SettingDescriptor>((taskKey) => {
   // Call the shared predicate rather than re-deriving it from the prefix list:
   // a second copy of the rule is how `SUPER_ADMIN_ONLY_TASK_KEYS` (the
   // key-level exceptions a prefix cannot express) would have been silently

@@ -38,7 +38,6 @@ def _payload(ttl_seconds: int | None = None) -> dict[str, Any]:
             "ttlSeconds": ttl_seconds,
             "maxModels": None,
             "maxMemoryMb": None,
-            "vramBudgetMb": None,
             "source": "db",
         },
     }

@@ -23,24 +23,38 @@ describe(' R6 — guardrail PII task keys', () => {
     for (const k of PII_KEYS) expect(AI_TASK_MODEL_TASK_TYPES[k]).toBe('TOKEN_CLASSIFICATION');
   });
 
-  it('are SUPER_ADMIN-only by KEY, not by prefix', () => {
+  it('are SUPER_ADMIN-only', () => {
     for (const k of PII_KEYS) expect(isSuperAdminOnlyTaskKey(k), k).toBe(true);
   });
 
-  // The regression this guards: widening the `guardrail.` prefix instead of
-  // using a key list would silently re-lock these three and reverse an owner
-  // decision as a side effect.
-  it('leave the rest of the guardrail prefix tenant-configurable', () => {
+  // TASK-872, owner decision #3 (2026-09-05): the WHOLE `guardrail.` prefix is
+  // now locked, so the PII keys are covered by the prefix rather than by the
+  // key-level exception that used to carry them. The assertion this replaces
+  // guarded the opposite posture — that widening the prefix would wrongly
+  // re-lock the sibling keys — and it is that posture the owner reversed:
+  // guardrail is built-in and platform-only, no tenant admin manages any
+  // guardrail setting.
+  it('sit inside a fully locked guardrail prefix — the siblings are super-admin-only too', () => {
     for (const k of ['guardrail.validate', 'guardrail.safety', 'guardrail.groundedness']) {
-      expect(isSuperAdminOnlyTaskKey(k), k).toBe(false);
+      expect(isSuperAdminOnlyTaskKey(k), k).toBe(true);
     }
   });
 
-  it('generate globalOnly, fail-closed descriptors so the console gates them', () => {
-    for (const k of PII_KEYS) {
-      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(`models.${k}`);
-      expect(d.globalOnly, k).toBe(true);
-      expect(d.failMode, k).toBe('closed');
-    }
+  it('generate a globalOnly, fail-closed descriptor for the key guardrail resolves', () => {
+    const d = HOPE_SETTINGS_REGISTRY.getOrThrow('models.guardrail.pii');
+    expect(d.globalOnly).toBe(true);
+    expect(d.failMode).toBe('closed');
+  });
+
+  // TASK-872 removed the `models.*` descriptor(s) for this key: no request
+  // path resolves it, so cataloguing it offered a SELECTION control with
+  // nothing on the other end. The task key itself is unchanged — it stays
+  // `AiRoutingPolicy` vocabulary with its own admin route and seed posture —
+  // so the assertion flips to the descriptor's ABSENCE.
+  // Here the evidence is direct: guardrail's `core/dependencies.py` resolves
+  // `TASK_KEY_GUARDRAIL_PII` ("guardrail.pii") and nothing anywhere resolves
+  // the `.spans` variant.
+  it('catalogue NO descriptor for guardrail.pii.spans — nothing resolves it', () => {
+    expect(HOPE_SETTINGS_REGISTRY.has('models.guardrail.pii.spans')).toBe(false);
   });
 });

@@ -2,9 +2,9 @@
 
 Structurally identical to `nlp.core.effective_config` / `text` / `stt`
 against the same frozen contract, exposing the ONLY subset guardrail consumes:
-`retention.{ttlSeconds,maxModels}` for the two aux-model caches. Model IDENTITY
-is untouched — it stays DB-selected per request from the SYSTEM `AiTaskDefault`
-registry and fails closed (`core/dependencies.py`).
+the PHI-redaction chunk budget and the groundedness gate's platform knobs.
+Model IDENTITY is untouched — it stays DB-selected per request from the SYSTEM
+`AiRoutingPolicy` election and fails closed (`core/dependencies.py`).
 
 Mechanics: TTL cache jittered ±10 %, negative cache (a down gateway costs at most
 one attempt per window, then callers keep their env values), single-flight
@@ -55,31 +55,19 @@ class EffectiveConfigSnapshot:
     ok: bool = False
     fetched_at: datetime | None = None
 
-    def retention(self) -> dict[str, int]:
-        """Model-cache retention knobs with an opinion.
-
-        An omitted key means "keep the env/bootstrap value"; a null or
-        non-positive value is never coerced into a real number.
-        """
-        group = self.raw.get("retention")
-        if not isinstance(group, dict):
-            return {}
-
-        mapping = {
-            "ttl_seconds": group.get("ttlSeconds"),
-            "max_models": group.get("maxModels"),
-        }
-        return {
-            key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None
-        }
+    # `retention()` was here. It parsed `retention.{ttlSeconds,maxModels}` for
+    # "the two aux-model caches" and had ZERO callers in this service — the
+    # gateway served three `guardrail.modelCache.*` keys that nothing read.
+    # TASK-872 removed the descriptors and this accessor together; the gateway
+    # now sends guardrail no `retention` group at all, which is the same answer
+    # every client already treats as "keep your own values".
 
     def redaction(self) -> dict[str, int]:
         """PHI-redaction knobs — currently the per-call GLiNER chunk budget.
 
-        Same "an omitted key means keep your own value" contract as
-        :meth:`retention`: a missing group, a null, or a non-positive value all
-        yield `{}` so the caller keeps its built-in bound rather than
-        interpreting the silence as "no limit".
+        "An omitted key means keep your own value": a missing group, a null, or
+        a non-positive value all yield `{}` so the caller keeps its built-in
+        bound rather than interpreting the silence as "no limit".
         """
         group = self.raw.get("redaction")
         if not isinstance(group, dict):
@@ -95,8 +83,8 @@ class EffectiveConfigSnapshot:
         descriptor naming `consumedBy: ['guardrail']` is served at
         `settings["<dotted.key>"]` automatically, so a new knob needs no frozen
         group, no response-DTO field and no per-service `switch`. The older
-        `retention`/`redaction` accessors above are the pre-Phase-1 shape, kept
-        because their consumers predate this one.
+        `redaction` accessor above is the pre-Phase-1 shape, kept because its
+        consumer predates this one.
 
         Returns None for a failed fetch, an absent map, an absent key or an
         explicit null — every "the control plane has no opinion" case collapses
@@ -268,11 +256,10 @@ class EffectiveConfigClient:
         }
 
     def _sources(self) -> dict[str, str]:
-        sources: dict[str, str] = {}
-        value = self._snapshot.raw.get("retention")
-        if isinstance(value, dict) and isinstance(value.get("source"), str):
-            sources["retention"] = value["source"]
-        return sources
+        # Empty since TASK-872: the only entry was `retention`, whose accessor
+        # had no callers and whose descriptors are gone. Kept as the extension
+        # point `diagnostics()` reads — a new group adds one line here.
+        return {}
 
     def _expired(self) -> bool:
         return self._expires_at is None or self._time() >= self._expires_at

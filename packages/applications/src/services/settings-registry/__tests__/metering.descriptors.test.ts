@@ -11,7 +11,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
-import { toEnvVarName } from '../registry.types';
 import { DRAIN_DEFAULTS, DRAIN_ENABLED_KEY, DRAIN_INTERVAL_SECONDS_KEY } from '../../usageLedger/usage-ledger.constants';
 import { METERING_DEFAULTS, METERING_ENABLED_KEY } from '../../metering/metering.constants';
 
@@ -51,17 +50,16 @@ describe('metering descriptors', () => {
     expect(descriptor!.default).toBe(false);
   });
 
-  it('registers metering.reconcile.enabledDefault as the seed-time-only companion (env tier, mirrors entitlements.enabledDefault)', () => {
-    const descriptor = registryByKey.get('metering.reconcile.enabledDefault');
-    expect(descriptor).toBeDefined();
-    expect(descriptor!.tier).toBe('env');
-    expect(descriptor!.targetTier).toBe('global-kv');
-    expect(descriptor!.dataType).toBe('boolean');
-    expect(descriptor!.failMode).toBe('open-to-default');
-    expect(descriptor!.default).toBe(false);
-    // Not a runtime gate — no admin write surface (mirrors entitlements.enabledDefault).
-    expect(descriptor!.editableBy).toBe('none');
-    expect(toEnvVarName(descriptor!.key)).toBe('METERING_RECONCILE_ENABLED_DEFAULT');
+  // Was: "registers metering.reconcile.enabledDefault as the seed-time-only
+  // companion". TASK-872 deleted that descriptor and its
+  // `entitlements.enabledDefault` twin, so the assertion flips to the absence.
+  // The SEED is unaffected and keeps its `process.env` override — what must not
+  // come back is a settings-registry descriptor for a variable no running
+  // process reads, because its only effect was to emit a stanza into the
+  // generated `.env.sample` that `pnpm setup:dev` then copies into `.env.dev`.
+  it('registers NO seed-time-only companion key — seeding reads host env, not this registry', () => {
+    expect(registryByKey.has('metering.reconcile.enabledDefault')).toBe(false);
+    expect(registryByKey.has('entitlements.enabledDefault')).toBe(false);
   });
 
   it('the registry assembles without throwing (killSwitches() re-validates default-OFF)', () => {

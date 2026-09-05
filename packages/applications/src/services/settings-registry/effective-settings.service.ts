@@ -164,8 +164,8 @@ export class EffectiveSettingsService {
     // Dispatched per key FAMILY to the service that owns that family's table —
     // never resolved here. `AiTaskDefault` (`models.*`) and `PipelinePolicy`
     // (`pipeline.*`) are handled above; `TenantStorageConfig` is handled below.
-    // Families whose values vary BY TENANT (`tts.defaultVoiceEn`,
-    // `stt.fallback.*`) deliberately have no lane: per owner decision D-1 they
+    // Families whose values vary BY TENANT (`tts.defaultVoiceEn`) deliberately
+    // have no lane: per owner decision D-1 they
     // travel the PUSH channel — per-request gateway injection — and putting
     // them on this PLATFORM-scope read would serve one tenant's value to all.
     //

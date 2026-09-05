@@ -74,45 +74,51 @@ class TestOverlay:
     def _snapshot(self, settings_block: dict[str, object]) -> dict[str, object]:
         return {"service": "stt", "settings": settings_block}
 
+    # Specimens changed in TASK-872. These four ran on `vad_threshold` /
+    # `vad_min_speech_duration_ms`, whose registry keys were removed: the live
+    # path takes its VAD parameters from `ResolvedAsrSpec`, so the control plane
+    # no longer claims to own them. `voice_profile_min_similarity` (float) and
+    # `vad_speech_pad_ms` (int) are still mapped, so the overlay mechanics below
+    # are exercised on knobs the control plane really does serve.
     def test_a_served_value_is_applied(self) -> None:
         settings = Settings(_env_file=None)
-        key = CONTROL_PLANE_KEYS["vad_threshold"]
+        key = CONTROL_PLANE_KEYS["voice_profile_min_similarity"]
         applied = apply_control_plane(
             settings, self._snapshot({key: {"value": 0.77, "dataType": "number", "source": "db"}})
         )
-        assert settings.vad_threshold == 0.77
-        assert "vad_threshold" in applied
+        assert settings.voice_profile_min_similarity == 0.77
+        assert "voice_profile_min_similarity" in applied
 
     def test_a_null_value_keeps_the_bootstrap_value(self) -> None:
         settings = Settings(_env_file=None)
-        before = settings.vad_threshold
-        key = CONTROL_PLANE_KEYS["vad_threshold"]
+        before = settings.voice_profile_min_similarity
+        key = CONTROL_PLANE_KEYS["voice_profile_min_similarity"]
         applied = apply_control_plane(
             settings,
             self._snapshot({key: {"value": None, "dataType": "number", "source": "env-fallback"}}),
         )
-        assert settings.vad_threshold == before
+        assert settings.voice_profile_min_similarity == before
         assert applied == []
 
     def test_a_type_mismatch_is_refused_not_coerced(self) -> None:
         settings = Settings(_env_file=None)
-        before = settings.vad_threshold
-        key = CONTROL_PLANE_KEYS["vad_threshold"]
+        before = settings.voice_profile_min_similarity
+        key = CONTROL_PLANE_KEYS["voice_profile_min_similarity"]
         apply_control_plane(
             settings,
             self._snapshot({key: {"value": "loud", "dataType": "number", "source": "db"}}),
         )
-        assert settings.vad_threshold == before
+        assert settings.voice_profile_min_similarity == before
 
     def test_a_bool_is_never_read_as_a_number(self) -> None:
         """`bool` is an `int` subclass — the trap `_positive_int` already guards."""
         settings = Settings(_env_file=None)
-        before = settings.vad_min_speech_duration_ms
-        key = CONTROL_PLANE_KEYS["vad_min_speech_duration_ms"]
+        before = settings.vad_speech_pad_ms
+        key = CONTROL_PLANE_KEYS["vad_speech_pad_ms"]
         apply_control_plane(
             settings, self._snapshot({key: {"value": True, "dataType": "number", "source": "db"}})
         )
-        assert settings.vad_min_speech_duration_ms == before
+        assert settings.vad_speech_pad_ms == before
 
     def test_an_empty_string_leaves_a_nullable_field_unset(self) -> None:
         """`''` is how a nullable string key spells "no opinion" on the wire.

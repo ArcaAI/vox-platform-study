@@ -33,6 +33,7 @@ import {
   ResolvedTaskDefault,
 } from './IAiRoutingPolicyService';
 import { AiRoutingPolicyDtoMapper } from './ai-routing-policy.dto.mapper';
+import { TaskSelectionVetoedError } from './task-selection-veto';
 import { AiRoutingPolicyResponse, CreateAiRoutingPolicyRequest, EffectiveRoutingPolicyResponse, UpdateAiRoutingPolicyRequest } from './dto';
 import { FundedCandidate, RoutingHopRejection, evaluateHop } from './routing-gates';
 import {
@@ -64,6 +65,21 @@ import { AI_TASK_KIND_BY_TASK_KEY } from '../ai-task-default/constants';
  * endpoint, region, model and credential all still come from configuration.
  */
 const ROUTING_CONNECTION_SERVICE: ProviderService = 'llm';
+
+/**
+ * Is this row SERVABLE? The two ways an administrator parks a configuration —
+ * soft-disabling the record (`resourceStatus`) and clearing the candidate's own
+ * `enabled` switch — mean the same thing to a resolver, so they are asked once,
+ * here, rather than re-spelled at each call site.
+ *
+ * It mirrors `AiRoutingPolicyRepository.findCandidates`' default WHERE clause on
+ * purpose: `resolveDefault` reads with `includeParked` and re-applies the filter
+ * in memory, so the two must agree on what "live" means or the veto would fire
+ * on rows the database would have served.
+ */
+function isLiveRow(row: AiRoutingPolicyEntity): boolean {
+  return row.resourceStatus === ResourceStatusType.ENABLED && row.enabled === true;
+}
 
 /** Machine-readable refusals a caller can branch on */
 const REJECTION = {
@@ -171,10 +187,29 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    */
   async resolveDefault(tenantId: string, taskKey: string, options: ResolveDefaultOptions = {}): Promise<ResolvedTaskDefault> {
     this.assertKnownTaskKey(taskKey);
-    const tenantIds = options.systemOnly ? [SYSTEM_TENANT_ID] : options.noWiden || tenantId === SYSTEM_TENANT_ID ? [tenantId] : [tenantId, SYSTEM_TENANT_ID];
-    const rows = await this.readCandidateRows(tenantIds, taskKey);
-    const tenantRows = tenantId === SYSTEM_TENANT_ID ? [] : rows.filter((row) => row.tenantId === tenantId);
-    const systemRows = rows.filter((row) => row.tenantId === SYSTEM_TENANT_ID);
+    const tenantIds = options.systemOnly
+      ? [SYSTEM_TENANT_ID]
+      : options.noWiden || tenantId === SYSTEM_TENANT_ID
+        ? [tenantId]
+        : [tenantId, SYSTEM_TENANT_ID];
+    // TASK-872 — read PARKED rows too, so the three states stay distinguishable
+    // (see `isLiveRow` and `assertNotVetoed`). Rows that are not live are
+    // filtered out immediately below; nothing parked can ever be SELECTED here.
+    const rows = await this.readCandidateRows(tenantIds, taskKey, { includeParked: true });
+    const liveRows = rows.filter((row) => isLiveRow(row));
+    const tenantRows = tenantId === SYSTEM_TENANT_ID ? [] : liveRows.filter((row) => row.tenantId === tenantId);
+    const systemRows = liveRows.filter((row) => row.tenantId === SYSTEM_TENANT_ID);
+
+    // THE VETO. An EMPTY live tenant tier has two very different causes, and
+    // before this they were indistinguishable: the tenant never configured the
+    // task (absence ⇒ widen), or it configured the task and then switched its
+    // own election OFF (a veto ⇒ refuse). Only the parked ELECTED row separates
+    // them, which is why the read above had to see it.
+    if (tenantId !== SYSTEM_TENANT_ID && !options.systemOnly && tenantRows.length === 0) {
+      const vetoed = rows.some((row) => row.tenantId === tenantId && row.isDefault && !isLiveRow(row));
+      if (vetoed) throw new TaskSelectionVetoedError(tenantId, taskKey);
+    }
+
     const tier = tenantRows.length > 0 ? tenantRows : systemRows;
     const source: ResolvedTaskDefault['source'] = tenantRows.length > 0 ? 'tenant' : systemRows.length > 0 ? 'system' : null;
     const policy = tier.find((row) => row.isDefault) ?? tier[0] ?? null;
@@ -924,9 +959,9 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    * promoted, a soft-deleted row is gone, and a parked candidate is one an
    * administrator switched off without destroying.
    */
-  private async readCandidateRows(tenantIds: string[], taskKey: string): Promise<AiRoutingPolicyEntity[]> {
+  private async readCandidateRows(tenantIds: string[], taskKey: string, options: { includeParked?: boolean } = {}): Promise<AiRoutingPolicyEntity[]> {
     const tx = this.crossTenantReadLane(tenantIds);
-    return this.aiRoutingPolicyRepository.findCandidates(tenantIds, taskKey, tx);
+    return this.aiRoutingPolicyRepository.findCandidates(tenantIds, taskKey, tx, options);
   }
 
   /**

@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 404,
+  "distinctNames": 407,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -260,6 +260,18 @@
       "port": 8866,
       "title": "Clinical Documentation Harness",
       "fields": [
+        {
+          "name": "HARNESS_JUDGE_AZURE_API_KEY__ENV_REMOVED",
+          "aliases": [],
+          "class": "AzureJudgeConfig",
+          "field": "api_key",
+          "prefix": "HARNESS_JUDGE_AZURE_",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "The empty default is load-bearing: `build_judge_client` REFUSES to build an Azure judge without a key, so an unresolved credential fails closed at construction and the inferential pass degrades \u2014 it can no longer be rescued by an environment variable."
+        },
         {
           "name": "HARNESS_JUDGE_AZURE_API_VERSION",
           "aliases": [],
@@ -779,6 +791,18 @@
           "description": "Per-call wall-clock timeout for a single MCP tool invocation."
         },
         {
+          "name": "HARNESS_JUDGE_OPENAI_COMPAT_API_KEY__ENV_REMOVED",
+          "aliases": [],
+          "class": "OpenAICompatJudgeConfig",
+          "field": "api_key",
+          "prefix": "HARNESS_JUDGE_OPENAI_COMPAT_",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "The default is the harmless LM Studio placeholder, which is what an unauthenticated local endpoint sees when no row exists (outcome `absent`). A resolved row is applied by `_build_runtime_judge` via `model_copy`, which bypasses validation and therefore this guard."
+        },
+        {
           "name": "HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL",
           "aliases": [],
           "class": "OpenAICompatJudgeConfig",
@@ -921,6 +945,18 @@
           "dataType": "boolean",
           "default": "false",
           "description": "The landmine A.2 cited is still live and still worth heeding: a KEYLESS row injects on NEITHER tier. That is now a DEFINED outcome (`absent` \u21d2 call the endpoint unauthenticated) rather than a silent no-op."
+        },
+        {
+          "name": "HARNESS_RETRIEVAL_QDRANT_API_KEY__ENV_REMOVED",
+          "aliases": [],
+          "class": "RetrievalConfig",
+          "field": "qdrant_api_key",
+          "prefix": "HARNESS_RETRIEVAL_",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "`None`, never `\"\"` \u2014 an empty string is itself a credential to Qdrant, so absent must mean absent (the `KnowledgeQdrantStore` unauthenticated path)."
         },
         {
           "name": "HARNESS_RETRIEVAL_QDRANT_TIMEOUT_S",
@@ -1508,7 +1544,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "Optimistic two-phase delivery kill-switch. The FIRST key of the two-key optimistic gate; the second is the durable ``workflow.patched(\"optimistic-delivery\")`` marker (permanent in code). Read here, in NON-workflow settings, and snapshotted into ``HarnessGateConfig`` at workflow start (document:start + the policy merge), so it stays deterministic across replay \u2014 never read from env inside the workflow body. Default OFF \u21d2 the legacy single-phase path, byte-identical to before optimistic delivery."
+          "description": "Optimistic two-phase delivery kill-switch. The FIRST key of the two-key optimistic gate; the second is the durable ``workflow.patched`` marker (permanent in code). Read here, in NON-workflow settings, and snapshotted into ``HarnessGateConfig`` at workflow start (document:start + the policy merge), so it stays deterministic across replay \u2014 never read from env inside the workflow body. Default OFF \u21d2 the legacy single-phase path, byte-identical to before optimistic delivery."
         },
         {
           "name": "HARNESS_OTEL_DEPLOYMENT_ENVIRONMENT",
@@ -2562,6 +2598,18 @@
           "description": "CORS \u2014 EMPTY by default. stt handles PHI audio, and the browser never talks to :8861 directly (the gateway fronts every route), so there is no origin this service can name for itself. `[\"*\"]` was the shipped default; an operator with a genuine direct-browser need sets CORS_ORIGINS explicitly rather than inheriting a wildcard nobody chose."
         },
         {
+          "name": "DATABASE_ENABLED",
+          "aliases": [],
+          "class": "Settings",
+          "field": "database_enabled",
+          "prefix": "",
+          "required": false,
+          "secret": false,
+          "dataType": "boolean",
+          "default": "false",
+          "description": "Open the read-only Postgres connection (deprecated paths only; TASK-861)."
+        },
+        {
           "name": "DATABASE_MAX_OVERFLOW",
           "aliases": [],
           "class": "Settings",
@@ -2630,8 +2678,20 @@
           "required": false,
           "secret": false,
           "dataType": "string",
-          "default": "/Volumes/aillusion/huggingface",
+          "default": "<home>/.cache/huggingface/hub",
           "description": "HuggingFace model cache directory"
+        },
+        {
+          "name": "HUGGINGFACE_TOKEN__ENV_REMOVED",
+          "aliases": [],
+          "class": "Settings",
+          "field": "huggingface_token",
+          "prefix": "",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "DEPRECATED and env-CLOSED. The HuggingFace token is a model-registry provider connection, resolved per model-owner tenant."
         },
         {
           "name": "INTERNAL_ACCESS_TOKEN",
@@ -3420,6 +3480,42 @@
           "description": ""
         },
         {
+          "name": "STT_MODEL_S3_ACCESS_KEY__ENV_REMOVED",
+          "aliases": [],
+          "class": "Settings",
+          "field": "model_s3_access_key",
+          "prefix": "",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's extraJson.accessKeyId."
+        },
+        {
+          "name": "STT_MODEL_S3_ENDPOINT__ENV_REMOVED",
+          "aliases": [],
+          "class": "Settings",
+          "field": "model_s3_endpoint",
+          "prefix": "",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": null,
+          "description": "DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's baseUrl."
+        },
+        {
+          "name": "STT_MODEL_S3_SECRET_KEY__ENV_REMOVED",
+          "aliases": [],
+          "class": "Settings",
+          "field": "model_s3_secret_key",
+          "prefix": "",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's encrypted key."
+        },
+        {
           "name": "STT_MODEL_S3_SECURE",
           "aliases": [],
           "class": "Settings",
@@ -3800,18 +3896,6 @@
           "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
-          "name": "TTS_AZURE_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "AzureSpeechConfig",
-          "field": "max_concurrent",
-          "prefix": "TTS_AZURE_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 10,
-          "description": ""
-        },
-        {
           "name": "TTS_AZURE_REGION__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "AzureSpeechConfig",
@@ -3822,18 +3906,6 @@
           "dataType": "string",
           "default": "eastus",
           "description": "The REGION moved to the control plane with the rest of the connection. Same mechanism as the key above, different reason: the key is closed because it is a secret, the region because it is config an admin must be able to change without a redeploy."
-        },
-        {
-          "name": "TTS_AZURE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "AzureSpeechConfig",
-          "field": "timeout_s",
-          "prefix": "TTS_AZURE_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 30,
-          "description": "There are deliberately NO `voice_en` / `voice_ml` fields. They held `en-IN-NeerjaNeural` / `ml-IN-SobhanaNeural` \u2014 the SAME two strings the voice catalog already binds for `en-female-1` / `ml-female-1`. Worse, they were unreachable: the router resolves `req.provider_voice` from the catalog on every request and `candidates()` skips any provider the voice is not bound to, so these could never be consulted. One fact, one place: the catalog (`catalog/voices.py`)."
         },
         {
           "name": "TTS_INDICF5_DEVICE__MOVED_TO_CONTROL_PLANE",
@@ -3992,6 +4064,18 @@
           "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
+          "name": "TTS_KOKORO_MODEL_PATH__MOVED_TO_CONTROL_PLANE",
+          "aliases": [],
+          "class": "KokoroConfig",
+          "field": "model_path",
+          "prefix": "TTS_KOKORO_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "",
+          "description": "TASK-860: the PUBLISHED weights directory \u2014 the registry row's derived `localPath` (`/mnt/models-bucket/hf/hub/models--hexgrad--Kokoro-82M/ snapshots/<sha>`), containing `config.json`, the `.pth` checkpoint and `voices/*.pt`. When set the provider loads `KModel(config, model)` + voice `.pt` paths explicitly and never touches HF_HOME / the Hub; a set path missing those files fails at construction (never a silent Hub pull). Empty = dev fallback to `KPipeline`'s own Hub download. Same precedent as `TTS_PARLER_MODEL_PATH`; the gateway-injected `localPath` is the intended supplier once TASK-862/863 plumb it."
+        },
+        {
           "name": "TTS_SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
@@ -4016,18 +4100,6 @@
           "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
-          "name": "TTS_SARVAM_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "SarvamConfig",
-          "field": "max_concurrent",
-          "prefix": "TTS_SARVAM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 4,
-          "description": ""
-        },
-        {
           "name": "TTS_SARVAM_MODEL__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
@@ -4040,18 +4112,6 @@
           "description": "A model id that REACHES THE WIRE (`providers/sarvam.py` sends it as the request's `model`), so it is a SELECTION, not a tuning knob \u2014 assessment F-11 names this field specifically."
         },
         {
-          "name": "TTS_SARVAM_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "SarvamConfig",
-          "field": "sample_rate",
-          "prefix": "TTS_SARVAM_",
-          "required": false,
-          "secret": false,
-          "dataType": "number",
-          "default": 24000,
-          "description": "No `voice_ml` / `voice_en`: both held `ishita`, which is the catalog's sarvam binding for `ml-female-1`. The router passes it as `req.provider_voice`, so the fallback was unreachable."
-        },
-        {
           "name": "TTS_SARVAM_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
@@ -4061,19 +4121,7 @@
           "secret": false,
           "dataType": "number",
           "default": 30,
-          "description": ""
-        },
-        {
-          "name": "TTS_SARVAM_USE_STREAMING__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "SarvamConfig",
-          "field": "use_streaming",
-          "prefix": "TTS_SARVAM_",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "phase 2: WebSocket streaming API"
+          "description": "No `voice_ml` / `voice_en`: both held `ishita`, which is the catalog's sarvam binding for `ml-female-1`. The router passes it as `req.provider_voice`, so the fallback was unreachable. No `sample_rate`: the request carries it (`req.sample_rate`, from the service-wide `Settings.sample_rate`), and `providers/sarvam.py` sends that \u2014 the per-provider field was read by nobody (TASK-872)."
         },
         {
           "name": "API_GATEWAY_KEY",
@@ -4133,18 +4181,6 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": ""
-        },
-        {
-          "name": "TTS_DEFAULT_FORMAT__MOVED_TO_CONTROL_PLANE",
-          "aliases": [],
-          "class": "Settings",
-          "field": "default_format",
-          "prefix": "TTS_",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "pcm",
           "description": ""
         },
         {
@@ -4337,7 +4373,7 @@
           "secret": false,
           "dataType": "number",
           "default": 24000,
-          "description": ""
+          "description": "No `default_format` (TASK-872). The effective default format is resolved by the GATEWAY from `TenantTtsConfig` platform limits and arrives on every request as `response_format`; this field was read by no code path here."
         },
         {
           "name": "TTS_WARMUP_ENABLED__MOVED_TO_CONTROL_PLANE",

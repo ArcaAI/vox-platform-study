@@ -17,6 +17,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HarnessPolicyFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { HarnessPolicyService } from '../harness-policy.service';
+import { TaskSelectionVetoedError } from '../../ai-routing-policy/task-selection-veto';
 
 const TENANT = 'tenant-1';
 
@@ -100,6 +101,31 @@ describe(' D-1 — task-key-driven text selection', () => {
 
   it('is a no-op without a taskKey (byte-identical prior behaviour)', async () => {
     const resp = await makeService().getEffectivePolicy(TENANT);
+
+    expect(resp.textProvider).toBe('lm-studio');
+    expect(resp.textModel).toBe('policy-column-model');
+  });
+
+  // TASK-872 — the fail-open seam must not swallow a VETO.
+  //
+  // `resolveTextSelectionForKey` degrades every lookup failure to `null`, and
+  // the caller reads `null` as "no opinion, keep the policy columns". For a
+  // tenant that DISABLED its own elected routing row that answer is wrong in
+  // the dangerous direction: it substitutes the platform's model for the one
+  // the tenant refused. A veto is a refusal, so it propagates.
+  it('propagates a tenant VETO instead of falling back to the policy columns', async () => {
+    aiTaskDefaultService.getEffective.mockImplementation(async (key: string) => {
+      if (key === 'text.finalize') throw new TaskSelectionVetoedError(TENANT, 'text.finalize');
+      return { model: null };
+    });
+
+    await expect(makeService().getEffectivePolicy(TENANT, { taskKey: 'text.finalize' })).rejects.toBeInstanceOf(TaskSelectionVetoedError);
+  });
+
+  it('still degrades an ordinary lookup FAILURE to the policy columns', async () => {
+    aiTaskDefaultService.getEffective.mockRejectedValue(new Error('control plane unreachable'));
+
+    const resp = await makeService().getEffectivePolicy(TENANT, { taskKey: 'text.finalize' });
 
     expect(resp.textProvider).toBe('lm-studio');
     expect(resp.textModel).toBe('policy-column-model');

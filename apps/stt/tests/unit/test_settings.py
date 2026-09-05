@@ -417,13 +417,8 @@ class TestSettings:
                             "dataType": "string",
                             "source": "db",
                         },
-                        "stt.vad.threshold": {
-                            "value": 0.6,
-                            "dataType": "number",
-                            "source": "db",
-                        },
-                        "stt.vad.minSpeechDurationMs": {
-                            "value": 300,
+                        "stt.vad.speechPadMs": {
+                            "value": 250,
                             "dataType": "number",
                             "source": "db",
                         },
@@ -431,8 +426,14 @@ class TestSettings:
                 },
             )
             assert settings.vad_model_path == "/custom/vad.onnx"
-            assert settings.vad_threshold == 0.6
-            assert settings.vad_min_speech_duration_ms == 300
+            assert settings.vad_speech_pad_ms == 250
+            # `stt.vad.threshold` / `minSpeechDurationMs` / `minSilenceDurationMs`
+            # were exercised here until TASK-872 removed them: the live path
+            # takes its VAD parameters from `ResolvedAsrSpec`, so those three
+            # keys could only move a bootstrap default the spec then overrode.
+            # The fields survive as that default and are simply no longer
+            # settable from the control plane.
+            assert settings.vad_threshold == 0.5
 
     def test_diarization_defaults(self):
         """Test Pyannote diarization default configuration."""

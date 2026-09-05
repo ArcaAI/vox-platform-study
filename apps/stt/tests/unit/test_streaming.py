@@ -1541,11 +1541,6 @@ class TestStreamingSettings:
                         "dataType": "number",
                         "source": "db",
                     },
-                    "stt.streaming.embeddingDevice": {
-                        "value": "cuda:1",
-                        "dataType": "string",
-                        "source": "db",
-                    },
                     "stt.streaming.inferenceStopTimeoutS": {
                         "value": 12.5,
                         "dataType": "number",
@@ -1555,5 +1550,8 @@ class TestStreamingSettings:
             },
         )
         assert s.streaming_max_concurrent == 42
-        assert s.streaming_embedding_device == "cuda:1"
         assert s.streaming_inference_stop_timeout_s == 12.5
+        # `stt.streaming.embeddingDevice` was asserted here until TASK-872
+        # removed it: device placement comes from the hardware execution
+        # profile, so the key reached no reader. The bootstrap field remains.
+        assert s.streaming_embedding_device == "auto"
