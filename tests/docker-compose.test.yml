@@ -35,7 +35,7 @@ services:
   #   - pgvector  (used by user.embedding vector(256))
   #   - vectorscale (CASCADE in 20260413000000_add_user_voice_profile migration)
   postgres-test:
-    image: timescale/timescaledb-ha:pg18-all
+    image: ${HOPE_POSTGRES_IMAGE:-timescale/timescaledb-ha:pg18-all}
     container_name: hope-postgres-test
     environment:
       POSTGRES_USER: test
@@ -54,8 +54,16 @@ services:
       -c work_mem=4MB
       -c max_connections=100
       -c log_statement=none
-    tmpfs:
-      - /var/lib/postgresql:size=512M
+    # Long-syntax tmpfs so we can set the mode: the short form mounts the
+    # tmpfs root-owned 0755, and the image's postgres user (uid 1000) then
+    # cannot mkdir /home/postgres/pgdata/data. 1777 lets it create the data
+    # dir, which postgres itself chmods to 0700.
+    volumes:
+      - type: tmpfs
+        target: /home/postgres/pgdata
+        tmpfs:
+          size: 536870912
+          mode: 01777
     shm_size: 64mb
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U test -d hope_test']

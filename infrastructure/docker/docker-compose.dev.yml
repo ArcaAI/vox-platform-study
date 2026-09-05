@@ -660,7 +660,7 @@ services:
   # No clinical-text path may autolog against this server.
   mlflow-migrate:
     container_name: hope-mlflow-migrate
-    image: ${HOPE_MLFLOW_IMAGE:-ghcr.io/mlflow/mlflow:v3.15.2-full@sha256:2c9c50ca72e314cb1b8b301ceaa43882629ad91873d7271f3be92796930c3647}
+    image: ${HOPE_MLFLOW_IMAGE:-ghcr.io/mlflow/mlflow:v3.15.2-full}
     profiles: ["mlflow"]
     networks:
       - hope-network
@@ -715,7 +715,7 @@ services:
 
   mlflow:
     container_name: hope-mlflow
-    image: ${HOPE_MLFLOW_IMAGE:-ghcr.io/mlflow/mlflow:v3.15.2-full@sha256:2c9c50ca72e314cb1b8b301ceaa43882629ad91873d7271f3be92796930c3647}
+    image: ${HOPE_MLFLOW_IMAGE:-ghcr.io/mlflow/mlflow:v3.15.2-full}
     profiles: ["mlflow"]
     networks:
       - hope-network

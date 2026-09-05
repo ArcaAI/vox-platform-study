@@ -12,16 +12,38 @@
  *  2. SECURITY — no response ever echoes secret material: `authRef` is a Vault
  *     PATH ONLY, and the projection carries no `secret`/`token`/`password`/
  *     `credential`/`apiKey` value key.
- *  3. SUPER_ADMIN-only writes — a tenant admin CREATE/PATCH/DELETE → 403 (the
- *     service privilege wall, NOT the 404-over-403 tenancy posture; a valid
- *     `If-Match` is supplied on PATCH/DELETE so the 403 is the privilege verdict
- *     and not the 428 header gate).
+ *  3. The SYSTEM registry stays super-admin-owned — a tenant admin aiming a
+ *     CREATE at it (`?tenantId=<SYSTEM>`), or PATCH/DELETE-ing a SYSTEM-owned
+ *     row, gets 403 (the privilege wall, NOT the 404-over-403 tenancy posture;
+ *     a valid `If-Match` is supplied on PATCH/DELETE so the 403 is the
+ *     privilege verdict and not the 428 header gate). Owner decision OD-7
+ *     (2026-09-01) let tenant admins CRUD connectors owned by their OWN tenant,
+ *     so "a tenant admin may never write" is no longer the contract — only the
+ *     shared SYSTEM tier is walled off.
  *  4. Cross-tenant / unknown → 404 — a server id a tenant caller cannot see is
  *     404 (absent and cross-tenant are indistinguishable, DEF-C3); a tenant
  *     admin passing a FOREIGN `?tenantId=` on the list is rejected ([403,404],
  *     never 200).
  *  5. OCC — PATCH without `If-Match` → 428; stale `If-Match: "999"` → 412; a
  *     correct `If-Match: "<version>"` succeeds and BUMPS `version`.
+ *
+ * EGRESS PRECONDITION. `baseUrl` is SSRF-guarded on write against the platform
+ * allow-list `mcp.egress.allowedHosts` (`global-kv`, `failMode: 'closed'`), and
+ * nothing seeds that key — an unset list denies EVERY connector, which is what
+ * used to fail this spec's `beforeAll` with 400. The allow-list is therefore
+ * platform state this spec must set up itself: `beforeAll` widens it by exactly
+ * one entry and `afterAll` restores what it found.
+ *
+ * Fail-closed cuts both ways: with no row stored, READING the key through the
+ * effective lane is a 400 too, not an empty list — so the setup treats 400 as
+ * "nothing stored" instead of asserting 200 (see `beforeAll`).
+ *
+ * The fixture host is the IP LITERAL `203.0.113.10` (RFC 5737 TEST-NET-3), not a
+ * name: the guard skips DNS for a literal (`isIP(host) !== 0`), and the
+ * documentation ranges are deliberately absent from its blocked table, so the
+ * fixture needs no resolver and can never actually be reached. A hostname here
+ * would make the suite depend on live DNS — which is why the original
+ * `terminology.internal` could not pass even once the list was set.
  *
  * Live-stack requirement: dev/test stack + seed (owner-run via
  * `pnpm test:api:up` + `pnpm test:e2e`). The spec creates a throwaway SYSTEM
@@ -44,7 +66,27 @@ const BASE = '/api/v1/admin/mcp-servers';
 /** uuidv7-shaped server id no tenant has ever registered — its 404 mirrors the cross-tenant 404. */
 const SYNTHETIC_SERVER_ID = '018f0000-0000-7000-8000-0000005160aa';
 
+/** The shared platform registry tier. A tenant admin writing here is 403, by design. */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * The platform egress allow-list this spec must widen before any connector can be
+ * written. `?tenantId=` is REQUIRED on the read: `resolveScopedTenantId` 400s a
+ * platform admin that scopes neither by query nor by an elevated working tenant.
+ * SYSTEM is the only correct scope here — the key is `globalOnly` / `maxScope: 'system'`.
+ */
+const EGRESS_ROUTE = `/api/v1/admin/settings/registry/mcp.egress.allowedHosts`;
+const EGRESS_READ_ROUTE = `${EGRESS_ROUTE}?tenantId=00000000-0000-0000-0000-000000000000`;
+
+/** RFC 5737 TEST-NET-3 literal — no DNS, never routable, not in the guard's blocked table. */
+const FIXTURE_HOST = '203.0.113.10';
+const FIXTURE_BASE_URL = `https://${FIXTURE_HOST}/mcp`;
+
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+/** Add `If-Match` only when a backing row actually exists (`version > 0`). */
+const ifMatch = (headers: Record<string, string>, version?: number) =>
+  version && version > 0 ? { ...headers, 'If-Match': `"${version}"` } : headers;
 
 interface McpServer {
   id: string;
@@ -81,6 +123,8 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
   const unique = Date.now();
   const AUTH_REF = `secret/data/mcp/e2e-${unique}`;
   let serverId: string;
+  /** The allow-list as found, restored verbatim in `afterAll` — this is platform state. */
+  let previousAllowedHosts: string[] = [];
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
@@ -91,12 +135,49 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
     tenantAdminToken = ta!.token;
 
+    // Widen the egress allow-list by exactly one entry, remembering what was
+    // there so `afterAll` can put it back.
+    //
+    // 400 IS AN EXPECTED ANSWER HERE, and it is the answer a freshly reset test
+    // database always gives: the key is `failMode: 'closed'`, so when no row is
+    // stored the cascade bottoms out in `applyDeclaredFailMode`, which REFUSES
+    // to substitute the descriptor default and throws (→ 400). There is no
+    // "unset reads as []" on this lane. Asserting 200 here therefore only ever
+    // passed against a database some earlier run had already written to.
+    const currentAllowList = await request.get(EGRESS_READ_ROUTE, { headers: bearer(superAdminToken) });
+    expect([200, 400], `read mcp.egress.allowedHosts answered ${currentAllowList.status()}`).toContain(currentAllowList.status());
+    const current = currentAllowList.status() === 200 ? ((await currentAllowList.json()) as { value?: unknown; version?: number }) : {};
+    previousAllowedHosts = Array.isArray(current.value) ? (current.value as string[]) : [];
+
+    const widened = await request.put(EGRESS_ROUTE, {
+      // `version` is 0 while the value is still the code default — no row, so
+      // nothing to precondition. Once a row exists the write lane applies the
+      // precondition, and a PUT without `If-Match` would 428.
+      headers: ifMatch(bearer(superAdminToken), current.version),
+      data: { value: [...previousAllowedHosts.filter((host) => host !== FIXTURE_HOST), FIXTURE_HOST] },
+    });
+    expect(widened.status(), 'allow-list the fixture host').toBe(200);
+
+    // The guard reads the list off the AppSettings cache, which the write
+    // invalidates over pub/sub — near-instant in one process, but asynchronous.
+    // Poll the read lane rather than racing it.
+    await expect
+      .poll(
+        async () => {
+          const probe = await request.get(EGRESS_READ_ROUTE, { headers: bearer(superAdminToken) });
+          const value = probe.status() === 200 ? ((await probe.json()) as { value?: unknown }).value : null;
+          return Array.isArray(value) && value.includes(FIXTURE_HOST);
+        },
+        { timeout: 5_000, message: 'the widened egress allow-list never became readable' },
+      )
+      .toBe(true);
+
     // SUPER_ADMIN registers a dormant SYSTEM registry row (default tenant = SYSTEM).
     const create = await request.post(BASE, {
       headers: bearer(superAdminToken),
       data: {
         name: `e2e-mcp-${unique}`,
-        baseUrl: 'https://terminology.internal/mcp',
+        baseUrl: FIXTURE_BASE_URL,
         transport: 'streamable-http',
         authRef: AUTH_REF,
         phiBoundary: 'external',
@@ -112,13 +193,31 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
   });
 
   test.afterAll(async ({ request }) => {
-    if (!serverId) return;
-    const get = await request.get(`${BASE}/${serverId}`, { headers: bearer(superAdminToken) });
-    if (get.status() !== 200) return;
-    const current = (await get.json()) as McpServer;
-    await request
-      .delete(`${BASE}/${serverId}`, { headers: { ...bearer(superAdminToken), 'If-Match': `"${current.version}"` } })
-      .catch(() => undefined);
+    if (serverId) {
+      const get = await request.get(`${BASE}/${serverId}`, { headers: bearer(superAdminToken) });
+      if (get.status() === 200) {
+        const current = (await get.json()) as McpServer;
+        await request
+          .delete(`${BASE}/${serverId}`, { headers: { ...bearer(superAdminToken), 'If-Match': `"${current.version}"` } })
+          .catch(() => undefined);
+      }
+    }
+    // Put the platform egress allow-list back as it was found. Leaving the
+    // fixture host behind would be a security control this suite quietly
+    // widened for every later run.
+    //
+    // One residue is unavoidable through this lane: when the key had NO row,
+    // the restore writes `[]` rather than removing the row (the registry write
+    // lane has no delete). Both states refuse every connector — only the
+    // guard's stated reason changes, `allowlist_unavailable` → `host_not_allowed`
+    // — and a managed run resets the database anyway.
+    if (superAdminToken) {
+      const now = await request.get(EGRESS_READ_ROUTE, { headers: bearer(superAdminToken) });
+      const version = now.status() === 200 ? ((await now.json()) as { version?: number }).version : undefined;
+      await request
+        .put(EGRESS_ROUTE, { headers: ifMatch(bearer(superAdminToken), version), data: { value: previousAllowedHosts } })
+        .catch(() => undefined);
+    }
   });
 
   test('GET by id reads the registry row back and never echoes secret material', async ({ request }) => {
@@ -171,10 +270,15 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
     assertNoSecretMaterial(after, AUTH_REF);
   });
 
-  test('SUPER_ADMIN-only: a tenant admin cannot CREATE → 403', async ({ request }) => {
-    const resp = await request.post(BASE, {
+  test('a tenant admin cannot CREATE in the SYSTEM registry → 403', async ({ request }) => {
+    // OD-7 (2026-09-01): a tenant admin MAY create a connector owned by its own
+    // tenant, so the wall is the SYSTEM tier, not the verb. Aiming at SYSTEM is
+    // refused by `resolveScopedTenantIdOptional` (foreign `?tenantId=`) and
+    // again by `assertCanWriteTenant` — 403 either way, never 404: the shared
+    // registry is READABLE, so hiding its existence would be a lie.
+    const resp = await request.post(`${BASE}?tenantId=${SYSTEM_TENANT_ID}`, {
       headers: bearer(tenantAdminToken),
-      data: { name: `ta-mcp-${unique}`, baseUrl: 'https://x.internal/mcp' },
+      data: { name: `ta-mcp-${unique}`, baseUrl: FIXTURE_BASE_URL },
     });
     expect(resp.status()).toBe(403);
   });

@@ -40,11 +40,10 @@ services:
     # ============================================================================
 
     # PostgreSQL 18 - Primary Database
-    # Using official PostgreSQL 18 Alpine image (lightweight, production-ready)
-    # Note: Switch to timescale/timescaledb-ha:pg18-all if TimescaleDB/pgvector needed
+    # Pin: timescale/timescaledb-ha:pg18-all (pgvector + vectorscale).
     postgres:
         container_name: hope-postgres
-        image: timescale/timescaledb-ha:pg18-all
+        image: ${HOPE_POSTGRES_IMAGE:-timescale/timescaledb-ha:pg18-all}
         networks:
             - hope-network
         restart: unless-stopped

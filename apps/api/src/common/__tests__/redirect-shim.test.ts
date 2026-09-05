@@ -53,6 +53,15 @@ describe(' redirect shims', () => {
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
     await app.init();
+    // Listen ONCE, here. Handed a server that is not yet listening, supertest
+    // does its own `listen(0)` + connect + close for EVERY request
+    // (supertest/lib/test.js `serverAddress`), which is ~56 bind cycles for
+    // this file - the most of any unit suite in the repo. That made it the
+    // first casualty of any transient loopback stall on the host: a run on
+    // 2026-09-05 saw the first 8 cases pass in ~1ms each and the remaining 23
+    // each burn the full 30s timeout, with the worker's event loop otherwise
+    // healthy. One listener for the whole suite removes that exposure.
+    await app.listen(0);
   });
 
   afterAll(async () => {
