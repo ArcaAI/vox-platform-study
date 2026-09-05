@@ -64,6 +64,21 @@ model Agent {
   // reads walk this column directly.
   parentVersionId String?
 
+  // CROSS-LINEAGE provenance (TASK-884): where a CLONE or a cross-tenant SYNC
+  // copied this row FROM. `parentVersionId` stays the within-tenant edge and
+  // means "the previous version of THIS lineage"; these four mean "a different
+  // lineage, possibly in a different tenant". Deliberately DATA, not a
+  // relation: a cross-tenant FK would put a navigable path from one tenant's
+  // row into another's, which is exactly what `AgentPromotion` refuses to do
+  // with `parentVersionId`. Null on an ordinary create/newVersion.
+  //
+  // They are not indexed on purpose — nothing queries BY them; they are read
+  // back on the row that carries them, to answer "where did this come from?".
+  sourceAgentId       String?
+  sourceTenantId      String?
+  sourceSlug          String?
+  sourceVersionNumber Int?
+
   // DRAFT | VALIDATED | PUBLISHED | DEPRECATED — the WorkflowDefinition
   // lifecycle enum, reused rather than duplicated.
   status WorkflowDefinitionStatus @default(DRAFT)
@@ -189,6 +204,15 @@ model AgentAssignment {
   task      AgentTask
   agentSlug String
 
+  // The optional TAG SELECTOR (TASK-884, owner decision #6). Canonical form:
+  // the assignment's `key:value` tags de-duplicated, sorted and comma-joined;
+  // `''` = UNQUALIFIED, which is the fallback every tier already had. A tier
+  // may now carry several rows — one per selector — and the cascade tries the
+  // most specific matching selector first, the unqualified row last. Stored as
+  // the derived scalar rather than a `String[]` because it is part of the
+  // uniqueness key and Prisma cannot put a list field in `@@unique`.
+  selectorKey String @default("")
+
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?
@@ -200,7 +224,7 @@ model AgentAssignment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, scope, scopeId, task], map: "AgentAssignment_scope_task_unique")
+  @@unique([tenantId, scope, scopeId, task, selectorKey], map: "AgentAssignment_scope_task_selector_unique")
   @@index([tenantId], name: "AgentAssignment_tenantId_idx")
   @@index([tenantId, task], name: "AgentAssignment_tenant_task_idx")
   @@schema("core")
@@ -219,6 +243,9 @@ model AgentAssignmentChange {
   scope   PipelinePolicyScope @default(TENANT)
   scopeId String?
   task    AgentTask
+  // TASK-884 — WHICH row of the tier changed. Without it two assignments that
+  // differ only by selector produce indistinguishable change records.
+  selectorKey String @default("")
 
   changedBy         String?
   assignmentVersion Int?

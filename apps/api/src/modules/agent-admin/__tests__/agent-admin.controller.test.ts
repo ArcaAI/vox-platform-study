@@ -4,6 +4,8 @@
  * delegation of every lifecycle transition.
  */
 import 'reflect-metadata';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { Reflector } from '@nestjs/core';
@@ -89,5 +91,69 @@ describe('AgentAssignmentAdminController', () => {
     expect(service.upsert).toHaveBeenCalledWith(request, 5);
     await controller.remove('as1', 3, 'why');
     expect(service.remove).toHaveBeenCalledWith('as1', 3, 'why');
+  });
+});
+
+/**
+ * TASK-884 — the four portability routes. Route SHAPE and delegation only: the behaviour they
+ * delegate to (404-over-403 on a foreign source, the SUPER_ADMIN-only cross-tenant clone, the
+ * 404 for an unmanaged sync target, the named 409s) is proven at the service, in
+ * `packages/applications/src/services/agent/__tests__/agent.portability.task884.test.ts`.
+ */
+describe('AgentAdminController — portability (TASK-884)', () => {
+  function makePortable() {
+    const service = {
+      clone: vi.fn(async (slug: string, dto: unknown) => ({ slug, dto })),
+      exportBySlug: vi.fn(async (slug: string, version?: number) => ({ kind: 'agent', source: { slug, version } })),
+      importBundle: vi.fn(async (dto: unknown) => ({ dto })),
+      syncToTenants: vi.fn(async (slug: string, dto: unknown) => ({ slug, dto })),
+    };
+    return { controller: new AgentAdminController(service as never), service };
+  }
+
+  it('addresses clone / export / sync by the lineage SLUG, and mounts import at a static path', () => {
+    const proto = AgentAdminController.prototype;
+    expect(Reflect.getMetadata('path', proto.importBundle)).toBe('import');
+    expect(Reflect.getMetadata('path', proto.exportBySlug)).toBe(':slug/export');
+    expect(Reflect.getMetadata('path', proto.clone)).toBe(':slug/clone');
+    expect(Reflect.getMetadata('path', proto.sync)).toBe(':slug/sync');
+  });
+
+  it('creates (201) on clone and import, and answers 200 on the sync report', () => {
+    const proto = AgentAdminController.prototype;
+    expect(Reflect.getMetadata('__httpCode__', proto.clone)).toBeUndefined();
+    expect(Reflect.getMetadata('__httpCode__', proto.importBundle)).toBeUndefined();
+    expect(Reflect.getMetadata('__httpCode__', proto.sync)).toBe(200);
+  });
+
+  it('inherits the class gate: manage:Agent, off the API-key surface, on the svc scope', () => {
+    const permissions = new Reflector().getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [AgentAdminController.prototype.sync, AgentAdminController]);
+    expect(permissions).toEqual([{ action: 'manage', subject: 'Agent' }]);
+  });
+
+  it('delegates each verb, parsing the export version query as a number', async () => {
+    const { controller, service } = makePortable();
+    await controller.clone('platform-summarization', { newSlug: 'clinic-notes' });
+    await controller.exportBySlug('clinic-notes', '3');
+    await controller.exportBySlug('clinic-notes');
+    await controller.importBundle({ bundle: { kind: 'agent' } });
+    await controller.sync('clinic-notes', { targetTenantIds: ['t2'] });
+
+    expect(service.clone).toHaveBeenCalledWith('platform-summarization', { newSlug: 'clinic-notes' });
+    expect(service.exportBySlug).toHaveBeenNthCalledWith(1, 'clinic-notes', 3);
+    expect(service.exportBySlug).toHaveBeenNthCalledWith(2, 'clinic-notes', undefined);
+    expect(service.importBundle).toHaveBeenCalledWith({ bundle: { kind: 'agent' } });
+    expect(service.syncToTenants).toHaveBeenCalledWith('clinic-notes', { targetTenantIds: ['t2'] });
+  });
+
+  // Both routes' real gate is imperative, so the AUTH-NOTE marker is the only thing telling the
+  // next reader that the class decorator understates it (rule 05 §Imperative Privilege Checks).
+  it('carries the AUTH-NOTE marker on the two routes whose gate the decorator understates', () => {
+    const source = readFileSync(join(__dirname, '..', 'agent-admin.controller.ts'), 'utf8');
+    // The marker itself, not the class docstring that also names it.
+    const markers = source.match(/^\s*\/\/ AUTH-NOTE:/gm) ?? [];
+    expect(markers).toHaveLength(2);
+    expect(source).toContain('SUPER_ADMIN-only');
+    expect(source).toContain('answers 404, NOT 403');
   });
 });

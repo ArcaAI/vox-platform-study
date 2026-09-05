@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { IconAlertTriangle, IconGitBranch, IconPlayerPlay, IconRocket, IconShieldCheck, IconTrash } from '@tabler/icons-react';
+import { IconAlertTriangle, IconDownload, IconGitBranch, IconPlayerPlay, IconRocket, IconShieldCheck, IconTrash } from '@tabler/icons-react';
+import { AGENT_TAG_PATTERN } from '@arcaai/workflow-contract';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
@@ -23,6 +24,7 @@ import {
   useAgentVersions,
   useDeleteAgent,
   useDeprecateAgent,
+  useExportAgent,
   useNewAgentVersion,
   usePublishAgent,
   useUpdateAgent,
@@ -35,7 +37,8 @@ import { AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isPlatformAgent } fr
 import { JsonField } from './json-field';
 import { ParametersForm } from './parameters-form';
 
-function problemToast(error: unknown, fallback: string): void {
+/** Surfaces the gateway's coded finding when there is one — shared with the list screen's import action. */
+export function problemToast(error: unknown, fallback: string): void {
   if (error instanceof GatewayError) {
     const body = error.details as AgentProblemBody | undefined;
     const first = body?.findings?.find((finding) => finding.severity === 'ERROR');
@@ -95,16 +98,35 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
   const branch = useNewAgentVersion();
   const update = useUpdateAgent();
   const upsertAssignment = useUpsertAgentAssignment();
+  const exportAgent = useExportAgent();
   const [confirm, setConfirm] = useState<'deprecate' | 'delete' | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<{ name: string; description: string; parameters: Record<string, unknown>; inputSchema: Record<string, unknown> | null; outputSchema: Record<string, unknown> | null } | null>(null);
+  // TASK-884 — the assignment tier this section writes. Empty = the tenant's UNQUALIFIED
+  // default (what the section always wrote); a `key:value` list addresses the tag-qualified
+  // row of the same tier instead, which the cascade tries first for a request carrying them.
+  const [selectorInput, setSelectorInput] = useState('');
   const [testInput, setTestInput] = useState('');
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
   const isPlatform = agent ? isPlatformAgent(agent.tenantId) : false;
   const mutable = !!agent && !isPlatform && (agent.status === 'DRAFT' || agent.status === 'VALIDATED');
-  const tenantDefault = useMemo(() => (assignments.data ?? []).find((row) => row.scope === 'TENANT' && !isPlatformAgent(row.tenantId)), [assignments.data]);
+  const selectorTags = useMemo(
+    () => [...new Set(selectorInput.split(',').map((tag) => tag.trim()).filter(Boolean))].sort(),
+    [selectorInput],
+  );
+  const selectorProblem = selectorTags.find((tag) => !AGENT_TAG_PATTERN.test(tag));
+  const selectorKey = selectorTags.join(',');
+  // The row this section targets is the one whose SELECTOR matches — the selector is part of an
+  // assignment's identity, so an empty box means the unqualified row, not "any row".
+  const tenantDefault = useMemo(
+    () =>
+      (assignments.data ?? []).find(
+        (row) => row.scope === 'TENANT' && !isPlatformAgent(row.tenantId) && [...(row.selectorTags ?? [])].sort().join(',') === selectorKey,
+      ),
+    [assignments.data, selectorKey],
+  );
   const isTenantDefault = !!agent && tenantDefault?.agentSlug === agent.slug;
 
   async function run(action: () => Promise<Agent>, success: string, fallback: string) {
@@ -143,12 +165,43 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
     if (!agent) return;
     try {
       await upsertAssignment.mutateAsync({
-        body: { scope: 'TENANT', task: agent.task, agentSlug: agent.slug, reason: `Set from the Agents screen (${agent.slug} v${agent.versionNumber})` },
+        body: {
+          scope: 'TENANT',
+          task: agent.task,
+          agentSlug: agent.slug,
+          ...(selectorTags.length ? { selectorTags } : {}),
+          reason: `Set from the Agents screen (${agent.slug} v${agent.versionNumber})`,
+        },
         ...(tenantDefault ? { etag: `"${tenantDefault.version}"` } : {}),
       });
-      toast.success(`${agent.name} is now the tenant default for ${AGENT_TASK_LABEL[agent.task].toLowerCase()}`);
+      toast.success(
+        selectorTags.length
+          ? `${agent.name} now serves ${AGENT_TASK_LABEL[agent.task].toLowerCase()} for ${selectorTags.join(' + ')}`
+          : `${agent.name} is now the tenant default for ${AGENT_TASK_LABEL[agent.task].toLowerCase()}`,
+      );
     } catch (error) {
       problemToast(error, 'Could not update the assignment.');
+    }
+  }
+
+  /**
+   * Download the bundle the gateway produced. The viewer's browser does the saving; nothing is
+   * re-serialised here, so the file is byte-for-byte what `GET :slug/export` returned.
+   */
+  async function downloadBundle() {
+    if (!agent) return;
+    try {
+      const bundle = await exportAgent.mutateAsync({ slug: agent.slug, versionNumber: agent.versionNumber });
+      const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `agent-${agent.slug}-v${agent.versionNumber}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      const notes = (bundle.payload.notes ?? []).length;
+      toast.success(notes ? `Exported ${agent.slug} v${agent.versionNumber} — ${notes} note(s) in the bundle about what was not carried.` : `Exported ${agent.slug} v${agent.versionNumber}`);
+    } catch (error) {
+      problemToast(error, 'Could not export this agent.');
     }
   }
 
@@ -221,6 +274,10 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                   Deprecate
                 </Button>
               ) : null}
+              <Button type="button" variant="outline" disabled={busy || exportAgent.isPending} onClick={() => void downloadBundle()}>
+                {exportAgent.isPending ? <Spinner /> : <IconDownload aria-hidden className="size-4" />}
+                Export
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -270,15 +327,43 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
               </dl>
               <FindingsList agent={agent} />
               {agent.status === 'PUBLISHED' && agent.isActive ? (
-                <section className="flex items-center justify-between gap-3 rounded-md border p-3">
-                  <div className="flex flex-col text-sm">
-                    <span className="font-medium">Tenant default for {AGENT_TASK_LABEL[agent.task].toLowerCase()}</span>
-                    <span className="text-muted-foreground text-xs">{tenantDefault ? `Currently ${tenantDefault.agentSlug}` : 'Currently the platform default'}</span>
+                <section className="flex flex-col gap-3 rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col text-sm">
+                      <span className="font-medium">
+                        {selectorTags.length ? `Assignment for ${selectorTags.join(' + ')}` : `Tenant default for ${AGENT_TASK_LABEL[agent.task].toLowerCase()}`}
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        {tenantDefault ? `Currently ${tenantDefault.agentSlug}` : selectorTags.length ? 'Not assigned — requests fall back to the unqualified assignment' : 'Currently the platform default'}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isTenantDefault || upsertAssignment.isPending || !!selectorProblem}
+                      onClick={() => void setAsTenantDefault()}
+                    >
+                      {upsertAssignment.isPending ? <Spinner /> : null}
+                      {isTenantDefault ? 'Is assigned' : selectorTags.length ? 'Assign for these tags' : 'Set as tenant default'}
+                    </Button>
                   </div>
-                  <Button type="button" variant="outline" size="sm" disabled={isTenantDefault || upsertAssignment.isPending} onClick={() => void setAsTenantDefault()}>
-                    {upsertAssignment.isPending ? <Spinner /> : null}
-                    {isTenantDefault ? 'Is tenant default' : 'Set as tenant default'}
-                  </Button>
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="assignment-selector">Tag selector (optional)</Label>
+                    <Input
+                      id="assignment-selector"
+                      value={selectorInput}
+                      onChange={(event) => setSelectorInput(event.target.value)}
+                      placeholder="specialty:rheumatology, lang:ml"
+                      aria-describedby="assignment-selector-hint"
+                      aria-invalid={!!selectorProblem}
+                    />
+                    <p id="assignment-selector-hint" className={selectorProblem ? 'text-destructive text-sm' : 'text-muted-foreground text-xs'}>
+                      {selectorProblem
+                        ? `“${selectorProblem}” is not a key:value tag — write it as key:value (for example specialty:${selectorProblem.toLowerCase()}).`
+                        : 'Comma-separated key:value tags. Leave empty for the tier’s default assignment; a tag-qualified one is matched first for requests carrying those tags.'}
+                    </p>
+                  </div>
                 </section>
               ) : null}
             </TabsContent>

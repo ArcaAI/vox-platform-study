@@ -1,10 +1,15 @@
 import {
+  AgentBundleResponse,
   AgentResponse,
+  AgentSyncResponse,
   AgentTask,
+  CloneAgentRequest,
   CreateAgentRequest,
   IAgentService,
+  ImportAgentRequest,
   NewAgentVersionRequest,
   PublishAgentRequest,
+  SyncAgentRequest,
   UpdateAgentRequest,
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Query } from '@nestjs/common';
@@ -22,6 +27,12 @@ import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIf
  *
  * `POST :id/validate` / `:id/publish` / `:id/deprecate` are state transitions, not CAS
  * writes, so they carry no `@RequiresIfMatch()` (the WorkflowDefinition call).
+ *
+ * TASK-884 adds four PORTABILITY routes addressed by the lineage SLUG rather than a row id
+ * (`import`, `:slug/export`, `:slug/clone`, `:slug/sync`), because a slug is what a person
+ * holds: it is stable across versions and it is what an exported file, a console link and
+ * another tenant all name. Two of them carry an `AUTH-NOTE` — their real gate is imperative
+ * and the class decorator understates it.
  */
 @ApiBearerAuth()
 @ApiTags('admin-agents')
@@ -153,5 +164,119 @@ export class AgentAdminController {
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
   async deprecate(@Param('id') id: string): Promise<AgentResponse> {
     return this.agentService.deprecate(id);
+  }
+
+  // =========================================================================
+  // Portability (TASK-884) — clone, export, import, sync
+  // =========================================================================
+  //
+  // These four address the agent by its lineage SLUG rather than a row id, because that is
+  // what a person holds: a slug is stable across versions and is what an exported file, a
+  // console link and another tenant all name. The id-addressed routes above are unchanged.
+
+  @Post('import')
+  @ApiOperation({
+    summary: 'Import an exported agent bundle as a DRAFT in the caller tenant',
+    description:
+      'Validates the bundle ENVELOPE (kind / schemaVersion / source) and then its agent payload, and only then re-resolves every ' +
+      'reference against what THIS tenant can see: the model by slug, the bound prompt template by name (a SYSTEM template keeps ' +
+      'its id and its version pin; a tenant one is re-resolved and the pin dropped, because version lineages are per-tenant), and ' +
+      'each MCP tool binding. Anything unresolvable is a 409 that names it — never a silently dropped binding. A bundle from a ' +
+      'newer platform is refused outright rather than partially applied. The import always lands a DRAFT this tenant validates and ' +
+      'publishes itself.',
+  })
+  @ApiResponse({ status: 201, type: AgentResponse })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Not a valid agent bundle (`BUNDLE_INVALID`), or its payload is malformed / carries a server-owned column (`BUNDLE_PAYLOAD_INVALID`).',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'A reference cannot be resolved here — `MODEL_NOT_RESOLVABLE`, `PROMPT_TEMPLATE_NOT_RESOLVABLE` or `MCP_SERVER_NOT_RESOLVABLE`.',
+  })
+  async importBundle(@Body() request: ImportAgentRequest): Promise<AgentResponse> {
+    return this.agentService.importBundle(request);
+  }
+
+  @Get(':slug/export')
+  @ApiOperation({
+    summary: 'Export one agent version as a portable JSON bundle',
+    description:
+      'Values only. Models are named by registry SLUG, the bound prompt template by a re-resolvable reference, and every ' +
+      'server-owned column (ids, tenant, status, compiledConfig) is absent. An agent carries no credential in the first place, so ' +
+      'there is nothing to strip — which is why this file is safe to hand to a person. The eval gate is NOT exported (it points at ' +
+      'a corpus of encrypted patient data) and `payload.notes` says so.',
+  })
+  @ApiParam({ name: 'slug', type: String, description: 'The agent lineage slug — the caller tenant’s own, or a SYSTEM template’s.' })
+  @ApiQuery({ name: 'versionNumber', required: false, type: Number, description: 'Export this exact version instead of the ACTIVE PUBLISHED one.' })
+  @ApiResponse({ status: 200, type: AgentBundleResponse })
+  @ApiResponse({ status: 404, description: 'Not found (also returned for another tenant’s agent).' })
+  @ApiResponse({ status: 409, description: 'The bound model row is no longer readable, so the agent cannot be exported by slug.' })
+  async exportBySlug(@Param('slug') slug: string, @Query('versionNumber') versionNumber?: string): Promise<AgentBundleResponse> {
+    return this.agentService.exportBySlug(slug, versionNumber ? Number(versionNumber) : undefined);
+  }
+
+  @Post(':slug/clone')
+  @ApiOperation({
+    summary: 'Clone a SYSTEM template or any visible agent into a NEW lineage',
+    description:
+      'Creates a DRAFT under `newSlug`, copying the source’s configuration and recording where it came from. Reusing the source ' +
+      'slug in the same tenant is refused — that would be a new VERSION, which `POST {id}/versions` already is. A same-tenant clone ' +
+      'keeps every binding, eval gate included; a clone into ANOTHER tenant (SUPER_ADMIN only) re-resolves the model by slug there ' +
+      'and refuses a tenant-owned template or MCP binding rather than writing one the target cannot read.',
+  })
+  @ApiParam({ name: 'slug', type: String, description: 'The SOURCE agent’s lineage slug — the caller tenant’s own, or a SYSTEM template’s.' })
+  @ApiResponse({ status: 201, type: AgentResponse })
+  @ApiResponse({ status: 400, description: 'The new slug repeats the source’s in the same tenant, or the tags are not `key:value`.' })
+  // AUTH-NOTE: the class-level `@CanManage('Agent')` UNDERSTATES the gate when the body names
+  // a `tenantId`. A permission decorator expresses `action + subject`; it cannot express
+  // "…and into THAT tenant". Cloning across a tenant boundary is enforced imperatively in
+  // `AgentService.clone` as SUPER_ADMIN-only — a PRIVILEGE 403, not the 404-over-403
+  // cross-tenant posture, because the caller named the tenant explicitly and is being told the
+  // naming itself is above their level. A foreign SOURCE slug still answers 404. Never widen
+  // this decorator without reading the service first.
+  @ApiResponse({ status: 403, description: 'A `tenantId` was supplied by a caller who is not a platform administrator.' })
+  @ApiResponse({ status: 404, description: 'Source not found (also returned for another tenant’s agent, and for an unpublished SYSTEM draft).' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'A binding cannot be resolved in the target tenant — `MODEL_NOT_RESOLVABLE`, `PROMPT_TEMPLATE_NOT_PORTABLE` or `MCP_SERVER_NOT_PORTABLE`.',
+  })
+  async clone(@Param('slug') slug: string, @Body() request: CloneAgentRequest): Promise<AgentResponse> {
+    return this.agentService.clone(slug, request);
+  }
+
+  @Post(':slug/sync')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Push one of the caller’s own agents into other tenants the caller manages',
+    description:
+      'For an administrator who manages several tenants. Every target gets a DRAFT of the same version, in ONE transaction — either ' +
+      'all of them received it or none did. The source must be the caller’s OWN agent (a SYSTEM template is already visible ' +
+      'everywhere), and only SYSTEM-owned prompt-template and MCP bindings cross the boundary. This is NOT the Global → SYSTEM ' +
+      'promotion path, which stays with `POST /admin/agent-promotions`.',
+  })
+  @ApiParam({ name: 'slug', type: String, description: 'The caller tenant’s own agent lineage slug.' })
+  @ApiResponse({ status: 200, type: AgentSyncResponse })
+  @ApiResponse({ status: 400, description: 'A target repeats the source tenant.' })
+  // AUTH-NOTE: the class-level `@CanManage('Agent')` UNDERSTATES the gate. The real control —
+  // the caller holds `manage:Agent` in EVERY named target — is enforced imperatively in
+  // `AgentService.syncToTenants` via `PolicyEngine`, and it runs before any target is read or
+  // written. A target the caller does not manage answers 404, NOT 403: the tenant id space is
+  // not the caller's to probe, so "you may not" and "there is no such tenant" must be one
+  // answer. (Contrast `AgentPromotionService`, which 403s — that caller is a super admin who is
+  // already entitled to know both tenants exist.) Never widen this decorator without reading
+  // the service first.
+  @ApiResponse({
+    status: 404,
+    description: 'The source agent, or a target tenant the caller does not manage — the two are deliberately indistinguishable.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'A binding is not portable across tenants — `PROMPT_TEMPLATE_NOT_PORTABLE`, `MCP_SERVER_NOT_PORTABLE` or `MODEL_NOT_RESOLVABLE`.',
+  })
+  async sync(@Param('slug') slug: string, @Body() request: SyncAgentRequest): Promise<AgentSyncResponse> {
+    return this.agentService.syncToTenants(slug, request);
   }
 }

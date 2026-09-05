@@ -11,6 +11,7 @@ export class AgentAssignmentChange extends BaseTenantDataModel {
   public scope: Enums.PipelinePolicyScope;
   public scopeId: string | null;
   public task: Enums.AgentTask;
+  public selectorKey: string;
   public changedBy: string | null;
   public assignmentVersion: number | null;
   public beforeSlug: string | null;
@@ -22,6 +23,7 @@ export class AgentAssignmentChange extends BaseTenantDataModel {
     this.scope = data.scope;
     this.scopeId = data.scopeId;
     this.task = data.task;
+    this.selectorKey = data.selectorKey;
     this.changedBy = data.changedBy;
     this.assignmentVersion = data.assignmentVersion;
     this.beforeSlug = data.beforeSlug;

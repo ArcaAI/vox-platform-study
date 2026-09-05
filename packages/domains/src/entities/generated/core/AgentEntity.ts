@@ -25,6 +25,11 @@ export interface IAgentEntity extends IBaseTenantEntity {
   task: Enums.AgentTask;
   versionNumber: number;
   parentVersionId?: string | null;
+  /** TASK-884 — cross-lineage provenance of a clone / cross-tenant sync; null on an ordinary create. */
+  sourceAgentId?: string | null;
+  sourceTenantId?: string | null;
+  sourceSlug?: string | null;
+  sourceVersionNumber?: number | null;
   status: Enums.WorkflowDefinitionStatus;
   isActive: boolean;
   modelId: string;
@@ -57,6 +62,10 @@ export class AgentEntity extends BaseTenantEntity {
   private _task: IAgentEntity['task'];
   private _versionNumber: IAgentEntity['versionNumber'];
   private _parentVersionId?: IAgentEntity['parentVersionId'];
+  private _sourceAgentId?: IAgentEntity['sourceAgentId'];
+  private _sourceTenantId?: IAgentEntity['sourceTenantId'];
+  private _sourceSlug?: IAgentEntity['sourceSlug'];
+  private _sourceVersionNumber?: IAgentEntity['sourceVersionNumber'];
   private _status: IAgentEntity['status'];
   private _isActive: IAgentEntity['isActive'];
   private _modelId: IAgentEntity['modelId'];
@@ -81,6 +90,10 @@ export class AgentEntity extends BaseTenantEntity {
     this._task = init.task;
     this._versionNumber = init.versionNumber;
     this._parentVersionId = init.parentVersionId;
+    this._sourceAgentId = init.sourceAgentId;
+    this._sourceTenantId = init.sourceTenantId;
+    this._sourceSlug = init.sourceSlug;
+    this._sourceVersionNumber = init.sourceVersionNumber;
     this._status = init.status;
     this._isActive = init.isActive;
     this._modelId = init.modelId;
@@ -144,6 +157,38 @@ export class AgentEntity extends BaseTenantEntity {
 
   set parentVersionId(value: IAgentEntity['parentVersionId']) {
     this.setProperty('parentVersionId', value);
+  }
+
+  get sourceAgentId(): IAgentEntity['sourceAgentId'] {
+    return this._sourceAgentId;
+  }
+
+  set sourceAgentId(value: IAgentEntity['sourceAgentId']) {
+    this.setProperty('sourceAgentId', value);
+  }
+
+  get sourceTenantId(): IAgentEntity['sourceTenantId'] {
+    return this._sourceTenantId;
+  }
+
+  set sourceTenantId(value: IAgentEntity['sourceTenantId']) {
+    this.setProperty('sourceTenantId', value);
+  }
+
+  get sourceSlug(): IAgentEntity['sourceSlug'] {
+    return this._sourceSlug;
+  }
+
+  set sourceSlug(value: IAgentEntity['sourceSlug']) {
+    this.setProperty('sourceSlug', value);
+  }
+
+  get sourceVersionNumber(): IAgentEntity['sourceVersionNumber'] {
+    return this._sourceVersionNumber;
+  }
+
+  set sourceVersionNumber(value: IAgentEntity['sourceVersionNumber']) {
+    this.setProperty('sourceVersionNumber', value);
   }
 
   get status(): IAgentEntity['status'] {
@@ -285,6 +330,32 @@ export class AgentEntity extends BaseTenantEntity {
     }
     if (this._status === undefined || this._status === null) {
       throw new BusinessException('Agent status is required.');
+    }
+    // TASK-884 — provenance is TWO pairs, and half a pair answers "where did
+    // this come from?" with a shrug:
+    //   (sourceAgentId, sourceTenantId)     — the exact ROW, which a CLONE/SYNC saw
+    //   (sourceSlug, sourceVersionNumber)   — the LINEAGE, which an IMPORT also knows
+    // An import reads a file that deliberately carries no row id and no tenant
+    // id, so it sets the lineage pair alone; knowing the row without knowing
+    // its lineage is not a state anything can produce.
+    {
+      const present = (value: unknown): boolean => value !== undefined && value !== null;
+      const rowPair = [this._sourceAgentId, this._sourceTenantId];
+      const lineagePair = [this._sourceSlug, this._sourceVersionNumber];
+      const rowSet = rowPair.filter(present).length;
+      const lineageSet = lineagePair.filter(present).length;
+      if (rowSet === 1) {
+        throw new BusinessException('Agent clone provenance: sourceAgentId and sourceTenantId are set together or not at all.');
+      }
+      if (lineageSet === 1) {
+        throw new BusinessException('Agent clone provenance: sourceSlug and sourceVersionNumber are set together or not at all.');
+      }
+      if (rowSet === 2 && lineageSet === 0) {
+        throw new BusinessException('Agent clone provenance: a source ROW is always accompanied by its sourceSlug / sourceVersionNumber.');
+      }
+      if (present(this._sourceVersionNumber) && (!Number.isInteger(this._sourceVersionNumber) || (this._sourceVersionNumber as number) < 1)) {
+        throw new BusinessException('Agent sourceVersionNumber must be a positive integer.');
+      }
     }
     for (const [column, value] of [
       ['instruction', this._instruction],
