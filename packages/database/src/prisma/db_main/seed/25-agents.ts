@@ -116,7 +116,10 @@ const DISCHARGE_SYSTEM_PROMPT =
 /** The platform defaults + the Global examples, as pure data. */
 function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: number) => string, published: boolean): SeedAgentSpec[] {
   const status = published ? 'PUBLISHED' : 'DRAFT';
-  const tag = prefix === 'platform' ? 'platform-default' : 'example';
+  // TASK-884 — agent tags are `key:value` pairs (owner decision #6): the grammar the write
+  // DTOs now enforce, so the platform's own rows are what a tenant admin copies. A bare tag
+  // like `stt` has no key, which is exactly the ungrouped vocabulary the pair form prevents.
+  const tier = prefix === 'platform' ? 'tier:platform-default' : 'tier:example';
   return [
     {
       id: ids(1),
@@ -131,7 +134,7 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       parameters: ASR_PARAMETERS,
       status,
       isActive: published,
-      tags: [tag, 'stt', 'transcription'],
+      tags: [tier, 'task:stt', 'capability:transcription'],
     },
     {
       id: ids(2),
@@ -146,7 +149,7 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       parameters: { generation: { temperature: 0.2, maxTokens: 2048 }, responseFormat: 'text' },
       status,
       isActive: published,
-      tags: [tag, 'llm', 'summarization'],
+      tags: [tier, 'task:llm', 'capability:summarization'],
     },
     {
       id: ids(3),
@@ -161,7 +164,7 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       parameters: { generation: { temperature: 0.2, maxTokens: 1536 }, responseFormat: 'text' },
       status,
       isActive: published,
-      tags: [tag, 'llm', 'presummarization'],
+      tags: [tier, 'task:llm', 'capability:presummarization'],
     },
     {
       id: ids(4),
@@ -176,7 +179,7 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       parameters: { generation: { temperature: 0.1, maxTokens: 3072 }, responseFormat: 'text' },
       status,
       isActive: published,
-      tags: [tag, 'llm', 'discharge-summary'],
+      tags: [tier, 'task:llm', 'capability:discharge-summary'],
     },
     {
       id: ids(5),
@@ -191,7 +194,7 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       parameters: { generation: { temperature: 0, maxTokens: 1024 }, responseFormat: 'text' },
       status,
       isActive: published,
-      tags: [tag, 'llm', 'grammar'],
+      tags: [tier, 'task:llm', 'capability:grammar'],
     },
     {
       id: ids(6),
@@ -206,7 +209,7 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       parameters: { generation: { temperature: 0, maxTokens: 1024 }, responseFormat: 'json' },
       status,
       isActive: published,
-      tags: [tag, 'llm', 'important-findings'],
+      tags: [tier, 'task:llm', 'capability:important-findings'],
     },
     {
       id: ids(7),
@@ -221,7 +224,7 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       parameters: { voice: 'af_heart', language: 'en', speed: 1, format: 'wav', sampleRate: 24000 },
       status,
       isActive: published,
-      tags: [tag, 'tts'],
+      tags: [tier, 'task:tts'],
     },
   ];
 }
@@ -243,7 +246,7 @@ export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = [
     parameters: { decoding: { languageMode: 'en', wordTimestamps: true }, streaming: { partialIntervalMs: 500, endpointing: 'fixed' }, fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 2 } },
     status: 'DRAFT',
     isActive: false,
-    tags: ['example', 'stt', 'azure', 'cloud'],
+    tags: ['tier:example', 'task:stt', 'provider:azure', 'hosting:cloud'],
   },
   {
     // The e2e LIVE-SESSION fixture agent. PUBLISHED + active so a spec can name
@@ -270,7 +273,7 @@ export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = [
     parameters: ASR_PARAMETERS,
     status: 'PUBLISHED',
     isActive: true,
-    tags: ['example', 'stt', 'transcription', 'e2e-fixture'],
+    tags: ['tier:example', 'task:stt', 'capability:transcription', 'fixture:e2e'],
   },
   {
     id: glob(9),
@@ -285,7 +288,7 @@ export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = [
     parameters: { decoding: { languageMode: 'ml-en', codeSwitching: true }, streaming: { partialIntervalMs: 500, endpointing: 'fixed' } },
     status: 'DRAFT',
     isActive: false,
-    tags: ['example', 'stt', 'sarvam', 'cloud'],
+    tags: ['tier:example', 'task:stt', 'provider:sarvam', 'hosting:cloud'],
   },
 ];
 

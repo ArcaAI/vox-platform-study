@@ -2,9 +2,12 @@ import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, ver
 import type {
   Agent,
   AgentAssignment,
+  AgentBundle,
   AgentTask,
+  CloneAgentRequest,
   CreateAgentRequest,
   Department,
+  ImportAgentRequest,
   InstructionTemplate,
   NewAgentVersionRequest,
   PublishAgentRequest,
@@ -56,6 +59,21 @@ export function newAgentVersion(id: string, body: NewAgentVersionRequest = {}): 
 
 export function deprecateAgent(id: string): Promise<Agent> {
   return postJson(`${BASE}/${encodeURIComponent(id)}/deprecate`, {});
+}
+
+// TASK-884 — portability. These three address the agent by its lineage SLUG, not its row id:
+// a slug is stable across versions and is what an exported file and another tenant both name.
+
+export function exportAgent(slug: string, versionNumber?: number): Promise<AgentBundle> {
+  return getJson(`${BASE}/${encodeURIComponent(slug)}/export`, versionNumber ? { versionNumber: String(versionNumber) } : undefined);
+}
+
+export function cloneAgent(slug: string, body: CloneAgentRequest): Promise<Agent> {
+  return postJson(`${BASE}/${encodeURIComponent(slug)}/clone`, body);
+}
+
+export function importAgent(body: ImportAgentRequest): Promise<Agent> {
+  return postJson(`${BASE}/import`, body);
 }
 
 export function listAgentAssignments(task?: AgentTask): Promise<AgentAssignment[]> {
