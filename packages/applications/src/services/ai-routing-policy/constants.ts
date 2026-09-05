@@ -1,4 +1,4 @@
-import { AiTaskKind } from '@arcaai/domains';
+import { AiTaskKind, ModelTaskType } from '@arcaai/domains';
 
 /**
  * The AI tasks whose provider + model are selected through `AiRoutingPolicy`
@@ -89,6 +89,55 @@ export const AI_TASK_KIND_BY_TASK_KEY: Record<AiTaskKey, AiTaskKind> = {
   // Image + text in, text out. Not TEXT_GENERATION: the binding needs a vision
   // model, and a text-only provider cannot serve it.
   'vlm.extract': AiTaskKind.VISION_EXTRACTION,
+};
+
+/**
+ * taskKey → the `AiModel.taskType`s a model bound to that key may declare.
+ *
+ * Re-homed by TASK-888 from the retired `AiTaskDefault` facade, whose
+ * `upsertRow` refused a slug whose registry row declared an incompatible task
+ * type. `AiRoutingPolicyService` inherited the vocabulary but not the check, so
+ * for one wave a routing row could elect (say) a span extractor as the
+ * `harness.judge` default and the failure surfaced at inference time as an
+ * unusable model instead of at write time as a rejected request.
+ *
+ * A SET per key, not a single value, for two reasons. One task genuinely admits
+ * two model shapes: content-safety heads ship both as text classifiers
+ * (`gliguard-llm-guardrails-300m`, the seeded `guardrail.safety` default) and as
+ * token classifiers (`gliner2-guardrails-*`), and a single-valued map is what
+ * made the retired one WRONG — it declared `guardrail.safety` as
+ * TOKEN_CLASSIFICATION while the seeded default has been TEXT_CLASSIFICATION.
+ * And a set states the widening explicitly at the one place it is decided
+ * rather than by relaxing a check at a call site.
+ *
+ * COARSER than {@link AI_TASK_KIND_BY_TASK_KEY} in a different direction: the
+ * kind is the taxonomy an operator reasons in, this is the mechanical
+ * compatibility the registry can check. Neither derives the other.
+ *
+ * Every seeded SYSTEM election satisfies this map, pinned by
+ * `tests/contracts/routing-task-model-compatibility.contract.test.ts`.
+ */
+export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, readonly ModelTaskType[]> = {
+  // The granite-guardian medical-validation screen — a purpose-typed guardian
+  // model, not a generic classifier.
+  'guardrail.validate': [ModelTaskType.GUARDRAIL],
+  // Content-safety moderation, served by either head shape (see above).
+  'guardrail.safety': [ModelTaskType.TEXT_CLASSIFICATION, ModelTaskType.TOKEN_CLASSIFICATION],
+  // NLI entailment: scores a claim against a source. `minicheck-flan-t5-large`.
+  'guardrail.groundedness': [ModelTaskType.TEXT_CLASSIFICATION],
+  // PII SPAN extraction — a span offset is a token-level output.
+  'guardrail.pii': [ModelTaskType.TOKEN_CLASSIFICATION],
+  'guardrail.pii.spans': [ModelTaskType.TOKEN_CLASSIFICATION],
+  'nlp.ner': [ModelTaskType.TOKEN_CLASSIFICATION],
+  // The four keys served by the same generic `/classify/text` path.
+  'nlp.classification': [ModelTaskType.TEXT_CLASSIFICATION],
+  'nlp.diagnosis': [ModelTaskType.TEXT_CLASSIFICATION],
+  'nlp.sentiment': [ModelTaskType.TEXT_CLASSIFICATION],
+  'nlp.toxicity': [ModelTaskType.TEXT_CLASSIFICATION],
+  // LLM-as-judge: a generation model reading a rubric.
+  'harness.judge': [ModelTaskType.TEXT_GENERATION],
+  // Image + text in, text out. A text-only model cannot serve it.
+  'vlm.extract': [ModelTaskType.IMAGE_TEXT_TO_TEXT],
 };
 
 /**

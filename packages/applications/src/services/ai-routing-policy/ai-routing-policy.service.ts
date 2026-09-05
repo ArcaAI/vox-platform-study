@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -22,7 +22,7 @@ import {
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
-import { AI_TASK_KEYS, AI_TASK_KIND_BY_TASK_KEY } from './constants';
+import { AI_TASK_KEYS, AI_TASK_KIND_BY_TASK_KEY, AI_TASK_MODEL_TASK_TYPES, AiTaskKey } from './constants';
 import { IProviderConnectionService, ProviderService } from '../ai-provider-connection/IProviderConnectionService';
 import {
   GenerationCapabilitySelector,
@@ -433,6 +433,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     // accepted for a pre-844 chain revision, and validated the old way when it
     // is the only thing supplied, so an existing caller is not broken.
     this.assertBindingUsable(dto);
+    await this.assertModelServesTask(dto.taskKey, dto.modelId, tenantId);
 
     const existing = await this.readPolicies([tenantId], { tenantId, taskKey: dto.taskKey });
     const nextVersion = dto.policyVersion ?? existing.reduce((max, row) => Math.max(max, row.policyVersion), 0) + 1;
@@ -502,6 +503,9 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     this.assertSuperAdmin('change a routing policy');
     const existing = await this.loadOwnedRow(id, tenantId);
     const before = AiRoutingPolicyDtoMapper.toResponse(existing);
+    // The task key is the ROW's, never the body's — `update` cannot re-task a
+    // revision, so a re-binding is always checked against the task it serves.
+    await this.assertModelServesTask(existing.taskKey, dto.modelId, tenantId);
 
     const changes = this.buildUpdateChanges(existing, dto);
     await this.updateEntity(existing, changes);
@@ -1258,6 +1262,58 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    * only `candidates` is still accepted and validated the old way, so the
    * re-grain does not break a caller that has not migrated.
    */
+  /**
+   * A routing row may not bind a model that cannot serve its task.
+   *
+   * TASK-881 retired the `AiTaskDefault` facade and this was the one check the
+   * routing service never inherited: `upsertRow` refused a slug whose registry
+   * row declared an incompatible `taskType`. Without it a super admin could
+   * elect a span extractor as the `harness.judge` default and the failure
+   * surfaced at inference time as an unusable model rather than at write time
+   * as a rejected request.
+   *
+   * TWO answers, deliberately different:
+   *   - a model that does not resolve, or that belongs to ANOTHER tenant, is a
+   *     404 — the cross-tenant posture, so this write surface is not an
+   *     existence oracle over other tenants' catalogues; and
+   *   - a model the caller CAN see whose task type does not serve the key is a
+   *     409 with a named code, because the caller's problem is a conflict
+   *     between two things it named, not a missing resource.
+   *
+   * Skipped entirely when the row names a `modelRef` instead: that is a
+   * provider-native id for a model the catalogue does not carry, so there is no
+   * `taskType` to compare against and refusing it would forbid the case the
+   * field exists for.
+   */
+  private async assertModelServesTask(taskKey: string, modelId: string | null | undefined, tenantId: string): Promise<void> {
+    if (!modelId) return;
+
+    const model = await this.aiModelRepository.findByIdOrNull(modelId, this.crossTenantLane(tenantId));
+    if (!model || (model.tenantId !== tenantId && model.tenantId !== SYSTEM_TENANT_ID)) {
+      throw new NotFoundException(`AiModel '${modelId}' was not found in this tenant or the platform catalogue.`);
+    }
+
+    const accepted = AI_TASK_MODEL_TASK_TYPES[taskKey as AiTaskKey];
+    // `assertKnownTaskKey` runs first on create, and `update` reads the key off
+    // a persisted row, so an unclassified key cannot reach here. Guarded anyway:
+    // selection is fail-closed platform-wide, and "nobody classified this" must
+    // never read as "anything serves it".
+    if (!accepted) {
+      throw new ConflictException({
+        code: 'ROUTING_TASK_UNCLASSIFIED',
+        message: `AI task '${taskKey}' declares no compatible model task type, so no model can be bound to it.`,
+      });
+    }
+    if (!accepted.includes(model.taskType)) {
+      throw new ConflictException({
+        code: 'ROUTING_MODEL_TASK_MISMATCH',
+        message:
+          `Model '${model.slug}' declares taskType '${model.taskType}', which cannot serve AI task '${taskKey}' ` +
+          `(expected ${accepted.join(' or ')}).`,
+      });
+    }
+  }
+
   private assertBindingUsable(dto: { modelId?: string | null; modelRef?: string | null; candidates?: unknown }): void {
     if (dto.modelId || dto.modelRef) return;
     if (dto.candidates !== undefined) {
