@@ -1,333 +1,241 @@
 /**
- * ConfigResolver unit tests.
+ * ConfigResolver — TASK-882: the graph-node config resolver.
  *
- * The generalized realtime-config cascade resolver. Verifies:
- *  1. Code-default fallthrough when no policy rows exist (trace = code-default).
- *  2. SYSTEM-default acts as the platform default below an absent tenant row.
- *  3. tenant overrides system; department overrides tenant; doctor overrides
- *     department — the trace reports the winning tier.
- *  4. NULL toggles inherit (fall through to the next tier).
- *  5. Per-setting MAX SCOPE clamp: `harnessEnabled` is capped at DEPARTMENT, so a
- *     DOCTOR row's `harnessEnabled` is IGNORED (resolution stops at tenant/dept).
- *  6. `resolvePreferredPromptTemplateId` reads UserProfile.preferredPromptTemplateId.
+ * `PipelinePolicy` is retired. What used to be a five-toggle policy cascade is now read off the
+ * assigned consultation graph (node presence + `enabled`) and, for the one clinician-owned
+ * preference, off the doctor's own `UserSettings` row:
  *
- * The repositories are mocked; the REAL PipelinePolicyFactory builds the rows so
- * nullable-toggle semantics are exercised end to end.
+ *  - auto-summary        = the graph's generation node(s) are enabled (default ON — an absent
+ *                          graph or a graph with no generation node keeps today's behaviour)
+ *  - DNA writing style   = an enabled `agent.dna_style` node (tenant gate) AND the doctor's
+ *                          `dna.styleEnabled` preference (unset = implicit opt-in)
+ *  - DNA redaction       = an enabled `agent.dna_redaction` node AND (unless the node says
+ *                          `requireDoctorOptIn: false`) that same doctor preference
+ *  - preferred prompt    = `UserProfile.preferredPromptTemplateId` (unchanged)
+ *
+ * Every DNA read fails CLOSED (OFF) on a degraded lookup; auto-summary fails toward its code
+ * default (ON), which is the direction that never silently loses a note.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PipelinePolicyFactory, PipelinePolicyScope, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { ConfigResolver } from '../config-resolver.service';
+import { DNA_STYLE_PREFERENCE } from '../dna-style-preference';
 
 const TENANT = 'tenant-1';
 const DEPT = 'dept-1';
 const DOCTOR = 'doctor-1';
 
-const pipelinePolicyRepository = {
-  findCascadeRows: vi.fn(),
-  findSystemDefault: vi.fn(),
-};
-
-const userProfileRepository = {
-  findAll: vi.fn(),
-};
+const userProfileRepository = { findAll: vi.fn() };
+const workflowAssignments = { resolve: vi.fn() };
+const workflowDefinitionRepository = { findPublishedBySlug: vi.fn() };
+const userSettingsRepository = { findByUserKeyNamespace: vi.fn() };
 
 function makeResolver(): ConfigResolver {
-  return new ConfigResolver(pipelinePolicyRepository as never, userProfileRepository as never);
+  return new ConfigResolver(userProfileRepository as never, workflowAssignments as never, workflowDefinitionRepository as never, userSettingsRepository as never);
 }
 
-function tenantRow(toggles: Record<string, boolean | null>) {
-  return PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, ...toggles });
+type Node = { id: string; type: string; config?: Record<string, unknown> };
+function publishGraph(nodes: Node[]) {
+  workflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-soap', source: 'tenant' });
+  workflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({ graph: { version: 1, nodes: nodes.map((n) => ({ ...n, config: n.config ?? {} })), edges: [] } });
 }
-function deptRow(toggles: Record<string, boolean | null>) {
-  return PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.DEPARTMENT, scopeId: DEPT, ...toggles });
+function noGraph() {
+  workflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: null, source: 'platform-default' });
+  workflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(null);
 }
-function doctorRow(toggles: Record<string, boolean | null>) {
-  return PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.DOCTOR, scopeId: DOCTOR, ...toggles });
-}
-function systemRow(toggles: Record<string, boolean | null>) {
-  return PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: SYSTEM_TENANT_ID, scope: PipelinePolicyScope.TENANT, ...toggles });
+function preference(value: 'true' | 'false' | null, version = 1) {
+  userSettingsRepository.findByUserKeyNamespace.mockResolvedValue(value === null ? null : { id: 'us-1', value, version });
 }
 
-describe('ConfigResolver.resolvePipelineToggles', () => {
-  let resolver: ConfigResolver;
+beforeEach(() => {
+  vi.clearAllMocks();
+  noGraph();
+  preference(null);
+  userProfileRepository.findAll.mockResolvedValue([]);
+});
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resolver = makeResolver();
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([]);
-    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(null);
+describe('ConfigResolver.resolveAutoSummaryEnabled — the generation node`s `enabled`', () => {
+  it('ON when the workflow resolvers are unwired (code default)', async () => {
+    await expect(new ConfigResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
   });
 
-  it('returns the code defaults (trace=code-default) when no rows exist', async () => {
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT });
-
-    expect(r.autoSummaryEnabled).toBe(true);
-    expect(r.autoNerEnabled).toBe(true);
-    // harnessEnabled code-defaults to true (the legacy signable
-    // generator this toggle used to fall back to no longer exists).
-    expect(r.harnessEnabled).toBe(true);
-    expect(r.dnaStyleEnabled).toBe(false);
-    expect(r.trace.autoSummaryEnabled).toBe('code-default');
-    expect(r.trace.harnessEnabled).toBe('code-default');
+  it('ON when no consultation graph is assigned (code default)', async () => {
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
   });
 
-  it('uses the SYSTEM default as the platform default below an absent tenant row', async () => {
-    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(systemRow({ autoSummaryEnabled: true, autoNerEnabled: true, harnessEnabled: true }));
-
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT });
-
-    expect(r.harnessEnabled).toBe(true);
-    expect(r.trace.harnessEnabled).toBe('system-default');
-    // dnaStyleEnabled is null on the system row → code-default
-    expect(r.dnaStyleEnabled).toBe(false);
-    expect(r.trace.dnaStyleEnabled).toBe('code-default');
+  it('ON when the graph declares no generation node at all (nothing to switch off)', async () => {
+    publishGraph([{ id: 'ner', type: 'consultation.extractEntities' }]);
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
   });
 
-  it('lets a tenant row override the system default', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ harnessEnabled: false })]);
-    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(systemRow({ harnessEnabled: true }));
-
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT });
-
-    expect(r.harnessEnabled).toBe(false);
-    expect(r.trace.harnessEnabled).toBe('tenant');
+  it('ON when the graph`s generation node is enabled', async () => {
+    publishGraph([{ id: 'synth', type: 'consultation.synthesize', config: { taskKey: 'text.finalize' } }]);
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
   });
 
-  it('lets a department row override the tenant row', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ autoSummaryEnabled: true }), deptRow({ autoSummaryEnabled: false })]);
-
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT, departmentId: DEPT });
-
-    expect(r.autoSummaryEnabled).toBe(false);
-    expect(r.trace.autoSummaryEnabled).toBe('department');
-  });
-
-  it('lets a doctor row override the department row for a DOCTOR-max setting', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([deptRow({ autoSummaryEnabled: true }), doctorRow({ autoSummaryEnabled: false })]);
-
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT, departmentId: DEPT, doctorId: DOCTOR });
-
-    expect(r.autoSummaryEnabled).toBe(false);
-    expect(r.trace.autoSummaryEnabled).toBe('doctor');
-  });
-
-  it('CLAMPS harnessEnabled at DEPARTMENT — a doctor row cannot override it', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
-      tenantRow({ harnessEnabled: false }),
-      doctorRow({ harnessEnabled: true }), // out-of-scope: must be ignored
+  it('OFF when every generation node the graph declares is switched off', async () => {
+    publishGraph([
+      { id: 'synth', type: 'consultation.synthesize', config: { enabled: false } },
+      { id: 'sum', type: 'agent.summarization', config: { enabled: false } },
     ]);
-
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT, departmentId: DEPT, doctorId: DOCTOR });
-
-    // doctor's harnessEnabled is ignored (max scope = department); falls to tenant.
-    expect(r.harnessEnabled).toBe(false);
-    expect(r.trace.harnessEnabled).toBe('tenant');
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(false);
   });
 
-  it('allows a department row to set harnessEnabled (within max scope)', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ harnessEnabled: false }), deptRow({ harnessEnabled: true })]);
-
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT, departmentId: DEPT });
-
-    expect(r.harnessEnabled).toBe(true);
-    expect(r.trace.harnessEnabled).toBe('department');
+  it('a core.agent node counts as a generation node; a core.action delegating to one too', async () => {
+    publishGraph([{ id: 'a', type: 'core.agent', config: { agentRef: { slug: 'soap' } } }]);
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
+    publishGraph([{ id: 'a', type: 'core.action', config: { actionKey: 'consultation.synthesize', enabled: false } }]);
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(false);
   });
 
-  it('treats a NULL toggle as inherit (falls through to the next tier)', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ autoSummaryEnabled: null })]);
-    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(systemRow({ autoSummaryEnabled: true }));
-
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT });
-
-    expect(r.autoSummaryEnabled).toBe(true);
-    expect(r.trace.autoSummaryEnabled).toBe('system-default');
+  it('resolves the assignment for the consultation`s department', async () => {
+    publishGraph([{ id: 'synth', type: 'consultation.synthesize' }]);
+    await makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT, departmentId: DEPT });
+    expect(workflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPT);
   });
 
-  it('degrades to code defaults if the policy lookup throws (fail-safe realtime path)', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockRejectedValue(new Error('db down'));
+  it('degrades to ON (never silently loses a note) when the lookup throws', async () => {
+    workflowAssignments.resolve.mockRejectedValue(new Error('down'));
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
+  });
+});
 
-    const r = await resolver.resolvePipelineToggles({ tenantId: TENANT });
+describe('ConfigResolver.resolveDoctorDnaPreference — the clinician`s own opt-out', () => {
+  it('reads the `dna` / `styleEnabled` UserSettings row of the doctor', async () => {
+    preference('false', 4);
+    await expect(makeResolver().resolveDoctorDnaPreference(DOCTOR)).resolves.toEqual({ enabled: false, version: 4 });
+    expect(userSettingsRepository.findByUserKeyNamespace).toHaveBeenCalledWith(DOCTOR, DNA_STYLE_PREFERENCE.key, DNA_STYLE_PREFERENCE.namespace);
+  });
 
-    expect(r.autoSummaryEnabled).toBe(true);
-    // code-default harnessEnabled is now true.
-    expect(r.harnessEnabled).toBe(true);
+  it('reports no opinion (null, version 0) when the doctor has no row, no doctor, or no repository', async () => {
+    await expect(makeResolver().resolveDoctorDnaPreference(DOCTOR)).resolves.toEqual({ enabled: null, version: 0 });
+    await expect(makeResolver().resolveDoctorDnaPreference(null)).resolves.toEqual({ enabled: null, version: 0 });
+    await expect(new ConfigResolver().resolveDoctorDnaPreference(DOCTOR)).resolves.toEqual({ enabled: null, version: 0 });
+  });
+
+  it('a malformed value is no opinion, and a failed read is no opinion (never a throw)', async () => {
+    preference('maybe' as never, 2);
+    await expect(makeResolver().resolveDoctorDnaPreference(DOCTOR)).resolves.toEqual({ enabled: null, version: 2 });
+    userSettingsRepository.findByUserKeyNamespace.mockRejectedValue(new Error('down'));
+    await expect(makeResolver().resolveDoctorDnaPreference(DOCTOR)).resolves.toEqual({ enabled: null, version: 0 });
+  });
+});
+
+describe('ConfigResolver.resolveEffectiveDnaStyleEnabled — the agent.dna_style NODE and the doctor', () => {
+  it('OFF when the workflow resolvers are unwired — fail closed', async () => {
+    await expect(new ConfigResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR })).resolves.toEqual({
+      effective: false,
+      tenantEnabled: false,
+      doctorToggle: null,
+      doctorPreferenceVersion: 0,
+    });
+  });
+
+  it('OFF when the governing graph declares no DNA writing-style node, whatever the doctor set', async () => {
+    publishGraph([{ id: 'synth', type: 'consultation.synthesize' }]);
+    preference('true');
+    const r = await makeResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.tenantEnabled).toBe(false);
+    expect(r.effective).toBe(false);
+  });
+
+  it('an ACTIVE node + the doctor`s implicit opt-in ⇒ ON', async () => {
+    publishGraph([{ id: 'style', type: 'agent.dna_style', config: { onError: 'degrade' } }]);
+    const r = await makeResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r).toEqual({ effective: true, tenantEnabled: true, doctorToggle: null, doctorPreferenceVersion: 0 });
+  });
+
+  it('the doctor`s explicit opt-OUT vetoes an active node — the clinician owns their writing style', async () => {
+    publishGraph([{ id: 'style', type: 'agent.dna_style' }]);
+    preference('false', 3);
+    const r = await makeResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r).toEqual({ effective: false, tenantEnabled: true, doctorToggle: false, doctorPreferenceVersion: 3 });
+  });
+
+  it('a node the tenant switched OFF is not a configured node', async () => {
+    publishGraph([{ id: 'style', type: 'agent.dna_style', config: { enabled: false } }]);
+    preference('true');
+    const r = await makeResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.tenantEnabled).toBe(false);
+    expect(r.effective).toBe(false);
+  });
+
+  it('a core.action delegating to agent.dna_style is the same declaration', async () => {
+    publishGraph([{ id: 'style', type: 'core.action', config: { actionKey: 'agent.dna_style' } }]);
+    const r = await makeResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.effective).toBe(true);
+  });
+
+  it('fails CLOSED when the graph lookup throws', async () => {
+    workflowAssignments.resolve.mockRejectedValue(new Error('assignment service down'));
+    preference('true');
+    const r = await makeResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.effective).toBe(false);
+    expect(r.tenantEnabled).toBe(false);
+  });
+});
+
+describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled — the agent.dna_redaction NODE and the doctor', () => {
+  it('OFF when the workflow resolvers are unwired — no legacy cascade answers any more', async () => {
+    const r = await new ConfigResolver().resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.effective).toBe(false);
+    expect(r.tenantEnabled).toBe(false);
+  });
+
+  it('an ACTIVE node + the doctor`s implicit opt-in ⇒ redaction ON', async () => {
+    publishGraph([{ id: 'redact', type: 'agent.dna_redaction', config: { onError: 'degrade' } }]);
+    const r = await makeResolver().resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.tenantEnabled).toBe(true);
+    expect(r.doctorToggle).toBeNull();
+    expect(r.effective).toBe(true);
+  });
+
+  it('NO node in the governing graph ⇒ redaction OFF, whatever the doctor set', async () => {
+    publishGraph([{ id: 'note', type: 'consultation.synthesize' }]);
+    preference('true');
+    const r = await makeResolver().resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.effective).toBe(false);
+  });
+
+  it('a node the tenant switched OFF is not a configured node', async () => {
+    publishGraph([{ id: 'redact', type: 'agent.dna_redaction', config: { enabled: false } }]);
+    const r = await makeResolver().resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.effective).toBe(false);
+  });
+
+  it('the doctor`s DNA opt-OUT still vetoes an active node — the surviving second gate', async () => {
+    publishGraph([{ id: 'redact', type: 'agent.dna_redaction' }]);
+    preference('false');
+    const r = await makeResolver().resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.tenantEnabled).toBe(true);
+    expect(r.doctorToggle).toBe(false);
+    expect(r.effective).toBe(false);
+  });
+
+  it('requireDoctorOptIn:false makes the tenant`s placement sufficient', async () => {
+    publishGraph([{ id: 'redact', type: 'agent.dna_redaction', config: { requireDoctorOptIn: false } }]);
+    preference('false');
+    const r = await makeResolver().resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.effective).toBe(true);
+  });
+
+  it('fails CLOSED when the graph lookup throws — a note expected redacted must never slip through', async () => {
+    workflowAssignments.resolve.mockRejectedValue(new Error('assignment service down'));
+    const r = await makeResolver().resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.effective).toBe(false);
+    expect(r.tenantEnabled).toBe(false);
   });
 });
 
 describe('ConfigResolver.resolvePreferredPromptTemplateId', () => {
-  let resolver: ConfigResolver;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resolver = makeResolver();
-  });
-
   it('returns the doctor profile preferredPromptTemplateId, queried by userId', async () => {
     userProfileRepository.findAll.mockResolvedValue([{ preferredPromptTemplateId: 'tpl-9' }]);
-
-    const id = await resolver.resolvePreferredPromptTemplateId(DOCTOR);
-
-    expect(id).toBe('tpl-9');
+    await expect(makeResolver().resolvePreferredPromptTemplateId(DOCTOR)).resolves.toBe('tpl-9');
     expect(userProfileRepository.findAll).toHaveBeenCalledWith({ where: { userId: DOCTOR } });
   });
 
-  it('returns null when the doctor has no profile / no preferred id', async () => {
+  it('returns null when the doctor has no profile / no preferred id / no repository', async () => {
     userProfileRepository.findAll.mockResolvedValue([{ preferredPromptTemplateId: null }]);
-    expect(await resolver.resolvePreferredPromptTemplateId(DOCTOR)).toBeNull();
-  });
-
-  it('returns null (no lookup) when doctorId is absent', async () => {
-    expect(await resolver.resolvePreferredPromptTemplateId(undefined)).toBeNull();
-    expect(userProfileRepository.findAll).not.toHaveBeenCalled();
-  });
-
-  it('returns null and swallows lookup errors', async () => {
-    userProfileRepository.findAll.mockRejectedValue(new Error('db down'));
-    expect(await resolver.resolvePreferredPromptTemplateId(DOCTOR)).toBeNull();
-  });
-});
-
-/**
- * Effective DNA-style flag = tenant AND doctor.
- *
- * DNA style applies only when the tenant permits it (resolved over the
- * department→tenant→system cascade, DOCTOR scope EXCLUDED) AND the doctor has
- * not opted out. An unset doctor toggle is an implicit opt-in (`?? true`), so a
- * doctor under an enabled tenant is styled by default; a doctor can opt OUT
- * under an enabled tenant, but can never opt IN when the tenant flag is off.
- */
-describe('ConfigResolver.resolveEffectiveDnaStyleEnabled', () => {
-  let resolver: ConfigResolver;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resolver = makeResolver();
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([]);
-    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(null);
-  });
-
-  it('unset doctor toggle ⇒ effective follows the tenant flag (enabled)', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaStyleEnabled: true })]);
-
-    const r = await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(true);
-    expect(r.doctorToggle).toBeNull();
-    expect(r.effective).toBe(true);
-  });
-
-  it('unset doctor toggle ⇒ effective follows the tenant flag (disabled)', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaStyleEnabled: false })]);
-
-    const r = await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(false);
-    expect(r.effective).toBe(false);
-  });
-
-  it('doctor opt-OUT under an enabled tenant ⇒ effective false', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaStyleEnabled: true }), doctorRow({ dnaStyleEnabled: false })]);
-
-    const r = await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(true);
-    expect(r.doctorToggle).toBe(false);
-    expect(r.effective).toBe(false);
-  });
-
-  it('doctor cannot opt IN when the tenant flag is off ⇒ effective false', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaStyleEnabled: false }), doctorRow({ dnaStyleEnabled: true })]);
-
-    const r = await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(false);
-    expect(r.doctorToggle).toBe(true);
-    expect(r.effective).toBe(false);
-  });
-
-  it('degrades to effective=false (fail-closed) if the policy lookup throws', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockRejectedValue(new Error('db down'));
-
-    const r = await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.effective).toBe(false);
-  });
-});
-
-describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled (double-gate)', () => {
-  let resolver: ConfigResolver;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resolver = makeResolver();
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([]);
-    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(null);
-  });
-
-  it('code-defaults to OFF when nothing resolves (fail-closed)', async () => {
-    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-    expect(r.tenantEnabled).toBe(false);
-    expect(r.effective).toBe(false);
-  });
-
-  it('tenant ON + doctor DNA opt-in unset ⇒ effective ON', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: true })]);
-
-    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(true);
-    expect(r.doctorToggle).toBeNull();
-    expect(r.effective).toBe(true);
-  });
-
-  it('tenant OFF ⇒ effective OFF even when the doctor has DNA on', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: false }), doctorRow({ dnaStyleEnabled: true })]);
-
-    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(false);
-    expect(r.effective).toBe(false);
-  });
-
-  it('doctor DNA opt-OUT under an enabled tenant ⇒ effective OFF', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: true }), doctorRow({ dnaStyleEnabled: false })]);
-
-    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(true);
-    expect(r.doctorToggle).toBe(false);
-    expect(r.effective).toBe(false);
-  });
-
-  it('maxScope TENANT: a DEPARTMENT row cannot enable redaction', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([deptRow({ dnaRedactionEnabled: true })]);
-
-    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, departmentId: DEPT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(false);
-    expect(r.effective).toBe(false);
-  });
-
-  // removed a THIRD gate that used to sit alongside these two:
-  // `DepartmentAgent.dnaStylePolicy = DISABLED` forced the result OFF for the
-  // department's default agent regardless of what the tenant and the doctor
-  // said. It retired with `DepartmentAgent` and has no successor. The direction
-  // of that loss is the point of this case: a consultation both surviving gates
-  // ENABLE is now redacted, where an agent could previously veto it.
-  it('is decided by the tenant and doctor gates alone — nothing else can force it OFF', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: true })]);
-
-    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.tenantEnabled).toBe(true);
-    expect(r.effective).toBe(true);
-  });
-
-  it('degrades to effective=false (fail-closed) if the policy lookup throws', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockRejectedValue(new Error('db down'));
-
-    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
-
-    expect(r.effective).toBe(false);
+    await expect(makeResolver().resolvePreferredPromptTemplateId(DOCTOR)).resolves.toBeNull();
+    await expect(new ConfigResolver().resolvePreferredPromptTemplateId(DOCTOR)).resolves.toBeNull();
   });
 });

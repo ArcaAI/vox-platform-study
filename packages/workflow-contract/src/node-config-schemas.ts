@@ -1018,6 +1018,26 @@ const AGENT_DNA_REDACTION_SCHEMA: NodeConfigSchema = Object.freeze({
 });
 
 /**
+ * `agent.dna_style` — TASK-882: the DNA WRITING-STYLE gate as a node.
+ *
+ * It replaces the tenant/department tier of the retired `pipeline.dnaStyleEnabled` toggle: a
+ * tenant applies (and learns) a doctor's DNA writing style by placing this node, enabled, on its
+ * consultation graph. The doctor's own opt-out is NOT on the node — it is the clinician's
+ * preference over their own writing style (`UserSettings`, `dna` / `styleEnabled`), written by
+ * `PUT dna-writing-styles/settings` and always honoured. The node therefore carries nothing but
+ * the shared `onError`; presence + `enabled` IS the configuration.
+ */
+const AGENT_DNA_STYLE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'agent.dna_style node config (TASK-882 — the DNA writing-style gate as a node)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+/**
  * `agent.important_findings` — the tenant's OWN definition of what matters, as a node.
  *
  * found no importance layer of any kind on the platform, and put the design
@@ -2052,6 +2072,7 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
   'agent.feedback': FEEDBACK_CAPTURE_SCHEMA,
   'agent.important_findings': AGENT_IMPORTANT_FINDINGS_SCHEMA,
   'agent.dna_redaction': AGENT_DNA_REDACTION_SCHEMA,
+  'agent.dna_style': AGENT_DNA_STYLE_SCHEMA,
   // The guards. `guard.phi` and `guard.moderation` reuse the redaction and content-safety
   // engines' own schemas; only groundedness had no node to inherit from.
   'guard.phi': CONSULTATION_PHI_HOP_SCHEMA,

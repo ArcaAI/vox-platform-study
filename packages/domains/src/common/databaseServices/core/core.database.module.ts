@@ -61,8 +61,6 @@ import { NotificationRepository } from '../../../repositories/generated/core/Not
 import { PasswordResetTokenRepository } from '../../../repositories/generated/core/PasswordResetTokenRepository';
 import { PermissionRepository } from '../../../repositories/generated/core/PermissionRepository';
 import { PlanEntitlementRepository } from '../../../repositories/generated/core/PlanEntitlementRepository';
-import { PipelinePolicyChangeRepository } from '../../../repositories/generated/core/PipelinePolicyChangeRepository';
-import { PipelinePolicyRepository } from '../../../repositories/generated/core/PipelinePolicyRepository';
 import { PromptTemplateRepository } from '../../../repositories/generated/core/PromptTemplateRepository';
 import { PromptUsageRecordRepository } from '../../../repositories/generated/core/PromptUsageRecordRepository';
 import { PromptVersionRepository } from '../../../repositories/generated/core/PromptVersionRepository';
@@ -239,9 +237,6 @@ const repositories = [
   // Harness Administration Console — editable runtime policy
   HarnessPolicyRepository,
   HarnessPolicyChangeRepository,
-  // Realtime-pipeline policy cascade
-  PipelinePolicyRepository,
-  PipelinePolicyChangeRepository,
   // Institutional RAG knowledge corpus
   KnowledgeDocumentRepository,
   KnowledgeChunkRepository,

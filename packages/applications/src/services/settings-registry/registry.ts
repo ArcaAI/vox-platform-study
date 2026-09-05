@@ -20,7 +20,6 @@ import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descri
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
-import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
 import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
@@ -35,7 +34,9 @@ import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
 export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().registerAll([
-  ...PIPELINE_SETTINGS,
+  // The five `pipeline.*` toggles were here. TASK-882 retired `PipelinePolicy`: three were dead,
+  // `autoSummaryEnabled` is the workflow generation node's `enabled`, and `dnaStyleEnabled` split
+  // into the `agent.dna_style` node (tenant) and a `UserSettings` preference (doctor).
   // Platform storage default: SYSTEM TenantStorageConfig row + Vault kv-v2.
   ...STORAGE_SETTINGS,
   // `TTS_SETTINGS` was spread here — one key, `tts.defaultVoiceEn`. TASK-879

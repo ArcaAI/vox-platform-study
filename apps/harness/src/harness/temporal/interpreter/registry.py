@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.nodes.agent_catalogue import (
         interpreter_agent_discharge_summary,
         interpreter_agent_dna_redaction,
+        interpreter_agent_dna_style,
         interpreter_agent_feedback,
         interpreter_agent_grammar,
         interpreter_agent_important_findings,
@@ -697,6 +698,17 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=60,
         default_max_attempts=3,
         output_keys={"out": "text", "next": None},
+    ),
+    # TASK-882 -- the DNA writing-style gate: an ordering marker in an interpreter run (the
+    # gateway applies the style at prompt assembly, keyed off this node's presence).
+    "agent.dna_style": NodeSpec(
+        key="agent.dna_style",
+        implemented=True,
+        activity=interpreter_agent_dna_style,
+        critical=False,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
     ),
     "guard.phi": NodeSpec(
         key="guard.phi",

@@ -1,30 +1,11 @@
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { describe, expect, it, vi } from 'vitest';
-import type { ConfigResolver, ResolvedPipelineToggles } from '../../config-resolver/config-resolver.service';
 import { EffectiveSettingsService } from '../effective-settings.service';
 import { TenantSettingsService } from '../tenant-settings.service';
 
-// The facade delegates pipeline keys to ConfigResolver, threads the
-// cascade trace through, and refuses secret keys.
-
-function resolved(over: Partial<ResolvedPipelineToggles> = {}): ResolvedPipelineToggles {
-  return {
-    autoSummaryEnabled: true,
-    autoNerEnabled: true,
-    harnessEnabled: true,
-    dnaStyleEnabled: false,
-    trace: {
-      autoSummaryEnabled: 'code-default',
-      autoNerEnabled: 'code-default',
-      harnessEnabled: 'department',
-      dnaStyleEnabled: 'code-default',
-    },
-    ...over,
-  };
-}
+// The facade resolves the global-kv cascade for the caller's tenant and refuses secret keys.
 
 function serviceWith(
-  toggles: ResolvedPipelineToggles,
   // Backs the global-kv lane. Omitted ⇒ no stored row at any scope, so
   // global-kv keys resolve to their descriptor default.
   //
@@ -36,7 +17,6 @@ function serviceWith(
   // instead of a stub of it.
   stored?: { platform?: Record<string, unknown>; tenant?: Record<string, Record<string, unknown>> },
 ): EffectiveSettingsService {
-  const configResolver = { resolvePipelineToggles: vi.fn(async () => toggles) } as unknown as ConfigResolver;
   const tenantSettings = stored
     ? new TenantSettingsService({
         getValueFromCache: (key: string) => (stored.platform && key in stored.platform ? stored.platform[key] : null),
@@ -46,33 +26,23 @@ function serviceWith(
         },
       } as any)
     : undefined;
-  return new EffectiveSettingsService(configResolver, tenantSettings as any);
+  return new EffectiveSettingsService(tenantSettings as any);
 }
 
 const CTX = { tenantId: 'tnt-1', departmentId: 'dep-1', doctorId: null };
 
 describe('EffectiveSettingsService', () => {
-  it('resolves a pipeline key with its value and the winning cascade tier', async () => {
-    const svc = serviceWith(resolved());
-    await expect(svc.resolveEffective('pipeline.harnessEnabled', CTX)).resolves.toEqual({
-      key: 'pipeline.harnessEnabled',
-      tier: 'db-config',
-      value: true,
-      sourceScope: 'department',
-    });
-  });
-
   // Specimen changed from `tts.credential.azure` (removed with the `db-secret`
   // tier in TASK-872) to a `vault-kv` platform secret. The rule under test is
   // the same and is tier-independent: the refusal keys off
   // `sensitivity: 'secret'`, not off where the secret is stored.
   it('refuses a secret key (never surfaces a secret value)', async () => {
-    const svc = serviceWith(resolved());
+    const svc = serviceWith();
     await expect(svc.resolveEffective('minio.secretKey', CTX)).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('throws for an unknown registry key', async () => {
-    const svc = serviceWith(resolved());
+    const svc = serviceWith();
     await expect(svc.resolveEffective('nope.key', CTX)).rejects.toThrow(/unknown setting/i);
   });
 
@@ -86,7 +56,7 @@ describe('EffectiveSettingsService', () => {
   // `entitlement`-tier key and reaches the same fallthrough — the tier has no
   // lane at all, so `failMode` never enters into it.
   it('throws for a non-secret key whose tier has no registered resolver', async () => {
-    const svc = serviceWith(resolved());
+    const svc = serviceWith();
     await expect(svc.resolveEffective('entitlements.featurePlatformDefaultCredential', CTX)).rejects.toThrow(/no effective resolver/i);
   });
 
@@ -101,7 +71,7 @@ describe('EffectiveSettingsService', () => {
     // (`tenant` | `system` | `code-default`) — the same vocabulary the pipeline
     // branch above already uses, and what observability of fallbacks asks for.
     it('reports a stored platform row with sourceScope system', async () => {
-      const svc = serviceWith(resolved(), { platform: { 'agentic.context.liveDelta.maxChars': 9000 } });
+      const svc = serviceWith({ platform: { 'agentic.context.liveDelta.maxChars': 9000 } });
 
       await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
         key: 'agentic.context.liveDelta.maxChars',
@@ -112,7 +82,7 @@ describe('EffectiveSettingsService', () => {
     });
 
     it('reports a TENANT override ahead of the platform row', async () => {
-      const svc = serviceWith(resolved(), {
+      const svc = serviceWith({
         platform: { 'rateLimit.maxRequests': 100 },
         tenant: { 'tnt-1': { 'rateLimit.maxRequests': 10 } },
       });
@@ -131,7 +101,7 @@ describe('EffectiveSettingsService', () => {
     });
 
     it('falls back to the descriptor default with sourceScope code-default', async () => {
-      const svc = serviceWith(resolved(), { platform: {} });
+      const svc = serviceWith({ platform: {} });
 
       await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
         key: 'agentic.context.liveDelta.maxChars',
@@ -142,21 +112,21 @@ describe('EffectiveSettingsService', () => {
     });
 
     it('falls back to the descriptor default when no settings resolver is wired', async () => {
-      const svc = serviceWith(resolved());
+      const svc = serviceWith();
       const res = await svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX);
       expect(res.sourceScope).toBe('code-default');
       expect(res.value).toBe(12000);
     });
 
     it('now resolves entitlements.enabled (a global-kv key) instead of throwing', async () => {
-      const svc = serviceWith(resolved());
+      const svc = serviceWith();
       const res = await svc.resolveEffective('entitlements.enabled', CTX);
       expect(res.tier).toBe('global-kv');
       expect(res.value).toBe(false);
     });
 
     it('resolves the newly registered platform-ops keys', async () => {
-      const svc = serviceWith(resolved());
+      const svc = serviceWith();
       await expect(svc.resolveEffective('rate-limit.enabled', CTX)).resolves.toMatchObject({
         value: true,
         sourceScope: 'code-default',
@@ -173,7 +143,7 @@ describe('EffectiveSettingsService', () => {
   // an unknown key like any other (never a lane that quietly answers null).
   describe('models.* (retired)', () => {
     it.each(['models.nlp.ner', 'models.guardrail.validate', 'models.harness.judge', 'models.text.live'])('%s is an unknown key', async (key) => {
-      const svc = serviceWith(resolved());
+      const svc = serviceWith();
       await expect(svc.resolveEffective(key, CTX)).rejects.toThrow(/unknown setting 'models\./);
     });
   });
@@ -182,7 +152,7 @@ describe('EffectiveSettingsService', () => {
   describe('failMode', () => {
     it('open-to-default: an unset global-kv tuning knob resolves to the descriptor default', async () => {
       const appSettings = { getValueWithDefault: vi.fn(() => null) };
-      const svc = serviceWith(resolved(), appSettings);
+      const svc = serviceWith(appSettings);
 
       // `rate-limit.enabled` is a tuning/protection flag → open-to-default.
       await expect(svc.resolveEffective('rate-limit.enabled', CTX)).resolves.toMatchObject({
@@ -190,6 +160,7 @@ describe('EffectiveSettingsService', () => {
         sourceScope: 'code-default',
       });
     });
+
 
     // The `closed` half of this contract is pinned on the db-config lane in
     // `effective-settings.db-config.test.ts` (an unresolved value raises; a

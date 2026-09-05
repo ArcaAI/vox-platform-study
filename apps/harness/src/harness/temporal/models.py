@@ -482,7 +482,7 @@ class ExtractEntitiesInput(BaseModel):
     # safe defaults ⇒ no new workflow command, replay-safe (the activity does the
     # non-deterministic load; an old replay history schedules ``extract_entities``
     # exactly as before). The reuse is gated inside the activity by
-    # ``HARNESS_NER_PRIORS_ENABLED`` (default OFF) and only fires when a prior carries an
+    # the effective ``HarnessPolicy.nerPriorsEnabled`` (null ⇒ OFF; TASK-882) and only fires when a prior carries an
     # ontology code, so it is inert until coded entities are actually persisted elsewhere.
     reuse_priors: bool = False
     consultation_id: str | None = None

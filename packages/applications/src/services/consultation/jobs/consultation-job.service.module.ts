@@ -31,7 +31,7 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     ObservabilityModule,
     ChainSummaryServiceModule, // Required for ComprehensiveSummaryProcessor
     PromptResolutionServiceModule, // Required for prompt fallback chain
-    NoteGenerationServiceModule, // seam — harnessEnabled routing for ConsultationEventHandler
+    NoteGenerationServiceModule, // seam — the generator decision for ConsultationEventHandler
     HarnessPolicyServiceModule, // TEXT-selection resolver for the pre-summary/comprehensive processors
     // the shared TEXT credential/profile enrichment. TEXT holds no
     // endpoint or credential of its own; without a `provider_overrides` entry it

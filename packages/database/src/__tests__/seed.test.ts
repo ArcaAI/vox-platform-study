@@ -414,36 +414,6 @@ describe('Policy Seed Data', () => {
       }
     });
 
-    // Realtime-pipeline cascade admin RBAC (a SEPARATE
-    // PipelinePolicy subject from HarnessPolicy). Platform = unconditional;
-    // tenant = pinned to the caller's tenant. `manage` implies `read`.
-    it('should grant platform-wide manage PipelinePolicy in harness-platform-manage', () => {
-      const policy = DEFAULT_POLICIES.find((p) => p.name === 'harness-platform-manage');
-      const rule = policy?.rules.find((r) => r.subject === 'PipelinePolicy');
-      expect(rule).toBeDefined();
-      const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
-      expect(actions).toContain('manage');
-      // GLOBAL grant — no tenant condition.
-      expect(rule?.conditions).toBeUndefined();
-    });
-
-    it('should grant tenant-scoped manage PipelinePolicy in harness-tenant-manage', () => {
-      const policy = DEFAULT_POLICIES.find((p) => p.name === 'harness-tenant-manage');
-      const rule = policy?.rules.find((r) => r.subject === 'PipelinePolicy');
-      expect(rule).toBeDefined();
-      const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
-      expect(actions).toContain('manage');
-      expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
-    });
-
-    it('should grant tenant-scoped manage PipelinePolicy in tenant-full-access', () => {
-      const policy = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
-      const rule = policy?.rules.find((r) => r.subject === 'PipelinePolicy');
-      expect(rule).toBeDefined();
-      const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
-      expect(actions).toContain('manage');
-      expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
-    });
 
     it('should have unique policy names', () => {
       const names = DEFAULT_POLICIES.map((p) => p.name);
@@ -2316,8 +2286,8 @@ describe('seedHarnessPolicy — the SYSTEM global-default row (create-only + WOR
   });
 });
 
-// TASK-861: the `seedPipelinePolicy` block is GONE with `14-pipeline-policy.ts`
-// (`PipelinePolicy` deprecated, removed in R4; no rows seeded).
+// The `seedPipelinePolicy` block is GONE with `14-pipeline-policy.ts` (TASK-861) and the
+// `PipelinePolicy` model itself with TASK-882.
 
 // =============================================================================
 // SEED DATA VALIDATION

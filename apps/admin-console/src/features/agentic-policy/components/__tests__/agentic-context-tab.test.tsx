@@ -36,7 +36,7 @@ const CATALOG: SettingCatalog = {
       description: 'Soft per-flush cap on the transcript delta sent to TEXT.',
     },
     {
-      key: 'pipeline.harnessEnabled',
+      key: 'platform.example.flag',
       tier: 'global-kv',
       dataType: 'boolean',
       sensitivity: 'internal',
@@ -106,7 +106,7 @@ describe('AgenticContextTab — registry write lane', () => {
     renderWithProviders(<AgenticContextTab />);
 
     expect(await screen.findByDisplayValue('12000')).toBeDefined();
-    expect(screen.queryByText('pipeline.harnessEnabled')).toBeNull();
+    expect(screen.queryByText('platform.example.flag')).toBeNull();
   });
 
   it('sends the value with If-Match from the prior read', async () => {

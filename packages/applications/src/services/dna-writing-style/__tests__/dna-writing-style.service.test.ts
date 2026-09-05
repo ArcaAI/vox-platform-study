@@ -1524,12 +1524,20 @@ describe('DnaWritingStyleService', () => {
 
   // ─── per-doctor DNA settings (toggle) ───────────
   describe('DNA settings (Phase 6 doctor self-service toggle)', () => {
-    const createMockPipelinePolicyService = () => ({
-      getDnaSettings: vi.fn(),
-      setDnaStyleForDoctor: vi.fn(),
+    // TASK-882: the decision is ConfigResolver's (the tenant's `agent.dna_style` node + the
+    // doctor's `UserSettings` preference); the write goes through the UserSettings repository.
+    const createMockConfigResolver = () => ({
+      resolveEffectiveDnaStyleEnabled: vi.fn(),
+    });
+    const createMockUserSettingsRepository = () => ({
+      findByUserKeyNamespace: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockImplementation(async (entity: unknown) => entity),
+      update: vi.fn().mockImplementation(async (_id: string, entity: unknown) => entity),
+      softDelete: vi.fn().mockResolvedValue(undefined),
     });
 
-    let policy: ReturnType<typeof createMockPipelinePolicyService>;
+    let policy: ReturnType<typeof createMockConfigResolver>;
+    let userSettingsRepo: ReturnType<typeof createMockUserSettingsRepository>;
     let secrets: { encrypt: ReturnType<typeof vi.fn>; decrypt: ReturnType<typeof vi.fn> };
     let svc: DnaWritingStyleService;
 
@@ -1547,17 +1555,19 @@ describe('DnaWritingStyleService', () => {
         mockDatabaseService as never,
         policy as never,
         secrets as never,
+        userSettingsRepo as never,
       );
 
     beforeEach(() => {
-      policy = createMockPipelinePolicyService();
+      policy = createMockConfigResolver();
+      userSettingsRepo = createMockUserSettingsRepository();
       secrets = { encrypt: vi.fn(), decrypt: vi.fn() };
       svc = buildSvc();
     });
 
     // ── getEffectiveStyleText ──
     it('getEffectiveStyleText returns the decrypted styleText when the gate is effective', async () => {
-      policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
+      policy.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, doctorPreferenceVersion: 1 });
       mockReportRepo.findLatestForDoctor.mockResolvedValue({ id: 'rep-1', doctorId: 'doctor-id-1' });
       mockReportRepo.decryptFieldsFromEntity.mockResolvedValue({ styleText: 'Concise, formal, SOAP.', reportData: null, redactionRules: null });
 
@@ -1568,7 +1578,7 @@ describe('DnaWritingStyleService', () => {
     });
 
     it('getEffectiveStyleText returns null when the DNA gate is not effective (no decrypt)', async () => {
-      policy.getDnaSettings.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null, version: 0 });
+      policy.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null, doctorPreferenceVersion: 0 });
 
       const res = await svc.getEffectiveStyleText('doctor-id-1');
 
@@ -1589,7 +1599,7 @@ describe('DnaWritingStyleService', () => {
      */
     it('getEffectiveStyleText uses an explicitly-passed tenantId when CLS has none (API-key path)', async () => {
       mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
-      policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
+      policy.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, doctorPreferenceVersion: 1 });
       mockReportRepo.findLatestForDoctor.mockResolvedValue({ id: 'rep-1', doctorId: 'doctor-id-1' });
       mockReportRepo.decryptFieldsFromEntity.mockResolvedValue({ styleText: 'Terse, active voice.', reportData: null, redactionRules: null });
 
@@ -1605,7 +1615,7 @@ describe('DnaWritingStyleService', () => {
     });
 
     it('getEffectiveStyleText returns null when the doctor has no report', async () => {
-      policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
+      policy.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, doctorPreferenceVersion: 1 });
       mockReportRepo.findLatestForDoctor.mockResolvedValue(null);
 
       const res = await svc.getEffectiveStyleText('doctor-id-1');
@@ -1614,12 +1624,12 @@ describe('DnaWritingStyleService', () => {
       expect(mockReportRepo.decryptFieldsFromEntity).not.toHaveBeenCalled();
     });
 
-    it('getDnaSettings delegates to PipelinePolicyService with the CLS tenant + doctorId and maps the response', async () => {
-      policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 2 });
+    it('getDnaSettings delegates to ConfigResolver with the CLS tenant + doctorId and maps the response', async () => {
+      policy.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, doctorPreferenceVersion: 2 });
 
       const res = await svc.getDnaSettings('doctor-id-1');
 
-      expect(policy.getDnaSettings).toHaveBeenCalledWith({ tenantId: 'tenant-1', doctorId: 'doctor-id-1' });
+      expect(policy.resolveEffectiveDnaStyleEnabled).toHaveBeenCalledWith({ tenantId: 'tenant-1', doctorId: 'doctor-id-1' });
       expect(res).toEqual({ doctorToggle: true, tenantEnabled: true, effective: true, version: 2 });
     });
 
@@ -1627,41 +1637,49 @@ describe('DnaWritingStyleService', () => {
       mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
 
       await expect(svc.getDnaSettings('doctor-id-1')).rejects.toThrow(BadRequestException);
-      expect(policy.getDnaSettings).not.toHaveBeenCalled();
+      expect(policy.resolveEffectiveDnaStyleEnabled).not.toHaveBeenCalled();
     });
 
-    it('setDnaEnabled writes the toggle via PipelinePolicyService and broadcasts ResourceUpdated', async () => {
-      policy.setDnaStyleForDoctor.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false, version: 3 });
+    it('setDnaEnabled CREATES the doctor`s preference row when none exists, broadcasts ResourceUpdated and re-resolves', async () => {
+      policy.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false, doctorPreferenceVersion: 1 });
 
-      const res = await svc.setDnaEnabled('doctor-id-1', { enabled: false, reason: 'opt out', expectedVersion: 2 });
+      const res = await svc.setDnaEnabled('doctor-id-1', { enabled: false, reason: 'opt out' });
 
-      expect(policy.setDnaStyleForDoctor).toHaveBeenCalledWith({
-        tenantId: 'tenant-1',
-        doctorId: 'doctor-id-1',
-        enabled: false,
-        reason: 'opt out',
-        expectedVersion: 2,
-      });
+      expect(userSettingsRepo.create).toHaveBeenCalledTimes(1);
+      const created = userSettingsRepo.create.mock.calls[0][0];
+      expect(created).toMatchObject({ userId: 'doctor-id-1', namespace: 'dna', key: 'styleEnabled', value: 'false' });
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ resourceId: 'doctor-id-1' }));
-      expect(res).toEqual({ doctorToggle: false, tenantEnabled: true, effective: false, version: 3 });
+      expect(res).toEqual({ doctorToggle: false, tenantEnabled: true, effective: false, version: 1 });
     });
 
-    it('setDnaEnabled coerces an omitted/null `enabled` to null (clear the override)', async () => {
-      policy.setDnaStyleForDoctor.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null, version: 0 });
+    it('setDnaEnabled UPDATES an existing row and preconditions on its version', async () => {
+      const existing = { id: 'us-1', value: 'true', version: 2, hasChanges: true, changes: {} };
+      userSettingsRepo.findByUserKeyNamespace.mockResolvedValue(existing);
+      policy.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false, doctorPreferenceVersion: 3 });
 
-      await svc.setDnaEnabled('doctor-id-1', { enabled: null });
+      const res = await svc.setDnaEnabled('doctor-id-1', { enabled: false, expectedVersion: 2 });
 
-      expect(policy.setDnaStyleForDoctor).toHaveBeenCalledWith(
-        expect.objectContaining({ enabled: null, doctorId: 'doctor-id-1', tenantId: 'tenant-1' }),
-      );
+      expect(userSettingsRepo.update).toHaveBeenCalledWith('us-1', expect.objectContaining({ value: 'false' }));
+      expect(userSettingsRepo.create).not.toHaveBeenCalled();
+      expect(res.version).toBe(3);
     });
 
-    it('setDnaEnabled throws BadRequestException when no tenant is in context (no write, no broadcast)', async () => {
-      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
+    it('setDnaEnabled refuses a stale expectedVersion with 412 before touching the row', async () => {
+      userSettingsRepo.findByUserKeyNamespace.mockResolvedValue({ id: 'us-1', value: 'true', version: 2 });
 
-      await expect(svc.setDnaEnabled('doctor-id-1', { enabled: true })).rejects.toThrow(BadRequestException);
-      expect(policy.setDnaStyleForDoctor).not.toHaveBeenCalled();
-      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      await expect(svc.setDnaEnabled('doctor-id-1', { enabled: false, expectedVersion: 1 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+      expect(userSettingsRepo.update).not.toHaveBeenCalled();
+      expect(userSettingsRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('setDnaEnabled with null CLEARS the override (soft-deletes the row) — the implicit opt-in returns', async () => {
+      userSettingsRepo.findByUserKeyNamespace.mockResolvedValue({ id: 'us-1', value: 'false', version: 2 });
+      policy.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null, doctorPreferenceVersion: 0 });
+
+      const res = await svc.setDnaEnabled('doctor-id-1', { enabled: null, expectedVersion: 2 });
+
+      expect(userSettingsRepo.softDelete).toHaveBeenCalledWith('us-1');
+      expect(res).toEqual({ doctorToggle: null, tenantEnabled: true, effective: true, version: 0 });
     });
   });
 

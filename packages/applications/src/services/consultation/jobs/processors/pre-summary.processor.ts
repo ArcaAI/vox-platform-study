@@ -59,7 +59,7 @@ export class PreSummaryProcessor extends WorkerHost {
     // keep compiling.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
     // pre-summary has no harness equivalent today (the
-    // ticket); this call exists purely to make the harnessEnabled read
+    // ticket); this call exists purely to make the generator decision
     // happen through the single seam and get the decision logged — the
     // decision is always 'legacy'/'harness-not-supported-for-trigger' and
     // this processor's generation body always runs regardless. Optional +
@@ -115,7 +115,7 @@ export class PreSummaryProcessor extends WorkerHost {
       });
 
       try {
-        // route the harnessEnabled read through the single seam.
+        // route the generator decision through the single seam.
         // Pre-summary has no harness equivalent (the ticket) — the
         // decision is always 'legacy', logged, and this generation body
         // always runs. Never blocks/short-circuits generation.

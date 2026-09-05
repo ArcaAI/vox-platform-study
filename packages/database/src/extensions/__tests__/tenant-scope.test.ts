@@ -158,7 +158,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // webhook HMAC secret, keyed (tenantId, workflowSlug).
     // -1 (90): AiTaskDefault — TASK-881 dropped the table (the facade over
     // AiRoutingPolicy is gone; selection resolves through resolveDefault).
-    expect(TENANT_SCOPED_MODELS.size).toBe(90);
+    // -2 (88): TASK-882 retired `PipelinePolicy` + `PipelinePolicyChange`.
+    expect(TENANT_SCOPED_MODELS.size).toBe(88);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -390,12 +391,10 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
 // ---------------------------------------------------------------------------
 
 describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
-  it('contains the platform catalog models + the harness/pipeline global-default policies + GlobalSetting (AsrPipeline, AiModel, HarnessPolicy, PipelinePolicy, GlobalSetting)', () => {
+  it('contains the platform catalog models + the harness global-default policy + GlobalSetting (AsrPipeline, AiModel, HarnessPolicy, GlobalSetting)', () => {
     expect(new Set(SYSTEM_SHARED_READ_MODELS)).toEqual(
       // HarnessPolicy's SYSTEM-tenant row is the global
       // default every tenant reads to compute its effective policy.
-      // PipelinePolicy's SYSTEM-tenant row is the realtime
-      // cascade's platform default (ConfigResolver reads it for every tenant).
       // GlobalSetting — platform infra settings (S3/MinIO, STT) are seeded under
       // the SYSTEM tenant; the AppSettingsService platform cache reads them.
       // TenantTtsConfig's SYSTEM-tenant row is the per-tenant TTS
@@ -424,7 +423,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // through RbacRoleService's unscoped cross-tenant lane instead.
         'Role',
         'HarnessPolicy',
-        'PipelinePolicy',
         'GlobalSetting',
         'TenantTtsConfig',
         // TenantSttConfig's SYSTEM-tenant row is the per-tenant STT platform
@@ -479,8 +477,8 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // invariant register made executable; every tenant's
         // WorkflowValidatorService must read them merged with its own
         // additions to validate ANY graph — the same "every tenant must
-        // resolve the SYSTEM row to function at all" shape as HarnessPolicy/
-        // PipelinePolicy above. READS widen to [caller, SYSTEM]; WRITES are
+        // resolve the SYSTEM row to function at all" shape as HarnessPolicy
+        // above. READS widen to [caller, SYSTEM]; WRITES are
         // NOT widened — a tenant can never mutate a SYSTEM-owned rule row.
         'WorkflowInvariantRule',
         // TASK-863 — platform-default agents + assignments resolve tenant → SYSTEM.

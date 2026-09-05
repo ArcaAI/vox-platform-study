@@ -1,34 +1,27 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import {
-  PipelinePolicyEntity,
-  PipelinePolicyRepository,
-  PipelinePolicyScope,
-  UserProfileRepository,
-  WorkflowDefinitionRepository,
-} from '@arcaai/domains';
+import { UserProfileRepository, UserSettingsRepository, WorkflowDefinitionRepository } from '@arcaai/domains';
 import type { WorkflowGraph, WorkflowGraphNode } from '@arcaai/workflow-contract';
-import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
+import { WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
 import { IWorkflowAssignmentService } from '../workflow-assignment/IWorkflowAssignmentService';
+import { DNA_STYLE_PREFERENCE, parseDnaStylePreference } from './dna-style-preference';
 
 /**
- * Generalized realtime-config cascade resolver.
+ * The graph-node config resolver (TASK-882).
  *
- * Resolves the per-consultation pipeline toggles by walking the policy cascade
+ * It used to walk the `PipelinePolicy` cascade (doctor → department → tenant → SYSTEM default →
+ * code default) for five realtime toggles. That model is retired: settings exist for platform
+ * admins to control platform behaviour, and every toggle it carried is either DEAD (shadowed by
+ * a node's own `enabled`, or routed to a generator that no longer exists) or a property of the
+ * WORKFLOW a consultation is assigned. So what this service resolves now is read off the
+ * governing consultation graph — node presence + `enabled` — plus the ONE clinician-owned
+ * preference (the doctor's DNA opt-out, a `UserSettings` row) and the doctor's preferred
+ * prompt template (`UserProfile`). NO writes happen here.
  *
- *   doctor → department → tenant → SYSTEM-tenant default → code default
- *
- * short-circuiting at the first tier that supplies a non-null value, while
- * clamping every setting to its configured MAX SCOPE (so e.g. `harnessEnabled`
- * can never be set per-doctor — Q7). Also threads the consulting doctor's
- * `UserProfile.preferredPromptTemplateId` (read-only here) for every generation
- * path. NO writes happen here — the doctor-scope writes live elsewhere.
+ * Every read is TOTAL: an unwired collaborator (this service is constructed positionally in
+ * background job processors and a long tail of unit tests), a missing assignment or a thrown
+ * lookup degrades to the safe end of the setting — DNA reads fail CLOSED (off), auto-summary
+ * fails toward its code default (on), because losing a note silently is the worse failure.
  */
-
-/** The realtime cascade knobs ConfigResolver resolves. */
-export type PipelineToggleKey = 'autoSummaryEnabled' | 'autoNerEnabled' | 'harnessEnabled' | 'dnaStyleEnabled' | 'dnaRedactionEnabled';
-
-/** Which cascade tier supplied a resolved value (audit trace). */
-export type ConfigResolutionSource = 'doctor' | 'department' | 'tenant' | 'system-default' | 'code-default';
 
 export interface ConfigResolutionContext {
   tenantId: string;
@@ -36,64 +29,35 @@ export interface ConfigResolutionContext {
   doctorId?: string | null;
 }
 
-export interface ResolvedPipelineToggles {
-  autoSummaryEnabled: boolean;
-  autoNerEnabled: boolean;
-  harnessEnabled: boolean;
-  dnaStyleEnabled: boolean;
-  dnaRedactionEnabled: boolean;
-  /** Which cascade tier supplied each toggle (for audit/debug). */
-  trace: Record<PipelineToggleKey, ConfigResolutionSource>;
-}
-
 /**
- * The resolved per-consultation DNA-style decision.
- * `effective = tenantEnabled && (doctorToggle ?? true)`: the tenant gate is the
- * non-doctor cascade resolution; the doctor toggle is an explicit opt-out (or an
- * implicit opt-in when unset).
+ * The resolved per-consultation DNA decision.
+ * `effective = tenantEnabled && (doctorToggle ?? true)`: the tenant gate is the graph node; the
+ * doctor toggle is an explicit opt-out (or an implicit opt-in when unset).
  */
 export interface ResolvedDnaStyle {
-  /** Final decision: apply DNA style / learn from this doctor? */
+  /** Final decision: apply DNA style (or redaction) / learn from this doctor? */
   effective: boolean;
-  /** Whether the tenant (department/tenant/system cascade, doctor EXCLUDED) permits DNA. */
+  /** Whether the assigned graph declares the enabled node — the tenant's gate. */
   tenantEnabled: boolean;
-  /** The doctor's explicit DOCTOR-scope toggle, or null when unset (implicit opt-in). */
+  /** The doctor's explicit preference, or null when unset (implicit opt-in). */
   doctorToggle: boolean | null;
+  /** The preference row's OCC version (0 when no row exists) — `PUT dna-writing-styles/settings` echoes it. */
+  doctorPreferenceVersion: number;
 }
 
-/** Per-setting descriptor: the code default + the highest tier allowed to set it. */
-interface SettingDescriptor {
-  codeDefault: boolean;
-  maxScope: PipelinePolicyScope;
+/** The doctor's stored DNA preference, as the write lane and the readers both see it. */
+export interface DoctorDnaPreference {
+  enabled: boolean | null;
+  version: number;
 }
-
-/**
- * The setting registry (/ Q7):
- *  - `autoSummaryEnabled` / `autoNerEnabled` may be set down to DOCTOR scope.
- *  - `harnessEnabled` is capped at DEPARTMENT (never per-doctor) and code-defaults
- * to `true` since (Phase 2 exit criterion — the legacy signable
- *    generator this toggle used to fall back to no longer exists; matches the
- *    SYSTEM row flipped in `seed/14-pipeline-policy.ts`).
- *  - `dnaStyleEnabled` is DOCTOR-scope storage (written elsewhere); read here.
- */
-export const PIPELINE_SETTING_DESCRIPTORS: Record<PipelineToggleKey, SettingDescriptor> = {
-  autoSummaryEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DOCTOR },
-  autoNerEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DOCTOR },
-  harnessEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DEPARTMENT },
-  dnaStyleEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.DOCTOR },
-  // The TENANT-level enablement gate for DNA redaction; the doctor
-  // opt-in is the doctor's DNA toggle (see resolveEffectiveDnaRedactionEnabled).
-  dnaRedactionEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.TENANT },
-};
-
-const TOGGLE_KEYS = Object.keys(PIPELINE_SETTING_DESCRIPTORS) as PipelineToggleKey[];
 
 /** The palette whose assigned definition governs a consultation (mirrors `PromptResolutionService`). */
 const CONSULTATION_PALETTE_KEY = 'consultation';
 
 /** / DD-6 — the node type that carries the DNA-redaction pass. */
 const DNA_REDACTION_NODE_TYPE = 'agent.dna_redaction';
-
+/** TASK-882 — the node type that IS the tenant's DNA writing-style gate. */
+const DNA_STYLE_NODE_TYPE = 'agent.dna_style';
 /**
  * TASK-882 — the node types whose config may carry the re-visit `carryForward` binding: the
  * consultation palette's prompt-composition node (directly, or delegated through a
@@ -102,6 +66,8 @@ const DNA_REDACTION_NODE_TYPE = 'agent.dna_redaction';
 const CARRY_FORWARD_PROMPT_NODE_TYPE = 'consultation.assemblePrompt';
 const CORE_AGENT_NODE_TYPE = 'core.agent';
 const CORE_ACTION_NODE_TYPE = 'core.action';
+/** The registry class that marks a node as generating a document — what auto-summary switches. */
+const GENERATION_CLASS = 'generation';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -129,6 +95,18 @@ function effectiveConfigOf(node: WorkflowGraphNode): Record<string, unknown> {
   return node.type === CORE_ACTION_NODE_TYPE ? asRecord(config.action) : config;
 }
 
+/** An enabled node of the given effective type. */
+function isActiveNodeOf(node: WorkflowGraphNode, type: string): boolean {
+  return isEnabled(node) && effectiveTypeOf(node) === type;
+}
+
+/** A node that generates a document: a `core.agent`, or any `generation`-classed type (delegated or not). */
+function isGenerationNode(node: WorkflowGraphNode): boolean {
+  const type = effectiveTypeOf(node);
+  if (type === CORE_AGENT_NODE_TYPE) return true;
+  return WORKFLOW_NODE_REGISTRY[type]?.classes.includes(GENERATION_CLASS) ?? false;
+}
+
 /** Whether one node declares the re-visit carry-forward binding. */
 function declaresCarryForward(node: WorkflowGraphNode): boolean {
   if (!isEnabled(node)) return false;
@@ -136,216 +114,116 @@ function declaresCarryForward(node: WorkflowGraphNode): boolean {
   return effectiveTypeOf(node) === CARRY_FORWARD_PROMPT_NODE_TYPE && effectiveConfigOf(node).carryForward === true;
 }
 
+const NO_PREFERENCE: DoctorDnaPreference = Object.freeze({ enabled: null, version: 0 });
+
 @Injectable()
 export class ConfigResolver {
   private readonly logger = new Logger(ConfigResolver.name);
 
   constructor(
-    @Inject(PipelinePolicyRepository) private readonly pipelinePolicyRepository: PipelinePolicyRepository,
-    // Optional + trailing so existing positional test fixtures keep compiling;
-    // production DI (CoreDatabaseModule) always supplies it.
+    // Every collaborator is optional + positional: this service is constructed positionally in
+    // background job processors and a long tail of unit tests, and an unwired resolver must
+    // degrade rather than throw on a clinical path. Production DI (`ConfigResolverModule`)
+    // supplies all four.
     @Optional() @Inject(UserProfileRepository) private readonly userProfileRepository?: UserProfileRepository,
-    // lane A item 2 — the tenant gate for DNA REDACTION moved onto the graph, so the
-    // resolver needs the same two collaborators `PromptResolutionService` uses to reach a
-    // tenant's governing consultation definition. `@Optional()` and trailing for the same reason
-    // its are: this service is constructed positionally in background job processors and a long
-    // tail of unit tests, and an unwired resolver must degrade rather than throw on a clinical
-    // path. See `resolveEffectiveDnaRedactionEnabled` for exactly what it degrades TO.
     @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
     @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
+    @Optional() @Inject(UserSettingsRepository) private readonly userSettingsRepository?: UserSettingsRepository,
   ) {}
 
   /**
-   * Resolve every pipeline toggle for a consultation context. On a lookup failure
-   * the resolver degrades to the code defaults (fail-safe realtime path) rather
-   * than throwing into the event pipeline.
+   * TASK-882 — whether a consultation auto-generates its note: the assigned graph's generation
+   * node(s) are `enabled`. It replaces `pipeline.autoSummaryEnabled` (owner #5: the per-doctor
+   * opt-out is dropped — a clinician does not switch note generation off for themselves).
+   *
+   * Total, and fail-safe toward ON: an unwired resolver, no assignment, a graph with no
+   * generation node, or a thrown lookup all answer the code default (`true`) — the setting only
+   * ever SWITCHES OFF a generation the graph actually declares, and losing a note silently on a
+   * degraded read is the worse failure.
    */
-  async resolvePipelineToggles(ctx: ConfigResolutionContext): Promise<ResolvedPipelineToggles> {
-    let cascadeRows: PipelinePolicyEntity[] = [];
-    let systemRow: PipelinePolicyEntity | null = null;
-
-    try {
-      [cascadeRows, systemRow] = await Promise.all([
-        this.pipelinePolicyRepository.findCascadeRows({
-          tenantId: ctx.tenantId,
-          departmentId: ctx.departmentId ?? null,
-          doctorId: ctx.doctorId ?? null,
-        }),
-        this.pipelinePolicyRepository.findSystemDefault(),
-      ]);
-    } catch (error) {
-      this.logger.warn({
-        message: 'Pipeline policy lookup failed — falling back to code defaults',
-        tenantId: ctx.tenantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return this.codeDefaultResult();
-    }
-
-    const doctorRow =
-      ctx.doctorId != null ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null) : null;
-    const departmentRow =
-      ctx.departmentId != null
-        ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DEPARTMENT && r.scopeId === ctx.departmentId) ?? null)
-        : null;
-    const tenantRow = cascadeRows.find((r) => r.scope === PipelinePolicyScope.TENANT) ?? null;
-
-    const result = this.codeDefaultResult();
-    for (const key of TOGGLE_KEYS) {
-      const resolved = this.resolveOne(key, { doctorRow, departmentRow, tenantRow, systemRow });
-      result[key] = resolved.value;
-      result.trace[key] = resolved.source;
-    }
-    return result;
+  async resolveAutoSummaryEnabled(ctx: ConfigResolutionContext): Promise<boolean> {
+    const graph = await this.resolveGoverningGraph(ctx, 'auto-summary');
+    if (!graph) return true;
+    const generationNodes = graph.nodes.filter(isGenerationNode);
+    if (generationNodes.length === 0) return true;
+    return generationNodes.some(isEnabled);
   }
 
   /**
-   * Resolve the effective DNA-style decision for a
-   * consultation context: `effective = tenantEnabled && (doctorToggle ?? true)`.
+   * TASK-882 — the doctor's own DNA writing-style preference (`UserSettings` `dna` /
+   * `styleEnabled`). `enabled: null` = no row = no opinion; `version` is the row's OCC token
+   * (0 without a row), which the self-service write lane preconditions on. Total: no doctor, no
+   * repository, a malformed value or a failed read all read as no opinion.
+   */
+  async resolveDoctorDnaPreference(doctorId: string | null | undefined): Promise<DoctorDnaPreference> {
+    if (!doctorId || !this.userSettingsRepository) return NO_PREFERENCE;
+    try {
+      const row = await this.userSettingsRepository.findByUserKeyNamespace(doctorId, DNA_STYLE_PREFERENCE.key, DNA_STYLE_PREFERENCE.namespace);
+      if (!row) return NO_PREFERENCE;
+      return { enabled: parseDnaStylePreference(row.value), version: row.version ?? 0 };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Doctor DNA preference lookup failed — treating as no opinion',
+        doctorId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return NO_PREFERENCE;
+    }
+  }
+
+  /**
+   * Resolve the effective DNA-style decision for a consultation context:
+   * `effective = tenantEnabled && (doctorToggle ?? true)`.
    *
-   *  - `tenantEnabled` is the `dnaStyleEnabled` cascade resolution with the DOCTOR
-   *    tier EXCLUDED (department → tenant → SYSTEM default → code default=false),
-   *    i.e. "does the tenant permit DNA at all?".
-   *  - `doctorToggle` is the doctor's explicit DOCTOR-scope row value, or null
-   *    when they have not set it (an unset toggle is an implicit opt-in).
+   *  - `tenantEnabled` is TASK-882's node gate: the assigned consultation graph declares an
+   *    enabled `agent.dna_style` node (directly or through a `core.action`).
+   *  - `doctorToggle` is the doctor's own `UserSettings` preference, or null when they have not
+   *    set it (an unset toggle is an implicit opt-in).
    *
-   * Fail-CLOSED: on any lookup failure DNA is treated as off (matching the
-   * `dnaStyleEnabled` code default), so the realtime path never styles/learns on
-   * a degraded config read.
+   * Fail-CLOSED: unwired resolvers, no graph or any lookup failure ⇒ DNA off, so the realtime
+   * path never styles/learns on a degraded config read.
    */
   async resolveEffectiveDnaStyleEnabled(ctx: ConfigResolutionContext): Promise<ResolvedDnaStyle> {
-    let cascadeRows: PipelinePolicyEntity[] = [];
-    let systemRow: PipelinePolicyEntity | null = null;
-
-    try {
-      [cascadeRows, systemRow] = await Promise.all([
-        this.pipelinePolicyRepository.findCascadeRows({
-          tenantId: ctx.tenantId,
-          departmentId: ctx.departmentId ?? null,
-          doctorId: ctx.doctorId ?? null,
-        }),
-        this.pipelinePolicyRepository.findSystemDefault(),
-      ]);
-    } catch (error) {
-      this.logger.warn({
-        message: 'DNA-style policy lookup failed — failing closed (DNA off)',
-        tenantId: ctx.tenantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return { effective: false, tenantEnabled: false, doctorToggle: null };
-    }
-
-    const departmentRow =
-      ctx.departmentId != null
-        ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DEPARTMENT && r.scopeId === ctx.departmentId) ?? null)
-        : null;
-    const tenantRow = cascadeRows.find((r) => r.scope === PipelinePolicyScope.TENANT) ?? null;
-    const doctorRow =
-      ctx.doctorId != null ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null) : null;
-
-    // Tenant gate = the non-doctor cascade resolution (doctorRow EXCLUDED).
-    const tenantEnabled = this.resolveOne('dnaStyleEnabled', {
-      doctorRow: null,
-      departmentRow,
-      tenantRow,
-      systemRow,
-    }).value;
-
-    const doctorToggle = doctorRow ? ((doctorRow.dnaStyleEnabled as boolean | null | undefined) ?? null) : null;
-    const effective = tenantEnabled && (doctorToggle ?? true);
-
-    return { effective, tenantEnabled, doctorToggle };
+    const [graph, preference] = await Promise.all([this.resolveGoverningGraph(ctx, 'DNA-style'), this.resolveDoctorDnaPreference(ctx.doctorId)]);
+    const tenantEnabled = graph !== null && graph.nodes.some((node) => isActiveNodeOf(node, DNA_STYLE_NODE_TYPE));
+    return {
+      effective: tenantEnabled && (preference.enabled ?? true),
+      tenantEnabled,
+      doctorToggle: preference.enabled,
+      doctorPreferenceVersion: preference.version,
+    };
   }
 
   /**
-   * Resolve the effective DNA REDACTION decision for a
-   * consultation context. Mirrors {@link resolveEffectiveDnaStyleEnabled} as a
-   * DOUBLE gate:
+   * Resolve the effective DNA REDACTION decision for a consultation context. A DOUBLE gate:
    *
-   *  - `tenantEnabled` is the `dnaRedactionEnabled` cascade resolution (maxScope
-   *    TENANT ⇒ tenant → SYSTEM default → code default=false; department/doctor
-   *    tiers EXCLUDED) — "does the tenant permit redaction at all?".
-   *  - `doctorToggle` is the doctor's DNA opt-in (their DOCTOR-scope
-   *    `dnaStyleEnabled` row): redaction is a facet of the DNA feature, so a
-   *    doctor who has turned DNA OFF gets no redaction. Unset ⇒ implicit opt-in.
+   *  - `tenantEnabled` is the presence of an ACTIVE `agent.dna_redaction` node on the assigned
+   *    graph (lane A item 2: *"DNA-Redaction must be configured as an agent node"*) — the tenant
+   *    enables redaction by placing the node, not with a boolean that can disagree with its graph.
+   *  - `doctorToggle` is the doctor's DNA opt-in (their `UserSettings` preference): redaction is
+   *    a facet of the DNA feature, so a doctor who has turned DNA OFF gets no redaction. Unset ⇒
+   *    implicit opt-in. The node declares whether it HONOURS that opt-in — `requireDoctorOptIn`,
+   *    default true.
    *
-   * A THIRD gate used to sit alongside them: `DepartmentAgent.dnaStylePolicy =
-   * DISABLED` forced the result OFF for the department's default agent
-   * regardless of the other two. It retired with `DepartmentAgent`.
-   * The direction matters — dropping a gate that could only force redaction OFF
-   * means a consultation the tenant AND the doctor both enabled is now redacted
-   * where an agent could previously veto it. The owner APPROVED that loss, with
-   * a rider that is what this method now implements.
+   * The `DepartmentAgent.dnaStylePolicy` veto retired with `DepartmentAgent` and stays retired
+   * (owner ruling: a consultation both surviving gates enable IS redacted). TASK-882 also
+   * retired the legacy `dnaRedactionEnabled` cascade that answered for unwired resolvers: an
+   * unwired resolver is now simply OFF.
    *
-   * ## The tenant gate is the NODE (lane A item 2)
-   *
-   * *"DNA-Redaction must be configured as an agent node."* So the tenant does not
-   * enable redaction with a boolean that can disagree with its graph — it enables
-   * it by placing an ACTIVE `agent.dna_redaction` node in the governing
-   * consultation definition, resolved through the same
-   * `department -> tenant -> platform default` assignment cascade every other node
-   * tier uses.
-   *
-   * The DOCTOR opt-in does NOT move onto the node, deliberately: it is a
-   * clinician's own preference about their own writing style ( P-4
-   * makes that ownership explicit), not something a tenant admin authors into a
-   * graph. What the node declares is whether it HONOURS that opt-in —
-   * `requireDoctorOptIn`, default true, which reproduces the surviving two-gate
-   * behaviour exactly.
-   *
-   * ## What it degrades to, and why that is safe
-   *
-   * With the workflow resolvers unwired (`@Optional()` — background job
-   * processors, positional test fixtures) the legacy `dnaRedactionEnabled`
-   * cascade answers, exactly as before. That path cannot silently enable
-   * redaction anywhere real: no seed writes `dnaRedactionEnabled` and its code
-   * default is `false`, so in a wired system the node is the only thing that can
-   * turn it on.
-   *
-   * Fail-CLOSED: any lookup failure — policy OR graph — ⇒ redaction OFF (a note
-   * the doctor expected redacted must never slip through on a degraded read).
+   * Fail-CLOSED: any lookup failure ⇒ redaction OFF (a note the doctor expected redacted must
+   * never slip through on a degraded read).
    */
   async resolveEffectiveDnaRedactionEnabled(ctx: ConfigResolutionContext): Promise<ResolvedDnaStyle> {
-    let cascadeRows: PipelinePolicyEntity[] = [];
-    let systemRow: PipelinePolicyEntity | null = null;
-
-    try {
-      [cascadeRows, systemRow] = await Promise.all([
-        this.pipelinePolicyRepository.findCascadeRows({
-          tenantId: ctx.tenantId,
-          departmentId: ctx.departmentId ?? null,
-          doctorId: ctx.doctorId ?? null,
-        }),
-        this.pipelinePolicyRepository.findSystemDefault(),
-      ]);
-    } catch (error) {
-      this.logger.warn({
-        message: 'DNA-redaction policy lookup failed — failing closed (redaction off)',
-        tenantId: ctx.tenantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return { effective: false, tenantEnabled: false, doctorToggle: null };
-    }
-
-    const tenantRow = cascadeRows.find((r) => r.scope === PipelinePolicyScope.TENANT) ?? null;
-    const doctorRow =
-      ctx.doctorId != null ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null) : null;
-
-    // The NODE is the tenant gate. `undefined` means "the resolvers are not wired" — only then
-    // does the legacy cascade answer (maxScope TENANT ⇒ `resolveOne` walks tenant +
-    // system-default only, so department and doctor tiers are passed as null).
-    const node = await this.resolveDnaRedactionNode(ctx);
-    const tenantEnabled =
-      node === undefined
-        ? this.resolveOne('dnaRedactionEnabled', { doctorRow: null, departmentRow: null, tenantRow, systemRow }).value
-        : node !== null;
-
-    // Doctor opt-in reuses the doctor's DNA toggle (redaction is part of DNA).
-    const doctorToggle = doctorRow ? ((doctorRow.dnaStyleEnabled as boolean | null | undefined) ?? null) : null;
-    const honoursDoctorOptIn = node == null || nodeConfigOf(node).requireDoctorOptIn !== false;
-    const effective = tenantEnabled && (honoursDoctorOptIn ? (doctorToggle ?? true) : true);
-
-    return { effective, tenantEnabled, doctorToggle };
+    const [graph, preference] = await Promise.all([this.resolveGoverningGraph(ctx, 'DNA-redaction'), this.resolveDoctorDnaPreference(ctx.doctorId)]);
+    const node = graph?.nodes.find((candidate) => isActiveNodeOf(candidate, DNA_REDACTION_NODE_TYPE)) ?? null;
+    const tenantEnabled = node !== null;
+    const honoursDoctorOptIn = node === null || effectiveConfigOf(node).requireDoctorOptIn !== false;
+    return {
+      effective: tenantEnabled && (honoursDoctorOptIn ? (preference.enabled ?? true) : true),
+      tenantEnabled,
+      doctorToggle: preference.enabled,
+      doctorPreferenceVersion: preference.version,
+    };
   }
 
   /**
@@ -362,50 +240,6 @@ export class ConfigResolver {
     const graph = await this.resolveGoverningGraph(ctx, 'carry-forward');
     if (!graph) return false;
     return graph.nodes.some(declaresCarryForward);
-  }
-
-  /**
-   * The tenant's ACTIVE `agent.dna_redaction` node, or `null` when the governing graph declares
-   * none, or `undefined` when the workflow resolvers are not wired at all.
-   *
-   * The three-way return is the whole point: `null` and `undefined` mean different things here
-   * and collapsing them would either force redaction OFF in every positional-construction call
-   * site, or let an unwired resolver look like a configured tenant. A THROWN lookup is reported
-   * as `null` — fail-closed, per this feature's posture.
-   */
-  private async resolveDnaRedactionNode(ctx: ConfigResolutionContext): Promise<WorkflowGraphNode | null | undefined> {
-    const graph = await this.resolveGoverningGraph(ctx, 'DNA-redaction');
-    if (graph === undefined) return undefined;
-    if (graph === null) return null;
-    return graph.nodes.find((node) => node.type === DNA_REDACTION_NODE_TYPE && isEnabled(node)) ?? null;
-  }
-
-  /**
-   * The PUBLISHED graph governing this consultation context, resolved through the shared
-   * `department -> tenant -> platform default` assignment cascade (the same walk the realtime
-   * executor, `LoopConfigService` and the prompt chain make, so all of them agree on which
-   * graph governs).
-   *
-   * `undefined` = the workflow resolvers are not wired; `null` = wired, but no assignment, no
-   * published definition, no graph — or a lookup that THREW, which is reported as `null` so
-   * every caller fails closed.
-   */
-  private async resolveGoverningGraph(ctx: ConfigResolutionContext, purpose: string): Promise<WorkflowGraph | null | undefined> {
-    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return undefined;
-    try {
-      const assignment = await this.workflowAssignments.resolve(ctx.tenantId, CONSULTATION_PALETTE_KEY, ctx.departmentId ?? null);
-      if (!assignment.workflowDefinitionSlug) return null;
-      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(ctx.tenantId, assignment.workflowDefinitionSlug);
-      const graph = definition?.graph as unknown as WorkflowGraph | null | undefined;
-      return graph && Array.isArray(graph.nodes) ? graph : null;
-    } catch (error) {
-      this.logger.warn({
-        message: `Governing consultation graph lookup failed (${purpose}) — failing closed`,
-        tenantId: ctx.tenantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
   }
 
   /**
@@ -430,47 +264,29 @@ export class ConfigResolver {
     }
   }
 
-  /** Resolve a single toggle across the cascade, honoring its max scope. */
-  private resolveOne(
-    key: PipelineToggleKey,
-    rows: {
-      doctorRow: PipelinePolicyEntity | null;
-      departmentRow: PipelinePolicyEntity | null;
-      tenantRow: PipelinePolicyEntity | null;
-      systemRow: PipelinePolicyEntity | null;
-    },
-  ): { value: boolean; source: ConfigResolutionSource } {
-    const { codeDefault, maxScope } = PIPELINE_SETTING_DESCRIPTORS[key];
-
-    // Build the tier list honoring max scope (which tiers may set this key),
-    // then delegate the first-set-wins walk to the shared cascade primitive.
-    const tiers: CascadeTier<ConfigResolutionSource>[] = [];
-    if (maxScope === PipelinePolicyScope.DOCTOR) {
-      tiers.push({ source: 'doctor', value: rows.doctorRow ? rows.doctorRow[key] : null });
+  /**
+   * The PUBLISHED graph governing this consultation context, resolved through the shared
+   * `department -> tenant -> platform default` assignment cascade (the same walk the realtime
+   * executor, `LoopConfigService` and the prompt chain make, so all of them agree on which
+   * graph governs). `null` when the resolvers are unwired, nothing is assigned, no published
+   * definition or graph exists — or the lookup THREW, which is reported as `null` so every
+   * caller degrades to its safe end.
+   */
+  private async resolveGoverningGraph(ctx: ConfigResolutionContext, purpose: string): Promise<WorkflowGraph | null> {
+    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return null;
+    try {
+      const assignment = await this.workflowAssignments.resolve(ctx.tenantId, CONSULTATION_PALETTE_KEY, ctx.departmentId ?? null);
+      if (!assignment.workflowDefinitionSlug) return null;
+      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(ctx.tenantId, assignment.workflowDefinitionSlug);
+      const graph = definition?.graph as unknown as WorkflowGraph | null | undefined;
+      return graph && Array.isArray(graph.nodes) ? graph : null;
+    } catch (error) {
+      this.logger.warn({
+        message: `Governing consultation graph lookup failed (${purpose}) — degrading to the safe default`,
+        tenantId: ctx.tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
-    if (maxScope === PipelinePolicyScope.DOCTOR || maxScope === PipelinePolicyScope.DEPARTMENT) {
-      tiers.push({ source: 'department', value: rows.departmentRow ? rows.departmentRow[key] : null });
-    }
-    tiers.push({ source: 'tenant', value: rows.tenantRow ? rows.tenantRow[key] : null });
-    tiers.push({ source: 'system-default', value: rows.systemRow ? rows.systemRow[key] : null });
-
-    return walkCascade<ConfigResolutionSource, boolean>(tiers, codeDefault);
-  }
-
-  private codeDefaultResult(): ResolvedPipelineToggles {
-    return {
-      autoSummaryEnabled: PIPELINE_SETTING_DESCRIPTORS.autoSummaryEnabled.codeDefault,
-      autoNerEnabled: PIPELINE_SETTING_DESCRIPTORS.autoNerEnabled.codeDefault,
-      harnessEnabled: PIPELINE_SETTING_DESCRIPTORS.harnessEnabled.codeDefault,
-      dnaStyleEnabled: PIPELINE_SETTING_DESCRIPTORS.dnaStyleEnabled.codeDefault,
-      dnaRedactionEnabled: PIPELINE_SETTING_DESCRIPTORS.dnaRedactionEnabled.codeDefault,
-      trace: {
-        autoSummaryEnabled: 'code-default',
-        autoNerEnabled: 'code-default',
-        harnessEnabled: 'code-default',
-        dnaStyleEnabled: 'code-default',
-        dnaRedactionEnabled: 'code-default',
-      },
-    };
   }
 }

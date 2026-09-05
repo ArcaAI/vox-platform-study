@@ -1,12 +1,15 @@
 /**
  * NoteGenerationService — (Generator Entry-Point Seam) unit tests.
  *
- * Covers the seam's dispatch contract:
- *   (a) TRANSCRIPTION_CREATED + harnessEnabled=true + gateway present → gateway.start() called, decision 'harness'.
- *   (b) TRANSCRIPTION_CREATED + harnessEnabled=false → legacy decision, gateway never called.
- * (c) TRANSCRIPTION_CREATED + harnessEnabled=true + gateway UNDEFINED → throws ( regression test).
- *   (d) SUMMARY_REGENERATE mirrors (a)/(b)/(c).
- *   (e) PRE_SUMMARY / COMPREHENSIVE_SUMMARY + harnessEnabled=true → always legacy, 'harness-not-supported-for-trigger', no throw.
+ * TASK-882: `pipeline.harnessEnabled` is gone (`false` routed to a legacy generator that no
+ * longer existed), so the seam's one decision is whether the TRIGGER has a harness equivalent.
+ *
+ *   (a) TRANSCRIPTION_CREATED + gateway present → gateway.start() called, decision 'harness'.
+ *   (b) TRANSCRIPTION_CREATED + gateway UNDEFINED → throws (regression test).
+ *   (c) SUMMARY_REGENERATE mirrors (a)/(b).
+ *   (d) PRE_SUMMARY / COMPREHENSIVE_SUMMARY → always legacy, 'harness-not-supported-for-trigger', no throw.
+ *   (e) resolveConfig: auto-summary is the assigned workflow's generation node, with the
+ *       per-consultation metadata override on top.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -27,15 +30,8 @@ const createMockHarnessGatewayService = () => ({
   start: vi.fn().mockResolvedValue({ workflowId: 'harness-wf-001' }),
 });
 
-const createMockConfigResolver = (harnessEnabled: boolean) => ({
-  resolvePipelineToggles: vi.fn().mockResolvedValue({
-    autoSummaryEnabled: true,
-    autoNerEnabled: true,
-    harnessEnabled,
-    dnaStyleEnabled: false,
-    dnaRedactionEnabled: false,
-    trace: {},
-  }),
+const createMockConfigResolver = (autoSummaryEnabled: boolean) => ({
+  resolveAutoSummaryEnabled: vi.fn().mockResolvedValue(autoSummaryEnabled),
   resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
 });
 
@@ -62,8 +58,8 @@ describe('NoteGenerationService', () => {
   let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
   let mockClsService: ReturnType<typeof createMockClsService>;
 
-  const buildService = (harnessEnabled: boolean, gateway: unknown) => {
-    const mockConfigResolver = createMockConfigResolver(harnessEnabled);
+  const buildService = (gateway: unknown, autoSummaryEnabled = true) => {
+    const mockConfigResolver = createMockConfigResolver(autoSummaryEnabled);
     return {
       service: new NoteGenerationService(
         mockConsultationRepository as any,
@@ -84,13 +80,9 @@ describe('NoteGenerationService', () => {
     mockClsService = createMockClsService();
   });
 
-  // ===========================================================================
-  // (a)/(b)/(c) — TRANSCRIPTION_CREATED
-  // ===========================================================================
-
   describe('TRANSCRIPTION_CREATED', () => {
-    it('(a) routes to harness and calls gateway.start with the harness context when harnessEnabled=true', async () => {
-      const { service } = buildService(true, mockHarnessGateway);
+    it('(a) routes to harness and calls gateway.start with the harness context', async () => {
+      const { service } = buildService(mockHarnessGateway);
 
       const decision = await service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams);
 
@@ -108,17 +100,8 @@ describe('NoteGenerationService', () => {
       expect(decision).toEqual({ generator: 'harness', harnessJobId: expect.any(String) });
     });
 
-    it('(b) returns a legacy decision and never calls the gateway when harnessEnabled=false', async () => {
-      const { service } = buildService(false, mockHarnessGateway);
-
-      const decision = await service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams);
-
-      expect(mockHarnessGateway.start).not.toHaveBeenCalled();
-      expect(decision).toEqual({ generator: 'legacy', reason: 'harnessEnabled-false' });
-    });
-
-    it('(c) THROWS rather than succeeding silently when harnessEnabled=true and HarnessGatewayService is undefined (§2.3 regression test)', async () => {
-      const { service } = buildService(true, undefined);
+    it('(b) THROWS rather than succeeding silently when HarnessGatewayService is undefined (§2.3 regression test)', async () => {
+      const { service } = buildService(undefined);
 
       await expect(service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams)).rejects.toThrow();
     });
@@ -129,51 +112,30 @@ describe('NoteGenerationService', () => {
         tenantId: 'tenant-abc',
         departmentId: 'dept-card-001',
         doctorId: 'dr-smith-001',
-        patientId: 'PAT-20250101-001',
+        patientId: 'patient-42',
         metadata: null,
       });
-      const { service } = buildService(true, mockHarnessGateway);
+      const { service } = buildService(mockHarnessGateway);
 
       await service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams);
 
-      expect(mockHarnessGateway.start).toHaveBeenCalledWith(
-        'consultation-001',
-        expect.objectContaining({ externalPatientId: 'PAT-20250101-001' }),
-      );
+      expect(mockHarnessGateway.start).toHaveBeenCalledWith('consultation-001', expect.objectContaining({ externalPatientId: 'patient-42' }));
     });
 
     it('(g) a patientId lookup failure is best-effort — generation still proceeds with externalPatientId undefined', async () => {
-      // First call is resolveConfig's own internal lookup (must succeed so
-      // harnessEnabled resolves); the second is generate()'s dedicated
-      // patientId lookup, which is the one that fails here.
-      mockConsultationRepository.findById
-        .mockResolvedValueOnce({
-          id: 'consultation-001',
-          tenantId: 'tenant-abc',
-          departmentId: 'dept-card-001',
-          doctorId: 'dr-smith-001',
-          metadata: null,
-        })
-        .mockRejectedValueOnce(new Error('DB hiccup'));
-      const { service } = buildService(true, mockHarnessGateway);
+      mockConsultationRepository.findById.mockRejectedValue(new Error('DB down'));
+      const { service } = buildService(mockHarnessGateway);
 
       const decision = await service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams);
 
-      expect(decision).toEqual({ generator: 'harness', harnessJobId: expect.any(String) });
-      expect(mockHarnessGateway.start).toHaveBeenCalledWith(
-        'consultation-001',
-        expect.objectContaining({ externalPatientId: undefined }),
-      );
+      expect(decision.generator).toBe('harness');
+      expect(mockHarnessGateway.start).toHaveBeenCalledWith('consultation-001', expect.not.objectContaining({ externalPatientId: expect.anything() }));
     });
   });
 
-  // ===========================================================================
-  // (d) — SUMMARY_REGENERATE mirrors TRANSCRIPTION_CREATED
-  // ===========================================================================
-
   describe('SUMMARY_REGENERATE', () => {
-    it('routes to harness when harnessEnabled=true', async () => {
-      const { service } = buildService(true, mockHarnessGateway);
+    it('routes to harness', async () => {
+      const { service } = buildService(mockHarnessGateway);
 
       const decision = await service.generate(GenerationTrigger.SUMMARY_REGENERATE, baseParams);
 
@@ -181,32 +143,16 @@ describe('NoteGenerationService', () => {
       expect(decision).toEqual({ generator: 'harness', harnessJobId: expect.any(String) });
     });
 
-    it('returns a legacy decision when harnessEnabled=false', async () => {
-      const { service } = buildService(false, mockHarnessGateway);
-
-      const decision = await service.generate(GenerationTrigger.SUMMARY_REGENERATE, baseParams);
-
-      expect(mockHarnessGateway.start).not.toHaveBeenCalled();
-      expect(decision).toEqual({ generator: 'legacy', reason: 'harnessEnabled-false' });
-    });
-
-    it('THROWS when harnessEnabled=true and HarnessGatewayService is undefined', async () => {
-      const { service } = buildService(true, undefined);
+    it('THROWS when HarnessGatewayService is undefined', async () => {
+      const { service } = buildService(undefined);
 
       await expect(service.generate(GenerationTrigger.SUMMARY_REGENERATE, baseParams)).rejects.toThrow();
     });
   });
 
-  // ===========================================================================
-  // (e) — PRE_SUMMARY / COMPREHENSIVE_SUMMARY: no harness equivalent exists.
-  // Always a structured legacy fallback, logged, never a throw — even when
-  // harnessEnabled=true and even when the gateway is undefined (the trigger
-  // never reaches the gateway call at all).
-  // ===========================================================================
-
   describe('PRE_SUMMARY (no harness equivalent)', () => {
-    it('always falls back to legacy with harness-not-supported-for-trigger, even when harnessEnabled=true', async () => {
-      const { service } = buildService(true, mockHarnessGateway);
+    it('always falls back to legacy with harness-not-supported-for-trigger', async () => {
+      const { service } = buildService(mockHarnessGateway);
 
       const decision = await service.generate(GenerationTrigger.PRE_SUMMARY, baseParams);
 
@@ -215,7 +161,7 @@ describe('NoteGenerationService', () => {
     });
 
     it('does not throw even when the gateway is undefined (never reached)', async () => {
-      const { service } = buildService(true, undefined);
+      const { service } = buildService(undefined);
 
       await expect(service.generate(GenerationTrigger.PRE_SUMMARY, baseParams)).resolves.toEqual({
         generator: 'legacy',
@@ -225,8 +171,8 @@ describe('NoteGenerationService', () => {
   });
 
   describe('COMPREHENSIVE_SUMMARY (no harness equivalent)', () => {
-    it('always falls back to legacy with harness-not-supported-for-trigger, even when harnessEnabled=true', async () => {
-      const { service } = buildService(true, mockHarnessGateway);
+    it('always falls back to legacy with harness-not-supported-for-trigger', async () => {
+      const { service } = buildService(mockHarnessGateway);
 
       const decision = await service.generate(GenerationTrigger.COMPREHENSIVE_SUMMARY, baseParams);
 
@@ -235,7 +181,7 @@ describe('NoteGenerationService', () => {
     });
 
     it('does not throw even when the gateway is undefined (never reached)', async () => {
-      const { service } = buildService(true, undefined);
+      const { service } = buildService(undefined);
 
       await expect(service.generate(GenerationTrigger.COMPREHENSIVE_SUMMARY, baseParams)).resolves.toEqual({
         generator: 'legacy',
@@ -244,50 +190,58 @@ describe('NoteGenerationService', () => {
     });
   });
 
-  // ===========================================================================
-  // resolveConfig — moved verbatim from ConsultationEventHandler.resolvePipelineConfig
-  // ===========================================================================
-
   describe('resolveConfig', () => {
     it('returns default config when consultation not found', async () => {
       mockConsultationRepository.findById.mockResolvedValue(null);
-      const { service } = buildService(false, mockHarnessGateway);
+      const { service } = buildService(mockHarnessGateway);
 
       const config = await service.resolveConfig('missing-id');
-
-      expect(config.autoSummaryEnabled).toBe(true);
-      expect(config.autoNerEnabled).toBe(true);
-    });
-
-    it('returns default config on repository error', async () => {
-      mockConsultationRepository.findById.mockRejectedValue(new Error('DB down'));
-      const { service } = buildService(false, mockHarnessGateway);
-
-      const config = await service.resolveConfig('c1');
 
       expect(config.autoSummaryEnabled).toBe(true);
       expect(config.haltOnFailure).toBe(false);
     });
 
-    it('lets a per-consultation metadata override beat the cascade', async () => {
-      mockConsultationRepository.findById.mockResolvedValue({
-        id: 'c1',
-        tenantId: 'tenant-abc',
-        metadata: { pipelineConfig: { harnessEnabled: false } },
-      });
-      const { service } = buildService(true, mockHarnessGateway);
+    it('returns default config on repository error', async () => {
+      mockConsultationRepository.findById.mockRejectedValue(new Error('DB down'));
+      const { service } = buildService(mockHarnessGateway);
 
       const config = await service.resolveConfig('c1');
 
-      expect(config.harnessEnabled).toBe(false);
+      expect(config.autoSummaryEnabled).toBe(true);
     });
 
-    it('surfaces the cascade-resolved harnessEnabled when no metadata override exists', async () => {
-      const { service } = buildService(true, mockHarnessGateway);
+    it('auto-summary is the assigned workflow`s generation node (TASK-882)', async () => {
+      const { service, mockConfigResolver } = buildService(mockHarnessGateway, false);
 
       const config = await service.resolveConfig('consultation-001');
 
-      expect(config.harnessEnabled).toBe(true);
+      expect(config.autoSummaryEnabled).toBe(false);
+      expect(mockConfigResolver.resolveAutoSummaryEnabled).toHaveBeenCalledWith({
+        tenantId: 'tenant-abc',
+        departmentId: 'dept-card-001',
+        doctorId: 'dr-smith-001',
+      });
+    });
+
+    it('lets a per-consultation metadata override beat the graph', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'c1',
+        tenantId: 'tenant-abc',
+        metadata: { pipelineConfig: { autoSummaryEnabled: true } },
+      });
+      const { service } = buildService(mockHarnessGateway, false);
+
+      const config = await service.resolveConfig('c1');
+
+      expect(config.autoSummaryEnabled).toBe(true);
+    });
+
+    it('an unwired resolver answers the code default', async () => {
+      const service = new NoteGenerationService(mockConsultationRepository as any, mockHarnessGateway as any, mockEventEmitter as any, mockClsService as any);
+
+      const config = await service.resolveConfig('consultation-001');
+
+      expect(config.autoSummaryEnabled).toBe(true);
     });
   });
 });

@@ -11,7 +11,6 @@ import { CommonServiceModule } from '../baseServices';
 import { PromptManagementServiceModule } from '../prompt-management/prompt-management.service.module';
 import { ConsultationJobServiceModule } from '../consultation/jobs/consultation-job.service.module';
 import { HarnessPolicyServiceModule } from '../harness-policy/harness-policy.service.module';
-import { PipelinePolicyServiceModule } from '../pipeline-policy';
 import { ConfigResolverModule } from '../config-resolver';
 import { PhiRedactionServiceModule } from '../phi-redaction/phi-redaction.service.module';
 import { TextRequestServiceModule } from '../text-request/text-request.service.module';
@@ -29,9 +28,9 @@ import { TextRequestServiceModule } from '../text-request/text-request.service.m
     // endpoint or credential of its own; without a `provider_overrides` entry it
     // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
     TextRequestServiceModule,
-    // PipelinePolicyService backs the per-doctor DNA
-    // toggle (service); ConfigResolver gates the processor's learning corpus.
-    PipelinePolicyServiceModule,
+    // ConfigResolver reads the per-doctor DNA decision (the tenant's `agent.dna_style` node +
+    // the doctor's `UserSettings` preference, TASK-882); CoreDatabaseModule above supplies the
+    // `UserSettings` repository the self-service write goes through.
     ConfigResolverModule,
     PhiRedactionServiceModule, // hop 2 — IPhiRedactor for DnaWritingStyleProcessor's full-redact-before-TEXT call
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),

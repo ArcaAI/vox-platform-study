@@ -122,14 +122,14 @@ export function toEnvVarName(key: string): string {
  * categorization, the uniform max-scope clamp, and the future admin catalog API).
  */
 export interface SettingDescriptor {
-  /** Canonical dotted key, e.g. `pipeline.autoSummaryEnabled`, `tts.credential.azure`. */
+  /** Canonical dotted key, e.g. `rateLimit.maxRequests`, `harness.loop.emergencyStop`. */
   key: string;
   tier: StorageTier;
   dataType: SettingDataType;
   sensitivity: SettingSensitivity;
   /** Deepest scope a tenant admin may set this at (the clamp). */
   maxScope: SettingScope;
-  /** CASL subject that gates who may edit it (e.g. `PipelinePolicy`, `TenantTtsConfig`). */
+  /** CASL subject that gates who may edit it (e.g. `HarnessPolicy`, `GlobalSetting`). */
   editableBy: string;
   /** SUPER_ADMIN-only surface (SYSTEM defaults, plan matrix, platform kill-switches). */
   globalOnly?: boolean;

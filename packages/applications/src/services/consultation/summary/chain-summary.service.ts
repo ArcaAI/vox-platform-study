@@ -84,7 +84,7 @@ export class ChainSummaryService extends BaseService {
     // as `SttInternalService` does) so the DI guard test can assert it.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
     // comprehensive-summary has no harness equivalent today;
-    // this call exists purely to make the harnessEnabled read happen through
+    // this call exists purely to make the generator decision happen through
     // the single seam and get the decision logged. Optional + trailing so
     // existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,

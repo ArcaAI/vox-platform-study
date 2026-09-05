@@ -629,10 +629,10 @@ describe('ConsultationEventHandler', () => {
   // =========================================================================
 
   describe('harness flag routing (Lane G)', () => {
-    const withHarnessConfig = (harnessEnabled: boolean) => {
-      mockNoteGenerationService.resolveConfig.mockResolvedValue({ ...DEFAULT_PIPELINE_CONFIG, autoSummaryEnabled: true, harnessEnabled });
+    const withHarnessConfig = (harness: boolean) => {
+      mockNoteGenerationService.resolveConfig.mockResolvedValue({ ...DEFAULT_PIPELINE_CONFIG, autoSummaryEnabled: true });
       mockNoteGenerationService.generate.mockResolvedValue(
-        harnessEnabled ? { generator: 'harness', harnessJobId: 'harness-doc-test-001' } : { generator: 'legacy', reason: 'harnessEnabled-false' },
+        harness ? { generator: 'harness', harnessJobId: 'harness-doc-test-001' } : { generator: 'legacy', reason: 'harness-not-supported-for-trigger' },
       );
     };
 
@@ -675,7 +675,7 @@ describe('ConsultationEventHandler', () => {
       expect(params.transcriptText).toBeUndefined();
     });
 
-    it('emits a VISIBLE PipelineStepFailed (no silent legacy fallback) when the seam decision is legacy (harnessEnabled=false)', async () => {
+    it('emits a VISIBLE PipelineStepFailed (no silent legacy fallback) when the seam decision is legacy', async () => {
       withHarnessConfig(false);
 
       await handler.handleTranscriptionCreated(makeTranscriptionPayload());
@@ -685,13 +685,13 @@ describe('ConsultationEventHandler', () => {
         expect.objectContaining({
           failedStep: 'summary',
           willContinue: false,
-          error: expect.stringContaining('harnessEnabled-false'),
+          error: expect.stringContaining('harness-not-supported-for-trigger'),
         }),
       );
     });
 
     it('never calls the seam when auto-summary is disabled — gated before generate()', async () => {
-      mockNoteGenerationService.resolveConfig.mockResolvedValue({ ...DEFAULT_PIPELINE_CONFIG, autoSummaryEnabled: false, harnessEnabled: true });
+      mockNoteGenerationService.resolveConfig.mockResolvedValue({ ...DEFAULT_PIPELINE_CONFIG, autoSummaryEnabled: false });
 
       await handler.handleTranscriptionCreated(makeTranscriptionPayload());
 
@@ -732,7 +732,6 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
   let mockNoteGenerationService: ReturnType<typeof createMockNoteGenerationService>;
   let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
   let mockConfigResolver: {
-    resolvePipelineToggles: ReturnType<typeof vi.fn>;
     resolvePreferredPromptTemplateId: ReturnType<typeof vi.fn>;
     resolveEffectiveDnaRedactionEnabled: ReturnType<typeof vi.fn>;
   };
@@ -752,14 +751,6 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
     mockContextItemRepository = createMockContextItemRepository();
 
     mockConfigResolver = {
-      resolvePipelineToggles: vi.fn().mockResolvedValue({
-        autoSummaryEnabled: true,
-        autoNerEnabled: true,
-        harnessEnabled: false,
-        dnaStyleEnabled: false,
-        dnaRedactionEnabled: false,
-        trace: {},
-      }),
       resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
       resolveEffectiveDnaRedactionEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true }),
     };

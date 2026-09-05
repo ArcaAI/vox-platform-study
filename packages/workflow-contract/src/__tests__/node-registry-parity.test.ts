@@ -106,6 +106,8 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       // lane A — the target catalogue and the guards.
       'agent.discharge_summary',
       'agent.dna_redaction',
+      // TASK-882 — the DNA writing-style gate, out of the retired PipelinePolicy cascade.
+      'agent.dna_style',
       'agent.feedback',
       // Lane R (R1) — the realtime grammar/spelling pass.
       'agent.grammar',

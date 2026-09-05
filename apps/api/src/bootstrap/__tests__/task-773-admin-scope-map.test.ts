@@ -39,7 +39,8 @@ const repoRoot = cwd.endsWith(join('apps', 'api')) ? join(cwd, '..', '..') : cwd
 // 62 -> 61: TASK-862 deleted the legacy `AiProviderConnectionController` (`admin/ai-providers` alias).
 // 61 -> 60: TASK-862 deleted `AiRuntimeProfileController` (`admin:ai-runtime-profile:manage` retired with it).
 // 60 -> 59: TASK-881 deleted `AiTaskDefaultAdminController` (`admin:ai-task-default:manage` retired with it).
-const EXPECTED_ROW_COUNT = 59;
+// 59 -> 58: TASK-882 deleted `PipelinePolicyAdminController` (`admin:pipeline-policy:manage` retired with it).
+const EXPECTED_ROW_COUNT = 58;
 
 describe('TASK_773_ADMIN_SCOPE_MAP', () => {
   it('has not silently grown or shrunk', () => {

@@ -1369,6 +1369,31 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     deprecated: true,
     replacedBy: 'core.action',
   }),
+  // TASK-882 — the DNA WRITING-STYLE gate, migrated out of the retired `PipelinePolicy` cascade.
+  // The TENANT gate is the PRESENCE of this node (enabled) on the assigned consultation graph —
+  // read by `ConfigResolver.resolveEffectiveDnaStyleEnabled` at prompt assembly, where the
+  // doctor's style text is applied; the DOCTOR's own opt-out stays a per-user preference
+  // (`UserSettings` `dna` / `styleEnabled`). Inside an interpreter run it is an ordering marker:
+  // the style is applied by the gateway's assemble step, so the activity writes nothing.
+  'agent.dna_style': Object.freeze({
+    key: 'agent.dna_style',
+    implemented: true,
+    activityName: 'interpreter.agent_dna_style',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
+  }),
   // ---- Guards -------------------------------------------------------------------------
   // `critical: false` on all three, matching the engines they delegate to
   // (`consultation.phiHop`, `guardrail.check`, `consultation.sensors` are all non-critical).

@@ -20,9 +20,7 @@ function build(graph: unknown, opts: { assignmentThrows?: boolean; unwired?: boo
     }),
   };
   const workflowDefinitionRepository = { findPublishedBySlug: vi.fn(async () => (graph ? { graph } : null)) };
-  const resolver = opts.unwired
-    ? new ConfigResolver({} as never)
-    : new ConfigResolver({} as never, undefined, workflowAssignments as never, workflowDefinitionRepository as never);
+  const resolver = opts.unwired ? new ConfigResolver() : new ConfigResolver(undefined, workflowAssignments as never, workflowDefinitionRepository as never);
   return { resolver, workflowAssignments };
 }
 

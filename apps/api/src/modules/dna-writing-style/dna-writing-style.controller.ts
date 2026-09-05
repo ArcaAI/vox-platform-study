@@ -146,7 +146,8 @@ export class DnaWritingStyleController {
   }
 
   // ─── Per-doctor DNA on/off settings ──────────────────────────────────
-  // Storage is the Phase-5 DOCTOR-scope `PipelinePolicy.dnaStyleEnabled`.
+  // Storage is the doctor's `UserSettings` preference (`dna` / `styleEnabled`, TASK-882); the
+  // tenant gate is the assigned graph's `agent.dna_style` node.
   // `effective = tenant AND doctor`; the UI binds the switch to `doctorToggle`
   // and disables it when `tenantEnabled` is false.
   @Get('settings')
@@ -161,7 +162,7 @@ export class DnaWritingStyleController {
   @ApiOperation({
     summary: "Set the caller doctor's DNA writing-style on/off toggle",
     description:
-      'Writes the DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` for the caller. `enabled: false` is an explicit ' +
+      'Writes the caller doctor`s DNA preference (`UserSettings` `dna` / `styleEnabled`). `enabled: false` is an explicit ' +
       'opt-out, `enabled: null` clears the override (revert to the implicit opt-in). Optimistic concurrency is ' +
       'ENFORCED: `If-Match` (RFC 7232) is REQUIRED and overrides the body `expectedVersion`. `GET settings` ' +
       'answers `version: 0` while no DOCTOR-scope row exists, so the FIRST write echoes the create-intent ' +
