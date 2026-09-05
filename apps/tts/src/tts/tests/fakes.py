@@ -128,7 +128,7 @@ def voice_binding(
     provider_voice: str | None = None,
     ref_audio_path: str | None = None,
     ref_text: str | None = None,
-) -> "TtsVoiceBinding":
+) -> TtsVoiceBinding:
     from tts.spec import TtsVoiceBinding
 
     return TtsVoiceBinding(
@@ -144,7 +144,7 @@ def candidate(
     engine: str = "kokoro",
     *,
     kind: str = "primary",
-    voices: "list[TtsVoiceBinding] | None" = None,
+    voices: list[TtsVoiceBinding] | None = None,
     voice: str | None = "af_heart",
     slug: str | None = None,
     source_uri: str = "hexgrad/Kokoro-82M",
@@ -159,7 +159,7 @@ def candidate(
     language: str | None = "en",
     agent_slug: str = "platform-tts",
     version_id: str | None = None,
-) -> "ResolvedTtsCandidate":
+) -> ResolvedTtsCandidate:
     """One resolved candidate, with everything the router reads."""
     from tts.spec import ResolvedTtsCandidate
 
@@ -215,11 +215,11 @@ def candidate(
 
 
 def spec(
-    primary: "ResolvedTtsCandidate | None" = None,
+    primary: ResolvedTtsCandidate | None = None,
     *,
-    chain: "list[ResolvedTtsCandidate] | None" = None,
+    chain: list[ResolvedTtsCandidate] | None = None,
     auto_switch: bool = True,
-) -> "ResolvedTtsSpec":
+) -> ResolvedTtsSpec:
     """A whole resolved spec around one primary and an optional chain."""
     from tts.spec import RESOLVED_TTS_SPEC_SCHEMA_VERSION, ResolvedTtsSpec
 
