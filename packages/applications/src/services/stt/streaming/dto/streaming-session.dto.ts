@@ -146,6 +146,28 @@ export interface SttLanguageModeCatalog {
 }
 
 /**
+ * One engine's total time in a streaming session — one `transcribe.stream`
+ * ledger row.
+ *
+ * TASK-874 — a session can change ASR engines mid-flight (auto on a classified
+ * outage, or manually in either direction), and fallback to the platform default
+ * is a METERED platform HA capability, so billing follows ENGINE-TIME: the
+ * tenant's BYO minutes meter `BYOK` and the platform fallback's meter `CLOUD`.
+ * `deployment` is DERIVED by `apps/stt` from the credential row that actually
+ * served the span — never stamped by a call site. Segments are aggregated per
+ * `(engine, deployment)` and sum exactly to the summary's own
+ * `audio_seconds` / `session_seconds`.
+ */
+export interface StreamingUsageSegment {
+  /** Usage-ledger engine id that served this segment. */
+  engine: string;
+  /** `SELF_HOSTED` | `CLOUD` | `BYOK`, derived from the row that served. */
+  deployment: string;
+  audio_seconds: number;
+  session_seconds: number;
+}
+
+/**
  * The usage-attribution summary a REAL session teardown
  * returns (`StreamingSessionTeardownResponse` in `apps/stt`). Kept in the
  * WIRE (snake_case) shape rather than mapped to camelCase: this is read
@@ -167,6 +189,13 @@ export interface StreamingSessionTeardownSummary {
   engine: string | null;
   /** `SELF_HOSTED` | `CLOUD` | `BYOK`; `null` alongside a `null` engine. */
   deployment: string | null;
+  /**
+   * TASK-874 — the per-engine breakdown, one ledger row each. ADDITIVE to the
+   * scalars above (which stay the LAST-loaded engine), so an STT that predates
+   * it simply omits the field and the gateway meters from the scalars exactly
+   * as before.
+   */
+  segments?: StreamingUsageSegment[];
   language_mode: string | null;
   /**
    * Distinct microphone source count echoed from STT for usage repricing.
