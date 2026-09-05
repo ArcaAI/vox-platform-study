@@ -689,3 +689,83 @@ describe('StreamingSessionService', () => {
     });
   });
 });
+
+/**
+ * TASK-887 — the gateway resolves the session user's ENROLLED voice profiles and pushes them.
+ *
+ * `apps/stt` holds no database connection on the agent path, and only the gateway knows the
+ * session's user, its tenant, and the model the agent bound — so it is the only side that can
+ * filter profiles to the space that will actually match them.
+ */
+describe('StreamingSessionService — voice profiles ride the create body', () => {
+  const configWithSttUrl = (url?: string): any => ({ config: { STT_URL: url } });
+  const created = () => of({ data: { session_id: 's-vp', status: 'active', max_concurrent: 4, current_active: 1 } });
+
+  const specWith = (opts: { enabled: boolean; embeddingSlug?: string }): any => ({
+    models: { asr: { slug: 'whisper' }, ...(opts.embeddingSlug ? { embedding: { slug: opts.embeddingSlug } } : {}) },
+    audioFrontEnd: { diarization: { enabled: opts.enabled } },
+  });
+
+  const build = (voiceProfileService?: unknown) =>
+    new StreamingSessionService(
+      httpServiceRef.current,
+      configWithSttUrl('http://stt.internal:9000'),
+      undefined,
+      undefined,
+      voiceProfileService as never,
+    );
+
+  const httpServiceRef: { current: any } = { current: null };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    httpServiceRef.current = { get: vi.fn(), post: vi.fn(), delete: vi.fn() };
+  });
+
+  const openSession = async (voiceProfileService: unknown, resolvedSpec: unknown) => {
+    httpServiceRef.current.post.mockReturnValue(created());
+    await build(voiceProfileService).createSession({
+      sessionId: 's-vp',
+      tenantId: 'tenant-1',
+      pipelineId: 'agent-version-1',
+      userId: 'user-1',
+      resolvedSpec: resolvedSpec as never,
+    });
+    return httpServiceRef.current.post.mock.calls[0][1] as Record<string, unknown>;
+  };
+
+  it('pushes the user’s profiles for the agent’s embedding model', async () => {
+    const listForRuntime = vi.fn().mockResolvedValue([{ profile_id: 'vp-1', label: 'Dr Who', model_id: 'ecapa-tdnn-voxceleb', embedding: [0.1] }]);
+    const body = await openSession({ listForRuntime }, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }));
+
+    expect(listForRuntime).toHaveBeenCalledWith('user-1', 'tenant-1', 'ecapa-tdnn-voxceleb');
+    expect(body.voice_profiles).toEqual([{ profile_id: 'vp-1', label: 'Dr Who', model_id: 'ecapa-tdnn-voxceleb', embedding: [0.1] }]);
+  });
+
+  it('resolves nothing when diarization is off — the OFF default costs no query', async () => {
+    const listForRuntime = vi.fn();
+    const body = await openSession({ listForRuntime }, specWith({ enabled: false, embeddingSlug: 'ecapa-tdnn-voxceleb' }));
+
+    expect(listForRuntime).not.toHaveBeenCalled();
+    expect(body.voice_profiles).toBeNull();
+  });
+
+  it('resolves nothing when the agent bound no embedding model', async () => {
+    const listForRuntime = vi.fn();
+    const body = await openSession({ listForRuntime }, specWith({ enabled: true }));
+
+    expect(listForRuntime).not.toHaveBeenCalled();
+    expect(body.voice_profiles).toBeNull();
+  });
+
+  it('sends null rather than an empty list when the user has enrolled nothing', async () => {
+    // One encoding of one state: `apps/stt` reads absence as "diarize generically".
+    const body = await openSession({ listForRuntime: vi.fn().mockResolvedValue([]) }, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }));
+    expect(body.voice_profiles).toBeNull();
+  });
+
+  it('opens the session unchanged when no voice-profile service is wired', async () => {
+    const body = await openSession(undefined, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }));
+    expect(body.voice_profiles).toBeNull();
+    expect(body.session_id).toBe('s-vp');
+  });
+});

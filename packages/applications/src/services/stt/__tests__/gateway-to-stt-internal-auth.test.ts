@@ -131,7 +131,17 @@ describe('gateway → apps/stt carries the shared token AND the tenant', () => {
         findActiveByUserId: vi.fn().mockResolvedValue(null),
         activateById: vi.fn().mockResolvedValue(undefined),
       };
-      const post = vi.fn().mockReturnValue(of({ data: { embedding: new Array(256).fill(0.1), model_id: 'm-1' } }));
+      const post = vi.fn().mockReturnValue(of({ data: { embedding: new Array(256).fill(0.1), model_id: 'm-1', model_slug: 'wespeaker-voxceleb-resnet34' } }));
+      // TASK-887 — enrollment resolves the agent first; the model it names is pushed with the samples.
+      const asrResolver = {
+        resolve: vi.fn().mockResolvedValue({
+          spec: {
+            agent: { slug: 'platform-transcription' },
+            models: { embedding: { slug: 'wespeaker-voxceleb-resnet34', sourceUri: 'pyannote/wespeaker-voxceleb-resnet34-LM' } },
+            audioFrontEnd: { diarization: { enabled: true } },
+          },
+        }),
+      };
 
       const service = new VoiceProfileService(
         repository as any,
@@ -140,6 +150,7 @@ describe('gateway → apps/stt carries the shared token AND the tenant', () => {
         cls as any,
         configWithSttUrl(),
         secretsWithSharedToken() as any,
+        asrResolver as any,
       );
 
       await service.enroll({ userId: 'user-1', audioBuffers: [Buffer.from('audio')] } as any);
