@@ -64,17 +64,18 @@ describe('EffectiveSettingsService — the db-config lane', () => {
   });
 
   it('RAISES for a db-config key with no resolution lane, rather than reporting null', async () => {
-    // Specimen changed in TASK-872. It was `stt.fallback.pipelineSlug` — the
-    // registry's only db-config + `failMode: 'closed'` key — under the title
-    // "fails CLOSED … selection never falls back". That title overstated what
-    // ran: `failMode` is never consulted on this path. A db-config key that
-    // dispatches to no family resolver falls through every lane to the final
-    // throw, whatever its declared mode, and THAT is the contract worth
-    // pinning — a read surface must never answer "null" for a key it simply
-    // cannot resolve. `tts.defaultVoiceEn` is the specimen now: tenant-varying,
-    // so per D-1 it travels the push channel and deliberately has no lane here.
-    const svc = service(storageResolver());
-    await expect(svc.resolveEffective('tts.defaultVoiceEn', ctx)).rejects.toBeInstanceOf(ArgumentInvalidException);
+    // Specimen changed twice. It was `stt.fallback.pipelineSlug` (TASK-872), then
+    // `tts.defaultVoiceEn` (removed by TASK-879 with the rest of the per-tenant tts settings
+    // surface). The contract is what matters, not the key: a db-config key that dispatches to no
+    // family resolver falls through every lane to the final throw, whatever its declared
+    // `failMode`, because a read surface must never answer "null" for a key it simply cannot
+    // resolve.
+    //
+    // It is now pinned with a resolver that CLAIMS NOTHING rather than with a key from another
+    // family, so the assertion cannot be broken again by the ordinary retirement of whichever
+    // family happened to supply the specimen — the unclaimed state is what is being tested.
+    const svc = service(storageResolver({ resolves: vi.fn(() => false) }));
+    await expect(svc.resolveEffective('storage.platformDefault.region', ctx)).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('PROPAGATES a backend error rather than substituting the default', async () => {
@@ -95,11 +96,11 @@ describe('EffectiveSettingsService — the db-config lane', () => {
   });
 
   it('still raises for a db-config key no resolver claims — silence is the bug being fixed', async () => {
-    const svc = service(storageResolver());
-    // `tts.defaultVoiceEn` is db-config and tenant-scoped: it travels the PUSH
-    // channel (D-1) and has no pull resolver. An explicit throw keeps that
-    // visible instead of serving a plausible null.
-    await expect(svc.resolveEffective('tts.defaultVoiceEn', ctx)).rejects.toThrow(/No effective resolver is registered/);
+    // A resolver is WIRED but declines the key. That is the dangerous shape: the graph looks
+    // complete, so the failure would otherwise surface as a plausible `null` rather than as the
+    // missing lane it is.
+    const svc = service(storageResolver({ resolves: vi.fn(() => false) }));
+    await expect(svc.resolveEffective('storage.platformDefault.region', ctx)).rejects.toThrow(/No effective resolver is registered/);
   });
 
   it('leaves an unwired graph on the declared failMode rather than throwing a DI error', async () => {
