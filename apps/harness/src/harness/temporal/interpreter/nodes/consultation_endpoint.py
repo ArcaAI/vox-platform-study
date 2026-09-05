@@ -1,4 +1,4 @@
-"""the ENDPOINT STAGE: session.timeout, summary.finalize, feedback.capture.
+"""the ENDPOINT STAGE: livedoc.stop, session.timeout, harness.finalize, summary.finalize, feedback.capture.
 
 The endpoint stage is the ordered sequence that runs before a consultation session closes. Before
 this ticket it existed only as a hardcoded literal in the gateway
@@ -7,11 +7,15 @@ nothing else (D-10); two of its three jobs had no node, no activity and no code 
 
 ## The three defects, and which activity closes each
 
-* **D-10** — the sequence was a literal. It is now the persisted, admin-ordered
-  ``consultation.endpoint.actions`` list, resolved by ``LoopConfigService`` and dispatched by
-  ``ConsultationLoopWorkflow._run_lifecycle_actions``. These three activities are what make
-  ordering it MEAN something: before them there was nothing to order but ``livedoc.stop`` and
-  ``harness.finalize``.
+* **D-10** — the sequence was a literal, then (briefly) an admin-ordered setting. Since TASK-882
+  it is read off the ASSIGNED GRAPH — membership is node presence + ``enabled``, order is edge
+  order — by ``LoopConfigService`` and dispatched by
+  ``ConsultationLoopWorkflow._run_lifecycle_actions``; a graph that declares no endpoint node
+  runs the platform default. ``interpreter_livedoc_stop`` / ``interpreter_harness_finalize``
+  (TASK-882) give the last two stages a node type so the whole stage is declarable: inside an
+  interpreter run the graph IS the document workflow, so ``harness.finalize`` is an ordering
+  marker that writes nothing, and ``livedoc.stop`` is the same idempotent session stop the loop
+  performs.
 * **D-11** — no feedback-capture node or activity existed. ``interpreter_feedback_capture`` is it.
 * **D-12** — the idle timeout deliberately skipped the ending actions, so a timed-out consultation
   never finalized. ``interpreter_session_timeout`` is the node that records that outcome, and the
@@ -55,8 +59,10 @@ from typing import Any
 
 from temporalio import activity
 
+from harness.core.config import get_settings
 from harness.services.api_client import ApiServiceError
 from harness.temporal.activities import (
+    _api_client,
     capture_feedback,
     finalize_documents,
     record_session_endpoint,
@@ -323,3 +329,54 @@ async def interpreter_feedback_capture(payload: NodeActivityInput) -> NodeActivi
             "alreadyPromoted": result.already_promoted,
         },
     )
+
+
+@activity.defn(name="interpreter.livedoc_stop")
+async def interpreter_livedoc_stop(payload: NodeActivityInput) -> NodeActivityResult:
+    """TASK-882 — close the consultation's live-documentation session (the stage's FIRST step).
+
+    The same ``LiveDocumentationService.stop`` the loop's own ``livedoc_stop`` action dispatches,
+    and idempotent for the same reason: a session already stopped stays stopped. Best-effort like
+    the loop's: a stale live panel is cheap, so a gateway error DEGRADES visibly rather than
+    failing the run.
+    """
+    started = now()
+    identity = run_identity(payload.run_payload)
+    if not identity.consultation_id:
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_consultation_id"
+        )
+        return NodeActivityResult(
+            status="DEGRADED", reason="run payload carries no consultationId to stop"
+        )
+    config = _endpoint_config(payload)
+    persist_snapshot = config.get("persistSnapshot") is not False
+    try:
+        ok = await _api_client(get_settings()).live_documentation_stop(
+            identity.consultation_id,
+            tenant_id=payload.tenant_id,
+            persist_snapshot=persist_snapshot,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort by design, mirrors the loop's stop
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code="livedoc_stop_failed"
+        )
+        return NodeActivityResult(
+            status="DEGRADED", reason=f"live documentation was not stopped: {exc}"
+        )
+    await record_and_flush(payload, status=STATUS_OK, started=started)
+    return NodeActivityResult(status="SUCCEEDED", output={"ok": ok})
+
+
+@activity.defn(name="interpreter.harness_finalize")
+async def interpreter_harness_finalize(payload: NodeActivityInput) -> NodeActivityResult:
+    """TASK-882 — the POSITION of note generation in the endpoint stage, as a node.
+
+    ``ConsultationLoopWorkflow`` reads this node off the graph to know WHERE in the stage the
+    document workflow starts, and starts it as a child. Inside an interpreter run the graph
+    itself is that document workflow, so this activity deliberately starts nothing and writes
+    nothing: it is an ordering marker, and ``external_write=False`` says so.
+    """
+    started = now()
+    await record_and_flush(payload, status=STATUS_OK, started=started)
+    return NodeActivityResult(status="SUCCEEDED", output={"marker": "harness.finalize"})

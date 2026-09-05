@@ -47,8 +47,6 @@ export * from './NotificationEntityMapper';
 export * from './PasswordResetTokenEntityMapper';
 export * from './PermissionEntityMapper';
 export * from './PlanEntitlementEntityMapper';
-export * from './PipelinePolicyChangeEntityMapper';
-export * from './PipelinePolicyEntityMapper';
 export * from './PromptTemplateEntityMapper';
 export * from './PromptUsageRecordEntityMapper';
 export * from './PromptVersionEntityMapper';

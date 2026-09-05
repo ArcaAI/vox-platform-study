@@ -9,7 +9,6 @@
  */
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import { PromptResolutionService, PromptResolutionTier, type PromptTypeSelector } from './prompt-resolution.service';
 import { buildPreSummaryVariables, templateReferencesPreSummaryVariables } from './pre-summary-variables';
@@ -17,7 +16,7 @@ import { PromptTemplateRepository, DnaWritingStyleReportRepository, DepartmentRe
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
-import { truncatePriorVisitSummary } from '../../settings-registry/descriptors/agentic-revisit.descriptors';
+import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
 import { IActiveUserContext } from '../../../interfaces';
 import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
 
@@ -225,27 +224,12 @@ export interface PromptAssemblyParams {
    * on a pre-summary body.
    *
    * Supplied by the caller because assembly cannot see the consultation. Native
-   * callers now pass the LABEL of the visit type resolved from the tenant's
-   * `consultation.visitTypes` catalogue (`VisitTypeService.forConsultation`),
-   * which is where the vocabulary lives since row 3 — it used to be
-   * a `parentConsultationId ? 'revisit': 'new-visit'` literal at each call
-   * site. Absent ⇒ v1's own default, `'Medical examination'`.
+   * callers pass the LABEL of the visit type `VisitTypeService.forConsultation`
+   * derives from the parent link — it used to be a `parentConsultationId ?
+   * 'revisit': 'new-visit'` literal at each call site. Absent ⇒ v1's own
+   * default, `'Medical examination'`.
    */
   visitType?: string;
-  /**
-   * The visit type as an IDENTIFIER, on its own axis — a catalogue key or alias,
-   * NOT the human label `visitType` above carries.
-   *
-   * The two are deliberately separate fields because they do different jobs:
-   * `visitType` is DATA that fills the `{visit_type}` placeholder, while this
-   * one is a SELECTOR that, paired with the task, chooses which instructions and
-   * which context composition to resolve at all (owner directive, 2026-08-29 —
-   * see `PromptResolutionParams.visitTypeKey`). Collapsing them would make a
-   * tenant's display wording change which prompt is served.
-   *
-   * Optional: absent ⇒ the visit type is derived from `promptType`, as before.
-   */
-  visitTypeKey?: string;
   transcript: string;
   conversationLanguage: string;
   dnaStyleId?: string;
@@ -257,9 +241,9 @@ export interface PromptAssemblyParams {
    * Its PRESENCE is the proof that a live agent actually ran this consultation,
    * and that is what makes the prior-draft injection below UNCONDITIONAL:
    * R-N2 ("the same specific agent reviews and finalizes") is the product
-   * contract, so it must not be an accident of `HARNESS_WARM_START_ENABLED`
-   * deployment configuration. The flag survives, demoted to gating only the
-   * legacy no-lineage path.
+   * contract, so it must not be an accident of `HarnessPolicy.warmStartEnabled`
+   * configuration. The flag survives, demoted to gating only the legacy
+   * no-lineage path.
    *
    * Absent ⇒ every warm-start behaviour is byte-identical to pre-C5.
    */
@@ -271,7 +255,7 @@ export interface PromptAssemblyParams {
   pinnedAgentId?: string;
   /**
    * The patient's most authoritative summary from the PARENT consultation of a
-   * re-visit (F-18). Supplied only when `agentic.revisit.carryForwardEnabled` is
+   * re-visit (F-18). Supplied only when the assigned graph's `carryForward` binding is
    * on — the producer (`HarnessInternalService.assemble`) resolves that knob and
    * omits this field entirely when it is off, so the default-off posture holds
    * even if a future caller forgets the gate.
@@ -346,22 +330,18 @@ export class PromptAssemblyService {
   // path nor the legacy SummaryService.generateSummary() path injects a prior draft
   // (the legacy latent no-op is preserved).
   //
-  // The AUTHORITY is now `HarnessPolicy.warmStartEnabled`, resolved
-  // PER CALL. It used to be this env var alone, cached at construction: the policy
-  // column was write-plumbed all the way to the admin console and read by nothing,
-  // so the knob was dead and the real switch needed a redeploy to move and could
-  // never vary per tenant. The env var is retained ONLY as the fallback for a null
-  // policy value, which reproduces the original env-only behaviour byte-for-byte.
-  private readonly warmStartEnvFallback: boolean;
+  // The AUTHORITY is `HarnessPolicy.warmStartEnabled`, resolved PER CALL. It used to be the
+  // `HARNESS_WARM_START_ENABLED` env var alone, cached at construction, then the env var as the
+  // fallback for a null column; TASK-882 removed the env read entirely — the column is the one
+  // source and a null column is the code default (OFF).
 
   constructor(
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
-    private readonly configService: ConfigService,
     // Optional + trailing so existing positional test fixtures keep their arity;
     // production DI (ConsultationServiceModule) always supplies both. Absent ⇒ the
-    // env fallback governs, i.e. exactly the original env-only behaviour.
+    // code default (warm start OFF).
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
     @Optional() @Inject(ClsService) private readonly cls?: ClsService<IActiveUserContext>,
     // The gate-edit learning loop's READ half. Optional and
@@ -380,35 +360,26 @@ export class PromptAssemblyService {
     // @Optional + trailing for the same reason as the four above (positional
     // test fixtures); absent ⇒ v1's `'General'` default, never a literal brace.
     @Optional() @Inject(DepartmentRepository) private readonly departmentRepository?: DepartmentRepository,
-  ) {
-    const raw = String(this.configService.get('HARNESS_WARM_START_ENABLED') ?? '')
-      .trim()
-      .toLowerCase();
-    this.warmStartEnvFallback = raw === 'true' || raw === '1';
-  }
+  ) {}
 
   /**
-   * Effective warm-start decision for the calling tenant.
-   *
-   * Policy wins; a null policy value means "not configured" and falls through to the
-   * env fallback. Resolved on every call so a super admin's console flip takes
-   * effect without a redeploy. A policy-backend failure degrades to the env value —
-   * prompt assembly is on the generation hot path and must never fail closed on a
-   * governance lookup.
+   * Effective warm-start decision for the calling tenant — the `HarnessPolicy.warmStartEnabled`
+   * column, resolved on every call so a super admin's console flip takes effect without a
+   * redeploy. A null column is the code default (OFF); so is an unwired policy service or a
+   * policy-backend failure — prompt assembly is on the generation hot path and must never throw
+   * on a governance lookup, and since TASK-882 there is no env value to fall back to.
    */
   private async resolveWarmStartEnabled(tenantId?: string): Promise<boolean> {
-    if (!this.harnessPolicyService) {
-      return this.warmStartEnvFallback;
-    }
+    if (!this.harnessPolicyService) return false;
     try {
       const effective = await this.harnessPolicyService.getEffectivePolicy(tenantId ?? this.cls?.get('tenantId'));
-      return effective.warmStartEnabled ?? this.warmStartEnvFallback;
+      return effective.warmStartEnabled ?? false;
     } catch (error) {
       this.logger.warn({
-        message: 'Harness policy lookup failed while resolving warmStartEnabled — falling back to env',
+        message: 'Harness policy lookup failed while resolving warmStartEnabled — warm start stays OFF for this call',
         error: error instanceof Error ? error.message : String(error),
       });
-      return this.warmStartEnvFallback;
+      return false;
     }
   }
 
@@ -490,7 +461,6 @@ export class PromptAssemblyService {
       // The visit-type axis, stated explicitly. This is what lets the
       // PRE-SUMMARY chain see a visit type at all — its `promptType` is the
       // phase, so before this the axis could not reach the resolver.
-      visitTypeKey: params.visitTypeKey,
       preSummaryVariant: params.preSummaryVariant,
       explicitTemplate: params.explicitTemplate,
       preferredPromptTemplateId: params.preferredPromptTemplateId,

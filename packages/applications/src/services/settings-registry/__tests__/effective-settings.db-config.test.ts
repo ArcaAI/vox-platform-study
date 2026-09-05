@@ -13,7 +13,6 @@
 
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { describe, expect, it, vi } from 'vitest';
-import type { ConfigResolver } from '../../config-resolver/config-resolver.service';
 import type { PlatformStorageSettingsResolver } from '../../tenant-storage-config/platform-storage-settings.resolver';
 import { EffectiveSettingsService } from '../effective-settings.service';
 
@@ -21,7 +20,6 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 const ctx = { tenantId: SYSTEM_TENANT_ID, departmentId: null, doctorId: null };
 
-const configResolver = {} as unknown as ConfigResolver;
 
 function storageResolver(impl: Partial<PlatformStorageSettingsResolver> = {}): PlatformStorageSettingsResolver {
   return {
@@ -32,7 +30,7 @@ function storageResolver(impl: Partial<PlatformStorageSettingsResolver> = {}): P
 }
 
 function service(storage?: PlatformStorageSettingsResolver): EffectiveSettingsService {
-  return new EffectiveSettingsService(configResolver, undefined, storage);
+  return new EffectiveSettingsService(undefined, storage);
 }
 
 describe('EffectiveSettingsService — the db-config lane', () => {

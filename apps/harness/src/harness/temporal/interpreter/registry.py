@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.nodes.agent_catalogue import (
         interpreter_agent_discharge_summary,
         interpreter_agent_dna_redaction,
+        interpreter_agent_dna_style,
         interpreter_agent_feedback,
         interpreter_agent_grammar,
         interpreter_agent_important_findings,
@@ -66,6 +67,8 @@ with workflow.unsafe.imports_passed_through():
     )
     from harness.temporal.interpreter.nodes.consultation_endpoint import (
         interpreter_feedback_capture,
+        interpreter_harness_finalize,
+        interpreter_livedoc_stop,
         interpreter_session_timeout,
         interpreter_summary_finalize,
     )
@@ -545,6 +548,29 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_max_attempts=3,
         output_keys={"next": None},
     ),
+    # TASK-882 — the two endpoint stages that had no node type. `livedoc.stop` closes a real
+    # live session (external_write=True); `harness.finalize` is an ordering marker inside an
+    # interpreter run (the graph IS the document workflow), so it writes nothing.
+    "livedoc.stop": NodeSpec(
+        key="livedoc.stop",
+        implemented=True,
+        activity=interpreter_livedoc_stop,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
+    ),
+    "harness.finalize": NodeSpec(
+        key="harness.finalize",
+        implemented=True,
+        activity=interpreter_harness_finalize,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
+    ),
     # ---------------------------------------------------------------------------------------
     # The TARGET CATALOGUE (/DD-9) and the guards — lane A.
     # Every entry delegates to an engine that already exists; see
@@ -672,6 +698,17 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=60,
         default_max_attempts=3,
         output_keys={"out": "text", "next": None},
+    ),
+    # TASK-882 -- the DNA writing-style gate: an ordering marker in an interpreter run (the
+    # gateway applies the style at prompt assembly, keyed off this node's presence).
+    "agent.dna_style": NodeSpec(
+        key="agent.dna_style",
+        implemented=True,
+        activity=interpreter_agent_dna_style,
+        critical=False,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
     ),
     "guard.phi": NodeSpec(
         key="guard.phi",

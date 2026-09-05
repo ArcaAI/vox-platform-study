@@ -246,7 +246,7 @@ class TestExtractEntities:
             NEREntity(text="hypertension", type="DISEASE", start=0, end=12, snomed_code="38341003")
         ]
         api = _FakeApiPriors(priors=priors)
-        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
         monkeypatch.setattr(activities, "_api_client", lambda s: api)
         result = await env.run(
@@ -254,6 +254,7 @@ class TestExtractEntities:
             ExtractEntitiesInput(
                 text="Patient has hypertension.",
                 reuse_priors=True,
+                ner_priors_enabled=True,
                 consultation_id="c-1",
                 tenant_id="t-1",
             ),
@@ -270,13 +271,17 @@ class TestExtractEntities:
         (inert until the encoder starts populating the codes)."""
         nlp = _FakeNlp()
         api = _FakeApiPriors(priors=[NEREntity(text="cough", type="SYMPTOM", start=0, end=5)])
-        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
         monkeypatch.setattr(activities, "_api_client", lambda s: api)
         result = await env.run(
             activities.extract_entities,
             ExtractEntitiesInput(
-                text="hi", reuse_priors=True, consultation_id="c-1", tenant_id="t-1"
+                text="hi",
+                reuse_priors=True,
+                ner_priors_enabled=True,
+                consultation_id="c-1",
+                tenant_id="t-1",
             ),
         )
         assert result.reused is False
@@ -284,11 +289,12 @@ class TestExtractEntities:
 
     @pytest.mark.asyncio
     async def test_flag_off_ignores_priors_and_runs_cold(self, env, monkeypatch):
-        """The ops flag defaults OFF ⇒ coded priors are ignored, cold NLP runs, and NO
-        priors read is even attempted (explicit rollout, not a silent flip)."""
+        """A null ``HarnessPolicy.nerPriorsEnabled`` is the code default (OFF) ⇒ coded priors
+        are ignored, cold NLP runs, and NO priors read is even attempted (explicit rollout,
+        not a silent flip; TASK-882 — no env fallback)."""
         nlp = _FakeNlp()
         api = _FakeApiPriors(priors=[NEREntity(text="x", type="DISEASE", umls_cui="C0020538")])
-        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=False))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
         monkeypatch.setattr(activities, "_api_client", lambda s: api)
         result = await env.run(
@@ -307,13 +313,16 @@ class TestExtractEntities:
         (only the transcript pass reuses)."""
         nlp = _FakeNlp()
         api = _FakeApiPriors(priors=[NEREntity(text="x", type="DISEASE", umls_cui="C1")])
-        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
         monkeypatch.setattr(activities, "_api_client", lambda s: api)
         result = await env.run(
             activities.extract_entities,
             ExtractEntitiesInput(
-                tenant_id="11111111-1111-1111-1111-111111111111", text="note", language="en"
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                text="note",
+                language="en",
+                ner_priors_enabled=True,
             ),
         )
         assert result.reused is False
@@ -326,13 +335,17 @@ class TestExtractEntities:
         back to the cold NLP extraction — never fails the pass."""
         nlp = _FakeNlp()
         api = _FakeApiPriors(error=ApiServiceError("apps/api down"))
-        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
         monkeypatch.setattr(activities, "_api_client", lambda s: api)
         result = await env.run(
             activities.extract_entities,
             ExtractEntitiesInput(
-                text="hi", reuse_priors=True, consultation_id="c-1", tenant_id="t-1"
+                text="hi",
+                reuse_priors=True,
+                ner_priors_enabled=True,
+                consultation_id="c-1",
+                tenant_id="t-1",
             ),
         )
         assert result.reused is False

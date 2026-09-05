@@ -1,9 +1,8 @@
 /**
- * / D-23 — the two policy mappers must strip the OCC token.
+ * / D-23 — the policy mapper must strip the OCC token.
  *
- * `HarnessPolicy` and `PipelinePolicy` are both OCC-WRITTEN models: their services call
- * `repository.updateWithVersion(...)` on versioned PATCH routes (`harness-policy.service.ts:705`,
- * `pipeline-policy.service.ts:206,338`). `03-domain-layer.md` §Adding a New Domain Model makes the
+ * `HarnessPolicy` is an OCC-WRITTEN model (as `PipelinePolicy` was until TASK-882): its service
+ * calls `repository.updateWithVersion(...)` on versioned PATCH routes (`harness-policy.service.ts`). `03-domain-layer.md` §Adding a New Domain Model makes the
  * mapper-level strip mandatory for exactly that class of model — "the mapper MUST carry
  * `FIELDS_NOT_WRITABLE = ['version']` + `stripNonWritableFields` if the model is OCC-written".
  * Neither mapper carried it.
@@ -20,11 +19,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from 'vitest';
 import { HarnessPolicyEntityMapper } from '../HarnessPolicyEntityMapper';
-import { PipelinePolicyEntityMapper } from '../PipelinePolicyEntityMapper';
 import { HarnessPolicy } from '../../../../models/generated/core/HarnessPolicyModel';
-import { PipelinePolicy } from '../../../../models/generated/core/PipelinePolicyModel';
 import { ResourceStatusType } from '../../../../enums/generated/ResourceStatusType';
-import { PipelinePolicyScope } from '../../../../enums/generated/PipelinePolicyScope';
 
 const auditFields = {
   resourceStatus: ResourceStatusType.ENABLED,
@@ -65,21 +61,6 @@ const harnessRow = (version = 7): HarnessPolicy =>
     ...auditFields,
   } as unknown as HarnessPolicy);
 
-const pipelineRow = (version = 5): PipelinePolicy =>
-  new PipelinePolicy({
-    id: 'pp-1',
-    tenantId: 't-1',
-    scope: PipelinePolicyScope.TENANT,
-    scopeId: null,
-    autoSummaryEnabled: true,
-    autoNerEnabled: null,
-    harnessEnabled: null,
-    dnaStyleEnabled: null,
-    dnaRedactionEnabled: null,
-    version,
-    ...auditFields,
-  } as unknown as PipelinePolicy);
-
 describe('D-23 — HarnessPolicyEntityMapper strips the OCC token from every write path', () => {
   const mapper = new HarnessPolicyEntityMapper();
 
@@ -100,29 +81,5 @@ describe('D-23 — HarnessPolicyEntityMapper strips the OCC token from every wri
     const persisted = mapper.toPersistenceChanges(entity);
     expect(persisted).not.toHaveProperty('version');
     expect(persisted).toMatchObject({ coverageThreshold: 0.95 });
-  });
-});
-
-describe('D-23 — PipelinePolicyEntityMapper strips the OCC token from every write path', () => {
-  const mapper = new PipelinePolicyEntityMapper();
-
-  it('still carries `version` on the READ path', () => {
-    expect(mapper.toDomainEntity(pipelineRow(5)).version).toBe(5);
-  });
-
-  it('toPersistence (full insert) does not write `version`', () => {
-    const persisted = mapper.toPersistence(mapper.toDomainEntity(pipelineRow(1)));
-    expect(persisted).not.toHaveProperty('version');
-    expect(persisted.autoSummaryEnabled).toBe(true);
-    // The scope discriminator is what makes this table polymorphic — it must survive the strip.
-    expect(persisted.scope).toBe(PipelinePolicyScope.TENANT);
-  });
-
-  it('toPersistenceChanges never contains `version`, even when the change set holds it', () => {
-    const entity = mapper.toDomainEntity(pipelineRow());
-    (entity as any)._changes = { autoSummaryEnabled: false, version: 42 };
-    const persisted = mapper.toPersistenceChanges(entity);
-    expect(persisted).not.toHaveProperty('version');
-    expect(persisted).toMatchObject({ autoSummaryEnabled: false });
   });
 });

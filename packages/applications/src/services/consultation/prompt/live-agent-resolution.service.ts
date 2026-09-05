@@ -41,7 +41,7 @@ import {
   type PersistedLiveAgentLineage,
 } from '../live-documentation/live-agent.port';
 import { LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT } from '../live-documentation/live-documentation.service';
-import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
+import { VisitTypeService } from '../visit-type/visit-type.service';
 import { PromptResolutionService } from './prompt-resolution.service';
 
 @Injectable()
@@ -53,11 +53,10 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptVersionRepository: PromptVersionRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
-    // The tenant's visit-type catalogue, so a live session can resolve
-    // `(live, visitType)` instructions (owner directive, 2026-08-29). Optional +
-    // trailing, the house pattern: an unwired composition sees the two shipped
-    // visit types, neither of which binds anything, so live resolution is
-    // byte-identical to before.
+    // Kept for constructor-arity compatibility with positional fixtures. Since
+    // TASK-882 the live chain has no visit-type axis (the `(live, visitType)`
+    // binding retired with the `consultation.visitTypes` key), so nothing here
+    // reads it.
     @Optional() private readonly visitTypes?: VisitTypeService,
   ) {}
 
@@ -69,13 +68,6 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
         promptType: 'live',
         tenantId: input.tenantId,
         ...(consultation?.departmentId ? { departmentId: consultation.departmentId } : {}),
-        // The visit-type axis. `promptType` is the PHASE here, so without this
-        // the live chain could never see a visit type — the same blind spot the
-        // pre-summary chain had. `parentConsultationId` is the consultation's
-        // own follow-up signal; the VOCABULARY is the tenant's.
-        visitTypeKey: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(input.tenantId, {
-          isFollowUp: Boolean(consultation?.parentConsultationId),
-        }).key,
       });
 
       // Tier 3 (`code-default`) carries no content by design — the absence IS

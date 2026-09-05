@@ -458,9 +458,10 @@ enum CaptureMode {
   @@schema("core")
 }
 
-// Scope discriminator for the realtime PipelinePolicy cascade. One
-// polymorphic PipelinePolicy table covers all three tiers; the
-// ConfigResolver walks DOCTOR → DEPARTMENT → TENANT → SYSTEM-default → code-default.
+// Scope discriminator shared by the assignment tables (`AgentAssignment`,
+// `WorkflowAssignment`): TENANT default, DEPARTMENT override, DOCTOR override.
+// (Named after the `PipelinePolicy` cascade it was introduced for; that table
+// retired with TASK-882, the enum stays.)
 enum PipelinePolicyScope {
   TENANT // Tenant default (scopeId null; SYSTEM tenant's row = platform default)
   DEPARTMENT // Per-department override (scopeId = departmentId)

@@ -32,8 +32,8 @@ import { OptimisticConcurrencyException } from '@arcaai/exceptions';
  * write.
  *
  * Exported as a free function (rather than living only on `BaseService`) because
- * several services carrying this exact shape — `HarnessPolicyService`,
- * `PipelinePolicyService` — do not extend `BaseService`, and duplicating the
+ * several services carrying this exact shape — `HarnessPolicyService` (and, until
+ * TASK-882, `PipelinePolicyService`) — do not extend `BaseService`, and duplicating the
  * comparison is how the two halves drift apart.
  *
  * @param entity - the freshly-read entity whose `version` is the current state

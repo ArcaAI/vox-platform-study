@@ -7,7 +7,7 @@
  * the same program, already built against a real `admin/workflow-*` endpoint.
  */
 import { useState } from 'react';
-import { IconCopy, IconLayoutGrid, IconListNumbers, IconListTree, IconPlus, IconRefresh, IconTemplate } from '@tabler/icons-react';
+import { IconCopy, IconLayoutGrid, IconListTree, IconPlus, IconRefresh, IconTemplate } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -19,11 +19,9 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
-import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { workflowStudioKeys, useCloneWorkflowDefinition, useWorkflowDefinitions, useWorkflowTemplates } from '../api';
 import type { WorkflowDefinition } from '../api/types';
-import { EndpointSequenceEditor } from './endpoint-sequence';
 import { CloneDefinitionDialog, type CloneDefinitionSubmission } from './clone-definition-dialog';
 import { GatewayError } from '@/shared/api';
 import { toast } from 'sonner';
@@ -41,10 +39,6 @@ function DefinitionsListBody() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [page, setPage] = useState(0);
-  // (D-10) — the endpoint sequence opens in the console-wide detail surface rather than
-  // taking a slot on this page: the screen is `contentMode="fill"` (the grid owns the height), so
-  // an inline panel would either nest a second scroll container or squeeze the grid.
-  const [endpointOpen, setEndpointOpen] = useState(false);
   // one dialog, two entry points. `cloneSource` null WITH the dialog open is
   // "start from a platform template" (the dialog renders the library picker); a row's Clone
   // action sets the source, so no picker is shown.
@@ -172,10 +166,6 @@ function DefinitionsListBody() {
                   Assignments
                 </Link>
               </Button>
-              <Button variant="outline" onClick={() => setEndpointOpen(true)}>
-                <IconListNumbers aria-hidden />
-                Endpoint sequence
-              </Button>
               <Button variant="outline" onClick={() => openClone(null)}>
                 <IconTemplate aria-hidden />
                 Start from template
@@ -263,19 +253,6 @@ function DefinitionsListBody() {
         confirming={cloneMutation.isPending}
         error={cloneError}
       />
-      <DetailDrawer
-        open={endpointOpen}
-        onOpenChange={setEndpointOpen}
-        title="Consultation endpoint sequence"
-        size="lg"
-        meta={
-          <span>
-            The ordered steps that run before a consultation session closes — including when it reaches its idle bound. Saved for this tenant.
-          </span>
-        }
-      >
-        <EndpointSequenceEditor scope="tenant" />
-      </DetailDrawer>
     </ScreenTemplate>
   );
 }

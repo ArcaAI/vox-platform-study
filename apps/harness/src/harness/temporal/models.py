@@ -482,15 +482,14 @@ class ExtractEntitiesInput(BaseModel):
     # safe defaults ⇒ no new workflow command, replay-safe (the activity does the
     # non-deterministic load; an old replay history schedules ``extract_entities``
     # exactly as before). The reuse is gated inside the activity by
-    # ``HARNESS_NER_PRIORS_ENABLED`` (default OFF) and only fires when a prior carries an
+    # the effective ``HarnessPolicy.nerPriorsEnabled`` (null ⇒ OFF; TASK-882) and only fires when a prior carries an
     # ontology code, so it is inert until coded entities are actually persisted elsewhere.
     reuse_priors: bool = False
     consultation_id: str | None = None
     tenant_id: str | None = None
-    # per-run NER-priors override threaded from the effective
-    # policy. None ⇒ the activity falls through to ``HARNESS_NER_PRIORS_ENABLED``
-    # (env default). Additive-optional ⇒ replay-safe (an old input ⇒ None ⇒ env path,
-    # byte-identical); no new workflow command.
+    # per-run NER-priors flag threaded from the effective
+    # policy (``HarnessPolicy.nerPriorsEnabled``). None ⇒ the code default (OFF) — TASK-882
+    # removed the env fallback. Additive-optional ⇒ replay-safe; no new workflow command.
     ner_priors_enabled: bool | None = None
     # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
@@ -902,9 +901,9 @@ class RunInferentialSensorsInput(BaseModel):
     # optional defaults ⇒ replay-safe (an old input deserializes them to None).
     judge_provider: str | None = None
     judge_model: str | None = None
-    # per-run atomic-fact override threaded from the effective
-    # policy. None ⇒ the activity falls through to ``HARNESS_ATOMIC_FACT_ENABLED``
-    # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
+    # per-run atomic-fact flag threaded from the effective
+    # policy (``HarnessPolicy.atomicFactEnabled``). None ⇒ the code default (OFF) — TASK-882
+    # removed the env fallback. Additive-optional ⇒ replay-safe; no new workflow command.
     atomic_fact_enabled: bool | None = None
     # The run-effective PHI egress policy, snapshotted from the harness
     # policy at workflow start so the guard in ``run_inferential_sensors`` is
@@ -1235,12 +1234,13 @@ LOOP_ACTION_NLP_EXTRACT_ENTITIES = "nlp.extract_entities"
 LOOP_ACTION_HARNESS_FINALIZE = "harness.finalize"
 LOOP_ACTION_CLIENT_EMIT = "client.emit"
 
-# the ENDPOINT STAGE's three action keys. These are the SAME strings as the three
-# `trigger: 'on-end'` node types in `packages/workflow-contract/src/node-registry.ts`, and that
-# is the point: the endpoint sequence an admin orders is a list of these keys, whether the
-# consultation runs on the legacy loop (which dispatches them here) or on an authored graph
-# (which dispatches them through the interpreter). Two vocabularies for one stage is how the
-# hardcoded `endingActionsBase` literal survived as long as it did.
+# the ENDPOINT STAGE's three later action keys. These are the SAME strings as the endpoint
+# `trigger: 'on-end'` node types in `packages/workflow-contract/src/node-registry.ts` (which
+# since TASK-882 also cover `livedoc.stop` and `harness.finalize`), and that is the point: the
+# endpoint chain a graph declares is a list of these keys, whether the consultation runs on the
+# legacy loop (which dispatches them here) or on an authored graph (which dispatches them through
+# the interpreter). Two vocabularies for one stage is how the hardcoded `endingActionsBase`
+# literal survived as long as it did.
 LOOP_ACTION_SESSION_TIMEOUT = "session.timeout"
 LOOP_ACTION_SUMMARY_FINALIZE = "summary.finalize"
 LOOP_ACTION_FEEDBACK_CAPTURE = "feedback.capture"

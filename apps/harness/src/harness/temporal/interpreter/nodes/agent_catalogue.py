@@ -197,6 +197,23 @@ async def interpreter_agent_dna_redaction(payload: NodeActivityInput) -> NodeAct
     return await interpreter_consultation_phi_hop(payload)
 
 
+@activity.defn(name="interpreter.agent_dna_style")
+async def interpreter_agent_dna_style(payload: NodeActivityInput) -> NodeActivityResult:
+    """TASK-882 — the DNA WRITING-STYLE gate, as a NODE.
+
+    It replaces the tenant/department tier of the retired ``pipeline.dnaStyleEnabled`` toggle:
+    the tenant applies a doctor's writing style by PLACING this node (enabled) on its
+    consultation graph, and the gateway reads that presence at prompt assembly
+    (``ConfigResolver.resolveEffectiveDnaStyleEnabled``), where the style text is injected. The
+    doctor's own opt-out stays a per-user preference the gateway honours. So inside an
+    interpreter run this activity is an ordering marker: it writes nothing and applies nothing
+    itself — the declaration is the whole capability.
+    """
+    started = now()
+    await record_and_flush(payload, status=STATUS_OK, started=started)
+    return NodeActivityResult(status="SUCCEEDED", output={"marker": "agent.dna_style"})
+
+
 #: Upper bound on findings kept from one reply when the node authors none. A BOUNDED-OUTPUT
 #: guard, not a ranking policy — it caps how many findings cross the wire, and says nothing about
 #: WHICH ones matter. That question belongs to the tenant's instruction and to nothing in this
@@ -381,4 +398,5 @@ AGENT_CATALOGUE_ACTIVITIES = [
     interpreter_agent_retrieval,
     interpreter_agent_feedback,
     interpreter_agent_dna_redaction,
+    interpreter_agent_dna_style,
 ]

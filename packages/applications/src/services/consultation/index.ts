@@ -9,9 +9,9 @@ export * from './events';
 export * from './note-generation';
 export * from './timeline';
 export * from './prompt';
-// the tenant's VISIT-TYPE catalogue. The label set that
-// used to be a derived literal in nine places; resolved tenant → SYSTEM through
-// the `consultation.visitTypes` settings descriptor.
+// the VISIT-TYPE vocabulary — the platform's two visit types, one shared
+// definition instead of a derived literal in nine places (TASK-882: no longer a
+// tenant-configurable catalogue).
 export * from './visit-type';
 // apps/api <-> apps/harness gate adapter.
 export * from './harness';

@@ -107,18 +107,16 @@ describe('PromptAssemblyService', () => {
     });
   });
 
-  // Warm-start is gated behind HARNESS_WARM_START_ENABLED
-  // (default OFF). Construct with a ConfigService mock; pass `true` to enable.
+  // Warm-start is `HarnessPolicy.warmStartEnabled` (default OFF; TASK-882 removed the env
+  // fallback). Construct with a policy stub; pass `true` to enable.
+  const warmStartPolicy = (warmStartEnabled: boolean) => ({ getEffectivePolicy: vi.fn().mockResolvedValue({ warmStartEnabled }) });
   async function getService(warmStartEnabled = false) {
     const { PromptAssemblyService } = await import('../prompt-assembly.service');
-    const configService = {
-      get: vi.fn((key: string) => (key === 'HARNESS_WARM_START_ENABLED' ? (warmStartEnabled ? 'true' : undefined) : undefined)),
-    };
     return new PromptAssemblyService(
       mockPromptResolutionService as any,
       mockPromptTemplateRepository as any,
       mockDnaWritingStyleRepository as any,
-      configService as any,
+      warmStartPolicy(warmStartEnabled) as any,
     );
   }
 
@@ -127,15 +125,11 @@ describe('PromptAssemblyService', () => {
   // off the non-decrypting findById (whose plaintext column was dropped).
   async function getServiceWithSecrets(warmStartEnabled = false) {
     const { PromptAssemblyService } = await import('../prompt-assembly.service');
-    const configService = {
-      get: vi.fn((key: string) => (key === 'HARNESS_WARM_START_ENABLED' ? (warmStartEnabled ? 'true' : undefined) : undefined)),
-    };
     return new PromptAssemblyService(
       mockPromptResolutionService as any,
       mockPromptTemplateRepository as any,
       mockDnaWritingStyleRepository as any,
-      configService as any,
-      undefined, // harnessPolicyService
+      warmStartPolicy(warmStartEnabled) as any,
       undefined, // cls
       undefined, // exemplarRetriever
       mockSecretsService as any, // secretsService

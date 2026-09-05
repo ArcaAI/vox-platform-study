@@ -85,7 +85,7 @@ export const COMPILED_AT = '2026-08-16T00:00:00.000Z';
 // Re-run 2026-09-04 (TASK-867, the TASK-861 step-10 follow-up): the eight `stt.*` descriptors
 // flipped to `implemented: false`, which moves `registryChecksum()` and therefore this row's
 // `compiledConfig.checksum`; the GRAPH is unchanged. Script drift verdict: 0.
-const REGISTRY_CHECKSUM = '4bb7da74cf0d43e3d8cc8fcd2447aca50d1fe3043b3a58b1951d1546b5337916';
+const REGISTRY_CHECKSUM = '42e6e72097660edee1f69d75d0e61bb7e887e36c23657d3ab81653357aee80d5';
 
 export const GRAPH = {
   version: 1,
@@ -243,7 +243,7 @@ export const COMPILED_CONFIG = {
   },
   caps: { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 },
   // sha256 over canonicalJson of every field above (computed by `compile()` — see docstring).
-  checksum: 'bce90b37356d25998490b471b7e6397b21a33b55bd2185eff8159eb5908c935e',
+  checksum: '446ea7b9b9cacd69ac568d86b4b8c7666f9dd9ac597a9441ba2421cc9026e143',
 };
 
 // sha256 over canonicalJson(GRAPH), computed by the same `canonicalJson` the compiler uses.

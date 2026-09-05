@@ -997,6 +997,53 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     deprecated: true,
     replacedBy: 'core.action',
   }),
+  // TASK-882 — the two endpoint stages that had no node type. With them the WHOLE endpoint
+  // stage is declarable on a graph (membership = node presence + `enabled`, order = edge
+  // order), which is what retired the `consultation.endpoint.actions` setting. Both are read
+  // by the gateway (`LoopConfigService`) to derive the loop's `endingActions`; inside an
+  // INTERPRETER run they are ordering markers, because there the graph itself is the document
+  // workflow — `livedoc.stop` still closes the live session (an idempotent stop), and
+  // `harness.finalize` starts nothing (the loop, not the activity, starts the child).
+  'livedoc.stop': Object.freeze({
+    key: 'livedoc.stop',
+    implemented: true,
+    activityName: 'interpreter.livedoc_stop',
+    classes: Object.freeze(['activity', 'endpoint']),
+    paletteKey: 'consultation',
+    critical: false,
+    // Closes a real live-documentation session; a SANDBOX run must not.
+    externalWrite: true,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
+  }),
+  'harness.finalize': Object.freeze({
+    key: 'harness.finalize',
+    implemented: true,
+    activityName: 'interpreter.harness_finalize',
+    classes: Object.freeze(['activity', 'endpoint']),
+    paletteKey: 'consultation',
+    critical: false,
+    // An ordering marker inside an interpreter run: it writes nothing.
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
+  }),
   // -------------------------------------------------------------------------------------------
   // The TARGET CATALOGUE (/DD-9) and the guards — lane A.
   //
@@ -1312,6 +1359,31 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     critical: false,
     externalWrite: false,
     defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
+  }),
+  // TASK-882 — the DNA WRITING-STYLE gate, migrated out of the retired `PipelinePolicy` cascade.
+  // The TENANT gate is the PRESENCE of this node (enabled) on the assigned consultation graph —
+  // read by `ConfigResolver.resolveEffectiveDnaStyleEnabled` at prompt assembly, where the
+  // doctor's style text is applied; the DOCTOR's own opt-out stays a per-user preference
+  // (`UserSettings` `dna` / `styleEnabled`). Inside an interpreter run it is an ordering marker:
+  // the style is applied by the gateway's assemble step, so the activity writes nothing.
+  'agent.dna_style': Object.freeze({
+    key: 'agent.dna_style',
+    implemented: true,
+    activityName: 'interpreter.agent_dna_style',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 3,
     entitlementKey: null,
     trigger: 'on-end',

@@ -44,7 +44,6 @@ function buildService(opts: { withSecrets?: boolean; withRegistry?: boolean } = 
     { run: vi.fn(async (cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() } as never, // cls
     {} as never, // jobService
     undefined as never, // highlightRepository
-    { get: vi.fn() } as never, // configService
     undefined as never, // assuranceService
     undefined as never, // configResolver
     undefined as never, // contextItemVersionRepository

@@ -36,8 +36,6 @@ export * from './NotificationFactory';
 export * from './PasswordResetTokenFactory';
 export * from './PermissionFactory';
 export * from './PlanEntitlementFactory';
-export * from './PipelinePolicyChangeFactory';
-export * from './PipelinePolicyFactory';
 export * from './PromptTemplateFactory';
 export * from './PromptUsageRecordFactory';
 export * from './PromptVersionFactory';

@@ -521,12 +521,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'Notification' }],
     reserved: true,
   },
-  'admin:pipeline-policy:manage': {
-    description: 'Manage harness pipeline policy (carries the globalOnly descriptor lock on some fields)',
-    category: 'Admin',
-    implies: [{ action: 'manage', subject: 'PipelinePolicy' }],
-    reserved: true,
-  },
   'admin:audio-pipeline:manage': {
     description: 'Manage audio pipeline configuration',
     category: 'Admin',

@@ -18,6 +18,9 @@ import {
   UserRepository,
   UserRoleAssignmentRepository,
   CoreDatabaseService,
+  UserSettingsFactory,
+  UserSettingsRepository,
+  ValueType,
 } from '@arcaai/domains';
 import { IDnaWritingStyleService, DnaJobResponse, ListDnaReportsFilters, PaginatedDnaReports } from './IDnaWritingStyleService';
 import {
@@ -33,9 +36,11 @@ import {
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 import { RedactionRuleSet, validateRedactionRuleSet } from './redaction-rules';
 // The per-doctor DNA toggle is stored on the Phase-5
-// DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` column; this service is the
-// doctor self-service surface that writes/reads it via PipelinePolicyService.
-import { PipelinePolicyService } from '../pipeline-policy';
+// TASK-882: the doctor's DNA on/off preference is a `UserSettings` row (`dna` /
+// `styleEnabled`); this service is the doctor self-service surface that writes it, and
+// `ConfigResolver` reads it together with the tenant's `agent.dna_style` node.
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { ConfigResolver, DNA_STYLE_PREFERENCE } from '../config-resolver';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { BaseService, encryptPhiFields } from '../../common';
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
@@ -82,12 +87,15 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     // DOCTOR-scope DNA toggle write/read. Optional +
     // trailing so existing positional unit fixtures keep their arity; production
-    // DI supplies it via PipelinePolicyServiceModule.
-    @Optional() @Inject(PipelinePolicyService) private readonly pipelinePolicyService?: PipelinePolicyService,
+    // DI supplies it via ConfigResolverModule.
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
     // Optional + trailing (same arity rationale). When wired,
     // manual report edits encrypt reportData/styleText into the ciphertext
     // columns before persisting; left unpersisted when unset (there is no plaintext column).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-882 — the doctor's DNA preference row. Optional + trailing so positional fixtures
+    // keep their arity; production DI supplies it via CoreDatabaseModule.
+    @Optional() @Inject(UserSettingsRepository) private readonly userSettingsRepository?: UserSettingsRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
   }
@@ -216,11 +224,10 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     }
     await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
 
-    // Effective = tenant AND doctor toggle (Phase-5 cascade). Off ⇒ no style.
-    // Resolved against the SAME tenant, not CLS again — `getDnaSettings` has the
+    // Effective = the tenant's `agent.dna_style` node AND the doctor's own toggle. Off ⇒ no
+    // style. Resolved against the SAME tenant, not CLS again — `getDnaSettings` has the
     // identical CLS dependency and would re-introduce the failure here.
-    const policy = this.requirePipelinePolicyService();
-    const settings = await policy.getDnaSettings({ tenantId, doctorId });
+    const settings = await this.requireConfigResolver().resolveEffectiveDnaStyleEnabled({ tenantId, doctorId });
     if (!settings.effective) return null;
 
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
@@ -276,56 +283,86 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * effective decision is `tenant AND doctor`, resolved through the Phase-5
    * pipeline-policy cascade; the response also carries the tenant gate (so the
    * UI can disable + explain the switch when the tenant disabled DNA) and the
-   * DOCTOR-row OCC version. Delegates storage to {@link PipelinePolicyService}.
+   * preference-row OCC version. Delegates the decision to {@link ConfigResolver} (TASK-882).
    */
   async getDnaSettings(doctorId: string): Promise<DnaSettingsResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
-    const policy = this.requirePipelinePolicyService();
-    const s = await policy.getDnaSettings({ tenantId, doctorId });
-    return { doctorToggle: s.doctorToggle, tenantEnabled: s.tenantEnabled, effective: s.effective, version: s.version };
+    const s = await this.requireConfigResolver().resolveEffectiveDnaStyleEnabled({ tenantId, doctorId });
+    return { doctorToggle: s.doctorToggle, tenantEnabled: s.tenantEnabled, effective: s.effective, version: s.doctorPreferenceVersion };
   }
 
   /**
-   * WRITE the caller doctor's DNA on/off toggle onto the
-   * DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` column (via
-   * {@link PipelinePolicyService}, which keeps the OCC + WORM contract). A null
-   * `enabled` clears the override (revert to the implicit opt-in default). A
-   * `ResourceUpdated` SysEvent is broadcast so the audit trail records the
-   * privileged self-service change. The DNA processor's effective-flag gate then
-   * honours an opt-out on the NEXT batch (no synchronous re-learning here).
+   * WRITE the caller doctor's DNA on/off toggle (TASK-882: a `UserSettings` row, `dna` /
+   * `styleEnabled` — the clinician's own preference, P-4). A null `enabled` clears the
+   * override (the row is soft-deleted; revert to the implicit opt-in default). Optimistic
+   * concurrency is the row's `_version`: `GET settings` answers `version: 0` while no row
+   * exists, and a stale `expectedVersion` is a 412. A `ResourceUpdated` SysEvent is broadcast
+   * so the audit trail records the privileged self-service change. The DNA processor's
+   * effective-flag gate then honours an opt-out on the NEXT batch (no synchronous re-learning).
    */
   async setDnaEnabled(doctorId: string, dto: UpdateDnaSettingsRequest): Promise<DnaSettingsResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
-    const policy = this.requirePipelinePolicyService();
+    const repository = this.requireUserSettingsRepository();
     const enabled = dto.enabled ?? null;
-    const s = await policy.setDnaStyleForDoctor({
-      tenantId,
-      doctorId,
-      enabled,
-      reason: dto.reason ?? null,
-      expectedVersion: dto.expectedVersion,
-    });
+    const { namespace, key, name } = DNA_STYLE_PREFERENCE;
+
+    const existing = await repository.findByUserKeyNamespace(doctorId, key, namespace);
+    // The OCC precondition, evaluated BEFORE any no-op short-circuit: a stale client must get
+    // 412 ("you are stale, refetch") even when the payload would change nothing.
+    const currentVersion = existing?.version ?? 0;
+    if (dto.expectedVersion !== undefined && dto.expectedVersion !== null && dto.expectedVersion !== currentVersion) {
+      throw new OptimisticConcurrencyException('UserSettings', existing?.id ?? doctorId, { expectedVersion: dto.expectedVersion, currentVersion });
+    }
+
+    if (enabled === null) {
+      if (existing) await repository.softDelete(existing.id);
+    } else if (existing) {
+      const value = String(enabled);
+      if (existing.value !== value) {
+        this.updateEntity(existing, { value });
+        await repository.update(existing.id, existing);
+      }
+    } else {
+      await repository.create(
+        UserSettingsFactory.CreateUserSettings({
+          userId: doctorId,
+          key,
+          namespace,
+          name,
+          value: String(enabled),
+          dataType: ValueType.Boolean,
+          createdBy: this.requestUser?.id,
+        }),
+      );
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: doctorId,
-      data: { kind: 'dna-settings-updated', doctorId, enabled },
+      data: { kind: 'dna-settings-updated', doctorId, enabled, reason: dto.reason ?? null },
     });
 
-    return { doctorToggle: s.doctorToggle, tenantEnabled: s.tenantEnabled, effective: s.effective, version: s.version };
+    return this.getDnaSettings(doctorId);
   }
 
-  /** Guard the optional dependency so a misconfigured DI surfaces a clear 400. */
-  private requirePipelinePolicyService(): PipelinePolicyService {
-    if (!this.pipelinePolicyService) {
+  /** Guard the optional dependencies so a misconfigured DI surfaces a clear 400. */
+  private requireConfigResolver(): ConfigResolver {
+    if (!this.configResolver) {
       throw new BadRequestException('DNA settings are not available');
     }
-    return this.pipelinePolicyService;
+    return this.configResolver;
+  }
+
+  private requireUserSettingsRepository(): UserSettingsRepository {
+    if (!this.userSettingsRepository) {
+      throw new BadRequestException('DNA settings are not available');
+    }
+    return this.userSettingsRepository;
   }
 
   async updateDnaReport(reportId: string, dto: UpdateDnaReportRequest, options?: { bypassOwnershipCheck?: boolean }): Promise<DnaReportResponse> {

@@ -77,7 +77,6 @@ import { McpAdminController } from '../modules/mcp-admin/mcp-admin.controller';
 import { MonitoringController } from '../modules/monitoring/monitoring.controller';
 import { NlpTaskInstructionsAdminController } from '../modules/nlp-task-instructions/nlp-task-instructions-admin.controller';
 import { NotificationController } from '../modules/notification/notification.controller';
-import { PipelinePolicyAdminController } from '../modules/pipeline-policy-admin/pipeline-policy-admin.controller';
 import { AudioPipelineController } from '../modules/pipeline/audio-pipeline.controller';
 import { PlatformMetricsController } from '../modules/platform-metrics/platform-metrics.controller';
 import { PromptManagementController } from '../modules/prompt-management/prompt-management.controller';
@@ -171,7 +170,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: MonitoringController, expect: 'FORBID' },
   { controller: NlpTaskInstructionsAdminController, expect: 'FORBID' },
   { controller: NotificationController, expect: 'FORBID' },
-  { controller: PipelinePolicyAdminController, expect: 'FORBID' },
   { controller: PlatformMetricsController, expect: 'FORBID' },
   { controller: PoliciesController, expect: 'FORBID' },
   { controller: PrismaStudioController, expect: 'FORBID' },

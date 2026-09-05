@@ -84,7 +84,7 @@ export class ChainSummaryService extends BaseService {
     // as `SttInternalService` does) so the DI guard test can assert it.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
     // comprehensive-summary has no harness equivalent today;
-    // this call exists purely to make the harnessEnabled read happen through
+    // this call exists purely to make the generator decision happen through
     // the single seam and get the decision logged. Optional + trailing so
     // existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
@@ -699,15 +699,9 @@ export class ChainSummaryService extends BaseService {
   }
 
   /**
-   * The consultation's visit type, resolved through the TENANT's catalogue
-   * (`consultation.visitTypes`, tenant → SYSTEM).
-   *
-   * `parentConsultationId` is still the consultation's own follow-up signal —
-   * that rule has not changed. What changed is that WHICH visit type the signal
-   * selects, and what that type is called, is tenant-configured data rather
-   * than a literal repeated at each call site. An unwired
-   * resolver serves the two shipped types, so the answer is byte-identical to
-   * the ternary this replaces.
+   * The consultation's visit type — one of the platform's two, selected by the
+   * consultation's own follow-up signal (`parentConsultationId`) through the one
+   * vocabulary every caller shares rather than a literal repeated at each call site.
    */
   private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null }): VisitTypeDefinition {
     return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(consultation.tenantId ?? null, {

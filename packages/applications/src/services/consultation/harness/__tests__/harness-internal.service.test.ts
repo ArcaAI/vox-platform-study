@@ -274,11 +274,11 @@ const createMockHighlightRepository = () => ({
   findByConsultation: vi.fn().mockResolvedValue([]),
 });
 
-// Warm-start kill-switch. Default OFF (prod default);
-// pass `true` to exercise the ON behavior. Mirrors how sibling harness/summary
-// services read config (ConfigService.get).
-const createMockConfigService = (warmStartEnabled = false) => ({
-  get: vi.fn((key: string) => (key === 'HARNESS_WARM_START_ENABLED' ? (warmStartEnabled ? 'true' : undefined) : undefined)),
+// Warm-start switch. TASK-882: the `HarnessPolicy.warmStartEnabled` column is the ONLY source
+// (the `HARNESS_WARM_START_ENABLED` env fallback is gone), so "warm-start ON" in a fixture is a
+// policy stub answering `true`.
+const createMockHarnessPolicyService = (warmStartEnabled: boolean | null = false) => ({
+  getEffectivePolicy: vi.fn().mockResolvedValue({ warmStartEnabled }),
 });
 
 // The live assurance feed. finalizeAssurance publishes
@@ -294,7 +294,6 @@ const createMockHarnessAssuranceService = () => ({
 // read-only) so async/harness generation honors Tier-0 like the sync/REST path.
 const createMockConfigResolver = () => ({
   resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
-  resolvePipelineToggles: vi.fn(),
   // Effective DNA decision (tenant AND doctor). Default
   // effective so existing fixtures (which never pass a dnaStyleId) are unaffected.
   resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),
@@ -332,7 +331,6 @@ describe('HarnessInternalService', () => {
   let harnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
   let jobService: ReturnType<typeof createMockJobService>;
   let highlightRepository: ReturnType<typeof createMockHighlightRepository>;
-  let configService: ReturnType<typeof createMockConfigService>;
   let assuranceService: ReturnType<typeof createMockHarnessAssuranceService>;
   let contextItemVersionRepository: ReturnType<typeof createMockContextItemVersionRepository>;
   let secretsService: ReturnType<typeof createMockSecretsService>;
@@ -351,9 +349,8 @@ describe('HarnessInternalService', () => {
   // trailing @Optional() ctor param stays undefined (dedup no-ops, exact prior path).
   // optional `transcriptSegmentRepository` (17th arg) for assemble
   // segment-citation refs + citationsMap enrichment; unwired ⇒ empty refs.
-  // Optional `harnessPolicyService` (18th arg): the effective
-  // `warmStartEnabled` authority. Unwired ⇒ the env fallback governs, which is the
-  // legacy behaviour every fixture below relies on.
+  // `harnessPolicyService` (17th arg): the effective `warmStartEnabled` authority —
+  // the ONLY one since TASK-882. Defaults to a stub answering `warmStartEnabled`.
   const buildService = (
     warmStartEnabled = false,
     configResolver?: ReturnType<typeof createMockConfigResolver>,
@@ -365,7 +362,7 @@ describe('HarnessInternalService', () => {
     // the double-bill-guard test can assert on it.
     usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> },
   ) => {
-    configService = createMockConfigService(warmStartEnabled);
+    const policy = harnessPolicyService ?? createMockHarnessPolicyService(warmStartEnabled);
     return new HarnessInternalService(
       contextItemRepository as any,
       consultationRepository as any,
@@ -377,16 +374,14 @@ describe('HarnessInternalService', () => {
       cls as any,
       jobService as any,
       highlightRepository as any,
-      configService as any,
       assuranceService as any,
       configResolver as any,
       contextItemVersionRepository as any,
       withSecrets ? (secretsService as any) : undefined,
       redisCache as any,
       transcriptSegmentRepository as any,
-      harnessPolicyService as any,
+      policy as any,
       undefined, // mcpServerRepository
-      undefined, // effectiveSettings
       usageLedgerService as any,
     );
   };
@@ -693,14 +688,15 @@ describe('HarnessInternalService', () => {
       expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ highlights: [] }));
     });
 
-    // ── Effective warm-start policy beats env ──
-    // `HarnessPolicy.warmStartEnabled` was write-plumbed to the admin console and
-    // read by nothing; the real switch was the env var, cached at construction.
-    // Policy is now the authority, resolved per call, env only the null-fallback.
+    // ── Effective warm-start policy — the HarnessPolicy column alone (TASK-882) ──
+    // `HarnessPolicy.warmStartEnabled` is the authority, resolved per call; a null column is
+    // the code default (OFF). The env fallback is gone.
     describe('effective warmStartEnabled', () => {
-      const withPolicy = (warmStartEnabled: boolean | null, env = false) => {
-        const getEffectivePolicy = vi.fn().mockResolvedValue({ warmStartEnabled });
-        const svc = buildService(env, undefined, true, undefined, undefined, { getEffectivePolicy });
+      const withPolicy = (warmStartEnabled: boolean | null, policyThrows = false) => {
+        const getEffectivePolicy = policyThrows
+          ? vi.fn().mockRejectedValue(new Error('policy backend unavailable'))
+          : vi.fn().mockResolvedValue({ warmStartEnabled });
+        const svc = buildService(false, undefined, true, undefined, undefined, { getEffectivePolicy });
         return { service: svc, getEffectivePolicy };
       };
 
@@ -721,8 +717,26 @@ describe('HarnessInternalService', () => {
       // what tells finalize whether a live agent ran at all (`metaData.agent`).
       // The observable contract is unchanged and is what is asserted here: with
       // no lineage on the row, flag=false still injects NOTHING.
-      it('policy=false beats env=true → no prior draft (snapshot carries no agent lineage)', async () => {
-        const { service: svc } = withPolicy(false, true);
+      it('policy=false → no prior draft (snapshot carries no agent lineage)', async () => {
+        const { service: svc } = withPolicy(false);
+        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+        expect(assembledPreSummary()).toBeUndefined();
+      });
+
+      it('policy=true → the prior draft is injected', async () => {
+        const { service: svc } = withPolicy(true);
+        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+        expect(assembledPreSummary()).toBe(SNAPSHOT.content);
+      });
+
+      it('policy=null is the code default (OFF) — no env fallback (TASK-882)', async () => {
+        const { service: svc } = withPolicy(null);
+        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+        expect(assembledPreSummary()).toBeUndefined();
+      });
+
+      it('a failing policy lookup degrades to OFF, never to an env value (TASK-882)', async () => {
+        const { service: svc } = withPolicy(null, true);
         await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
         expect(assembledPreSummary()).toBeUndefined();
       });
@@ -783,12 +797,6 @@ describe('HarnessInternalService', () => {
 
       it('policy=true beats env unset → warm start ON', async () => {
         const { service: svc } = withPolicy(true, false);
-        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
-        expect(assembledPreSummary()).toBe(SNAPSHOT.content);
-      });
-
-      it('policy=null falls back to env (previous behaviour preserved)', async () => {
-        const { service: svc } = withPolicy(null, true);
         await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
         expect(assembledPreSummary()).toBe(SNAPSHOT.content);
       });

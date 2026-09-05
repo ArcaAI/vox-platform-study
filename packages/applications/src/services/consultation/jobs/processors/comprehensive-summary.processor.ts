@@ -109,7 +109,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // trailing so existing positional fixtures keep compiling.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
     // comprehensive-summary has no harness equivalent today ( of
-    // the ticket); this call exists purely to make the harnessEnabled read
+    // the ticket); this call exists purely to make the generator decision
     // happen through the single seam and get the decision logged — the
     // decision is always 'legacy'/'harness-not-supported-for-trigger' and
     // this processor's generation body always runs regardless. Optional +
@@ -164,7 +164,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       });
 
       try {
-        // route the harnessEnabled read through the single seam.
+        // route the generator decision through the single seam.
         // Comprehensive-summary has no harness equivalent (the ticket)
         // — the decision is always 'legacy', logged, and this generation
         // body always runs. Never blocks/short-circuits generation.
@@ -551,15 +551,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
   }
 
   /**
-   * The consultation's visit type, resolved through the TENANT's catalogue
-   * (`consultation.visitTypes`, tenant → SYSTEM).
-   *
-   * `parentConsultationId` is still the consultation's own follow-up signal —
-   * that rule has not changed. What changed is that WHICH visit type the signal
-   * selects, and what that type is called, is tenant-configured data rather
-   * than a literal repeated at each call site. An unwired
-   * resolver serves the two shipped types, so the answer is byte-identical to
-   * the ternary this replaces.
+   * The consultation's visit type — one of the platform's two, selected by the
+   * consultation's own follow-up signal (`parentConsultationId`) through the one
+   * vocabulary every caller shares rather than a literal repeated at each call site.
    */
   private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null }): VisitTypeDefinition {
     return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(consultation.tenantId ?? null, {

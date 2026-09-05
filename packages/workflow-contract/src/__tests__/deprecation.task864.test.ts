@@ -29,7 +29,7 @@ describe('deprecation window (C1)', () => {
     expect(isDeprecatedNodeType('does.not.exist')).toBe(false);
   });
 
-  it('the 58 legacy types (four palettes + the palette-less bookends and guards) are all covered', () => {
-    expect(entries.filter((d) => d.deprecated).length).toBe(58);
+  it('the 61 legacy types (four palettes + the palette-less bookends, guards, endpoint stage and the DNA-style gate) are all covered', () => {
+    expect(entries.filter((d) => d.deprecated).length).toBe(61);
   });
 });

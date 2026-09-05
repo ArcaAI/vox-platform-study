@@ -510,28 +510,12 @@ class Settings(BaseSettings):
     # legacy single-phase path, byte-identical to before optimistic delivery.
     optimistic_delivery_enabled: bool = False
 
-    # NER-priors reuse kill-switch (HARNESS_NER_PRIORS_ENABLED,
-    # default OFF). When ON, the transcript ``extract_entities`` activity reuses
-    # already-persisted CODED NamedEntity rows as the NER priors instead of
-    # re-running the cold NLP pass — killing the redundant second transcript-NER pass.
-    # Read at runtime inside the (non-deterministic) activity, NOT the workflow body, so
-    # it needs no snapshot/patch marker; when OFF (or when no prior carries a code) the
-    # activity falls back to the cold extraction, so enabling it is an explicit ops
-    # rollout, never a silent default flip, and it is inert until coded entities are
-    # actually persisted elsewhere.
-    ner_priors_enabled: bool = False
-
-    # Reference-free atomic-fact verifier kill-switch
-    # (HARNESS_ATOMIC_FACT_ENABLED, default OFF). When ON, the ``run_inferential_sensors``
-    # activity runs the DETERMINISTIC self-hosted-NLI atomic-fact verifier ALONGSIDE the
-    # LLM-judge groundedness sensor (a second, model-cheap groundedness gate). Read at
-    # runtime inside the (non-deterministic) activity — NOT the workflow body — so it adds
-    # no new command / snapshot / patch marker (the sensor result flows through the
-    # activity output; the workflow command sequence is byte-identical, replay-safe).
-    # Default OFF ⇒ enabling it is an explicit ops rollout once a self-hosted NLI model
-    # (MiniCheck / AlignScore / HHEM-class) is provisioned; the hermetic default entailer
-    # (:class:`DeterministicOverlapEntailer`) needs no model and never auto-PASSes.
-    atomic_fact_enabled: bool = False
+    # ``ner_priors_enabled`` / ``atomic_fact_enabled`` (``HARNESS_NER_PRIORS_ENABLED`` /
+    # ``HARNESS_ATOMIC_FACT_ENABLED``) were here as env FALLBACKS for the SUPER_ADMIN_ONLY
+    # ``HarnessPolicy.{nerPriorsEnabled,atomicFactEnabled}`` columns. TASK-882 removed them:
+    # the activities read the column off the effective policy threaded onto their input, and
+    # a null column is the code default (OFF) — see ``extract_entities`` and
+    # ``run_inferential_sensors``.
 
     # Optional self-hosted MiniCheck-Flan-T5 GGUF entailer (owner directive
     # 2026-07-11: "GGUF everywhere"). When `atomic_fact_model_path` is set (a staged local

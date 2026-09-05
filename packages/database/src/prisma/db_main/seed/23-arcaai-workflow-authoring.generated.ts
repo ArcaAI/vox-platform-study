@@ -14,16 +14,16 @@
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-arcaai-consultation-workflow-seed.ts
  */
 
-export const REGISTRY_CHECKSUM: string = "4bb7da74cf0d43e3d8cc8fcd2447aca50d1fe3043b3a58b1951d1546b5337916" as const;
+export const REGISTRY_CHECKSUM: string = "42e6e72097660edee1f69d75d0e61bb7e887e36c23657d3ab81653357aee80d5" as const;
 
-export const GEN_GRAPH_CHECKSUM: string = "a23b0b564672f186718a3ffb6b9590ddf0cf8c986675f9587dc64864afad4b0c" as const;
+export const GEN_GRAPH_CHECKSUM: string = "97f152b396e1ce07f4473f3fa011222c0df6aa15c6b3b9cab1ace199b7f98272" as const;
 
 export const GEN_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "4bb7da74cf0d43e3d8cc8fcd2447aca50d1fe3043b3a58b1951d1546b5337916",
+  "registryChecksum": "42e6e72097660edee1f69d75d0e61bb7e887e36c23657d3ab81653357aee80d5",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -36,7 +36,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "4bb7da74cf0d43e3d8cc8fcd2447aca50d1fe3043b3a58b1951d1546b5337916",
+  "registryChecksum": "42e6e72097660edee1f69d75d0e61bb7e887e36c23657d3ab81653357aee80d5",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -302,6 +302,29 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       "stageIndex": 7,
       "nodes": [
         {
+          "nodeId": "n_dna_style",
+          "type": "agent.dna_style",
+          "activity": "interpreter.agent_dna_style",
+          "config": {
+            "onError": "degrade"
+          },
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [
+            {
+              "fromNodeId": "n_phi",
+              "fromPort": "next",
+              "toPort": "after"
+            }
+          ],
+          "onError": "degrade",
+          "emitsTrajectory": true
+        },
+        {
           "nodeId": "n_evidence",
           "type": "consultation.retrieveEvidence",
           "activity": "interpreter.consultation_retrieve_evidence",
@@ -399,6 +422,11 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "backoffCoefficient": 2
           },
           "inputs": [
+            {
+              "fromNodeId": "n_dna_style",
+              "fromPort": "next",
+              "toPort": "after"
+            },
             {
               "fromNodeId": "n_ground_presum",
               "fromPort": "next",
@@ -726,17 +754,17 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "34100e4855dbc6dc15dcc94253880189d89ec995677e0449993a6507d7e43fed"
+  "checksum": "61fa633ed4227a71f36c4c8cb4b56c7f6f395513ac88a137de35f98750342cbc"
 } as const;
 
-export const RHEUM_GRAPH_CHECKSUM: string = "e4da75eda428d38ba201e3749bd0ed30b44461d2473afee8ad878f79c4f8ff1a" as const;
+export const RHEUM_GRAPH_CHECKSUM: string = "de02e57a19de1b00675a1e3bb46d60878e29ce08a665f06efc859a9f69e40393" as const;
 
 export const RHEUM_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "4bb7da74cf0d43e3d8cc8fcd2447aca50d1fe3043b3a58b1951d1546b5337916",
+  "registryChecksum": "42e6e72097660edee1f69d75d0e61bb7e887e36c23657d3ab81653357aee80d5",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -749,7 +777,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "4bb7da74cf0d43e3d8cc8fcd2447aca50d1fe3043b3a58b1951d1546b5337916",
+  "registryChecksum": "42e6e72097660edee1f69d75d0e61bb7e887e36c23657d3ab81653357aee80d5",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -1015,6 +1043,29 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       "stageIndex": 7,
       "nodes": [
         {
+          "nodeId": "n_dna_style",
+          "type": "agent.dna_style",
+          "activity": "interpreter.agent_dna_style",
+          "config": {
+            "onError": "degrade"
+          },
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [
+            {
+              "fromNodeId": "n_phi",
+              "fromPort": "next",
+              "toPort": "after"
+            }
+          ],
+          "onError": "degrade",
+          "emitsTrajectory": true
+        },
+        {
           "nodeId": "n_evidence",
           "type": "consultation.retrieveEvidence",
           "activity": "interpreter.consultation_retrieve_evidence",
@@ -1113,6 +1164,11 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "backoffCoefficient": 2
           },
           "inputs": [
+            {
+              "fromNodeId": "n_dna_style",
+              "fromPort": "next",
+              "toPort": "after"
+            },
             {
               "fromNodeId": "n_ground_presum",
               "fromPort": "next",
@@ -1483,5 +1539,5 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "a189803d4c786792149810e995895dd12ec14b63dabe210a116c26b1cb7a73be"
+  "checksum": "fa41a4e357c35cc3e40be26b7d001d5024c3b836eb5616931ed2b1081f646bfd"
 } as const;

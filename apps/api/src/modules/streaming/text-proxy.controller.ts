@@ -119,10 +119,9 @@ interface TextGenerateRequest {
 }
 
 /**
- * A visit type on the wire: a KEY or an ALIAS from the caller tenant's
- * `consultation.visitTypes` catalogue. It was a closed `'new_visit' |
- * `'referral'` union — and both of those are aliases of
- * the SHIPPED "New patient" type, so a caller sending either is unaffected.
+ * A visit type on the wire: a KEY or an ALIAS of the platform's two visit types
+ * (`VisitTypeService`). It was a closed `'new_visit' | 'referral'` union — and both of
+ * those are aliases of the "New visit" type, so a caller sending either is unaffected.
  */
 type VisitType = string;
 type GenerationType = 'pre-summary' | 'summary';

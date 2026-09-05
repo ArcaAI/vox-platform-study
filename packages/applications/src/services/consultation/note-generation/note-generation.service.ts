@@ -16,9 +16,9 @@ import { GenerateParams, GenerationDecision, GenerationTrigger, HARNESS_SUPPORTE
  *
  * The single seam every consultation note-generation entry point routes
  * through (for the full seven-entry-point map).
- * `harnessEnabled` is resolved and read in exactly one runtime location:
- * `generate()` below (enforced by the grep-gate test in
- * `__tests__/harness-enabled-single-reader.grep-gate.test.ts`).
+ * TASK-882: `pipeline.harnessEnabled` is gone — `false` routed to a legacy generator that no
+ * longer existed, so every harness-supported trigger routes to the harness, and `generate()`
+ * makes the one remaining decision (does this TRIGGER have a harness equivalent).
  *
  * `NoteGenerationService` is deliberately named to become the interpreter
  * dispatcher once the workflow substrate exists (Wave 2+, D4/ 1 in
@@ -40,9 +40,9 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
     private readonly harnessGatewayService: HarnessGatewayService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // (Pillar B cascade) — optional + trailing so legacy positional
-    // fixtures keep compiling; when absent, resolveConfig falls back to
-    // DEFAULT_PIPELINE_CONFIG (same degrade as the earlier handler).
+    // The graph-node resolver (auto-summary is the assigned workflow's generation node,
+    // TASK-882) — optional + trailing so legacy positional fixtures keep compiling; when absent,
+    // resolveConfig falls back to DEFAULT_PIPELINE_CONFIG.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     // NoteGenerationService wraps existing generation calls and never
@@ -54,25 +54,13 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
   }
 
   async generate(trigger: GenerationTrigger, params: GenerateParams): Promise<GenerationDecision> {
-    const config = await this.resolveConfig(params.consultationId);
-
     if (!HARNESS_SUPPORTED_TRIGGERS.has(trigger)) {
       this.logger.log({
         message: 'Generation trigger has no harness equivalent — falling back to legacy',
         trigger,
         consultationId: params.consultationId,
-        harnessEnabled: config.harnessEnabled ?? false,
       });
       return { generator: 'legacy', reason: 'harness-not-supported-for-trigger' };
-    }
-
-    if (!config.harnessEnabled) {
-      this.logger.log({
-        message: 'harnessEnabled is false for this consultation — using the legacy generator',
-        trigger,
-        consultationId: params.consultationId,
-      });
-      return { generator: 'legacy', reason: 'harnessEnabled-false' };
     }
 
     const harnessJobId = `harness-doc-${randomUUID()}`;
@@ -132,9 +120,8 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
    * Resolution order (first non-null wins):
    *   1. Consultation `metadata.pipelineConfig` (per-consultation override, kept
    *      as the top overlay for back-compat).
-   *   2. The `PipelinePolicy` cascade via `ConfigResolver` — doctor → department
-   *      → tenant → SYSTEM-tenant default. Resolves
-   *      `autoSummaryEnabled` / `autoNerEnabled` / `harnessEnabled`.
+   *   2. The assigned workflow's generation node `enabled`
+   *      (`ConfigResolver.resolveAutoSummaryEnabled`, TASK-882).
    *   3. System code defaults (`DEFAULT_PIPELINE_CONFIG`) — also the fallback when
    *      the resolver is not wired (legacy DI/fixtures).
    */
@@ -152,38 +139,25 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
       const metadata = consultation.metadata as Record<string, unknown> | null;
       const override = (metadata?.pipelineConfig ?? {}) as Partial<ConsultationPipelineConfig>;
 
-      // Cascade-resolved toggles (doctor → department → tenant → SYSTEM default).
-      // When the resolver isn't wired, fall back to the code defaults so the
-      // legacy behaviour is preserved exactly.
-      const cascade = this.configResolver
-        ? await this.configResolver.resolvePipelineToggles({
+      // The assigned workflow's generation node owns auto-summary (TASK-882); the
+      // per-consultation metadata override wins on top (back-compat). An unwired
+      // resolver answers the code default.
+      const autoSummaryFromGraph = this.configResolver
+        ? await this.configResolver.resolveAutoSummaryEnabled({
             tenantId: consultation.tenantId,
             departmentId: consultation.departmentId ?? null,
             doctorId: consultation.doctorId ?? null,
           })
-        : null;
+        : DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled;
 
-      const resolved: ConsultationPipelineConfig = {
-        // The cascade owns the realtime toggles; the per-consultation metadata
-        // override wins on top (back-compat).
-        autoSummaryEnabled: override.autoSummaryEnabled ?? cascade?.autoSummaryEnabled ?? DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled,
-        autoNerEnabled: override.autoNerEnabled ?? cascade?.autoNerEnabled ?? DEFAULT_PIPELINE_CONFIG.autoNerEnabled,
+      return {
+        autoSummaryEnabled: override.autoSummaryEnabled ?? autoSummaryFromGraph,
         // dnaStyleId / summaryTemplate / includeSharedContext stay per-consultation.
         dnaStyleId: override.dnaStyleId ?? DEFAULT_PIPELINE_CONFIG.dnaStyleId,
         summaryTemplate: override.summaryTemplate ?? DEFAULT_PIPELINE_CONFIG.summaryTemplate,
         includeSharedContext: override.includeSharedContext ?? DEFAULT_PIPELINE_CONFIG.includeSharedContext,
         haltOnFailure: override.haltOnFailure ?? DEFAULT_PIPELINE_CONFIG.haltOnFailure,
       };
-
-      // harnessEnabled: per-consultation override wins over the cascade. Only
-      // surfaced when defined so callers reading a fully-specified legacy config
-      // (no resolver) don't see a synthesized default (preserves back-compat).
-      const harnessEnabled = override.harnessEnabled ?? cascade?.harnessEnabled;
-      if (harnessEnabled !== undefined) {
-        resolved.harnessEnabled = harnessEnabled;
-      }
-
-      return resolved;
     } catch (error) {
       this.logger.error({
         message: 'Error resolving pipeline config — using defaults',

@@ -81,6 +81,7 @@ const ACTION_KEYS: readonly string[] = Object.freeze([
   'agent.retrieval',
   'agent.feedback',
   'agent.dna_redaction',
+  'agent.dna_style',
   'guard.phi',
   'guard.moderation',
   'guard.groundedness',
@@ -89,6 +90,9 @@ const ACTION_KEYS: readonly string[] = Object.freeze([
   'session.timeout',
   'summary.finalize',
   'feedback.capture',
+  // TASK-882 — the whole endpoint stage is authorable through `core.action`.
+  'livedoc.stop',
+  'harness.finalize',
   'prompt.template_ref',
 ]);
 

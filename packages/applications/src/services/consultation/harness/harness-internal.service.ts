@@ -1,5 +1,4 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import {
   ConsultationRepository,
@@ -38,12 +37,7 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
-import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
-import {
-  AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT,
-  AGENTIC_REVISIT_CARRY_FORWARD_KEY,
-  truncatePriorVisitSummary,
-} from '../../settings-registry/descriptors/agentic-revisit.descriptors';
+import { truncatePriorVisitSummary } from './prior-visit-summary';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
@@ -87,14 +81,9 @@ import type {
 export class HarnessInternalService {
   private readonly logger = new Logger(HarnessInternalService.name);
 
-  // Warm-start kill-switch. When OFF the harness injects no
-  // prior draft and records no preSummaryIds provenance; enable for a
-  // cold-vs-warm A/B.
-  //
-  // `HarnessPolicy.warmStartEnabled` is now the authority, resolved
-  // per call (see `resolveWarmStartEnabled`). This env var survives only as the
-  // fallback for a null policy value, reproducing the legacy behaviour exactly.
-  private readonly warmStartEnvFallback: boolean;
+  // Warm-start switch: `HarnessPolicy.warmStartEnabled`, resolved per call (see
+  // `resolveWarmStartEnabled`). TASK-882 removed the `HARNESS_WARM_START_ENABLED` env fallback —
+  // the column is the one source and a null column is the code default (OFF).
 
   // Idempotency-Key dedup namespace + TTL for the WORM/draft
   // callbacks. The key value is the harness `{run_id}:{activity_id}` (globally
@@ -162,10 +151,6 @@ export class HarnessInternalService {
     // manual-highlight SOAP feed is best-effort enrichment either way.
     @Optional() @Inject(HighlightRepository) private readonly highlightRepository?: HighlightRepository,
     // Optional so existing unit fixtures keep their
-    // constructor arity; production DI supplies it via ConfigModule (added to
-    // HarnessInternalServiceModule). Absent ⇒ flag OFF, matching the prod default.
-    @Optional() private readonly configService?: ConfigService,
-    // Optional so existing unit fixtures keep their
     // constructor arity; production DI supplies it via HarnessAssuranceServiceModule.
     // finalizeAssurance publishes the terminal `assurance_complete` here to close
     // the live SSE feed (best-effort — a Redis hiccup must not break finalize).
@@ -215,11 +200,6 @@ export class HarnessInternalService {
     // `resolveMcpToken`. Optional + trailing; absent ⇒ no token resolves (the
     // fail-closed default: nothing is callable).
     @Optional() @Inject(McpServerRepository) private readonly mcpServerRepository?: McpServerRepository,
-    // Governed read facade for the `agentic.*` control plane — today only
-    // `agentic.revisit.carryForwardEnabled` (F-18). Optional + trailing so
-    // existing positional unit fixtures keep their arity; absent ⇒ the code
-    // default (carry-forward OFF), which is also the fail-safe direction.
-    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
     // Injected but DELIBERATELY NEVER CALLED.
     // `persistDraft`'s `HarnessDraftRequest` carries no token fields, and
     // harness-originated LLM calls are already metered PER-STEP by the
@@ -245,18 +225,12 @@ export class HarnessInternalService {
     // which is the FAIL-CLOSED direction (never `absent`, which would let a
     // consumer proceed unauthenticated because the gateway was misconfigured).
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
-    // the tenant's VISIT-TYPE catalogue, which replaces the
+    // the VISIT-TYPE vocabulary, which replaces the
     // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
     // + trailing so existing positional fixtures keep their arity; an unwired
-    // resolver serves the two shipped visit types, whose keys and follow-up rule
-    // are byte-identical to the ternary it replaces.
+    // resolver serves the same two visit types.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
-  ) {
-    const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
-      .trim()
-      .toLowerCase();
-    this.warmStartEnvFallback = raw === 'true' || raw === '1';
-  }
+  ) {}
 
   /**
    * Resolve an MCP server's credential from its `authRef`.
@@ -405,55 +379,42 @@ export class HarnessInternalService {
   }
 
   /**
-   * Effective warm-start decision for `tenantId`.
-   *
-   * Policy wins; a null policy value means "not configured" and falls through to the
-   * env fallback. Resolved on every call so a super admin's console flip takes
-   * effect with no redeploy. A policy-backend failure degrades to the env value —
-   * this sits on the harness generation path and must not fail closed on a
-   * governance lookup.
+   * Effective warm-start decision for `tenantId` — the `HarnessPolicy.warmStartEnabled` column,
+   * resolved on every call so a super admin's console flip takes effect with no redeploy. A null
+   * column is the code default (OFF); so is an unwired policy service or a policy-backend
+   * failure — this sits on the harness generation path and must not throw on a governance
+   * lookup, and since TASK-882 there is no env value to fall back to.
    */
   private async resolveWarmStartEnabled(tenantId: string): Promise<boolean> {
-    if (!this.harnessPolicyService) {
-      return this.warmStartEnvFallback;
-    }
+    if (!this.harnessPolicyService) return false;
     try {
       const effective = await this.harnessPolicyService.getEffectivePolicy(tenantId);
-      return effective.warmStartEnabled ?? this.warmStartEnvFallback;
+      return effective.warmStartEnabled ?? false;
     } catch (error) {
       this.logger.warn({
-        message: 'Harness policy lookup failed while resolving warmStartEnabled — falling back to env',
+        message: 'Harness policy lookup failed while resolving warmStartEnabled — warm start stays OFF for this run',
         error: error instanceof Error ? error.message : String(error),
       });
-      return this.warmStartEnvFallback;
+      return false;
     }
   }
 
   /**
-   * Effective re-visit carry-forward decision (F-18).
-   *
-   * Fails SAFE toward OFF in every degraded case (no facade, unknown key,
-   * resolver outage, non-boolean value). That direction is deliberate and is the
-   * opposite of `resolveWarmStartEnabled`'s: warm-start degrades toward its
-   * configured value because losing it only costs quality, whereas carrying a
-   * PRIOR VISIT's content into a new note on the back of a failed governance read
-   * is a clinical-safety regression (SOTA
+   * Effective re-visit carry-forward decision (F-18) — TASK-882: the assigned consultation
+   * graph's `carryForward` binding (prompt-composition node or `core.agent.overrides`), read
+   * through `ConfigResolver`, which fails SAFE toward OFF in every degraded case. That direction
+   * is deliberate and is the opposite of `resolveWarmStartEnabled`'s: warm-start degrades toward
+   * its configured value because losing it only costs quality, whereas carrying a PRIOR VISIT's
+   * content into a new note on the back of a failed governance read is a clinical-safety
+   * regression. An unwired resolver (positional fixtures) is OFF too.
    */
-  private async resolveRevisitCarryForwardEnabled(tenantId: string): Promise<boolean> {
-    if (!this.effectiveSettings) {
-      return AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT;
-    }
-    try {
-      const resolved = await this.effectiveSettings.resolveEffective(AGENTIC_REVISIT_CARRY_FORWARD_KEY, { tenantId });
-      return resolved.value === true || resolved.value === 'true';
-    } catch (error) {
-      this.logger.warn({
-        message: 'agentic.revisit.carryForwardEnabled lookup failed — carry-forward stays OFF for this run',
-        tenantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT;
-    }
+  private async resolveRevisitCarryForwardEnabled(tenantId: string, consultation: ConsultationEntity | null | undefined): Promise<boolean> {
+    if (!this.configResolver) return false;
+    return this.configResolver.resolveRevisitCarryForwardEnabled({
+      tenantId,
+      departmentId: consultation?.departmentId ?? null,
+      doctorId: consultation?.doctorId ?? null,
+    });
   }
 
   /**
@@ -769,7 +730,7 @@ export class HarnessInternalService {
       // behave exactly as before. Short-circuited so neither case pays for the
       // governance read or the context query.
       const priorVisitSummary =
-        consultation?.parentConsultationId && (await this.resolveRevisitCarryForwardEnabled(tenantId))
+        consultation?.parentConsultationId && (await this.resolveRevisitCarryForwardEnabled(tenantId, consultation))
           ? await this.loadPriorVisitSummary(consultation.parentConsultationId, tenantId)
           : null;
 
@@ -779,10 +740,8 @@ export class HarnessInternalService {
         // (the harness runs outside the API-edge CLS middleware).
         tenantId,
         departmentId: consultation?.departmentId ?? undefined,
-        // The visit type comes from the TENANT's catalogue now, not a literal:
-        // `parentConsultationId` still supplies the follow-up signal, but WHICH
-        // visit type that selects — and what it is called — is tenant-configured
-        // .
+        // The visit type comes from the shared vocabulary, not a literal:
+        // `parentConsultationId` supplies the follow-up signal.
         promptType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
           isFollowUp: Boolean(consultation?.parentConsultationId),
         }).key,

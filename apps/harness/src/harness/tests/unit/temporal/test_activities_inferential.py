@@ -272,7 +272,7 @@ class _StubNli:
 
 class TestAtomicFactWiring:
     """The DETERMINISTIC atomic-fact verifier runs ALONGSIDE the judge
-    sensors inside ``run_inferential_sensors`` when ``HARNESS_ATOMIC_FACT_ENABLED`` is on.
+    sensors inside ``run_inferential_sensors`` when the effective ``HarnessPolicy.atomicFactEnabled`` is on.
 
     Wired as a fresh activity-side signal (read at runtime — no workflow command, replay-
     safe): a healthy pass emits an ``atomic_fact`` guardrail decision; a degraded backend
@@ -294,7 +294,7 @@ class TestAtomicFactWiring:
     async def test_enabled_adds_deterministic_atomic_fact_signal(self, env, monkeypatch):
         from harness.core.config import Settings
 
-        monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities,
@@ -302,7 +302,9 @@ class TestAtomicFactWiring:
             lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
         monkeypatch.setattr(activities, "_atomic_fact_entailer", lambda s: _StubNli())
-        result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
+        result = await env.run(
+            activities.run_inferential_sensors, _cited_claim_input(atomic_fact_enabled=True)
+        )
         # A grounded note -> atomic_fact PASSes and is a real (non-degraded) gate signal.
         assert result.guardrail_decisions["atomic_fact"]["decision"] == "PASS"
         assert any(r.name == "atomic_fact" for r in result.results)
@@ -312,7 +314,7 @@ class TestAtomicFactWiring:
     async def test_atomic_fact_backend_error_degrades_never_auto_passes(self, env, monkeypatch):
         from harness.core.config import Settings
 
-        monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings())
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities,
@@ -324,6 +326,8 @@ class TestAtomicFactWiring:
             "_atomic_fact_entailer",
             lambda s: _StubNli(error=RuntimeError("nli offline")),
         )
-        result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
+        result = await env.run(
+            activities.run_inferential_sensors, _cited_claim_input(atomic_fact_enabled=True)
+        )
         assert result.guardrail_decisions["atomic_fact"]["decision"] == "DEGRADED"
         assert result.degraded is True

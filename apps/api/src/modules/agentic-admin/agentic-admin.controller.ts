@@ -55,9 +55,8 @@ export class AgenticAdminController {
     required: false,
     type: String,
     description:
-      'Prompt type to resolve the tier for: either a PHASE selector (`pre-summary`, `live`) or a VISIT-TYPE key from the tenant’s own ' +
-      '`consultation.visitTypes` catalogue. Deliberately NOT an enum since  §11 row 3 — visit type is tenant-admin defined, so a ' +
-      'fixed three-value list could only ever answer for the platform’s two. Omitted ⇒ the tenant’s own initial-visit type.',
+      'Prompt type to resolve the tier for: either a PHASE selector (`pre-summary`, `live`) or a VISIT-TYPE key (`new-visit`, ' +
+      '`revisit`, or any alias). Omitted ⇒ the initial-visit type.',
   })
   @ApiResponse({ status: 200, type: AgenticInstructionsResponse })
   @ApiResponse({ status: 404, description: 'Cross-tenant request from a tenant-bound caller (no existence leak).' })

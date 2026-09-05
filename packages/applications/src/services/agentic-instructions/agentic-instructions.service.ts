@@ -68,8 +68,8 @@ export class AgenticInstructionsService extends BaseService {
     private readonly promptResolutionService: PromptResolutionService,
     eventEmitter: EventEmitter2,
     clsService: ClsService<IActiveUserContext>,
-    // The tenant's visit-type catalogue, so an omitted `promptType` defaults to
-    // the TENANT's initial-visit type rather than to a platform literal.
+    // The platform's visit types, so an omitted `promptType` defaults to the
+    // initial-visit type through the one vocabulary every caller shares.
     // Optional + trailing so existing positional fixtures keep their arity.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {
@@ -78,13 +78,10 @@ export class AgenticInstructionsService extends BaseService {
   }
 
   async getEffectiveInstructions(tenantId: string, options: AgenticInstructionsResolveOptions = {}): Promise<AgenticInstructionsResponse> {
-    // An omitted prompt type means "the ordinary case", and WHICH visit type
-    // that is belongs to the tenant now — it used to be a
-    // hardcoded `'new-patient'`. A tenant with no catalogue of its own inherits
-    // the two shipped types, so this resolves `'new-visit'` — the same entry the
-    // retired `'new-patient'` spelling still reaches as an alias.
-    const visitTypeKey = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: false }).key;
-    const promptType = options.promptType ?? visitTypeKey;
+    // An omitted prompt type means "the ordinary case": the initial-visit type,
+    // `'new-visit'` — the same entry the retired `'new-patient'` spelling still
+    // reaches as an alias.
+    const promptType = options.promptType ?? (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: false }).key;
 
     const [policy, tier] = await Promise.all([
       this.harnessPolicyService.getEffectivePolicy(tenantId),
@@ -96,11 +93,6 @@ export class AgenticInstructionsService extends BaseService {
         // pre-summary template.
         tenantId,
         promptType,
-        // The visit-type axis, so this inventory reports the tier a
-        // `(task, visitType)` binding would actually serve. Needed because
-        // `options.promptType` may be a PHASE (`'pre-summary'`), which carries
-        // no visit-type opinion of its own.
-        visitTypeKey,
       }),
     ]);
 

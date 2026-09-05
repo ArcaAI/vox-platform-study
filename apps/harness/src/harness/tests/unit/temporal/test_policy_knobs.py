@@ -14,8 +14,23 @@ Covers:
 
 from __future__ import annotations
 
+from harness.core.config import Settings
 from harness.temporal.activities import _resolve_flag, retrieve_context
 from harness.temporal.models import HarnessPolicy, RetrieveContextInput
+
+
+class TestPolicyColumnsHaveNoEnvTwin:
+    """TASK-882: ``HarnessPolicy.{nerPriorsEnabled,atomicFactEnabled}`` are the ONLY source.
+
+    ``HARNESS_NER_PRIORS_ENABLED`` / ``HARNESS_ATOMIC_FACT_ENABLED`` were env DUPLICATES of two
+    SUPER_ADMIN_ONLY policy columns; the activities read the column and a null column is the
+    code default (OFF). There is no ``Settings`` field left to fall back to.
+    """
+
+    def test_settings_carries_neither_field(self):
+        settings = Settings()
+        assert not hasattr(settings, "ner_priors_enabled")
+        assert not hasattr(settings, "atomic_fact_enabled")
 
 
 class TestFromApiMapsAgenticKnobs:

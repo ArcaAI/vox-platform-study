@@ -186,11 +186,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     adminScope: 'admin:notification:manage',
   },
   {
-    file: 'apps/api/src/modules/pipeline-policy-admin/pipeline-policy-admin.controller.ts',
-    controllerClass: 'PipelinePolicyAdminController',
-    adminScope: 'admin:pipeline-policy:manage',
-  },
-  {
     file: 'apps/api/src/modules/pipeline/audio-pipeline.controller.ts',
     controllerClass: 'AudioPipelineController',
     adminScope: 'admin:audio-pipeline:manage',

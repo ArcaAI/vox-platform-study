@@ -5,7 +5,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * metadata about a controllable setting (never a value); safe to expose.
  */
 export class SettingCatalogItemResponse {
-  @ApiProperty({ description: 'Canonical dotted key, e.g. pipeline.autoSummaryEnabled.' })
+  @ApiProperty({ description: 'Canonical dotted key, e.g. rateLimit.maxRequests.' })
   key!: string;
 
   @ApiProperty({ description: 'Storage tier / §3 data class.', example: 'db-config' })
@@ -20,7 +20,7 @@ export class SettingCatalogItemResponse {
   @ApiProperty({ description: 'Deepest scope a tenant admin may set this at.', example: 'tenant' })
   maxScope!: string;
 
-  @ApiProperty({ description: 'CASL subject that gates who may edit it.', example: 'PipelinePolicy' })
+  @ApiProperty({ description: 'CASL subject that gates who may edit it.', example: 'GlobalSetting' })
   editableBy!: string;
 
   @ApiProperty({ description: 'Server-side taxonomy bucket.', example: 'Pipeline' })

@@ -9,15 +9,12 @@ export interface AgenticInstructionsResolveOptions {
    * Prompt type to resolve the tier for.
    *
    * Either a PHASE selector (`'pre-summary'`, `'live'`) or a VISIT-TYPE KEY
-   * from the tenant's `consultation.visitTypes` catalogue. It stopped being a
-   * closed union at row 3: an admin must be able to ask this
-   * surface about a visit type its own tenant defined, and a three-value enum
-   * could only ever answer for the platform's two.
+   * (`'new-visit'` / `'revisit'`, or any alias — the retired `'new-patient'`
+   * spelling still resolves). Kept a string rather than a closed union so the
+   * wire contract survived the visit-type vocabulary's move to platform data
+   * (TASK-882).
    *
-   * Omitted ⇒ the tenant's own initial-visit type, resolved from that catalogue
-   * (the two shipped defaults make that `'new-visit'`; the retired `'new-patient'`
-   * spelling is an alias on that same entry, so a caller that sends it still
-   * resolves here).
+   * Omitted ⇒ the initial-visit type, `'new-visit'`.
    */
   promptType?: PromptTypeSelector;
 }
