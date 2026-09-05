@@ -133,9 +133,9 @@ describe('GuardrailAvailabilityService', () => {
   describe('write lane', () => {
     it('creates a row on `If-Match: "0"` and broadcasts ResourceCreated', async () => {
       repository.findByTenantId.mockResolvedValue(null);
-      const response = await service.putForTenant(TENANT_A, { policies: { prompt_safety: { enabled: true } }, expectedVersion: 0 });
+      const response = await service.putForTenant(TENANT_A, { policies: { jailbreak_detection: { enabled: true }, prompt_safety: { enabled: true } }, expectedVersion: 0 });
       expect(repository.create).toHaveBeenCalledOnce();
-      expect(response.policies).toEqual({ prompt_safety: { enabled: true } });
+      expect(response.policies).toEqual({ jailbreak_detection: { enabled: true }, prompt_safety: { enabled: true } });
       expect(eventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.anything());
     });
 
@@ -146,7 +146,7 @@ describe('GuardrailAvailabilityService', () => {
 
     it('CASes an existing row against its version', async () => {
       repository.findByTenantId.mockImplementation(async (t: string) => (t === TENANT_A ? writable(entity(TENANT_A, {}, 3)) : null));
-      await expect(service.putForTenant(TENANT_A, { policies: { prompt_safety: { enabled: true } }, expectedVersion: 2 })).rejects.toBeInstanceOf(
+      await expect(service.putForTenant(TENANT_A, { policies: { jailbreak_detection: { enabled: true } }, expectedVersion: 2 })).rejects.toBeInstanceOf(
         OptimisticConcurrencyException,
       );
     });
@@ -155,7 +155,7 @@ describe('GuardrailAvailabilityService', () => {
       repository.findByTenantId.mockImplementation(async (t: string) =>
         t === SYSTEM_TENANT_ID ? entity(SYSTEM_TENANT_ID, { pii_leak: { enabled: true, minScore: 0.5 } }) : null,
       );
-      const attempt = service.putForTenant(TENANT_A, { policies: { pii_leak: { enabled: true, minScore: 0.9 } }, expectedVersion: 0 });
+      const attempt = service.putForTenant(TENANT_A, { policies: { jailbreak_detection: { enabled: true }, pii_leak: { enabled: true, minScore: 0.9 } }, expectedVersion: 0 });
       await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
       await expect(attempt).rejects.toThrow(/may only be tightened/);
       expect(repository.create).not.toHaveBeenCalled();
@@ -165,9 +165,19 @@ describe('GuardrailAvailabilityService', () => {
       repository.findByTenantId.mockImplementation(async (t: string) =>
         t === SYSTEM_TENANT_ID ? entity(SYSTEM_TENANT_ID, { pii_leak: { enabled: true, minScore: 0.5 } }) : null,
       );
-      await expect(service.putForTenant(TENANT_A, { policies: { pii_leak: { enabled: true, minScore: 0.1 } }, expectedVersion: 0 })).resolves.toMatchObject(
-        { policies: { pii_leak: { enabled: true, minScore: 0.1 } } },
+      await expect(service.putForTenant(TENANT_A, { policies: { jailbreak_detection: { enabled: true }, pii_leak: { enabled: true, minScore: 0.1 } }, expectedVersion: 0 })).resolves.toMatchObject(
+        { policies: { jailbreak_detection: { enabled: true }, pii_leak: { enabled: true, minScore: 0.1 } } },
       );
+    });
+
+    it('refuses a selection that would leave a direction ungated (400)', async () => {
+      // The owner's decision is literal: ALL requests before send, ALL responses
+      // after receive. An outbound-only selection is a direction switched off,
+      // not a narrowing.
+      await expect(service.putForTenant(TENANT_A, { policies: { response_safety: { enabled: true } }, expectedVersion: 0 })).rejects.toThrow(
+        /inbound would have no check/,
+      );
+      expect(repository.create).not.toHaveBeenCalled();
     });
 
     it('rejects an unknown policy id (400) instead of dropping it', async () => {
@@ -181,7 +191,7 @@ describe('GuardrailAvailabilityService', () => {
         t === SYSTEM_TENANT_ID ? writable(entity(SYSTEM_TENANT_ID, { pii_leak: { enabled: true, minScore: 0.5 } }, 4)) : null,
       );
       await expect(
-        service.putForTenant(SYSTEM_TENANT_ID, { policies: { pii_leak: { enabled: true, minScore: 0.9 } }, expectedVersion: 4 }),
+        service.putForTenant(SYSTEM_TENANT_ID, { policies: { jailbreak_detection: { enabled: true }, pii_leak: { enabled: true, minScore: 0.9 } }, expectedVersion: 4 }),
       ).resolves.toMatchObject({ tenantId: SYSTEM_TENANT_ID });
     });
   });

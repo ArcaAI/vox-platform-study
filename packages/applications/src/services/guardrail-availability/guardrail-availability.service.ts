@@ -18,6 +18,7 @@ import { GuardrailAvailabilityDtoMapper } from './guardrail-availability.dto.map
 import type { IGuardrailAvailabilityService } from './IGuardrailAvailabilityService';
 import {
   GuardrailPolicySelectionError,
+  assertBothDirectionsCovered,
   assertSelectionTightensOnly,
   normalizeSelection,
   resolveAvailability,
@@ -120,6 +121,7 @@ export class GuardrailAvailabilityService extends BaseService implements IGuardr
     let policies: GuardrailPolicySelectionSet;
     try {
       policies = normalizeSelection(request.policies);
+      assertBothDirectionsCovered(policies);
     } catch (error) {
       if (error instanceof GuardrailPolicySelectionError) throw new BadRequestException(error.message);
       throw error;

@@ -7,6 +7,7 @@ import {
   GUARDRAIL_POLICY_CATALOGUE,
   GuardrailPolicySelectionError,
   PLATFORM_DEFAULT_GUARDRAIL_POLICIES,
+  assertBothDirectionsCovered,
   assertSelectionTightensOnly,
   hasEnabledPolicy,
   normalizeSelection,
@@ -147,5 +148,27 @@ describe('assertSelectionTightensOnly — refuse, never clamp', () => {
     // Only a platform admin reaches this write lane; owner decision #3 is that
     // they may narrow or widen which policies apply per tenant.
     expect(() => assertSelectionTightensOnly({ pii_leak: { enabled: false } }, SYSTEM_SET)).not.toThrow();
+  });
+});
+
+describe('assertBothDirectionsCovered — a direction may never be switched off', () => {
+  it('accepts an empty selection (it inherits the SYSTEM set, which covers both)', () => {
+    expect(() => assertBothDirectionsCovered({})).not.toThrow();
+  });
+
+  it('accepts the single both-directions policy as the minimal legal narrowing', () => {
+    expect(() => assertBothDirectionsCovered({ jailbreak_detection: { enabled: true } })).not.toThrow();
+  });
+
+  it('refuses an outbound-only selection — every request would be ungated', () => {
+    expect(() => assertBothDirectionsCovered({ response_safety: { enabled: true } })).toThrow(/inbound would have no check/);
+  });
+
+  it('refuses an inbound-only selection', () => {
+    expect(() => assertBothDirectionsCovered({ prompt_safety: { enabled: true } })).toThrow(/outbound would have no check/);
+  });
+
+  it('accepts one policy per direction', () => {
+    expect(() => assertBothDirectionsCovered({ prompt_safety: { enabled: true }, response_safety: { enabled: true } })).not.toThrow();
   });
 });

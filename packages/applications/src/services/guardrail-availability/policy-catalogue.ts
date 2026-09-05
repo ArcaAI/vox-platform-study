@@ -255,6 +255,35 @@ export function normalizeSelection(raw: unknown): GuardrailPolicySelectionSet {
 }
 
 /**
+ * A NON-EMPTY selection must leave BOTH directions gated.
+ *
+ * The owner's decision is literal: guardrail "must check ALL requests before
+ * send and ALL responses after receive". A selection that enables only outbound
+ * checks leaves every request ungated, which is not a narrowing — it is a
+ * direction switched off, the one thing availability may not express. An EMPTY
+ * selection is exempt because it is not a selection at all: it inherits the
+ * SYSTEM set, which covers both.
+ *
+ * The minimal legal narrowing is therefore one policy that runs on both —
+ * `jailbreak_detection` — so this rule constrains the surface without closing
+ * the use case it exists for.
+ */
+export function assertBothDirectionsCovered(policies: GuardrailPolicySelectionSet): void {
+  if (!hasEnabledPolicy(policies)) return;
+  const covered = new Set<GuardrailScreenDirection>();
+  for (const descriptor of GUARDRAIL_POLICY_CATALOGUE) {
+    if (policies[descriptor.id]?.enabled === true) for (const direction of descriptor.directions) covered.add(direction);
+  }
+  const missing = (['inbound', 'outbound'] as const).filter((direction) => !covered.has(direction));
+  if (missing.length > 0) {
+    throw new GuardrailPolicySelectionError(
+      `A selection must leave both screening directions gated; ${missing.join(' and ')} would have no check. ` +
+        'Enable at least one policy per direction, or send `{}` to inherit the platform set.',
+    );
+  }
+}
+
+/**
  * Enforce the tighten-only rule for every threshold in a submitted selection,
  * against the SYSTEM row's set.
  *
