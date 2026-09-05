@@ -210,7 +210,7 @@ test.describe('AC-6 — Auth throttle granularity', () => {
     expect(successes, 'no bogus refresh attempt should produce 200').toBe(0);
   });
 
-  // TASK-870 — the product does not currently meet this contract, so the test is
+  // TASK-875 — the product does not currently meet this contract, so the test is
   // `fixme` rather than deleted or weakened. MEASURED on a gateway with both gates
   // open (RATE_LIMIT_ENABLED=true in the process env, `rate-limit.enabled` true in
   // Postgres, restarted so the rule cache reloaded) and an ENABLED platform rule
@@ -218,7 +218,7 @@ test.describe('AC-6 — Auth throttle granularity', () => {
   // and no 429, and an authenticated route with a 2/min rule answered 200 four
   // times. Platform rate-limit RULES are not being applied at all.
   //
-  // Un-fixme this as the acceptance test when TASK-870 lands. Do NOT relax it to
+  // Un-fixme this as the acceptance test when TASK-875 lands. Do NOT relax it to
   // "some 4xx" — a login endpoint that never 429s is the brute-force gap itself.
   test.fixme('POST /auth/login enforces 5/min — at least one 429 within the first 6 rapid attempts', async ({ request }) => {
     const statuses = await probeStatuses(6, (i) =>
