@@ -1296,109 +1296,6 @@
         ],
         "type": "object"
       },
-      "AiTaskDefaultResponse": {
-        "properties": {
-          "configJson": {
-            "description": "Task-specific extras (JsonB)",
-            "nullable": true,
-            "type": "object"
-          },
-          "createdAt": {
-            "description": "Created timestamp (ISO)",
-            "type": "string"
-          },
-          "modelSlug": {
-            "description": "Bound registry model slug. Null on the version:0 placeholder (no row yet).",
-            "nullable": true,
-            "type": "string"
-          },
-          "resourceStatus": {
-            "description": "Resource status",
-            "type": "string"
-          },
-          "taskKey": {
-            "description": "AI task key",
-            "example": "guardrail.validate",
-            "type": "string"
-          },
-          "tenantId": {
-            "description": "Owning tenant id (SYSTEM tenant = platform default row)",
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "Updated timestamp (ISO)",
-            "type": "string"
-          },
-          "version": {
-            "description": "OCC version. 0 when no row exists yet (create with expectedVersion=0).",
-            "example": 0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "tenantId",
-          "taskKey",
-          "version"
-        ],
-        "type": "object"
-      },
-      "AiTaskModelSummary": {
-        "properties": {
-          "architecture": {
-            "description": "Model architecture family (gemma4, granite, ...)",
-            "nullable": true,
-            "type": "string"
-          },
-          "format": {
-            "description": "Model format",
-            "type": "string"
-          },
-          "id": {
-            "description": "Registry row id",
-            "type": "string"
-          },
-          "localPath": {
-            "description": "Optional staged weights directory (operator override)",
-            "nullable": true,
-            "type": "string"
-          },
-          "metadata": {
-            "description": "Registry row `_metadata` (non-secret model descriptors)",
-            "nullable": true,
-            "type": "object"
-          },
-          "name": {
-            "description": "Human-readable model name",
-            "type": "string"
-          },
-          "provider": {
-            "description": "Canonical runtime provider (ollama | lm-studio | azure | bedrock | built-in | sarvam)",
-            "nullable": true,
-            "type": "string"
-          },
-          "slug": {
-            "description": "Registry model slug",
-            "type": "string"
-          },
-          "sourceUri": {
-            "description": "Provider-native identifier sent to the runtime",
-            "type": "string"
-          },
-          "taskType": {
-            "description": "Model task type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "slug",
-          "name",
-          "taskType",
-          "format",
-          "sourceUri"
-        ],
-        "type": "object"
-      },
       "AllowedOriginEnforcementPostureResponse": {
         "properties": {
           "enforcementEnabled": {
@@ -7408,53 +7305,6 @@
         ],
         "type": "object"
       },
-      "EffectiveAiTaskDefaultResponse": {
-        "properties": {
-          "configJson": {
-            "description": "Task-specific extras from the winning row (JsonB)",
-            "nullable": true,
-            "type": "object"
-          },
-          "model": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AiTaskModelSummary"
-              }
-            ],
-            "description": "Resolved registry model summary (ENABLED, [tenant, SYSTEM] preferring tenant); null when the slug resolves to nothing",
-            "nullable": true,
-            "type": "object"
-          },
-          "modelSlug": {
-            "description": "Effective registry model slug (null when unconfigured)",
-            "nullable": true,
-            "type": "string"
-          },
-          "source": {
-            "description": "Winning cascade tier: 'tenant' | 'system' | null",
-            "enum": [
-              "tenant",
-              "system"
-            ],
-            "nullable": true,
-            "type": "string"
-          },
-          "taskKey": {
-            "description": "AI task key",
-            "example": "nlp.ner",
-            "type": "string"
-          },
-          "tenantId": {
-            "description": "Tenant the default was resolved for",
-            "type": "string"
-          }
-        },
-        "required": [
-          "tenantId",
-          "taskKey"
-        ],
-        "type": "object"
-      },
       "EffectiveRoutingPolicyResponse": {
         "properties": {
           "explicitProviderMode": {
@@ -9097,12 +8947,12 @@
             "type": "string"
           },
           "textModel": {
-            "description": "TEXT generation model id (null = let the TEXT service choose).",
+            "description": "TEXT generation model id, derived from the assigned TEXT_GENERATION agent (null = no agent assigned).",
             "nullable": true,
             "type": "string"
           },
           "textProvider": {
-            "description": "TEXT generation provider id (null = let the TEXT service choose).",
+            "description": "TEXT generation provider id, derived from the assigned TEXT_GENERATION agent (null = no agent assigned).",
             "nullable": true,
             "type": "string"
           },
@@ -19956,16 +19806,6 @@
             "example": true,
             "type": "boolean"
           },
-          "textModel": {
-            "description": "TEXT generation model id (null = let the TEXT service choose).",
-            "nullable": true,
-            "type": "string"
-          },
-          "textProvider": {
-            "description": "TEXT generation provider id (null = let the TEXT service choose).",
-            "nullable": true,
-            "type": "string"
-          },
           "toolAllowlist": {
             "description": "Allow-listed tool ids the loop may call (null = all tools allowed).",
             "items": {
@@ -21567,28 +21407,6 @@
             "type": "number"
           }
         },
-        "type": "object"
-      },
-      "UpsertAiTaskDefaultRequest": {
-        "properties": {
-          "configJson": {
-            "description": "Task-specific extras (thresholds, etc.) persisted as JsonB",
-            "type": "object"
-          },
-          "expectedVersion": {
-            "description": "OCC token. 0 = create (no row yet); >0 = compare-and-set against the current version (412 on drift).",
-            "example": 0,
-            "type": "number"
-          },
-          "modelSlug": {
-            "description": "Registry model slug to bind to the task (must resolve to an ENABLED AiModel with a compatible taskType)",
-            "example": "granite-guardian-4.1-8b",
-            "type": "string"
-          }
-        },
-        "required": [
-          "modelSlug"
-        ],
         "type": "object"
       },
       "UpsertPlatformStorageConfigRequest": {
@@ -26767,365 +26585,6 @@
         "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": [
           "svc:admin:ai-service:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/ai-task-defaults": {
-      "get": {
-        "deprecated": true,
-        "description": "Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, guardrail.pii, guardrail.pii.spans, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AiTaskDefaultAdminController_getEffective",
-        "parameters": [
-          {
-            "description": "AI task key. Omit for all keys (array response).",
-            "in": "query",
-            "name": "taskKey",
-            "required": false,
-            "schema": {
-              "enum": [
-                "guardrail.validate",
-                "guardrail.safety",
-                "guardrail.groundedness",
-                "guardrail.pii",
-                "guardrail.pii.spans",
-                "nlp.ner",
-                "nlp.classification",
-                "nlp.diagnosis",
-                "nlp.sentiment",
-                "nlp.toxicity",
-                "text.live",
-                "text.finalize",
-                "text.live.fallback",
-                "text.finalize.fallback",
-                "text.test",
-                "harness.judge",
-                "vlm.extract"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "description": "Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.",
-            "in": "query",
-            "name": "tenantId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "One EffectiveAiTaskDefaultResponse, or an array of them when taskKey is omitted."
-          },
-          "400": {
-            "description": "Unknown taskKey."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Resolve the effective default model for one AI task key — or ALL keys when taskKey is omitted",
-        "tags": [
-          "admin-ai-task-defaults"
-        ],
-        "x-hope-abilities": [
-          "read:AiTaskDefault"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:ai-task-default:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/ai-task-defaults/options": {
-      "get": {
-        "deprecated": true,
-        "description": "ENABLED AiModel rows whose taskType is compatible with the key (guardrail.validate → GUARDRAIL, nlp.ner → TOKEN_CLASSIFICATION, nlp.classification → TEXT_CLASSIFICATION). Read via the SHARED-READ registry query (r2605 Finding E): visibility is [caller tenant, SYSTEM] de-duplicated by slug (tenant clone wins), so tenant admins get their picker options here — including the SYSTEM catalog — without needing the super-admin-only /admin/ai-models surface. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AiTaskDefaultAdminController_getOptions",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "taskKey",
-            "required": true,
-            "schema": {
-              "enum": [
-                "guardrail.validate",
-                "guardrail.safety",
-                "guardrail.groundedness",
-                "guardrail.pii",
-                "guardrail.pii.spans",
-                "nlp.ner",
-                "nlp.classification",
-                "nlp.diagnosis",
-                "nlp.sentiment",
-                "nlp.toxicity",
-                "text.live",
-                "text.finalize",
-                "text.live.fallback",
-                "text.finalize.fallback",
-                "text.test",
-                "harness.judge",
-                "vlm.extract"
-              ],
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ModelResponse"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "description": "Unknown or missing taskKey."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "List the registry models selectable as the default for one AI task key",
-        "tags": [
-          "admin-ai-task-defaults"
-        ],
-        "x-hope-abilities": [
-          "read:AiTaskDefault"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:ai-task-default:manage"
-        ]
-      }
-    },
-    "/api/v1/admin/ai-task-defaults/row": {
-      "get": {
-        "deprecated": true,
-        "description": "Returns the tenant row, or a `version:0` placeholder when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`; the global ETagInterceptor stamps `ETag` from it). DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `read:AiTaskDefault`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AiTaskDefaultAdminController_getRow",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "taskKey",
-            "required": true,
-            "schema": {
-              "enum": [
-                "guardrail.validate",
-                "guardrail.safety",
-                "guardrail.groundedness",
-                "guardrail.pii",
-                "guardrail.pii.spans",
-                "nlp.ner",
-                "nlp.classification",
-                "nlp.diagnosis",
-                "nlp.sentiment",
-                "nlp.toxicity",
-                "text.live",
-                "text.finalize",
-                "text.live.fallback",
-                "text.finalize.fallback",
-                "text.test",
-                "harness.judge",
-                "vlm.extract"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "description": "Platform-admin only: target tenant.",
-            "in": "query",
-            "name": "tenantId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AiTaskDefaultResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "description": "Unknown or missing taskKey."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Get the raw, editable AiTaskDefault row for a (tenant, taskKey)",
-        "tags": [
-          "admin-ai-task-defaults"
-        ],
-        "x-hope-abilities": [
-          "read:AiTaskDefault"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": [
-          "svc:admin:ai-task-default:manage"
-        ]
-      },
-      "put": {
-        "deprecated": true,
-        "description": "`modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. `If-Match` (RFC 7232) carries the version read from the prior GET — `\"0\"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for tenant admins). `guardrail.*` is tenant-admin configurable , but the slug must resolve to a SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise. DEPRECATED (TASK-862 - removed in R3; use /api/v1/admin/ai-routing-policies).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-task-default:manage`).\n\n**Abilities** — `manage:AiTaskDefault`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "AiTaskDefaultAdminController_upsertRow",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "taskKey",
-            "required": true,
-            "schema": {
-              "enum": [
-                "guardrail.validate",
-                "guardrail.safety",
-                "guardrail.groundedness",
-                "guardrail.pii",
-                "guardrail.pii.spans",
-                "nlp.ner",
-                "nlp.classification",
-                "nlp.diagnosis",
-                "nlp.sentiment",
-                "nlp.toxicity",
-                "text.live",
-                "text.finalize",
-                "text.live.fallback",
-                "text.finalize.fallback",
-                "text.test",
-                "harness.judge",
-                "vlm.extract"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "description": "Platform-admin only: target tenant.",
-            "in": "query",
-            "name": "tenantId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "RFC 7232 strong validator carrying the version the client read (e.g. `\"0\"` to create).",
-            "in": "header",
-            "name": "If-Match",
-            "required": true,
-            "schema": {
-              "example": "\"0\"",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertAiTaskDefaultRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AiTaskDefaultResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "description": "Unknown task key, or a model slug that is unknown or incompatible with the task."
-          },
-          "403": {
-            "description": "nlp.*/harness.* keys are super-admin-only. guardrail.* is tenant-admin configurable  but rejects a modelSlug outside the platform-approved (SYSTEM-tenant) list."
-          },
-          "412": {
-            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
-          },
-          "428": {
-            "description": "If-Match header is required for this operation."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Create or update the (tenant, taskKey) default-model row under optimistic concurrency",
-        "tags": [
-          "admin-ai-task-defaults"
-        ],
-        "x-hope-abilities": [
-          "manage:AiTaskDefault"
-        ],
-        "x-hope-api-key-scopes": [],
-        "x-hope-credentials": [
-          "user-jwt",
-          "service-account"
-        ],
-        "x-hope-permission-mode": "AND",
-        "x-hope-plane": "admin",
-        "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": [
-          "svc:admin:ai-task-default:manage"
         ]
       }
     },
@@ -43462,11 +42921,6 @@
                 "nlp.diagnosis",
                 "nlp.sentiment",
                 "nlp.toxicity",
-                "text.live",
-                "text.finalize",
-                "text.live.fallback",
-                "text.finalize.fallback",
-                "text.test",
                 "harness.judge",
                 "vlm.extract"
               ],
@@ -43607,11 +43061,6 @@
                 "nlp.diagnosis",
                 "nlp.sentiment",
                 "nlp.toxicity",
-                "text.live",
-                "text.finalize",
-                "text.live.fallback",
-                "text.finalize.fallback",
-                "text.test",
                 "harness.judge",
                 "vlm.extract"
               ],
@@ -66794,10 +66243,6 @@
     {
       "description": "Registration and health of the downstream Python inference services.",
       "name": "admin-ai-services"
-    },
-    {
-      "description": "Which provider and model serve each AI task, resolved tenant-first with a SYSTEM fallback.",
-      "name": "admin-ai-task-defaults"
     },
     {
       "description": "Per-tenant CORS origin allow-list.",

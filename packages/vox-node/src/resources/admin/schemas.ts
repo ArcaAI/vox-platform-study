@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 383 component schemas the generated surface transitively
+ * Only the 381 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -244,25 +244,6 @@ export interface AiProviderConnectionResponse {
   /** Last update timestamp (ISO 8601). */
   updatedAt?: string;
   /** Row version for optimistic concurrency. 0 when no row exists yet. */
-  version: number;
-}
-
-export interface AiTaskDefaultResponse {
-  /** Task-specific extras (JsonB) */
-  configJson?: Record<string, unknown> | null;
-  /** Created timestamp (ISO) */
-  createdAt?: string;
-  /** Bound registry model slug. Null on the version:0 placeholder (no row yet). */
-  modelSlug?: string | null;
-  /** Resource status */
-  resourceStatus?: string;
-  /** AI task key */
-  taskKey: string;
-  /** Owning tenant id (SYSTEM tenant = platform default row) */
-  tenantId: string;
-  /** Updated timestamp (ISO) */
-  updatedAt?: string;
-  /** OCC version. 0 when no row exists yet (create with expectedVersion=0). */
   version: number;
 }
 
@@ -2329,9 +2310,9 @@ export interface HarnessPolicyResponse {
   source: 'tenant' | 'system-default' | 'code-default';
   /** Owning tenant id of the resolved policy row (SYSTEM tenant for the global default). */
   tenantId: string;
-  /** TEXT generation model id (null = let the TEXT service choose). */
+  /** TEXT generation model id, derived from the assigned TEXT_GENERATION agent (null = no agent assigned). */
   textModel?: string | null;
-  /** TEXT generation provider id (null = let the TEXT service choose). */
+  /** TEXT generation provider id, derived from the assigned TEXT_GENERATION agent (null = no agent assigned). */
   textProvider?: string | null;
   /** Per-run token budget (0 or null = unbounded). */
   tokenBudgetPerRun?: number | null;
@@ -5234,10 +5215,6 @@ export interface UpdateHarnessPolicyRequest {
   retrievalEnabled?: boolean | null;
   /** Master safety-guardrail toggle. */
   safetyEnabled?: boolean;
-  /** TEXT generation model id (null = let the TEXT service choose). */
-  textModel?: string | null;
-  /** TEXT generation provider id (null = let the TEXT service choose). */
-  textProvider?: string | null;
   /** Allow-listed tool ids the loop may call (null = all tools allowed). */
   toolAllowlist?: string[] | null;
   /** Warm-start toggle (null = harness env default). */
@@ -5857,15 +5834,6 @@ export interface UpsertAiProviderConnectionRequest {
   timeoutS?: number | null;
   /** Ceiling — tokens per minute (LLM/embeddings; characters for TTS). Null/omitted = no opinion. */
   tpmLimit?: number | null;
-}
-
-export interface UpsertAiTaskDefaultRequest {
-  /** Task-specific extras (thresholds, etc.) persisted as JsonB */
-  configJson?: Record<string, unknown>;
-  /** OCC token. 0 = create (no row yet); >0 = compare-and-set against the current version (412 on drift). */
-  expectedVersion?: number;
-  /** Registry model slug to bind to the task (must resolve to an ENABLED AiModel with a compatible taskType) */
-  modelSlug: string;
 }
 
 export interface UpsertPlatformStorageConfigRequest {

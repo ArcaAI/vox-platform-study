@@ -13,7 +13,7 @@
  *
  * The hand-authored {@link AdminResource} base — the part that holds judgment
  * (pagination, `If-Match` plumbing, scope-aware error mapping) — is
- * re-exported first; the 52 generated per-area resources follow.
+ * re-exported first; the 51 generated per-area resources follow.
  *
  * ## Deliberately absent
  *
@@ -57,7 +57,6 @@ export { AdminAgenticResource } from './agentic';
 export { AdminAiModelResource } from './ai-model';
 export { AdminAiProviderResource } from './ai-provider';
 export { AdminAiServiceResource } from './ai-service';
-export { AdminAiTaskDefaultResource } from './ai-task-default';
 export { AdminAllowedOriginResource } from './allowed-origin';
 export { AdminApikeyResource } from './apikey';
 export { AdminAudioPipelineResource } from './audio-pipeline';
