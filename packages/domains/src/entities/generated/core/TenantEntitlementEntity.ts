@@ -29,9 +29,6 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   monthlyNlpTextUnits?: bigint | null;
   monthlyEmbeddingTokens?: bigint | null;
   monthlySpendLimitMicros?: bigint | null;
-  featureDnaReports?: boolean | null;
-  featureVoiceEnrollment?: boolean | null;
-  featureMonitoringAccess?: boolean | null;
   featurePlatformDefaultCredential?: boolean | null;
   featurePaletteStt?: boolean | null;
   featureAgenticLoop?: boolean | null;
@@ -61,9 +58,6 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _monthlyNlpTextUnits?: ITenantEntitlementEntity['monthlyNlpTextUnits'];
   private _monthlyEmbeddingTokens?: ITenantEntitlementEntity['monthlyEmbeddingTokens'];
   private _monthlySpendLimitMicros?: ITenantEntitlementEntity['monthlySpendLimitMicros'];
-  private _featureDnaReports?: ITenantEntitlementEntity['featureDnaReports'];
-  private _featureVoiceEnrollment?: ITenantEntitlementEntity['featureVoiceEnrollment'];
-  private _featureMonitoringAccess?: ITenantEntitlementEntity['featureMonitoringAccess'];
   private _featurePlatformDefaultCredential?: ITenantEntitlementEntity['featurePlatformDefaultCredential'];
   private _featurePaletteStt?: ITenantEntitlementEntity['featurePaletteStt'];
   private _featureAgenticLoop?: ITenantEntitlementEntity['featureAgenticLoop'];
@@ -92,9 +86,6 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._monthlyNlpTextUnits = init.monthlyNlpTextUnits;
     this._monthlyEmbeddingTokens = init.monthlyEmbeddingTokens;
     this._monthlySpendLimitMicros = init.monthlySpendLimitMicros;
-    this._featureDnaReports = init.featureDnaReports;
-    this._featureVoiceEnrollment = init.featureVoiceEnrollment;
-    this._featureMonitoringAccess = init.featureMonitoringAccess;
     this._featurePlatformDefaultCredential = init.featurePlatformDefaultCredential;
     this._featurePaletteStt = init.featurePaletteStt;
     this._featureAgenticLoop = init.featureAgenticLoop;
@@ -246,30 +237,6 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set monthlySpendLimitMicros(value: ITenantEntitlementEntity['monthlySpendLimitMicros']) {
     this.setProperty('monthlySpendLimitMicros', value);
-  }
-
-  get featureDnaReports(): ITenantEntitlementEntity['featureDnaReports'] {
-    return this._featureDnaReports;
-  }
-
-  set featureDnaReports(value: ITenantEntitlementEntity['featureDnaReports']) {
-    this.setProperty('featureDnaReports', value);
-  }
-
-  get featureVoiceEnrollment(): ITenantEntitlementEntity['featureVoiceEnrollment'] {
-    return this._featureVoiceEnrollment;
-  }
-
-  set featureVoiceEnrollment(value: ITenantEntitlementEntity['featureVoiceEnrollment']) {
-    this.setProperty('featureVoiceEnrollment', value);
-  }
-
-  get featureMonitoringAccess(): ITenantEntitlementEntity['featureMonitoringAccess'] {
-    return this._featureMonitoringAccess;
-  }
-
-  set featureMonitoringAccess(value: ITenantEntitlementEntity['featureMonitoringAccess']) {
-    this.setProperty('featureMonitoringAccess', value);
   }
 
   get featurePlatformDefaultCredential(): ITenantEntitlementEntity['featurePlatformDefaultCredential'] {

@@ -39,11 +39,15 @@ export interface CapabilityUsageRow {
   exceeded: boolean;
 }
 
-export interface ResolvedFeatures {
-  dnaReports: boolean;
-  voiceEnrollment: boolean;
-  monitoringAccess: boolean;
-}
+/**
+ * Resolved feature capabilities. TASK-883 retired `dnaReports` /
+ * `voiceEnrollment` / `monitoringAccess`: they were display-only, gated
+ * nothing, and the browser-side capabilities they named (voice enrollment,
+ * diarization) are server-side agent decisions now. The surviving flags are
+ * enforced server-side and the payload under-declares some of them, so this is
+ * an open record rather than a fixed shape.
+ */
+export type ResolvedFeatures = Record<string, boolean>;
 
 /** Read-only capability/usage snapshot (`GET /admin/entitlements/tenants/:id` and `/tenants/me/entitlements`). */
 export interface EntitlementCapabilities {
@@ -74,9 +78,6 @@ export interface PlanEntitlement {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
-  featureDnaReports: boolean;
-  featureVoiceEnrollment: boolean;
-  featureMonitoringAccess: boolean;
   modelTier: string;
   rateLimitTier: string;
   version: number;
@@ -94,9 +95,6 @@ export interface UpdatePlanEntitlementInput {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
-  featureDnaReports?: boolean;
-  featureVoiceEnrollment?: boolean;
-  featureMonitoringAccess?: boolean;
   modelTier?: string;
   rateLimitTier?: string;
   expectedVersion: number;
@@ -116,9 +114,6 @@ export interface TenantEntitlementOverride {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
-  featureDnaReports?: boolean | null;
-  featureVoiceEnrollment?: boolean | null;
-  featureMonitoringAccess?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
@@ -137,9 +132,6 @@ export interface UpsertTenantOverrideInput {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
-  featureDnaReports?: boolean | null;
-  featureVoiceEnrollment?: boolean | null;
-  featureMonitoringAccess?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;

@@ -185,15 +185,13 @@ export interface PlanEntitlementValues {
   monthlyTtsCharacters: number | null;
   monthlyNlpTextUnits: number | null;
   monthlyEmbeddingTokens: number | null;
-  featureDnaReports: boolean;
-  featureVoiceEnrollment: boolean;
-  featureMonitoringAccess: boolean;
   /**
    * May this plan's tenants consume the PLATFORM-DEFAULT
    * (SYSTEM-tenant) provider credential when they hold no key of their own?
    *
-   * Unlike its three neighbours this flag is ENFORCED, not display-only: it
-   * decides whether the provider-credential cascade reaches the SYSTEM tier,
+   * ENFORCED — like every flag left on this interface, since TASK-883 retired
+   * the three display-only booleans that used to sit above it. It decides
+   * whether the provider-credential cascade reaches the SYSTEM tier,
    * i.e. whether the platform spends its own money serving this tenant.
    *
    * `false` on all four plans. A plan-level grant on PRO or ENTERPRISE
@@ -205,10 +203,8 @@ export interface PlanEntitlementValues {
   featurePlatformDefaultCredential: boolean;
   /**
    * May this plan's tenants publish an `stt`-palette `WorkflowDefinition` ?
-   * Display-only (checked once at publish time, never at runtime) — `true` on every plan below:
-   * STT pipeline authoring is a core platform capability, not a premium add-on, unlike
-   * `featureDnaReports`/`featureVoiceEnrollment`. See
-   * gate.
+   * Checked once at publish time, never at runtime — `true` on every plan below: STT
+   * pipeline authoring is a core platform capability, not a premium add-on.
    */
   featurePaletteStt: boolean;
   /**
@@ -267,9 +263,6 @@ const PRO_VALUES: PlanEntitlementValues = {
   monthlyTtsCharacters: 1_000_000,
   monthlyNlpTextUnits: 15_000,
   monthlyEmbeddingTokens: 750_000,
-  featureDnaReports: true,
-  featureVoiceEnrollment: true,
-  featureMonitoringAccess: false,
   featurePlatformDefaultCredential: false,
   featurePaletteStt: true,
   featureAgenticLoop: true,
@@ -311,9 +304,6 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     monthlyTtsCharacters: 200_000,
     monthlyNlpTextUnits: 3_000,
     monthlyEmbeddingTokens: 150_000,
-    featureDnaReports: false,
-    featureVoiceEnrollment: false,
-    featureMonitoringAccess: false,
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
     featureAgenticLoop: false,
@@ -343,9 +333,6 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     monthlyTtsCharacters: null,
     monthlyNlpTextUnits: null,
     monthlyEmbeddingTokens: null,
-    featureDnaReports: true,
-    featureVoiceEnrollment: true,
-    featureMonitoringAccess: true,
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
     featureAgenticLoop: true,

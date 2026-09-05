@@ -20,9 +20,6 @@ describe('resolveEntitlements', () => {
       // `platformDefaultCredential` is the ONE feature that is
       // NOT `true` for a null-plan tenant — see the dedicated test below.
       expect(r.features).toEqual({
-        dnaReports: true,
-        voiceEnrollment: true,
-        monitoringAccess: true,
         platformDefaultCredential: false,
         paletteStt: true,
         agenticLoop: true,
@@ -31,10 +28,10 @@ describe('resolveEntitlements', () => {
     });
 
     it('ignores a tenant override for a null plan (safety net stays ungated)', () => {
-      const r = resolveEntitlements(null, null, { maxUsers: 1, featureMonitoringAccess: false });
+      const r = resolveEntitlements(null, null, { maxUsers: 1, featureAgenticLoop: false });
       expect(r.gated).toBe(false);
       expect(r.limits.maxUsers).toBeNull();
-      expect(r.features.monitoringAccess).toBe(true);
+      expect(r.features.agenticLoop).toBe(true);
     });
   });
 
@@ -54,9 +51,6 @@ describe('resolveEntitlements', () => {
       // STARTER = $50/mo bundling 50 consultations.
       expect(r.limits.monthlyConsultations).toBe(50);
       expect(r.features).toEqual({
-        dnaReports: false,
-        voiceEnrollment: false,
-        monitoringAccess: false,
         platformDefaultCredential: false,
         paletteStt: true,
         // the loop is the differentiating plan feature; STARTER is out.
@@ -77,14 +71,14 @@ describe('resolveEntitlements', () => {
       expect(trial.rateLimitTier).toBe(pro.rateLimitTier);
     });
 
-    it('ENTERPRISE is anchored at ~100 seats and unlocks monitoring', () => {
+    it('ENTERPRISE is anchored at ~100 seats with negotiated (unlimited) usage', () => {
       const r = resolveEntitlements(TenantPlan.ENTERPRISE);
       expect(r.limits.maxUsers).toBe(100);
       expect(r.limits.maxConcurrentSessions).toBe(100);
       expect(r.limits.storageQuotaBytes).toBe(1_000 * GIB);
       // ENTERPRISE usage is negotiated — unlimited by default.
       expect(r.limits.monthlyConsultations).toBeNull();
-      expect(r.features.monitoringAccess).toBe(true);
+      expect(r.features.agenticLoop).toBe(true);
       expect(r.modelTier).toBe('full_custom');
       expect(r.rateLimitTier).toBe('relaxed');
     });
@@ -103,24 +97,25 @@ describe('resolveEntitlements', () => {
       const r = resolveEntitlements(
         TenantPlan.STARTER,
         { maxUsers: 8 },
-        { maxUsers: 12, featureDnaReports: true, rateLimitTier: 'relaxed', rateLimitPerMinute: 600 },
+        { maxUsers: 12, featureAgenticLoop: true, rateLimitTier: 'relaxed', rateLimitPerMinute: 600 },
       );
       expect(r.limits.maxUsers).toBe(12);
-      expect(r.features.dnaReports).toBe(true);
+      // STARTER seeds `agenticLoop: false`; the tenant override wins.
+      expect(r.features.agenticLoop).toBe(true);
       expect(r.rateLimitTier).toBe('relaxed');
       expect(r.rateLimitPerMinute).toBe(600);
     });
 
     it('a null override field inherits the plan default (does not zero it out)', () => {
-      const r = resolveEntitlements(TenantPlan.PRO, null, { maxUsers: null, featureVoiceEnrollment: null, modelTier: null });
+      const r = resolveEntitlements(TenantPlan.PRO, null, { maxUsers: null, featureAgenticLoop: null, modelTier: null });
       expect(r.limits.maxUsers).toBe(25);
-      expect(r.features.voiceEnrollment).toBe(true);
+      expect(r.features.agenticLoop).toBe(true);
       expect(r.modelTier).toBe('full');
     });
 
     it('an override can turn a feature OFF (false is not treated as inherit)', () => {
-      const r = resolveEntitlements(TenantPlan.PRO, null, { featureVoiceEnrollment: false });
-      expect(r.features.voiceEnrollment).toBe(false);
+      const r = resolveEntitlements(TenantPlan.PRO, null, { featureAgenticLoop: false });
+      expect(r.features.agenticLoop).toBe(false);
     });
   });
 
@@ -284,11 +279,10 @@ describe('resolveEntitlements', () => {
      */
     it('UNGATED_ENTITLEMENTS resolves platformDefaultCredential FALSE — the one asymmetric feature', () => {
       expect(UNGATED_ENTITLEMENTS.features.platformDefaultCredential).toBe(false);
-      // …while its three neighbours stay `true`, so the asymmetry is deliberate
-      // and visible rather than an oversight in one direction or the other.
-      expect(UNGATED_ENTITLEMENTS.features.dnaReports).toBe(true);
-      expect(UNGATED_ENTITLEMENTS.features.voiceEnrollment).toBe(true);
-      expect(UNGATED_ENTITLEMENTS.features.monitoringAccess).toBe(true);
+      // …while its neighbours stay `true`, so the asymmetry is deliberate and
+      // visible rather than an oversight in one direction or the other.
+      expect(UNGATED_ENTITLEMENTS.features.paletteStt).toBe(true);
+      expect(UNGATED_ENTITLEMENTS.features.agenticLoop).toBe(true);
 
       // …and the resolver actually returns it for a null plan.
       expect(resolveEntitlements(null).features.platformDefaultCredential).toBe(false);

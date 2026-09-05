@@ -29,22 +29,23 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
   /*
    * `entitlements.featureDnaReports`, `.featureVoiceEnrollment` and
    * `.featureMonitoringAccess` were generated here from a three-row table.
-   * TASK-872 removed them.
+   * TASK-872 removed the descriptors; TASK-883 removed the FLAGS THEMSELVES —
+   * `PlanEntitlement` and `TenantEntitlement` no longer carry those columns,
+   * because they resolved into the capability snapshot, were rendered by three
+   * console badges, and were consulted by no gate.
    *
-   * The FLAGS are alive and unaffected — they are real `PlanEntitlement` /
-   * `TenantEntitlement` columns, resolved by `resolve-entitlements.ts` and
-   * edited through the entitlements admin surface. What was dead was their
-   * presence in THIS registry: the `entitlement` tier has no resolution lane
-   * (`EffectiveSettingsService` throws for it) and no write lane, so the three
-   * descriptors could only ever appear in the catalog listing as controls that
-   * answer nothing. Cataloguing a plan ceiling as a setting also blurs the rule
-   * that entitlements BOUND what a tenant may set and never supply a value.
+   * Two separate findings, in that order. The descriptors were dead first: the
+   * `entitlement` tier has no resolution lane (`EffectiveSettingsService`
+   * throws for it) and no write lane, so they could only ever appear in the
+   * catalog listing as controls that answer nothing. Cataloguing a plan ceiling
+   * as a setting also blurs the rule that entitlements BOUND what a tenant may
+   * set and never supply a value.
    */
   /*
-   * Declared separately from the three above, not folded into the
-   * `.map`, because ONE field differs and that field is the whole point.
+   * Declared on its own, not folded into the retired three's `.map`, because
+   * ONE field differed and that field is the whole point.
    *
-   * `failMode: 'closed'`. The other three feature descriptors are
+   * `failMode: 'closed'`. The three retired feature descriptors were
    * `open-to-default`, which is right for a display flag: an unresolved value
    * degrades to "show it". This one decides whether the platform SPENDS ITS OWN
    * MONEY on a tenant's cloud calls, so an unresolved value must raise rather
