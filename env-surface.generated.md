@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 118 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 23 |
-| Python declared fields | 339 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 387 |
-| `turbo.json#globalEnv` entries | 516 |
+| Python declared fields | 327 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 374 |
+| `turbo.json#globalEnv` entries | 503 |
 
 ## Variables — the TypeScript platform surface
 
@@ -194,9 +194,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `API_GATEWAY_URL` | `apps/stt` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `APP_NAME__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `stt` | commented | — |
 | `APP_VERSION__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `2.0.0` | commented | — |
-| `AZURE_FOUNDRY_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `false` | commented | — |
-| `AZURE_FOUNDRY_ENDPOINT__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | — | commented | — |
-| `AZURE_SPEECH_REGION__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | — | commented | — |
 | `AZURE_STORAGE_ACCOUNT` | `apps/stt` | no | no | `` | commented | — |
 | `AZURE_STORAGE_ACCOUNT_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `AZURE_STORAGE_CONNECTION_STRING` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
@@ -400,7 +397,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `NLP_WORKERS` | `apps/nlp` | no | no | `1` | commented | `WORKERS` |
 | `NODE_ENV` | `apps/text` | no | no | `development` | commented | — |
 | `ONNX_NUM_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
-| `OPENAI_BASE_URL__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `https://api.openai.com/v1` | commented | — |
 | `OTEL_ENABLED` | `apps/stt` | no | no | `false` | commented | — |
 | `OTEL_EXPORTER_ENDPOINT` | `apps/stt` | no | no | `http://localhost:4317` | commented | — |
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `apps/text` | no | no | `` | live | `GENAI_CAPTURE_MESSAGE_CONTENT` |
@@ -412,7 +408,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `PUNCTUATION_MAX_LENGTH__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `300` | commented | — |
 | `PUNCTUATION_MODEL_CACHE_DIR__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | — | commented | — |
 | `REDIS_URL` | `apps/stt` | no | no | `redis://localhost:6379/0` | commented | — |
-| `SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `https://api.sarvam.ai` | commented | — |
 | `SECURITY_CORS_ALLOW_CREDENTIALS` | `apps/nlp` | no | no | `false` | commented | — |
 | `SECURITY_CORS_METHODS` | `apps/nlp` | no | no | `["GET", "POST", "PUT", "DELETE", "OPTIONS"]` | commented | — |
 | `SECURITY_CORS_ORIGINS` | `apps/nlp` | no | no | `["*"]` | commented | — |
@@ -434,7 +429,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `STREAMING_MAX_AUDIO_BUFFER_BYTES__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500000000` | commented | — |
 | `STREAMING_MAX_BATCH_SIZE__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
 | `STREAMING_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
-| `STREAMING_PARTIAL_WINDOW_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `6` | commented | — |
 | `STREAMING_PUNCTUATION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.4` | commented | — |
 | `STREAMING_REAPER_INTERVAL_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `300` | commented | — |
 | `STREAMING_RESULT_STREAM_EXPIRE_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `3600` | commented | — |
@@ -471,8 +465,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TOKEN_CLASSIFIER_USE_GPU` | `apps/nlp` | no | no | `true` | commented | — |
 | `TORCH_NUM_INTEROP_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `1` | commented | — |
 | `TORCH_NUM_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
-| `TRANSCRIPTION_CHUNK_LENGTH_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `15` | commented | — |
-| `TRANSCRIPTION_STRIDE_LENGTH_S__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `4,2` | commented | — |
 | `TRANSCRIPTION_TIMEOUT_SECONDS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `600` | commented | — |
 | `TTS_AZURE_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
 | `TTS_AZURE_REGION__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `eastus` | commented | — |
@@ -516,12 +508,8 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TTS_WARMUP_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/tts` | no | no | `false` | commented | — |
 | `VAD_MIN_SILENCE_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `500` | commented | — |
 | `VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `100` | commented | — |
-| `VAD_MODEL_PATH__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | — | commented | — |
-| `VAD_SPEECH_PAD_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `200` | commented | — |
 | `VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.5` | commented | — |
 | `VOICE_PROFILE_MIN_SIMILARITY__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0.6` | commented | — |
-| `WHISPER_CPP_CONSULTATION_PROMPT_ENABLED__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `false` | commented | — |
-| `WHISPER_CPP_MAX_AUDIO_SECONDS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `7` | commented | — |
 | `WHISPER_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `8` | commented | — |
 | `WORKER_MAX_RETRIES__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `3` | commented | — |
 | `WORKER_POLL_TIMEOUT_MS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `1000` | commented | — |
@@ -564,5 +552,4 @@ promotion into its service’s `BaseSettings`.
 | `STT_BENCH_CORPUS` | `apps/stt/scripts/benchmark_pipelines.py` |
 | `STT_BENCH_PIPELINES` | `apps/stt/scripts/benchmark_pipelines.py` |
 | `STT_BENCH_REFERENCE_DIR` | `apps/stt/scripts/benchmark_pipelines.py` |
-| `WHISPER_CPP_MAX_AUDIO_SECONDS` | `apps/stt/scripts/mlen_scorecard.py` |
 | `WHISPER_MLEN_GGUF` | `apps/stt/scripts/mlen_scorecard.py` |
