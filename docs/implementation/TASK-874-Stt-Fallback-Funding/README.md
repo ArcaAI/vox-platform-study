@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review — implemented, gates green, awaiting the orchestrator's merge |
 | **Type** | bugfix (metering correctness) |
 | **Program** | TASK-870 Configuration Governance — wave 1, lane D |
 | **Branch** | `task-874-stt-fallback-funding` (worktree `../hope-v2-task-874`) |
@@ -147,10 +147,62 @@ Python (`apps/stt`):
 
 ## Implementation Summary
 
-_Filled on completion._
+**Landed as designed: option (a), per-engine usage segments aggregated by `(engine, deployment)`
+and anchored to the session totals.** A streaming session now bills engine-time — the tenant's BYO
+minutes as `BYOK`, the platform fallback's as `CLOUD` — instead of attributing the whole session to
+whichever engine finished it.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `apps/stt/src/stt/streaming/usage_segments.py` (new, 168 lines) | `EngineUsageAccumulator` + `UsageSegment`. Opens a span per live engine, aggregates by `(engine, deployment)` in first-appearance order, anchors the last span to the session totals, drops zero-duration spans and spans it cannot attribute. `close()` is PURE, so a reaper push-back racing a late DELETE derives identical segments and therefore identical idempotency keys. It never decides funding: the caller injects `resolve`, which is `resolve_usage_attribution` bound to the session's `provider_overrides`. |
+| `apps/stt/src/stt/streaming/session_manager.py` | `_session_usage_segments` state + `_session_audio_seconds` / `_start_usage_segments` / `_advance_usage_segments` helpers; start at create; advance inside `_apply`; close in `_build_teardown_summary` (which now also emits `segments`); drop in session cleanup. |
+| `apps/stt/src/stt/streaming/api/schemas.py` | `StreamingUsageSegment` + `segments` on `StreamingSessionTeardownResponse` (the DELETE route does `StreamingSessionTeardownResponse(**summary)`, so an undeclared field would never reach the gateway). |
+| `packages/applications/.../streaming/dto/streaming-session.dto.ts` | `StreamingUsageSegment` + optional `segments` on `StreamingSessionTeardownSummary`. |
+| `packages/applications/.../streaming/streamingSession.service.ts` | `usageSegments()` normalizer + `emitStreamingUsage` emits one ledger batch per segment. |
+| `packages/applications/.../agent-resolver/asr-agent-resolver.service.ts` | `fundingTier` resolved from the PRIMARY engine's provider specifically, not first-resolved-wins. |
+| `apps/api/src/modules/internal/dto/stt-streaming-usage.request.ts` | `SttStreamingUsageSegmentRequest` + nested-validated optional `segments` on the reaper push-back body. |
+| tests | `apps/stt/tests/unit/streaming/test_session_manager_usage_segments.py` (new, 11 tests), `apps/api/src/modules/internal/__tests__/stt-streaming-usage.request.test.ts` (new, 4 tests), plus 2 resolver cases and 5 ledger cases added to the existing suites. |
+
+### Two findings worth carrying forward
+
+1. **The defect was the mirror image of the one the program README recorded.** The README says a
+   switched BYO session bills as `BYOK` end to end. It does not: `_session_asr_formats` holds the
+   engine loaded LAST, so the session bills entirely to the engine that FINISHED. A BYO session that
+   fails over meters all of its minutes as platform `CLOUD`; one that switches back meters the
+   platform's own fallback minutes as `BYOK` and hides them from COGS. Both directions are wrong,
+   and the fix — engine-time — is the same either way. The scalar this lane also corrected
+   (`ResolvedAsrSession.fundingTier`) is a separate, latent trap with no consumer yet.
+2. **`attributesJson` is a closed PHI allow-list, and an undeclared key is REJECTED, not dropped.**
+   The first implementation stamped `segmentIndex` / `segmentCount`; `validateUsageAttributes`
+   (`usageLedger/usage-attributes.ts`) rejects both, so `recordUsage` would have thrown
+   `ArgumentInvalidException` and written NOTHING — a total metering loss that a mocked-ledger unit
+   test cannot see. The keys were dropped rather than allow-listed: extending that list is a
+   deliberate act in another lane's file, and a failed-over session is already countable without it
+   (its rows share `sessionId` and differ in `provider`/`deployment`). A regression test now runs
+   the real validator over every bag this emitter builds.
+
+### Deliberate non-changes
+
+- `apps/stt/src/stt/transcription/batch_service.py` — one batch job runs one engine (the worker
+  never assembles the spec's fallback chain), and `resolve_usage_attribution` already derives its
+  funding from that engine's own override entry. Left untouched; the streaming path REUSES it, so
+  the two can still never drift.
+- The v1-compat `POST api/stt/start_session` path tears down through the same
+  `StreamingSessionService.removeSession`, so it inherits the fix with no compat-specific code.
+- `packages/applications/src/services/usageLedger/**` — not this lane's, and no change is needed.
+
+### Wire-shape consequence for the orchestrator
+
+`SttStreamingUsagePushbackRequest` gained a field, so **`apps/api/openapi.json` (and the portal /
+`vox-node` artifacts derived from it) will drift after the merge and must be regenerated**. This
+lane deliberately did not regenerate them (rule 14 §3). `route-manifest.json` is unaffected — no
+route, guard, decorator or scope changed.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-05 | Ticket opened; current state verified at `f3c91ca0c`; design chosen (per-engine segments, aggregated by `(engine, deployment)`, anchored to session totals). |
+| 2026-09-05 | Implemented TDD. Corrected the recorded defect direction (last-engine-wins, not BYOK-end-to-end). Dropped `segmentIndex`/`segmentCount` after the `attributesJson` allow-list rejected them, and added a regression test running the real validator. All five gates green; batch and v1-compat paths confirmed correct without change. |
