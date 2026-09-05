@@ -5185,7 +5185,7 @@
       "apiKeyScopes": [],
       "requiredPermissions": [
         [
-          "manage",
+          "update",
           "Department"
         ]
       ],
@@ -7238,7 +7238,7 @@
       "svcScopes": [
         "svc:admin:settings:manage"
       ],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -7261,7 +7261,7 @@
       "svcScopes": [
         "svc:admin:settings:manage"
       ],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
