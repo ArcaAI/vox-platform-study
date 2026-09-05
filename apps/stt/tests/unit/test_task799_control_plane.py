@@ -74,12 +74,14 @@ class TestOverlay:
     def _snapshot(self, settings_block: dict[str, object]) -> dict[str, object]:
         return {"service": "stt", "settings": settings_block}
 
-    # Specimens changed in TASK-872. These four ran on `vad_threshold` /
-    # `vad_min_speech_duration_ms`, whose registry keys were removed: the live
-    # path takes its VAD parameters from `ResolvedAsrSpec`, so the control plane
-    # no longer claims to own them. `voice_profile_min_similarity` (float) and
-    # `vad_speech_pad_ms` (int) are still mapped, so the overlay mechanics below
-    # are exercised on knobs the control plane really does serve.
+    # Specimens changed in TASK-872 and again in TASK-880. They ran first on
+    # `vad_threshold` / `vad_min_speech_duration_ms` (removed in TASK-872 — the live
+    # path takes its VAD parameters from `ResolvedAsrSpec`), then on
+    # `vad_speech_pad_ms` and `vad_model_path` (removed in TASK-880 — the padding is
+    # an agent knob and the weights are the `AiModel` row). The overlay MECHANICS are
+    # what these tests are for, so they are re-specimened onto knobs the control plane
+    # really does serve: `voice_profile_min_similarity` (float),
+    # `punctuation_max_length` (int) and `punctuation_model_cache_dir` (`str | None`).
     def test_a_served_value_is_applied(self) -> None:
         settings = Settings(_env_file=None)
         key = CONTROL_PLANE_KEYS["voice_profile_min_similarity"]
@@ -113,30 +115,30 @@ class TestOverlay:
     def test_a_bool_is_never_read_as_a_number(self) -> None:
         """`bool` is an `int` subclass — the trap `_positive_int` already guards."""
         settings = Settings(_env_file=None)
-        before = settings.vad_speech_pad_ms
-        key = CONTROL_PLANE_KEYS["vad_speech_pad_ms"]
+        before = settings.punctuation_max_length
+        key = CONTROL_PLANE_KEYS["punctuation_max_length"]
         apply_control_plane(
             settings, self._snapshot({key: {"value": True, "dataType": "number", "source": "db"}})
         )
-        assert settings.vad_speech_pad_ms == before
+        assert settings.punctuation_max_length == before
 
     def test_an_empty_string_leaves_a_nullable_field_unset(self) -> None:
         """`''` is how a nullable string key spells "no opinion" on the wire.
 
-        The registry has no null literal for a `string` descriptor, so the five
+        The registry has no null literal for a `string` descriptor, so the remaining
         `str | None` fields carry `default: ''`. Adopting that as a real value
         would turn `None` — which every consumer reads as "unset, resolve it
         yourself" — into an empty path or an empty region, and the resulting
         `os.makedirs("")` failure looks nothing like a config problem.
         """
         settings = Settings(_env_file=None)
-        assert settings.vad_model_path is None
+        assert settings.punctuation_model_cache_dir is None
 
         applied = apply_control_plane(
             settings,
             self._snapshot(
                 {
-                    CONTROL_PLANE_KEYS["vad_model_path"]: {
+                    CONTROL_PLANE_KEYS["punctuation_model_cache_dir"]: {
                         "value": "",
                         "dataType": "string",
                         "source": "env-fallback",
@@ -145,7 +147,7 @@ class TestOverlay:
             ),
         )
         assert applied == []
-        assert settings.vad_model_path is None
+        assert settings.punctuation_model_cache_dir is None
 
     def test_a_real_value_still_reaches_a_nullable_field(self) -> None:
         settings = Settings(_env_file=None)
@@ -153,15 +155,15 @@ class TestOverlay:
             settings,
             self._snapshot(
                 {
-                    CONTROL_PLANE_KEYS["vad_model_path"]: {
-                        "value": "/opt/models/silero.onnx",
+                    CONTROL_PLANE_KEYS["punctuation_model_cache_dir"]: {
+                        "value": "/var/cache/punctuation",
                         "dataType": "string",
                         "source": "db",
                     }
                 }
             ),
         )
-        assert settings.vad_model_path == "/opt/models/silero.onnx"
+        assert settings.punctuation_model_cache_dir == "/var/cache/punctuation"
 
     def test_an_empty_or_malformed_snapshot_changes_nothing(self) -> None:
         settings = Settings(_env_file=None)

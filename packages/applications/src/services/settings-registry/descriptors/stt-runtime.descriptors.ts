@@ -80,51 +80,24 @@ type SttKnob = {
 };
 
 const KNOBS: Record<string, SttKnob> = {
-  // ── cloud engine connections (non-secret halves) ─────────────────────────
-  'stt.azureSpeech.region': {
-    dataType: 'string',
-    default: '',
-    label: 'Azure Speech region',
-    description:
-      'Azure Speech service region (e.g. eastus, westeurope) for the platform default connection. ' +
-      'Empty = unset. The subscription KEY is never here: Azure Speech is BYOK and its credential ' +
-      'is resolved per request from AiProviderConnection.',
-    category: 'STT Engines',
-  },
-  'stt.azureFoundry.enabled': {
-    dataType: 'boolean',
-    default: false,
-    label: 'Azure AI Foundry engine enabled',
-    description:
-      'Enables the Azure AI Foundry MAI-Transcribe engine. PREVIEW: no SLA, no diarization, ' +
-      'batch-only. PHI must not flow through it until GA and data-residency sign-off, which is why ' +
-      'it defaults OFF and is a kill-switch rather than a plain flag.',
-    category: 'STT Engines',
-    killSwitch: true,
-  },
-  'stt.azureFoundry.endpoint': {
-    dataType: 'string',
-    default: '',
-    label: 'Azure AI Foundry endpoint',
-    description: 'Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com. ' + 'Empty = unset.',
-    category: 'STT Engines',
-  },
-  'stt.sarvam.baseUrl': {
-    dataType: 'string',
-    default: 'https://api.sarvam.ai',
-    label: 'Sarvam API base URL',
-    description:
-      'Base URL for the Sarvam speech-to-text API. Point this at an enterprise VPC / on-prem host ' +
-      'before real patient data flows: the public API carries no BAA.',
-    category: 'STT Engines',
-  },
-  'stt.openai.baseUrl': {
-    dataType: 'string',
-    default: 'https://api.openai.com/v1',
-    label: 'OpenAI ASR base URL',
-    description: 'Base URL for the OpenAI (or Azure-OpenAI-compatible) speech-to-text API. The key is BYOK and ' + 'arrives per request.',
-    category: 'STT Engines',
-  },
+  // ── cloud engine connections: NOTHING is declared here any more ──────────
+  // TASK-880 removed `stt.azureSpeech.region`, `stt.azureFoundry.{enabled,endpoint}`,
+  // `stt.sarvam.baseUrl` and `stt.openai.baseUrl`.
+  //
+  // Their KEYS never lived here — every cloud STT engine is BYOK and its credential is
+  // resolved per request from `AiProviderConnection`. These were the non-secret halves,
+  // and they are properties of the CONNECTION: a connection reaches a loader only as a
+  // `provider_overrides` entry, which exists only behind an ENABLED, KEYED row — the
+  // same row that carries `baseUrl` and `region`. So a platform key could only ever
+  // patch a row that forgot to set its own, while making a PUBLIC vendor endpoint the
+  // silent default on a PHI platform.
+  //
+  // `stt.azureFoundry.enabled` was this file's only kill-switch. Its replacement is not
+  // another flag: the row's three states ARE the gate — no row / disabled / keyless =
+  // no entry = the engine cannot load — seeded OFF on the SYSTEM row, and now decidable
+  // PER TENANT rather than once for the whole platform. Foundry also has its own
+  // `azure-foundry` row now instead of aliasing `azure-speech`, so a tenant enabling
+  // Speech no longer enables a PREVIEW service for its PHI.
 
   // ── local ggml runtimes ──────────────────────────────────────────────────
   'stt.parakeetCpp.libraryPath': {
@@ -151,61 +124,53 @@ const KNOBS: Record<string, SttKnob> = {
     description: 'CPU threads used for whisper.cpp inference.',
     category: 'STT Engines',
   },
-  'stt.whisperCpp.maxAudioSeconds': {
-    dataType: 'number',
-    default: 7.0,
-    label: 'whisper.cpp max audio per decode (s)',
-    description:
-      'Longest audio fed to whisper.cpp in one decode. The ml-en code-switch fine-tune is accurate ' +
-      'to ~6-7s and truncates or garbles beyond it, so longer utterances are split at silence ' +
-      'troughs, decoded independently and stitched. 0 disables chunking.',
-    category: 'STT Engines',
-  },
-  'stt.whisperCpp.consultationPromptEnabled': {
-    dataType: 'boolean',
-    default: false,
-    label: 'whisper.cpp consultation prompt',
-    description:
-      'Whether the whisper.cpp adapter prepends its language-derived clinical-consultation ' +
-      'initial_prompt (exemplar prior context, not an instruction). Default OFF — measured to ' +
-      'inject spurious tokens and break grapheme clusters on the ml-en fine-tune. Turn on only ' +
-      'where an eval shows it helps.',
-    category: 'STT Engines',
-  },
+  // TASK-880 removed `stt.whisperCpp.maxAudioSeconds` and
+  // `stt.whisperCpp.consultationPromptEnabled`.
+  //
+  // The first is the MODEL's decode window, not the box's: it applied one number to every
+  // whisper.cpp row, including rows with a 30s context that never needed splitting. It is
+  // `AiModel._metadata.asr.maxDecodeWindowSec`, so a fallback chain decodes on its own
+  // window. The second gated two HARDCODED consultation lines the adapter prepended — but
+  // WHAT prior context a decode gets is the agent's `instruction.initialPrompt`, which
+  // already reached the adapter by another route, so the flag could only ever add a second
+  // platform-authored prompt in front of the agent's own.
 
   // ── VAD (Silero v5) ──────────────────────────────────────────────────────
-  'stt.vad.modelPath': {
-    dataType: 'string',
-    default: '',
-    label: 'Silero VAD model path',
-    description: 'Path to the Silero VAD ONNX model. Empty = auto-download on first use.',
-    category: 'STT Audio',
-  },
-  // `stt.vad.threshold`, `stt.vad.minSpeechDurationMs` and
-  // `stt.vad.minSilenceDurationMs` were declared here until TASK-872. They are
-  // SHADOWED on the live path: every session and every batch job now arrives
-  // with a `ResolvedAsrSpec` that carries its own VAD parameters (TASK-861), so
-  // a control-plane value could only ever have moved a bootstrap default the
-  // spec then overrode. `modelPath` and `speechPadMs` stay — nothing in the
-  // spec supplies those.
-  'stt.vad.speechPadMs': {
-    dataType: 'number',
-    default: 200,
-    label: 'VAD segment padding (ms)',
-    description: 'Padding applied to both ends of a detected segment (200ms per production ASR guidance).',
-    category: 'STT Audio',
-  },
+  // NOTHING is left here. `stt.vad.threshold`, `stt.vad.minSpeechDurationMs` and
+  // `stt.vad.minSilenceDurationMs` went in TASK-872 (shadowed by the spec's own VAD
+  // parameters), and TASK-880 took the last two:
+  //
+  //  • `stt.vad.modelPath` named the ONNX weights. The weights are an `AiModel`
+  //    (`VOICE_ACTIVITY_DETECTION`) row whose `localPath` ALREADY travels on every
+  //    session as `ResolvedAsrSpec.models.vad.localPath` — the platform key was a
+  //    second way to say the same thing, and the only one the loader read.
+  //  • `stt.vad.speechPadMs` is segment padding: a tuning choice beside the three
+  //    knobs above it, all of which the agent has owned since TASK-861. It is
+  //    `audioFrontEnd.vad.speechPadMs` now.
 
   // ── diarization / voice profiles ─────────────────────────────────────────
+  // DELIBERATELY KEPT, and the one `stt.*` key TASK-880 examined and did not move
+  // (owner default assumption, option 1). Every other model id in this service became
+  // an `AiModel` the agent binds; this one is different because it does not merely
+  // SELECT a model — it declares the vector SPACE that already-enrolled
+  // `UserVoiceProfile` rows live in. `UserVoiceProfile.embedding` is `vector(256)`,
+  // written by this 256-d model; a per-agent choice of a 192-d model would not be a
+  // different preference, it would be data the column cannot hold. So the platform
+  // declares the space, an agent may pick only within it, and
+  // `buildResolvedAsrSpec` refuses a declared mismatch at resolve time
+  // (`ASR_AGENT_EMBEDDING_SPACE_MISMATCH`, 409) rather than shipping a spec whose every
+  // enrolment fails. Changing this value is a re-enrolment exercise, not a config edit.
   'stt.diarization.hfModelId': {
     dataType: 'string',
     default: 'pyannote/wespeaker-voxceleb-resnet34-LM',
-    label: 'Speaker-embedding model',
+    label: 'Speaker-embedding space (platform)',
     description:
-      'HuggingFace model id for speaker-embedding extraction. Changing it changes the embedding ' +
-      'SPACE, so enrolled voice profiles do not transfer — a swap is a re-enrolment exercise, and ' +
-      'a model whose output dimension differs from the deployed UserVoiceProfile.embedding column ' +
-      'will fail every enrollment.',
+      'HuggingFace model id for speaker-embedding extraction — the embedding SPACE the platform ' +
+      'enrolls voice profiles in, not a per-agent choice. Changing it invalidates every enrolled ' +
+      'UserVoiceProfile: the vectors do not transfer, and a model whose output dimension differs ' +
+      'from the deployed UserVoiceProfile.embedding column (vector(256)) fails every enrollment. ' +
+      'An agent may bind a SPEAKER_EMBEDDING model only within this space; one that declares a ' +
+      'different width is refused when its ASR spec is resolved. Treat a change as a migration.',
     category: 'STT Audio',
   },
   'stt.diarization.device': {
@@ -286,26 +251,13 @@ const KNOBS: Record<string, SttKnob> = {
     description: 'Maximum wall-clock time for one batch transcription job.',
     category: 'STT Transcription',
   },
-  'stt.transcription.chunkLengthS': {
-    dataType: 'number',
-    default: 15,
-    label: 'Whisper chunk length (s)',
-    description:
-      "Audio chunk length for Whisper inference. Whisper's feature extractor truncates to a 30s " +
-      'context window, so longer audio is split into overlapping chunks. 15s gives roughly half the ' +
-      'time-to-first-word of 30s at comparable accuracy; use 30 for maximum accuracy, 10 for ' +
-      'ultra-low latency.',
-    category: 'STT Transcription',
-  },
-  'stt.transcription.strideLengthS': {
-    dataType: 'string',
-    default: '4,2',
-    label: 'Whisper chunk overlap (s, "left,right")',
-    description:
-      'Left and right overlap between consecutive chunks, as a comma-separated pair. The pipeline ' +
-      'uses these to avoid cutting words at a chunk boundary.',
-    category: 'STT Transcription',
-  },
+  // TASK-880 removed `stt.transcription.chunkLengthS` and `.strideLengthS`. TASK-877
+  // had already put both on the agent (`decoding.{chunkLengthSec,strideLengthSec}`,
+  // owner decision #9) and made ONE of the two batch readers prefer the spec — leaving
+  // the platform keys as a fallback that applied on the other path only. Both readers
+  // now take the spec, and an agent that says nothing gets `InferenceConfig`'s own
+  // defaults: the same 15s and `[4, 2]`, declared where every other engine default lives
+  // instead of in two places at once.
   'stt.segmentMerge.gapThresholdS': {
     dataType: 'number',
     default: 2.0,
@@ -490,16 +442,10 @@ const KNOBS: Record<string, SttKnob> = {
       '(0.3-0.5s recommended). Applies only when the punctuation model resolves to cadence-fast.',
     category: 'STT Streaming',
   },
-  'stt.streaming.partialWindowS': {
-    dataType: 'number',
-    default: 6.0,
-    label: 'Partial decode tail window (s)',
-    description:
-      'Tail window of the current utterance decoded for PARTIAL transcripts. Set to the whisper.cpp ' +
-      'force-emit window (~6s) so the last partial and the final decode the SAME audio — decoding is ' +
-      'deterministic, so matched windows converge and the final stops visibly rephrasing the partial.',
-    category: 'STT Streaming',
-  },
+  // TASK-880 removed `stt.streaming.partialWindowS`. Its own description said to set it to
+  // "the whisper.cpp force-emit window" — i.e. it was a property of the ASR MODEL, applied
+  // as one number to every engine on the box. It is now
+  // `AiModel._metadata.asr.partialWindowSec`, carried per chain on the spec.
   'stt.streaming.resultStreamExpireS': {
     dataType: 'number',
     default: 3600,

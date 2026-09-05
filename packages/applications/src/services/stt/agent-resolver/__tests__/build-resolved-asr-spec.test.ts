@@ -137,3 +137,109 @@ describe('buildResolvedAsrSpec — TASK-877 additive fields', () => {
     expect(buildResolvedAsrSpec({ agent: base, fallbackAgent: null }).models).not.toHaveProperty('endpointing');
   });
 });
+
+/**
+ * TASK-880 — model-coupled facts ride the `AiModel` row, not a platform key.
+ *
+ * `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` were platform-wide
+ * numbers describing ONE engine's decode geometry. They are now
+ * `AiModel._metadata.asr.{maxDecodeWindowSec,partialWindowSec}`, carried per model on the
+ * spec — so the fallback chain's engine gets ITS OWN window rather than the primary's.
+ */
+describe('buildResolvedAsrSpec — AiModel._metadata.asr rides each model', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  const withMeta = (agent: ResolvedAgent, role: string, asr: Record<string, number>): ResolvedAgent => ({
+    ...agent,
+    models: agent.models.map((m) => (m.role === role ? { ...m, metaData: { asr } } : m)),
+  });
+
+  it('carries the agent-owned VAD padding onto audioFrontEnd.vad, omitted when unset', () => {
+    const withPad: ResolvedAgent = {
+      ...base,
+      compiledConfig: { ...base.compiledConfig, parameters: { ...(base.compiledConfig.parameters as object), audioFrontEnd: { vad: { speechPadMs: 320 } } } },
+    };
+    expect(buildResolvedAsrSpec({ agent: withPad, fallbackAgent: null }).audioFrontEnd.vad.speechPadMs).toBe(320);
+    expect(buildResolvedAsrSpec({ agent: base, fallbackAgent: null }).audioFrontEnd.vad).not.toHaveProperty('speechPadMs');
+  });
+
+  it('surfaces the primary model’s asr metadata on models.asr.metadata', () => {
+    const agent = withMeta(base, 'primary', { maxDecodeWindowSec: 7, partialWindowSec: 6 });
+    expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).models.asr.metadata).toEqual({ maxDecodeWindowSec: 7, partialWindowSec: 6 });
+  });
+
+  it('OMITS metadata when the row declares none — the wire key must never appear as null', () => {
+    const agent: ResolvedAgent = { ...base, models: base.models.map(({ metaData: _drop, ...m }) => m) };
+    expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).models.asr).not.toHaveProperty('metadata');
+  });
+
+  it('the fallback chain carries the FALLBACK row’s own window, not the primary’s', () => {
+    const agent = withMeta(withMeta(base, 'primary', { maxDecodeWindowSec: 7 }), 'fallback', { maxDecodeWindowSec: 30 });
+    const spec = buildResolvedAsrSpec({ agent, fallbackAgent: null });
+    expect(spec.models.asr.metadata?.maxDecodeWindowSec).toBe(7);
+    expect(spec.fallback.spec?.models.asr.metadata?.maxDecodeWindowSec).toBe(30);
+  });
+
+  it('ignores non-numeric metadata rather than forwarding a shape apps/stt would reject', () => {
+    const agent: ResolvedAgent = {
+      ...base,
+      models: base.models.map((m) => (m.role === 'primary' ? { ...m, metaData: { asr: { maxDecodeWindowSec: 'seven' } } as never } : m)),
+    };
+    expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).models.asr).not.toHaveProperty('metadata');
+  });
+});
+
+/**
+ * TASK-880 — the diarization guard.
+ *
+ * `stt.diarization.hfModelId` is deliberately NOT moved onto the agent (owner default
+ * assumption, option 1): it declares the embedding SPACE that enrolled
+ * `UserVoiceProfile` rows live in — `vector(256)`, written by the 256-d wespeaker
+ * model. TASK-877 found the other half of this: the runtime dropped an agent's
+ * `models.embedding` entirely, so nobody had noticed that letting it through would feed
+ * 192-d ECAPA vectors into a `vector(256)` column and fail every enrollment.
+ *
+ * With the runtime half fixed, the producer must refuse the mismatch rather than ship a
+ * spec that cannot enroll.
+ */
+describe('buildResolvedAsrSpec — the agent may not re-space diarization', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  const withEmbeddingDimension = (dimension: number | undefined): ResolvedAgent => ({
+    ...base,
+    models: base.models.map((m) => (m.role === 'embedding' ? { ...m, metaData: dimension === undefined ? undefined : { embedding: { dimension } } } : m)),
+  });
+
+  it('refuses an embedding model whose declared width the voice-profile column cannot hold', () => {
+    let thrown: unknown;
+    try {
+      buildResolvedAsrSpec({ agent: withEmbeddingDimension(192), fallbackAgent: null });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(AsrSpecBuildError);
+    expect((thrown as AsrSpecBuildError).code).toBe('ASR_AGENT_EMBEDDING_SPACE_MISMATCH');
+    // The message must name both numbers and the consequence — an operator reading a
+    // 409 needs to know this is an enrolment problem, not a missing model.
+    expect((thrown as AsrSpecBuildError).message).toContain('192');
+    expect((thrown as AsrSpecBuildError).message).toContain('256');
+    expect((thrown as AsrSpecBuildError).message).toMatch(/enrol/i);
+  });
+
+  it('accepts the platform embedding space', () => {
+    expect(() => buildResolvedAsrSpec({ agent: withEmbeddingDimension(256), fallbackAgent: null })).not.toThrow();
+  });
+
+  it('cannot judge a row that declares no width, so it does not refuse one', () => {
+    // Every SYSTEM catalogue row declares its dimension (seeded in `ai-models/audio.ts`),
+    // so the only undeclared rows are tenant-authored. Refusing on absence would make an
+    // agent unrunnable over a fact nobody stated; the enrolment itself still rejects a
+    // wrong-width vector at the column.
+    expect(() => buildResolvedAsrSpec({ agent: withEmbeddingDimension(undefined), fallbackAgent: null })).not.toThrow();
+  });
+
+  it('checks the FALLBACK chain too — a fallback agent may not re-space it either', () => {
+    const fallbackAgent = withEmbeddingDimension(192);
+    expect(() => buildResolvedAsrSpec({ agent: base, fallbackAgent })).toThrow(AsrSpecBuildError);
+  });
+});

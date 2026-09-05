@@ -54,6 +54,24 @@ export const ASR_SPEC_ROLE_TASK_TYPE: Readonly<Record<AsrSpecModelRole, string>>
   endpointing: 'TEXT_CLASSIFICATION',
 });
 
+/**
+ * The `AiModel._metadata` slice that travels with a model on the ASR wire.
+ *
+ * TASK-880 — `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` were
+ * platform-wide numbers describing ONE engine's decode geometry, applied to every session
+ * whatever engine served it. They are model-coupled facts, so they ride the row: the
+ * fallback chain now gets its own window rather than inheriting the primary's.
+ *
+ * OPTIONAL on the wire with the omit-when-absent rule (`_Wire.OPTIONAL_FIELDS` on the
+ * Python half): absent means the row declared nothing and the runtime's own default stands.
+ */
+export interface AsrSpecModelMetadata {
+  /** Longest audio fed to the engine in ONE decode, seconds. */
+  maxDecodeWindowSec?: number | null;
+  /** Tail window of the live utterance decoded for PARTIALs, seconds. */
+  partialWindowSec?: number | null;
+}
+
 /** One resolved registry row — the fields `apps/stt`'s `AiModelConfig` consumes. */
 export interface AsrSpecModel {
   role: AsrSpecModelRole;
@@ -70,6 +88,8 @@ export interface AsrSpecModel {
   provider: string | null;
   /** The tenant that OWNS the registry row (SYSTEM for the platform catalogue). */
   tenantId: string;
+  /** TASK-880 — the row's own decode geometry. OMITTED (never `null`) when it declares none. */
+  metadata?: AsrSpecModelMetadata;
 }
 
 export interface AsrSpecModels {
@@ -87,7 +107,19 @@ export type AsrSpecEndpointing = 'fixed' | 'semantic';
 
 /** §3.2 `audioFrontEnd` — replaces `models.vad/denoise/embedding` + `preprocessing.*`. */
 export interface AsrSpecAudioFrontEnd {
-  vad: { enabled: boolean; threshold: number | null; minSpeechMs: number | null; minSilenceMs: number | null };
+  vad: {
+    enabled: boolean;
+    threshold: number | null;
+    minSpeechMs: number | null;
+    minSilenceMs: number | null;
+    /**
+     * TASK-880 — padding applied to BOTH ends of a detected segment, ms. Replaces the
+     * platform key `stt.vad.speechPadMs`. OPTIONAL on the wire with the omit-when-absent
+     * rule (the three siblings above predate it and stay required-but-nullable): absent
+     * means the agent said nothing and `VadConfig.padding_ms` stands.
+     */
+    speechPadMs?: number | null;
+  };
   denoise: { enabled: boolean; level: AsrSpecDenoiseLevel };
   diarization: { enabled: boolean; backend: AsrSpecDiarizationBackend; maxSpeakers: number | null };
   resample: boolean;

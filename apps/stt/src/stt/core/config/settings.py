@@ -388,59 +388,27 @@ class Settings(BaseSettings):
             return None
         return str(v).strip()
 
-    # Azure Speech (cloud ASR engine)
-    # Azure Speech is BYOK-only. The subscription KEY is NOT an env var
-    # and NOT a settings field — it is resolved per request from the
-    # provider-connection plane (tenant / SYSTEM AiProviderConnection). Only the
-    # non-secret REGION remains here.
-    azure_speech_region: str | None = Field(
-        validation_alias=moved_alias("azure_speech_region"),
-        default=None,
-        description="Azure Speech service region (e.g., eastus, westeurope)",
-    )
-
-    # Azure AI Foundry — MAI-Transcribe (engine AZURE_FOUNDRY).
-    # PREVIEW service (no SLA, no diarization) — disabled by default,
-    # batch-only, and PHI must not flow until GA + data-residency sign-off.
-    # Azure Foundry is BYOK-only, like Azure Speech: the API KEY is NOT an env
-    # var and NOT a settings field — it is resolved per request from the
-    # provider-connection plane (tenant / SYSTEM AiProviderConnection), where
-    # `azure.foundryApiKey` has been a registered vault-kv descriptor all along.
-    # The MODEL is not a settings field either: selection is tenant/platform
-    # configuration carried by the pipeline's AiModel, and fails closed when
-    # unresolved. Only the non-secret enable flag and endpoint remain here.
-    # Env vars: AZURE_FOUNDRY_ENABLED / _ENDPOINT.
-    azure_foundry_enabled: bool = Field(
-        validation_alias=moved_alias("azure_foundry_enabled"),
-        default=False,
-        description="Enable the Azure AI Foundry MAI-Transcribe engine (preview, off by default)",
-    )
-    azure_foundry_endpoint: str | None = Field(
-        validation_alias=moved_alias("azure_foundry_endpoint"),
-        default=None,
-        description="Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com",
-    )
-
-    # Sarvam AI speech-to-text (engine SARVAM, cloud engine).
-    # Sarvam is BYOK-only. The api-subscription-KEY is NOT an env var and
-    # NOT a settings field — it is resolved per request from the provider-connection
-    # plane. Only the non-secret base URL remains here.
-    sarvam_base_url: str = Field(
-        validation_alias=moved_alias("sarvam_base_url"),
-        default="https://api.sarvam.ai",
-        description="Sarvam AI API base URL",
-    )
-
-    # OpenAI speech-to-text (engine OPENAI, cloud engine).
-    # base_url supports Azure-OpenAI-compatible endpoints (env: OPENAI_BASE_URL).
-    # OpenAI ASR is BYOK-only. The api KEY is NOT an env var and NOT a
-    # settings field — it is resolved per request from the provider-connection
-    # plane. Only the non-secret base URL remains here.
-    openai_base_url: str = Field(
-        validation_alias=moved_alias("openai_base_url"),
-        default="https://api.openai.com/v1",
-        description="OpenAI (or Azure-OpenAI-compatible) API base URL",
-    )
+    # CLOUD ASR ENGINES (Azure Speech, Azure AI Foundry, Sarvam, OpenAI) HAVE NO
+    # SETTINGS FIELDS AT ALL — TASK-880.
+    #
+    # Their KEYS never had one: every cloud STT engine is BYOK and its credential is
+    # resolved per request from `AiProviderConnection` (tenant, else SYSTEM). What
+    # remained here were the non-secret halves — `azure_speech_region`,
+    # `azure_foundry_endpoint`, `sarvam_base_url`, `openai_base_url` — plus the
+    # `azure_foundry_enabled` preview flag.
+    #
+    # Every one of them is a property of the CONNECTION, and a connection reaches a
+    # loader only as a `provider_overrides` entry, which exists only behind an ENABLED,
+    # KEYED row — the same row that carries `baseUrl` and `region`. So these fields
+    # could only ever have patched a row that forgot to set its own, while making a
+    # PUBLIC vendor endpoint (api.sarvam.ai, api.openai.com) the silent default on a
+    # PHI platform. The loaders now fail closed and name the row.
+    #
+    # `azure_foundry_enabled` is replaced by the row's own three states rather than by
+    # another flag: no row / disabled / keyless = no entry = the engine cannot load,
+    # which is the preview veto, seeded OFF on the SYSTEM row and now decidable per
+    # tenant. Foundry also has its OWN `azure-foundry` row instead of aliasing
+    # `azure-speech`, so enabling Speech no longer enables a PREVIEW service for PHI.
 
     # parakeet.cpp — ggml runtime for NVIDIA Parakeet/Nemotron ASR
     # (engine PARAKEET_CPP). No official Python bindings exist upstream
@@ -464,36 +432,18 @@ class Settings(BaseSettings):
         default=8,
         description="CPU threads for whisper.cpp inference",
     )
-    whisper_cpp_max_audio_seconds: float = Field(
-        validation_alias=moved_alias("whisper_cpp_max_audio_seconds"),
-        default=7.0,
-        description=(
-            "Max audio length (s) fed to whisper.cpp in one decode. The ml-en "
-            "code-switch fine-tune is accurate up to ~6-7s but truncates/garbles "
-            "on longer audio (VAD does not segment continuous clinical speech), so "
-            "longer utterances are split into <=this-many-second chunks at silence "
-            "troughs, decoded independently, and stitched. 0 disables chunking. "
-            "env WHISPER_CPP_MAX_AUDIO_SECONDS"
-        ),
-    )
-    whisper_cpp_consultation_prompt_enabled: bool = Field(
-        validation_alias=moved_alias("whisper_cpp_consultation_prompt_enabled"),
-        default=False,
-        description=(
-            "Whether the whisper.cpp adapter prepends its language-derived "
-            "clinical-consultation initial_prompt (exemplar prior-context, not an "
-            "instruction). Default OFF — measured to inject spurious tokens and "
-            "break grapheme clusters on the ml-en code-switch fine-tune. Toggle on "
-            "only if an eval shows it helps. env WHISPER_CPP_CONSULTATION_PROMPT_ENABLED"
-        ),
-    )
+    # TASK-880 — `whisper_cpp_max_audio_seconds` and
+    # `whisper_cpp_consultation_prompt_enabled` lived here. The decode window belongs to
+    # the MODEL (`AiModel._metadata.asr.maxDecodeWindowSec` -> `InferenceConfig`), and the
+    # prompt belongs to the AGENT (`instruction.initialPrompt`, which already reached the
+    # adapter through `compose_prompt`). Neither is a property of this process.
 
-    # VAD — Silero v5 ONNX
-    vad_model_path: str | None = Field(
-        validation_alias=moved_alias("vad_model_path"),
-        default=None,
-        description="Path to Silero VAD ONNX model (auto-downloaded if None)",
-    )
+    # VAD — Silero v5 ONNX.
+    # TASK-880 — `vad_model_path` lived here. The weights are an `AiModel`
+    # (`VOICE_ACTIVITY_DETECTION`) row, and its `localPath` already travels on every
+    # session as `ResolvedAsrSpec.models.vad.localPath`; `get_vad_service` takes it from
+    # there and resolves from the HuggingFace cache when the row stages no local copy —
+    # which is what the deleted key's own default (empty = auto-download) did.
     vad_threshold: float = Field(
         validation_alias=moved_alias("vad_threshold"),
         default=0.5,
@@ -509,11 +459,9 @@ class Settings(BaseSettings):
         default=500,
         description="Minimum silence to end speech segment in ms",
     )
-    vad_speech_pad_ms: int = Field(
-        validation_alias=moved_alias("vad_speech_pad_ms"),
-        default=200,
-        description="Padding applied to both segment ends in ms (200 per production ASR guidance)",
-    )
+    # TASK-880 — `vad_speech_pad_ms` lived here. Padding is an AGENT tuning knob beside
+    # the three above it (`audioFrontEnd.vad.speechPadMs` -> `VadConfig.padding_ms`); a
+    # caller that passes nothing gets the dataclass default, not a per-process setting.
 
     # Diarization -- Pyannote embeddings
     diarization_hf_model_id: str = Field(
@@ -616,28 +564,10 @@ class Settings(BaseSettings):
         default=600,
         description="Maximum transcription job timeout in seconds (default: 10 min)",
     )
-    transcription_chunk_length_s: int = Field(
-        validation_alias=moved_alias("transcription_chunk_length_s"),
-        default=15,
-        description=(
-            "Audio chunk length (seconds) for Whisper inference. Whisper's "
-            "feature extractor truncates audio to its context window (30s max). "
-            "Audio longer than this value is split into overlapping chunks "
-            "with configurable stride. Default 15s provides ~2x lower TTFW "
-            "latency vs 30s while maintaining good accuracy. "
-            "Set to 30 for maximum accuracy, 10 for ultra-low latency."
-        ),
-    )
-    transcription_stride_length_s: str = Field(
-        validation_alias=moved_alias("transcription_stride_length_s"),
-        default="4,2",
-        description=(
-            "Left and right overlap (seconds) between consecutive chunks, as "
-            "a comma-separated pair. The HF pipeline uses these overlaps to "
-            "avoid cutting words at chunk boundaries. Default '4,2' means 4s "
-            "left overlap and 2s right overlap."
-        ),
-    )
+    # TASK-880 — `transcription_chunk_length_s` and `transcription_stride_length_s`
+    # lived here. Chunking is the AGENT's `decoding.{chunkLengthSec,strideLengthSec}`
+    # (TASK-877, owner decision #9), and the engine defaults these carried are now
+    # declared on `InferenceConfig` with every other engine default.
 
     # VAD segment merging
     segment_merge_gap_threshold_s: float = Field(
@@ -834,17 +764,9 @@ class Settings(BaseSettings):
             "model resolves to 'cadence-fast'."
         ),
     )
-    streaming_partial_window_s: float = Field(
-        validation_alias=moved_alias("streaming_partial_window_s"),
-        default=6.0,
-        description=(
-            "Tail window (seconds) of the current utterance decoded for "
-            "PARTIAL transcripts. Set to the whisper.cpp force-emit window (~6 s) "
-            "so the last partial and the final decode the SAME audio — decoding is "
-            "deterministic, so matched windows converge and the final stops "
-            "visibly rephrasing the partial. env STREAMING_PARTIAL_WINDOW_S"
-        ),
-    )
+    # TASK-880 — `streaming_partial_window_s` lived here. Its description named the
+    # whisper.cpp force-emit window, which makes it a MODEL property:
+    # `AiModel._metadata.asr.partialWindowSec` -> `StreamingConfig.partial_window_s`.
     # TASK-877 — the six `semantic_endpoint_*` fields and
     # `streaming_partial_interval_s` lived here. Every one duplicated a concept the
     # ASR AGENT owns, so they are deleted rather than dual-homed: endpointing mode,

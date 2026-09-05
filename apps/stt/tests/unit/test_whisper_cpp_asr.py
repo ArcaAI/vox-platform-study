@@ -21,12 +21,7 @@ import pytest
 from stt.models.base_loader import LoadedModel
 from stt.pipeline.dto import AiModelFormat
 from stt.streaming import whisper_cpp_asr
-from stt.streaming.whisper_cpp_asr import (
-    _CONSULTATION_PROMPT_EN,
-    _CONSULTATION_PROMPT_ML,
-    WhisperCppAsrAdapter,
-    consultation_prompt_for_language,
-)
+from stt.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
 
 
 def _loaded_model(model: object, model_id: str = "m1") -> LoadedModel:
@@ -40,8 +35,8 @@ def _loaded_model(model: object, model_id: str = "m1") -> LoadedModel:
     )
 
 
-def _cfg(language: str | None = None) -> SimpleNamespace:
-    return SimpleNamespace(language=language)
+def _cfg(language: str | None = None, max_decode_window_sec: float = 0.0) -> SimpleNamespace:
+    return SimpleNamespace(language=language, max_decode_window_sec=max_decode_window_sec)
 
 
 class _CapturingModel:
@@ -65,23 +60,6 @@ class _CapturingModel_returning(_CapturingModel):
     def transcribe(self, audio: np.ndarray, **kwargs: object) -> list:
         self.calls.append(kwargs)
         return self._segments
-
-
-@pytest.mark.parametrize(
-    ("language", "expected"),
-    [
-        ("ml", _CONSULTATION_PROMPT_ML),
-        ("ML", _CONSULTATION_PROMPT_ML),
-        ("ml-en", _CONSULTATION_PROMPT_ML),
-        ("en", _CONSULTATION_PROMPT_EN),
-        ("vi", _CONSULTATION_PROMPT_EN),
-        (None, _CONSULTATION_PROMPT_EN),
-        ("", _CONSULTATION_PROMPT_EN),
-    ],
-)
-def test_consultation_prompt_for_language(language: str | None, expected: str) -> None:
-    """Malayalam pins the Malayalam line; everything else (incl. unset) is English."""
-    assert consultation_prompt_for_language(language) == expected
 
 
 # --- Language pinning: single pinned, code-switch pair unpinned (auto) --------
@@ -126,41 +104,41 @@ def test_code_switch_pair_is_unpinned(pair: str) -> None:
     assert model.calls[0]["language"] is None
 
 
-# --- Consultation prompt: OFF by default, opt-in via setting ------------------
+# --- Prompt: ONE channel, the agent's (TASK-880) ------------------------------
 
 
-def _settings(*, prompt_enabled: bool) -> SimpleNamespace:
-    return SimpleNamespace(whisper_cpp_consultation_prompt_enabled=prompt_enabled)
-
-
-def test_prompt_disabled_by_default_but_carry_forward_flows() -> None:
-    """Default (setting OFF): ``initial_prompt`` is explicitly empty (the
-    binding's neutral — it rejects None); a per-utterance carry-forward prompt
-    still flows through on its own (no leading space)."""
+def test_no_prompt_decodes_with_the_binding_neutral() -> None:
+    """No caller prompt → ``initial_prompt`` is explicitly empty (the binding rejects
+    None, and the shared context persists params across calls, so it must be PRESENT)."""
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
 
     adapter(_audio(), 16000)
     assert model.calls[0]["initial_prompt"] == ""
 
-    adapter(_audio(), 16000, prompt="carry forward")
-    assert model.calls[1]["initial_prompt"] == "carry forward"
 
-
-def test_prompt_enabled_prepends_consultation_context(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """With the setting ON, the language-derived consultation context leads and a
-    carry-forward prompt is appended after it."""
-    monkeypatch.setattr(whisper_cpp_asr, "get_settings", lambda: _settings(prompt_enabled=True))
+def test_the_callers_prompt_is_passed_verbatim() -> None:
+    """The adapter adds nothing of its own. TASK-880 deleted the language-derived
+    consultation line and the `stt.whisperCpp.consultationPromptEnabled` flag that gated
+    it: the agent's `instruction.initialPrompt`, already composed with the per-utterance
+    carry-forward by the caller, is the whole prompt — never a platform line prepended to
+    it, and never the agent's own instruction applied twice."""
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
 
-    adapter(_audio(), 16000)
-    assert model.calls[0]["initial_prompt"] == _CONSULTATION_PROMPT_ML
+    adapter(_audio(), 16000, prompt="Clinical consultation. previous transcript text")
+    assert model.calls[0]["initial_prompt"] == "Clinical consultation. previous transcript text"
 
-    adapter(_audio(), 16000, prompt="previous transcript text")
-    assert model.calls[1]["initial_prompt"] == f"{_CONSULTATION_PROMPT_ML} previous transcript text"
+
+def test_the_decode_window_comes_from_the_model_row_not_a_platform_setting() -> None:
+    """`InferenceConfig.max_decode_window_sec` carries
+    `ResolvedAsrSpec.models.asr.metadata.maxDecodeWindowSec`; a row that declares none
+    disables the split guard rather than inheriting another engine's window."""
+    model = _CapturingModel()
+    assert WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml", 7.0))._max_audio_seconds == 7.0
+    assert WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))._max_audio_seconds == 0.0
+    # A config predating the field (the deprecated pipeline path) must not explode.
+    assert WhisperCppAsrAdapter(_loaded_model(model), SimpleNamespace(language="ml"))._max_audio_seconds == 0.0
 
 
 # --- Decode mode: clean (default) vs word-timestamp -------------------------

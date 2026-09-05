@@ -159,12 +159,18 @@ def test_vad_filter_defaults_off(platform_default) -> None:
 
 
 def test_chunking_fields_are_optional_and_absent_by_default(platform_default) -> None:
-    """Absent ⇒ the batch path keeps the platform `stt.transcription.*` values."""
+    """Absent ⇒ the ENGINE defaults.
+
+    TASK-877 wrote "the batch path keeps the platform `stt.transcription.*` values"
+    here. TASK-880 deleted those keys: the spec is the only source, so an agent that
+    says nothing gets `InferenceConfig`'s own defaults — the same 15 s and `[4, 2]`
+    those keys carried, declared where every other engine default lives.
+    """
     platform_default["decoding"].pop("chunkLengthSec", None)
     platform_default["decoding"].pop("strideLengthSec", None)
     inference = _mapped(platform_default).inference
-    assert inference.chunk_length_sec is None
-    assert inference.stride_length_sec is None
+    assert inference.chunk_length_sec == pytest.approx(15.0)
+    assert inference.stride_length_sec == (4, 2)
 
 
 def test_chunking_fields_reach_the_inference_config(platform_default) -> None:

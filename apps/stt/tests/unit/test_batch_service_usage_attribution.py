@@ -41,9 +41,19 @@ class TestOverrideKeyMapAgreesWithTheLoaders:
     def test_openai_key_matches_the_loader_constant(self):
         assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.OPENAI] == OPENAI_OVERRIDE_KEY
 
-    def test_both_azure_formats_read_the_same_azure_speech_entry(self):
-        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_SPEECH] == "azure-speech"
-        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_FOUNDRY] == "azure-speech"
+    def test_each_azure_format_reads_its_own_connection_row(self):
+        """TASK-880 — the two Azure formats no longer share a credential.
+
+        The alias made one row the gate for two engines with different
+        data-residency postures. Both keys are asserted against the LOADERS' own
+        `override_key` so this map cannot drift from what the code reads.
+        """
+        from stt.models.azure_foundry_loader import AzureFoundryLoader
+        from stt.models.azure_speech_loader import AzureSpeechLoader
+
+        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_SPEECH] == AzureSpeechLoader.override_key
+        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_FOUNDRY] == AzureFoundryLoader.override_key
+        assert AzureFoundryLoader.override_key == "azure-foundry"
 
 
 class TestResolveUsageAttributionSelfHosted:
@@ -128,14 +138,23 @@ class TestResolveUsageAttributionIsKeySpecific:
         assert engine == "sarvam"
         assert deployment == "CLOUD"
 
-    def test_azure_foundry_reads_the_azure_speech_override_key(self):
-        """``azure_foundry_loader`` resolves its credential from the
-        ``azure-speech`` entry (there is no ``azure_foundry`` key on the wire),
-        so attribution must look under the same key the loader used."""
+    def test_azure_foundry_reads_its_own_override_key(self):
+        """TASK-880 — Foundry has its OWN `azure-foundry` connection row; it used to
+        alias `azure-speech`. Attribution must look under the key the loader reads, or
+        a call served on the tenant's own Foundry key meters as platform CLOUD."""
+        engine, deployment = resolve_usage_attribution(
+            AiModelFormat.AZURE_FOUNDRY, {"azure-foundry": {"api_key": "k"}}
+        )
+        assert engine == "azure-foundry"
+        assert deployment == "BYOK"
+
+    def test_azure_foundry_no_longer_reads_the_azure_speech_key(self):
+        """The alias is gone in both directions: an Azure SPEECH credential does not
+        make a Foundry call BYOK, because it is not the credential that served it."""
         _, deployment = resolve_usage_attribution(
             AiModelFormat.AZURE_FOUNDRY, {"azure-speech": {"api_key": "k"}}
         )
-        assert deployment == "BYOK"
+        assert deployment == "CLOUD"
 
     def test_azure_foundry_with_only_an_unrelated_override_is_cloud(self):
         _, deployment = resolve_usage_attribution(

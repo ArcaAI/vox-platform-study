@@ -146,8 +146,8 @@ export const AGENT_TOOLS_SCHEMA: NodeConfigSchema = Object.freeze({
  * Fallback is a platform HA capability (TASK-870 owner decision #4): every agent falls back on
  * outage, ON by default, to the platform default (the SYSTEM-assigned agent of the same task),
  * metered as platform-funded; the toggle is per agent node. These two defaults used to be
- * re-typed as literals by each runtime builder (`ASR_SPEC_FALLBACK_DEFAULTS` in
- * `build-resolved-asr-spec.ts`) — they are now read from here.
+ * re-typed as literals by each runtime builder — TASK-880 finished that: the ASR builder's own
+ * copy is gone and `build-resolved-asr-spec.ts` re-exports THIS declaration under this name.
  */
 export const AGENT_FALLBACK_DEFAULTS = Object.freeze({ autoSwitch: true, switchAfterConsecutiveFailures: 2 });
 
@@ -262,6 +262,13 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
             threshold: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
             minSpeechMs: Object.freeze({ type: 'integer', minimum: 0, maximum: 10000 }),
             minSilenceMs: Object.freeze({ type: 'integer', minimum: 0, maximum: 10000 }),
+            speechPadMs: Object.freeze({
+              type: 'integer',
+              minimum: 0,
+              maximum: 5000,
+              description:
+                'TASK-880 — padding applied to BOTH ends of a detected segment, ms. Replaces the platform key `stt.vad.speechPadMs`: how much lead-in and tail a clinic wants around speech is a tuning choice like the three above it, not a property of the box. Optional; the runtime keeps its own default when absent.',
+            }),
           }),
         }),
         denoise: Object.freeze({
@@ -303,10 +310,12 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
           description: 'TASK-877 (owner decision #9) — batch chunk length in seconds. Optional; the runtime keeps its own default when absent.',
         }),
         strideLengthSec: Object.freeze({
-          type: 'number',
-          minimum: 0,
-          maximum: 30,
-          description: 'TASK-877 (owner decision #9) — overlap between consecutive chunks in seconds. Optional.',
+          type: 'array',
+          minItems: 2,
+          maxItems: 2,
+          items: Object.freeze({ type: 'number', minimum: 0, maximum: 30 }),
+          description:
+            'TASK-877 (owner decision #9) — `[left, right]` overlap in seconds around each chunk. TASK-880 corrected the type: the wire field, `buildResolvedAsrSpec`\'s reader and the committed contract fixture have always been a PAIR, so a scalar here made the value an agent could author and the value the runtime consumes different things. Optional.',
         }),
       }),
     }),

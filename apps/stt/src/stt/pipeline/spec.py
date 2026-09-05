@@ -114,8 +114,32 @@ class _Wire(BaseModel):
 AsrSpecModelRole = Literal["asr", "vad", "denoise", "embedding", "punctuation", "endpointing"]
 
 
+class AsrSpecModelMetadata(_Wire):
+    """TASK-880 — the ``AiModel._metadata.asr`` decode geometry that rides the row.
+
+    ``stt.whisperCpp.maxAudioSeconds`` and ``stt.streaming.partialWindowS`` were
+    PLATFORM keys: one number applied to every session whatever engine served it, and
+    unchangeable without a control-plane write. They describe a MODEL — the ml-en
+    fine-tune is accurate to ~6-7s, the CT2 turbo row is not — so they belong to the row,
+    and a fallback chain now decodes on its own window instead of the primary's.
+
+    Both members are optional: absent means the row declared nothing and the runtime's own
+    dataclass default stands (``InferenceConfig.max_decode_window_sec``,
+    ``StreamingPreprocessor``'s partial window).
+    """
+
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"max_decode_window_sec", "partial_window_sec"}
+    )
+
+    max_decode_window_sec: float | None = None
+    partial_window_sec: float | None = None
+
+
 class AsrSpecModel(_Wire):
     """One resolved registry row — the fields the model loaders consume."""
+
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"metadata"})
 
     role: AsrSpecModelRole
     slug: str
@@ -128,6 +152,7 @@ class AsrSpecModel(_Wire):
     compute_type: str | None
     provider: str | None
     tenant_id: str
+    metadata: AsrSpecModelMetadata | None = None
 
 
 class AsrSpecModels(_Wire):
@@ -153,10 +178,21 @@ class AsrSpecModels(_Wire):
 
 
 class AsrSpecVad(_Wire):
+    """TASK-880 — ``speech_pad_ms`` replaces the platform key ``stt.vad.speechPadMs``.
+
+    OPTIONAL (omit-when-absent, see :class:`_Wire`); the three fields above it predate
+    that rule and stay required-but-nullable. Absent means the agent expressed no
+    opinion and ``VadConfig.padding_ms`` — the one source of the engine default —
+    stands.
+    """
+
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"speech_pad_ms"})
+
     enabled: bool
     threshold: float | None
     min_speech_ms: int | None
     min_silence_ms: int | None
+    speech_pad_ms: int | None = None
 
 
 class AsrSpecDenoise(_Wire):
@@ -418,6 +454,8 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
         vad_kwargs["min_speech_duration_ms"] = afe.vad.min_speech_ms
     if afe.vad.min_silence_ms is not None:
         vad_kwargs["min_silence_duration_ms"] = afe.vad.min_silence_ms
+    if afe.vad.speech_pad_ms is not None:
+        vad_kwargs["padding_ms"] = afe.vad.speech_pad_ms
     denoise_kwargs: dict[str, object] = {"enabled": afe.denoise.enabled}
     if afe.denoise.level in _DENOISE_STRENGTH:
         denoise_kwargs["strength"] = _DENOISE_STRENGTH[afe.denoise.level]
@@ -452,6 +490,13 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
         inference_kwargs["chunk_length_sec"] = float(decoding.chunk_length_sec)
     if decoding.stride_length_sec is not None:
         inference_kwargs["stride_length_sec"] = tuple(decoding.stride_length_sec)
+    # TASK-880 — the ASR ROW's own decode window (`AiModel._metadata.asr`), which
+    # replaces the platform key `stt.whisperCpp.maxAudioSeconds`. Absent ⇒ the
+    # dataclass default (0.0 = no chunking guard); each chain is mapped separately,
+    # so a fallback engine is never bound by the primary's window.
+    asr_metadata = models.asr.metadata
+    if asr_metadata is not None and asr_metadata.max_decode_window_sec is not None:
+        inference_kwargs["max_decode_window_sec"] = float(asr_metadata.max_decode_window_sec)
     inference_kwargs["initial_prompt_text"] = core.instruction.initial_prompt
     inference_kwargs["hotwords"] = list(core.instruction.hotwords)
     inference = InferenceConfig(**inference_kwargs)  # type: ignore[arg-type]
@@ -474,6 +519,14 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
             st.partial_interval_ms / 1000.0 if st.partial_interval_ms is not None else None
         ),
         max_utterance_sec=st.max_utterance_sec,
+        # TASK-880 — from the ASR ROW, not the agent and no longer from
+        # `stt.streaming.partialWindowS`: the partial tail should match the engine's
+        # force-emit window, which is a property of the model.
+        partial_window_s=(
+            float(asr_metadata.partial_window_sec)
+            if asr_metadata is not None and asr_metadata.partial_window_sec is not None
+            else None
+        ),
     )
 
     spec = PipelineSpec(
@@ -562,6 +615,7 @@ __all__ = [
     "AsrSpecCore",
     "AsrSpecFallback",
     "AsrSpecModel",
+    "AsrSpecModelMetadata",
     "AsrSpecModels",
     "AsrSpecStreamingSemantic",
     "ResolvedAsrSpec",

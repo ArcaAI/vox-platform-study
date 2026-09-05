@@ -77,7 +77,13 @@ _PARTIAL_INTERVAL_S = 0.4
 _PARTIAL_MIN_AUDIO_S = 0.5
 # Tail window decoded for partials. Bounds per-partial
 # decode cost on long utterances; finals always carry the full buffer.
-_DEFAULT_PARTIAL_WINDOW_S = 8.0
+# TASK-880 — 6.0, not the 8.0 this constant carried while it was dead.
+# `stt.streaming.partialWindowS` defaulted to 6.0 and `SessionManager` passed it on
+# EVERY session, so 8.0 was never the effective value; with that key deleted the
+# constructor default is what a model row that declares no `partialWindowSec` gets,
+# and it must be the number sessions actually ran on. 6s matches the whisper.cpp
+# force-emit window, so the last partial and the final decode the same audio.
+_DEFAULT_PARTIAL_WINDOW_S = 6.0
 
 
 @dataclass

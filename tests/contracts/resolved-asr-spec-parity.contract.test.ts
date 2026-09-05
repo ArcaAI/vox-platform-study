@@ -28,6 +28,8 @@ const fixture = JSON.parse(readFileSync(join(__dirname, 'resolved-asr-spec.fixtu
 const cases = Object.entries(fixture).filter((entry): entry is [string, FixtureCase] => typeof entry[1] === 'object');
 
 const MODEL_FIELDS = ['role', 'slug', 'taskType', 'format', 'sourceUri', 'sourceRevision', 'localPath', 'checksum', 'computeType', 'provider', 'tenantId'];
+/** TASK-880 — `metadata` is the one OPTIONAL member: present only when the row declares geometry. */
+const OPTIONAL_MODEL_FIELDS = ['metadata'];
 
 function assertCore(core: AsrSpecCore): void {
   expect(core.runtimeKey.length).toBeGreaterThan(0);
@@ -36,7 +38,9 @@ function assertCore(core: AsrSpecCore): void {
     expect(ASR_SPEC_MODEL_ROLES).toContain(role);
     expect(model.role).toBe(role);
     expect(model.taskType).toBe(ASR_SPEC_ROLE_TASK_TYPE[model.role]);
-    expect(Object.keys(model).sort()).toEqual([...MODEL_FIELDS].sort());
+    const keys = Object.keys(model);
+    expect(keys.filter((k) => !OPTIONAL_MODEL_FIELDS.includes(k)).sort()).toEqual([...MODEL_FIELDS].sort());
+    expect(keys.filter((k) => !MODEL_FIELDS.includes(k) && !OPTIONAL_MODEL_FIELDS.includes(k))).toEqual([]);
   }
 }
 
@@ -80,6 +84,27 @@ describe('ResolvedAsrSpec parity — producer half', () => {
     expect(wired.expected.streaming.endpointing).toBe('semantic');
     expect(wired.expected.models.endpointing?.slug).toBe('smart-turn-v3');
     expect(wired.expected.models.endpointing?.taskType).toBe(ASR_SPEC_ROLE_TASK_TYPE.endpointing);
+  });
+
+  it('carries AiModel._metadata.asr per CHAIN, and omits it on a row that declares none (TASK-880)', () => {
+    // The geometry that used to be `stt.whisperCpp.maxAudioSeconds` and
+    // `stt.streaming.partialWindowS` — one number for every engine on the box — now belongs
+    // to the row, so the fallback's window is its own rather than the primary's.
+    const platform = fixture.platformDefault as FixtureCase;
+    expect(platform.expected.models.asr.metadata).toEqual({ maxDecodeWindowSec: 7, partialWindowSec: 6 });
+    expect(platform.expected.fallback.spec?.models.asr.metadata).toEqual({ maxDecodeWindowSec: 30 });
+    // Same omit-when-absent rule as the other additive fields: never `null`, never `{}`.
+    expect(platform.expected.models.vad).not.toHaveProperty('metadata');
+    expect((fixture.cloudWithAgentFallback as FixtureCase).expected.models.asr).not.toHaveProperty('metadata');
+  });
+
+  it('carries the agent-owned VAD padding, and omits it when the agent set none (TASK-880)', () => {
+    // `stt.vad.speechPadMs` was a platform number beside three knobs the agent already
+    // owned (`threshold`, `minSpeechMs`, `minSilenceMs`). It is the fourth now, and it
+    // follows the omit-when-absent rule the other TASK-877/880 additions use.
+    expect((fixture.agentOwnedStreamingBehaviour as FixtureCase).expected.audioFrontEnd.vad.speechPadMs).toBe(320);
+    expect((fixture.platformDefault as FixtureCase).expected.audioFrontEnd.vad).not.toHaveProperty('speechPadMs');
+    expect((fixture.cloudWithAgentFallback as FixtureCase).expected.audioFrontEnd.vad).not.toHaveProperty('speechPadMs');
   });
 
   it('carries no credential material anywhere', () => {

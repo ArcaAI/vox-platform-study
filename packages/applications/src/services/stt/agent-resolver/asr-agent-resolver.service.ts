@@ -90,7 +90,10 @@ export class AsrAgentResolverService {
     try {
       spec = buildResolvedAsrSpec({ agent, fallbackAgent });
     } catch (error) {
-      if (error instanceof AsrSpecBuildError) throw new ConflictException({ code: 'ASR_AGENT_UNRUNNABLE', message: error.message });
+      // TASK-880 — `code` is the error's own now, so an embedding-space mismatch is
+      // distinguishable from "this agent resolved no primary model" by a caller that
+      // only sees the 409 body.
+      if (error instanceof AsrSpecBuildError) throw new ConflictException({ code: error.code, message: error.message });
       throw error;
     }
 

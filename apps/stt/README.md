@@ -225,20 +225,27 @@ pip install -e ".[dev,test]"
 
 | Variable                | Description                              | Default            |
 | ----------------------- | ---------------------------------------- | ------------------ |
-| `AZURE_SPEECH_KEY`      | Azure Speech subscription key            | -                  |
-| `AZURE_SPEECH_REGION`   | Azure Speech region                      | -                  |
-| `HUGGINGFACE_TOKEN`     | HuggingFace API token (for gated models) | -                  |
 | `HUGGINGFACE_CACHE_DIR` | Model download cache directory           | `/models/hf-cache` |
+
+> **No cloud ASR engine has an env var** (TASK-880). Azure Speech, Azure AI Foundry,
+> Sarvam and OpenAI are BYOK: the key, the region/endpoint/base URL, and whether the
+> engine is available at all come from the tenant's `AiProviderConnection` row (or the
+> SYSTEM row as the platform default). `HUGGINGFACE_TOKEN` moved the same way, to the
+> `model-registry:huggingface` connection.
 
 #### Voice Activity Detection (Silero VAD v5)
 
 | Variable                      | Description                                          | Default |
 | ----------------------------- | ---------------------------------------------------- | ------- |
-| `VAD_MODEL_PATH`              | Path to Silero ONNX model (auto-downloaded if empty) | -       |
 | `VAD_THRESHOLD`               | Speech probability threshold (0.0–1.0)               | `0.5`   |
-| `VAD_MIN_SPEECH_DURATION_MS`  | Min speech segment length                            | `250`   |
+| `VAD_MIN_SPEECH_DURATION_MS`  | Min speech segment length                            | `100`   |
 | `VAD_MIN_SILENCE_DURATION_MS` | Min silence to end speech                            | `500`   |
-| `VAD_SPEECH_PAD_MS`           | Padding before speech onset                          | `30`    |
+
+> These three are BOOTSTRAP defaults only: every session and every batch job arrives with
+> a `ResolvedAsrSpec` carrying the agent's own VAD parameters, which override them.
+> `VAD_MODEL_PATH` and `VAD_SPEECH_PAD_MS` are GONE (TASK-880) — the weights are the
+> `AiModel` (`VOICE_ACTIVITY_DETECTION`) row the agent binds, and the padding is the
+> agent's `audioFrontEnd.vad.speechPadMs`.
 
 #### Speaker Diarization (Pyannote)
 

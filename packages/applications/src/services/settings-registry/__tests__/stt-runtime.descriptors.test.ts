@@ -77,22 +77,20 @@ describe('STT_RUNTIME_SETTINGS', () => {
     }
   });
 
-  it('keeps every kill-switch defaulting OFF', () => {
-    // `SettingsRegistry.killSwitches()` asserts this globally; repeating it here
-    // names the one that is marked, and documents why `stt.pubsub.enabled` —
-    // which defaults ON — is deliberately NOT marked as one.
-    //
-    // `stt.semanticEndpoint.enabled` and `stt.punctuation.enabled` were the other
-    // two: TASK-877 deleted both. A kill-switch over an AGENT concept is the wrong
-    // shape — the agent chooses `streaming.endpointing` and `postProcessing.
-    // punctuation.enabled`, and the platform vetoes by not publishing the model row
-    // each needs. One marked kill-switch is left, over a genuinely platform concern.
-    const killSwitches = STT_RUNTIME_SETTINGS.filter((d) => d.killSwitch);
-    expect(killSwitches.map((d) => d.key).sort()).toEqual(['stt.azureFoundry.enabled']);
-    for (const descriptor of killSwitches) {
-      expect(descriptor.default, descriptor.key).toBe(false);
-    }
+  it('has no kill-switch left, and still refuses to mark the one flag that defaults ON', () => {
+    // Three lived here. `stt.semanticEndpoint.enabled` and `stt.punctuation.enabled`
+    // went in TASK-877, `stt.azureFoundry.enabled` in TASK-880 — and all three for the
+    // same reason: a kill-switch is the wrong SHAPE for a decision that belongs to the
+    // agent or to a connection row. The agent chooses `streaming.endpointing` and
+    // `postProcessing.punctuation.enabled` and the platform vetoes by not publishing
+    // the model row each needs; the Foundry preview veto is the SYSTEM
+    // `AiProviderConnection(stt, azure-foundry)` row seeded disabled, which is also
+    // decidable per tenant as a boolean never could be.
+    expect(STT_RUNTIME_SETTINGS.filter((d) => d.killSwitch)).toEqual([]);
 
+    // `stt.pubsub.enabled` defaults ON and is deliberately NOT marked: the registry
+    // refuses a kill-switch that defaults ON, and flipping it OFF would take live
+    // transcription off the air on first deploy. It is a data path, not a gate.
     const pubsub = STT_RUNTIME_SETTINGS.find((d) => d.key === 'stt.pubsub.enabled');
     expect(pubsub?.killSwitch).toBeUndefined();
     expect(pubsub?.default).toBe(true);
@@ -107,6 +105,49 @@ describe('STT_RUNTIME_SETTINGS', () => {
     // reading it. Deleted for the same reason as the other seven: a duplicate from
     // the old architecture is removed completely, not left dual-homed.
     expect(HOPE_SETTINGS_REGISTRY.has('semanticEndpoint.enabled')).toBe(false);
+  });
+
+  /**
+   * TASK-880 — the twelve keys that moved to the agent, the model row or the provider
+   * connection. Each is asserted ABSENT from the whole registry, not just from this file:
+   * the owner's rule is that a redundant key from the old architecture is removed
+   * COMPLETELY, and a re-declaration under any other descriptor file would be the
+   * dual-homing this checks for.
+   */
+  const MOVED_AWAY_TASK_880: ReadonlyArray<[key: string, newHome: string]> = [
+    ['stt.whisperCpp.consultationPromptEnabled', "the agent's instruction.initialPrompt"],
+    ['stt.vad.modelPath', 'AiModel(VOICE_ACTIVITY_DETECTION).localPath, already on the spec'],
+    ['stt.vad.speechPadMs', 'agent audioFrontEnd.vad.speechPadMs'],
+    ['stt.transcription.chunkLengthS', 'agent decoding.chunkLengthSec'],
+    ['stt.transcription.strideLengthS', 'agent decoding.strideLengthSec'],
+    ['stt.whisperCpp.maxAudioSeconds', 'AiModel._metadata.asr.maxDecodeWindowSec'],
+    ['stt.streaming.partialWindowS', 'AiModel._metadata.asr.partialWindowSec'],
+    ['stt.azureSpeech.region', 'AiProviderConnection(stt, azure-speech).region'],
+    ['stt.sarvam.baseUrl', 'AiProviderConnection(stt, sarvam).baseUrl'],
+    ['stt.openai.baseUrl', 'AiProviderConnection(stt, openai).baseUrl'],
+    ['stt.azureFoundry.endpoint', 'AiProviderConnection(stt, azure-foundry).baseUrl'],
+    ['stt.azureFoundry.enabled', 'the AiProviderConnection(stt, azure-foundry) row state'],
+  ];
+
+  it.each(MOVED_AWAY_TASK_880)('%s is gone from the registry entirely (now: %s)', (key) => {
+    expect(HOPE_SETTINGS_REGISTRY.has(key)).toBe(false);
+    expect(STT_RUNTIME_SETTINGS.map((d) => d.key)).not.toContain(key);
+  });
+
+  it('keeps stt.diarization.hfModelId as a PLATFORM-scope key, on purpose (TASK-880)', () => {
+    // The one `stt.*` model id that did NOT move onto the agent. It does not merely
+    // select a model: it declares the vector SPACE enrolled `UserVoiceProfile` rows
+    // live in (`vector(256)`), so a per-agent choice of another width would be data the
+    // column cannot hold. The platform declares the space; an agent picks within it,
+    // and `buildResolvedAsrSpec` refuses a declared mismatch with a 409.
+    const key = HOPE_SETTINGS_REGISTRY.get('stt.diarization.hfModelId');
+    expect(key).toBeDefined();
+    expect(key?.maxScope).toBe('system');
+    expect(key?.globalOnly).toBe(true);
+    expect(key?.default).toBe('pyannote/wespeaker-voxceleb-resnet34-LM');
+    // The description must say WHY it is platform-scope, or the next reader moves it.
+    expect(key?.description).toMatch(/SPACE/);
+    expect(key?.description).toMatch(/vector\(256\)/);
   });
 
   it('leaves the storage keys to the db-config cascade rather than re-declaring them here', () => {

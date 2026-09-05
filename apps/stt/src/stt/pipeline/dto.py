@@ -768,10 +768,22 @@ class InferenceConfig:
     # the engine's own VAD gate (long-form batch audio, mostly) asks for it.
     vad_filter: bool = False
     # TASK-877 / owner decision #9 — ResolvedAsrSpec.decoding.{chunkLengthSec,
-    # strideLengthSec}. `None` = no agent opinion, so the batch path keeps the
-    # platform `stt.transcription.*` values.
-    chunk_length_sec: float | None = None
-    stride_length_sec: tuple[int, int] | None = None
+    # strideLengthSec}. TASK-880 deleted the platform keys these used to fall back to
+    # (`stt.transcription.{chunkLengthS,strideLengthS}`), so these ARE the values: the
+    # spec is the only source, and an agent that says nothing gets the engine defaults
+    # below — the same numbers those keys carried, now declared where every other
+    # engine default lives. Whisper's feature extractor truncates to a 30s context, so
+    # 15s halves time-to-first-word at comparable accuracy; `[4, 2]` is the left/right
+    # overlap that stops a word being cut at a chunk boundary.
+    chunk_length_sec: float = 15.0
+    stride_length_sec: tuple[int, int] = (4, 2)
+    # TASK-880 — `ResolvedAsrSpec.models.asr.metadata.maxDecodeWindowSec`
+    # (`AiModel._metadata.asr`). Longest audio fed to the engine in ONE decode;
+    # longer utterances are split at silence troughs and stitched. `0.0` disables
+    # the guard, which is the right answer for a model that declares no window —
+    # this replaces the platform key `stt.whisperCpp.maxAudioSeconds`, which
+    # applied ONE number to every engine on the box.
+    max_decode_window_sec: float = 0.0
     # TASK-861 — agent hotwords (ResolvedAsrSpec.instruction.hotwords). Carried
     # for engines that accept them; not yet wired into every adapter.
     hotwords: list[str] = field(default_factory=list)
@@ -854,11 +866,20 @@ class StreamingConfig:
     session. ``None`` means the agent said nothing, so the preprocessor's own
     constructor default stands: the spec carries what the agent SAID and never
     restates an engine default.
+
+    TASK-880 — ``partial_window_s`` follows the same rule, but its source is the ASR
+    MODEL row (``metadata.partialWindowSec``) rather than the agent: the right tail
+    length is a property of the engine's force-emit window, not of a clinic's policy.
     """
 
     commit_policy: str = "none"
     partial_interval_s: float | None = None
     max_utterance_sec: int | None = None
+    # TASK-880 — `ResolvedAsrSpec.models.asr.metadata.partialWindowSec`. The tail of
+    # the live utterance decoded for PARTIALs, which should match the ASR row's
+    # force-emit window so the last partial and the final decode the SAME audio.
+    # `None` = the row declared none, so `StreamingPreprocessor`'s own default stands.
+    partial_window_s: float | None = None
 
 
 @dataclass
