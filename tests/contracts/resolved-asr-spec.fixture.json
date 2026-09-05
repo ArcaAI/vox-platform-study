@@ -1,7 +1,7 @@
 {
-  "$comment": "TASK-861 \u2014 the ResolvedAsrSpec cross-language contract fixture. `input` is what TASK-863's AgentResolverService returns (a ResolvedAgent, plus the resolved `parameters.fallback.agentSlug` agent when one is named); `expected` is what `buildResolvedAsrSpec()` (@arcaai/applications) MUST produce from it and what `apps/stt/src/stt/pipeline/spec.py` MUST validate and map. Both `tests/contracts/resolved-asr-spec-parity.contract.test.ts` and `apps/stt/tests/unit/test_resolved_spec_parity.py` read this file; change it with both suites open.",
+  "$comment": "TASK-861 — the ResolvedAsrSpec cross-language contract fixture. `input` is what TASK-863's AgentResolverService returns (a ResolvedAgent, plus the resolved `parameters.fallback.agentSlug` agent when one is named); `expected` is what `buildResolvedAsrSpec()` (@arcaai/applications) MUST produce from it and what `apps/stt/src/stt/pipeline/spec.py` MUST validate and map. Both `tests/contracts/resolved-asr-spec-parity.contract.test.ts` and `apps/stt/tests/unit/test_resolved_spec_parity.py` read this file; change it with both suites open.",
   "platformDefault": {
-    "$comment": "The SYSTEM `platform-transcription` agent: GGUF whisper primary, Silero VAD, ECAPA diarization, one AgentModelFallback row (kind: model).",
+    "$comment": "The SYSTEM `platform-transcription` agent: GGUF whisper primary, Silero VAD, ECAPA diarization, one AgentModelFallback row (kind: model). TASK-880 — both ASR rows carry `AiModel._metadata.asr` decode geometry, which travels as `models.asr.metadata`: the whisper.cpp primary declares the 7s decode window and the 6s partial tail that used to be the platform keys `stt.whisperCpp.maxAudioSeconds` / `stt.streaming.partialWindowS`, and the CT2 fallback declares its OWN 30s window — which is the point of moving them onto the row. The other two cases omit `metadata` entirely.",
     "input": {
       "agent": {
         "agentId": "0199a861-0000-7000-8000-000000000001",
@@ -95,7 +95,13 @@
             "format": "WHISPER_CPP",
             "computeType": "int8",
             "provider": null,
-            "tenantId": "00000000-0000-0000-0000-000000000000"
+            "tenantId": "00000000-0000-0000-0000-000000000000",
+            "metaData": {
+              "asr": {
+                "maxDecodeWindowSec": 7,
+                "partialWindowSec": 6
+              }
+            }
           },
           {
             "role": "fallback",
@@ -108,7 +114,12 @@
             "format": "FASTER_WHISPER",
             "computeType": "int8",
             "provider": null,
-            "tenantId": "00000000-0000-0000-0000-000000000000"
+            "tenantId": "00000000-0000-0000-0000-000000000000",
+            "metaData": {
+              "asr": {
+                "maxDecodeWindowSec": 30
+              }
+            }
           },
           {
             "role": "vad",
@@ -160,7 +171,11 @@
           "checksum": "sha256:aaaa",
           "computeType": "int8",
           "provider": null,
-          "tenantId": "00000000-0000-0000-0000-000000000000"
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "metadata": {
+            "maxDecodeWindowSec": 7,
+            "partialWindowSec": 6
+          }
         },
         "vad": {
           "role": "vad",
@@ -261,7 +276,10 @@
               "checksum": null,
               "computeType": "int8",
               "provider": null,
-              "tenantId": "00000000-0000-0000-0000-000000000000"
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "metadata": {
+                "maxDecodeWindowSec": 30
+              }
             },
             "vad": {
               "role": "vad",
@@ -342,7 +360,7 @@
     }
   },
   "cloudWithAgentFallback": {
-    "$comment": "A tenant agent on a cloud (Azure) row with a denoise model and a `fallback.agentSlug` naming a second published agent (kind: agent). Credentials are NOT here \u2014 they travel as provider_overrides.",
+    "$comment": "A tenant agent on a cloud (Azure) row with a denoise model and a `fallback.agentSlug` naming a second published agent (kind: agent). Credentials are NOT here — they travel as provider_overrides.",
     "input": {
       "agent": {
         "agentId": "0199a861-0000-7000-8000-000000000011",
@@ -647,7 +665,7 @@
     }
   },
   "agentOwnedStreamingBehaviour": {
-    "$comment": "TASK-877 \u2014 the fields the runtime used to DROP. A tenant agent that asks for semantic endpointing, tunes it, binds an `endpointing` (end-of-utterance) model, sets its own partial cadence and utterance cap, turns the engine's own `vadFilter` on, and sets per-agent batch chunking. Every one of these replaced a platform key that TASK-877 deleted (`stt.streaming.partialIntervalS`, `stt.semanticEndpoint.*`). The three additive wire fields \u2014 `decoding.{chunkLengthSec,strideLengthSec}` and `streaming.semantic` \u2014 are OPTIONAL: the other two cases omit them entirely, which is what keeps the two halves deployable in either order against `extra='forbid'`.",
+    "$comment": "TASK-877 — the fields the runtime used to DROP. A tenant agent that asks for semantic endpointing, tunes it, binds an `endpointing` (end-of-utterance) model, sets its own partial cadence and utterance cap, turns the engine's own `vadFilter` on, and sets per-agent batch chunking. Every one of these replaced a platform key that TASK-877 deleted (`stt.streaming.partialIntervalS`, `stt.semanticEndpoint.*`). The three additive wire fields — `decoding.{chunkLengthSec,strideLengthSec}` and `streaming.semantic` — are OPTIONAL: the other two cases omit them entirely, which is what keeps the two halves deployable in either order against `extra='forbid'`.",
     "input": {
       "agent": {
         "agentId": "0199a861-0000-7000-8000-000000000021",

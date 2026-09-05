@@ -15,8 +15,40 @@ export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
 /** Which tier supplied the provider credential — decides BYOK vs CLOUD metering (derived, never stamped). */
 export type AgentFundingTier = 'tenant' | 'platform';
 
-/** The role a resolved model plays in the agent's chain. */
-export type ResolvedAgentModelRole = 'primary' | 'fallback' | 'vad' | 'denoise' | 'embedding' | 'punctuation';
+/**
+ * The role a resolved model plays in the agent's chain.
+ *
+ * TASK-880 added `endpointing`, which TASK-877 shipped on the ASR wire
+ * (`ASR_SPEC_MODEL_ROLES`) and in the committed contract fixture without ever
+ * declaring here — so the one role a `ResolvedAgent` could legitimately carry was
+ * the one this union rejected.
+ */
+export type ResolvedAgentModelRole = 'primary' | 'fallback' | 'vad' | 'denoise' | 'embedding' | 'punctuation' | 'endpointing';
+
+/**
+ * The `AiModel._metadata` facts a RUNTIME needs, narrowed to what it may act on.
+ *
+ * TASK-880 — model-coupled geometry stops being a platform settings key and becomes a
+ * property of the row that owns it, so the fallback engine gets ITS OWN numbers instead of
+ * the primary's. Only the declared members travel; the rest of `_metadata` (voice
+ * catalogues, label taxonomies, hub artifacts) is for other planes and is never forwarded.
+ */
+export interface ResolvedAgentModelMetadata {
+  /** ASR decode geometry — replaces `stt.whisperCpp.maxAudioSeconds` / `stt.streaming.partialWindowS`. */
+  asr?: {
+    /** Longest audio fed to the engine in ONE decode, seconds. Absent ⇒ the engine's own default. */
+    maxDecodeWindowSec?: number;
+    /** Tail window of the live utterance decoded for PARTIALs, seconds. Absent ⇒ the preprocessor default. */
+    partialWindowSec?: number;
+  };
+  /**
+   * Speaker-embedding geometry. `dimension` is the vector width the row emits, and it must
+   * match the deployed `UserVoiceProfile.embedding` column or every enrollment fails — which
+   * is why `buildResolvedAsrSpec` REFUSES a mismatch rather than shipping a spec that cannot
+   * enroll (TASK-880; the defect TASK-877 recorded and deferred).
+   */
+  embedding?: { dimension?: number };
+}
 
 export interface ResolvedAgentModel {
   role: ResolvedAgentModelRole;
@@ -32,6 +64,8 @@ export interface ResolvedAgentModel {
   provider: string | null;
   /** The tenant that OWNS the registry row (SYSTEM for the platform catalogue). */
   tenantId: string;
+  /** The narrow `AiModel._metadata` slice a runtime may act on; absent when the row declares none. */
+  metaData?: ResolvedAgentModelMetadata | null;
 }
 
 /**

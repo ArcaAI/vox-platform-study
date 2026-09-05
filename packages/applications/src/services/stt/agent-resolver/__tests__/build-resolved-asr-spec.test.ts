@@ -137,3 +137,44 @@ describe('buildResolvedAsrSpec — TASK-877 additive fields', () => {
     expect(buildResolvedAsrSpec({ agent: base, fallbackAgent: null }).models).not.toHaveProperty('endpointing');
   });
 });
+
+/**
+ * TASK-880 — model-coupled facts ride the `AiModel` row, not a platform key.
+ *
+ * `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` were platform-wide
+ * numbers describing ONE engine's decode geometry. They are now
+ * `AiModel._metadata.asr.{maxDecodeWindowSec,partialWindowSec}`, carried per model on the
+ * spec — so the fallback chain's engine gets ITS OWN window rather than the primary's.
+ */
+describe('buildResolvedAsrSpec — AiModel._metadata.asr rides each model', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  const withMeta = (agent: ResolvedAgent, role: string, asr: Record<string, number>): ResolvedAgent => ({
+    ...agent,
+    models: agent.models.map((m) => (m.role === role ? { ...m, metaData: { asr } } : m)),
+  });
+
+  it('surfaces the primary model’s asr metadata on models.asr.metadata', () => {
+    const agent = withMeta(base, 'primary', { maxDecodeWindowSec: 7, partialWindowSec: 6 });
+    expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).models.asr.metadata).toEqual({ maxDecodeWindowSec: 7, partialWindowSec: 6 });
+  });
+
+  it('OMITS metadata when the row declares none — the wire key must never appear as null', () => {
+    expect(buildResolvedAsrSpec({ agent: base, fallbackAgent: null }).models.asr).not.toHaveProperty('metadata');
+  });
+
+  it('the fallback chain carries the FALLBACK row’s own window, not the primary’s', () => {
+    const agent = withMeta(withMeta(base, 'primary', { maxDecodeWindowSec: 7 }), 'fallback', { maxDecodeWindowSec: 30 });
+    const spec = buildResolvedAsrSpec({ agent, fallbackAgent: null });
+    expect(spec.models.asr.metadata?.maxDecodeWindowSec).toBe(7);
+    expect(spec.fallback.spec?.models.asr.metadata?.maxDecodeWindowSec).toBe(30);
+  });
+
+  it('ignores non-numeric metadata rather than forwarding a shape apps/stt would reject', () => {
+    const agent: ResolvedAgent = {
+      ...base,
+      models: base.models.map((m) => (m.role === 'primary' ? { ...m, metaData: { asr: { maxDecodeWindowSec: 'seven' } } as never } : m)),
+    };
+    expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).models.asr).not.toHaveProperty('metadata');
+  });
+});

@@ -22,6 +22,7 @@ import type {
   AsrSpecFallback,
   AsrSpecInstruction,
   AsrSpecModel,
+  AsrSpecModelMetadata,
   AsrSpecModelRole,
   AsrSpecModels,
   AsrSpecPostProcessing,
@@ -32,9 +33,19 @@ import type {
   ResolvedAsrSpec,
 } from '@arcaai/types';
 import { ASR_SPEC_ROLE_TASK_TYPE, RESOLVED_ASR_SPEC_SCHEMA_VERSION } from '@arcaai/types';
+import { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
 
-/** The former `STT_FALLBACK_DEFAULTS` of `TenantSttConfig`, now the agent's `fallback` block defaults. */
-export const ASR_SPEC_FALLBACK_DEFAULTS = Object.freeze({ autoSwitch: true, switchAfterConsecutiveFailures: 2 });
+/**
+ * The agent `fallback` block's governance defaults.
+ *
+ * TASK-880 renamed this from the ASR-specific spelling and re-exports the ONE declaration in
+ * `@arcaai/workflow-contract` instead of re-typing the literals. TASK-876 moved fallback
+ * governance onto the contract (autoSwitch ON, threshold 2 — a platform HA capability, not an
+ * ASR opinion) and its comment already said this builder read from there; it did not, and the
+ * two copies were free to drift. Re-exported HERE because that is where the ASR call sites
+ * import it from.
+ */
+export { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
 
 /** Raised when a resolved agent cannot become a runnable spec (fail closed — never a guessed engine). */
 export class AsrSpecBuildError extends Error {
@@ -63,7 +74,27 @@ const pair = (value: unknown): readonly [number, number] | null =>
     ? [value[0] as number, value[1] as number]
     : null;
 
+/**
+ * TASK-880 — the `AiModel._metadata.asr` geometry the runtime may act on, normalised.
+ *
+ * OMITTED (never `null`, never `{}`) when the row declares nothing usable: `apps/stt`'s
+ * mirror is `extra='forbid'` and treats an absent key as "no opinion, keep my own default",
+ * so an empty object would be a second encoding of one state. A non-numeric member is
+ * dropped rather than forwarded — the row is admin-editable JSON, and a string where the
+ * runtime expects seconds must not reach a `float()`.
+ */
+function specModelMetadata(model: ResolvedAgentModel): AsrSpecModelMetadata | undefined {
+  const asr = rec(rec(model.metaData).asr);
+  const out: AsrSpecModelMetadata = {};
+  const maxDecodeWindowSec = num(asr.maxDecodeWindowSec);
+  if (maxDecodeWindowSec !== null) out.maxDecodeWindowSec = maxDecodeWindowSec;
+  const partialWindowSec = num(asr.partialWindowSec);
+  if (partialWindowSec !== null) out.partialWindowSec = partialWindowSec;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function toSpecModel(model: ResolvedAgentModel, role: AsrSpecModelRole): AsrSpecModel {
+  const metadata = specModelMetadata(model);
   return {
     role,
     slug: model.slug,
@@ -76,6 +107,7 @@ function toSpecModel(model: ResolvedAgentModel, role: AsrSpecModelRole): AsrSpec
     computeType: model.computeType ?? null,
     provider: model.provider ?? null,
     tenantId: model.tenantId,
+    ...(metadata ? { metadata } : {}),
   };
 }
 
@@ -191,8 +223,8 @@ export function buildAsrSpecCore(agent: ResolvedAgent, override?: { asr: Resolve
 function fallbackOf(agent: ResolvedAgent, fallbackAgent: ResolvedAgent | null | undefined): AsrSpecFallback {
   const f = rec(rec(agent.compiledConfig.parameters).fallback);
   const governance = {
-    autoSwitch: bool(f.autoSwitch, ASR_SPEC_FALLBACK_DEFAULTS.autoSwitch),
-    switchAfterConsecutiveFailures: num(f.switchAfterConsecutiveFailures) ?? ASR_SPEC_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
+    autoSwitch: bool(f.autoSwitch, AGENT_FALLBACK_DEFAULTS.autoSwitch),
+    switchAfterConsecutiveFailures: num(f.switchAfterConsecutiveFailures) ?? AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
   };
   if (fallbackAgent) {
     return { kind: 'agent', ...governance, spec: buildAsrSpecCore(fallbackAgent) };

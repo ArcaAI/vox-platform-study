@@ -146,8 +146,8 @@ export const AGENT_TOOLS_SCHEMA: NodeConfigSchema = Object.freeze({
  * Fallback is a platform HA capability (TASK-870 owner decision #4): every agent falls back on
  * outage, ON by default, to the platform default (the SYSTEM-assigned agent of the same task),
  * metered as platform-funded; the toggle is per agent node. These two defaults used to be
- * re-typed as literals by each runtime builder (`ASR_SPEC_FALLBACK_DEFAULTS` in
- * `build-resolved-asr-spec.ts`) — they are now read from here.
+ * re-typed as literals by each runtime builder — TASK-880 finished that: the ASR builder's own
+ * copy is gone and `build-resolved-asr-spec.ts` re-exports THIS declaration under this name.
  */
 export const AGENT_FALLBACK_DEFAULTS = Object.freeze({ autoSwitch: true, switchAfterConsecutiveFailures: 2 });
 

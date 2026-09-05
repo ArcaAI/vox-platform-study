@@ -55,36 +55,22 @@ from typing import Any
 import numpy as np
 import structlog
 
-from stt.core.config.settings import get_settings
 from stt.models.base_loader import LoadedModel
 from stt.pipeline.dto import AiModelFormat, primary_language_subtag
 from stt.pipeline.language_modes import LANGUAGE_MODES_BY_ID
 
 logger = structlog.get_logger(__name__)
 
-# --- Clinical-consultation priming prompt (language-derived) ------------------
-# whisper.cpp's ``initial_prompt`` is decoder prior-context (≤224 tokens), NOT a
-# chat instruction. A short domain-context line in the target language biases
-# decoding toward clinical-consultation vocabulary and, for a code-switch GGUF,
-# frames the ml/en mixture — without the instruction-style degradation that took
-# the old priming prompt offline (see
-# ``stt.pipeline.language_modes.WHISPER_CPP_PRIMING_PROMPT_ENABLED``). The prompt
-# is keyed on the pipeline's configured ``inference.language``.
-_CONSULTATION_PROMPT_ML = "ഇത് ഒരു consultation ആണ്, ഒരു doctor നും ഒരു രോഗിക്കും തമ്മിലുള്ളത്."
-_CONSULTATION_PROMPT_EN = "This is a consultation between a doctor and a patient"
-
-
-def consultation_prompt_for_language(language: str | None) -> str:
-    """Clinical-consultation priming prompt for whisper.cpp, keyed on the
-    pipeline's configured language.
-
-    Malayalam (``"ml"``) gets the Malayalam line; English (``"en"``) or an
-    unset/auto language gets the English line. The comparison uses the primary
-    subtag only (e.g. ``"ml-en"`` → ``"ml"``).
-    """
-    if language and language.split("-")[0].lower() == "ml":
-        return _CONSULTATION_PROMPT_ML
-    return _CONSULTATION_PROMPT_EN
+# TASK-880 — the language-derived clinical-consultation priming prompt, and the
+# platform flag `stt.whisperCpp.consultationPromptEnabled` that gated it, are GONE.
+#
+# whisper.cpp's ``initial_prompt`` is decoder prior-context, and WHAT that context
+# should say is the tenant agent's decision, not a per-process boolean over two
+# hardcoded lines. The agent's own ``instruction.initialPrompt`` already reaches this
+# adapter as the ``prompt`` argument (``ResolvedAsrSpec.instruction`` →
+# ``InferenceConfig.initial_prompt_text`` → ``compose_prompt`` with the per-utterance
+# carry-forward), so setting a second context line from the same instruction would have
+# applied it twice. One prompt channel, owned by the agent.
 
 
 # Substrings that mark a poisoned ggml/Metal backend in whisper.cpp's native log.
@@ -345,23 +331,18 @@ class WhisperCppAsrAdapter:
         # ``max_len=1`` word-splitting is a lossy, script-corrupting hack we only
         # incur when word timings are actually needed.
         self._want_word_timestamps = want_word_timestamps
-        # Language-derived consultation context, fed as whisper.cpp's
-        # ``initial_prompt`` (prepended before any per-utterance carry-forward
-        # text) — an exemplar prior-context line, NOT an instruction. Gated by
-        # ``whisper_cpp_consultation_prompt_enabled`` (default OFF: measured to
-        # inject spurious tokens and break grapheme clusters on the code-switch
-        # fine-tune). A/B-togglable; kept off until an eval shows it helps.
-        settings = get_settings()
-        self._context_prompt: str = (
-            consultation_prompt_for_language(self._language)
-            if settings.whisper_cpp_consultation_prompt_enabled
-            else ""
-        )
         # Max audio length per decode — longer utterances are split at silence
-        # troughs (the fine-tune truncates on long audio; VAD does not segment
+        # troughs (the ml-en fine-tune truncates on long audio; VAD does not segment
         # continuous clinical speech). 0 disables the guard.
+        #
+        # TASK-880 — this is the MODEL's window
+        # (``ResolvedAsrSpec.models.asr.metadata.maxDecodeWindowSec`` →
+        # ``InferenceConfig.max_decode_window_sec``), not the platform key
+        # ``stt.whisperCpp.maxAudioSeconds`` it replaces. That key applied one number
+        # to every whisper.cpp row on the box, including rows with a 30s context that
+        # never needed splitting; a fallback chain now decodes on its own window.
         self._max_audio_seconds: float = float(
-            getattr(settings, "whisper_cpp_max_audio_seconds", 0.0) or 0.0
+            getattr(inference_config, "max_decode_window_sec", 0.0) or 0.0
         )
         # Shared per-context lock — the main and english-gloss adapters over one
         # cached LoadedModel MUST serialize (same underlying whisper context).
@@ -506,11 +487,11 @@ class WhisperCppAsrAdapter:
         """Run one decode while capturing whisper.cpp's native log for this
         thread. Must be called with ``self._lock`` held."""
         model = self._loaded.model
-        # The language-derived consultation context (when enabled) leads; any
-        # per-utterance carry-forward/template ``prompt`` follows it as additional
-        # prior context. Join only the non-empty parts so a disabled context prompt
-        # leaves the carry-forward prompt untouched (no leading space).
-        effective_prompt = " ".join(p for p in (self._context_prompt, prompt) if p)
+        # The ONE prompt channel: the agent's ``instruction.initialPrompt`` already
+        # composed with the per-utterance carry-forward by the caller
+        # (``compose_prompt``). ``""`` rather than ``None`` because the binding's
+        # setter rejects None and the shared context persists params across calls.
+        effective_prompt = prompt or ""
         # Word-timestamp mode forces near-word-sized segments (``max_len=1``,
         # ``split_on_word``) so each segment carries its own (t0, t1). This is
         # only requested when the pipeline consumes word timings; otherwise a
