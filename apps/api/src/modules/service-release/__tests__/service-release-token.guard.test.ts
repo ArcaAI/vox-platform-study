@@ -30,7 +30,6 @@ describe('ServiceReleaseTokenGuard', () => {
       NLP_SERVICE_TOKEN: 'nlp-secret',
       GUARDRAIL_SERVICE_TOKEN: undefined,
       HARNESS_SERVICE_TOKEN: undefined,
-      TTS_SERVICE_TOKEN: undefined,
       API_GATEWAY_KEY: 'gateway-secret',
     });
     guard = new ServiceReleaseTokenGuard(secretsService as any);

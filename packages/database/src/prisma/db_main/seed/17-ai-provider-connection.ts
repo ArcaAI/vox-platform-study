@@ -466,12 +466,35 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
   {
+    // Azure AI Foundry (MAI-Transcribe) — a SEPARATE row from `azure-speech` since TASK-880.
+    // `enabled: false` is the PREVIEW VETO that replaced the platform kill-switch
+    // `stt.azureFoundry.enabled`: no entry is folded into `provider_overrides`, so
+    // `azure_foundry_loader` refuses to load. A tenant that has signed off on data residency
+    // brings its own credential and enables it — per tenant, which a platform boolean could
+    // never express. `baseUrl` is the resource endpoint (`https://<res>.cognitiveservices.azure.com`),
+    // left null: it is per-deployment and no placeholder is invented.
+    id: '87000000-0000-0000-0000-0000000000c4',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'stt',
+    provider: 'azure-foundry',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    apiKeyPlaintext: null,
+    enabled: false,
+    metaData: null,
+  },
+  {
     // Sarvam ASR (cloud). NOTE: the public API is not PHI-safe.
     id: '87000000-0000-0000-0000-0000000000c2',
     tenantId: SYSTEM_TENANT_ID,
     service: 'stt',
     provider: 'sarvam',
-    baseUrl: null,
+    // `stt.sarvam.baseUrl`'s value (TASK-880): a platform admin who adds a key gets a working row.
+    baseUrl: 'https://api.sarvam.ai',
     region: null,
     apiVersion: null,
     deploymentName: null,
@@ -487,7 +510,8 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     service: 'stt',
     provider: 'openai',
-    baseUrl: null,
+    // `stt.openai.baseUrl`'s value (TASK-880): a platform admin who adds a key gets a working row.
+    baseUrl: 'https://api.openai.com/v1',
     region: null,
     apiVersion: null,
     deploymentName: null,

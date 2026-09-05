@@ -77,7 +77,11 @@ export const PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', '
  */
 export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
-  stt: ['azure-speech', 'sarvam', 'openai'],
+  // `azure-foundry` is separate from `azure-speech` on purpose (TASK-880): a Foundry resource IS an
+  // Azure Speech resource, but the two engines have different data-residency postures, and one
+  // credential gating both meant a tenant could not enable Speech without also enabling a PREVIEW
+  // service for its PHI.
+  stt: ['azure-speech', 'azure-foundry', 'sarvam', 'openai'],
   tts: ['azure', 'sarvam'],
   // C.1 — the integration capabilities. Each list is EVIDENCE-BASED,
   // not aspirational: a provider is listed only where a tenant can genuinely

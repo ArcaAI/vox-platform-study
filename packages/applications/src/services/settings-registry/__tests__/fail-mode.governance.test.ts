@@ -175,7 +175,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // through `SecretsService`.
     'guardrail.serviceToken': 'GUARDRAIL_SERVICE_TOKEN',
     'harness.serviceToken': 'HARNESS_SERVICE_TOKEN',
-    'tts.serviceToken': 'TTS_SERVICE_TOKEN',
+    // `tts.serviceToken` left with TASK-879/880 once its last reader (the service-release guard) went.
     // Lane J: four credentials the gateway already fetched through SecretsService
     // but that had no descriptor, so `vault-seed-secrets.sh` never seeded them.
     'harness.internalServiceToken': 'HARNESS_INTERNAL_SERVICE_TOKEN',

@@ -155,10 +155,9 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   //
   // Its `text` and `tts` siblings were proposed for removal in the same pass
   // and deliberately KEPT, because `vault-kv-coverage.test.ts` proved both
-  // names are still fetched: `TEXT_SERVICE_TOKEN` in `text-proxy.controller.ts`
-  // and `text-compat.controller.ts` (as the fallback after
-  // `INTERNAL_ACCESS_TOKEN`), and `TTS_SERVICE_TOKEN` at four `apps/api` call
-  // sites with no such preference at all. Dropping a descriptor whose name a
+  // names are still fetched: `TEXT_SERVICE_TOKEN` as the legacy fallback name in
+  // `packages/applications` (TASK-883 retired the gateway readers), and — until
+  // TASK-879/880 — `TTS_SERVICE_TOKEN` at five `apps/api` call sites. Dropping a descriptor whose name a
   // call site still reads stops the seeding script writing it, so the read
   // resolves to undefined on a Vault-backed deployment while every
   // `SECRETS_PROVIDER=env` box stays green — the exact production-only failure
@@ -176,7 +175,9 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
     'Shared secret on the gateway↔harness hop. Fetched on demand (not a warmup key) by `HarnessOpsClient` / `HarnessGatewayService` / `HarnessServiceTokenGuard`. It MUST equal the harness process’s own `HARNESS_SERVICE_TOKEN`, or every `/api/v1/internal/harness/*` call 401s.',
     'Service Tokens',
   ),
-  platformSecret('tts.serviceToken', 'TTS service token', 'Shared secret on the gateway↔TTS hop (`X-Service-Token`).', 'Service Tokens'),
+  // `tts.serviceToken` was here until TASK-879/880 retired its last reader (the speech module,
+  // the agent module and the service-release guard now use the shared internal access token).
+  // `text.serviceToken` follows once the `packages/applications` fallback names are gone.
   platformSecret(
     'harness.internalServiceToken',
     'Harness knowledge-ingest token',
