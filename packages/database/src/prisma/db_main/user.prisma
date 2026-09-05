@@ -247,17 +247,33 @@ model UserVoiceProfile {
   // core fields
   userId String
   // Data Encryption Initiative — DECISION: the speaker `embedding`
-  // (pgvector vector(256)) is deliberately NOT field-encrypted. It is a
+  // (pgvector) is deliberately NOT field-encrypted. It is a
   // biometric used for cosine-similarity diarization (the ANN/`<->` distance
   // operators require the raw vector); Vault-Transit randomized encryption
   // would make the column opaque and break similarity search entirely. It
   // stays protected by at-rest disk encryption + RBAC (tenant/user
   // scoping). Revisit only if a searchable-encryption / secure-enclave scheme
   // is adopted.
-  embedding Unsupported("vector(256)")
+  //
+  // TASK-887 — the column is DIMENSION-AGNOSTIC (`vector`, no typmod), not `vector(256)`.
+  // Diarization is a declared ASR-agent option: the agent names the SPEAKER_EMBEDDING model,
+  // that model IS the space, and `modelId` below records which one embedded this row. A width
+  // is therefore a property of the model, not of the deployment, and pinning one here would
+  // re-impose the single platform space the owner removed. Consequence accepted deliberately:
+  // pgvector cannot build an ivfflat/hnsw index on an un-dimensioned column, so matching is a
+  // brute-force cosine scan — correct here, because the candidate set is one user's handful of
+  // active profiles for one model, never a tenant-wide or corpus-wide search.
+  embedding Unsupported("vector")
   isActive  Boolean                    @default(false)
   label     String?                    @db.VarChar(100)
-  modelId   String?
+  // TASK-887 — REQUIRED, and it holds the `AiModel` SLUG (not the id, and no longer the raw
+  // HuggingFace repo name). The slug is the identity the agent binds
+  // (`audioFrontEnd.diarization.embeddingModelSlug`) and the identity that travels on the ASR
+  // spec (`models.embedding.slug`), so slug-to-slug is an exact comparison; `sourceUri` is not
+  // unique across rows (two rows may wrap one repo at different revisions or compute types)
+  // and the uuid never appears on the wire. A profile whose model is unknown cannot be matched
+  // against anything safely, which is why this is no longer nullable.
+  modelId   String
 
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)

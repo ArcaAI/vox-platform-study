@@ -11,7 +11,8 @@ export interface CreateUserVoiceProfileProps extends BaseEntityFactoryCreateProp
   userId: IUserVoiceProfileEntity['userId'];
   isActive?: IUserVoiceProfileEntity['isActive'];
   label?: IUserVoiceProfileEntity['label'];
-  modelId?: IUserVoiceProfileEntity['modelId'];
+  // TASK-887 — REQUIRED: the `AiModel` slug that embedded this profile.
+  modelId: IUserVoiceProfileEntity['modelId'];
 
   createdAt?: IUserVoiceProfileEntity['createdAt'];
   updatedAt?: IUserVoiceProfileEntity['updatedAt'];
@@ -36,7 +37,7 @@ export class UserVoiceProfileFactory {
       userId: props.userId,
       isActive: props.isActive ?? false,
       label: props.label ?? null,
-      modelId: props.modelId ?? null,
+      modelId: props.modelId,
     });
   }
 }
