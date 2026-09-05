@@ -46,7 +46,14 @@ from text.providers.base import LLMProvider
 from text.routing.hub import BatchFlusher, GenerationEvent, GenerationPolicy, Producer
 from text.routing.usage import _extract_stream_usage
 from text.services.circuit_breaker import CircuitBreaker, CircuitState
+from text.services.external_guardrail import ExternalGuardrailClient
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
+from text.services.output_gate import (
+    OutputRejectedError,
+    assemble_completion,
+    gate_completion,
+    source_context_of,
+)
 from text.services.shutdown_manager import ShutdownManager
 from text.services.task_manager import TaskManager
 
@@ -92,8 +99,18 @@ async def run_generation_producer(
     request_id: str | None = None,
     byok: bool = False,
     policy: GenerationPolicy | None = None,
+    guardrail_client: ExternalGuardrailClient | None = None,
+    app_state: Any = None,
 ) -> None:
-    """Drive one generation to its terminal frame. Never raises to the hub."""
+    """Drive one generation to its terminal frame. Never raises to the hub.
+
+    ``guardrail_client`` / ``app_state`` feed the post-receive gate
+    (`services/output_gate.py`): the ASSEMBLED completion is screened after the
+    provider stream ends and before the terminal frame. Both default to ``None``
+    — the dev/CI bypass, and what every pre-existing caller gets — so an
+    unwired producer behaves exactly as it did; the ``/generate`` route passes
+    the live client and state.
+    """
     generation_id = producer.generation_id
     resolved_model = model or request_body.model
     resolved_provider = provider_name or request_body.provider
@@ -170,6 +187,12 @@ async def run_generation_producer(
     # folded into it. The SSE reader STOPS at the first ``done``/``error``, so a
     # usage frame appended after one would never be delivered.
     pending_done: StreamChunk | None = None
+    # What the consumer has SEEN, for the post-receive gate. Deltas are
+    # published live and cannot be recalled, so the verdict is on the assembled
+    # text at end-of-stream — and on an early-stopped partial, which was
+    # delivered too.
+    content_parts: list[str] = []
+    reasoning_parts: list[str] = []
 
     def _usage_detail(*, interrupted: bool) -> dict[str, Any]:
         return build_usage_detail(
@@ -260,6 +283,11 @@ async def run_generation_producer(
                 # Hold it back; it is re-emitted below carrying the usage block.
                 pending_done = chunk
                 continue
+            if chunk.content:
+                if chunk.type == "chunk":
+                    content_parts.append(chunk.content)
+                elif chunk.type == "reasoning":
+                    reasoning_parts.append(chunk.content)
             emit(chunk)
 
             stopped_reason = await _should_stop()
@@ -300,6 +328,55 @@ async def run_generation_producer(
                 generation_id=generation_id,
                 error=str(exc),
             )
+
+        # Post-receive guardrail gate (TASK-871). Screens what was delivered —
+        # content and reasoning, assembled — before the terminal frame decides
+        # whether this generation is a result. On rejection the terminal frame
+        # is ``error`` (every consumer discards on it), the task record is
+        # FAILED with a ``guardrail_rejected:`` error, and the breaker is NOT
+        # tripped: a refused completion is not provider unhealth.
+        try:
+            await gate_completion(
+                guardrail_client,
+                completion=assemble_completion("".join(content_parts), "".join(reasoning_parts)),
+                source_context=source_context_of(request_body),
+                tenant_id=tenant_id,
+                tenant_policy=request_body.guardrail_policy,
+                app_state=app_state,
+                where="streaming.run_generation_producer",
+            )
+        except OutputRejectedError as rejected:
+            logger.warning(
+                "streaming_generation.rejected_by_guardrail",
+                generation_id=generation_id,
+                code=rejected.code,
+                reason=rejected.reason,
+                retryable=rejected.retryable,
+            )
+            await emit_terminal(
+                StreamChunk(
+                    type="error",
+                    data=rejected.terminal_data(
+                        usage=_usage_detail(interrupted=bool(stopped_reason))
+                    ),
+                )
+            )
+            await task_manager.update_task(
+                generation_id, status=TaskStatus.FAILED, error=rejected.task_error
+            )
+            GENERATION_ERRORS.labels(
+                provider=resolved_provider, model=resolved_model, error_type="guardrail_rejected"
+            ).inc()
+            GENERATION_TOTAL.labels(
+                provider=resolved_provider, model=resolved_model, status="rejected"
+            ).inc()
+            _log_audit(
+                status="rejected",
+                latency_ms=latency_ms,
+                finish_reason="guardrail_rejected",
+                error=rejected.task_error,
+            )
+            return
 
         # The terminal frame, carrying the usage block the gateway meters from.
         # A provider that emitted no ``done`` of its own still gets one, so the
