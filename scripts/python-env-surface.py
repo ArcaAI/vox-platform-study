@@ -664,8 +664,10 @@ def scan_bare_reads() -> dict[str, list[str]]:
 #     nothing downstream `getattr`s it, because telling those apart needs
 #     dataflow. `apps/tts`'s overlay table happens to be keyed by DOTTED path
 #     ("azure.max_concurrent") rather than bare field name, which is the only
-#     reason its three genuinely-unread fields surface — luck, not design.
-#     Stated here so the next reader does not mistake it for a guarantee.
+#     reason its three genuinely-unread fields ever surfaced (TASK-872 deleted
+#     them) — luck, not design. Stated here so the next reader does not mistake
+#     it for a guarantee: an equivalent table keyed by bare name hides its dead
+#     fields from this scan completely.
 #
 # Tests are NOT scanned (the same `_is_test_file` rule the bare-read scan uses):
 # a field read only by its own test is config theatre with a witness, and should
@@ -687,17 +689,6 @@ def scan_bare_reads() -> dict[str, list[str]]:
 #: to a lane that is not yours — a HANDOFF, and the self-cleaning rule turns it
 #: into a one-line deletion for whoever fixes it. "No time to delete it" is not
 #: a reason; deleting it is the cheaper action.
-_TTS_CONTROL_PLANE_HANDOFF = (
-    "REAL FINDING, not an exemption. `tts/core/control_plane.py` WRITES this "
-    "field from the control plane (its table is keyed by dotted path, "
-    "'azure.max_concurrent'), and nothing in apps/tts then READS it — so the "
-    "registry key, the descriptor and the overlay all exist to move a value "
-    "that lands nowhere. Found by `pnpm env:python-dead` during  Phase "
-    "3.2, whose lane owned apps/{text,stt,guardrail,harness} and NOT apps/tts. "
-    "Fix is to wire it at the provider or drop the field, the overlay entry and "
-    "the descriptor together; then delete this line, which the staleness rule "
-    "will demand anyway."
-)
 
 # — four STT credential fields whose ENV PATH is closed (a dead
 #: `validation_alias`, `populate_by_name` off) but whose FIELD must survive.
@@ -718,9 +709,13 @@ INTENTIONALLY_UNREAD: dict[str, str] = {
     "stt:Settings.model_s3_endpoint": _STT_CREDENTIAL_ENV_CLOSED,
     "stt:Settings.model_s3_access_key": _STT_CREDENTIAL_ENV_CLOSED,
     "stt:Settings.model_s3_secret_key": _STT_CREDENTIAL_ENV_CLOSED,
-    "tts:AzureSpeechConfig.max_concurrent": _TTS_CONTROL_PLANE_HANDOFF,
-    "tts:SarvamConfig.max_concurrent": _TTS_CONTROL_PLANE_HANDOFF,
-    "tts:SarvamConfig.use_streaming": _TTS_CONTROL_PLANE_HANDOFF,
+    # The three apps/tts entries that sat here were a HANDOFF, exactly as the
+    # block comment above prescribes: a real dead-field finding raised by a lane
+    # that did not own apps/tts. TASK-872 took the handoff and dropped the
+    # fields, their descriptors and their overlay entries, which left these three
+    # lines naming fields that no longer exist. The self-cleaning rule then did
+    # what it promises and failed the check until they were deleted — the last
+    # step the rationale string itself named. Deleted; the handoff is closed.
 }
 
 
