@@ -1699,6 +1699,9 @@ export class ConsultationController {
     });
   }
 
+  // TASK-869 — same 201-vs-200 drift as the state-transition routes: the
+  // published contract documents 200 and Nest's POST default is 201.
+  @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: SummaryApprovalResponseDto,
     method: HttpMethod.POST,
