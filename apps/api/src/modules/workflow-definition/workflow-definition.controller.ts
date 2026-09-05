@@ -1,15 +1,21 @@
 import {
   CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
+  ImportWorkflowDefinitionRequest,
   IWorkflowDefinitionService,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
   PaginatedQuery,
   PaginatedWorkflowDefinitionResponse,
+  PromoteWorkflowToSystemRequest,
+  PromoteWorkflowToSystemResponse,
   PublishWorkflowDefinitionRequest,
+  SyncWorkflowDefinitionRequest,
   UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
+  WorkflowDefinitionBundle,
   WorkflowDefinitionResponse,
+  WorkflowSyncResponse,
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
@@ -94,6 +100,82 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 200, type: [WorkflowDefinitionResponse] })
   async fetchTemplates(): Promise<WorkflowDefinitionResponse[]> {
     return this.workflowDefinitionService.listTemplates();
+  }
+
+  @Post('import')
+  @ApiOperation({
+    summary: 'Import a workflow bundle as a new DRAFT workflow',
+    description:
+      'The mirror of `GET :id/export`. Every reference the bundle makes — prompt templates by name, document templates, ' +
+      'agents and models by slug, routing by task key — is resolved against YOUR tenant’s catalogue. If any cannot be ' +
+      'resolved the whole bundle is refused with a 409 that names them, and nothing is written: a workflow with a missing ' +
+      'binding fails at run time, far from whoever could fix it. The graph is then recompiled and validated here, and lands ' +
+      'as version 1 of a NEW lineage — DRAFT and inactive, because an import has been reviewed by nobody. Consumes the ' +
+      '`maxWorkflowDefinitions` quota exactly as create does.',
+  })
+  @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'Not a workflow bundle, an unimplemented schemaVersion, an unknown palette, or a graph that fails the shape/engine gate.' })
+  @ApiResponse({ status: 409, description: 'Unresolvable references (`WORKFLOW_IMPORT_UNRESOLVED_REFERENCES`), a targetSlug already in use, or the quota.' })
+  async import(@Body() request: ImportWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
+    return this.workflowDefinitionService.importDefinition(request);
+  }
+
+  // AUTH-NOTE: the class-level `@CanManage('WorkflowDefinition')` UNDERSTATES the real gate here.
+  // Writing into SYSTEM is a PLATFORM-ADMIN privilege — "only the platform admin manages SYSTEM"
+  // (owner #4) — and there is no "super admin" CASL subject to express it with; tenant admins
+  // legitimately hold `manage:WorkflowDefinition` for every other operation on this controller.
+  // The real control is `isSuperAdmin` inside `WorkflowDefinitionService.promoteToSystem`, plus
+  // the elevated tenant-less context the cross-tenant read/write mechanically requires. That is a
+  // PRIVILEGE 403, not the 404-over-403 cross-tenant posture. Never widen this decorator without
+  // reading the service first.
+  @Post('promote-to-system')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Promote a workflow from the Global build tenant into the SYSTEM template library',
+    description:
+      'The platform-admin path of owner decision #4: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), ' +
+      'which is the template every customer tenant refers to and the tenant template for new tenants. The cross-tenant copy ' +
+      'is the existing promotion (`POST admin/agent-promotions`) — prompt templates deep-copied, `evalGate` stripped, a ' +
+      'tenant-owned document-template binding blocking, one WORM audit record — and this route adds the half promotion ' +
+      'deliberately omits: the SYSTEM row is recompiled against SYSTEM’s own catalogue and PUBLISHED. The previously active ' +
+      'SYSTEM version is demoted, never deleted, so the lineage keeps its history. The eval promotion gate runs against the ' +
+      'GLOBAL source and defaults to `warn` on this path (owner #7) — set `agentic.eval.promotionGate` to `block` for a ' +
+      'blocking gate. Requires a platform administrator and an elevated tenant-less context.',
+  })
+  @ApiResponse({ status: 200, type: PromoteWorkflowToSystemResponse })
+  @ApiResponse({ status: 403, description: 'Not a platform administrator, or the context is not elevated and tenant-less.' })
+  @ApiResponse({ status: 404, description: 'The Global build tenant has no such workflow version.' })
+  @ApiResponse({ status: 409, description: 'The eval promotion gate failed and is configured to block (`EVAL_GATE_FAILED`).' })
+  async promoteToSystem(@Body() request: PromoteWorkflowToSystemRequest): Promise<PromoteWorkflowToSystemResponse> {
+    return this.workflowDefinitionService.promoteToSystem(request);
+  }
+
+  // AUTH-NOTE: as above, the class-level decorator UNDERSTATES the gate. A sync writes into
+  // OTHER tenants, and the real control — the actor holds `manage:WorkflowDefinition` in the
+  // source AND in every named target — is enforced imperatively in
+  // `WorkflowDefinitionService.syncToTenants`, before any read. Note the deliberate asymmetry it
+  // implements: the SOURCE failing is a 403 (a privilege the caller claimed), a TARGET failing is
+  // a 404 (so a list of tenant ids can never be used to discover which tenants exist).
+  @Post('slug/:slug/sync')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Sync one workflow version into other tenants you manage',
+    description:
+      'Owner decision #4: a tenant admin who manages several tenants syncs among their OWN tenants. Each target receives a ' +
+      'DRAFT of the SAME lineage — its next version, never published and never active, so a sync can never re-point another ' +
+      'tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: ' +
+      'copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a ' +
+      'reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. ' +
+      'Requires an elevated tenant-less context.',
+  })
+  @ApiParam({ name: 'slug', description: 'WorkflowDefinition slug (the lineage key) in the source tenant' })
+  @ApiResponse({ status: 200, type: WorkflowSyncResponse })
+  @ApiResponse({ status: 400, description: 'A target equals the source, or the source graph references rows that no longer resolve.' })
+  @ApiResponse({ status: 403, description: 'No manage rights on the source tenant, or the context is not elevated and tenant-less.' })
+  @ApiResponse({ status: 404, description: 'A target tenant the caller does not manage, or no such source version.' })
+  @ApiResponse({ status: 409, description: 'A target cannot resolve a reference (`WORKFLOW_SYNC_UNRESOLVED_REFERENCES`).' })
+  async sync(@Param('slug') slug: string, @Body() request: SyncWorkflowDefinitionRequest): Promise<WorkflowSyncResponse> {
+    return this.workflowDefinitionService.syncToTenants(slug, request);
   }
 
   // TASK-864 §3.4 — the inbound webhook trigger's secret, issued/rotated per LINEAGE (slug).
@@ -195,6 +277,25 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 409, description: 'targetSlug is already in use by this tenant, or the maxWorkflowDefinitions quota is exceeded.' })
   async clone(@Param('id') id: string, @Body() request: CloneWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.clone(id, request);
+  }
+
+  @Get(':id/export')
+  @ApiOperation({
+    summary: 'Export one workflow version as a portable JSON bundle',
+    description:
+      'Owner decision #4 — tenant admins export/import workflows as JSON. The bundle carries VALUES ONLY: the authored ' +
+      'definition, its node configuration, and its catalogue bindings expressed as PORTABLE KEYS (prompt template by name, ' +
+      'document template / agent / model by slug, routing by task key). It carries NO row id (they are meaningless in ' +
+      'another tenant), NO credential, and NO `evalGate` — a `goldenSetId` names a corpus of encrypted PHI, so not even the ' +
+      'pointer leaves the tenant. The derived `compiledConfig` and validation report are not exported either: they are ' +
+      'recomputed on import against the importing tenant’s registry and rule set.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionBundle })
+  @ApiResponse({ status: 400, description: 'The graph references a row that no longer resolves, so the export would silently lose the binding.' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async export(@Param('id') id: string): Promise<WorkflowDefinitionBundle> {
+    return this.workflowDefinitionService.exportDefinition(id);
   }
 
   @Post(':id/validate')
