@@ -39,6 +39,7 @@ import { LLM_AI_MODELS } from '../ai-models/llm';
 import { SYSTEM_TENANT_ID } from '../00-constants';
 import {
   PLATFORM_SELF_HOST_CONNECTIONS,
+  isPlatformInProcessEngineConnection,
   SEEDABLE_PROVIDER_SERVICES,
   SELF_HOST_PLACEHOLDER_API_KEY,
   SYSTEM_AI_PROVIDER_CONNECTIONS,
@@ -64,6 +65,13 @@ import {
  */
 const isBuiltInLocalLlm = isPlatformSelfHostConnection;
 
+/**
+ * TASK-879 — the platform's IN-PROCESS engines (`tts:kokoro` and friends), read from the seed
+ * module for the same reason `isBuiltInLocalLlm` is: a vocabulary transcribed here would fail
+ * this file against data it no longer describes.
+ */
+const isInProcessEngine = isPlatformInProcessEngineConnection;
+
 describe('AiProviderConnection SYSTEM seed rows', () => {
   it('seeds one llm row per canonical serving provider', () => {
     // `anthropic` / `vertex` are now first-class members of AI_MODEL_PROVIDERS
@@ -84,11 +92,39 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     expect(stt).toEqual(['azure-speech', 'openai', 'sarvam']);
   });
 
-  it('seeds the TTS cloud catalog rows', () => {
-    const tts = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'tts')
-      .map((c) => c.provider)
-      .sort();
-    expect(tts).toEqual(['azure', 'sarvam']);
+  it('seeds the TTS cloud catalog rows, carrying the endpoint facts that used to be settings keys', () => {
+    const tts = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'tts' && !isInProcessEngine(c));
+    expect(tts.map((c) => c.provider).sort()).toEqual(['azure', 'sarvam']);
+
+    // TASK-879 — `tts.azure.region` / `tts.sarvam.{baseUrl,timeoutS}` moved onto the row. A row
+    // that carried none of them would leave the platform default unexpressed, which is how the
+    // move would silently become a removal.
+    const azure = tts.find((c) => c.provider === 'azure')!;
+    expect(azure.region).toBe('eastus');
+    const sarvam = tts.find((c) => c.provider === 'sarvam')!;
+    expect(sarvam.baseUrl).toBe('https://api.sarvam.ai');
+    expect(sarvam.timeoutS).toBe(30);
+  });
+
+  /**
+   * TASK-879 — the rows that replaced `tts.{kokoro,parler,indicf5}.enabled`.
+   *
+   * Kokoro is the ONLY engine seeded ON, and that asymmetry is the point: the SYSTEM TTS agent
+   * binds it and it ships in the default image, so it is what makes a KEYLESS deployment Ready.
+   * The other two are off — Parler because its image extra is not installed everywhere, IndicF5
+   * because its CC-BY-NC provenance is unresolved and this row is now that gate.
+   */
+  it('seeds the three TTS in-process engines keyless and endpoint-less, with only kokoro enabled', () => {
+    const engines = SYSTEM_AI_PROVIDER_CONNECTIONS.filter(isInProcessEngine);
+    expect(engines.map((c) => `${c.service}:${c.provider}`).sort()).toEqual(['tts:indic_f5', 'tts:indic_parler', 'tts:kokoro']);
+    engines.forEach((c) => {
+      // No endpoint and NO placeholder key: an in-process engine has nothing to authenticate to,
+      // and an entry in the `provider_overrides` fold would hand the router an "override" for an
+      // engine that has no override path.
+      expect(c.baseUrl, `${c.provider} runs in-process — it has no endpoint`).toBeNull();
+      expect(c.apiKeyPlaintext, `${c.provider} must not take the self-host placeholder key`).toBeNull();
+    });
+    expect(engines.filter((c) => c.enabled).map((c) => c.provider)).toEqual(['kokoro']);
   });
 
   /**
@@ -124,11 +160,11 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => expect(c.tenantId).toBe(SYSTEM_TENANT_ID));
   });
 
-  it('enables exactly the five built-in-local llm rows Day-1 (seed-authoritative)', () => {
+  it('enables exactly the five built-in-local llm rows and the one in-process TTS engine Day-1 (seed-authoritative)', () => {
     const enabled = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.enabled)
       .map((c) => `${c.service}:${c.provider}`)
       .sort();
-    expect(enabled).toEqual(['llm:built-in', 'llm:llama-cpp', 'llm:lm-studio', 'llm:ollama', 'llm:vllm']);
+    expect(enabled).toEqual(['llm:built-in', 'llm:llama-cpp', 'llm:lm-studio', 'llm:ollama', 'llm:vllm', 'tts:kokoro']);
   });
 
   /*
@@ -152,9 +188,13 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     });
   });
 
-  it('keeps every cloud-BYO / non-built-in row disabled (no keyless cloud row serves)', () => {
-    SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => !isBuiltInLocalLlm(c)).forEach((c) => {
-      expect(c.enabled, `cloud/non-built-in ${c.service}:${c.provider} must seed disabled`).toBe(false);
+  it('keeps every cloud vendor row disabled (no keyless cloud row serves)', () => {
+    // The exclusions are the two PLATFORM classes, and they are excluded for the same reason the
+    // assertion exists: this test guards against a keyless row that would reach a VENDOR and 401.
+    // A self-hosted endpoint and an in-process engine reach no vendor at all, so enabling one
+    // spends nothing and authenticates to nobody.
+    SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => !isBuiltInLocalLlm(c) && !isInProcessEngine(c)).forEach((c) => {
+      expect(c.enabled, `cloud ${c.service}:${c.provider} must seed disabled`).toBe(false);
     });
   });
 

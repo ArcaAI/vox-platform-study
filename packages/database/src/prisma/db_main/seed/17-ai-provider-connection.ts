@@ -140,6 +140,28 @@ export const isPlatformSelfHostConnection = (c: { service: string; provider: str
   (PLATFORM_SELF_HOST_CONNECTIONS as readonly string[]).includes(`${c.service}:${c.provider}`);
 
 /**
+ * TASK-879 — the platform's IN-PROCESS engines, as `service:provider` pairs.
+ *
+ * A third class, and it is not a hair-split. `PLATFORM_SELF_HOST_CONNECTIONS` above names
+ * ENDPOINTS the platform runs (an Ollama server, a Qdrant cluster): they have a `baseUrl`, they
+ * are reached over the network, and they carry the non-secret `not-needed` placeholder purely so
+ * the `provider_overrides` fold — which drops keyless rows — has something to carry. The three
+ * engines below run INSIDE `apps/tts`. They have no endpoint, no credential and nothing to
+ * inject, so they must never take the placeholder: an entry in the fold would hand the router a
+ * per-tenant "override" for an engine that has no override path.
+ *
+ * Their row exists for exactly ONE fact — MAY this engine serve — which is what
+ * `tts.{kokoro,parler,indicf5}.enabled` used to hold in the settings registry, and which the
+ * three-state `enabled` says natively. That makes turning an engine on a super-admin write with
+ * an audit trail instead of a ConfigMap edit in another repository.
+ */
+export const PLATFORM_INPROCESS_ENGINE_CONNECTIONS = ['tts:kokoro', 'tts:indic_parler', 'tts:indic_f5'] as const;
+
+/** Whether `(service, provider)` names an engine that runs inside a HOPE service process. */
+export const isPlatformInProcessEngineConnection = (c: { service: string; provider: string }): boolean =>
+  (PLATFORM_INPROCESS_ENGINE_CONNECTIONS as readonly string[]).includes(`${c.service}:${c.provider}`);
+
+/**
  * lane F — the ONE write this create-only phase makes to an existing row.
  *
  * True only when the seed carries the non-secret self-host placeholder AND the
@@ -211,6 +233,12 @@ export interface AiProviderConnectionSeed {
    */
   encryptedApiKey: Uint8Array | null;
   keyVersion: number | null;
+  /**
+   * Per-request timeout ceiling, seconds. `null` = no opinion (the consuming service's own
+   * default applies). TASK-879 moved `tts.sarvam.timeoutS` here: a vendor's response budget is a
+   * property of the CONNECTION to that vendor, not a service-wide setting key.
+   */
+  timeoutS?: number | null;
   /**
    * Plaintext to encrypt into `encryptedApiKey` at seed time, or `null` for a
    * genuinely keyless row.
@@ -472,11 +500,80 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
 
   // ── TTS cloud providers (unified from TenantTtsProviderCredential) ─────────
   {
-    // Azure Speech (cloud TTS).
+    // Azure Speech (cloud TTS). `region` carries what `tts.azure.region` used to: an Azure Speech
+    // request is ADDRESSED per region, so it is part of the endpoint — and for a service that
+    // synthesises clinical text it is a DATA-RESIDENCY decision, which belongs on the row a
+    // super admin edits with an audit trail rather than in an env file.
     id: '87000000-0000-0000-0000-0000000000d1',
     tenantId: SYSTEM_TENANT_ID,
     service: 'tts',
     provider: 'azure',
+    baseUrl: null,
+    region: 'eastus',
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    apiKeyPlaintext: null,
+    enabled: false,
+    metaData: null,
+  },
+  {
+    // Sarvam TTS (cloud). NOTE: the PUBLIC API is not PHI-safe (no BAA, 30-day retention, not
+    // India-resident) — point `baseUrl` at the enterprise VPC or on-prem host before enabling it
+    // for patient data. `baseUrl` / `timeoutS` carry what `tts.sarvam.baseUrl` /
+    // `tts.sarvam.timeoutS` used to; the MODEL id moved to the `sarvam-bulbul` registry row
+    // (`sourceUri: 'bulbul:v3'`), because which model answers is a property of the model, not of
+    // the connection to the vendor.
+    id: '87000000-0000-0000-0000-0000000000d2',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'tts',
+    provider: 'sarvam',
+    baseUrl: 'https://api.sarvam.ai',
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    apiKeyPlaintext: null,
+    enabled: false,
+    timeoutS: 30,
+    metaData: null,
+  },
+
+  // ── TTS in-process engines — the rows that replaced the five `*_ENABLED` flags ─────────────
+  //
+  // Keyless and endpoint-less on purpose: these engines run inside `apps/tts`, so there is
+  // nothing to authenticate to and nothing to inject (see PLATFORM_INPROCESS_ENGINE_CONNECTIONS).
+  // The row's whole content is the three-state `enabled`, which the gateway resolves per request
+  // into the spec's `connection` block: no enabled row at either tier ⇒ the runtime walks past
+  // that candidate, which is exactly what `tts.<engine>.enabled: false` used to mean.
+  {
+    // Kokoro (English) — the ONE engine seeded ON, and the reason is a real outage: the SYSTEM
+    // TTS agent binds it, kokoro ships in the DEFAULT image, and it is what lets a KEYLESS
+    // deployment reach `/health/ready` at all. `hope-tts` once answered 503 forever, so its
+    // Service carried no endpoints and `TTS_URL` resolved to nothing.
+    id: '87000000-0000-0000-0000-0000000000d3',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'tts',
+    provider: 'kokoro',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    apiKeyPlaintext: null,
+    enabled: true,
+    metaData: null,
+  },
+  {
+    // AI4Bharat Indic Parler (Malayalam). OFF: the weights are large and the `[indic-parler]`
+    // image extra is not installed everywhere, so enable it only where the engine is present.
+    id: '87000000-0000-0000-0000-0000000000d4',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'tts',
+    provider: 'indic_parler',
     baseUrl: null,
     region: null,
     apiVersion: null,
@@ -488,11 +585,15 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
   {
-    // Sarvam TTS (cloud). NOTE: the public API is not PHI-safe.
-    id: '87000000-0000-0000-0000-0000000000d2',
+    // IndicF5 voice clone — LICENCE-GATED, and this row is the gate. Production and commercial
+    // enablement are NO-GO pending licence review: the released weights are a fine-tune of the
+    // CC-BY-NC SWivid F5-TTS base, and the MIT tag cannot override NonCommercial. That used to be
+    // enforced by a code comment, then by a locked settings row; it is now a SUPER_ADMIN write on
+    // a connection row, audited like every other one.
+    id: '87000000-0000-0000-0000-0000000000d5',
     tenantId: SYSTEM_TENANT_ID,
     service: 'tts',
-    provider: 'sarvam',
+    provider: 'indic_f5',
     baseUrl: null,
     region: null,
     apiVersion: null,
@@ -640,6 +741,7 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
         apiVersion: row.apiVersion,
         deploymentName: row.deploymentName,
         enabled: row.enabled,
+        ...(row.timeoutS !== undefined && row.timeoutS !== null ? { timeoutS: row.timeoutS } : {}),
         // Conditional spread, not `?? undefined` — the repo compiles
         // with `exactOptionalPropertyTypes`, so an explicit `undefined`
         // is not assignable to Prisma's JSON input type.

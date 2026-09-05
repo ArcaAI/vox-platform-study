@@ -838,6 +838,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       region: entity.region ?? null,
       apiVersion: entity.apiVersion ?? null,
       deploymentName: entity.deploymentName ?? null,
+      timeoutS: entity.timeoutS ?? null,
       encryptedApiKey: entity.encryptedApiKey ?? null,
       keyVersion: entity.keyVersion ?? null,
       source,

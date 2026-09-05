@@ -11,13 +11,37 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from tts.catalog.voices import VoiceCatalog
+import tts.routing.router as router_mod
 from tts.core.config import Settings
 from tts.providers.base import AudioChunk, ProviderRegistry, SynthesisStream
 from tts.routing.chunking import split_confirmed
 from tts.routing.router import TTSRouter
 from tts.routing.sentence_adapter import SentenceAdapter
-from tts.tests.fakes import FakeDuplexEngine, FakeEngine
+from tts.tests.fakes import FakeDuplexEngine, FakeEngine, candidate, spec, voice_binding
+
+_EN = voice_binding("en-female-1", locale="en-IN")
+
+
+@pytest.fixture(autouse=True)
+def registered_engines_serve(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests inject `FakeEngine`s by name, so no spec-built engine is wanted here.
+
+    In production `_engine_for` builds a request-scoped engine from the spec and only falls back
+    to the registry when this image has no adapter for the name; `test_router.py` covers that
+    path, and this file is about the duplex behaviour above it.
+    """
+    monkeypatch.setattr(router_mod, "_build_spec_engine", lambda *_a, **_k: None)
+
+
+def _en_spec(*engines: str):
+    head, *rest = engines
+    return spec(
+        candidate(head, voices=[_EN], voice=_EN.id),
+        chain=[
+            candidate(name, kind="platform-default", voices=[_EN], voice=_EN.id, version_id=f"agent-{name}")
+            for name in rest
+        ],
+    )
 
 # --- split_confirmed ---------------------------------------------------------
 
@@ -109,7 +133,7 @@ def _router(providers: dict) -> TTSRouter:
     reg = ProviderRegistry()
     for name, engine in providers.items():
         reg.register(name, engine)
-    return TTSRouter(reg, VoiceCatalog(), Settings())
+    return TTSRouter(reg, Settings())
 
 
 async def _run_stream(stream: SynthesisStream, texts: list[str]) -> list[AudioChunk]:
@@ -123,7 +147,7 @@ async def _run_stream(stream: SynthesisStream, texts: list[str]) -> list[AudioCh
 async def test_stream_uses_sentence_adapter_for_non_native():
     engine = FakeEngine("azure", native_streaming=False, chunks=1)
     router = _router({"azure": engine})
-    stream = router.stream(voice_id="en-female-1", routing_en=["azure", "kokoro"])
+    stream = router.stream(spec=_en_spec("azure", "kokoro"))
     frames = await _run_stream(stream, ["One. ", "Two. "])
     assert engine.calls == 2  # one synth per sentence
     assert len(frames) == 2
@@ -134,7 +158,7 @@ async def test_stream_failover_before_first_byte():
     azure = FakeEngine("azure", fail_before_emit=True)
     kokoro = FakeEngine("kokoro", chunks=1)
     router = _router({"azure": azure, "kokoro": kokoro})
-    stream = router.stream(voice_id="en-female-1", routing_en=["azure", "kokoro"])
+    stream = router.stream(spec=_en_spec("azure", "kokoro"))
     frames = await _run_stream(stream, ["Hello. "])
     assert azure.calls == 1 and kokoro.calls == 1
     assert len(frames) == 1
@@ -146,7 +170,7 @@ async def test_stream_locks_provider_after_first_byte():
     azure = FakeEngine("azure", chunks=1)
     kokoro = FakeEngine("kokoro", chunks=1)
     router = _router({"azure": azure, "kokoro": kokoro})
-    stream = router.stream(voice_id="en-female-1", routing_en=["azure", "kokoro"])
+    stream = router.stream(spec=_en_spec("azure", "kokoro"))
     await _run_stream(stream, ["One. ", "Two. ", "Three. "])
     assert azure.calls == 3
     assert kokoro.calls == 0
@@ -156,7 +180,7 @@ async def test_stream_locks_provider_after_first_byte():
 async def test_stream_prefers_native_duplex_at_speed_1():
     azure = FakeDuplexEngine("azure")
     router = _router({"azure": azure})
-    stream = router.stream(voice_id="en-female-1", speed=1.0, routing_en=["azure", "kokoro"])
+    stream = router.stream(spec=_en_spec("azure", "kokoro"), speed=1.0)
     # Native path returns the engine's own stream, not a SentenceAdapter.
     assert not isinstance(stream, SentenceAdapter)
     assert len(azure.streams) == 1
@@ -166,7 +190,7 @@ async def test_stream_prefers_native_duplex_at_speed_1():
 async def test_stream_speed_change_falls_back_to_adapter():
     azure = FakeDuplexEngine("azure")
     router = _router({"azure": azure})
-    stream = router.stream(voice_id="en-female-1", speed=1.2, routing_en=["azure", "kokoro"])
+    stream = router.stream(spec=_en_spec("azure", "kokoro"), speed=1.2)
     # speed != 1.0 → SentenceAdapter (one-shot synthesize path for SSML rate).
     assert isinstance(stream, SentenceAdapter)
     assert len(azure.streams) == 0

@@ -18,7 +18,7 @@ from hope_env import hope_settings_sources, load_env, real_secret
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from tts.core.control_plane import moved_alias
+from tts.core.control_plane import moved_alias, moved_to_row_alias
 
 
 def _split_csv(value: Any) -> Any:
@@ -36,23 +36,6 @@ class AzureSpeechConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_AZURE_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
-    # The value now comes from the settings registry (`tts.<engine>.enabled`,
-    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
-    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
-    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
-    #
-    # The env read survives because closing it is a THIRD step that belongs to
-    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
-    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
-    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
-    # path while the manifest still supplies it would leave `hope-tts` answering
-    # 503 forever with no Service endpoints — the outage that test exists for.
-    #
-    # These fields are read ONLY by boot registration in `main.py`, so a served
-    # value converges on the next restart and can never deregister a live
-    # provider mid-process.
-    enabled: bool = False
     # Azure Speech is BYOK-only. The subscription KEY is never sourced
     # from env — the `validation_alias` is a dead name no env var matches, and
     # `populate_by_name` is intentionally OFF so the field name cannot re-open an
@@ -68,11 +51,14 @@ class AzureSpeechConfig(BaseSettings):
         default=SecretStr(""),
         validation_alias="TTS_AZURE_API_KEY__ENV_REMOVED_TASK_602",
     )
-    # The REGION moved to the control plane with the rest of the connection.
-    # Same mechanism as the key above, different reason: the key is
-    # closed because it is a secret, the region because it is config an admin
-    # must be able to change without a redeploy.
-    region: str = Field(default="eastus", validation_alias=moved_alias("TTS_AZURE_REGION"))
+    # The REGION arrives with the request, on the resolved spec's `connection`
+    # block. An Azure Speech request is ADDRESSED per region, so the region is
+    # part of the endpoint, and the endpoint belongs to the
+    # `AiProviderConnection` row a super admin edits — for clinical text it is a
+    # DATA-RESIDENCY decision, which must not be a process-wide default any
+    # tenant's request silently inherits. Empty default, dead env alias: this
+    # field is a per-request carrier now, filled by `from_spec`.
+    region: str = Field(default="", validation_alias=moved_to_row_alias("TTS_AZURE_REGION"))
     # There are deliberately NO `voice_en` / `voice_ml` fields. They held
     # `en-IN-NeerjaNeural` / `ml-IN-SobhanaNeural` — the SAME two strings the
     # voice catalog already binds for `en-female-1` / `ml-female-1`. Worse, they
@@ -95,23 +81,6 @@ class KokoroConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_KOKORO_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
-    # The value now comes from the settings registry (`tts.<engine>.enabled`,
-    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
-    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
-    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
-    #
-    # The env read survives because closing it is a THIRD step that belongs to
-    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
-    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
-    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
-    # path while the manifest still supplies it would leave `hope-tts` answering
-    # 503 forever with no Service endpoints — the outage that test exists for.
-    #
-    # These fields are read ONLY by boot registration in `main.py`, so a served
-    # value converges on the next restart and can never deregister a live
-    # provider mid-process.
-    enabled: bool = False
     # No `voice` field: `af_heart` is already the catalog's kokoro binding for
     # `en-female-1`, and the router supplies it as `req.provider_voice`. The
     # warm-up path takes its voice from the catalog too (see `main.create_app`),
@@ -123,10 +92,10 @@ class KokoroConfig(BaseSettings):
     # `voices/*.pt`. When set the provider loads `KModel(config, model)` +
     # voice `.pt` paths explicitly and never touches HF_HOME / the Hub; a set
     # path missing those files fails at construction (never a silent Hub pull).
-    # Empty = dev fallback to `KPipeline`'s own Hub download. Same precedent as
-    # `TTS_PARLER_MODEL_PATH`; the gateway-injected `localPath` is the
-    # intended supplier once TASK-862/863 plumb it.
-    model_path: str = Field(default="", validation_alias=moved_alias("TTS_KOKORO_MODEL_PATH"))
+    # Empty = dev fallback to `KPipeline`'s own Hub download. TASK-879 wired the
+    # intended supplier: the resolved spec's `model.localPath`, filled per
+    # request by `from_spec`.
+    model_path: str = Field(default="", validation_alias=moved_to_row_alias("TTS_KOKORO_MODEL_PATH"))
 
 
 class IndicParlerConfig(BaseSettings):
@@ -137,25 +106,8 @@ class IndicParlerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_PARLER_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
-    # The value now comes from the settings registry (`tts.<engine>.enabled`,
-    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
-    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
-    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
-    #
-    # The env read survives because closing it is a THIRD step that belongs to
-    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
-    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
-    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
-    # path while the manifest still supplies it would leave `hope-tts` answering
-    # 503 forever with no Service endpoints — the outage that test exists for.
-    #
-    # These fields are read ONLY by boot registration in `main.py`, so a served
-    # value converges on the next restart and can never deregister a live
-    # provider mid-process.
-    enabled: bool = False
     hf_model: str = Field(
-        default="ai4bharat/indic-parler-tts", validation_alias=moved_alias("TTS_PARLER_HF_MODEL")
+        default="", validation_alias=moved_to_row_alias("TTS_PARLER_HF_MODEL")
     )
     device: str = Field(default="cpu", validation_alias=moved_alias("TTS_PARLER_DEVICE"))
     # No `speaker_ml` / `speaker_en`. `Anjali` was the catalog's `indic_parler`
@@ -170,9 +122,9 @@ class IndicParlerConfig(BaseSettings):
     # desc_encoder_path is set the description tokenizer (google/flan-t5-large,
     # baked into config as a Hub id) loads from it instead of fetching. Empty =
     # dev fallback to the gated hub pull. Pair with HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE.
-    model_path: str = Field(default="", validation_alias=moved_alias("TTS_PARLER_MODEL_PATH"))
+    model_path: str = Field(default="", validation_alias=moved_to_row_alias("TTS_PARLER_MODEL_PATH"))
     desc_encoder_path: str = Field(
-        default="", validation_alias=moved_alias("TTS_PARLER_DESC_ENCODER_PATH")
+        default="", validation_alias=moved_to_row_alias("TTS_PARLER_DESC_ENCODER_PATH")
     )
 
 
@@ -190,43 +142,20 @@ class IndicF5Config(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_INDICF5_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
-    # The value now comes from the settings registry (`tts.<engine>.enabled`,
-    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
-    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
-    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
-    #
-    # The env read survives because closing it is a THIRD step that belongs to
-    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
-    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
-    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
-    # path while the manifest still supplies it would leave `hope-tts` answering
-    # 503 forever with no Service endpoints — the outage that test exists for.
-    #
-    # These fields are read ONLY by boot registration in `main.py`, so a served
-    # value converges on the next restart and can never deregister a live
-    # provider mid-process.
-    #
-    # RESOLVED for this flag: the licensing gate above used to be
-    # enforced by the docstring alone. `tts.indicf5.enabled` is now a
-    # `globalOnly` registry key on a `locked` SYSTEM row seeded `'false'`, so
-    # enabling it is a SUPER_ADMIN write with an audit trail rather than an
-    # unreviewed env edit. The docstring warning stands as the REASON; the row
-    # is the enforcement. All five moved together — splitting one out of a
-    # family of five is how the "configured in two places" defect starts.
-    enabled: bool = False
     hf_model: str = Field(
-        default="ai4bharat/IndicF5", validation_alias=moved_alias("TTS_INDICF5_HF_MODEL")
+        default="", validation_alias=moved_to_row_alias("TTS_INDICF5_HF_MODEL")
     )
-    # local mirror dir; gated hub repo otherwise
-    model_path: str = Field(default="", validation_alias=moved_alias("TTS_INDICF5_MODEL_PATH"))
+    # local mirror dir; the registry row's `sourceUri` otherwise
+    model_path: str = Field(default="", validation_alias=moved_to_row_alias("TTS_INDICF5_MODEL_PATH"))
     device: str = Field(default="cpu", validation_alias=moved_alias("TTS_INDICF5_DEVICE"))
-    # voice-clone reference wav + its transcript. NOT catalog data: these are
-    # deployment PATHS to a reference recording, not a voice name.
+    # Voice-clone reference wav + its transcript. They belong to the VOICE, not
+    # to the service: IndicF5 conditions every utterance on this recording, so
+    # two voices are two recordings. They arrive on the selected
+    # `AiModel._metadata.voices[]` entry the agent's `parameters.voice` names.
     ref_audio_path: str = Field(
-        default="", validation_alias=moved_alias("TTS_INDICF5_REF_AUDIO_PATH")
+        default="", validation_alias=moved_to_row_alias("TTS_INDICF5_REF_AUDIO_PATH")
     )
-    ref_text: str = Field(default="", validation_alias=moved_alias("TTS_INDICF5_REF_TEXT"))
+    ref_text: str = Field(default="", validation_alias=moved_to_row_alias("TTS_INDICF5_REF_TEXT"))
 
 
 class SarvamConfig(BaseSettings):
@@ -242,23 +171,6 @@ class SarvamConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
-    # The value now comes from the settings registry (`tts.<engine>.enabled`,
-    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
-    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
-    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
-    #
-    # The env read survives because closing it is a THIRD step that belongs to
-    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
-    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
-    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
-    # path while the manifest still supplies it would leave `hope-tts` answering
-    # 503 forever with no Service endpoints — the outage that test exists for.
-    #
-    # These fields are read ONLY by boot registration in `main.py`, so a served
-    # value converges on the next restart and can never deregister a live
-    # provider mid-process.
-    enabled: bool = False
     # Sarvam is BYOK-only. The api-subscription-KEY is never sourced from
     # env — the `validation_alias` is a dead name and `populate_by_name` is OFF, so
     # neither `TTS_SARVAM_API_KEY` nor the field name populates it. The key arrives
@@ -272,21 +184,25 @@ class SarvamConfig(BaseSettings):
     # The base URL is a PHI-safety control, not just a convenience: pointing it
     # at the enterprise VPC host is what makes this provider usable for patient
     # data at all. That is precisely a decision that should be made once, by a
-    # platform admin, with an audit trail — not per deployment in a shell.
+    # platform admin, with an audit trail — which is the `AiProviderConnection`
+    # row. It arrives per request on the resolved spec's `connection` block; the
+    # empty default means "the spec did not say", and the adapter refuses rather
+    # than reaching a vendor nobody named.
     base_url: str = Field(
-        default="https://api.sarvam.ai", validation_alias=moved_alias("TTS_SARVAM_BASE_URL")
+        default="", validation_alias=moved_to_row_alias("TTS_SARVAM_BASE_URL")
     )
     # A model id that REACHES THE WIRE (`providers/sarvam.py` sends it as the
-    # request's `model`), so it is a SELECTION, not a tuning knob — assessment
-    # F-11 names this field specifically.
-    model: str = Field(default="bulbul:v3", validation_alias=moved_alias("TTS_SARVAM_MODEL"))
+    # request's `model`), so it is a SELECTION — and a selection is the AGENT's,
+    # expressed as the `sourceUri` of the registry row it binds. Empty default,
+    # dead env alias: filled per request by `from_spec`.
+    model: str = Field(default="", validation_alias=moved_to_row_alias("TTS_SARVAM_MODEL"))
     # No `voice_ml` / `voice_en`: both held `ishita`, which is the catalog's
     # sarvam binding for `ml-female-1`. The router passes it as
     # `req.provider_voice`, so the fallback was unreachable.
     # No `sample_rate`: the request carries it (`req.sample_rate`, from the
     # service-wide `Settings.sample_rate`), and `providers/sarvam.py` sends that
     # — the per-provider field was read by nobody (TASK-872).
-    timeout_s: int = Field(default=30, validation_alias=moved_alias("TTS_SARVAM_TIMEOUT_S"))
+    timeout_s: int = Field(default=30, validation_alias=moved_to_row_alias("TTS_SARVAM_TIMEOUT_S"))
     # No `max_concurrent` and no `use_streaming` (TASK-872): the first was
     # never read at all, and the second only ever named a phase-2 WebSocket
     # upgrade that is not implemented — a flag whose ON state does nothing is
@@ -363,16 +279,20 @@ class Settings(BaseSettings):
 
     # Synthesis limits / defaults — control-plane owned.
     max_input_chars: int = Field(default=4096, validation_alias=moved_alias("TTS_MAX_INPUT_CHARS"))
-    # No `default_format` (TASK-872). The effective default format is resolved
-    # by the GATEWAY from `TenantTtsConfig` platform limits and arrives on every
-    # request as `response_format`; this field was read by no code path here.
-    sample_rate: int = Field(default=24000, validation_alias=moved_alias("TTS_SAMPLE_RATE"))
+    # No `default_format` (TASK-872) and, since TASK-879, no `sample_rate`
+    # either. Both are per-CAPABILITY facts, not per-process ones: an agent that
+    # narrates a discharge summary and one that reads a medication list can
+    # legitimately want different rates, and a single service-wide value could
+    # only serve one of them. They arrive on the resolved spec
+    # (`parameters.format` / `parameters.sampleRate`), with `tts.spec.DEFAULT_SAMPLE_RATE`
+    # as the one code default when the agent expressed no opinion.
 
-    # NOTE: there is deliberately NO `routing_en` / `routing_ml` here ( /
-    # F1). Per-locale provider SELECTION is DB-sourced — the SYSTEM
-    # `TenantTtsConfig` default, resolved by the gateway and injected per request
-    # — so env can no longer bake a vendor order. The router fails CLOSED when no
-    # chain is injected (see `routing/router.TtsRoutingUnconfiguredError`).
+    # NOTE: there is deliberately NO `routing_en` / `routing_ml` here, and since
+    # TASK-879 no injected chain either. Provider SELECTION is the AGENT's: the
+    # gateway resolves the tenant's TEXT_TO_SPEECH agent and pushes an ordered
+    # `ResolvedTtsSpec` chain per request, so env can bake neither a vendor order
+    # nor a model. A request that carries no spec is refused (fail closed) rather
+    # than served on a substituted vendor.
 
     # Provider sub-configs (loaded from their own env prefixes)
     azure: AzureSpeechConfig = Field(default_factory=AzureSpeechConfig)

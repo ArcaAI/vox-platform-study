@@ -4,9 +4,9 @@ import {
   AsrAgentResolverServiceModule,
   EntitlementsServiceModule,
   MediaServiceModule,
-  TenantTtsConfigServiceModule,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
+  TtsAgentResolverServiceModule,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
@@ -18,7 +18,6 @@ import { AgentController } from './agent.controller';
   imports: [
     AgentServiceModule,
     HttpModule.register({ timeout: 120000, maxRedirects: 3 }),
-    TenantTtsConfigServiceModule,
     AiProviderConnectionServiceModule,
     UsageLedgerServiceModule,
     EntitlementsServiceModule,
@@ -27,6 +26,8 @@ import { AgentController } from './agent.controller';
     MediaServiceModule,
     // TASK-861 — the ASR resolution behind `POST /agents/:slug/transcriptions`.
     AsrAgentResolverServiceModule,
+    // TASK-879 — the TEXT_TO_SPEECH resolution behind `POST /agents/:slug/speech`.
+    TtsAgentResolverServiceModule,
   ],
   controllers: [AgentController],
 })

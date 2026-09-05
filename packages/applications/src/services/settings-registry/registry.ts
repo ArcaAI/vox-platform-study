@@ -35,7 +35,6 @@ import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-pol
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
-import { TTS_SETTINGS } from './descriptors/tts.descriptors';
 import { VISIT_TYPE_SETTINGS } from './descriptors/visit-type.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
@@ -43,11 +42,17 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...PIPELINE_SETTINGS,
   // Platform storage default: SYSTEM TenantStorageConfig row + Vault kv-v2.
   ...STORAGE_SETTINGS,
-  ...TTS_SETTINGS,
-  // tts PLATFORM provider config — endpoints, local-engine model ids, timeouts,
-  // concurrency and synthesis limits, all of which were environment variables
-  // until lane C. The tenant-varying half stays in TTS_SETTINGS above
-  // and travels the push channel; these ride the pull route (D-1). The two cloud
+  // `TTS_SETTINGS` was spread here — one key, `tts.defaultVoiceEn`. TASK-879
+  // deleted the file: a tenant's default voice is `Agent.parameters.voice` on the
+  // TEXT_TO_SPEECH agent the assignment cascade selects, and the gateway pushes it
+  // in the resolved spec on every synthesis request. There is no per-tenant tts
+  // settings surface left; what a tenant owns is its agent and its BYO connection
+  // row.
+  //
+  // tts PLATFORM knobs — four process-level settings on the pull route. The model
+  // ids, mirrors, artifacts, voices, vendor endpoints, regions, timeouts and
+  // engine enable-flags that used to be here moved to the AiModel /
+  // AiProviderConnection / Agent rows that own them (TASK-879). The two cloud
   // credentials appear in NEITHER: they have no env path at all by construction.
   ...TTS_RUNTIME_SETTINGS,
   // `STT_FALLBACK_SETTINGS` was spread here — the per-tenant fallback pipeline

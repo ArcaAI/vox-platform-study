@@ -70,8 +70,7 @@ describe('TtsWsGateway — TTS character quota pre-flight', () => {
       ticketService as never,
       config as never,
       secrets as never,
-      undefined, // tenantTtsConfig
-      undefined, // providerConnectionService
+      undefined, // ttsAgentResolver
       undefined, // usageLedger
       entitlements as never,
     );
@@ -96,7 +95,9 @@ describe('TtsWsGateway — TTS character quota pre-flight', () => {
     const entitlements = {
       assertMeterQuota: vi
         .fn()
-        .mockRejectedValue(new QuotaExceededException('over allowance', { capability: 'monthlyTtsCharacters', limit: 1000, used: 1000, requested: 0, tenantId: 't1' })),
+        .mockRejectedValue(
+          new QuotaExceededException('over allowance', { capability: 'monthlyTtsCharacters', limit: 1000, used: 1000, requested: 0, tenantId: 't1' }),
+        ),
     };
     const { gateway } = buildGateway(entitlements);
     const client = makeSocket();

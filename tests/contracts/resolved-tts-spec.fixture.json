@@ -1,0 +1,1127 @@
+{
+  "$comment": "TASK-879 — the ResolvedTtsSpec cross-language contract. Both halves validate these `expected` documents: tests/contracts/resolved-tts-spec-parity.contract.test.ts (producer, @arcaai/applications) and apps/tts/src/tts/tests/unit/test_resolved_spec_parity.py (consumer, pydantic). Credentials NEVER appear in an `expected` spec — they ride beside it as `provider_overrides`, which is why one INPUT deliberately carries a providerOverride the output must not echo.",
+  "platformDefault": {
+    "input": {
+      "primary": {
+        "agent": {
+          "agentId": "9c000000-0000-0000-0001-000000000007",
+          "agentVersionId": "9c000000-0000-0000-0001-000000000007",
+          "slug": "platform-tts",
+          "versionNumber": 1,
+          "task": "TEXT_TO_SPEECH",
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "source": "platform-default",
+          "compiledConfig": {
+            "task": "TEXT_TO_SPEECH",
+            "service": "tts",
+            "model": {
+              "id": "80000000-0000-0000-0007-000000000013",
+              "slug": "kokoro",
+              "provider": "built-in",
+              "taskType": "TEXT_TO_SPEECH"
+            },
+            "fallbacks": [],
+            "instruction": null,
+            "resolvedPrompt": null,
+            "parameters": {
+              "voice": "af_heart",
+              "language": "en",
+              "speed": 1,
+              "format": "wav",
+              "sampleRate": 24000
+            },
+            "inputSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 20000
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "text"
+                  ]
+                }
+              ]
+            },
+            "outputSchema": {
+              "type": "object",
+              "required": [
+                "audio"
+              ],
+              "properties": {
+                "audio": {
+                  "type": "object"
+                }
+              }
+            },
+            "tools": [],
+            "protocols": [
+              "http",
+              "http-sse"
+            ]
+          },
+          "models": [
+            {
+              "role": "primary",
+              "slug": "kokoro",
+              "sourceUri": "hexgrad/Kokoro-82M",
+              "sourceRevision": "main",
+              "localPath": null,
+              "checksum": null,
+              "format": "PYTORCH",
+              "computeType": "float32",
+              "provider": "built-in",
+              "tenantId": "00000000-0000-0000-0000-000000000000"
+            }
+          ]
+        },
+        "model": {
+          "role": "primary",
+          "slug": "kokoro",
+          "sourceUri": "hexgrad/Kokoro-82M",
+          "sourceRevision": "main",
+          "localPath": null,
+          "checksum": null,
+          "format": "PYTORCH",
+          "computeType": "float32",
+          "provider": "built-in",
+          "tenantId": "00000000-0000-0000-0000-000000000000"
+        },
+        "kind": "primary",
+        "metaData": {
+          "ttsProvider": "kokoro",
+          "voices": [
+            {
+              "id": "af_heart",
+              "locale": "en-US"
+            },
+            {
+              "id": "am_adam",
+              "locale": "en-US"
+            }
+          ]
+        },
+        "connection": {
+          "provider": "kokoro",
+          "baseUrl": null,
+          "region": null,
+          "timeoutS": null,
+          "funding": "platform"
+        },
+        "fundingTier": "platform"
+      },
+      "chain": [],
+      "autoSwitch": true
+    },
+    "expected": {
+      "schemaVersion": 1,
+      "agent": {
+        "slug": "platform-tts",
+        "versionId": "9c000000-0000-0000-0001-000000000007",
+        "versionNumber": 1,
+        "tenantId": "00000000-0000-0000-0000-000000000000",
+        "source": "platform-default"
+      },
+      "primary": {
+        "kind": "primary",
+        "runtimeKey": "9c000000-0000-0000-0001-000000000007",
+        "agent": {
+          "slug": "platform-tts",
+          "versionId": "9c000000-0000-0000-0001-000000000007",
+          "versionNumber": 1,
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "source": "platform-default"
+        },
+        "model": {
+          "role": "primary",
+          "slug": "kokoro",
+          "taskType": "TEXT_TO_SPEECH",
+          "format": "PYTORCH",
+          "sourceUri": "hexgrad/Kokoro-82M",
+          "sourceRevision": "main",
+          "localPath": null,
+          "checksum": null,
+          "computeType": "float32",
+          "provider": "kokoro",
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "artifacts": {},
+          "voices": [
+            {
+              "id": "af_heart",
+              "locale": "en-US",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            },
+            {
+              "id": "am_adam",
+              "locale": "en-US",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            }
+          ]
+        },
+        "parameters": {
+          "voice": "af_heart",
+          "language": "en",
+          "speed": 1,
+          "format": "wav",
+          "sampleRate": 24000,
+          "ssml": false
+        },
+        "voice": {
+          "id": "af_heart",
+          "locale": "en-US",
+          "providerVoice": null,
+          "refAudioPath": null,
+          "refText": null
+        },
+        "connection": {
+          "provider": "kokoro",
+          "baseUrl": null,
+          "region": null,
+          "timeoutS": null,
+          "funding": "platform"
+        },
+        "fundingTier": "platform"
+      },
+      "fallback": {
+        "autoSwitch": true,
+        "chain": []
+      }
+    }
+  },
+  "tenantAgentWithCloudFallback": {
+    "input": {
+      "primary": {
+        "agent": {
+          "agentId": "1b7f4d20-6c31-4c2a-9b1e-3f6d8a5c2e10",
+          "agentVersionId": "1b7f4d20-6c31-4c2a-9b1e-3f6d8a5c2e10",
+          "slug": "clinic-malayalam-voice",
+          "versionNumber": 3,
+          "task": "TEXT_TO_SPEECH",
+          "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+          "source": "tenant",
+          "compiledConfig": {
+            "task": "TEXT_TO_SPEECH",
+            "service": "tts",
+            "model": {
+              "id": "80000000-0000-0000-0007-000000000015",
+              "slug": "indic-parler-tts",
+              "provider": "built-in",
+              "taskType": "TEXT_TO_SPEECH"
+            },
+            "fallbacks": [],
+            "instruction": null,
+            "resolvedPrompt": null,
+            "parameters": {
+              "voice": "Anjali",
+              "language": "ml",
+              "speed": 0.95,
+              "format": "pcm",
+              "sampleRate": 24000,
+              "fallback": {
+                "agentSlug": "clinic-cloud-voice",
+                "autoSwitch": true
+              }
+            },
+            "inputSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 20000
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "text"
+                  ]
+                }
+              ]
+            },
+            "outputSchema": {
+              "type": "object",
+              "required": [
+                "audio"
+              ],
+              "properties": {
+                "audio": {
+                  "type": "object"
+                }
+              }
+            },
+            "tools": [],
+            "protocols": [
+              "http",
+              "http-sse"
+            ]
+          },
+          "models": [
+            {
+              "role": "primary",
+              "slug": "indic-parler-tts",
+              "sourceUri": "ai4bharat/indic-parler-tts",
+              "sourceRevision": "main",
+              "localPath": "/mnt/models/indic-parler-tts",
+              "checksum": null,
+              "format": "SAFETENSOR",
+              "computeType": "float16",
+              "provider": "built-in",
+              "tenantId": "00000000-0000-0000-0000-000000000000"
+            }
+          ]
+        },
+        "model": {
+          "role": "primary",
+          "slug": "indic-parler-tts",
+          "sourceUri": "ai4bharat/indic-parler-tts",
+          "sourceRevision": "main",
+          "localPath": "/mnt/models/indic-parler-tts",
+          "checksum": null,
+          "format": "SAFETENSOR",
+          "computeType": "float16",
+          "provider": "built-in",
+          "tenantId": "00000000-0000-0000-0000-000000000000"
+        },
+        "kind": "primary",
+        "metaData": {
+          "ttsProvider": "indic_parler",
+          "artifacts": {
+            "descEncoderPath": "/mnt/models/flan-t5-large"
+          },
+          "voices": [
+            {
+              "id": "Anjali",
+              "locale": "ml-IN"
+            }
+          ]
+        },
+        "connection": {
+          "provider": "indic_parler",
+          "baseUrl": null,
+          "region": null,
+          "timeoutS": null,
+          "funding": "platform"
+        },
+        "fundingTier": "platform"
+      },
+      "chain": [
+        {
+          "agent": {
+            "agentId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+            "agentVersionId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+            "slug": "clinic-cloud-voice",
+            "versionNumber": 1,
+            "task": "TEXT_TO_SPEECH",
+            "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+            "source": "explicit",
+            "compiledConfig": {
+              "task": "TEXT_TO_SPEECH",
+              "service": "tts",
+              "model": {
+                "id": "80000000-0000-0000-0007-000000000012",
+                "slug": "azure-neural-voices",
+                "provider": "azure",
+                "taskType": "TEXT_TO_SPEECH"
+              },
+              "fallbacks": [],
+              "instruction": null,
+              "resolvedPrompt": null,
+              "parameters": {
+                "voice": "ml-IN-SobhanaNeural",
+                "language": "ml",
+                "speed": 0.95,
+                "format": "pcm",
+                "sampleRate": 24000
+              },
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "text"
+                    ]
+                  }
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "required": [
+                  "audio"
+                ],
+                "properties": {
+                  "audio": {
+                    "type": "object"
+                  }
+                }
+              },
+              "tools": [],
+              "protocols": [
+                "http",
+                "http-sse"
+              ]
+            },
+            "models": [
+              {
+                "role": "primary",
+                "slug": "azure-neural-voices",
+                "sourceUri": "azure://neural-voices",
+                "sourceRevision": "main",
+                "localPath": null,
+                "checksum": null,
+                "format": "AZURE_SPEECH",
+                "computeType": "cloud",
+                "provider": "azure",
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              }
+            ],
+            "providerOverride": {
+              "provider": "azure",
+              "api_key": "REDACTED-IN-THE-INPUT-ONLY",
+              "funding": "tenant",
+              "region": "westeurope"
+            },
+            "fundingTier": "tenant"
+          },
+          "model": {
+            "role": "primary",
+            "slug": "azure-neural-voices",
+            "sourceUri": "azure://neural-voices",
+            "sourceRevision": "main",
+            "localPath": null,
+            "checksum": null,
+            "format": "AZURE_SPEECH",
+            "computeType": "cloud",
+            "provider": "azure",
+            "tenantId": "00000000-0000-0000-0000-000000000000"
+          },
+          "kind": "fallback-agent",
+          "metaData": {
+            "voices": [
+              {
+                "id": "en-IN-NeerjaNeural",
+                "locale": "en-IN"
+              },
+              {
+                "id": "ml-IN-SobhanaNeural",
+                "locale": "ml-IN"
+              }
+            ]
+          },
+          "connection": {
+            "provider": "azure",
+            "baseUrl": null,
+            "region": "westeurope",
+            "timeoutS": 30,
+            "funding": "tenant"
+          },
+          "fundingTier": "tenant"
+        },
+        {
+          "agent": {
+            "agentId": "9c000000-0000-0000-0001-000000000007",
+            "agentVersionId": "9c000000-0000-0000-0001-000000000007",
+            "slug": "platform-tts",
+            "versionNumber": 1,
+            "task": "TEXT_TO_SPEECH",
+            "tenantId": "00000000-0000-0000-0000-000000000000",
+            "source": "platform-default",
+            "compiledConfig": {
+              "task": "TEXT_TO_SPEECH",
+              "service": "tts",
+              "model": {
+                "id": "80000000-0000-0000-0007-000000000013",
+                "slug": "kokoro",
+                "provider": "built-in",
+                "taskType": "TEXT_TO_SPEECH"
+              },
+              "fallbacks": [],
+              "instruction": null,
+              "resolvedPrompt": null,
+              "parameters": {
+                "voice": "af_heart",
+                "language": "en",
+                "speed": 1,
+                "format": "wav",
+                "sampleRate": 24000
+              },
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "text"
+                    ]
+                  }
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "required": [
+                  "audio"
+                ],
+                "properties": {
+                  "audio": {
+                    "type": "object"
+                  }
+                }
+              },
+              "tools": [],
+              "protocols": [
+                "http",
+                "http-sse"
+              ]
+            },
+            "models": [
+              {
+                "role": "primary",
+                "slug": "kokoro",
+                "sourceUri": "hexgrad/Kokoro-82M",
+                "sourceRevision": "main",
+                "localPath": null,
+                "checksum": null,
+                "format": "PYTORCH",
+                "computeType": "float32",
+                "provider": "built-in",
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              }
+            ]
+          },
+          "model": {
+            "role": "primary",
+            "slug": "kokoro",
+            "sourceUri": "hexgrad/Kokoro-82M",
+            "sourceRevision": "main",
+            "localPath": null,
+            "checksum": null,
+            "format": "PYTORCH",
+            "computeType": "float32",
+            "provider": "built-in",
+            "tenantId": "00000000-0000-0000-0000-000000000000"
+          },
+          "kind": "platform-default",
+          "metaData": {
+            "ttsProvider": "kokoro",
+            "voices": [
+              {
+                "id": "af_heart",
+                "locale": "en-US"
+              },
+              {
+                "id": "am_adam",
+                "locale": "en-US"
+              }
+            ]
+          },
+          "connection": {
+            "provider": "kokoro",
+            "baseUrl": null,
+            "region": null,
+            "timeoutS": null,
+            "funding": "platform"
+          },
+          "fundingTier": "platform"
+        }
+      ],
+      "autoSwitch": true
+    },
+    "expected": {
+      "schemaVersion": 1,
+      "agent": {
+        "slug": "clinic-malayalam-voice",
+        "versionId": "1b7f4d20-6c31-4c2a-9b1e-3f6d8a5c2e10",
+        "versionNumber": 3,
+        "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+        "source": "tenant"
+      },
+      "primary": {
+        "kind": "primary",
+        "runtimeKey": "1b7f4d20-6c31-4c2a-9b1e-3f6d8a5c2e10",
+        "agent": {
+          "slug": "clinic-malayalam-voice",
+          "versionId": "1b7f4d20-6c31-4c2a-9b1e-3f6d8a5c2e10",
+          "versionNumber": 3,
+          "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+          "source": "tenant"
+        },
+        "model": {
+          "role": "primary",
+          "slug": "indic-parler-tts",
+          "taskType": "TEXT_TO_SPEECH",
+          "format": "SAFETENSOR",
+          "sourceUri": "ai4bharat/indic-parler-tts",
+          "sourceRevision": "main",
+          "localPath": "/mnt/models/indic-parler-tts",
+          "checksum": null,
+          "computeType": "float16",
+          "provider": "indic_parler",
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "artifacts": {
+            "descEncoderPath": "/mnt/models/flan-t5-large"
+          },
+          "voices": [
+            {
+              "id": "Anjali",
+              "locale": "ml-IN",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            }
+          ]
+        },
+        "parameters": {
+          "voice": "Anjali",
+          "language": "ml",
+          "speed": 0.95,
+          "format": "pcm",
+          "sampleRate": 24000,
+          "ssml": false
+        },
+        "voice": {
+          "id": "Anjali",
+          "locale": "ml-IN",
+          "providerVoice": null,
+          "refAudioPath": null,
+          "refText": null
+        },
+        "connection": {
+          "provider": "indic_parler",
+          "baseUrl": null,
+          "region": null,
+          "timeoutS": null,
+          "funding": "platform"
+        },
+        "fundingTier": "platform"
+      },
+      "fallback": {
+        "autoSwitch": true,
+        "chain": [
+          {
+            "kind": "fallback-agent",
+            "runtimeKey": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+            "agent": {
+              "slug": "clinic-cloud-voice",
+              "versionId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+              "versionNumber": 1,
+              "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+              "source": "explicit"
+            },
+            "model": {
+              "role": "primary",
+              "slug": "azure-neural-voices",
+              "taskType": "TEXT_TO_SPEECH",
+              "format": "AZURE_SPEECH",
+              "sourceUri": "azure://neural-voices",
+              "sourceRevision": "main",
+              "localPath": null,
+              "checksum": null,
+              "computeType": "cloud",
+              "provider": "azure",
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "artifacts": {},
+              "voices": [
+                {
+                  "id": "en-IN-NeerjaNeural",
+                  "locale": "en-IN",
+                  "providerVoice": null,
+                  "refAudioPath": null,
+                  "refText": null
+                },
+                {
+                  "id": "ml-IN-SobhanaNeural",
+                  "locale": "ml-IN",
+                  "providerVoice": null,
+                  "refAudioPath": null,
+                  "refText": null
+                }
+              ]
+            },
+            "parameters": {
+              "voice": "ml-IN-SobhanaNeural",
+              "language": "ml",
+              "speed": 0.95,
+              "format": "pcm",
+              "sampleRate": 24000,
+              "ssml": false
+            },
+            "voice": {
+              "id": "ml-IN-SobhanaNeural",
+              "locale": "ml-IN",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            },
+            "connection": {
+              "provider": "azure",
+              "baseUrl": null,
+              "region": "westeurope",
+              "timeoutS": 30,
+              "funding": "tenant"
+            },
+            "fundingTier": "tenant"
+          },
+          {
+            "kind": "platform-default",
+            "runtimeKey": "9c000000-0000-0000-0001-000000000007",
+            "agent": {
+              "slug": "platform-tts",
+              "versionId": "9c000000-0000-0000-0001-000000000007",
+              "versionNumber": 1,
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "source": "platform-default"
+            },
+            "model": {
+              "role": "primary",
+              "slug": "kokoro",
+              "taskType": "TEXT_TO_SPEECH",
+              "format": "PYTORCH",
+              "sourceUri": "hexgrad/Kokoro-82M",
+              "sourceRevision": "main",
+              "localPath": null,
+              "checksum": null,
+              "computeType": "float32",
+              "provider": "kokoro",
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "artifacts": {},
+              "voices": [
+                {
+                  "id": "af_heart",
+                  "locale": "en-US",
+                  "providerVoice": null,
+                  "refAudioPath": null,
+                  "refText": null
+                },
+                {
+                  "id": "am_adam",
+                  "locale": "en-US",
+                  "providerVoice": null,
+                  "refAudioPath": null,
+                  "refText": null
+                }
+              ]
+            },
+            "parameters": {
+              "voice": "af_heart",
+              "language": "en",
+              "speed": 1,
+              "format": "wav",
+              "sampleRate": 24000,
+              "ssml": false
+            },
+            "voice": {
+              "id": "af_heart",
+              "locale": "en-US",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            },
+            "connection": {
+              "provider": "kokoro",
+              "baseUrl": null,
+              "region": null,
+              "timeoutS": null,
+              "funding": "platform"
+            },
+            "fundingTier": "platform"
+          }
+        ]
+      }
+    }
+  },
+  "modelChainFallback": {
+    "input": {
+      "primary": {
+        "agent": {
+          "agentId": "9c000000-0000-0000-0001-000000000007",
+          "agentVersionId": "9c000000-0000-0000-0001-000000000007",
+          "slug": "platform-tts",
+          "versionNumber": 1,
+          "task": "TEXT_TO_SPEECH",
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "source": "platform-default",
+          "compiledConfig": {
+            "task": "TEXT_TO_SPEECH",
+            "service": "tts",
+            "model": {
+              "id": "80000000-0000-0000-0007-000000000013",
+              "slug": "kokoro",
+              "provider": "built-in",
+              "taskType": "TEXT_TO_SPEECH"
+            },
+            "fallbacks": [],
+            "instruction": null,
+            "resolvedPrompt": null,
+            "parameters": {
+              "voice": "af_heart",
+              "language": "en",
+              "speed": 1,
+              "format": "wav",
+              "sampleRate": 24000
+            },
+            "inputSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 20000
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "text"
+                  ]
+                }
+              ]
+            },
+            "outputSchema": {
+              "type": "object",
+              "required": [
+                "audio"
+              ],
+              "properties": {
+                "audio": {
+                  "type": "object"
+                }
+              }
+            },
+            "tools": [],
+            "protocols": [
+              "http",
+              "http-sse"
+            ]
+          },
+          "models": [
+            {
+              "role": "primary",
+              "slug": "kokoro",
+              "sourceUri": "hexgrad/Kokoro-82M",
+              "sourceRevision": "main",
+              "localPath": null,
+              "checksum": null,
+              "format": "PYTORCH",
+              "computeType": "float32",
+              "provider": "built-in",
+              "tenantId": "00000000-0000-0000-0000-000000000000"
+            }
+          ]
+        },
+        "model": {
+          "role": "primary",
+          "slug": "kokoro",
+          "sourceUri": "hexgrad/Kokoro-82M",
+          "sourceRevision": "main",
+          "localPath": null,
+          "checksum": null,
+          "format": "PYTORCH",
+          "computeType": "float32",
+          "provider": "built-in",
+          "tenantId": "00000000-0000-0000-0000-000000000000"
+        },
+        "kind": "primary",
+        "metaData": {
+          "ttsProvider": "kokoro",
+          "voices": [
+            {
+              "id": "af_heart",
+              "locale": "en-US"
+            },
+            {
+              "id": "am_adam",
+              "locale": "en-US"
+            }
+          ]
+        },
+        "connection": {
+          "provider": "kokoro",
+          "baseUrl": null,
+          "region": null,
+          "timeoutS": null,
+          "funding": "platform"
+        },
+        "fundingTier": "platform"
+      },
+      "chain": [
+        {
+          "agent": {
+            "agentId": "9c000000-0000-0000-0001-000000000007",
+            "agentVersionId": "9c000000-0000-0000-0001-000000000007",
+            "slug": "platform-tts",
+            "versionNumber": 1,
+            "task": "TEXT_TO_SPEECH",
+            "tenantId": "00000000-0000-0000-0000-000000000000",
+            "source": "platform-default",
+            "compiledConfig": {
+              "task": "TEXT_TO_SPEECH",
+              "service": "tts",
+              "model": {
+                "id": "80000000-0000-0000-0007-000000000013",
+                "slug": "kokoro",
+                "provider": "built-in",
+                "taskType": "TEXT_TO_SPEECH"
+              },
+              "fallbacks": [],
+              "instruction": null,
+              "resolvedPrompt": null,
+              "parameters": {
+                "voice": "af_heart",
+                "language": "en",
+                "speed": 1,
+                "format": "wav",
+                "sampleRate": 24000
+              },
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "text"
+                    ]
+                  }
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "required": [
+                  "audio"
+                ],
+                "properties": {
+                  "audio": {
+                    "type": "object"
+                  }
+                }
+              },
+              "tools": [],
+              "protocols": [
+                "http",
+                "http-sse"
+              ]
+            },
+            "models": [
+              {
+                "role": "primary",
+                "slug": "kokoro",
+                "sourceUri": "hexgrad/Kokoro-82M",
+                "sourceRevision": "main",
+                "localPath": null,
+                "checksum": null,
+                "format": "PYTORCH",
+                "computeType": "float32",
+                "provider": "built-in",
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              }
+            ]
+          },
+          "model": {
+            "role": "fallback",
+            "slug": "azure-neural-voices",
+            "sourceUri": "azure://neural-voices",
+            "sourceRevision": "main",
+            "localPath": null,
+            "checksum": null,
+            "format": "AZURE_SPEECH",
+            "computeType": "cloud",
+            "provider": "azure",
+            "tenantId": "00000000-0000-0000-0000-000000000000",
+            "priority": 0
+          },
+          "kind": "fallback-model",
+          "metaData": {
+            "voices": [
+              {
+                "id": "en-IN-NeerjaNeural",
+                "locale": "en-IN"
+              },
+              {
+                "id": "ml-IN-SobhanaNeural",
+                "locale": "ml-IN"
+              }
+            ]
+          },
+          "connection": {
+            "provider": "azure",
+            "baseUrl": null,
+            "region": "eastus",
+            "timeoutS": null,
+            "funding": "platform"
+          },
+          "fundingTier": "platform"
+        }
+      ],
+      "autoSwitch": true
+    },
+    "expected": {
+      "schemaVersion": 1,
+      "agent": {
+        "slug": "platform-tts",
+        "versionId": "9c000000-0000-0000-0001-000000000007",
+        "versionNumber": 1,
+        "tenantId": "00000000-0000-0000-0000-000000000000",
+        "source": "platform-default"
+      },
+      "primary": {
+        "kind": "primary",
+        "runtimeKey": "9c000000-0000-0000-0001-000000000007",
+        "agent": {
+          "slug": "platform-tts",
+          "versionId": "9c000000-0000-0000-0001-000000000007",
+          "versionNumber": 1,
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "source": "platform-default"
+        },
+        "model": {
+          "role": "primary",
+          "slug": "kokoro",
+          "taskType": "TEXT_TO_SPEECH",
+          "format": "PYTORCH",
+          "sourceUri": "hexgrad/Kokoro-82M",
+          "sourceRevision": "main",
+          "localPath": null,
+          "checksum": null,
+          "computeType": "float32",
+          "provider": "kokoro",
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "artifacts": {},
+          "voices": [
+            {
+              "id": "af_heart",
+              "locale": "en-US",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            },
+            {
+              "id": "am_adam",
+              "locale": "en-US",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            }
+          ]
+        },
+        "parameters": {
+          "voice": "af_heart",
+          "language": "en",
+          "speed": 1,
+          "format": "wav",
+          "sampleRate": 24000,
+          "ssml": false
+        },
+        "voice": {
+          "id": "af_heart",
+          "locale": "en-US",
+          "providerVoice": null,
+          "refAudioPath": null,
+          "refText": null
+        },
+        "connection": {
+          "provider": "kokoro",
+          "baseUrl": null,
+          "region": null,
+          "timeoutS": null,
+          "funding": "platform"
+        },
+        "fundingTier": "platform"
+      },
+      "fallback": {
+        "autoSwitch": true,
+        "chain": [
+          {
+            "kind": "fallback-model",
+            "runtimeKey": "9c000000-0000-0000-0001-000000000007:fallback:azure-neural-voices",
+            "agent": {
+              "slug": "platform-tts",
+              "versionId": "9c000000-0000-0000-0001-000000000007",
+              "versionNumber": 1,
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "source": "platform-default"
+            },
+            "model": {
+              "role": "fallback",
+              "slug": "azure-neural-voices",
+              "taskType": "TEXT_TO_SPEECH",
+              "format": "AZURE_SPEECH",
+              "sourceUri": "azure://neural-voices",
+              "sourceRevision": "main",
+              "localPath": null,
+              "checksum": null,
+              "computeType": "cloud",
+              "provider": "azure",
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "artifacts": {},
+              "voices": [
+                {
+                  "id": "en-IN-NeerjaNeural",
+                  "locale": "en-IN",
+                  "providerVoice": null,
+                  "refAudioPath": null,
+                  "refText": null
+                },
+                {
+                  "id": "ml-IN-SobhanaNeural",
+                  "locale": "ml-IN",
+                  "providerVoice": null,
+                  "refAudioPath": null,
+                  "refText": null
+                }
+              ]
+            },
+            "parameters": {
+              "voice": "af_heart",
+              "language": "en",
+              "speed": 1,
+              "format": "wav",
+              "sampleRate": 24000,
+              "ssml": false
+            },
+            "voice": null,
+            "connection": {
+              "provider": "azure",
+              "baseUrl": null,
+              "region": "eastus",
+              "timeoutS": null,
+              "funding": "platform"
+            },
+            "fundingTier": "platform"
+          }
+        ]
+      }
+    }
+  }
+}

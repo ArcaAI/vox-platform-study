@@ -148,123 +148,130 @@ describe('SpeechProxyController', () => {
     });
   });
 
-  // The resolved effective config's voiceBindings are injected
-  // into the forwarded body as `voice_bindings` (tts falls back to its
-  // built-in DEFAULT_VOICES when absent). Fail-open posture unchanged.
-  describe('POST /speech/synthesize — tenant config voice_bindings injection', () => {
-    const BINDINGS = { 'en-female-1': { azure: 'en-IN-NeerjaNeural' }, 'ml-male-1': { azure: 'ml-IN-MidhunNeural' } };
+  // TASK-879 — the resolved TEXT_TO_SPEECH agent replaces the `TenantTtsConfig` fold. The
+  // forwarded body carries `resolved_spec` (engine chain, model, voices, connections, governance)
+  // and, beside it, the decrypted credentials — never on it.
+  describe('POST /speech/synthesize — resolved-agent injection', () => {
+    const SPEC = {
+      schemaVersion: 1,
+      agent: {
+        slug: 'platform-tts',
+        versionId: 'a1',
+        versionNumber: 1,
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        source: 'platform-default',
+      },
+      primary: {
+        kind: 'primary',
+        runtimeKey: 'a1',
+        agent: {
+          slug: 'platform-tts',
+          versionId: 'a1',
+          versionNumber: 1,
+          tenantId: '00000000-0000-0000-0000-000000000000',
+          source: 'platform-default',
+        },
+        model: {
+          role: 'primary',
+          slug: 'kokoro',
+          taskType: 'TEXT_TO_SPEECH',
+          format: 'PYTORCH',
+          sourceUri: 'hexgrad/Kokoro-82M',
+          sourceRevision: null,
+          localPath: null,
+          checksum: null,
+          computeType: null,
+          provider: 'kokoro',
+          tenantId: '00000000-0000-0000-0000-000000000000',
+          artifacts: {},
+          voices: [{ id: 'af_heart', locale: 'en-US', providerVoice: null, refAudioPath: null, refText: null }],
+        },
+        parameters: { voice: 'af_heart', language: 'en', speed: 0.9, format: 'wav', sampleRate: 24000, ssml: false },
+        voice: { id: 'af_heart', locale: 'en-US', providerVoice: null, refAudioPath: null, refText: null },
+        connection: { provider: 'kokoro', baseUrl: null, region: null, timeoutS: null, funding: 'platform' },
+        fundingTier: 'platform',
+      },
+      fallback: { autoSwitch: true, chain: [] },
+    };
 
-    const makeEffective = (voiceBindings: Record<string, Record<string, string>>) => ({
-      tenantId: 't1',
-      defaultFormat: 'pcm',
-      defaultSpeed: 1.0,
-      routingEn: ['azure'],
-      routingMl: ['azure'],
-      allowedProviders: ['azure'],
-      voiceBindings,
-    });
-
-    const makeTenantTtsConfig = (voiceBindings: Record<string, Record<string, string>>) => ({
-      getEffective: vi.fn().mockResolvedValue(makeEffective(voiceBindings)),
-    });
-
-    // The resolver returns the two-tier result `{overrides, platformDefault?}`,
-    // not a bare map; entries carry `funding`.
-    const makeProviderConnectionService = (overrides: Record<string, unknown> = {}) => ({
-      resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides }),
+    const makeResolver = (overrides?: Record<string, unknown>) => ({
+      resolve: vi.fn().mockResolvedValue({ spec: SPEC, ...(overrides ? { providerOverrides: overrides } : {}) }),
     });
 
     const makeCls = () => ({ get: vi.fn((key: string) => (key === 'tenantId' ? 't1' : undefined)) });
 
-    const buildController = (tenantTtsConfig: unknown, providerConnectionService: unknown = makeProviderConnectionService()) =>
-      new SpeechProxyController(
-        http as any,
-        config as any,
-        createMockSecrets('svc-token') as any,
-        tenantTtsConfig as any,
-        providerConnectionService as any,
-        makeCls() as any,
-      );
+    const buildController = (resolver: unknown) =>
+      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, resolver as any, makeCls() as any);
 
-    it('injects voice_bindings from the effective config when non-empty', async () => {
-      const tenantTtsConfig = makeTenantTtsConfig(BINDINGS);
-      const ctrl = buildController(tenantTtsConfig);
+    it('forwards the resolved spec and drops the retired TenantTtsConfig fold', async () => {
+      const resolver = makeResolver();
+      const ctrl = buildController(resolver);
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
-      const res = makeRes();
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      await ctrl.synthesize({ input: 'Hi.' } as any, makeRes());
 
+      expect(resolver.resolve).toHaveBeenCalledWith({ tenantId: 't1', agentSlug: null, departmentId: null });
       const body = http.axiosRef.post.mock.calls[0][1];
-      expect(body.voice_bindings).toEqual(BINDINGS);
-      // The rest of the tenant-config injection is preserved.
-      expect(body.routing_en).toEqual(['azure']);
-      expect(body.allowed_providers).toEqual(['azure']);
+      expect(body.resolved_spec).toEqual(SPEC);
+      for (const gone of ['routing_en', 'routing_ml', 'allowed_providers', 'voice_bindings']) {
+        expect(gone in body).toBe(false);
+      }
     });
 
-    it('omits voice_bindings when the effective bindings map is empty', async () => {
-      const ctrl = buildController(makeTenantTtsConfig({}));
+    it('passes an explicit agentSlug to the resolver and strips it from the forwarded body', async () => {
+      // It is a SELECTOR for this gateway; what `apps/tts` receives is the RESOLUTION.
+      const resolver = makeResolver();
+      const ctrl = buildController(resolver);
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
-      const res = makeRes();
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      await ctrl.synthesize({ input: 'Hi.', agentSlug: 'clinic-voice' } as any, makeRes());
 
-      const body = http.axiosRef.post.mock.calls[0][1];
-      expect('voice_bindings' in body).toBe(false);
+      expect(resolver.resolve).toHaveBeenCalledWith({ tenantId: 't1', agentSlug: 'clinic-voice', departmentId: null });
+      expect('agentSlug' in http.axiosRef.post.mock.calls[0][1]).toBe(false);
     });
 
-    // Provider_overrides now resolves through the unified
-    // IProviderConnectionService (`service='tts'`) instead of
-    // TenantTtsConfigService.resolveProviderOverrides. The injected
-    // provider_overrides SHAPE is unchanged (C4 — byte-identical body).
-    it('injects provider_overrides via IProviderConnectionService.resolveTenantCloudOverrides("tts", tenantId)', async () => {
+    it('fills format and speed from the agent, and lets a caller-supplied value win', async () => {
+      const ctrl = buildController(makeResolver());
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+
+      await ctrl.synthesize({ input: 'Hi.' } as any, makeRes());
+      expect(http.axiosRef.post.mock.calls[0][1]).toMatchObject({ response_format: 'wav', speed: 0.9 });
+
+      http.axiosRef.post.mockClear();
+      await ctrl.synthesize({ input: 'Hi.', response_format: 'mp3', speed: 1.5 } as any, makeRes());
+      expect(http.axiosRef.post.mock.calls[0][1]).toMatchObject({ response_format: 'mp3', speed: 1.5 });
+    });
+
+    it('injects provider_overrides BESIDE the spec, never on it', async () => {
       const OVERRIDES = { azure: { api_key: 'THE-KEY', funding: 'tenant', region: 'eastus' } };
-      const providerConnectionService = makeProviderConnectionService(OVERRIDES);
-      const ctrl = buildController(makeTenantTtsConfig({}), providerConnectionService);
+      const ctrl = buildController(makeResolver(OVERRIDES));
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
-      const res = makeRes();
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      await ctrl.synthesize({ input: 'Hi.' } as any, makeRes());
 
-      expect(providerConnectionService.resolveTenantCloudOverrides).toHaveBeenCalledWith('tts', 't1');
       const body = http.axiosRef.post.mock.calls[0][1];
-      // Byte-identical shape to the pre-unification TtsProviderOverrides body.
       expect(body.provider_overrides).toEqual(OVERRIDES);
+      expect(JSON.stringify(body.resolved_spec)).not.toContain('THE-KEY');
     });
 
     it('omits provider_overrides when the resolved map is empty', async () => {
-      const ctrl = buildController(makeTenantTtsConfig({}), makeProviderConnectionService({}));
+      const ctrl = buildController(makeResolver());
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
-      const res = makeRes();
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      await ctrl.synthesize({ input: 'Hi.' } as any, makeRes());
 
-      const body = http.axiosRef.post.mock.calls[0][1];
-      expect('provider_overrides' in body).toBe(false);
+      expect('provider_overrides' in http.axiosRef.post.mock.calls[0][1]).toBe(false);
     });
 
-    it('falls back to no overrides when IProviderConnectionService is absent (positional/internal construction)', async () => {
-      const ctrl = buildController(makeTenantTtsConfig({}), undefined);
-      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
-      const res = makeRes();
+    it('FAILS CLOSED — an unresolvable agent propagates instead of degrading to a service default', async () => {
+      // There is no service-side default left: `apps/tts` refuses a request with no spec. Swallowing
+      // this would turn an attributable 404 (unknown or foreign agent) into an opaque downstream
+      // 503, which is the diagnosis the agent-first path exists to make possible.
+      const failing = { resolve: vi.fn().mockRejectedValue(new Error('Agent not found')) };
+      const ctrl = buildController(failing);
 
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
-
-      const body = http.axiosRef.post.mock.calls[0][1];
-      expect('provider_overrides' in body).toBe(false);
-    });
-
-    it('FAILS OPEN — a config resolve error forwards the body without bindings', async () => {
-      const tenantTtsConfig = {
-        getEffective: vi.fn().mockRejectedValue(new Error('config db down')),
-      };
-      const ctrl = buildController(tenantTtsConfig);
-      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
-      const res = makeRes();
-
-      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
-
-      const body = http.axiosRef.post.mock.calls[0][1];
-      expect(body).toEqual({ input: 'Hi.', voice: 'en-female-1' });
+      await expect(ctrl.synthesize({ input: 'Hi.' } as any, makeRes())).rejects.toThrow('Agent not found');
+      expect(http.axiosRef.post).not.toHaveBeenCalled();
     });
   });
 
@@ -277,7 +284,7 @@ describe('SpeechProxyController', () => {
   // math tts uses internally.
   describe('POST /speech/synthesize — usage-ledger emission', () => {
     const buildController = (usageLedger: unknown = createMockUsageLedger(), cls: unknown = createMockCls()) =>
-      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, undefined, undefined, cls as any, usageLedger as any);
+      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, undefined, cls as any, usageLedger as any);
 
     it('emits CHARACTER + the EXACT AUDIO_SECOND from the batch response header', async () => {
       const usageLedger = createMockUsageLedger();
@@ -408,7 +415,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'azure',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();
@@ -426,7 +439,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'azure',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();
@@ -442,7 +461,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'azure',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();
@@ -460,7 +485,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'kokoro', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();
@@ -479,7 +510,13 @@ describe('SpeechProxyController', () => {
       const ctrl = buildController(usageLedger);
       const stream = makeStream();
       http.axiosRef.post.mockResolvedValue({
-        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'kokoro', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
         data: stream,
       });
       const res = makeRes();

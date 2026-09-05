@@ -9,11 +9,15 @@ and `tts-ws.gateway.ts`) and injects the result per request as ``provider_overri
 **This suite iterates the provider registry; it enumerates NOTHING by name.**
 
 That distinction is the whole point, and TTS had the exact defect it guards against.
-``router._build_override_engine`` was a hand-written ``if name == "azure" / "sarvam"``
+``router._build_spec_engine``'s ancestor was a hand-written ``if name == "azure" / "sarvam"``
 switch: a BYOK provider added tomorrow would return ``None`` from it, silently fall back
 to the shared registered engine, and serve every tenant on the PLATFORM key — or vanish
 from ``candidates()`` entirely with no statement of why. Neither outcome is visible at
 the call site, and no test listing today's two adapters could ever catch it.
+
+TASK-879 replaced the two factories with ONE (``from_spec``): a resolved candidate carries
+the model, the mirror, the endpoint and the region as well as the credential, so a second
+factory would only have been a second place to get a tenant's engine wrong.
 
 The four guarantees:
 
@@ -36,7 +40,8 @@ from pydantic import BaseModel, SecretStr
 
 from tts.core.config import Settings
 from tts.providers.base import CredentialPosture
-from tts.routing.router import _build_override_engine
+from tts.routing.router import _build_spec_engine
+from tts.tests.fakes import candidate as _candidate
 
 
 def _bare_settings() -> Settings:
@@ -232,15 +237,34 @@ def test_config_attr_map_covers_every_byok_adapter():
 # ---------------------------------------------------------------------------
 
 
+def _cloud_candidate(name: str):
+    """A resolved candidate for a cloud engine, carrying the endpoint facts its adapter needs.
+
+    `region` / `base_url` come from the candidate's CONNECTION rather than from settings, which is
+    the point of TASK-879: there is no process-wide region or host left to fall back to, so an
+    adapter that cannot get one from the spec must refuse rather than reach a vendor nobody named.
+    """
+    return _candidate(
+        name,
+        slug=f"{name}-voices",
+        source_uri="azure://neural-voices" if name == "azure" else "bulbul:v3",
+        voices=None,
+        voice="af_heart",
+        region="eastus" if name == "azure" else None,
+        base_url=None if name == "azure" else "https://api.sarvam.ai",
+        timeout_s=None if name == "azure" else 30,
+    )
+
+
 @pytest.mark.parametrize(("name", "cls"), _BYOK, ids=_BYOK_IDS)
 def test_injected_override_builds_a_configured_request_scoped_engine(name: str, cls: type):
     settings = _bare_settings()
     shared = cls(getattr(settings, _CONFIG_ATTR[name]))
 
-    built = _build_override_engine(settings, name, {"api_key": "tenant-byo-key"})
+    built = _build_spec_engine(settings, _cloud_candidate(name), {"api_key": "tenant-byo-key"})
 
     assert built is not None, (
-        f"_build_override_engine returned None for BYOK provider {name!r}. This is "
+        f"_build_spec_engine returned None for BYOK provider {name!r}. This is "
         "the hand-written-list defect: an adapter the switch does not name silently "
         "falls back to the shared platform engine."
     )
@@ -272,12 +296,15 @@ def test_override_builder_is_registry_driven_not_a_name_switch():
             self.is_configured = bool(api_key)
 
         @classmethod
-        def from_override(cls, _settings, override):  # noqa: ANN001
+        def from_spec(cls, _settings, _candidate_, override):  # noqa: ANN001
             key = override.get("api_key")
             return cls(key) if key else None
 
-    built = _build_override_engine(
-        settings, "future-vendor", {"api_key": "k"}, registry_class=FutureVendorProvider
+    built = _build_spec_engine(
+        settings,
+        _candidate("future-vendor", voices=None, voice="af_heart"),
+        {"api_key": "k"},
+        registry_class=FutureVendorProvider,
     )
     assert built is not None and built.is_configured is True, (
         "the router could not build an override engine for an adapter it does not "
@@ -293,8 +320,8 @@ def test_keyless_override_injects_nothing(name: str, cls: type):
     from being mistaken for a credential ( plan, "Phase 2 landmines").
     """
     settings = _bare_settings()
-    assert _build_override_engine(settings, name, {"base_url": "https://x/"}) is None
-    assert _build_override_engine(settings, name, {"api_key": ""}) is None
+    assert _build_spec_engine(settings, _cloud_candidate(name), {"base_url": "https://x/"}) is None
+    assert _build_spec_engine(settings, _cloud_candidate(name), {"api_key": ""}) is None
 
 
 @pytest.mark.parametrize(("name", "cls"), _ALL_PROVIDERS, ids=_PROVIDER_IDS)
@@ -307,6 +334,6 @@ def test_no_adapter_prints_its_credential(name: str, cls: type):
     if name not in _CONFIG_ATTR:
         pytest.skip(f"{name} takes no injectable credential config")
     settings = _bare_settings()
-    engine = _build_override_engine(settings, name, {"api_key": "super-secret-value"})
+    engine = _build_spec_engine(settings, _cloud_candidate(name), {"api_key": "super-secret-value"})
     assert engine is not None
     assert "super-secret-value" not in repr(engine)

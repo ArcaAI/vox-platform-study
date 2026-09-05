@@ -382,6 +382,13 @@ const TEXT_TO_SPEECH_PARAMETERS: NodeConfigSchema = Object.freeze({
     format: Object.freeze({ type: 'string', enum: Object.freeze(['wav', 'mp3', 'ogg', 'pcm']) }),
     sampleRate: Object.freeze({ type: 'integer', enum: Object.freeze([8000, 16000, 22050, 24000, 44100, 48000]) }),
     ssml: Object.freeze({ type: 'boolean', description: 'Capability-gated: refused at publish unless the bound provider declares SSML support.' }),
+    // TASK-879 — the speech path became agent-first, so a TTS agent needs the same HA governance
+    // the other two tasks have. `AgentModelFallback` was always task-agnostic; what was missing was
+    // a way to SAY it, so an operator could bind a fallback engine and nothing would read it.
+    // No `switchAfterConsecutiveFailures`, for the reason `fallbackProperty` records: synthesis is
+    // per-request and switches on the first failure, keeping no cross-call state a threshold could
+    // count. Owner rule: no dead knobs.
+    fallback: fallbackProperty('TEXT_TO_SPEECH'),
   }),
 });
 

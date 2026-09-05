@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import httpx
 from fastapi import FastAPI
@@ -79,87 +80,95 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.config_invalidation_task = None
     app.state.config_invalidation_redis = None
 
+    # PROVIDER REGISTRATION — image-driven, not config-driven (TASK-879).
+    #
+    # Every engine this image can import registers, unconditionally. That is a real change of
+    # authority, not a loosening: which engines a deployment may ROUTE TO is now the SYSTEM
+    # `AiProviderConnection(tts, <engine>).enabled` row, resolved by the gateway per request into
+    # the spec's `connection` block, and the router walks past a candidate whose row did not
+    # answer. Registration answers a different question — which engines this PROCESS contains —
+    # and the honest answer to that is "the ones the image installed".
+    #
+    # The five `TTS_*_ENABLED` flags that used to gate this are gone with the settings keys they
+    # mirrored. Three properties this preserves, each of which a test pins:
+    #
+    #  * BOOT DOES NO I/O. Local engines load weights on the first synthesis, never here, and a
+    #    keyless cloud engine is not pre-warmed (`is_configured` is False, so `prewarm` would open
+    #    a connection with an empty subscription key). `test_keyless_readiness_task642` fails on
+    #    any outbound socket.
+    #  * A MISSING EXTRA IS NOT A BOOT FAILURE. `[indic-parler]` / `[indic-f5]` are optional image
+    #    variants, so an ImportError here means "this image does not contain that engine" and is
+    #    logged, never raised.
+    #  * READINESS STILL DISTINGUISHES healthy from awaiting-credentials: a self-hosted engine
+    #    reports healthy, a keyless cloud engine reports `is_configured=False`, and
+    #    `/health/ready` answers 200 degraded rather than 503.
     registry = app.state.provider_registry
-    if settings.azure.enabled and "azure" not in registry:
+
+    def _azure() -> Any:
         from tts.providers.azure_speech import AzureSpeechProvider
 
-        azure_provider = AzureSpeechProvider(settings.azure)
-        registry.register("azure", azure_provider)
-        logger.info("tts.provider_registered", provider="azure", region=settings.azure.region)
-        try:
-            await azure_provider.prewarm()
-        except Exception as exc:  # noqa: BLE001 — prewarm is best-effort
-            logger.warning("tts.azure_prewarm_failed", error=str(exc))
+        return AzureSpeechProvider(settings.azure)
 
-    # Sarvam (cloud; best ml code-switch) — register gated by TTS_SARVAM_ENABLED.
-    if settings.sarvam.enabled and "sarvam" not in registry:
+    def _sarvam() -> Any:
         from tts.providers.sarvam import SarvamProvider
 
-        registry.register("sarvam", SarvamProvider(settings.sarvam))
-        logger.info("tts.provider_registered", provider="sarvam", model=settings.sarvam.model)
+        return SarvamProvider(settings.sarvam)
 
-    # Local engines register UNCONDITIONALLY and load their
-    # weights on the first synth request; an idle model is then released by the
-    # cache's TTL sweep.
-    #
-    # Health-semantics shift: a broken model now surfaces as a first-request 503
-    # instead of a missing provider. TTS_WARMUP_ENABLED=true restores boot-warm
-    # for operators who prefer to fail at boot (the provider still registers).
-    # See docs/operations/inference/model-retention.md.
-    if settings.kokoro.enabled or settings.indic_parler.enabled or settings.indic_f5.enabled:
-        from tts.providers.registration import register_local_provider
+    def _kokoro() -> Any:
+        from tts.providers.kokoro import KokoroProvider
 
-        warmup = settings.warmup_enabled
-        # Warm-up voices come from the VOICE CATALOG, the single source of
-        # provider voice names since lane C. The per-provider `voice` /
-        # `speaker_*` settings that held the same strings a second time are gone,
-        # and on the request path the router already resolves these bindings into
-        # `req.provider_voice`; warm-up is the one path with no request to
-        # resolve from. `None` ⇒ the catalog binds no voice for that provider at
-        # that locale, and `warmup()` becomes a no-op rather than guessing.
-        catalog = app.state.voice_catalog
+        return KokoroProvider(
+            settings.kokoro,
+            ttl_seconds=settings.model_cache_ttl_seconds,
+            warmup_voice=app.state.voice_catalog.default_binding("kokoro", "en"),
+        )
 
-        if settings.kokoro.enabled and "kokoro" not in registry:
-            from tts.providers.kokoro import KokoroProvider
+    def _indic_parler() -> Any:
+        from tts.providers.indic_parler import IndicParlerProvider
 
-            await register_local_provider(
-                registry,
-                "kokoro",
-                KokoroProvider(
-                    settings.kokoro,
-                    ttl_seconds=settings.model_cache_ttl_seconds,
-                    warmup_voice=catalog.default_binding("kokoro", "en"),
-                ),
-                warmup=warmup,
-                logger=logger,
+        return IndicParlerProvider(
+            settings.indic_parler,
+            ttl_seconds=settings.model_cache_ttl_seconds,
+            warmup_speaker=app.state.voice_catalog.default_binding("indic_parler", "ml"),
+        )
+
+    def _indic_f5() -> Any:
+        from tts.providers.indic_f5 import IndicF5Provider
+
+        return IndicF5Provider(settings.indic_f5, ttl_seconds=settings.model_cache_ttl_seconds)
+
+    from tts.providers.registration import register_local_provider
+
+    for name, build in (
+        ("azure", _azure),
+        ("sarvam", _sarvam),
+        ("kokoro", _kokoro),
+        ("indic_parler", _indic_parler),
+        ("indic_f5", _indic_f5),
+    ):
+        if name in registry:
+            continue
+        try:
+            engine = build()
+        except ImportError as exc:
+            logger.info(
+                "tts.provider_not_in_image",
+                provider=name,
+                error=str(exc),
+                detail="the image variant that ships this engine is not installed; it will not be registered",
             )
-
-        if settings.indic_parler.enabled and "indic_parler" not in registry:
-            from tts.providers.indic_parler import IndicParlerProvider
-
-            await register_local_provider(
-                registry,
-                "indic_parler",
-                IndicParlerProvider(
-                    settings.indic_parler,
-                    ttl_seconds=settings.model_cache_ttl_seconds,
-                    warmup_speaker=catalog.default_binding("indic_parler", "ml"),
-                ),
-                warmup=warmup,
-                logger=logger,
-            )
-
-        # IndicF5 — EXPERIMENTAL, prod enablement NO-GO pending license review.
-        if settings.indic_f5.enabled and "indic_f5" not in registry:
-            from tts.providers.indic_f5 import IndicF5Provider
-
-            await register_local_provider(
-                registry,
-                "indic_f5",
-                IndicF5Provider(settings.indic_f5, ttl_seconds=settings.model_cache_ttl_seconds),
-                warmup=warmup,
-                logger=logger,
-            )
+            continue
+        except Exception as exc:  # noqa: BLE001 — a broken engine must not take the process down
+            logger.warning("tts.provider_registration_failed", provider=name, error=str(exc))
+            continue
+        # Optional boot warm-up (`tts.warmupEnabled`, OFF by default). A warm-up failure is NOT a
+        # registration failure: the engine stays registered and the failure surfaces as a 503 on
+        # the affected route rather than silently removing a route from the service. A KEYLESS
+        # cloud engine is never warmed — with no credential there is nothing to warm, and opening
+        # a vendor connection with an empty subscription key is the outbound socket
+        # `test_keyless_readiness_task642` forbids at boot.
+        warmable = settings.warmup_enabled and getattr(engine, "is_configured", True)
+        await register_local_provider(registry, name, engine, warmup=warmable, logger=logger)
 
     # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Dedicated short-lived httpx client, closed below.
@@ -230,7 +239,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     catalog = VoiceCatalog()
     app.state.provider_registry = registry
     app.state.voice_catalog = catalog
-    app.state.router = TTSRouter(registry, catalog, settings)
+    app.state.router = TTSRouter(registry, settings)
 
     from tts.api.middleware.auth import ServiceAuthMiddleware
     from tts.core.service_auth import is_local_environment
