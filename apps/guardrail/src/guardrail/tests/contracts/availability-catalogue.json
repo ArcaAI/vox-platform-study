@@ -1,0 +1,40 @@
+{
+  "$comment": [
+    "TASK-886 — the CROSS-LANGUAGE contract for guardrail per-tenant availability.",
+    "",
+    "This file is the ONE artifact both sides are pinned against, exactly as",
+    "tests/contracts/resolved-asr-spec.fixture.json pins ResolvedAsrSpec across",
+    "packages/types/src/asr-spec.ts and apps/stt/src/stt/pipeline/spec.py.",
+    "",
+    "  TypeScript — packages/applications/src/services/guardrail-availability/",
+    "               policy-catalogue.ts (the admin plane: what a platform admin",
+    "               may select, and which direction a threshold tightens)",
+    "  Python     — apps/guardrail/src/guardrail/core/availability.py (the",
+    "               runtime plane: which checks a resolved selection turns on)",
+    "",
+    "Every id here is a check name declared in services/screening.py's",
+    "_DECLARED_FAIL_MODES. That is the whole membership rule: a policy is",
+    "selectable if, and only if, a screening check reads the selection. Adding an",
+    "id with no reader would repeat the injectionScreeningCriteria defect this",
+    "same ticket removed — a declared knob that cannot move anything."
+  ],
+  "policies": [
+    { "id": "jailbreak_detection", "directions": ["inbound", "outbound"] },
+    { "id": "prompt_safety", "directions": ["inbound"] },
+    { "id": "prompt_toxicity", "directions": ["inbound"] },
+    { "id": "response_safety", "directions": ["outbound"] },
+    { "id": "response_toxicity", "directions": ["outbound"] },
+    { "id": "response_refusal", "directions": ["outbound"] },
+    {
+      "id": "pii_leak",
+      "directions": ["outbound"],
+      "threshold": {
+        "field": "minScore",
+        "floorDirection": "lower-is-stricter",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    { "id": "containment_echo", "directions": ["outbound"] }
+  ]
+}
