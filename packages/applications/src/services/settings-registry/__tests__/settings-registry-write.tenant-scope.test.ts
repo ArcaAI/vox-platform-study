@@ -24,6 +24,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { SysEventType } from '@arcaai/domains';
 import { SettingsRegistryWriteService, REGISTRY_SETTING_NAMESPACE } from '../settings-registry-write.service';
+import { HOPE_SETTINGS_REGISTRY } from '../registry';
 
 /** The SOLE platform-configuration tier (owner ruling 2026-08-20). */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -201,14 +202,60 @@ describe('reading the backing-row version is NOT a write', () => {
  * did not. Now the direction is a descriptor field and this lane applies it
  * generically, so the assertions below are about the write lane actually
  * invoking it — the direction semantics have their own tests next door.
+ *
+ * TASK-872 removed that family (all 13 keys were unread), which left the only
+ * `floorDirection` descriptors in the catalog at `maxScope: 'system'` — where a
+ * tenant write is refused by the SCOPE clamp before the floor is ever reached,
+ * so none of them can exercise this wiring. The keys below are therefore
+ * REGISTERED BY THIS TEST: a floor-carrying, tenant-scoped, `global-kv`
+ * descriptor pair that exists to prove the write lane still calls
+ * `assertTightenOnlyFloor`. Registering them here rather than shipping two
+ * production keys nothing reads is the point — a test fixture is honest about
+ * being one, and a catalog entry is not.
+ *
+ * Vitest isolates the module graph per test FILE, so this registration is local
+ * to this file and cannot leak into another suite's view of the registry.
  */
+const FLOOR_THRESHOLD_KEY = 'test.floor.threshold';
+const FLOOR_TAXONOMY_KEY = 'test.floor.taxonomy';
+
+HOPE_SETTINGS_REGISTRY.register({
+  key: FLOOR_THRESHOLD_KEY,
+  tier: 'global-kv',
+  dataType: 'number',
+  sensitivity: 'internal',
+  maxScope: 'tenant',
+  editableBy: 'all',
+  failMode: 'open-to-default',
+  floorDirection: 'lower-is-stricter',
+  category: 'Test Fixture',
+  label: 'Floor fixture (lower is stricter)',
+  description: 'Test-only descriptor: a detection threshold a tenant may only LOWER relative to the platform value.',
+  default: 0.5,
+});
+
+HOPE_SETTINGS_REGISTRY.register({
+  key: FLOOR_TAXONOMY_KEY,
+  tier: 'global-kv',
+  dataType: 'string[]',
+  sensitivity: 'internal',
+  maxScope: 'tenant',
+  editableBy: 'all',
+  failMode: 'open-to-default',
+  floorDirection: 'superset-is-stricter',
+  category: 'Test Fixture',
+  label: 'Floor fixture (superset is stricter)',
+  description: 'Test-only descriptor: a label taxonomy a tenant may only ADD to, never drop a platform-mandated category from.',
+  default: [],
+});
+
 describe('tighten-only floor — enforced in the write lane, descriptor-driven', () => {
   it('REJECTS a tenant write that would loosen a verdict-deciding key (403, no row written)', async () => {
-    // `piiThreshold` is lower-is-stricter: 0.9 catches LESS PII than the
-    // platform floor of 0.5, so it is a privilege violation, not a clamp.
+    // `lower-is-stricter`: 0.9 detects LESS than the platform floor of 0.5, so
+    // it is a privilege violation, not a clamp.
     const { svc, globalSettings } = makeService({ roles: [], tenantId: CUSTOMER_TENANT, platformValue: 0.5 });
 
-    await expect(svc.write('guardrail.policy.piiThreshold', 0.9, { scope: 'tenant' })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.write(FLOOR_THRESHOLD_KEY, 0.9, { scope: 'tenant' })).rejects.toBeInstanceOf(ForbiddenException);
     expect(globalSettings.create).not.toHaveBeenCalled();
     expect(globalSettings.update).not.toHaveBeenCalled();
   });
@@ -216,7 +263,7 @@ describe('tighten-only floor — enforced in the write lane, descriptor-driven',
   it('PERMITS a tenant write that tightens the same key, and writes it unclamped', async () => {
     const { svc, globalSettings } = makeService({ roles: [], tenantId: CUSTOMER_TENANT, platformValue: 0.5 });
 
-    const result = await svc.write('guardrail.policy.piiThreshold', 0.3, { scope: 'tenant' });
+    const result = await svc.write(FLOOR_THRESHOLD_KEY, 0.3, { scope: 'tenant' });
 
     expect(result).toMatchObject({ value: 0.3, scope: 'tenant' });
     expect(globalSettings.create.mock.calls[0]![0]).toMatchObject({ value: '0.3', tenantId: CUSTOMER_TENANT });
@@ -226,15 +273,13 @@ describe('tighten-only floor — enforced in the write lane, descriptor-driven',
     const floor = ['harassment', 'hate_speech', 'violence'];
     const { svc } = makeService({ roles: [], tenantId: CUSTOMER_TENANT, platformValue: floor });
 
-    await expect(svc.write('guardrail.policy.harmfulLabels', ['harassment', 'violence'], { scope: 'tenant' })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(svc.write(FLOOR_TAXONOMY_KEY, ['harassment', 'violence'], { scope: 'tenant' })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('does NOT floor a system-scope write — that write IS the platform value', async () => {
     const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: SYSTEM_TENANT_ID, platformValue: 0.5 });
 
-    await expect(svc.write('guardrail.policy.piiThreshold', 0.9, { scope: 'system' })).resolves.toMatchObject({ value: 0.9 });
+    await expect(svc.write(FLOOR_THRESHOLD_KEY, 0.9, { scope: 'system' })).resolves.toMatchObject({ value: 0.9 });
     expect(globalSettings.create).toHaveBeenCalledTimes(1);
   });
 
