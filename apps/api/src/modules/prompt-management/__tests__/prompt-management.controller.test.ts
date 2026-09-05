@@ -607,8 +607,12 @@ describe('PromptManagementController', () => {
       expect(getMethodMetadata('testTemplate')).toEqual([{ action: 'update', subject: 'PromptTemplate' }]);
     });
 
-    it('should require ["manage","Department"] on assignDepartment (POST /prompt-templates/assign-department)', () => {
-      expect(getMethodMetadata('assignDepartment')).toEqual([{ action: 'manage', subject: 'Department' }]);
+    it('should require ["update","Department"] on assignDepartment (POST /prompt-templates/assign-department)', () => {
+      // TASK-873 — narrowed from `manage:Department`. The route performs one OCC
+      // UPDATE of the Department row's prompt-slot columns (via
+      // `DepartmentService.updatePromptConfig`), so `manage` overstated it and
+      // put the requirement out of reach of this controller's own machine scope.
+      expect(getMethodMetadata('assignDepartment')).toEqual([{ action: 'update', subject: 'Department' }]);
     });
   });
 

@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 386 component schemas the generated surface transitively
+ * Only the 383 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -4001,24 +4001,6 @@ export interface ResponsibleUserResponse {
   id: string;
 }
 
-export interface RevealGlobalSettingRequest {
-  /** The caller's current account password (step-up re-authentication). Verified server-side against the stored hash; never logged, never persisted. */
-  password: string;
-  resourceStatus?: string;
-  tenantId?: string;
-}
-
-export interface RevealGlobalSettingResponse {
-  /** ID of the revealed setting */
-  id: string;
-  /** Key of the revealed setting */
-  key: string;
-  /** ISO-8601 timestamp of when the reveal occurred. */
-  revealedAt: string;
-  /** Decrypted plaintext value (transient — do not persist). */
-  value: string;
-}
-
 export interface RoleMemberResponse {
   /** When the role was assigned */
   assignedAt: string;
@@ -4069,17 +4051,6 @@ export interface RoleResponse {
   tenantId: string;
   /** Updated at timestamp */
   updatedAt: string;
-}
-
-export interface RotateGlobalSettingRequest {
-  /** Current row version (from the prior GET). The rotation fails with 412 if the version drifted. Optional in the body when the `If-Match` header is supplied. */
-  expectedVersion?: number;
-  /** The replacement secret value. Stored atomically in place of the old value; never returned, never logged, never audited. */
-  newValue: string;
-  /** The caller's current account password (step-up re-authentication). Verified server-side against the stored hash; never logged, never persisted. */
-  password: string;
-  resourceStatus?: string;
-  tenantId?: string;
 }
 
 export interface RotateWebhookSecretRequest {

@@ -235,7 +235,26 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     ],
     reserved: true,
   },
-  'admin:user:write': { description: 'Manage users', category: 'Admin', implies: [{ action: 'manage', subject: 'User' }], reserved: true },
+  'admin:user:write': {
+    description: 'Manage users and their role assignments',
+    category: 'Admin',
+    // TASK-873 — `manage:UserRoleAssignment` completes this scope rather than
+    // widening the route. `POST admin/users/:id/roles` DECLARES this scope
+    // (class-level on `UserController`) and demands that subject, so a service
+    // account holding exactly the advertised scope cleared the scope gate and
+    // was then 403'd by CASL — a credential the platform said could administer
+    // users but could not perform the one administration that matters.
+    // Deliberately NOT fixed on the route: `UserRoleAssignment` is a separate
+    // subject from `User` on purpose (assigning a role is a privilege decision,
+    // editing a user is not), and relaxing the route would hand that decision
+    // to every principal holding only `manage:User`. Reach stays gated by the
+    // scope declaration: no other controller accepts this scope.
+    implies: [
+      { action: 'manage', subject: 'User' },
+      { action: 'manage', subject: 'UserRoleAssignment' },
+    ],
+    reserved: true,
+  },
   'admin:apikey:read': { description: 'Read API keys', category: 'Admin', implies: [{ action: 'read', subject: 'ApiKey' }], reserved: true },
   'admin:apikey:write': { description: 'Manage API keys', category: 'Admin', implies: [{ action: 'manage', subject: 'ApiKey' }], reserved: true },
   'admin:tenant:read': {
@@ -268,7 +287,14 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:role:write': {
     description: 'Manage roles and policies',
     category: 'Admin',
-    implies: [{ action: 'manage', subject: 'Role' }],
+    // TASK-873 — the description always said "and policies"; the `implies` did
+    // not. `POST`/`DELETE admin/rbac/roles/:roleId/policies/:policyId` demand
+    // `manage:RolePolicy`, so the two routes that attach a policy TO a role
+    // were unreachable by a machine holding this scope.
+    implies: [
+      { action: 'manage', subject: 'Role' },
+      { action: 'manage', subject: 'RolePolicy' },
+    ],
     reserved: true,
   },
 
@@ -297,7 +323,19 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'webhook:event:write': {
     description: 'Manage webhook subscriptions',
     category: 'Webhook',
-    implies: [{ action: 'manage', subject: 'Webhook' }],
+    // TASK-873 — the O-2 reasoning above, applied to the WRITE twin.
+    // `GET admin/webhooks/:id/deliveries` declares BOTH webhook scopes (see the
+    // comment at `webhook.controller.ts`: dropping `:write` "would revoke this
+    // route from every existing `:write` grant") and demands
+    // `read:WebhookRunHistory`. That was checked for the `:read` half and never
+    // for this one, so a `:write`-only machine identity passed the scope gate —
+    // `enforceServiceAccountScopes` is `required.some(...)` — and was then
+    // refused by CASL. A holder that can manage the subscription but cannot read
+    // its delivery log is under-specified, exactly as the read twin was.
+    implies: [
+      { action: 'manage', subject: 'Webhook' },
+      { action: 'read', subject: 'WebhookRunHistory' },
+    ],
     reserved: true,
   },
 
@@ -510,7 +548,21 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:prompt-template:manage': {
     description: 'Manage prompt templates from the admin surface',
     category: 'Admin',
-    implies: [{ action: 'manage', subject: 'PromptTemplate' }],
+    // TASK-873 — `POST admin/prompt-templates/assign-department` is the one
+    // route on this controller that writes something other than a template: it
+    // delegates to `DepartmentService.updatePromptConfig`, an OCC UPDATE of the
+    // Department row's three prompt-slot columns. The route asked for
+    // `manage:Department` — broader than the write it performs — and was
+    // narrowed to `update:Department` in the same change; this pair is the
+    // narrowed requirement, NOT a licence to administer departments (that is
+    // `admin:department:manage`, and `DepartmentController` accepts only its
+    // own scope). The rejected alternative was relaxing the route to
+    // `manage:PromptTemplate`: route decorators are shared by every principal
+    // class, so that would let any prompt author write Department rows.
+    implies: [
+      { action: 'manage', subject: 'PromptTemplate' },
+      { action: 'update', subject: 'Department' },
+    ],
     reserved: true,
   },
   'admin:pstudio:manage': {
@@ -552,7 +604,20 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:storage-key:manage': {
     description: 'Manage tenant storage access keys (HIGH sensitivity — storage credentials)',
     category: 'Admin',
-    implies: [{ action: 'manage', subject: 'Tenant' }],
+    // TASK-873 — `StorageAccessKeyController`'s three routes demand
+    // `read`/`create`/`delete` on `Storage`, none of which `manage:Tenant`
+    // satisfies. The three actions are listed individually rather than as
+    // `manage:Storage` because no route declaring this scope UPDATES a storage
+    // row; the sibling `admin:tenant-storage:manage` reaches the full CRUD and
+    // says so with `manage`. (`manage:Tenant` is kept as-is: it predates this
+    // ticket and no route declaring this scope requires it — recorded as an
+    // over-grant in the TASK-873 README rather than narrowed here.)
+    implies: [
+      { action: 'manage', subject: 'Tenant' },
+      { action: 'read', subject: 'Storage' },
+      { action: 'create', subject: 'Storage' },
+      { action: 'delete', subject: 'Storage' },
+    ],
     reserved: true,
   },
   'admin:transcription-job:read': {
@@ -570,7 +635,16 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:tenant-storage:manage': {
     description: 'Manage tenant storage buckets and config',
     category: 'Admin',
-    implies: [{ action: 'manage', subject: 'Tenant' }],
+    // TASK-873 — the 17 bucket + storage-config routes demand
+    // `read`/`create`/`update`/`delete` on `Storage`; that is the whole CRUD, so
+    // `manage:Storage` is exactly the reachable set rather than a widening of
+    // it. `manage:Tenant` is load-bearing and stays: `POST
+    // admin/tenants/storage/buckets/provision/:tenantId` is the one route here
+    // that provisions FOR a tenant and demands it.
+    implies: [
+      { action: 'manage', subject: 'Tenant' },
+      { action: 'manage', subject: 'Storage' },
+    ],
     reserved: true,
   },
   'admin:tenant-frontend-config:manage': {
@@ -612,7 +686,19 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:workflow-definition:manage': {
     description: 'Author, validate and publish workflow definitions',
     category: 'Admin',
-    implies: [{ action: 'manage', subject: 'WorkflowDefinition' }],
+    // TASK-873 — `WorkflowSandboxRunController` is mounted UNDER the definition
+    // (`admin/workflow-definitions/:definitionId/sandbox-runs/*`) and therefore
+    // inherits this scope, but its four routes demand `create`/`read`/`update`
+    // on `WorkflowRun`: trial-running a definition you are authoring is part of
+    // authoring it. Only those three actions are granted — `manage:WorkflowRun`
+    // would additionally confer `delete`, which no route declaring this scope
+    // performs.
+    implies: [
+      { action: 'manage', subject: 'WorkflowDefinition' },
+      { action: 'create', subject: 'WorkflowRun' },
+      { action: 'read', subject: 'WorkflowRun' },
+      { action: 'update', subject: 'WorkflowRun' },
+    ],
     reserved: true,
   },
   'admin:workflow-node:read': {

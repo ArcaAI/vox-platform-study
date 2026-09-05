@@ -44,7 +44,15 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   'svc:stt:stream:write': [['create', 'Consultation']],
   'svc:consultation:report:write': [['create', 'Consultation']],
   'svc:admin:user:read': [['read', 'User']],
-  'svc:admin:user:write': [['manage', 'User']],
+  // TASK-873 — `manage:UserRoleAssignment` was added to `admin:user:write`'s
+  // `implies` so `POST admin/users/:id/roles` (which declares this scope and
+  // demands that subject) stops 403-ing a machine identity holding exactly it.
+  // TENANT_ADMIN holds `manage:UserRoleAssignment` (`rbac-tenant-manage`), so
+  // the derivation rule below still admits the scope.
+  'svc:admin:user:write': [
+    ['manage', 'User'],
+    ['manage', 'UserRoleAssignment'],
+  ],
   'svc:admin:apikey:read': [['read', 'ApiKey']],
   'svc:admin:apikey:write': [['manage', 'ApiKey']],
   'svc:admin:role:read': [['read', 'Role']],
@@ -52,7 +60,16 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   'svc:admin:audit:read': [['read', 'AuditLog']],
   'svc:admin:department:manage': [['manage', 'Department']],
   'svc:admin:agent-promotion:manage': [['manage', 'WorkflowDefinition']],
-  'svc:admin:prompt-template:manage': [['manage', 'PromptTemplate']],
+  // TASK-873 — `POST admin/prompt-templates/assign-department` writes a
+  // Department's prompt config, so its route was NARROWED from
+  // `manage:Department` to `update:Department` and this scope carries that one
+  // pair (never `manage:Department` — a prompt-template credential does not
+  // administer departments). TENANT_ADMIN holds `manage:Department`, which
+  // subsumes it.
+  'svc:admin:prompt-template:manage': [
+    ['manage', 'PromptTemplate'],
+    ['update', 'Department'],
+  ],
   'svc:admin:consultation-context-schema:manage': [['manage', 'ConsultationContextSchema']],
   'svc:admin:document-template:manage': [['manage', 'DocumentTemplate']],
   'svc:admin:dna-writing-style:manage': [['manage', 'DnaWritingStyleReport']],
@@ -82,7 +99,17 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   'svc:admin:notification:manage': [['manage', 'Notification']],
   'svc:admin:resource-subscription:manage': [['manage', 'ResourceSubscription']],
   'svc:admin:service-release:manage': [['read', 'TenantTelemetry']],
-  'svc:admin:workflow-definition:manage': [['manage', 'WorkflowDefinition']],
+  // TASK-873 — `WorkflowSandboxRunController` hangs off the definition
+  // (`admin/workflow-definitions/:id/sandbox-runs/*`) and declares this scope
+  // while demanding `WorkflowRun`. Only the three actions those four routes use
+  // are granted — not `manage:WorkflowRun`, which would silently confer delete.
+  // TENANT_ADMIN holds `manage:WorkflowRun` (`tenant-full-access`).
+  'svc:admin:workflow-definition:manage': [
+    ['manage', 'WorkflowDefinition'],
+    ['create', 'WorkflowRun'],
+    ['read', 'WorkflowRun'],
+    ['update', 'WorkflowRun'],
+  ],
   'svc:admin:workflow-node:read': [['read', 'WorkflowDefinition']],
   'svc:admin:workflow-run:read': [['read', 'WorkflowRun']],
   'svc:admin:workflow-test-fixture:manage': [['manage', 'WorkflowTestFixture']],
@@ -96,7 +123,13 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
  */
 const PLATFORM_ONLY_SVC_SCOPES: Readonly<Record<string, ReadonlyArray<readonly [action: string, subject: string]>>> = {
   'svc:admin:tenant:write': [['manage', 'Tenant']],
-  'svc:admin:role:write': [['manage', 'Role']],
+  // TASK-873 — the two role↔policy routes demand `manage:RolePolicy`; the scope
+  // is described as "manage roles AND POLICIES" and now says so. Still excluded:
+  // `manage:Role` alone exceeds a tenant admin (Role/Policy are GLOBAL tables).
+  'svc:admin:role:write': [
+    ['manage', 'Role'],
+    ['manage', 'RolePolicy'],
+  ],
   'svc:admin:rbac-policy:write': [['manage', 'Policy']],
   'svc:admin:rate-limit:manage': [['manage', 'all']],
   'svc:admin:usage:manage': [['manage', 'UsageAnalytics']],
@@ -109,8 +142,23 @@ const PLATFORM_ONLY_SVC_SCOPES: Readonly<Record<string, ReadonlyArray<readonly [
   'svc:admin:platform-metrics:read': [['manage', 'PlatformMetrics']],
   'svc:admin:pstudio:manage': [['manage', 'PrismaStudio']],
   'svc:admin:changelog:manage': [['manage', 'ChangelogEntry']],
-  'svc:admin:storage-key:manage': [['manage', 'Tenant']],
-  'svc:admin:tenant-storage:manage': [['manage', 'Tenant']],
+  // TASK-873 — the three key routes demand `read/create/delete:Storage`; no
+  // route declaring this scope updates a Storage row, so `update` is withheld.
+  // Still excluded: the pre-existing `manage:Tenant` exceeds a tenant admin.
+  'svc:admin:storage-key:manage': [
+    ['manage', 'Tenant'],
+    ['read', 'Storage'],
+    ['create', 'Storage'],
+    ['delete', 'Storage'],
+  ],
+  // TASK-873 — the 17 bucket/config routes demand the full `Storage` CRUD, so
+  // `manage:Storage` is exactly the reachable set. `manage:Tenant` stays: it is
+  // load-bearing for `POST .../buckets/provision/:tenantId`, and it is also why
+  // this scope remains excluded from the seeded set.
+  'svc:admin:tenant-storage:manage': [
+    ['manage', 'Tenant'],
+    ['manage', 'Storage'],
+  ],
   'svc:admin:billing:manage': [
     ['manage', 'BillingInvoice'],
     ['manage', 'AiPriceBook'],
