@@ -372,7 +372,8 @@ export class HarnessInternalController {
   @ApiQuery({
     name: 'taskKey',
     required: false,
-    description: 'Optional — accepted for compatibility; textProvider/textModel resolve from the assigned TEXT_GENERATION agent regardless of the key (TASK-876).',
+    description:
+      'Optional — accepted for compatibility; textProvider/textModel resolve from the assigned TEXT_GENERATION agent regardless of the key (TASK-876).',
   })
   // `modelSlug` (the executing node's `llmBinding.modelSlug`) used to be a third query parameter
   // here. TASK-882 removed it from the wire: the node `llmBinding` is gone from the schemas and
