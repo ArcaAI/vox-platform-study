@@ -14,6 +14,9 @@ const makeContext = (headers: Record<string, string>, query: Record<string, stri
   }) as any;
 
 const SECRETS: Record<string, string> = {
+  // `TEXT_SERVICE_TOKEN` was here until TASK-888 retired it. It is left in the
+  // fixture on purpose: the guard must not fall back to it now that `text`
+  // resolves the shared token (see the last case in this describe).
   TEXT_SERVICE_TOKEN: 'text-token',
   NLP_SERVICE_TOKEN: 'nlp-token',
   GUARDRAIL_SERVICE_TOKEN: 'guardrail-token',
@@ -33,7 +36,9 @@ describe('InternalServiceTokenGuard', () => {
 
   describe('per-service token binding', () => {
     it.each([
-      ['text', 'text-token'],
+      // `text` joined `tts` on the ONE shared internal token in TASK-888 — the
+      // service stopped accepting `TEXT_SERVICE_TOKEN` on its own side long ago.
+      ['text', 'shared-token'],
       ['nlp', 'nlp-token'],
       ['guardrail', 'guardrail-token'],
       ['harness', 'harness-token'],
@@ -41,6 +46,15 @@ describe('InternalServiceTokenGuard', () => {
     ])('allows %s with its own service token', async (service, token) => {
       const guard = guardWith();
       await expect(guard.canActivate(makeContext({ 'x-service-token': token }, { service }))).resolves.toBe(true);
+    });
+
+    it('no longer accepts the retired per-service TEXT_SERVICE_TOKEN for service=text', async () => {
+      // The gateway would otherwise admit a credential `apps/text` itself can no
+      // longer present, keeping a second thing to rotate alive on this side only.
+      const guard = guardWith();
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'text-token' }, { service: 'text' }))).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
 
     it('rejects a valid token belonging to a DIFFERENT service (no cross-service reads)', async () => {

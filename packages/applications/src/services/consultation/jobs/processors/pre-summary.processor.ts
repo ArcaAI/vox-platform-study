@@ -326,12 +326,12 @@ export class PreSummaryProcessor extends WorkerHost {
       // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
       await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
       await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
-      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-      // migration fallback).: `X-Tenant-Id` is MANDATORY — `tenantId` is the
+      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
+      // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY — `tenantId` is the
       // fail-closed-validated `job.data.tenantId` already threaded in above and used
       // one line earlier for `resolveTextSelection`, then dropped before the HTTP call,
       // so Text resolved the platform default provider for a job that HAS a tenant.
-      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
         timeout: 120000,
         headers: internalServiceHeaders({

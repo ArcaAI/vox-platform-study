@@ -26,6 +26,9 @@ describe('ServiceReleaseTokenGuard', () => {
 
   beforeEach(() => {
     secretsService = createMockSecretsService({
+      INTERNAL_ACCESS_TOKEN: 'shared-secret',
+      // Retired by TASK-888 and kept in the fixture so the guard is proved NOT
+      // to accept it any more.
       TEXT_SERVICE_TOKEN: 'text-secret',
       NLP_SERVICE_TOKEN: 'nlp-secret',
       GUARDRAIL_SERVICE_TOKEN: undefined,
@@ -44,8 +47,21 @@ describe('ServiceReleaseTokenGuard', () => {
   });
 
   it('accepts a token matching any one configured per-service secret', async () => {
-    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': 'text-secret' }))).resolves.toBe(true);
+    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': 'nlp-secret' }))).resolves.toBe(true);
     await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': 'gateway-secret' }))).resolves.toBe(true);
+  });
+
+  it('accepts the ONE shared INTERNAL_ACCESS_TOKEN', async () => {
+    // Every service that has finished the D-D migration self-registers with the
+    // shared token. `TTS_SERVICE_TOKEN` left this list in TASK-879/880 with
+    // nothing put in its place, so a TTS (and, after TASK-888, a TEXT) process
+    // could only register when some OTHER service's legacy secret happened to
+    // hold the same value.
+    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': 'shared-secret' }))).resolves.toBe(true);
+  });
+
+  it('no longer accepts the retired per-service TEXT_SERVICE_TOKEN', async () => {
+    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': 'text-secret' }))).rejects.toThrow(UnauthorizedException);
   });
 
   it('rejects a token that only matches an unconfigured secret name', async () => {
@@ -60,6 +76,6 @@ describe('ServiceReleaseTokenGuard', () => {
   });
 
   it('accepts an array header value by taking the first entry', async () => {
-    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': ['text-secret', 'other'] }))).resolves.toBe(true);
+    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': ['shared-secret', 'other'] }))).resolves.toBe(true);
   });
 });

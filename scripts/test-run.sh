@@ -366,13 +366,15 @@ if [ "$SUITE" = "e2e" ]; then
     export E2E_TEXT_STUB=1
     export E2E_TEXT_URL="${E2E_TEXT_URL:-http://127.0.0.1:8992}"
 
-    # The gateway resolves TEXT_SERVICE_TOKEN through SecretsService (Vault),
+    # The gateway resolves INTERNAL_ACCESS_TOKEN through SecretsService (Vault),
     # seeded from THIS file's value by ensure-test-vault-creds.sh — so the value
     # a spec must present as `X-Service-Token` is `.env.test`'s own. Derived, never
     # duplicated: a second literal would drift the moment one side rotates.
-    if [ -z "${E2E_TEXT_SERVICE_TOKEN:-}" ]; then
-        E2E_TEXT_SERVICE_TOKEN="$(grep -E '^TEXT_SERVICE_TOKEN=' "$REPO_ROOT/.env.test" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"'"'"'')"
-        export E2E_TEXT_SERVICE_TOKEN
+    # (`TEXT_SERVICE_TOKEN` until TASK-888 retired it — `InternalServiceTokenGuard`
+    # resolves the shared token for `service=text` now.)
+    if [ -z "${E2E_INTERNAL_ACCESS_TOKEN:-}" ]; then
+        E2E_INTERNAL_ACCESS_TOKEN="$(grep -E '^INTERNAL_ACCESS_TOKEN=' "$REPO_ROOT/.env.test" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"'"'"'')"
+        export E2E_INTERNAL_ACCESS_TOKEN
     fi
 fi
 

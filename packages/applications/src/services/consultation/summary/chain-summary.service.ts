@@ -664,15 +664,15 @@ export class ChainSummaryService extends BaseService {
       // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
       await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
       await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
-      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only
-      // the migration fallback).: `X-Tenant-Id` is MANDATORY — the tenant
+      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
+      // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY — the tenant
       // was null-checked at the top of this method and then DROPPED, so Text
       // resolved the platform-default provider instead of this tenant's BYOK
       // credential and derived `funding`/`cost_basis` ran against the
       // wrong tier. `this.tenantId` is non-null here whenever the policy service
       // is wired; the declared marker covers the no-policy-service fixture path so
       // the header is never simply absent.
-      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
         timeout: 180000,
         headers: internalServiceHeaders({

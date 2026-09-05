@@ -166,15 +166,13 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // descriptor is gone and nothing seeds `OIDC_CLIENT_SECRET` into Vault.
     // Identity resolves the tenant's own `TenantIdentityProvider.encryptedSecretRef`.
     'api.gatewayKey': 'API_GATEWAY_KEY',
-    'text.serviceToken': 'TEXT_SERVICE_TOKEN',
     // `nlp.serviceToken` was here until TASK-872: no gateway call site asks for
     // `NLP_SERVICE_TOKEN` and no `apps/nlp` pydantic field carries it, so the
-    // descriptor seeded a Vault path nothing reads. Its `text` / `tts` siblings
-    // stay — `vault-kv-coverage.test.ts` proved both names are still fetched
-    // through `SecretsService`.
+    // descriptor seeded a Vault path nothing reads. Its `tts` sibling left in
+    // TASK-879/880 and `text.serviceToken` in TASK-888, each once its last
+    // reader was retired.
     'guardrail.serviceToken': 'GUARDRAIL_SERVICE_TOKEN',
     'harness.serviceToken': 'HARNESS_SERVICE_TOKEN',
-    // `tts.serviceToken` left with TASK-879/880 once its last reader (the service-release guard) went.
     // Lane J: four credentials the gateway already fetched through SecretsService
     // but that had no descriptor, so `vault-seed-secrets.sh` never seeded them.
     'harness.internalServiceToken': 'HARNESS_INTERNAL_SERVICE_TOKEN',
