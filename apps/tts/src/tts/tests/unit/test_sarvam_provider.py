@@ -125,7 +125,6 @@ class TestCatalogAndRouting:
         # row is enabled — a BYO / PHI-enabled tenant. The engine-native voice name comes from the
         # model's own binding, so nothing needs a provider-voice table.
         import tts.routing.router as router_mod
-
         from tts.tests.fakes import candidate, spec, voice_binding
 
         monkeypatch.setattr(router_mod, "_build_spec_engine", lambda *_a, **_k: None)

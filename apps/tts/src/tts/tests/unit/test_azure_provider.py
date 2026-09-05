@@ -288,11 +288,9 @@ class TestEndToEndThroughApp:
     async def test_speech_endpoint_streams_azure_audio(self):
         from httpx import ASGITransport, AsyncClient
 
+        import tts.routing.router as router_mod
         from tts.core.config import Settings
         from tts.main import create_app
-
-        import tts.routing.router as router_mod
-
         from tts.tests.fakes import candidate, spec_json, voice_binding
 
         app = create_app(settings_override=Settings(debug=True))
