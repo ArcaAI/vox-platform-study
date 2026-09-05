@@ -9,7 +9,6 @@
 import { AGENTIC_CONTEXT_SETTINGS } from './descriptors/agentic-context.descriptors';
 import { AGENTIC_EVAL_SETTINGS } from './descriptors/agentic-eval.descriptors';
 import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descriptors';
-import { AGENTIC_REVISIT_SETTINGS } from './descriptors/agentic-revisit.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
 import { CONSULTATION_ENDPOINT_SETTINGS } from './descriptors/consultation-endpoint.descriptors';
@@ -90,8 +89,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...AGENTIC_CONTEXT_SETTINGS,
   // agentic eval promotion-gate mode (block | warn | off).
   ...AGENTIC_EVAL_SETTINGS,
-  // Re-visit carry-forward (default OFF).
-  ...AGENTIC_REVISIT_SETTINGS,
+  // `agentic.revisit.carryForwardEnabled` was here. TASK-882 moved the decision onto the
+  // assigned graph (`carryForward` on the prompt-composition / agent node).
   // Few-shot exemplar curation gate (default off).
   ...AGENTIC_FEWSHOT_SETTINGS,
   // The formerly orphaned platform-ops keys (rate limiting, audit

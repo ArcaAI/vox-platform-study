@@ -10,7 +10,6 @@ import { ConsultationJobServiceModule } from '../jobs/consultation-job.service.m
 import { ConfigResolverModule } from '../../config-resolver';
 import { RedisCacheModule } from '../../baseServices/redis';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
-import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NotificationServiceModule } from '../../notification';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
@@ -46,10 +45,6 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // `warmStartEnabled` (not the process-wide env var) governs prior-draft
     // injection, per tenant and without a redeploy.
     HarnessPolicyServiceModule,
-    // Resolves the @Optional EffectiveSettingsService so
-    // `agentic.revisit.carryForwardEnabled` (F-18) is governed by the control
-    // plane rather than a redeploy. Unwired ⇒ carry-forward stays OFF.
-    EffectiveSettingsModule,
     // Supplies the @Optional IUsageLedgerService the constructor injects but
     // NEVER calls (double-bill guard; see the
     // service's constructor doc comment).

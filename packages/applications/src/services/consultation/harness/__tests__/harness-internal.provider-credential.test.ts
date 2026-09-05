@@ -49,7 +49,6 @@ function buildService(withConnections = true) {
     undefined as never, // transcriptSegmentRepository
     undefined as never, // harnessPolicyService
     undefined as never, // mcpServerRepository
-    undefined as never, // effectiveSettings
     undefined as never, // usageLedgerService
     undefined as never, // notificationService
     withConnections ? (providerConnectionService as never) : undefined,
@@ -81,7 +80,6 @@ function buildServiceWithCls(cls: { run: unknown; set: unknown; get: unknown }) 
     {} as never,
     {} as never,
     cls as never,
-    undefined as never,
     undefined as never,
     undefined as never,
     undefined as never,

@@ -16,7 +16,7 @@ import { PromptTemplateRepository, DnaWritingStyleReportRepository, DepartmentRe
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
-import { truncatePriorVisitSummary } from '../../settings-registry/descriptors/agentic-revisit.descriptors';
+import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
 import { IActiveUserContext } from '../../../interfaces';
 import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
 
@@ -270,7 +270,7 @@ export interface PromptAssemblyParams {
   pinnedAgentId?: string;
   /**
    * The patient's most authoritative summary from the PARENT consultation of a
-   * re-visit (F-18). Supplied only when `agentic.revisit.carryForwardEnabled` is
+   * re-visit (F-18). Supplied only when the assigned graph's `carryForward` binding is
    * on — the producer (`HarnessInternalService.assemble`) resolves that knob and
    * omits this field entirely when it is off, so the default-off posture holds
    * even if a future caller forgets the gate.
