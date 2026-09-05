@@ -450,7 +450,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   /**
    * Sync one workflow version into other tenants you manage
    *
-   * Owner decision #4: a tenant admin who manages several tenants syncs among their OWN tenants. Each target receives a DRAFT of the SAME lineage — its next version, never published and never active, so a sync can never re-point another tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. Requires an elevated tenant-less context.
+   * Owner decision #4: a tenant admin who manages several tenants syncs among their OWN tenants. Each target receives a DRAFT of the SAME lineage — its next version, never published and never active, so a sync can never re-point another tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. No platform elevation is needed: each step runs under the tenant it acts on, and only after that tenant’s `manage` check has passed.
    *
    * `POST /api/v1/admin/workflow-definitions/slug/{slug}/sync` — `WorkflowDefinitionController.sync`.
    */

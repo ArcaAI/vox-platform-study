@@ -474,7 +474,9 @@ export class AgentService extends BaseService implements IAgentService {
 
     const source = await this.resolveVisibleSource(slug, dto.sourceVersionNumber);
     if (targetTenantId === source.tenantId && dto.newSlug === source.slug) {
-      throw new BadRequestException('A clone starts a NEW lineage; keeping the slug would be a new VERSION of the same one — use POST /admin/agents/{id}/versions for that.');
+      throw new BadRequestException(
+        'A clone starts a NEW lineage; keeping the slug would be a new VERSION of the same one — use POST /admin/agents/{id}/versions for that.',
+      );
     }
 
     const { saved, fallbacks, warnings } = await this.copyInto(source, targetTenantId, {
@@ -770,7 +772,8 @@ export class AgentService extends BaseService implements IAgentService {
     if (ref.kind === 'system' && ref.id) {
       const system = await this.promptTemplateRepository?.findById(ref.id).catch(() => null);
       // Same row ⇒ the version pin still numbers a version that exists, so it survives.
-      if (system && system.tenantId === SYSTEM_TENANT_ID) return instructionForImport(payload.instruction, { templateId: system.id, keepVersionPin: true });
+      if (system && system.tenantId === SYSTEM_TENANT_ID)
+        return instructionForImport(payload.instruction, { templateId: system.id, keepVersionPin: true });
     }
 
     const own = await this.promptTemplateRepository?.findByName(tenantId, ref.name).catch(() => null);
@@ -892,7 +895,9 @@ export class AgentService extends BaseService implements IAgentService {
     const hadInstruction = asRecord(source.instruction) !== undefined;
     if (crossTenant && EVAL_GATE_KEY in instruction) {
       delete instruction[EVAL_GATE_KEY];
-      warnings.push('The eval gate was not copied: a golden set is a corpus of encrypted patient data and its pointer never leaves the tenant. Bind one in the target tenant.');
+      warnings.push(
+        'The eval gate was not copied: a golden set is a corpus of encrypted patient data and its pointer never leaves the tenant. Bind one in the target tenant.',
+      );
     }
     if (crossTenant && typeof instruction[PROMPT_VERSION_NUMBER_KEY] === 'number' && !(PROMPT_TEMPLATE_ID_KEY in instruction)) {
       delete instruction[PROMPT_VERSION_NUMBER_KEY];
@@ -951,7 +956,10 @@ export class AgentService extends BaseService implements IAgentService {
   private async resolveModelIdForTarget(modelId: string, targetTenantId: string, tx: unknown): Promise<string> {
     const source = await this.aiModelRepository.findByIdOrNull(modelId, tx).catch(() => null);
     if (!source) {
-      throw new ConflictException({ message: `The bound model row ${modelId} could not be read, so the copy would leave a dangling reference.`, code: 'MODEL_NOT_RESOLVABLE' });
+      throw new ConflictException({
+        message: `The bound model row ${modelId} could not be read, so the copy would leave a dangling reference.`,
+        code: 'MODEL_NOT_RESOLVABLE',
+      });
     }
     if (source.tenantId === targetTenantId || source.tenantId === SYSTEM_TENANT_ID) return source.id;
 

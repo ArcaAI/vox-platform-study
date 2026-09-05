@@ -17,7 +17,11 @@ export class AgentBundleResponse {
   @ApiProperty({ description: 'Envelope version. A bundle newer than the importer is refused, never partially applied.' }) schemaVersion!: number;
   @ApiProperty({ description: 'ISO timestamp' }) exportedAt!: string;
   @ApiProperty({ type: AgentBundleSourceResponse }) source!: AgentBundleSourceResponse;
-  @ApiProperty({ type: 'object', additionalProperties: true, description: 'Values only: model references by slug, no credential, no server-owned column.' })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Values only: model references by slug, no credential, no server-owned column.',
+  })
   payload!: Record<string, unknown>;
 }
 

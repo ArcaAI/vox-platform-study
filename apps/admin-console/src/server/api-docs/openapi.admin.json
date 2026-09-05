@@ -22742,8 +22742,8 @@
             "type": "string"
           },
           "kind": {
-            "description": "Always `workflow-definition`.",
-            "example": "workflow-definition",
+            "description": "Always `workflow`.",
+            "example": "workflow",
             "type": "string"
           },
           "payload": {
@@ -22812,7 +22812,7 @@
             "description": "Which tier authored the export: the platform template library, the platform build tenant, or a customer tenant.",
             "type": "string"
           },
-          "versionNumber": {
+          "version": {
             "description": "The exact version row exported.",
             "type": "number"
           }
@@ -22820,7 +22820,7 @@
         "required": [
           "tenantKind",
           "slug",
-          "versionNumber"
+          "version"
         ],
         "type": "object"
       },
@@ -53133,7 +53133,7 @@
     },
     "/api/v1/admin/workflow-definitions/slug/{slug}/sync": {
       "post": {
-        "description": "Owner decision #4: a tenant admin who manages several tenants syncs among their OWN tenants. Each target receives a DRAFT of the SAME lineage — its next version, never published and never active, so a sync can never re-point another tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. Requires an elevated tenant-less context.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Owner decision #4: a tenant admin who manages several tenants syncs among their OWN tenants. Each target receives a DRAFT of the SAME lineage — its next version, never published and never active, so a sync can never re-point another tenant’s live consultations. The graph is made portable first and re-resolved against each target’s own catalogue: copying it verbatim would write this tenant’s row ids into another tenant’s workflow. If ANY target cannot resolve a reference the whole sync is refused, naming the tenant — a partial sync leaves an estate nobody can reason about. No platform elevation is needed: each step runs under the tenant it acts on, and only after that tenant’s `manage` check has passed.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowDefinitionController_sync",
         "parameters": [
           {
@@ -53171,7 +53171,7 @@
             "description": "A target equals the source, or the source graph references rows that no longer resolve."
           },
           "403": {
-            "description": "No manage rights on the source tenant, or the context is not elevated and tenant-less."
+            "description": "No `manage:WorkflowDefinition` on the source tenant."
           },
           "404": {
             "description": "A target tenant the caller does not manage, or no such source version."

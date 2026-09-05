@@ -89,7 +89,9 @@ export function instructionForExport(
 
   if (EVAL_GATE_KEY in out) {
     delete out[EVAL_GATE_KEY];
-    notes.push('The eval gate was not exported: a golden set is a corpus of encrypted patient data and its pointer never leaves the tenant. Re-bind one after importing.');
+    notes.push(
+      'The eval gate was not exported: a golden set is a corpus of encrypted patient data and its pointer never leaves the tenant. Re-bind one after importing.',
+    );
   }
 
   const boundId = out[PROMPT_TEMPLATE_ID_KEY];
@@ -97,7 +99,9 @@ export function instructionForExport(
     delete out[PROMPT_TEMPLATE_ID_KEY];
     if (!template) {
       delete out[PROMPT_VERSION_NUMBER_KEY];
-      notes.push(`The bound prompt template (${boundId}) could not be read and was not exported; the imported agent will need one bound before it can be published.`);
+      notes.push(
+        `The bound prompt template (${boundId}) could not be read and was not exported; the imported agent will need one bound before it can be published.`,
+      );
     } else if (template.isSystemOwned) {
       out[PROMPT_TEMPLATE_REF_KEY] = { kind: 'system', id: template.id, name: template.name } satisfies AgentBundlePromptTemplateRef;
     } else {
@@ -184,7 +188,17 @@ export function agentBundlePayloadProblems(value: unknown): PortableBundleProble
   }
   // A server-owned column in a hand-edited file is a REFUSAL, not something to quietly ignore:
   // whoever wrote it expected it to take effect.
-  for (const forbidden of ['id', 'tenantId', 'versionNumber', 'status', 'isActive', 'compiledConfig', 'compiledConfigChecksum', 'validationReport', 'modelId']) {
+  for (const forbidden of [
+    'id',
+    'tenantId',
+    'versionNumber',
+    'status',
+    'isActive',
+    'compiledConfig',
+    'compiledConfigChecksum',
+    'validationReport',
+    'modelId',
+  ]) {
     if (forbidden in value) {
       problems.push({
         path: `payload.${forbidden}`,
