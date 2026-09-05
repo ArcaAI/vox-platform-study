@@ -77,11 +77,15 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     // `anthropic` / `vertex` are now first-class members of AI_MODEL_PROVIDERS
     // so the llm seed rows must equal it exactly — no manual append. TASK-862
     // D-4: `sarvam` is a catalogue provider (STT/TTS) but has NO LLM adapter,
-    // so it seeds no `llm` connection row.
+    // so it seeds no `llm` connection row. TASK-888 added `azure-speech` and
+    // `azure-foundry` on the same footing — both are ASR-plane vendor ids, and
+    // an `llm` row for either would offer a credential for a service they do
+    // not serve.
+    const NOT_LLM_SERVING: readonly string[] = ['sarvam', 'azure-speech', 'azure-foundry'];
     const llmProviders = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'llm')
       .map((c) => c.provider)
       .sort();
-    expect(llmProviders).toEqual([...AI_MODEL_PROVIDERS].filter((p) => p !== 'sarvam').sort());
+    expect(llmProviders).toEqual([...AI_MODEL_PROVIDERS].filter((p) => !NOT_LLM_SERVING.includes(p)).sort());
     expect(SYSTEM_AI_PROVIDER_CONNECTIONS.some((c) => c.service === 'llm' && c.provider === 'sarvam')).toBe(false);
   });
 
