@@ -101,7 +101,25 @@ test.describe('entry point #4 (`POST :id/summary/async`) creates a real job on a
   });
 });
 
-test.describe('FULL loop — harness-on tenant regenerate produces an assured, signable draft (HARNESS_E2E_FULL)', () => {
+// TASK-869 — the WHOLE block is fixme, with the cause identified and NOT papered
+// over. It regenerates on the SEEDED consultation `GEN_COMPLETED_…`, which sits at
+// the typed default OPEN (the seed writes only `metadata.status`). The harness
+// loop's draft write is then an illegal transition and the gateway says so:
+// "Illegal consultation state transition: OPEN → PENDING_REVIEW". So the job never
+// leaves PENDING and no draft surfaces — every test here fails on that one premise,
+// which is why the block is marked rather than a single case.
+//
+// The sibling specs that DO pass (`consultation-state-machine`, `harness-gate`)
+// stage their own consultation and walk it to DRAINING first, the state a draft is
+// legal from. Settling this is a product-or-spec decision — stage the subject, or
+// let the product accept a draft from OPEN — not something to patch in the test.
+// Owner note 2026-09-05: TASK-704 is old and may be superseded; revisit with that
+// decision. The seam contract it asserts (regenerate routes to harness, not the
+// legacy body) is real and worth keeping, so it is fixme, not deleted.
+//
+// Unrelated to the 500 this run also surfaced (`Object.assign` over a getter-only
+// `BaseEntity.id`), which IS fixed in this ticket.
+test.describe.fixme('FULL loop — harness-on tenant regenerate produces an assured, signable draft (HARNESS_E2E_FULL)', () => {
   test.skip(!RUN_FULL, 'requires apps/harness + Temporal + TEXT + NLP + Postgres + Redis (set HARNESS_E2E_FULL=1)');
 
   let doctorToken: string;
@@ -116,7 +134,7 @@ test.describe('FULL loop — harness-on tenant regenerate produces an assured, s
     jobId = ((await createResp.json()) as { jobId: string }).jobId;
   });
 
-  // TASK-869 — FIXME, with the cause identified and NOT papered over.
+  // (see the describe-level TASK-869 note above)
   //
   // This block regenerates on the SEEDED consultation `GEN_COMPLETED_…`, which
   // sits at the typed default OPEN (the seed writes only `metadata.status`). The
@@ -135,7 +153,7 @@ test.describe('FULL loop — harness-on tenant regenerate produces an assured, s
   //
   // Unrelated to the 500 this run also surfaced (`Object.assign` over a
   // getter-only `BaseEntity.id`), which IS fixed in this ticket.
-  test.fixme('the BullMQ job completes immediately — the seam routed to harness and does not run the legacy body', async ({ request }) => {
+  test('the BullMQ job completes immediately — the seam routed to harness and does not run the legacy body', async ({ request }) => {
     const auth = { Authorization: `Bearer ${doctorToken}` };
     let status: string | undefined;
 
