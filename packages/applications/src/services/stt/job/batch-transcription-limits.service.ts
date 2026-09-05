@@ -10,8 +10,8 @@
 // service extends that posture to the two cases the declaration cannot cover —
 // a control-plane ERROR, and a stored value that is not a usable number — because
 // the alternative is refusing clinical uploads over a settings-cache hiccup.
-// Note the asymmetry with `stt.fallback.pipelineSlug`: that one is provider
-// SELECTION and fails closed. These are ceilings, and a ceiling that cannot be
+// Note the asymmetry with the `models.*` keys: those are provider/model
+// SELECTION and fail closed. These are ceilings, and a ceiling that cannot be
 // read falls back to the platform default rather than to "no limit".
 
 import { Injectable, Logger } from '@nestjs/common';

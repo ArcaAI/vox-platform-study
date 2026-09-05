@@ -32,7 +32,6 @@ import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-c
 import { TEXT_GENERATION_SETTINGS } from './descriptors/text-generation.descriptors';
 import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-policy.descriptors';
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
-import { STT_FALLBACK_SETTINGS } from './descriptors/stt-fallback.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
@@ -50,8 +49,12 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // and travels the push channel; these ride the pull route (D-1). The two cloud
   // credentials appear in NEITHER: they have no env path at all by construction.
   ...TTS_RUNTIME_SETTINGS,
-  // Per-tenant STT fallback pipeline pointer + BYO provider credentials.
-  ...STT_FALLBACK_SETTINGS,
+  // `STT_FALLBACK_SETTINGS` was spread here — the per-tenant fallback pipeline
+  // pointer plus three BYO provider credentials. TASK-872 deleted the file: the
+  // credentials are owned end to end by `TenantSttConfigService` (its own DTOs,
+  // its own Vault-Transit column) and the settings write lane refuses a
+  // `db-secret` tier, while the three `stt.fallback.*` knobs are read from
+  // `TenantSttConfig` by that same service and never through this registry.
   // Batch (pre-recorded file) upload ceilings — recordings per batch, minutes
   // per recording, size, in-flight jobs per user.
   ...BATCH_TRANSCRIPTION_SETTINGS,

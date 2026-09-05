@@ -15,8 +15,12 @@ class TestDefaults:
     def test_synthesis_defaults(self) -> None:
         s = Settings()
         assert s.max_input_chars == 4096
-        assert s.default_format == "pcm"
         assert s.sample_rate == 24000
+        # `default_format` was asserted here until TASK-872 removed the field.
+        # The effective default format is the gateway's, resolved from
+        # `TenantTtsConfig` platform limits and sent as `response_format` on
+        # every request; this service never read a default of its own.
+        assert not hasattr(s, "default_format")
 
     def test_no_routing_vendor_default_in_config(self) -> None:
         # Provider SELECTION is DB-sourced (SYSTEM TenantTtsConfig),

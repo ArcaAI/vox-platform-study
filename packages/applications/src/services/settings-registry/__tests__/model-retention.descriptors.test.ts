@@ -1,23 +1,58 @@
 // Retention descriptor contract tests.
 //
-// The key grammar `<svc>.modelCache.<knob>` covers all five in-process
-// services under one family rather than introducing a second, parallel
+// The key grammar `<svc>.modelCache.<knob>` covers the in-process services
+// under one family rather than introducing a second, parallel
 // `models.retention.*` namespace.
+//
+// TASK-872 narrowed the family to the knobs a client actually parses: the five
+// `vramBudgetMb` keys and `tts.modelCache.maxModels` were served to nobody, and
+// guardrail's three fed a `retention()` accessor with zero callers, so
+// guardrail left `MODEL_CACHE_SERVICES` entirely. The grammar is unchanged —
+// what is gone is the part of it that reached no reader.
 
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
-import { MODEL_CACHE_SERVICES, SERVICE_RUNTIME_DEFAULTS, ServiceRuntimeKey } from '../descriptors/service-runtime.descriptors';
+import { MODEL_CACHE_SERVICES, MODEL_WEIGHT_SERVICES, SERVICE_RUNTIME_DEFAULTS } from '../descriptors/service-runtime.descriptors';
 
 const DESCRIPTORS = HOPE_SETTINGS_REGISTRY.list();
 const registryByKey = new Map(DESCRIPTORS.map((d) => [d.key, d]));
 
 describe('model-cache retention descriptors', () => {
-  it('registers ttlSeconds/maxModels/vramBudgetMb for every in-process service', () => {
+  it('registers an idle TTL for every service with an in-process cache', () => {
     for (const service of MODEL_CACHE_SERVICES) {
-      for (const knob of ['ttlSeconds', 'maxModels', 'vramBudgetMb'] as const) {
-        expect(registryByKey.has(`${service}.modelCache.${knob}`)).toBe(true);
-      }
+      expect(registryByKey.has(`${service}.modelCache.ttlSeconds`), service).toBe(true);
     }
+  });
+
+  it('registers maxModels only where the consuming client parses it', () => {
+    // tts's own `EffectiveConfigSnapshot.retention()` documents that
+    // "maxModels is meaningless here" — its providers bound one pipeline each —
+    // so declaring the key would offer a control that reaches nothing.
+    for (const service of ['stt', 'nlp', 'harness'] as const) {
+      expect(registryByKey.has(`${service}.modelCache.maxModels`), service).toBe(true);
+    }
+    expect(registryByKey.has('tts.modelCache.maxModels')).toBe(false);
+  });
+
+  it('registers NO vramBudgetMb key — no client ever parsed one', () => {
+    for (const service of MODEL_CACHE_SERVICES) {
+      expect(registryByKey.has(`${service}.modelCache.vramBudgetMb`), service).toBe(false);
+    }
+    expect(registryByKey.has('guardrail.modelCache.vramBudgetMb')).toBe(false);
+  });
+
+  it('serves guardrail no retention group at all — its three cache keys had no reader', () => {
+    for (const knob of ['ttlSeconds', 'maxModels', 'vramBudgetMb'] as const) {
+      expect(registryByKey.has(`guardrail.modelCache.${knob}`), knob).toBe(false);
+    }
+    expect(MODEL_CACHE_SERVICES as readonly string[]).not.toContain('guardrail');
+  });
+
+  it('still serves guardrail its model WEIGHTS — the two lists are different questions', () => {
+    // The regression this guards: collapsing `MODEL_WEIGHT_SERVICES` back into
+    // `MODEL_CACHE_SERVICES` would stop `resolveModelWeights` telling guardrail
+    // where its weights live, which is a behaviour change hiding in a cleanup.
+    expect(MODEL_WEIGHT_SERVICES as readonly string[]).toContain('guardrail');
   });
 
   it('defaults the idle TTL to the value of 600s for every service', () => {
@@ -31,28 +66,18 @@ describe('model-cache retention descriptors', () => {
     // Transcribed from each service's own code default — changing residency
     // limits is NOT part of the idle-TTL default change.
     expect(SERVICE_RUNTIME_DEFAULTS['stt.modelCache.maxModels']).toBe(5);
-    expect(SERVICE_RUNTIME_DEFAULTS['guardrail.modelCache.maxModels']).toBe(2);
     expect(SERVICE_RUNTIME_DEFAULTS['nlp.modelCache.maxModels']).toBe(3);
     expect(SERVICE_RUNTIME_DEFAULTS['harness.modelCache.maxModels']).toBe(1);
-    expect(SERVICE_RUNTIME_DEFAULTS['tts.modelCache.maxModels']).toBe(2);
-  });
-
-  it('defaults vramBudgetMb to 0 (= unset / no VRAM budget)', () => {
-    for (const service of MODEL_CACHE_SERVICES) {
-      expect(SERVICE_RUNTIME_DEFAULTS[`${service}.modelCache.vramBudgetMb` as ServiceRuntimeKey]).toBe(0);
-    }
   });
 
   it('marks every retention key globalOnly + system-scoped (never tenant-set)', () => {
-    for (const service of MODEL_CACHE_SERVICES) {
-      for (const knob of ['ttlSeconds', 'maxModels', 'vramBudgetMb'] as const) {
-        const descriptor = registryByKey.get(`${service}.modelCache.${knob}`);
-        expect(descriptor).toBeDefined();
-        expect(descriptor!.globalOnly).toBe(true);
-        expect(descriptor!.maxScope).toBe('system');
-        expect(descriptor!.tier).toBe('global-kv');
-        expect(descriptor!.dataType).toBe('number');
-      }
+    for (const key of Object.keys(SERVICE_RUNTIME_DEFAULTS).filter((k) => k.includes('.modelCache.'))) {
+      const descriptor = registryByKey.get(key);
+      expect(descriptor, key).toBeDefined();
+      expect(descriptor!.globalOnly, key).toBe(true);
+      expect(descriptor!.maxScope, key).toBe('system');
+      expect(descriptor!.tier, key).toBe('global-kv');
+      expect(descriptor!.dataType, key).toBe('number');
     }
   });
 

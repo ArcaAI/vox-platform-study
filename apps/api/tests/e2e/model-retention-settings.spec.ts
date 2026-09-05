@@ -11,10 +11,11 @@
  * There is no single `models.retention.ttlSeconds` key — deliberately, per
  * `model-retention.descriptors.test.ts` ("does NOT introduce a competing
  * models.retention.* namespace"): the family is `<service>.modelCache.
- * ttlSeconds` for `stt|nlp|guardrail|harness|tts`, plus the TEXT-only
- * `text.modelCache.ttlSeconds` (TEXT holds no weights, so it has no
- * maxModels/vramBudgetMb — ttlSeconds is its only retention field). This spec
- * exercises `text.modelCache.ttlSeconds` as the representative of that family.
+ * ttlSeconds` for `stt|nlp|harness|tts`, plus the TEXT-only
+ * `text.modelCache.ttlSeconds` (TEXT holds no weights, so ttlSeconds is its
+ * only retention field). This spec exercises `text.modelCache.ttlSeconds` as
+ * the representative of that family. (TASK-872 removed guardrail's three cache
+ * keys and every `vramBudgetMb` — no client parsed them.)
  *
  * IMPORTANT — where the [60s, 3600s] clamp mentioned on the descriptor
  * actually lives: `service-runtime.descriptors.ts` documents "the service
