@@ -915,31 +915,6 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Punctuation restoration (Cadence)
     # -------------------------------------------------------------------------
-    punctuation_enabled: bool = Field(
-        validation_alias=moved_alias("punctuation_enabled"),
-        default=False,
-        description=(
-            "Enable Cadence punctuation restoration at startup and runtime. "
-            "Default false: the production Whisper ASR pipelines already emit "
-            "punctuation and casing, so Cadence is redundant for them, and "
-            "cadence-punctuation 1.1.0 cannot load under the pinned "
-            "transformers 5.5.4 (its tied-weights finalization raises "
-            "'Sequential has no attribute weight'). Enable only with a "
-            "transformers/cadence combination that is known to load the "
-            "model — e.g. an Indic ASR path whose engine does not "
-            "self-punctuate, running transformers <5 in a dedicated "
-            "environment — or with the direct-load 'cadence-fast' option, "
-            "which works under the pinned transformers 5.x."
-        ),
-    )
-    punctuation_model_name: str = Field(
-        validation_alias=moved_alias("punctuation_model_name"),
-        default="Cadence",
-        description="Default punctuation model: 'Cadence' (1B) or 'Cadence-Fast' "
-        "(270M) via the cadence-punctuation wrapper, or 'cadence-fast' for the "
-        "direct transformers load (works under transformers 5.x). "
-        "Can be overridden per-pipeline via YAML.",
-    )
     punctuation_model_cache_dir: str | None = Field(
         validation_alias=moved_alias("punctuation_model_cache_dir"),
         default=None,

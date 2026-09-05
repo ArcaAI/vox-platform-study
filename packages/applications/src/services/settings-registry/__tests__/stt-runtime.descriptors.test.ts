@@ -79,15 +79,16 @@ describe('STT_RUNTIME_SETTINGS', () => {
 
   it('keeps every kill-switch defaulting OFF', () => {
     // `SettingsRegistry.killSwitches()` asserts this globally; repeating it here
-    // names the two that are marked, and documents why `stt.pubsub.enabled` —
+    // names the one that is marked, and documents why `stt.pubsub.enabled` —
     // which defaults ON — is deliberately NOT marked as one.
     //
-    // `stt.semanticEndpoint.enabled` was a third: TASK-877 deleted it with the rest
-    // of that family. A kill-switch over an AGENT concept is the wrong shape — the
-    // agent chooses `streaming.endpointing` and the platform vetoes by not publishing
-    // an `endpointing` model row.
+    // `stt.semanticEndpoint.enabled` and `stt.punctuation.enabled` were the other
+    // two: TASK-877 deleted both. A kill-switch over an AGENT concept is the wrong
+    // shape — the agent chooses `streaming.endpointing` and `postProcessing.
+    // punctuation.enabled`, and the platform vetoes by not publishing the model row
+    // each needs. One marked kill-switch is left, over a genuinely platform concern.
     const killSwitches = STT_RUNTIME_SETTINGS.filter((d) => d.killSwitch);
-    expect(killSwitches.map((d) => d.key).sort()).toEqual(['stt.azureFoundry.enabled', 'stt.punctuation.enabled']);
+    expect(killSwitches.map((d) => d.key).sort()).toEqual(['stt.azureFoundry.enabled']);
     for (const descriptor of killSwitches) {
       expect(descriptor.default, descriptor.key).toBe(false);
     }

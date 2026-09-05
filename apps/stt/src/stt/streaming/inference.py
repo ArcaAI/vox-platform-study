@@ -232,28 +232,25 @@ class StreamingInferenceWorker:
         self.cumulative_processing_seconds: float = 0.0
 
     def _resolve_uses_cadence_fast(self) -> bool:
-        """Does the effective punctuation model resolve to
-        the direct-load ``cadence-fast`` option (exact name match)?
+        """Does the session's punctuation model resolve to the direct-load
+        ``cadence-fast`` option (exact name match)?
 
-        Per-pipeline ``punctuation.model`` wins; when it is unset the global
-        ``punctuation_model_name`` setting decides. Wrapper spellings
+        TASK-877 — the SPEC's ``models.punctuation.slug`` is the only source. The
+        `punctuation_model_name` settings fallback that used to answer this when the
+        spec named nothing is deleted: it duplicated the agent's own binding, and
+        with no model bound there is no model to characterise. Wrapper spellings
         ('Cadence', 'Cadence-Fast') never match — they keep legacy behavior.
         """
         if not self._punctuation_config or not self._punctuation_config.enabled:
+            return False
+        model = self._punctuation_config.model
+        if not model:
             return False
         try:
             from stt.punctuation.cadence_fast import MODEL_NAME as cadence_fast_name
         except Exception:
             return False
-        model = self._punctuation_config.model
-        if model:
-            return bool(model == cadence_fast_name)
-        try:
-            from stt.core.config.settings import get_settings
-
-            return bool(get_settings().punctuation_model_name == cadence_fast_name)
-        except Exception:
-            return False
+        return bool(model == cadence_fast_name)
 
     @staticmethod
     def _resolve_punctuation_timeout() -> float:

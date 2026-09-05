@@ -186,8 +186,12 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "pubsub_channel_prefix": "stt.pubsub.channelPrefix",
     "pubsub_enabled": "stt.pubsub.enabled",
     # ── punctuation restoration (Cadence) ────────────────────────────────────
-    "punctuation_enabled": "stt.punctuation.enabled",
-    "punctuation_model_name": "stt.punctuation.modelName",
+    # `punctuation_enabled` and `punctuation_model_name` were mapped here until
+    # TASK-877. Both decided what the AGENT decides: `stt.punctuation.enabled` was a
+    # boot gate that vetoed `postProcessing.punctuation.enabled` for every session
+    # (and defaulted OFF), and `stt.punctuation.modelName` duplicated
+    # `models.punctuation.slug`. The three below survive because placement, cache
+    # location and window width are properties of the HOST, not of the agent.
     "punctuation_model_cache_dir": "stt.punctuation.modelCacheDir",
     "punctuation_device": "stt.punctuation.device",
     "punctuation_max_length": "stt.punctuation.maxLength",
