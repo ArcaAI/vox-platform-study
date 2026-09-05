@@ -6218,7 +6218,7 @@ export interface WorkflowAssignmentResponse {
 export interface WorkflowDefinitionBundle {
   /** ISO-8601 instant the export was taken. */
   exportedAt: string;
-  /** Always `workflow-definition`. */
+  /** Always `workflow`. */
   kind: string;
   payload: WorkflowDefinitionBundlePayload;
   /** Payload shape version. An import refuses a version it does not implement. */
@@ -6245,7 +6245,7 @@ export interface WorkflowDefinitionBundleSource {
   /** Which tier authored the export: the platform template library, the platform build tenant, or a customer tenant. */
   tenantKind: string;
   /** The exact version row exported. */
-  versionNumber: number;
+  version: number;
 }
 
 export interface WorkflowDefinitionResponse {

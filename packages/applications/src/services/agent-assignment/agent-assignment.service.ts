@@ -52,7 +52,12 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
   // Resolution
   // ---------------------------------------------------------------------
 
-  async resolve(tenantId: string, task: AgentTask, departmentId?: string | null, selectorTags: readonly string[] = []): Promise<ResolvedAgentAssignment> {
+  async resolve(
+    tenantId: string,
+    task: AgentTask,
+    departmentId?: string | null,
+    selectorTags: readonly string[] = [],
+  ): Promise<ResolvedAgentAssignment> {
     const requestTags = canonicalAgentTags([...selectorTags]);
     const candidates: Array<{ source: AgentAssignmentSource; slug: string; selector: string[] }> = [];
 
@@ -218,7 +223,15 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     const removed = await this.databaseService.baseClient.$transaction(async (tx) => {
       const deleted = await this.assignmentRepository.softDelete(entity.id, changedBy ?? undefined, tx);
       await this.appendChange(
-        { tenantId: entity.tenantId, scope: entity.scope, scopeId: entity.scopeId ?? null, task: entity.task, selectorKey: entity.selectorKey, changedBy, reason: reason ?? null },
+        {
+          tenantId: entity.tenantId,
+          scope: entity.scope,
+          scopeId: entity.scopeId ?? null,
+          task: entity.task,
+          selectorKey: entity.selectorKey,
+          changedBy,
+          reason: reason ?? null,
+        },
         { beforeSlug: entity.agentSlug, afterSlug: null, assignmentVersion: deleted?.version ?? entity.version },
         tx,
       );

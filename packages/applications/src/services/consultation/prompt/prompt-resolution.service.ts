@@ -698,7 +698,10 @@ export class PromptResolutionService {
     } catch (error) {
       // A selector is an OPTIONAL refinement. A failure to evaluate it must degrade to the
       // ordinary chain, never take out a clinical generation call.
-      this.logger.warn({ message: 'Agent tag selection failed; falling through to the ordinary chain', error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'Agent tag selection failed; falling through to the ordinary chain',
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }

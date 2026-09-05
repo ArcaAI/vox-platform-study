@@ -31,7 +31,10 @@ export class AgentResponse {
   @ApiProperty({ enum: AgentTask }) task!: AgentTask;
   @ApiProperty() versionNumber!: number;
   @ApiPropertyOptional({ nullable: true }) parentVersionId!: string | null;
-  @ApiPropertyOptional({ nullable: true, description: 'TASK-884 — the agent version this row was CLONED or SYNCED from (a different lineage, possibly another tenant).' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'TASK-884 — the agent version this row was CLONED or SYNCED from (a different lineage, possibly another tenant).',
+  })
   sourceAgentId!: string | null;
   @ApiPropertyOptional({ nullable: true, description: 'The tenant that owned the clone source.' }) sourceTenantId!: string | null;
   @ApiPropertyOptional({ nullable: true, description: 'The clone source’s lineage slug.' }) sourceSlug!: string | null;
