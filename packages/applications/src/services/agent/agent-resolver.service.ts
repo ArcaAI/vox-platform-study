@@ -29,6 +29,8 @@ const ASR_AUX_MODEL_PATHS: ReadonlyArray<{ role: ResolvedAgentModelRole; path: r
   { role: 'denoise', path: ['audioFrontEnd', 'denoise', 'modelSlug'] },
   { role: 'embedding', path: ['audioFrontEnd', 'diarization', 'embeddingModelSlug'] },
   { role: 'punctuation', path: ['postProcessing', 'punctuation', 'modelSlug'] },
+  // TASK-880 H-4 — the end-of-utterance model TASK-877 gave a role and a schema property, but no resolver path.
+  { role: 'endpointing', path: ['streaming', 'semantic', 'modelSlug'] },
 ];
 
 function dig(value: unknown, path: readonly string[]): unknown {
@@ -172,5 +174,10 @@ function toResolvedModel(model: AiModelEntity, role: ResolvedAgentModelRole): Re
     computeType: model.computeType ?? null,
     provider: model.provider ?? null,
     tenantId: model.tenantId,
+    // TASK-880 H-4 — the runtime-relevant slice of `AiModel._metadata`: ASR decode geometry (which
+    // replaced `stt.whisperCpp.maxAudioSeconds` / `stt.streaming.partialWindowS`) and the
+    // speaker-embedding width the ASR spec builder validates. `buildResolvedAsrSpec` reads only the
+    // declared members; everything else in `_metadata` belongs to other planes.
+    ...(model.metaData ? { metaData: model.metaData as ResolvedAgentModel['metaData'] } : {}),
   };
 }
