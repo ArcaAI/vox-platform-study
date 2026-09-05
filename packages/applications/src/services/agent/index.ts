@@ -6,6 +6,7 @@ export * from './agent.service';
 export * from './agent-resolver.service';
 export * from './text-generation-spec';
 export * from './text-agent-resolver.service';
+export * from './tts-spec';
 export * from './agent-invocation.service';
 export * from './agent.service.module';
 
