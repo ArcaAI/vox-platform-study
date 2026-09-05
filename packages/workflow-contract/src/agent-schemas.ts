@@ -155,7 +155,6 @@ export interface AgentFallbackGovernance {
   /** Another agent of the SAME task (lineage slug) to switch to; `null` ⇒ the agent's own model chain, then the platform default. */
   readonly agentSlug: string | null;
   readonly autoSwitch: boolean;
-  readonly switchAfterConsecutiveFailures: number;
 }
 
 /**
@@ -166,17 +165,36 @@ export interface AgentFallbackGovernance {
 export function readAgentFallbackGovernance(parameters: unknown): AgentFallbackGovernance {
   const block = isPlainObject(parameters) && isPlainObject(parameters.fallback) ? parameters.fallback : {};
   const slug = block.agentSlug;
-  const threshold = block.switchAfterConsecutiveFailures;
   return {
     agentSlug: typeof slug === 'string' && slug.length > 0 ? slug : null,
     autoSwitch: typeof block.autoSwitch === 'boolean' ? block.autoSwitch : AGENT_FALLBACK_DEFAULTS.autoSwitch,
-    switchAfterConsecutiveFailures:
-      Number.isInteger(threshold) && (threshold as number) >= 1 ? (threshold as number) : AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
   };
 }
 
-/** The SAME shape on every task that has a fallback chain; only the description names the task. */
+/**
+ * The fallback block for one task.
+ *
+ * `switchAfterConsecutiveFailures` is declared for SPEECH_TO_TEXT ONLY, and that asymmetry is
+ * deliberate. A threshold needs a runtime that COUNTS across calls, which is what
+ * `stt/streaming/session_manager.py` is — it holds a session and switches after N consecutive
+ * failures. Both TEXT lanes are per-call: the live flush and the `core.agent` / `generate`
+ * activities switch on the FIRST failure of the call they are in and keep no cross-call state, so
+ * a TEXT threshold would be a tenant-settable, schema-validated knob with no reader at all.
+ * Owner rule: no dead knobs. If a session-scoped text runtime ever appears, reinstate it here
+ * together with its reader.
+ */
 function fallbackProperty(task: AgentTask): NodeConfigSchema {
+  const threshold =
+    task === 'SPEECH_TO_TEXT'
+      ? {
+          switchAfterConsecutiveFailures: Object.freeze({
+            type: 'integer',
+            minimum: 1,
+            maximum: 20,
+            default: AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
+          }),
+        }
+      : {};
   return Object.freeze({
     type: 'object',
     additionalProperties: false,
@@ -193,12 +211,7 @@ function fallbackProperty(task: AgentTask): NodeConfigSchema {
         default: AGENT_FALLBACK_DEFAULTS.autoSwitch,
         description: 'The per-agent HA toggle: switch to the fallback chain on primary failure. ON by default (platform HA capability).',
       }),
-      switchAfterConsecutiveFailures: Object.freeze({
-        type: 'integer',
-        minimum: 1,
-        maximum: 20,
-        default: AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
-      }),
+      ...threshold,
     }),
     description:
       'Fallback governance. Where the chain leads is a REFERENCE (an agent slug) or the agent`s own model chain; the platform default always terminates it.',

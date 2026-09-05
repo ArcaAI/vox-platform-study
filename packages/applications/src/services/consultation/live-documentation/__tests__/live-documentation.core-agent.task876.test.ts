@@ -53,7 +53,7 @@ const spec = (over: { autoSwitch?: boolean; chain?: ResolvedTextCandidate[] } = 
   schemaVersion: 1,
   agent: {} as never,
   primary: candidate(),
-  fallback: { autoSwitch: over.autoSwitch ?? true, switchAfterConsecutiveFailures: 2, chain: over.chain ?? [platformCandidate()] },
+  fallback: { autoSwitch: over.autoSwitch ?? true, chain: over.chain ?? [platformCandidate()] },
 });
 
 /** A tenant graph: capture → one realtime core.agent bound to an explicit, pinned agent. */

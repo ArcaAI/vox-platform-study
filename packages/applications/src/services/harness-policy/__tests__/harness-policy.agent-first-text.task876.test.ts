@@ -54,7 +54,6 @@ const spec = (over: { primary?: Record<string, unknown>; autoSwitch?: boolean; c
   primary: candidate(over.primary),
   fallback: {
     autoSwitch: over.autoSwitch ?? true,
-    switchAfterConsecutiveFailures: 2,
     chain: over.chain ?? [
       candidate({ kind: 'platform-default', agent: { slug: 'platform-summarization', versionId: 'p1', versionNumber: 1, tenantId: SYSTEM_TENANT_ID, source: 'platform-default' }, fundingTier: 'platform' }),
     ],
