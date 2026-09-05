@@ -48,6 +48,9 @@ import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { PolicyEngine } from '../../authorization/policy.engine';
 import { IActiveUserContext } from '../../interfaces';
+// TASK-889 — the membership-bounded cross-tenant step, declared beside `AgentPromotionService`'s
+// ELEVATED one so the two are read together and neither is mistaken for the other.
+import { runInTenantContext } from '../agentPromotion/tenant-context';
 import { IAgentAssignmentService } from '../agent-assignment/IAgentAssignmentService';
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../agent-assignment/IAgentAssignmentService';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
@@ -636,7 +639,15 @@ export class AgentService extends BaseService implements IAgentService {
     const userId = this.requestUserId;
     if (!userId) throw new ForbiddenException('Syncing an agent requires an authenticated user.');
 
-    const source = await this.resolveOwnSource(slug, dto.sourceVersionNumber);
+    // TASK-889 — every step of a sync NAMES the tenant it acts on (`runInTenantContext`), so the
+    // tenant-scope extension filters it as it would an ordinary single-tenant request. Here that
+    // is the source: the agent version, and — hoisted out of the per-target copy on purpose —
+    // its fallback chain. `AgentModelFallback` is a plain tenant-scoped model, so a read of it
+    // inside a TARGET's step would answer for the target and the chain would silently vanish.
+    const { source, sourceFallbacks } = await runInTenantContext(this.clsService, tenantId, async () => {
+      const resolved = await this.resolveOwnSource(slug, dto.sourceVersionNumber);
+      return { source: resolved, sourceFallbacks: await this.fallbackRepository.findByAgentId(resolved.id) };
+    });
     const targets = [...new Set(dto.targetTenantIds)];
     if (targets.includes(tenantId)) {
       throw new BadRequestException('A sync pushes an agent into OTHER tenants; the source tenant is already where it lives.');
@@ -653,7 +664,11 @@ export class AgentService extends BaseService implements IAgentService {
       async (tx) => {
         const out: Array<{ tenantId: string; agentId: string; slug: string; versionNumber: number; warnings: string[] }> = [];
         for (const target of targets) {
-          const { saved, warnings } = await this.writeCopy(source, target, { slug: source.slug, name: source.name, description: source.description ?? null }, tx);
+          // Each target's copy runs AS that target — never under the caller's own working tenant,
+          // and never under a tenant `assertManagesAgentsIn` has not just cleared.
+          const { saved, warnings } = await runInTenantContext(this.clsService, target, () =>
+            this.writeCopy(source, target, { slug: source.slug, name: source.name, description: source.description ?? null }, tx, sourceFallbacks),
+          );
           out.push({ tenantId: target, agentId: saved.id, slug: saved.slug, versionNumber: saved.versionNumber, warnings });
         }
         return out;
@@ -854,12 +869,22 @@ export class AgentService extends BaseService implements IAgentService {
     targetTenantId: string,
     overrides: { slug: string; name?: string; description?: string | null; tags?: string[] },
     tx: unknown,
+    /**
+     * The source agent's fallback chain, when the CALLER already read it in the source tenant's
+     * context (TASK-889 — `syncToTenants`). Omitted on the clone path, where this method still
+     * runs in the caller's own context and the read below is correct as it stands. Passing it is
+     * not an optimisation: a target step cannot read a source-tenant row through the scoped
+     * client, so the value has to arrive already read.
+     */
+    knownSourceFallbacks?: readonly AgentModelFallbackEntity[],
   ): Promise<{ saved: AgentEntity; fallbacks: AgentModelFallbackEntity[]; warnings: string[] }> {
     const crossTenant = targetTenantId !== source.tenantId;
     const warnings: string[] = [];
 
     const modelId = await this.resolveModelIdForTarget(source.modelId, targetTenantId, tx);
-    const sourceFallbacks = [...(await this.fallbackRepository.findByAgentId(source.id))].sort((a, b) => a.priority - b.priority);
+    const sourceFallbacks = [...(knownSourceFallbacks ?? (await this.fallbackRepository.findByAgentId(source.id)))].sort(
+      (a, b) => a.priority - b.priority,
+    );
     const fallbackModelIds: string[] = [];
     for (const row of sourceFallbacks) fallbackModelIds.push(await this.resolveModelIdForTarget(row.modelId, targetTenantId, tx));
 

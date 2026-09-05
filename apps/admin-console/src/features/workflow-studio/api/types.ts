@@ -363,10 +363,11 @@ export interface AgentOption {
  * build a payload.
  */
 export interface WorkflowDefinitionBundle {
-  kind: 'workflow-definition';
+  /** TASK-889 — one of the shared `PORTABLE_BUNDLE_KINDS`; the agent bundle carries `'agent'`. */
+  kind: 'workflow';
   schemaVersion: number;
   exportedAt: string;
-  source: { tenantKind: 'system' | 'global' | 'tenant'; slug: string; versionNumber: number };
+  source: { tenantKind: 'system' | 'global' | 'tenant'; slug: string; version: number };
   payload: {
     name: string;
     description?: string | null;
