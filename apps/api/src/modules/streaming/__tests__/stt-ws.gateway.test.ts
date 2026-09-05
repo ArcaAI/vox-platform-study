@@ -1517,14 +1517,25 @@ describe('SttWsGateway', () => {
       return { client, resultSubject };
     };
 
-    it('drops partial transcripts while bufferedAmount exceeds the 512 KiB threshold', async () => {
+    it('drops partial transcripts while bufferedAmount exceeds the 512 KiB threshold, and says so ONCE', async () => {
       const { client, resultSubject } = await connectWithSubject('sess-bp-partial');
 
       client.bufferedAmount = THRESHOLD_BYTES + 1;
       resultSubject.next(partialMsg('p1'));
       resultSubject.next(partialMsg('p2'));
 
-      expect(client.send).not.toHaveBeenCalled();
+      // TASK-869 amended this assertion from "nothing is sent". A dropped partial
+      // used to be observable only in a server-side debug log, which is why the
+      // e2e contract ("partials are dropped AND observable") could not be written
+      // at all. It now sends the same tiny `gap` control frame finals already use.
+      //
+      // Exactly ONE frame for TWO drops is the point, not an accident: partials
+      // drop at speech cadence, so a frame per drop would add to the congestion
+      // the drop is relieving. No transcript is sent either way.
+      const sent = (client.send as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => JSON.parse(c[0] as string));
+      expect(sent, 'one coalesced signal for the episode, not one per drop').toHaveLength(1);
+      expect(sent[0]).toMatchObject({ type: 'gap', reason: 'egress_partial_dropped', sessionId: 'sess-bp-partial' });
+      expect(sent.some((m) => m.type === 'transcript'), 'the partials themselves are still dropped').toBe(false);
       gateway.handleDisconnect(client as any);
     });
 

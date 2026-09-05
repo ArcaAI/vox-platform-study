@@ -67,6 +67,8 @@ import {
   Logger,
   Get,
   Sse,
+  HttpCode,
+  HttpStatus,
   type MessageEvent,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
@@ -589,6 +591,11 @@ export class ConsultationController {
   // controller: `@ApiEndpoint()` composes cleanly with both decorators, the
   // same way `startRecording` already composes it with `@RequiresConsent`).
 
+  // TASK-869 — the published contract says 200 and Nest's POST default is 201.
+  // Without this the runtime and `openapi.json` disagreed, and every spec that
+  // touched these routes had quietly widened to `[200, 201]` to cope. A
+  // generated client (vox-node is generated FROM that document) expects 200.
+  @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: ConsultationResponse,
     method: HttpMethod.POST,
@@ -618,6 +625,11 @@ export class ConsultationController {
     return this.consultationService.primeConsultation(id, expectedVersion);
   }
 
+  // TASK-869 — the published contract says 200 and Nest's POST default is 201.
+  // Without this the runtime and `openapi.json` disagreed, and every spec that
+  // touched these routes had quietly widened to `[200, 201]` to cope. A
+  // generated client (vox-node is generated FROM that document) expects 200.
+  @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: ConsultationResponse,
     method: HttpMethod.POST,
@@ -641,6 +653,11 @@ export class ConsultationController {
     return this.consultationService.closeConsultation(id, expectedVersion);
   }
 
+  // TASK-869 — the published contract says 200 and Nest's POST default is 201.
+  // Without this the runtime and `openapi.json` disagreed, and every spec that
+  // touched these routes had quietly widened to `[200, 201]` to cope. A
+  // generated client (vox-node is generated FROM that document) expects 200.
+  @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: ConsultationResponse,
     method: HttpMethod.POST,
@@ -675,6 +692,11 @@ export class ConsultationController {
   // consultation job-updates stream (auth via @TenantOwnedResource pre-stream
   // guard + @StreamScope ticket).
 
+  // TASK-869 — the published contract says 200 and Nest's POST default is 201.
+  // Without this the runtime and `openapi.json` disagreed, and every spec that
+  // touched these routes had quietly widened to `[200, 201]` to cope. A
+  // generated client (vox-node is generated FROM that document) expects 200.
+  @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: RecordingStateResponse,
     method: HttpMethod.POST,
@@ -705,6 +727,11 @@ export class ConsultationController {
     };
   }
 
+  // TASK-869 — the published contract says 200 and Nest's POST default is 201.
+  // Without this the runtime and `openapi.json` disagreed, and every spec that
+  // touched these routes had quietly widened to `[200, 201]` to cope. A
+  // generated client (vox-node is generated FROM that document) expects 200.
+  @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: RecordingStateResponse,
     method: HttpMethod.POST,
@@ -1672,6 +1699,9 @@ export class ConsultationController {
     });
   }
 
+  // TASK-869 — same 201-vs-200 drift as the state-transition routes: the
+  // published contract documents 200 and Nest's POST default is 201.
+  @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: SummaryApprovalResponseDto,
     method: HttpMethod.POST,

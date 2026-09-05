@@ -25,8 +25,8 @@
  * (gate wait_condition + approval signal + SLA escalation) already assert the
  * server-side gate logic; this spec adds the HTTP-surface non-bypass proof.
  */
-import { test, expect } from '@playwright/test';
-import { SEEDED_USERS } from '../../../../tests/helpers';
+import { test, expect, type APIRequestContext } from '@playwright/test';
+import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 // The four inbound harness callback routes (service-to-service only). Effective
 // paths carry the global `/api/v1` prefix + `@Controller('internal/harness')`.
@@ -113,23 +113,73 @@ test.describe('the HITL signing gate is not bypassable', () => {
 });
 
 // ===========================================================================
+// TASK-869 — these blocks used to require HARNESS_E2E_CONSULTATION_ID /
+// _CONTEXT_ITEM_ID / _TENANT_ID: hand-set ids pointing at a consultation someone
+// had already driven to PENDING_REVIEW. Nothing produced them, no seed row
+// satisfies them (seeded consultations sit at the typed default OPEN — the seed
+// writes only `metadata.status`), and so these tests had never executed.
+//
+// They now STAGE THEIR OWN SUBJECT, the way `consultation-state-machine` and
+// `task-704-generator-seam` already do: open a consultation, walk it to
+// DRAINING, then perform the system-of-record write the harness loop performs
+// over the service-token channel. Self-contained, repeatable, and it removes
+// four undeclared environment variables.
+// ===========================================================================
+
+/** Open a consultation and walk it to DRAINING — the state a harness draft lands on. */
+async function stageConsultation(request: APIRequestContext, token: string): Promise<string> {
+  const patientId = `e2e-869-harness-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const opened = await request.post('/api/v1/consultations/open', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { patientId },
+  });
+  expect([200, 201], 'POST /consultations/open must succeed').toContain(opened.status());
+  const { id, version } = (await opened.json()) as { id: string; version: number };
+
+  await request.post(`/api/v1/consultations/${id}/prime`, { headers: { Authorization: `Bearer ${token}`, 'If-Match': `"${version}"` } });
+  await request.post(`/api/v1/consultations/${id}/recording/start`, { headers: { Authorization: `Bearer ${token}` } });
+  await request.post(`/api/v1/consultations/${id}/recording/stop`, { headers: { Authorization: `Bearer ${token}` } });
+  return id;
+}
+
+/** The draft write the harness loop performs. Returns the consultation it landed on. */
+async function writeHarnessDraft(
+  request: APIRequestContext,
+  consultationId: string,
+  tenantId: string,
+  serviceToken: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  const res = await request.post(`/api/v1/internal/harness/consultations/${consultationId}/draft`, {
+    headers: { 'X-Service-Token': serviceToken },
+    data: { tenantId, content: '{"subjective":"s","objective":"o","assessment":"a","plan":"p"}', ...extra },
+  });
+  expect(res.status(), 'authenticated harness draft write must succeed').toBeLessThan(300);
+}
+
+// ===========================================================================
 // FULL-LOOP assertions — require the whole stack. Skipped unless HARNESS_E2E_FULL
 // is set (do not fabricate a pass when the loop cannot actually run here).
 // ===========================================================================
 const RUN_FULL = !!process.env.HARNESS_E2E_FULL;
+const HARNESS_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
 
 test.describe('full harness loop (gate not bypassable + provenance surfaced)', () => {
-  test.skip(!RUN_FULL, 'requires apps/harness + Temporal + TEXT + NLP + Postgres + Redis (set HARNESS_E2E_FULL=1)');
+  // Serial: the approve test signs the draft the first test asserts on.
+  test.describe.configure({ mode: 'serial' });
+  test.skip(!RUN_FULL || !HARNESS_TOKEN, 'requires apps/api + Postgres + HARNESS_SERVICE_TOKEN (set HARNESS_E2E_FULL=1)');
 
   let doctorToken: string;
+  let doctorTenantId: string;
   let consultationId: string;
 
   test.beforeAll(async ({ request }) => {
-    doctorToken = await loginDoctor(request);
-    // A seeded/created consultation with metadata.pipelineConfig.harnessEnabled=true
-    // is required so TranscriptionCreated routes to the durable workflow.
-    consultationId = process.env.HARNESS_E2E_CONSULTATION_ID ?? '';
-    expect(consultationId, 'set HARNESS_E2E_CONSULTATION_ID to a harness-enabled consult').not.toBe('');
+    const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
+    expect(login?.token, 'doctor login failed').toBeTruthy();
+    doctorToken = login!.token;
+    doctorTenantId = login!.user.tenantId;
+    consultationId = await stageConsultation(request, doctorToken);
+    await writeHarnessDraft(request, consultationId, doctorTenantId, HARNESS_TOKEN);
   });
 
   test('the harness draft surfaces as PENDING_REVIEW with provenance/citations, never auto-SIGNED', async ({ request }) => {
@@ -156,11 +206,20 @@ test.describe('full harness loop (gate not bypassable + provenance surfaced)', (
 
   test('only the approve path produces a SIGNED_NOTE + GATE_DECISION', async ({ request }) => {
     const auth = { Authorization: `Bearer ${doctorToken}` };
-    const contextItemId = process.env.HARNESS_E2E_CONTEXT_ITEM_ID ?? '';
-    expect(contextItemId, 'set HARNESS_E2E_CONTEXT_ITEM_ID to the draft ctx id').not.toBe('');
+    // Read the draft back rather than taking its id from the environment.
+    const summaries = await request.get(`/api/v1/consultations/${consultationId}/summary`, { headers: auth });
+    expect(summaries.status()).toBe(200);
+    const items = (await summaries.json()) as Array<{ id: string; version: number }>;
+    expect(items.length, 'the staged harness draft must be retrievable').toBeGreaterThan(0);
+    const { id: contextItemId, version } = items[0];
 
-    const approve = await request.post(`/api/v1/consultations/${consultationId}/summary/${contextItemId}/approve`, { headers: auth });
-    expect(approve.status(), 'authenticated approve must succeed').toBe(201);
+    const approve = await request.post(`/api/v1/consultations/${consultationId}/summary/${contextItemId}/approve`, {
+      headers: { ...auth, 'If-Match': `"${version}"` },
+      data: { expectedVersion: version },
+    });
+    // 200, not 201: the published contract documents 200 and the route now
+    // matches it (TASK-869 added `@HttpCode(HttpStatus.OK)`).
+    expect(approve.status(), 'authenticated approve must succeed').toBe(200);
 
     const detail = await request.get(`/api/v1/consultations/${consultationId}`, { headers: auth });
     expect((await detail.json()).status, 'consultation must be SIGNED after approve').toBe('SIGNED');
@@ -182,30 +241,29 @@ test.describe('full harness loop (gate not bypassable + provenance surfaced)', (
 // HARNESS_E2E_FULL + those env vars are set, so CI never reports a fabricated
 // pass (mirrors the full-loop block's evidence policy).
 // ===========================================================================
-const SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
-const FLAG_CONSULT_ID = process.env.HARNESS_E2E_CONSULTATION_ID ?? '';
-const FLAG_TENANT_ID = process.env.HARNESS_E2E_TENANT_ID ?? '';
-
 test.describe('Phase 2 — a safety FLAG forces review (never auto-approved)', () => {
-  test.skip(
-    !RUN_FULL || !SERVICE_TOKEN || !FLAG_CONSULT_ID || !FLAG_TENANT_ID,
-    'requires apps/api + Postgres + HARNESS_SERVICE_TOKEN + HARNESS_E2E_CONSULTATION_ID + HARNESS_E2E_TENANT_ID (set HARNESS_E2E_FULL=1)',
-  );
+  test.skip(!RUN_FULL || !HARNESS_TOKEN, 'requires apps/api + Postgres + HARNESS_SERVICE_TOKEN (set HARNESS_E2E_FULL=1)');
 
   let doctorToken: string;
+  let flagConsultId: string;
+  let flagTenantId: string;
 
   test.beforeAll(async ({ request }) => {
-    doctorToken = await loginDoctor(request);
+    const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
+    expect(login?.token, 'doctor login failed').toBeTruthy();
+    doctorToken = login!.token;
+    flagTenantId = login!.user.tenantId;
+    flagConsultId = await stageConsultation(request, doctorToken);
   });
 
   test('a safety-FLAG draft persists as PENDING_REVIEW and is never auto-SIGNED', async ({ request }) => {
     // 1) The harness persists a draft whose inferential safety screen FLAGGED it
     //    (gate decision FLAG + the safety guardrail-decision detail), over the
     //    service-token channel — the system-of-record write the loop performs.
-    const draftRes = await request.post(`/api/v1/internal/harness/consultations/${FLAG_CONSULT_ID}/draft`, {
-      headers: { 'X-Service-Token': SERVICE_TOKEN },
+    const draftRes = await request.post(`/api/v1/internal/harness/consultations/${flagConsultId}/draft`, {
+      headers: { 'X-Service-Token': HARNESS_TOKEN },
       data: {
-        tenantId: FLAG_TENANT_ID,
+        tenantId: flagTenantId,
         content: '{"subjective":"s","objective":"o","assessment":"a","plan":"p"}',
         gateDecision: 'FLAG',
         guardrailDecisions: {
@@ -226,7 +284,7 @@ test.describe('Phase 2 — a safety FLAG forces review (never auto-approved)', (
     // 2) A FLAG must stop at the human gate — the note is forced into review and
     //    is NEVER auto-approved/auto-SIGNED.
     const auth = { Authorization: `Bearer ${doctorToken}` };
-    const detail = await request.get(`/api/v1/consultations/${FLAG_CONSULT_ID}`, { headers: auth });
+    const detail = await request.get(`/api/v1/consultations/${flagConsultId}`, { headers: auth });
     expect(detail.status()).toBe(200);
     const status = (await detail.json()).status;
     expect(status, 'a FLAG draft must force review, not auto-approve').toBe('PENDING_REVIEW');

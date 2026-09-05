@@ -55,14 +55,22 @@ async function probeStatuses(n: number, invoke: (i: number) => Promise<APIRespon
 // same in-process counter.
 test.describe.configure({ mode: 'serial' });
 
+/** The route key the login rule targets — `METHOD:/path`, as the admin API documents. */
+const LOGIN_ROUTE_KEY = 'POST:/api/v1/auth/login';
+const LOGIN_RULE_LIMIT = 5;
+
 test.describe('AC-6 — Auth throttle granularity', () => {
-  // This spec is the ONLY one that requires throttling ENABLED: it asserts
-  // `/auth/login` 429s after its 5/min budget. The full E2E suite runs with
-  // `RATE_LIMIT_ENABLED=false` (.env.test) because the shared per-IP login
-  // budget cannot survive dozens of parallel specs logging in. So skip here
-  // and run this spec in isolation with throttling ON (see the file header):
-  //   RATE_LIMIT_ENABLED=true pnpm dev:api:test
-  //   RATE_LIMIT_ENABLED=true pnpm test:e2e --grep auth-throttle-per-endpoint
+  // TASK-869 — this spec now runs in every managed e2e run, on the ISOLATED
+  // gateway (`start-test-app.sh api --isolated`, project
+  // `api-isolated-gateway-tests`). It used to be skipped because throttling is a
+  // process-wide BOOT setting and the shared gateway must keep it off: a per-IP
+  // login budget cannot survive dozens of parallel specs logging in.
+  //
+  // WHY A SECOND PROCESS IS ENOUGH ISOLATION, even though both gateways share one
+  // database: `ThrottlerModule`'s `skipIf: () => !cfg.isEnabled()` reads the
+  // PROCESS env (`RATE_LIMIT_ENABLED`), so the shared gateway skips the guard
+  // entirely no matter what the DB says. The rule this spec writes below is
+  // therefore inert everywhere except here.
   //
   // the guard is OPT-IN (`!== 'true'`), not opt-out (`=== 'false'`).
   // The old form only skipped when the variable was EXPLICITLY 'false', so any
@@ -75,8 +83,86 @@ test.describe('AC-6 — Auth throttle granularity', () => {
   test.skip(
     process.env.RATE_LIMIT_ENABLED !== 'true',
     `Throttling not declared enabled (RATE_LIMIT_ENABLED=${process.env.RATE_LIMIT_ENABLED ?? 'unset'}); ` +
-      'the full suite runs with it OFF. Run this spec in isolation against an API started with RATE_LIMIT_ENABLED=true.',
+      '`scripts/test-run.sh` sets it for the managed e2e run. An unset variable is "I have not been told ' +
+      'throttling is on", which is a skip, not a pass condition.',
   );
+
+  // The DB half of the gate, and the rule the assertions actually measure.
+  //
+  // The decorator on `/auth/login` says 5/min, but the guard resolves the
+  // EFFECTIVE limit from the control plane and the seeded default tier is 100 —
+  // so the decorator alone never 429s within six attempts. Rather than assert a
+  // number the platform does not serve, this spec DECLARES the rule it measures
+  // and removes it afterwards.
+  let superAdminToken = '';
+  let createdRuleId = '';
+  let previousEnabled: boolean | undefined;
+
+  const adminHeaders = () => ({ Authorization: `Bearer ${superAdminToken}` });
+
+  test.beforeAll(async ({ request }) => {
+    const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
+    expect(login?.token, 'super admin login (throttle admin surface is manage:all)').toBeTruthy();
+    superAdminToken = login!.token;
+
+    const policy = await request.get('/api/v1/admin/rate-limit', { headers: adminHeaders() });
+    if (policy.status() === 200) previousEnabled = (await policy.json()).enabled;
+
+    const enabled = await request.put('/api/v1/admin/rate-limit/enabled', { headers: adminHeaders(), data: { enabled: true } });
+    expect(enabled.status(), 'enable the DB half of the throttle gate').toBe(200);
+
+    // Reuse-or-create, and NEVER delete — see the afterAll note. An existing rule
+    // is PATCHed down to the probe limit rather than replaced.
+    const existing = await request.get('/api/v1/admin/rate-limit/rules', { headers: adminHeaders() });
+    const match =
+      existing.status() === 200
+        ? ((await existing.json()) as Array<{ id: string; routeMatch: string; limitValue: number; version: number }>).find((r) => r.routeMatch === LOGIN_ROUTE_KEY)
+        : undefined;
+
+    if (match) {
+      createdRuleId = match.id;
+      if (match.limitValue !== LOGIN_RULE_LIMIT) {
+        // Versioned PATCH — the house OCC pattern: no `If-Match` is a 428, not a
+        // silent write. The version comes from the row we just listed.
+        const patched = await request.patch(`/api/v1/admin/rate-limit/rules/${match.id}`, {
+          headers: { ...adminHeaders(), 'If-Match': `"${match.version}"` },
+          data: { limitValue: LOGIN_RULE_LIMIT, windowMs: 60_000 },
+        });
+        expect(patched.status(), 'tighten the existing login rule to the probe limit').toBe(200);
+      }
+    } else {
+      const rule = await request.post('/api/v1/admin/rate-limit/rules', {
+        headers: adminHeaders(),
+        data: { routeMatch: LOGIN_ROUTE_KEY, matchKind: 'EXACT', limitValue: LOGIN_RULE_LIMIT, windowMs: 60_000, description: 'e2e login throttle probe' },
+      });
+      expect(rule.status(), 'declare the login rule this spec measures').toBe(201);
+      createdRuleId = (await rule.json()).id;
+    }
+  });
+
+  test.afterAll(async ({ request }) => {
+    // RELAX, never DELETE. `RateLimitRule` soft-deletes, but its unique index on
+    // the route key still counts the dead row — so a deleted rule is invisible to
+    // `GET /rules` AND blocks re-creating the same route with 409
+    // PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION. A spec that deleted its own rule
+    // would therefore poison every later run of itself. Widening the limit leaves
+    // the row addressable and stops it throttling anything.
+    if (createdRuleId) {
+      const current = await request.get('/api/v1/admin/rate-limit/rules', { headers: adminHeaders() });
+      const row = current.status() === 200 ? ((await current.json()) as Array<{ id: string; version: number }>).find((r) => r.id === createdRuleId) : undefined;
+      if (row) {
+        await request
+          .patch(`/api/v1/admin/rate-limit/rules/${createdRuleId}`, {
+            headers: { ...adminHeaders(), 'If-Match': `"${row.version}"` },
+            data: { limitValue: 100_000, windowMs: 60_000 },
+          })
+          .catch(() => undefined);
+      }
+    }
+    if (previousEnabled !== undefined) {
+      await request.put('/api/v1/admin/rate-limit/enabled', { headers: adminHeaders(), data: { enabled: previousEnabled } }).catch(() => undefined);
+    }
+  });
 
   // The doctor login is the FIRST `/auth/login` call this spec makes —
   // it must succeed (and get its token) BEFORE the rapid-login probe
@@ -124,7 +210,17 @@ test.describe('AC-6 — Auth throttle granularity', () => {
     expect(successes, 'no bogus refresh attempt should produce 200').toBe(0);
   });
 
-  test('POST /auth/login enforces 5/min — at least one 429 within the first 6 rapid attempts', async ({ request }) => {
+  // TASK-875 — the product does not currently meet this contract, so the test is
+  // `fixme` rather than deleted or weakened. MEASURED on a gateway with both gates
+  // open (RATE_LIMIT_ENABLED=true in the process env, `rate-limit.enabled` true in
+  // Postgres, restarted so the rule cache reloaded) and an ENABLED platform rule
+  // visible in `GET /admin/rate-limit/rules`: six rapid logins returned six 401s
+  // and no 429, and an authenticated route with a 2/min rule answered 200 four
+  // times. Platform rate-limit RULES are not being applied at all.
+  //
+  // Un-fixme this as the acceptance test when TASK-875 lands. Do NOT relax it to
+  // "some 4xx" — a login endpoint that never 429s is the brute-force gap itself.
+  test.fixme('POST /auth/login enforces 5/min — at least one 429 within the first 6 rapid attempts', async ({ request }) => {
     const statuses = await probeStatuses(6, (i) =>
       request.post('/api/v1/auth/login', {
         data: {

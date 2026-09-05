@@ -99,11 +99,16 @@ case "$SUITE" in
         DEFAULT_SERVICES=() ;;
     e2e)
         SUITE_CMD=(pnpm test:e2e)
-        # Full stack minus the Temporal worker: the isolated test infra
-        # (tests/docker-compose.test.yml) has no Temporal, so the worker cannot
-        # connect. The harness FastAPI app itself boots fine without it.
+        # The FULL stack, worker included (TASK-869). The old comment here said
+        # the isolated test infra has no Temporal so the worker could not
+        # connect — true until this ticket added `temporal-test` (port 7333,
+        # dedicated databases) to tests/docker-compose.test.yml. Without the
+        # worker the harness dispatches durable workflows that nothing executes:
+        # `task-704-generator-seam` created a job and watched it sit at PENDING
+        # until it timed out, which read as a missing env flag rather than a
+        # missing service.
         # Override ad-hoc by passing services, e.g. `test:e2e:managed -- api text`.
-        DEFAULT_SERVICES=(api stt text guardrail nlp harness) ;;
+        DEFAULT_SERVICES=(api stt text guardrail nlp harness worker) ;;
     py)
         SUITE_CMD=(pnpm test:py)
         DEFAULT_SERVICES=() ;;
@@ -225,10 +230,15 @@ fi
 # ----------------------------------------------------------------------------
 # Ports come from .env.test (test = dev + 100), never hardcoded to the dev values.
 env_val() { grep -E "^$1=" "$REPO_ROOT/.env.test" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'"; }
+# The isolated gateway's port (TASK-869). Test API + 1; overridable so a second
+# managed run on the same host can move it.
+ISOLATED_API_PORT="${ISOLATED_API_PORT:-8969}"
+
 port_for() {
     local v
     case "$1" in
         api)       v="$(env_val API_PORT)";       echo "${v:-8968}" ;;
+        api-isolated) echo "$ISOLATED_API_PORT" ;;
         admin)     v="$(env_val ADMIN_PORT)";     echo "${v:-5276}" ;;
         stt)       v="$(env_val STT_PORT)";       echo "${v:-8961}" ;;
         text)      v="$(env_val TEXT_PORT)";       echo "${v:-8962}" ;;
@@ -275,6 +285,28 @@ else
         echo "  spawned $svc (pid $!) → $log"
     done
 
+    # ISOLATED GATEWAY (TASK-869). A second api process whose BOOT-time settings
+    # differ from the shared one: throttling ON, TEXT_URL at the e2e stub. Two
+    # specs need exactly that and cannot have it on the shared gateway —
+    # throttling would 429 the login helpers every other spec uses, and a stubbed
+    # TEXT_URL would break every spec that needs the real service. Both values are
+    # read once at boot, so no per-spec override exists; a second process is the
+    # mechanism, and `dependencies` in playwright.config.ts keeps its specs off
+    # the shared workers.
+    if [ "$SUITE" = "e2e" ] && [[ " ${SERVICES[*]} " == *" api "* ]]; then
+        if lsof -nP -iTCP:"$ISOLATED_API_PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo -e "${RED}  port $ISOLATED_API_PORT is already bound — refusing to start the isolated gateway.${NC}" >&2
+            teardown
+            exit 1
+        fi
+        log="$LOG_DIR/api-isolated.log"
+        : > "$log"
+        "$SCRIPT_DIR/start-test-app.sh" api --isolated >>"$log" 2>&1 &
+        SERVICE_PIDS+=("$!")
+        STARTED_SERVICES+=("api-isolated")
+        echo "  spawned api-isolated (pid $!) → $log"
+    fi
+
     step "Step 3/5: waiting for services to become healthy (timeout ${READY_TIMEOUT}s)"
     deadline=$(( SECONDS + READY_TIMEOUT ))
     pending=("${STARTED_SERVICES[@]}")
@@ -302,6 +334,45 @@ else
         done
         teardown
         exit 1
+    fi
+fi
+
+# ----------------------------------------------------------------------------
+# Step 3.9 — test-only variables the SUITE reads (TASK-869)
+# ----------------------------------------------------------------------------
+# A managed run starts the whole stack, so a spec that needs the stack must RUN,
+# not skip. These variables are what the specs read to decide that, and nothing
+# used to set them — so the managed suite quietly skipped 14 tests it was
+# perfectly capable of running.
+#
+# WHY EXPORTING HERE WORKS, and where it would not: `pnpm test:e2e` is
+# `dotenv -e .env.test -- playwright test` with NO `-o`, so ambient env wins for
+# the Playwright process. The SERVICE launchers (`start-test-app.sh`) use
+# `dotenv -o`, where `.env.test` wins instead — which is exactly why a variable
+# the SERVICE must see (`TEXT_URL`, `RATE_LIMIT_ENABLED`) can never be set from
+# here, and gets its own gateway instead (see the isolated-gateway project).
+# Everything below is read by the TEST process only.
+if [ "$SUITE" = "e2e" ]; then
+    # ONE consolidated harness switch (the owner's directive). `TASK711_E2E_FULL`
+    # was a second flag doing the same job and is gone.
+    export HARNESS_E2E_FULL="${HARNESS_E2E_FULL:-1}"
+
+    # The isolated gateway's address + the two settings its specs assert on. The
+    # SPECS read these; the shared services never see them (they load `.env.test`
+    # with `dotenv -o`, so `RATE_LIMIT_ENABLED` stays false there — which is the
+    # point).
+    export E2E_ISOLATED_API_URL="${E2E_ISOLATED_API_URL:-http://localhost:$ISOLATED_API_PORT/api/v1}"
+    export RATE_LIMIT_ENABLED=true
+    export E2E_TEXT_STUB=1
+    export E2E_TEXT_URL="${E2E_TEXT_URL:-http://127.0.0.1:8992}"
+
+    # The gateway resolves TEXT_SERVICE_TOKEN through SecretsService (Vault),
+    # seeded from THIS file's value by ensure-test-vault-creds.sh — so the value
+    # a spec must present as `X-Service-Token` is `.env.test`'s own. Derived, never
+    # duplicated: a second literal would drift the moment one side rotates.
+    if [ -z "${E2E_TEXT_SERVICE_TOKEN:-}" ]; then
+        E2E_TEXT_SERVICE_TOKEN="$(grep -E '^TEXT_SERVICE_TOKEN=' "$REPO_ROOT/.env.test" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"'"'"'')"
+        export E2E_TEXT_SERVICE_TOKEN
     fi
 fi
 

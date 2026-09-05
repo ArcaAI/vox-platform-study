@@ -213,7 +213,7 @@ export async function loginUser(
   username: string,
   password: string,
   tenantKey?: string,
-): Promise<{ token: string; refreshToken: string; user: { id: string; username: string } } | null> {
+): Promise<{ token: string; refreshToken: string; user: { id: string; username: string; tenantId: string } } | null> {
   const url = '/api/v1/auth/login';
   const data: Record<string, string> = { username, password };
   if (tenantKey) data.tenantKey = tenantKey;
