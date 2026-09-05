@@ -9,6 +9,7 @@ import { TextRequestServiceModule } from '../text-request/text-request.service.m
 import { AgentInvocationService } from './agent-invocation.service';
 import { AgentResolverService } from './agent-resolver.service';
 import { AgentService } from './agent.service';
+import { TextAgentResolverService } from './text-agent-resolver.service';
 import { IAgentService } from './IAgentService';
 
 /**
@@ -25,7 +26,7 @@ import { IAgentService } from './IAgentService';
     AiProviderConnectionServiceModule,
     TextRequestServiceModule,
   ],
-  providers: [AgentService, AgentResolverService, AgentInvocationService, { provide: IAgentService, useExisting: AgentService }],
-  exports: [IAgentService, AgentService, AgentResolverService, AgentInvocationService],
+  providers: [AgentService, AgentResolverService, TextAgentResolverService, AgentInvocationService, { provide: IAgentService, useExisting: AgentService }],
+  exports: [IAgentService, AgentService, AgentResolverService, TextAgentResolverService, AgentInvocationService],
 })
 export class AgentServiceModule {}
