@@ -191,7 +191,7 @@ export class LiveSummaryStatsDto {
 
   @ApiPropertyOptional({
     description:
-      "How this flush's model was selected (TASK-876): 'agent' = a bound `core.agent` node's own agent, 'agent-fallback' = one of that agent's resolved fallback candidates after a primary failure, 'task-default' = the tenant's ASSIGNED TEXT_GENERATION agent (the legacy summary node).",
+      "How this flush's model was selected (TASK-876): 'agent' = a bound `core.agent` node's own agent, 'agent-fallback' = one of that agent's resolved fallback candidates after a primary failure, 'assigned-agent' = the tenant's ASSIGNED TEXT_GENERATION agent (the legacy summary node). The third value was 'task-default' until TASK-876 — the name of the retired `AiTaskDefault` tier, which no longer selects anything.",
   })
   selection_source?: string | null;
 

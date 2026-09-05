@@ -254,6 +254,21 @@ describe('R2-C.1 — every resolver guarantee survives the wider path', () => {
 // ──────────────── the cheap exits stay cheap ────────────────
 
 describe('R2-C.1 — reads are still skipped when they cannot matter', () => {
+  // TASK-876 — a caller that already carries `provider_overrides` resolved the credential FOR
+  // THE ROW IT IS ABOUT TO RUN (a `core.agent` candidate: the tenant's own agent, or the SYSTEM
+  // platform default it fell back to). Recomputing from the CLS tenant would re-fund a
+  // platform-served call as that tenant's BYOK — the `funding` label is what TEXT meters.
+  it('leaves a caller-supplied provider_overrides untouched and performs NO read', async () => {
+    const { enrichment, repo } = makeEnrichment();
+    const target = { provider: SELF_HOST, provider_overrides: { [SELF_HOST]: { api_key: 'platform-key', funding: 'platform' } } };
+
+    const result = await enrichment.applyTenantProviderOverrides(target);
+
+    expect(result.provider_overrides).toEqual({ [SELF_HOST]: { api_key: 'platform-key', funding: 'platform' } });
+    expect(repo.findByTenantIdAndService).not.toHaveBeenCalled();
+    expect(repo.findByTenantServiceProvider).not.toHaveBeenCalled();
+  });
+
   it('performs NO database read when the request names no provider', async () => {
     const { enrichment, repo } = makeEnrichment();
 
