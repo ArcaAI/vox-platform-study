@@ -50,8 +50,7 @@ import {
 import { Paginated } from '../../common/dto/paginated.response';
 import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
-import { EffectiveAiTaskDefaultResponse } from '../ai-task-default/dto';
+import { TextAgentResolverService } from '../agent/text-agent-resolver.service';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
 import { IDepartmentService } from '../department/IDepartmentService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
@@ -82,12 +81,6 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 // quality score. The score is a deterministic, testable proxy for "did the
 // template produce a substantive response", not a semantic judgement.
 const FULL_SCORE_WORD_COUNT = 50;
-
-// BUG-018 — the AiTaskDefault key that selects the model a prompt-template test
-// run uses. Resolved DIRECTLY through `IAiTaskDefaultService` (tenant row →
-// SYSTEM row); there is no `text.finalize` fallback any more — that hop was
-// harness coupling and is what made every test run on the platform's LM Studio.
-const TEXT_TEST_TASK_KEY = 'text.test';
 
 // TEXT's terminal success state (`TaskStatus.COMPLETED` in
 // `apps/text/src/text/models/task.py`).
@@ -180,11 +173,6 @@ export class PromptManagementService extends BaseService implements IPromptManag
     @Optional() private readonly httpService?: HttpService,
     @Optional() private readonly configService?: ConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // BUG-018 — resolves the effective `text.test` model DIRECTLY from the
-    // AiTaskDefault control plane. This slot used to hold the harness policy
-    // service; a prompt-authoring tool has no business reading harness policy,
-    // and that coupling is what silently ran every test on the platform model.
-    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
     // Doctor self-service "set my preferred template"
     // delegates the WRITE to the existing UserProfile upsert (which resolution
     // reads back). Optional + trailing so existing positional unit fixtures keep
@@ -212,6 +200,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // fixtures keep their arity; absent ⇒ the outgoing body is unenriched
     // (exactly the pre-BUG-018 behavior), never a failure.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
+    // TASK-876 — the tenant's ASSIGNED TEXT_GENERATION agent, which is what a prompt test must
+    // run on: testing a template against a model no consultation would ever use tells the author
+    // nothing. Optional + trailing so existing positional fixtures keep their arity.
+    @Optional() @Inject(TextAgentResolverService) private readonly textAgents?: TextAgentResolverService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.textServiceUrl = this.configService?.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -908,14 +900,15 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *  - The outgoing body carries the tenant's BYO credentials + runtime profile
    *    via the shared `TextRequestEnrichmentService`, and the request carries
    *    `X-Tenant-Id`, so the run is tenant-funded and attributable.
-   *  - Model selection reads `IAiTaskDefaultService` directly; the harness
-   *    policy service is gone from this path entirely.
+   *  - Model selection is the tenant's ASSIGNED TEXT_GENERATION agent, the same
+   *    resolution every real generation makes; the harness policy service is gone
+   *    from this path entirely.
    *
    * @throws ArgumentInvalidException — both `sampleInput` and `goldenCaseId`
    *   supplied, or a caller-supplied provider/model pair is partial/unknown.
    * @throws NotFoundException — unknown/cross-tenant template, missing
    *   `versionNumber`, or unknown/cross-tenant `goldenCaseId` (404-over-403).
-   * @throws BadRequestException — `text.test` resolves to nothing (fail-closed).
+   * @throws BadRequestException — no TEXT_GENERATION agent is assigned (fail-closed).
    */
   async startPromptTemplateTest(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestAckResponse> {
     if (dto.sampleInput !== undefined && dto.goldenCaseId !== undefined) {
@@ -1213,28 +1206,29 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * BUG-018 — resolve the `{provider, model}` a test run sends to TEXT.
+   * Resolve the `{provider, model}` a test run sends to TEXT.
    *
    * Precedence:
    *  1. Caller-supplied pair (`override.provider` + `override.model`, both
    *     required together) — forwarded VERBATIM (mirrors
    *     `applyTextModelSelection`'s "caller-pinned model wins" semantics),
    *     after validating it against the ENABLED AiModel registry.
-   *  2. The `text.test` AiTaskDefault, read DIRECTLY from
-   *     `IAiTaskDefaultService.getEffective` — whose own cascade is tenant row
-   *     → SYSTEM row. That cascade is the ONLY fallback: the old
-   *     `text.test → text.finalize` hop went through the harness policy service
-   *     and was pure harness coupling (it is also what silently ran every test
-   *     on the platform's LM Studio model).
+   *  2. TASK-876 — the tenant's ASSIGNED TEXT_GENERATION agent
+   *     (`department → tenant → SYSTEM`), through the SAME
+   *     `TextAgentResolverService` every real generation uses. It used to be the
+   *     `text.test` `AiTaskDefault` key, which is a RETIRED selection surface:
+   *     testing a template against a model no consultation would ever run is a
+   *     test of nothing, and `AgentAssignment` carries no role dimension for a
+   *     task key to select on in the first place.
    *
    * Fail-closed and MISS-vs-ERROR split (the old bare `catch {}` conflated
-   * them): nothing resolved ⇒ a `BadRequestException` naming the key, never a
+   * them): nothing assigned ⇒ a `BadRequestException` saying so, never a
    * substituted platform model; a thrown lookup ⇒ logged and RETHROWN, never
    * disguised as "unconfigured".
    *
    * @throws ArgumentInvalidException — only one of provider/model supplied,
    *   or the supplied pair does not match an ENABLED registry row.
-   * @throws BadRequestException — `text.test` resolves to nothing.
+   * @throws BadRequestException — no TEXT_GENERATION agent is assigned at any tier.
    */
   private async resolveTestTextTarget(override: { provider?: string; model?: string }): Promise<{ provider: string; model: string }> {
     if (override.provider !== undefined || override.model !== undefined) {
@@ -1245,35 +1239,34 @@ export class PromptManagementService extends BaseService implements IPromptManag
       return { provider: override.provider, model: override.model };
     }
 
-    if (!this.aiTaskDefaultService) {
-      throw new BadRequestException(`No model is configured for the '${TEXT_TEST_TASK_KEY}' AI task and the task-default resolver is not wired.`);
+    if (!this.textAgents) {
+      throw new BadRequestException('A prompt test cannot resolve its model: the TEXT_GENERATION agent resolver is not wired in this composition.');
     }
+    const tenantId = this.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant ID is required');
 
-    let effective: EffectiveAiTaskDefaultResponse;
     try {
-      effective = await this.aiTaskDefaultService.getEffective(TEXT_TEST_TASK_KEY, this.tenantId);
+      // The SAME resolution every real generation makes. The candidate already carries the
+      // provider as apps/text registers it (`azure` → `azure-openai`) and the provider-native
+      // model id, so no mapping is re-done here.
+      const spec = await this.textAgents.resolve({ tenantId });
+      return { provider: spec.primary.provider, model: spec.primary.model };
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new BadRequestException(
+          'No TEXT_GENERATION agent is assigned for this tenant, so a prompt test has nothing to run on. ' +
+            'Assign a published TEXT_GENERATION agent at TENANT or DEPARTMENT scope, or restore the SYSTEM platform default assignment.',
+        );
+      }
       // An ERROR is not a MISS. Surface it: silently falling through would
       // reintroduce exactly the "silently ran on the platform model" defect.
       this.logger.warn({
-        message: `Failed to resolve the '${TEXT_TEST_TASK_KEY}' AI task default for a prompt-template test run`,
-        tenantId: this.tenantId,
+        message: 'Failed to resolve the assigned TEXT_GENERATION agent for a prompt-template test run',
+        tenantId,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
-
-    const model = effective.model;
-    if (!model?.provider || !model.sourceUri) {
-      throw new BadRequestException(
-        `No model is configured for the '${TEXT_TEST_TASK_KEY}' AI task. Configure it under AI task defaults before running a prompt test.`,
-      );
-    }
-
-    // The registry stores Azure under `azure`; TEXT registers the provider as
-    // `azure-openai`. Same mapping the rest of the TEXT call path uses.
-    const provider = model.provider === 'azure' ? 'azure-openai' : model.provider;
-    return { provider, model: model.sourceUri };
   }
 
   /**
