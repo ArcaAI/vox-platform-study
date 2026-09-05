@@ -331,16 +331,29 @@ export class AgentEntity extends BaseTenantEntity {
     if (this._status === undefined || this._status === null) {
       throw new BusinessException('Agent status is required.');
     }
-    // TASK-884 — a clone's provenance is a RECORD, and half a record answers
-    // "where did this come from?" with a shrug. Either all four columns are set
-    // or none is; a partial one is a bug in whatever wrote it.
+    // TASK-884 — provenance is TWO pairs, and half a pair answers "where did
+    // this come from?" with a shrug:
+    //   (sourceAgentId, sourceTenantId)     — the exact ROW, which a CLONE/SYNC saw
+    //   (sourceSlug, sourceVersionNumber)   — the LINEAGE, which an IMPORT also knows
+    // An import reads a file that deliberately carries no row id and no tenant
+    // id, so it sets the lineage pair alone; knowing the row without knowing
+    // its lineage is not a state anything can produce.
     {
-      const lineage = [this._sourceAgentId, this._sourceTenantId, this._sourceSlug, this._sourceVersionNumber];
-      const set = lineage.filter((value) => value !== undefined && value !== null).length;
-      if (set !== 0 && set !== lineage.length) {
-        throw new BusinessException('Agent clone provenance is all-or-nothing: set sourceAgentId, sourceTenantId, sourceSlug and sourceVersionNumber together, or none of them.');
+      const present = (value: unknown): boolean => value !== undefined && value !== null;
+      const rowPair = [this._sourceAgentId, this._sourceTenantId];
+      const lineagePair = [this._sourceSlug, this._sourceVersionNumber];
+      const rowSet = rowPair.filter(present).length;
+      const lineageSet = lineagePair.filter(present).length;
+      if (rowSet === 1) {
+        throw new BusinessException('Agent clone provenance: sourceAgentId and sourceTenantId are set together or not at all.');
       }
-      if (this._sourceVersionNumber !== undefined && this._sourceVersionNumber !== null && (!Number.isInteger(this._sourceVersionNumber) || this._sourceVersionNumber < 1)) {
+      if (lineageSet === 1) {
+        throw new BusinessException('Agent clone provenance: sourceSlug and sourceVersionNumber are set together or not at all.');
+      }
+      if (rowSet === 2 && lineageSet === 0) {
+        throw new BusinessException('Agent clone provenance: a source ROW is always accompanied by its sourceSlug / sourceVersionNumber.');
+      }
+      if (present(this._sourceVersionNumber) && (!Number.isInteger(this._sourceVersionNumber) || (this._sourceVersionNumber as number) < 1)) {
         throw new BusinessException('Agent sourceVersionNumber must be a positive integer.');
       }
     }
