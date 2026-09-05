@@ -402,10 +402,19 @@ class BatchTranscriptionService:
             logger.info(f"[{job_id}] Running ASR inference...")
             inference_start = time.time()
 
-            # Resolve initial prompt from DB if configured
-            initial_prompt: str | None = None
+            # TASK-880 — the AGENT's literal prompt wins, and it is the only prompt
+            # channel whisper.cpp has now that the hardcoded consultation line and its
+            # `stt.whisperCpp.consultationPromptEnabled` flag are gone. The streaming path
+            # already preferred it (`session_manager._load_asr_pipeline`); this path did
+            # not, so a batch job on an agent with an `instruction.initialPrompt` decoded
+            # with no prior context at all. The template-id lookup (a DB read) survives
+            # only for the deprecated pipeline path.
+            prompt_text = getattr(spec.inference, "initial_prompt_text", None)
+            initial_prompt: str | None = (
+                prompt_text if isinstance(prompt_text, str) and prompt_text else None
+            )
             initial_prompt_id = getattr(spec.inference, "initial_prompt", None)
-            if initial_prompt_id:
+            if initial_prompt is None and initial_prompt_id:
                 initial_prompt = await get_initial_prompt(initial_prompt_id)
                 if initial_prompt:
                     logger.info(

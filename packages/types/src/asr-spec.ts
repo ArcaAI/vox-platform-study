@@ -54,6 +54,24 @@ export const ASR_SPEC_ROLE_TASK_TYPE: Readonly<Record<AsrSpecModelRole, string>>
   endpointing: 'TEXT_CLASSIFICATION',
 });
 
+/**
+ * The `AiModel._metadata` slice that travels with a model on the ASR wire.
+ *
+ * TASK-880 — `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` were
+ * platform-wide numbers describing ONE engine's decode geometry, applied to every session
+ * whatever engine served it. They are model-coupled facts, so they ride the row: the
+ * fallback chain now gets its own window rather than inheriting the primary's.
+ *
+ * OPTIONAL on the wire with the omit-when-absent rule (`_Wire.OPTIONAL_FIELDS` on the
+ * Python half): absent means the row declared nothing and the runtime's own default stands.
+ */
+export interface AsrSpecModelMetadata {
+  /** Longest audio fed to the engine in ONE decode, seconds. */
+  maxDecodeWindowSec?: number | null;
+  /** Tail window of the live utterance decoded for PARTIALs, seconds. */
+  partialWindowSec?: number | null;
+}
+
 /** One resolved registry row — the fields `apps/stt`'s `AiModelConfig` consumes. */
 export interface AsrSpecModel {
   role: AsrSpecModelRole;
@@ -70,6 +88,8 @@ export interface AsrSpecModel {
   provider: string | null;
   /** The tenant that OWNS the registry row (SYSTEM for the platform catalogue). */
   tenantId: string;
+  /** TASK-880 — the row's own decode geometry. OMITTED (never `null`) when it declares none. */
+  metadata?: AsrSpecModelMetadata;
 }
 
 export interface AsrSpecModels {
