@@ -103,8 +103,26 @@ docker_check required hope-redis-test
 docker_check required hope-minio-test
 docker_check required hope-qdrant-test
 docker_check required hope-vault-test
+docker_check required hope-temporal-test
 
 echo -e "${CYAN}── Test infrastructure health ───────────────────────────────────${NC}"
+# Temporal (TASK-869) — the harness durable workflows need it, and a server with
+# schemas is not yet usable: the `default` namespace and the `HarnessTenantId`
+# search attribute are registered by hope-temporal-init-test. Report BOTH, because
+# a missing attribute does not error — the harness degrades to memo-only and the
+# job silently sits at PENDING.
+if nc -z localhost "${TEST_TEMPORAL_PORT:-7333}" 2>/dev/null; then
+    pass "temporal (test)" "localhost:${TEST_TEMPORAL_PORT:-7333} accepting connections"
+    temporal_init_status=$(docker inspect hope-temporal-init-test --format='{{.State.ExitCode}}' 2>/dev/null || echo "missing")
+    if [ "$temporal_init_status" = "0" ]; then
+        pass "temporal namespace + search attributes" "hope-temporal-init-test completed"
+    else
+        fail "temporal namespace + search attributes" "hope-temporal-init-test exit=$temporal_init_status — harness workflows will stall at PENDING"
+    fi
+else
+    fail "temporal (test)" "localhost:${TEST_TEMPORAL_PORT:-7333} not ready — 'pnpm infra:test:up'"
+fi
+
 if docker exec hope-postgres-test pg_isready -U test -d hope_test >/dev/null 2>&1; then
     pass "postgres (test)" "localhost:$TEST_PG_PORT accepting connections"
 else
