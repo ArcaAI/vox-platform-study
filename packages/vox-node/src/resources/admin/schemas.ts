@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 381 component schemas the generated surface transitively
+ * Only the 378 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -3242,50 +3242,6 @@ export interface PinDocumentTemplateVersionRequest {
   versionNumber: number;
 }
 
-export interface PipelinePolicyEffectiveResponse {
-  /** Resolved auto-NER toggle. */
-  autoNerEnabled: boolean;
-  /** Resolved auto-summary toggle. */
-  autoSummaryEnabled: boolean;
-  /** Department included in the resolution (if any). */
-  departmentId?: string | null;
-  /** Resolved per-doctor DNA writing-style toggle (read-only this phase). */
-  dnaStyleEnabled: boolean;
-  /** Doctor included in the resolution (if any). */
-  doctorId?: string | null;
-  /** Resolved harness-vs-legacy routing toggle. */
-  harnessEnabled: boolean;
-  /** Tenant the cascade resolved for. */
-  tenantId: string;
-  /** Per-toggle resolution trace (which cascade tier supplied each value). */
-  trace: Record<string, unknown>;
-}
-
-export interface PipelinePolicyResponse {
-  /** Auto-NER toggle (null = inherit). */
-  autoNerEnabled?: boolean | null;
-  /** Auto-summary toggle (null = inherit). */
-  autoSummaryEnabled?: boolean | null;
-  /** Per-doctor DNA writing-style toggle (null = inherit). Doctor-scope storage. */
-  dnaStyleEnabled?: boolean | null;
-  /** Harness-vs-legacy routing toggle (null = inherit). Max scope: department. */
-  harnessEnabled?: boolean | null;
-  /** Policy row id (null when source is `code-default`). */
-  id?: string | null;
-  /** Cascade tier of this row. */
-  scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
-  /** Scope discriminator (departmentId / userId; null for TENANT scope). */
-  scopeId?: string | null;
-  /** Where this row was resolved from. */
-  source: string;
-  /** Owning tenant id (SYSTEM tenant for the platform default). */
-  tenantId: string;
-  /** Last update timestamp (ISO-8601; null for code-default). */
-  updatedAt?: string | null;
-  /** Row version for optimistic concurrency. Echo as `If-Match: "<version>"` on PATCH. */
-  version: number;
-}
-
 export interface PipelineResponse {
   /** Pipeline configuration in YAML format */
   configYaml: string;
@@ -4376,7 +4332,7 @@ export interface SettingCatalogItemResponse {
   floorDirection?: string;
   /** True = SUPER_ADMIN-only surface. */
   globalOnly?: boolean;
-  /** Canonical dotted key, e.g. pipeline.autoSummaryEnabled. */
+  /** Canonical dotted key, e.g. rateLimit.maxRequests. */
   key: string;
   /** True = a kill-switch whose safe position is OFF. */
   killSwitch?: boolean;
@@ -4827,7 +4783,7 @@ export interface TestPromptTemplateRequest {
   goldenCaseId?: string;
   /** Caller-selected LLM model, forwarded to TEXT verbatim (must be paired with `provider`). */
   model?: string;
-  /** Caller-selected LLM provider, forwarded to TEXT verbatim (must be paired with `model`). Omit both to resolve the `text.test` AiTaskDefault (tenant row → SYSTEM row). */
+  /** Caller-selected LLM provider, forwarded to TEXT verbatim (must be paired with `model`). Omit both to resolve the assigned TEXT_GENERATION agent (tenant → department → SYSTEM). */
   provider?: string;
   /** Optional extra sample input appended to the prompt. Mutually exclusive with `goldenCaseId`. */
   sampleInput?: string;
@@ -5427,19 +5383,6 @@ export interface UpdateNotificationRequest {
   title?: string;
   /** Type of notification */
   type?: string;
-}
-
-export interface UpdatePipelinePolicyRequest {
-  /** Auto-NER toggle (null = clear/inherit). */
-  autoNerEnabled?: boolean | null;
-  /** Auto-summary toggle (null = clear/inherit). */
-  autoSummaryEnabled?: boolean | null;
-  /** Current row version (from the prior GET). PATCH fails 412 if it drifted. */
-  expectedVersion?: number;
-  /** Harness-vs-legacy routing toggle (null = clear/inherit). Max scope: department. */
-  harnessEnabled?: boolean | null;
-  /** Free-text reason for the edit, recorded on the WORM change row. */
-  reason?: string;
 }
 
 export interface UpdatePipelineRequest {

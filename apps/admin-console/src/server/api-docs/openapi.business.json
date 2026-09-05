@@ -12500,121 +12500,6 @@
         ],
         "type": "object"
       },
-      "PipelinePolicyEffectiveResponse": {
-        "properties": {
-          "autoNerEnabled": {
-            "description": "Resolved auto-NER toggle.",
-            "type": "boolean"
-          },
-          "autoSummaryEnabled": {
-            "description": "Resolved auto-summary toggle.",
-            "type": "boolean"
-          },
-          "departmentId": {
-            "description": "Department included in the resolution (if any).",
-            "nullable": true,
-            "type": "string"
-          },
-          "dnaStyleEnabled": {
-            "description": "Resolved per-doctor DNA writing-style toggle (read-only this phase).",
-            "type": "boolean"
-          },
-          "doctorId": {
-            "description": "Doctor included in the resolution (if any).",
-            "nullable": true,
-            "type": "string"
-          },
-          "harnessEnabled": {
-            "description": "Resolved harness-vs-legacy routing toggle.",
-            "type": "boolean"
-          },
-          "tenantId": {
-            "description": "Tenant the cascade resolved for.",
-            "type": "string"
-          },
-          "trace": {
-            "description": "Per-toggle resolution trace (which cascade tier supplied each value).",
-            "type": "object"
-          }
-        },
-        "required": [
-          "tenantId",
-          "autoSummaryEnabled",
-          "autoNerEnabled",
-          "harnessEnabled",
-          "dnaStyleEnabled",
-          "trace"
-        ],
-        "type": "object"
-      },
-      "PipelinePolicyResponse": {
-        "properties": {
-          "autoNerEnabled": {
-            "description": "Auto-NER toggle (null = inherit).",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "autoSummaryEnabled": {
-            "description": "Auto-summary toggle (null = inherit).",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "dnaStyleEnabled": {
-            "description": "Per-doctor DNA writing-style toggle (null = inherit). Doctor-scope storage.",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "harnessEnabled": {
-            "description": "Harness-vs-legacy routing toggle (null = inherit). Max scope: department.",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "id": {
-            "description": "Policy row id (null when source is `code-default`).",
-            "nullable": true,
-            "type": "string"
-          },
-          "scope": {
-            "description": "Cascade tier of this row.",
-            "enum": [
-              "TENANT",
-              "DEPARTMENT",
-              "DOCTOR"
-            ],
-            "type": "string"
-          },
-          "scopeId": {
-            "description": "Scope discriminator (departmentId / userId; null for TENANT scope).",
-            "nullable": true,
-            "type": "string"
-          },
-          "source": {
-            "description": "Where this row was resolved from.",
-            "type": "string"
-          },
-          "tenantId": {
-            "description": "Owning tenant id (SYSTEM tenant for the platform default).",
-            "type": "string"
-          },
-          "updatedAt": {
-            "description": "Last update timestamp (ISO-8601; null for code-default).",
-            "nullable": true,
-            "type": "string"
-          },
-          "version": {
-            "description": "Row version for optimistic concurrency. Echo as `If-Match: \"<version>\"` on PATCH.",
-            "example": 1,
-            "type": "number"
-          }
-        },
-        "required": [
-          "tenantId",
-          "scope",
-          "source",
-          "version"
-        ],
-        "type": "object"
-      },
       "PipelineResponse": {
         "properties": {
           "configYaml": {
@@ -16650,7 +16535,7 @@
           },
           "editableBy": {
             "description": "CASL subject that gates who may edit it.",
-            "example": "PipelinePolicy",
+            "example": "GlobalSetting",
             "type": "string"
           },
           "failMode": {
@@ -16668,7 +16553,7 @@
             "type": "boolean"
           },
           "key": {
-            "description": "Canonical dotted key, e.g. pipeline.autoSummaryEnabled.",
+            "description": "Canonical dotted key, e.g. rateLimit.maxRequests.",
             "type": "string"
           },
           "killSwitch": {
@@ -18425,7 +18310,7 @@
             "type": "string"
           },
           "provider": {
-            "description": "Caller-selected LLM provider, forwarded to TEXT verbatim (must be paired with `model`). Omit both to resolve the `text.test` AiTaskDefault (tenant row → SYSTEM row).",
+            "description": "Caller-selected LLM provider, forwarded to TEXT verbatim (must be paired with `model`). Omit both to resolve the assigned TEXT_GENERATION agent (tenant → department → SYSTEM).",
             "example": "lm-studio",
             "type": "string"
           },
@@ -20231,35 +20116,6 @@
           },
           "type": {
             "description": "Type of notification",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "UpdatePipelinePolicyRequest": {
-        "properties": {
-          "autoNerEnabled": {
-            "description": "Auto-NER toggle (null = clear/inherit).",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "autoSummaryEnabled": {
-            "description": "Auto-summary toggle (null = clear/inherit).",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "expectedVersion": {
-            "description": "Current row version (from the prior GET). PATCH fails 412 if it drifted.",
-            "example": 1,
-            "type": "number"
-          },
-          "harnessEnabled": {
-            "description": "Harness-vs-legacy routing toggle (null = clear/inherit). Max scope: department.",
-            "nullable": true,
-            "type": "boolean"
-          },
-          "reason": {
-            "description": "Free-text reason for the edit, recorded on the WORM change row.",
             "type": "string"
           }
         },
@@ -30992,7 +30848,7 @@
         "x-hope-service-account-scopes": []
       },
       "put": {
-        "description": "Writes the DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` for the caller. `enabled: false` is an explicit opt-out, `enabled: null` clears the override (revert to the implicit opt-in). Optimistic concurrency is ENFORCED: `If-Match` (RFC 7232) is REQUIRED and overrides the body `expectedVersion`. `GET settings` answers `version: 0` while no DOCTOR-scope row exists, so the FIRST write echoes the create-intent validator `If-Match: \"0\"`. Drift is `412`; a missing header is `428`. The DNA learning processor honours the resulting opt-out on its next BATCH run.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Writes the caller doctor`s DNA preference (`UserSettings` `dna` / `styleEnabled`). `enabled: false` is an explicit opt-out, `enabled: null` clears the override (revert to the implicit opt-in). Optimistic concurrency is ENFORCED: `If-Match` (RFC 7232) is REQUIRED and overrides the body `expectedVersion`. `GET settings` answers `version: 0` while no DOCTOR-scope row exists, so the FIRST write echoes the create-intent validator `If-Match: \"0\"`. Drift is `412`; a missing header is `428`. The DNA learning processor honours the resulting opt-out on its next BATCH run.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "DnaWritingStyleController_setSettings",
         "parameters": [
           {
