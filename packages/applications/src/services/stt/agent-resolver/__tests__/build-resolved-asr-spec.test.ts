@@ -73,3 +73,67 @@ describe('buildResolvedAsrSpec — rules the fixture cannot show', () => {
     expect(spec.fallback.spec?.runtimeKey).toBe(fallbackAgent.agentVersionId);
   });
 });
+
+describe('buildResolvedAsrSpec — TASK-877 additive fields', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  /** `base` with `compiledConfig.parameters` merged — the shape TASK-876 names in the agent schema. */
+  const withParameters = (parameters: Record<string, unknown>): ResolvedAgent => ({
+    ...base,
+    compiledConfig: { ...base.compiledConfig, parameters: { ...(base.compiledConfig.parameters as object), ...parameters } },
+  });
+
+  it('maps the per-agent batch chunking the owner asked for (decision #9)', () => {
+    const spec = buildResolvedAsrSpec({ agent: withParameters({ decoding: { chunkLengthSec: 20, strideLengthSec: [5, 3] } }), fallbackAgent: null });
+    expect(spec.decoding.chunkLengthSec).toBe(20);
+    expect(spec.decoding.strideLengthSec).toEqual([5, 3]);
+  });
+
+  it('omits the chunking fields when the agent set none, so the batch path keeps the platform values', () => {
+    const spec = buildResolvedAsrSpec({ agent: withParameters({ decoding: {} }), fallbackAgent: null });
+    expect(spec.decoding).not.toHaveProperty('chunkLengthSec');
+    expect(spec.decoding).not.toHaveProperty('strideLengthSec');
+  });
+
+  it('rejects a malformed stride rather than emitting half a pair', () => {
+    // A one-element or non-numeric stride is no opinion — never a silently
+    // half-read `[left]` the runtime would then treat as authoritative.
+    for (const strideLengthSec of [[5], [5, 3, 1], ['5', '3'], 5, null]) {
+      const spec = buildResolvedAsrSpec({ agent: withParameters({ decoding: { strideLengthSec } }), fallbackAgent: null });
+      expect(spec.decoding).not.toHaveProperty('strideLengthSec');
+    }
+  });
+
+  it('maps the semantic-endpointing block that replaces stt.semanticEndpoint.*', () => {
+    const spec = buildResolvedAsrSpec({
+      agent: withParameters({ streaming: { endpointing: 'semantic', semantic: { minSilenceMs: 240, maxSilenceMs: 600, confidenceThreshold: 0.9, minWords: 5 } } }),
+      fallbackAgent: null,
+    });
+    expect(spec.streaming.endpointing).toBe('semantic');
+    expect(spec.streaming.semantic).toEqual({ minSilenceMs: 240, maxSilenceMs: 600, confidenceThreshold: 0.9, minWords: 5 });
+  });
+
+  it('omits an empty semantic block so "set nothing" has exactly one encoding', () => {
+    const spec = buildResolvedAsrSpec({ agent: withParameters({ streaming: { endpointing: 'semantic', semantic: {} } }), fallbackAgent: null });
+    expect(spec.streaming.endpointing).toBe('semantic');
+    expect(spec.streaming).not.toHaveProperty('semantic');
+  });
+
+  it('carries a partially-set semantic block, leaving the rest to the engine default', () => {
+    const spec = buildResolvedAsrSpec({ agent: withParameters({ streaming: { semantic: { minWords: 5 } } }), fallbackAgent: null });
+    expect(spec.streaming.semantic).toEqual({ minSilenceMs: null, maxSilenceMs: null, confidenceThreshold: null, minWords: 5 });
+  });
+
+  it('resolves the end-of-utterance model from the agent chain, not a free-string platform key', () => {
+    const eou = { ...base.models[2], role: 'endpointing' as const, slug: 'smart-turn-v3' };
+    const spec = buildResolvedAsrSpec({ agent: { ...base, models: [...base.models, eou] }, fallbackAgent: null });
+    expect(spec.models.endpointing?.slug).toBe('smart-turn-v3');
+    expect(spec.models.endpointing?.taskType).toBe('TEXT_CLASSIFICATION');
+    // The fallback chain runs the same front end, so it inherits the same EOU model.
+    expect(spec.fallback.spec?.models.endpointing?.slug).toBe('smart-turn-v3');
+  });
+
+  it('omits the endpointing role entirely when the agent bound no EOU model', () => {
+    expect(buildResolvedAsrSpec({ agent: base, fallbackAgent: null }).models).not.toHaveProperty('endpointing');
+  });
+});

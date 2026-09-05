@@ -273,22 +273,25 @@ class TestCadenceFastFinalsOnly:
         mock_punctuate.assert_awaited_once_with("hello world", model_name="cadence-fast")
 
     @patch("stt.punctuation.service.punctuate")
-    async def test_global_default_model_selects_cadence_fast(self, mock_punctuate):
-        """punctuation.model: null + PUNCTUATION_MODEL_NAME=cadence-fast ⇒ selects cadence-fast."""
+    async def test_no_spec_model_means_no_cadence_fast_selection(self, mock_punctuate):
+        """TASK-877 — `punctuation.model: null` selects nothing.
+
+        This test was `test_global_default_model_selects_cadence_fast`: it pinned the
+        `PUNCTUATION_MODEL_NAME` settings fallback, which decided the model whenever
+        the spec named none. That key duplicated `models.punctuation.slug` and is
+        deleted, so an unbound model no longer resolves to `cadence-fast` and the
+        finals-only optimisation that name enables does not apply. The call still
+        reaches the service, which passes the text through (no model to load).
+        """
+        mock_punctuate.return_value = "hello world"
         cfg = MagicMock()
         cfg.enabled = True
         cfg.model = None
-        settings = MagicMock()
-        settings.punctuation_model_name = "cadence-fast"
-        settings.streaming_extra_filler_patterns = ""
+        worker = _make_worker(punctuation_config=cfg)
 
-        with patch("stt.core.config.settings.get_settings", return_value=settings):
-            worker = _make_worker(punctuation_config=cfg)
-
-        result = await worker._apply_punctuation("hello world", is_final=False)
-
-        assert result == "hello world"
-        mock_punctuate.assert_not_called()
+        assert worker._resolve_uses_cadence_fast() is False
+        assert await worker._apply_punctuation("hello world", is_final=False) == "hello world"
+        mock_punctuate.assert_awaited_once_with("hello world", model_name=None)
 
     @patch("stt.punctuation.service.punctuate")
     async def test_wrapper_model_name_keeps_legacy_partial_behavior(self, mock_punctuate):

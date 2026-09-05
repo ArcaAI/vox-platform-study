@@ -560,28 +560,19 @@ const KNOBS: Record<string, SttKnob> = {
   },
 
   // ── punctuation restoration (Cadence) ────────────────────────────────────
-  'stt.punctuation.enabled': {
-    dataType: 'boolean',
-    default: false,
-    label: 'Punctuation restoration enabled',
-    description:
-      'Cadence punctuation restoration at startup and runtime. Default OFF: the production Whisper ' +
-      'pipelines already emit punctuation and casing, so Cadence is redundant for them, and ' +
-      'cadence-punctuation 1.1.0 cannot load under the pinned transformers 5.x. Enable only with a ' +
-      "combination known to load — an Indic path on transformers <5, or the direct-load 'cadence-fast'.",
-    category: 'STT Transcription',
-    killSwitch: true,
-  },
-  'stt.punctuation.modelName': {
-    dataType: 'string',
-    default: 'Cadence',
-    label: 'Punctuation model',
-    description:
-      "'Cadence' (1B) or 'Cadence-Fast' (270M) through the cadence-punctuation wrapper, or " +
-      "'cadence-fast' for the direct transformers load (the only one that works under transformers 5.x). " +
-      'A pipeline YAML may override it per pipeline.',
-    category: 'STT Transcription',
-  },
+  // TASK-877 removed `stt.punctuation.enabled` and `stt.punctuation.modelName`.
+  // The first was a boot gate that returned early and so VETOED
+  // `postProcessing.punctuation.enabled` on every agent's spec (and defaulted OFF,
+  // meaning punctuation was globally unreachable); the second duplicated
+  // `models.punctuation.slug`. Both are agent decisions now.
+  //
+  // The kill-switch is not needed to contain the loader hazard it cited: only the
+  // legacy `cadence` wrapper fails under the pinned transformers 5.x (the exact name
+  // `cadence-fast` loads fine), and the service latches off after ONE failed load,
+  // degrading to passthrough with a single warning.
+  //
+  // The three below are KEPT: device placement, cache directory and window width
+  // describe the HOST, not the agent's behaviour.
   'stt.punctuation.modelCacheDir': {
     dataType: 'string',
     default: '',
