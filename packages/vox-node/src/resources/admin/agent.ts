@@ -13,10 +13,15 @@ import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
 import type {
   AgentAssignmentResponse,
+  AgentBundleResponse,
   AgentResponse,
+  AgentSyncResponse,
+  CloneAgentRequest,
   CreateAgentRequest,
+  ImportAgentRequest,
   NewAgentVersionRequest,
   PublishAgentRequest,
+  SyncAgentRequest,
   UpdateAgentRequest,
   UpsertAgentAssignmentRequest,
 } from './schemas';
@@ -29,7 +34,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers AgentAdminController, AgentAssignmentAdminController
- * (15 routes). Several controllers sharing one scope share one
+ * (19 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -272,6 +277,74 @@ export class AdminAgentResource extends AdminResource {
     return this.request<AgentResponse>({
       method: 'POST',
       path: `admin/agents/${encodePathSegment(String(id))}/versions`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Clone a SYSTEM template or any visible agent into a NEW lineage
+   *
+   * Creates a DRAFT under `newSlug`, copying the source’s configuration and recording where it came from. Reusing the source slug in the same tenant is refused — that would be a new VERSION, which `POST {id}/versions` already is. A same-tenant clone keeps every binding, eval gate included; a clone into ANOTHER tenant (SUPER_ADMIN only) re-resolves the model by slug there and refuses a tenant-owned template or MCP binding rather than writing one the target cannot read.
+   *
+   * `POST /api/v1/admin/agents/{slug}/clone` — `AgentAdminController.clone`.
+   */
+  clone(slug: string, body: CloneAgentRequest, options: AdminRequestOptions = {}): Promise<AgentResponse> {
+    return this.request<AgentResponse>({
+      method: 'POST',
+      path: `admin/agents/${encodePathSegment(String(slug))}/clone`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Export one agent version as a portable JSON bundle
+   *
+   * Values only. Models are named by registry SLUG, the bound prompt template by a re-resolvable reference, and every server-owned column (ids, tenant, status, compiledConfig) is absent. An agent carries no credential in the first place, so there is nothing to strip — which is why this file is safe to hand to a person. The eval gate is NOT exported (it points at a corpus of encrypted patient data) and `payload.notes` says so.
+   *
+   * `GET /api/v1/admin/agents/{slug}/export` — `AgentAdminController.exportBySlug`.
+   */
+  exportBySlug(slug: string, options: AdminRequestOptions & { query?: { versionNumber?: number } } = {}): Promise<AgentBundleResponse> {
+    return this.request<AgentBundleResponse>({
+      method: 'GET',
+      path: `admin/agents/${encodePathSegment(String(slug))}/export`,
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Push one of the caller’s own agents into other tenants the caller manages
+   *
+   * For an administrator who manages several tenants. Every target gets a DRAFT of the same version, in ONE transaction — either all of them received it or none did. The source must be the caller’s OWN agent (a SYSTEM template is already visible everywhere), and only SYSTEM-owned prompt-template and MCP bindings cross the boundary. This is NOT the Global → SYSTEM promotion path, which stays with `POST /admin/agent-promotions`.
+   *
+   * `POST /api/v1/admin/agents/{slug}/sync` — `AgentAdminController.sync`.
+   */
+  sync(slug: string, body: SyncAgentRequest, options: AdminRequestOptions = {}): Promise<AgentSyncResponse> {
+    return this.request<AgentSyncResponse>({
+      method: 'POST',
+      path: `admin/agents/${encodePathSegment(String(slug))}/sync`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Import an exported agent bundle as a DRAFT in the caller tenant
+   *
+   * Validates the bundle ENVELOPE (kind / schemaVersion / source) and then its agent payload, and only then re-resolves every reference against what THIS tenant can see: the model by slug, the bound prompt template by name (a SYSTEM template keeps its id and its version pin; a tenant one is re-resolved and the pin dropped, because version lineages are per-tenant), and each MCP tool binding. Anything unresolvable is a 409 that names it — never a silently dropped binding. A bundle from a newer platform is refused outright rather than partially applied. The import always lands a DRAFT this tenant validates and publishes itself.
+   *
+   * `POST /api/v1/admin/agents/import` — `AgentAdminController.importBundle`.
+   */
+  importBundle(body: ImportAgentRequest, options: AdminRequestOptions = {}): Promise<AgentResponse> {
+    return this.request<AgentResponse>({
+      method: 'POST',
+      path: 'admin/agents/import',
       body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,

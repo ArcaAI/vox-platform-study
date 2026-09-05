@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 381 component schemas the generated surface transitively
+ * Only the 388 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -36,10 +36,30 @@ export interface AgentAssignmentResponse {
   id: string;
   scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
   scopeId?: string | null;
+  /** TASK-884 — the canonical `key:value` selector qualifying this assignment; empty = the tier’s unqualified row. */
+  selectorTags: string[];
   task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
   tenantId: string;
   /** ISO timestamp */
   updatedAt: string;
+  version: number;
+}
+
+export interface AgentBundleResponse {
+  /** ISO timestamp */
+  exportedAt: string;
+  kind: string;
+  /** Values only: model references by slug, no credential, no server-owned column. */
+  payload: Record<string, unknown>;
+  /** Envelope version. A bundle newer than the importer is refused, never partially applied. */
+  schemaVersion: number;
+  source: AgentBundleSourceResponse;
+}
+
+export interface AgentBundleSourceResponse {
+  slug: string;
+  /** The TIER the bundle came from — never a tenant id. */
+  tenantKind: 'system' | 'global' | 'tenant';
   version: number;
 }
 
@@ -116,6 +136,14 @@ export interface AgentResponse {
   publishedAt?: string | null;
   resourceStatus: string;
   slug: string;
+  /** TASK-884 — the agent version this row was CLONED or SYNCED from (a different lineage, possibly another tenant). */
+  sourceAgentId?: string | null;
+  /** The clone source’s lineage slug. */
+  sourceSlug?: string | null;
+  /** The tenant that owned the clone source. */
+  sourceTenantId?: string | null;
+  /** The clone source’s version number. */
+  sourceVersionNumber?: number | null;
   status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
   tags: string[];
   task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
@@ -128,6 +156,22 @@ export interface AgentResponse {
   validationReport?: AgentValidationReportResponse;
   version: number;
   versionNumber: number;
+}
+
+export interface AgentSyncResponse {
+  sourceSlug: string;
+  sourceVersionNumber: number;
+  targets: AgentSyncTargetResponse[];
+}
+
+export interface AgentSyncTargetResponse {
+  /** The DRAFT agent version created in that tenant. */
+  agentId: string;
+  slug: string;
+  tenantId: string;
+  versionNumber: number;
+  /** What could not be carried across (a stripped eval gate, a re-resolved template). */
+  warnings?: string[];
 }
 
 export interface AgentTrajectorySessionResponse {
@@ -619,6 +663,21 @@ export interface CleanQueueResponse {
   count: number;
   /** Ids of the removed jobs. */
   removedJobIds: string[];
+}
+
+export interface CloneAgentRequest {
+  /** Description for the clone; defaults to the source’s. */
+  description?: string;
+  /** Name for the clone; defaults to the source’s name with a “(copy)” suffix. */
+  name?: string;
+  /** The slug of the new lineage the clone starts. */
+  newSlug: string;
+  /** Clone this exact source version rather than the ACTIVE PUBLISHED one. */
+  sourceVersionNumber?: number;
+  /** Replace the source’s tags. `key:value` pairs; a bare key is refused. */
+  tags?: string[];
+  /** SUPER_ADMIN only: land the clone in this tenant instead of the caller’s working tenant. A tenant admin that supplies it is refused 403. */
+  tenantId?: string;
 }
 
 export interface ClonePipelineRequest {
@@ -2310,6 +2369,15 @@ export interface HarnessPolicyResponse {
   version: number;
   /** Warm-start toggle (null = harness env default). */
   warmStartEnabled?: boolean | null;
+}
+
+export interface ImportAgentRequest {
+  /** The exported bundle, exactly as `GET /admin/agents/{slug}/export` produced it. */
+  bundle: Record<string, unknown>;
+  /** Override the imported agent’s name. */
+  name?: string;
+  /** Land the import under this slug instead of the bundle’s (e.g. when the bundle’s slug is already taken). */
+  slug?: string;
 }
 
 export interface ImportWorkflowDefinitionRequest {
@@ -4460,6 +4528,15 @@ export interface SupersedeSellRateRequest {
   unitPriceMicros: string;
 }
 
+export interface SyncAgentRequest {
+  /** Recorded on the sys-event for the audit trail. */
+  reason?: string;
+  /** Sync this exact version rather than the ACTIVE PUBLISHED one. */
+  sourceVersionNumber?: number;
+  /** The tenants to push this agent into. The caller must hold manage:Agent in every one of them. */
+  targetTenantIds: string[];
+}
+
 export interface SyncDirectoryUsersResponse {
   /** BullMQ job id for this directory sync run */
   jobId: string;
@@ -5702,6 +5779,8 @@ export interface UpsertAgentAssignmentRequest {
   scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
   /** The department id for a DEPARTMENT-scope assignment; omitted (or null) for TENANT scope. */
   scopeId?: string;
+  /** TASK-884 — the optional `key:value` tag selector this assignment is qualified by, e.g. `["specialty:rheumatology"]`. A tier may hold one row per selector plus one unqualified row; resolution tries the most specific MATCHING selector first and the unqualified row last. Omitted (or empty) = the tier’s unqualified assignment. A bare key is refused. The selector identifies the row: changing it addresses a DIFFERENT assignment, it does not re-tag this one. */
+  selectorTags?: string[];
   /** The agent task this assignment governs. */
   task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
 }

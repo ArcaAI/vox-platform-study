@@ -267,6 +267,13 @@
             "nullable": true,
             "type": "string"
           },
+          "selectorTags": {
+            "description": "TASK-884 — the canonical `key:value` selector qualifying this assignment; empty = the tier’s unqualified row.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "task": {
             "enum": [
               "SPEECH_TO_TEXT",
@@ -292,8 +299,66 @@
           "scope",
           "task",
           "agentSlug",
+          "selectorTags",
           "createdAt",
           "updatedAt",
+          "version"
+        ],
+        "type": "object"
+      },
+      "AgentBundleResponse": {
+        "properties": {
+          "exportedAt": {
+            "description": "ISO timestamp",
+            "type": "string"
+          },
+          "kind": {
+            "example": "agent",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "Values only: model references by slug, no credential, no server-owned column.",
+            "type": "object"
+          },
+          "schemaVersion": {
+            "description": "Envelope version. A bundle newer than the importer is refused, never partially applied.",
+            "type": "number"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AgentBundleSourceResponse"
+          }
+        },
+        "required": [
+          "kind",
+          "schemaVersion",
+          "exportedAt",
+          "source",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "AgentBundleSourceResponse": {
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "tenantKind": {
+            "description": "The TIER the bundle came from — never a tenant id.",
+            "enum": [
+              "system",
+              "global",
+              "tenant"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantKind",
+          "slug",
           "version"
         ],
         "type": "object"
@@ -523,6 +588,26 @@
           "slug": {
             "type": "string"
           },
+          "sourceAgentId": {
+            "description": "TASK-884 — the agent version this row was CLONED or SYNCED from (a different lineage, possibly another tenant).",
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceSlug": {
+            "description": "The clone source’s lineage slug.",
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceTenantId": {
+            "description": "The tenant that owned the clone source.",
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "description": "The clone source’s version number.",
+            "nullable": true,
+            "type": "number"
+          },
           "status": {
             "enum": [
               "DRAFT",
@@ -674,6 +759,59 @@
           "inputSchema",
           "outputSchema",
           "protocols"
+        ],
+        "type": "object"
+      },
+      "AgentSyncResponse": {
+        "properties": {
+          "sourceSlug": {
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "type": "number"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/AgentSyncTargetResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sourceSlug",
+          "sourceVersionNumber",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "AgentSyncTargetResponse": {
+        "properties": {
+          "agentId": {
+            "description": "The DRAFT agent version created in that tenant.",
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          },
+          "warnings": {
+            "description": "What could not be carried across (a stripped eval gate, a re-resolved template).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tenantId",
+          "agentId",
+          "slug",
+          "versionNumber"
         ],
         "type": "object"
       },
@@ -2920,6 +3058,42 @@
         "required": [
           "removedJobIds",
           "count"
+        ],
+        "type": "object"
+      },
+      "CloneAgentRequest": {
+        "properties": {
+          "description": {
+            "description": "Description for the clone; defaults to the source’s.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name for the clone; defaults to the source’s name with a “(copy)” suffix.",
+            "type": "string"
+          },
+          "newSlug": {
+            "description": "The slug of the new lineage the clone starts.",
+            "example": "clinic-summarizer-rheum",
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "description": "Clone this exact source version rather than the ACTIVE PUBLISHED one.",
+            "type": "number"
+          },
+          "tags": {
+            "description": "Replace the source’s tags. `key:value` pairs; a bare key is refused.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenantId": {
+            "description": "SUPER_ADMIN only: land the clone in this tenant instead of the caller’s working tenant. A tenant admin that supplies it is refused 403.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "newSlug"
         ],
         "type": "object"
       },
@@ -9203,6 +9377,27 @@
           "email",
           "roles",
           "permissions"
+        ],
+        "type": "object"
+      },
+      "ImportAgentRequest": {
+        "properties": {
+          "bundle": {
+            "additionalProperties": true,
+            "description": "The exported bundle, exactly as `GET /admin/agents/{slug}/export` produced it.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Override the imported agent’s name.",
+            "type": "string"
+          },
+          "slug": {
+            "description": "Land the import under this slug instead of the bundle’s (e.g. when the bundle’s slug is already taken).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle"
         ],
         "type": "object"
       },
@@ -17341,6 +17536,29 @@
         ],
         "type": "object"
       },
+      "SyncAgentRequest": {
+        "properties": {
+          "reason": {
+            "description": "Recorded on the sys-event for the audit trail.",
+            "type": "string"
+          },
+          "sourceVersionNumber": {
+            "description": "Sync this exact version rather than the ACTIVE PUBLISHED one.",
+            "type": "number"
+          },
+          "targetTenantIds": {
+            "description": "The tenants to push this agent into. The caller must hold manage:Agent in every one of them.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "targetTenantIds"
+        ],
+        "type": "object"
+      },
       "SyncDirectoryUsersResponse": {
         "properties": {
           "jobId": {
@@ -21082,6 +21300,13 @@
           "scopeId": {
             "description": "The department id for a DEPARTMENT-scope assignment; omitted (or null) for TENANT scope.",
             "type": "string"
+          },
+          "selectorTags": {
+            "description": "TASK-884 — the optional `key:value` tag selector this assignment is qualified by, e.g. `[\"specialty:rheumatology\"]`. A tier may hold one row per selector plus one unqualified row; resolution tries the most specific MATCHING selector first and the unqualified row last. Omitted (or empty) = the tier’s unqualified assignment. A bare key is refused. The selector identifies the row: changing it addresses a DIFFERENT assignment, it does not re-tag this one.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "task": {
             "description": "The agent task this assignment governs.",
