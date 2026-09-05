@@ -107,7 +107,19 @@ export type AsrSpecEndpointing = 'fixed' | 'semantic';
 
 /** §3.2 `audioFrontEnd` — replaces `models.vad/denoise/embedding` + `preprocessing.*`. */
 export interface AsrSpecAudioFrontEnd {
-  vad: { enabled: boolean; threshold: number | null; minSpeechMs: number | null; minSilenceMs: number | null };
+  vad: {
+    enabled: boolean;
+    threshold: number | null;
+    minSpeechMs: number | null;
+    minSilenceMs: number | null;
+    /**
+     * TASK-880 — padding applied to BOTH ends of a detected segment, ms. Replaces the
+     * platform key `stt.vad.speechPadMs`. OPTIONAL on the wire with the omit-when-absent
+     * rule (the three siblings above predate it and stay required-but-nullable): absent
+     * means the agent said nothing and `VadConfig.padding_ms` stands.
+     */
+    speechPadMs?: number | null;
+  };
   denoise: { enabled: boolean; level: AsrSpecDenoiseLevel };
   diarization: { enabled: boolean; backend: AsrSpecDiarizationBackend; maxSpeakers: number | null };
   resample: boolean;

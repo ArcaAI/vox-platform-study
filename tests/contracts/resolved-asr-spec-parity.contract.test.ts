@@ -98,6 +98,15 @@ describe('ResolvedAsrSpec parity — producer half', () => {
     expect((fixture.cloudWithAgentFallback as FixtureCase).expected.models.asr).not.toHaveProperty('metadata');
   });
 
+  it('carries the agent-owned VAD padding, and omits it when the agent set none (TASK-880)', () => {
+    // `stt.vad.speechPadMs` was a platform number beside three knobs the agent already
+    // owned (`threshold`, `minSpeechMs`, `minSilenceMs`). It is the fourth now, and it
+    // follows the omit-when-absent rule the other TASK-877/880 additions use.
+    expect((fixture.agentOwnedStreamingBehaviour as FixtureCase).expected.audioFrontEnd.vad.speechPadMs).toBe(320);
+    expect((fixture.platformDefault as FixtureCase).expected.audioFrontEnd.vad).not.toHaveProperty('speechPadMs');
+    expect((fixture.cloudWithAgentFallback as FixtureCase).expected.audioFrontEnd.vad).not.toHaveProperty('speechPadMs');
+  });
+
   it('carries no credential material anywhere', () => {
     const json = JSON.stringify(fixture);
     // The INPUT deliberately carries a provider override; the EXPECTED specs must not.

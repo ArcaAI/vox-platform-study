@@ -124,14 +124,13 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     # consultation lines, while WHAT prior context a decode gets is the agent's
     # `instruction.initialPrompt` — which already reached the adapter by another route.
     # ── VAD (Silero v5) ──────────────────────────────────────────────────────
-    "vad_model_path": "stt.vad.modelPath",
-    # `vad_threshold`, `vad_min_speech_duration_ms` and
-    # `vad_min_silence_duration_ms` were mapped here until TASK-872. Their
-    # descriptors are gone: the live path is fed by `ResolvedAsrSpec`, which
-    # carries its own VAD parameters, so a control-plane value could only move a
-    # bootstrap default the spec then overrode. The FIELDS stay — they are that
-    # bootstrap default — but the control plane no longer pretends to own them.
-    "vad_speech_pad_ms": "stt.vad.speechPadMs",
+    # NOTHING is mapped here any more. `vad_threshold`, `vad_min_speech_duration_ms`
+    # and `vad_min_silence_duration_ms` lost their descriptors in TASK-872 (the live
+    # path is fed by `ResolvedAsrSpec`, which carries its own VAD parameters); their
+    # FIELDS stay as the bootstrap default. TASK-880 took the last two outright:
+    # `vad_model_path` (the weights are the `AiModel` row the spec already carries as
+    # `models.vad.localPath`) and `vad_speech_pad_ms` (an agent tuning knob beside the
+    # three above it, now `audioFrontEnd.vad.speechPadMs`).
     # ── diarization / voice profiles ─────────────────────────────────────────
     "diarization_hf_model_id": "stt.diarization.hfModelId",
     "diarization_device": "stt.diarization.device",

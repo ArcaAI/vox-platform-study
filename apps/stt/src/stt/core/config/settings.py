@@ -470,12 +470,12 @@ class Settings(BaseSettings):
     # prompt belongs to the AGENT (`instruction.initialPrompt`, which already reached the
     # adapter through `compose_prompt`). Neither is a property of this process.
 
-    # VAD — Silero v5 ONNX
-    vad_model_path: str | None = Field(
-        validation_alias=moved_alias("vad_model_path"),
-        default=None,
-        description="Path to Silero VAD ONNX model (auto-downloaded if None)",
-    )
+    # VAD — Silero v5 ONNX.
+    # TASK-880 — `vad_model_path` lived here. The weights are an `AiModel`
+    # (`VOICE_ACTIVITY_DETECTION`) row, and its `localPath` already travels on every
+    # session as `ResolvedAsrSpec.models.vad.localPath`; `get_vad_service` takes it from
+    # there and resolves from the HuggingFace cache when the row stages no local copy —
+    # which is what the deleted key's own default (empty = auto-download) did.
     vad_threshold: float = Field(
         validation_alias=moved_alias("vad_threshold"),
         default=0.5,
@@ -491,11 +491,9 @@ class Settings(BaseSettings):
         default=500,
         description="Minimum silence to end speech segment in ms",
     )
-    vad_speech_pad_ms: int = Field(
-        validation_alias=moved_alias("vad_speech_pad_ms"),
-        default=200,
-        description="Padding applied to both segment ends in ms (200 per production ASR guidance)",
-    )
+    # TASK-880 — `vad_speech_pad_ms` lived here. Padding is an AGENT tuning knob beside
+    # the three above it (`audioFrontEnd.vad.speechPadMs` -> `VadConfig.padding_ms`); a
+    # caller that passes nothing gets the dataclass default, not a per-process setting.
 
     # Diarization -- Pyannote embeddings
     diarization_hf_model_id: str = Field(

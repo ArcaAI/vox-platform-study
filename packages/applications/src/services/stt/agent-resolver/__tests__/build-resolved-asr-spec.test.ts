@@ -154,13 +154,23 @@ describe('buildResolvedAsrSpec — AiModel._metadata.asr rides each model', () =
     models: agent.models.map((m) => (m.role === role ? { ...m, metaData: { asr } } : m)),
   });
 
+  it('carries the agent-owned VAD padding onto audioFrontEnd.vad, omitted when unset', () => {
+    const withPad: ResolvedAgent = {
+      ...base,
+      compiledConfig: { ...base.compiledConfig, parameters: { ...(base.compiledConfig.parameters as object), audioFrontEnd: { vad: { speechPadMs: 320 } } } },
+    };
+    expect(buildResolvedAsrSpec({ agent: withPad, fallbackAgent: null }).audioFrontEnd.vad.speechPadMs).toBe(320);
+    expect(buildResolvedAsrSpec({ agent: base, fallbackAgent: null }).audioFrontEnd.vad).not.toHaveProperty('speechPadMs');
+  });
+
   it('surfaces the primary model’s asr metadata on models.asr.metadata', () => {
     const agent = withMeta(base, 'primary', { maxDecodeWindowSec: 7, partialWindowSec: 6 });
     expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).models.asr.metadata).toEqual({ maxDecodeWindowSec: 7, partialWindowSec: 6 });
   });
 
   it('OMITS metadata when the row declares none — the wire key must never appear as null', () => {
-    expect(buildResolvedAsrSpec({ agent: base, fallbackAgent: null }).models.asr).not.toHaveProperty('metadata');
+    const agent: ResolvedAgent = { ...base, models: base.models.map(({ metaData: _drop, ...m }) => m) };
+    expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).models.asr).not.toHaveProperty('metadata');
   });
 
   it('the fallback chain carries the FALLBACK row’s own window, not the primary’s', () => {

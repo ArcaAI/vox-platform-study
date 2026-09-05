@@ -178,10 +178,21 @@ class AsrSpecModels(_Wire):
 
 
 class AsrSpecVad(_Wire):
+    """TASK-880 — ``speech_pad_ms`` replaces the platform key ``stt.vad.speechPadMs``.
+
+    OPTIONAL (omit-when-absent, see :class:`_Wire`); the three fields above it predate
+    that rule and stay required-but-nullable. Absent means the agent expressed no
+    opinion and ``VadConfig.padding_ms`` — the one source of the engine default —
+    stands.
+    """
+
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"speech_pad_ms"})
+
     enabled: bool
     threshold: float | None
     min_speech_ms: int | None
     min_silence_ms: int | None
+    speech_pad_ms: int | None = None
 
 
 class AsrSpecDenoise(_Wire):
@@ -443,6 +454,8 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
         vad_kwargs["min_speech_duration_ms"] = afe.vad.min_speech_ms
     if afe.vad.min_silence_ms is not None:
         vad_kwargs["min_silence_duration_ms"] = afe.vad.min_silence_ms
+    if afe.vad.speech_pad_ms is not None:
+        vad_kwargs["padding_ms"] = afe.vad.speech_pad_ms
     denoise_kwargs: dict[str, object] = {"enabled": afe.denoise.enabled}
     if afe.denoise.level in _DENOISE_STRENGTH:
         denoise_kwargs["strength"] = _DENOISE_STRENGTH[afe.denoise.level]

@@ -133,8 +133,18 @@ function audioFrontEnd(parameters: Rec, models: AsrSpecModels): AsrSpecAudioFron
   const diarization = rec(afe.diarization);
   // A denoise model with no explicit level means "on, engine default strength".
   const level = oneOf(denoise.level, ['off', 'low', 'medium', 'high'] as const, models.denoise ? 'medium' : 'off');
+  // TASK-880 — `speechPadMs` replaces the platform key `stt.vad.speechPadMs`. OMITTED
+  // when the agent said nothing (the omit-when-absent rule the TASK-877 additions use),
+  // so `VadConfig.padding_ms` remains the one source of the engine default.
+  const speechPadMs = num(vad.speechPadMs);
   return {
-    vad: { enabled: true, threshold: num(vad.threshold), minSpeechMs: num(vad.minSpeechMs), minSilenceMs: num(vad.minSilenceMs) },
+    vad: {
+      enabled: true,
+      threshold: num(vad.threshold),
+      minSpeechMs: num(vad.minSpeechMs),
+      minSilenceMs: num(vad.minSilenceMs),
+      ...(speechPadMs !== null ? { speechPadMs } : {}),
+    },
     denoise: { enabled: level !== 'off', level },
     diarization: {
       enabled: bool(diarization.enabled, false),

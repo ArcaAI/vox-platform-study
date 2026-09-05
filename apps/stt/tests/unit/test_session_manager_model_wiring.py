@@ -196,7 +196,7 @@ class TestLoadVadService:
 
         with patch.dict(
             "sys.modules",
-            {"stt.vad.silero_service": MagicMock(get_vad_service=lambda: mock_vad)},
+            {"stt.vad.silero_service": MagicMock(get_vad_service=lambda **_: mock_vad)},
         ):
             result = await mgr._load_vad_service(config, "s-1")
 
@@ -214,7 +214,7 @@ class TestLoadVadService:
 
         with patch.dict(
             "sys.modules",
-            {"stt.vad.silero_service": MagicMock(get_vad_service=lambda: mock_vad)},
+            {"stt.vad.silero_service": MagicMock(get_vad_service=lambda **_: mock_vad)},
         ):
             result = await mgr._load_vad_service(config, "s-1")
 
