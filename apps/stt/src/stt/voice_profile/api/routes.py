@@ -1,7 +1,13 @@
 """Voice profile extraction endpoint.
 
-Internal endpoint called by the API Gateway. Accepts multiple audio samples,
-returns a 256d speaker embedding from the best one. No database writes.
+Internal endpoint called by the API Gateway. Accepts multiple audio samples and returns one
+speaker embedding. No database writes.
+
+TASK-887 — the gateway NAMES the model. Diarization is a declared ASR-agent option, so the
+agent the user is enrolling for decides which `SPEAKER_EMBEDDING` row embeds their voice, and
+the profile is stored in that model's space. There is no platform embedding model here to
+fall back on: a request that names none is refused rather than served from a space no agent
+would ever match against.
 """
 
 from __future__ import annotations
@@ -9,7 +15,7 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Form, HTTPException, UploadFile
 
 from stt.core.exceptions import AudioProcessingError
 from stt.transcription.audio_decode import decode_audio
@@ -26,23 +32,47 @@ router = APIRouter(prefix="/internal/voice-profile")
     status_code=200,
     responses={
         200: {"description": "Embedding extracted successfully"},
-        400: {"description": "Invalid audio samples"},
+        400: {"description": "Invalid audio samples, or no embedding model named"},
         503: {"description": "Embedding or VAD service not available"},
     },
 )
-async def extract_voice_embedding(files: list[UploadFile]) -> ExtractionResponse:
+async def extract_voice_embedding(
+    files: list[UploadFile],
+    model_slug: str = Form(
+        ...,
+        description=(
+            "The `AiModel` SLUG of the agent's speaker-embedding model. Stored verbatim as "
+            "`UserVoiceProfile.modelId`, and echoed back so the gateway persists the identity "
+            "it resolved."
+        ),
+    ),
+    model_source_uri: str = Form(
+        ..., description="That model's loader id (`sourceUri`) — what the embedding backend loads."
+    ),
+    min_similarity: float | None = Form(
+        default=None,
+        description=(
+            "The agent's `audioFrontEnd.diarization.matchThreshold`: the minimum pairwise "
+            "cosine similarity the samples must reach. Absent ⇒ the engine default."
+        ),
+    ),
+) -> ExtractionResponse:
     """Extract a speaker embedding from multiple uploaded audio samples."""
-    from stt.diarization.embedding_service import get_embedding_service
+    from stt.diarization.embedding_service import create_embedding_service
     from stt.vad.silero_service import get_vad_service
     from stt.voice_profile.extraction_service import ExtractionService
 
-    # Lazy load on first use (no eager boot init); a load failure
-    # still surfaces as 503 "not available".
-    embedding_service = get_embedding_service()
+    # One service per request, for the model the gateway named. Enrollment is rare and the
+    # model is per-agent, so a cache here would key on the same thing the session manager
+    # already caches and would outlive the agent revision that chose it.
+    embedding_service = create_embedding_service(hf_model_id=model_source_uri)
     try:
         await embedding_service.initialize()
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="Embedding service not available") from exc
+        raise HTTPException(
+            status_code=503,
+            detail=f"Embedding model '{model_slug}' is not available",
+        ) from exc
 
     vad_service = get_vad_service()
     try:
@@ -87,6 +117,7 @@ async def extract_voice_embedding(files: list[UploadFile]) -> ExtractionResponse
     extraction_service = ExtractionService(
         embedding_service=embedding_service,
         vad_service=vad_service,
+        min_cross_sample_similarity=min_similarity,
     )
 
     try:
@@ -97,4 +128,5 @@ async def extract_voice_embedding(files: list[UploadFile]) -> ExtractionResponse
     return ExtractionResponse(
         embedding=result.embedding,
         model_id=result.model_id,
+        model_slug=model_slug,
     )

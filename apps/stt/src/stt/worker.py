@@ -100,15 +100,10 @@ async def initialize_services() -> None:
     except Exception as e:
         logger.warning(f"VAD service initialization failed (non-fatal): {e}")
 
-    # --- Diarization: pyannote embedding model (heavier, optional) ---
-    try:
-        from stt.diarization.embedding_service import get_embedding_service
-
-        embedding_service = get_embedding_service()
-        await embedding_service.initialize()
-        logger.info("Pyannote embedding service initialized")
-    except Exception as e:
-        logger.warning(f"Diarization service initialization failed (non-fatal): {e}")
+    # Diarization is NOT warmed at boot either (TASK-887): the speaker-embedding model
+    # to load comes from the job's ResolvedAsrSpec (`models.embedding`), declared by the
+    # ASR agent, so there is nothing to warm until a job has been resolved. The batch
+    # service builds the service per job, exactly like punctuation below.
 
     # Punctuation is NOT warmed at boot: the model to load comes from a session's
     # ResolvedAsrSpec (models.punctuation), which does not exist until an agent has
@@ -143,14 +138,6 @@ async def cleanup_services() -> None:
         await get_vad_service().shutdown()
     except Exception as e:
         logger.warning(f"Error shutting down VAD service: {e}")
-
-    # Shutdown diarization service
-    try:
-        from stt.diarization.embedding_service import get_embedding_service
-
-        await get_embedding_service().shutdown()
-    except Exception as e:
-        logger.warning(f"Error shutting down diarization service: {e}")
 
     # Shutdown punctuation service
     try:

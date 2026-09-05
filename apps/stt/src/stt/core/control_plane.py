@@ -130,9 +130,13 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     # `models.vad.localPath`) and `vad_speech_pad_ms` (an agent tuning knob beside the
     # three above it, now `audioFrontEnd.vad.speechPadMs`).
     # ── diarization / voice profiles ─────────────────────────────────────────
-    "diarization_hf_model_id": "stt.diarization.hfModelId",
+    # TASK-887 — `diarization_hf_model_id` and `voice_profile_min_similarity` were mapped here
+    # until the owner made diarization a declared ASR-agent option. The embedding model is the
+    # agent's `audioFrontEnd.diarization.embeddingModelSlug` (a `SPEAKER_EMBEDDING` registry row
+    # that reaches this service as `ResolvedAsrSpec.models.embedding`, and reaches enrollment as
+    # a pushed field on `/internal/voice-profile/extract`); the similarity floor is the agent's
+    # `audioFrontEnd.diarization.matchThreshold`. Only device placement is still the box's.
     "diarization_device": "stt.diarization.device",
-    "voice_profile_min_similarity": "stt.voiceProfile.minSimilarity",
     # ── worker + runtime threading ───────────────────────────────────────────
     "worker_poll_timeout_ms": "stt.workers.pollTimeoutMs",
     "worker_max_retries": "stt.workers.maxRetries",

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class PyannoteEmbeddingService(EmbeddingService):
     """Speaker embeddings via pyannote Inference."""
 
-    def __init__(self, hf_model_id: str | None = None) -> None:
+    def __init__(self, hf_model_id: str) -> None:
         super().__init__(hf_model_id)
         self._inference: Any = None
 
