@@ -358,7 +358,17 @@ test.describe('gate SLA TIMED_OUT path (RUN_FULL, service-token)', () => {
 
     const { id, version } = await openConsultation(request, doctorToken, uniquePatientId('case5'));
     consultationId = id;
-    tenantId = DEFAULT_TENANT_KEY;
+    // TASK-869 — the harness-internal plane wants the tenant UUID, not the tenant
+    // KEY. This used to send `DEFAULT_TENANT_KEY` ('__GLOBAL__'), which
+    // `persistDraft` pushes straight into CLS as `tenantId`; the tenant-scoped
+    // `findById` then matched nothing and every call 404'd. Invisible until now
+    // because these tests had never run.
+    //
+    // Taken from the caller's own login payload, not hardcoded: the consultation
+    // response deliberately does NOT carry `tenantId` (it would echo tenancy to
+    // the client), so the login user object is the honest source.
+    tenantId = doctor!.user.tenantId;
+    expect(tenantId, 'the login payload carries the caller tenant UUID').toMatch(/^[0-9a-f-]{36}$/);
 
     // Drive it to PENDING_REVIEW so the gate-SLA escalation has a legal
     // predecessor to time out from
