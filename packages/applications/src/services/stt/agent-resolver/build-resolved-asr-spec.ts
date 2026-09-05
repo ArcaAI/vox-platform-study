@@ -47,25 +47,10 @@ import { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
  */
 export { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
 
-/**
- * The vector width the deployed `UserVoiceProfile.embedding` column holds —
- * `Unsupported("vector(256)")` in `packages/database/src/prisma/db_main/user.prisma`,
- * written by the 256-d wespeaker model the enrollment seed uses and that
- * `stt.diarization.hfModelId` names.
- *
- * TASK-880 — this is a SCHEMA fact mirrored here, not configuration: a pgvector column
- * width is fixed by DDL, so a spec that would write another width is unrunnable no
- * matter what any setting says. It is the reason `stt.diarization.hfModelId` is
- * deliberately NOT moved onto the agent (owner default assumption, option 1): the key
- * declares the embedding SPACE enrolled profiles live in, and an agent may pick a
- * diarization model only from within it.
- */
-export const VOICE_PROFILE_EMBEDDING_DIMENSION = 256;
-
 /** Raised when a resolved agent cannot become a runnable spec (fail closed — never a guessed engine). */
 export class AsrSpecBuildError extends Error {
   /** Machine-readable cause; the resolver surfaces it as the 409 body's `code`. */
-  readonly code: 'ASR_AGENT_UNRUNNABLE' | 'ASR_AGENT_EMBEDDING_SPACE_MISMATCH';
+  readonly code: 'ASR_AGENT_UNRUNNABLE' | 'ASR_AGENT_DIARIZATION_MODEL_MISSING';
 
   constructor(message: string, code: AsrSpecBuildError['code'] = 'ASR_AGENT_UNRUNNABLE') {
     super(message);
@@ -156,6 +141,7 @@ function audioFrontEnd(parameters: Rec, models: AsrSpecModels): AsrSpecAudioFron
   // when the agent said nothing (the omit-when-absent rule the TASK-877 additions use),
   // so `VadConfig.padding_ms` remains the one source of the engine default.
   const speechPadMs = num(vad.speechPadMs);
+  const matchThreshold = num(diarization.matchThreshold);
   return {
     vad: {
       enabled: true,
@@ -169,6 +155,9 @@ function audioFrontEnd(parameters: Rec, models: AsrSpecModels): AsrSpecAudioFron
       enabled: bool(diarization.enabled, false),
       backend: oneOf(diarization.backend, ['embedding', 'sortformer'] as const, 'embedding'),
       maxSpeakers: num(diarization.maxSpeakers),
+      // TASK-887 — replaces the platform key `stt.voiceProfile.minSimilarity`. OMITTED when the
+      // agent said nothing, so `DiarizationConfig.match_threshold` stays the one engine default.
+      ...(matchThreshold !== null ? { matchThreshold } : {}),
     },
     resample: bool(afe.resample, true),
     normalize: bool(afe.normalize, true),
@@ -234,31 +223,30 @@ function instruction(agent: ResolvedAgent): AsrSpecInstruction {
 }
 
 /**
- * TASK-880 — refuse an agent that would re-space diarization.
+ * TASK-887 — an agent that turns embedding diarization ON must NAME the embedding model.
  *
- * TASK-877 found that the runtime dropped `models.embedding` for every agent (it read
- * only INLINE refs while the spec emits slugs), so the platform singleton always served
- * and nobody had hit this. With the reference actually arriving, an agent binding a
- * 192-d model would write vectors the `vector(256)` `UserVoiceProfile.embedding` column
- * cannot hold — every enrollment fails, at write time, per profile.
+ * This REPLACES TASK-880's `ASR_AGENT_EMBEDDING_SPACE_MISMATCH`. That guard existed because
+ * the platform declared one embedding space (`stt.diarization.hfModelId`) and the
+ * `UserVoiceProfile.embedding` column was `vector(256)`, so an agent binding a 192-d row
+ * would have written vectors the column could not hold. Under the owner's decision the agent
+ * IS the space: a profile is stored with the model that embedded it (`UserVoiceProfile.modelId`)
+ * in a dimension-agnostic `vector` column, and matching only ever considers profiles from the
+ * SAME model. A width mismatch is therefore impossible by construction, and there is nothing
+ * left to refuse on that ground.
  *
- * The check is EVIDENCE-BASED: a row that declares no width cannot be judged, and
- * refusing on absence would make an agent unrunnable over a fact nobody stated. Every
- * SYSTEM catalogue row declares one (`seed/ai-models/audio.ts`), so the undeclared case
- * is a tenant-authored row, where the column itself still rejects a wrong-width vector.
+ * What IS refusable is an agent that asks for embedding diarization and names no model. Model
+ * SELECTION fails closed (rule 09 §Configuration Tiers): substituting a platform default here
+ * is exactly the behaviour this ticket removed, and silently diarizing without one would drop
+ * every enrolled label without saying so. `backend: 'sortformer'` needs no embedding model —
+ * the NeMo diarizer carries its own weights — so it is untouched.
  */
-function assertEmbeddingSpace(agent: ResolvedAgent, embedding: AsrSpecModel | undefined): void {
-  if (!embedding) return;
-  // Read from the AGENT's row, not the spec model: the width is a producer-side
-  // invariant and `apps/stt` has no use for it, so it never goes on the wire.
-  const declared = num(rec(rec(agent.models.find((m) => m.role === 'embedding')?.metaData).embedding).dimension);
-  if (declared === null || declared === VOICE_PROFILE_EMBEDDING_DIMENSION) return;
+function assertDiarizationRunnable(agent: ResolvedAgent, afe: AsrSpecAudioFrontEnd, embedding: AsrSpecModel | undefined): void {
+  if (!afe.diarization.enabled || afe.diarization.backend !== 'embedding' || embedding) return;
   throw new AsrSpecBuildError(
-    `Agent '${agent.slug}' v${agent.versionNumber} binds speaker-embedding model '${embedding.slug}', which emits ` +
-      `${declared}-dimension vectors; enrolled voice profiles are ${VOICE_PROFILE_EMBEDDING_DIMENSION}-dimension ` +
-      `(UserVoiceProfile.embedding), so every enrolment and every speaker match on this session would fail. ` +
-      `Bind a ${VOICE_PROFILE_EMBEDDING_DIMENSION}-dimension model, or re-enrol the tenant's voice profiles first.`,
-    'ASR_AGENT_EMBEDDING_SPACE_MISMATCH',
+    `Agent '${agent.slug}' v${agent.versionNumber} enables embedding diarization but binds no speaker-embedding model. ` +
+      `Set \`audioFrontEnd.diarization.embeddingModelSlug\` to a SPEAKER_EMBEDDING model visible to this tenant — ` +
+      `it is the vector space this agent diarizes in and the space its users enrol their voice profiles in.`,
+    'ASR_AGENT_DIARIZATION_MODEL_MISSING',
   );
 }
 
@@ -266,12 +254,13 @@ function assertEmbeddingSpace(agent: ResolvedAgent, embedding: AsrSpecModel | un
 export function buildAsrSpecCore(agent: ResolvedAgent, override?: { asr: ResolvedAgentModel; runtimeKey: string }): AsrSpecCore {
   const parameters = rec(agent.compiledConfig.parameters);
   const models: AsrSpecModels = { asr: toSpecModel(override?.asr ?? primaryOf(agent), 'asr'), ...auxModels(agent) };
-  assertEmbeddingSpace(agent, models.embedding);
+  const front = audioFrontEnd(parameters, models);
+  assertDiarizationRunnable(agent, front, models.embedding);
   return {
     runtimeKey: override?.runtimeKey ?? agent.agentVersionId,
     agent: { slug: agent.slug, versionId: agent.agentVersionId, versionNumber: agent.versionNumber, tenantId: agent.tenantId, source: agent.source },
     models,
-    audioFrontEnd: audioFrontEnd(parameters, models),
+    audioFrontEnd: front,
     decoding: decoding(parameters),
     postProcessing: postProcessing(parameters),
     streaming: streaming(parameters),

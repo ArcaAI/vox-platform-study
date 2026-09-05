@@ -201,9 +201,20 @@ class AsrSpecDenoise(_Wire):
 
 
 class AsrSpecDiarization(_Wire):
+    """TASK-887 — ``match_threshold`` replaces the platform key ``stt.voiceProfile.minSimilarity``.
+
+    Diarization is a declared AGENT option: the agent names the speaker-embedding model, and
+    the confidence at which a segment may carry an ENROLLED profile's label is part of that
+    declaration. OPTIONAL (omit-when-absent, see :class:`_Wire`) — absent means the agent said
+    nothing and ``DiarizationConfig.match_threshold`` stands.
+    """
+
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"match_threshold"})
+
     enabled: bool
     backend: Literal["embedding", "sortformer"]
     max_speakers: int | None
+    match_threshold: float | None = None
 
 
 class AsrSpecAudioFrontEnd(_Wire):
@@ -473,6 +484,8 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     }
     if afe.diarization.max_speakers is not None:
         diarization_kwargs["max_speakers"] = afe.diarization.max_speakers
+    if afe.diarization.match_threshold is not None:
+        diarization_kwargs["match_threshold"] = afe.diarization.match_threshold
     diarization = DiarizationConfig(**diarization_kwargs)  # type: ignore[arg-type]
 
     decoding = core.decoding

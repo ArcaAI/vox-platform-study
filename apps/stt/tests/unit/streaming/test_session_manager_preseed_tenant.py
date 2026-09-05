@@ -1,18 +1,15 @@
-"""Streaming preseed carries tenant_id end-to-end.
+"""Streaming voice-profile seeding is gateway-fed and model-scoped (TASK-887).
 
-(The user-id-without-consultation preseed wiring test lives in
-``test_session_manager_denoiser.py``; its call-shape assertion was updated for
-the tenant_id kwarg.)
+The old chain read the consultation's doctor and their embedding out of Postgres, and these
+tests locked `tenant_id` through it so the lookups were tenant-scoped. Diarization is now a
+declared ASR-agent option and the gateway pushes the profiles, so the chain — and what has to
+be locked — is different:
 
-The streaming voice-profile preseed used to drop ``tenant_id``:
-``create_session`` called ``self._preseed_speaker(...)`` without the session
-tenant, so the voice-profile lookups could not be tenant-scoped. These tests
-lock the chain:
+  create_session(voice_profiles=…) -> per-session stash -> _assemble_session_runtime
+      -> _seed_voice_profiles(tracker, session_id, <the agent's embedding SLUG>)
+      -> seed_voice_profiles(...)
 
-  create_session -> _preseed_speaker(tenant_id=...) -> preseed_speaker(tenant_id=...)
-
-(the ``preseed_speaker -> DB lookups`` hop is locked in
-``tests/unit/diarization/test_preseed.py``.)
+(the `seed_voice_profiles -> tracker` hop is locked in `tests/unit/diarization/test_preseed.py`.)
 """
 
 from __future__ import annotations
@@ -21,35 +18,53 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+PROFILES = [{"profile_id": "vp-1", "label": "Dr Who", "model_id": "wespeaker-voxceleb-resnet34", "embedding": [0.1, 0.2]}]
 
-@pytest.mark.asyncio
-async def test_preseed_wrapper_forwards_tenant_id():
-    """SessionManager._preseed_speaker forwards tenant_id to preseed_speaker."""
+
+def test_seed_wrapper_forwards_the_session_profiles_and_the_model_slug():
+    """`SessionManager._seed_voice_profiles` hands the stashed profiles to the pure helper."""
     from stt.streaming.session_manager import SessionManager
 
     mgr = MagicMock(spec=SessionManager)
+    mgr._session_voice_profiles = {"sess-1": PROFILES}
     tracker = MagicMock()
 
-    with patch("stt.diarization.preseed.preseed_speaker", new=AsyncMock()) as mock_preseed:
-        await SessionManager._preseed_speaker(
-            mgr,
-            tracker,
-            "cons-1",
-            "sess-1",
-            tenant_id="tenant-a",
-            user_id="user-1",
-        )
+    with patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed:
+        SessionManager._seed_voice_profiles(mgr, tracker, "sess-1", "wespeaker-voxceleb-resnet34")
 
-    mock_preseed.assert_awaited_once()
-    kwargs = mock_preseed.await_args.kwargs
-    assert kwargs.get("tenant_id") == "tenant-a"
-    assert kwargs.get("user_id") == "user-1"
-    assert kwargs.get("log_context") == "sess-1"
+    mock_seed.assert_called_once()
+    args, kwargs = mock_seed.call_args
+    assert args[0] is tracker
+    assert args[1] == PROFILES
+    assert kwargs["model_slug"] == "wespeaker-voxceleb-resnet34"
+    assert kwargs["log_context"] == "sess-1"
 
 
-@pytest.mark.asyncio
-async def test_create_session_passes_tenant_to_preseed():
-    """create_session hands the session tenant to the preseed call site."""
+def test_seed_wrapper_passes_none_for_a_session_that_was_pushed_nothing():
+    from stt.streaming.session_manager import SessionManager
+
+    mgr = MagicMock(spec=SessionManager)
+    mgr._session_voice_profiles = {}
+
+    with patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed:
+        SessionManager._seed_voice_profiles(mgr, MagicMock(), "sess-1", "wespeaker-voxceleb-resnet34")
+
+    assert mock_seed.call_args.args[1] is None
+
+
+def test_spec_embedding_slug_reads_the_reference_the_profiles_are_matched_against():
+    from types import SimpleNamespace
+
+    from stt.streaming.session_manager import SessionManager
+
+    config = SimpleNamespace(models=SimpleNamespace(embedding=SimpleNamespace(slug="ecapa-tdnn-voxceleb")))
+    assert SessionManager._spec_embedding_slug(config) == "ecapa-tdnn-voxceleb"
+
+    assert SessionManager._spec_embedding_slug(SimpleNamespace(models=SimpleNamespace(embedding=None))) is None
+    assert SessionManager._spec_embedding_slug(None) is None
+
+
+def _manager_for_assembly() -> MagicMock:
     from stt.streaming.session_manager import SessionManager
 
     mgr = MagicMock(spec=SessionManager)
@@ -63,8 +78,12 @@ async def test_create_session_passes_tenant_to_preseed():
     mgr._commit_policies = {}
     mgr._switch_controllers = {}
     mgr._provider_overrides = {}
+    mgr._session_voice_profiles = {}
     mgr._fallback_pipeline_ids = {}
+    return mgr
 
+
+def _pipeline_config() -> MagicMock:
     pipeline_config = MagicMock()
     pipeline_config.preprocessing.vad.enabled = True
     pipeline_config.preprocessing.vad.threshold = 0.5
@@ -74,9 +93,15 @@ async def test_create_session_passes_tenant_to_preseed():
     pipeline_config.preprocessing.normalize = False
     pipeline_config.preprocessing.target_sample_rate = 16000
     pipeline_config.diarization.enabled = True
+    pipeline_config.diarization.backend = "embedding"
     pipeline_config.diarization.max_speakers = 2
     pipeline_config.diarization.max_embeddings_per_speaker = 5
     pipeline_config.diarization.enable_segmentation_refinement = False
+    return pipeline_config
+
+
+async def _create(mgr: MagicMock, **overrides) -> None:
+    from stt.streaming.session_manager import SessionManager
 
     mock_session = MagicMock()
     mock_session.force_persist = AsyncMock()
@@ -88,25 +113,20 @@ async def test_create_session_passes_tenant_to_preseed():
         patch("stt.streaming.session_manager.StreamingInferenceWorker"),
         patch("stt.streaming.session_manager.IngestionConsumer") as mock_ic,
         patch("stt.streaming.session_manager.ControlListener") as mock_cl,
-        patch("stt.diarization.speaker_tracker.SpeakerTracker") as mock_tracker_cls,
+        patch("stt.diarization.speaker_tracker.SpeakerTracker"),
         patch("stt.diarization.speaker_identifier.SpeakerIdentifier"),
-        patch("stt.diarization.embedding_service.get_embedding_service"),
     ):
         mock_ic.return_value.start = AsyncMock()
         mock_cl.return_value.start = AsyncMock()
 
         mgr._profile = MagicMock()
         mgr._profile.denoise_enabled_default = False
-        mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
+        mgr._load_pipeline_config = AsyncMock(return_value=_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-        # Bind the REAL shared assembly (session wiring moved out of
-        # create/recover into _assemble_session_runtime).
-        mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(
-            mgr, **kw
-        )
+        mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
         mgr._load_gloss_pipeline = AsyncMock(return_value=None)
-        mgr._preseed_speaker = AsyncMock()
+        mgr._spec_embedding_slug = MagicMock(return_value="wespeaker-voxceleb-resnet34")
         mgr._redis = AsyncMock()
         mgr._worker_id = "test-worker"
         mgr._capacity_guard = MagicMock()
@@ -125,10 +145,45 @@ async def test_create_session_passes_tenant_to_preseed():
             consultation_id="cons-1",
             sample_rate=16000,
             user_id="user-1",
+            **overrides,
         )
 
-    mgr._preseed_speaker.assert_awaited_once()
-    args = mgr._preseed_speaker.await_args
-    assert args.args[0] is mock_tracker_cls.return_value  # the session tracker
-    assert args.kwargs.get("tenant_id") == "tenant-a"  # tenant threaded through
-    assert args.kwargs.get("user_id") == "user-1"
+
+@pytest.mark.asyncio
+async def test_create_session_stashes_the_pushed_profiles_and_seeds_them():
+    mgr = _manager_for_assembly()
+
+    await _create(mgr, voice_profiles=PROFILES)
+
+    # In memory only — never persisted to Redis session metadata, exactly like the BYO
+    # provider overrides beside it.
+    assert mgr._session_voice_profiles["sess-1"] == PROFILES
+    mgr._seed_voice_profiles.assert_called_once()
+    args = mgr._seed_voice_profiles.call_args.args
+    assert args[1] == "sess-1"
+    assert args[2] == "wespeaker-voxceleb-resnet34"
+
+
+@pytest.mark.asyncio
+async def test_a_session_with_no_pushed_profiles_still_opens_and_still_seeds_nothing():
+    mgr = _manager_for_assembly()
+
+    await _create(mgr)
+
+    assert "sess-1" not in mgr._session_voice_profiles
+    # The seeding call still happens (it is the ONE place the decision is made) and the
+    # helper answers "nothing to seed" — diarization then produces generic labels.
+    mgr._seed_voice_profiles.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_no_embedding_service_means_no_speaker_identifier_and_no_seeding():
+    """TASK-887 fail-closed: the platform singleton that used to stand in here is gone, so a
+    session whose agent bound no embedding model does not diarize by embedding at all."""
+    mgr = _manager_for_assembly()
+    mgr._get_pipeline_embedding_service = AsyncMock(return_value=None)
+    mgr._spec_embedding_model_id = MagicMock(return_value=None)
+
+    await _create(mgr, voice_profiles=PROFILES)
+
+    mgr._seed_voice_profiles.assert_not_called()

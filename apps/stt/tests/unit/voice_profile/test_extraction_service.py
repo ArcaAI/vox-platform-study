@@ -10,7 +10,15 @@ from unittest.mock import AsyncMock, MagicMock
 import numpy as np
 import pytest
 
-from stt.voice_profile.extraction_service import ExtractionResult, ExtractionService
+from stt.voice_profile.extraction_service import (
+    DEFAULT_MIN_CROSS_SAMPLE_SIMILARITY,
+    ExtractionResult,
+    ExtractionService,
+)
+
+# TASK-887 — the loader id of the model the GATEWAY named for this enrollment. There is no
+# platform embedding model behind the service any more, so every double declares one.
+MODEL_SOURCE_URI = "pyannote/wespeaker-voxceleb-resnet34-LM"
 
 
 @pytest.fixture
@@ -18,6 +26,10 @@ def mock_embedding_service():
     """Mock EmbeddingService that returns deterministic 256d embeddings."""
     service = AsyncMock()
     service.is_loaded = True
+    # TASK-887 — the service ALWAYS knows which model it loaded (the gateway named it), and
+    # the extraction result is attributed to it. An `AsyncMock` attribute is not a str, so
+    # every double must set this or extraction refuses to attribute the profile.
+    service._hf_model_id = MODEL_SOURCE_URI
 
     async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
         vec = np.random.RandomState(42).randn(256).astype(np.float32)
@@ -105,6 +117,7 @@ class TestExtractionServiceCrossSampleConsistency:
         """Build an ExtractionService whose embedding_service returns the same vector for every sample."""
         emb_service = AsyncMock()
         emb_service.is_loaded = True
+        emb_service._hf_model_id = MODEL_SOURCE_URI
 
         async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
             from stt.diarization.dto import SpeakerEmbedding
@@ -122,6 +135,7 @@ class TestExtractionServiceCrossSampleConsistency:
         """Build a service that yields the given vectors in order for each sample."""
         emb_service = AsyncMock()
         emb_service.is_loaded = True
+        emb_service._hf_model_id = MODEL_SOURCE_URI
 
         iterator = iter(vectors)
 
@@ -182,14 +196,17 @@ class TestExtractionServiceCrossSampleConsistency:
         assert isinstance(result, ExtractionResult)
 
 
-class TestExtractionServiceDimensionGuard:
-    """Defense-in-depth: reject embeddings whose dimension does not match the
-    database column. Without this, a mis-configured DIARIZATION_HF_MODEL_ID
-    (e.g. ``pyannote/embedding`` → 512-d) silently flows all the way to the
-    pgvector cast and produces a cryptic ``Code: 22000`` Prisma error.
+class TestExtractionServiceEmbeddingSpace:
+    """TASK-887 — the model the gateway named IS the space; there is no width to police.
+
+    This replaces the old dimension guard, which rejected anything that was not 256-d because
+    the platform declared ONE embedding space and `UserVoiceProfile.embedding` was
+    `vector(256)`. The column is now a dimension-agnostic `vector` and each row records the
+    model that produced it, so a width mismatch cannot arise: a profile is only ever compared
+    against profiles from the same model.
     """
 
-    def _service_returning_dim(self, dim: int):
+    def _service_returning_dim(self, dim: int, model_id: str = MODEL_SOURCE_URI):
         emb_service = AsyncMock()
         emb_service.is_loaded = True
 
@@ -205,40 +222,61 @@ class TestExtractionServiceDimensionGuard:
             )
 
         emb_service.extract_from_samples = AsyncMock(side_effect=fake_extract)
-        emb_service._hf_model_id = "pyannote/embedding"  # for nicer error message
+        emb_service._hf_model_id = model_id
         return ExtractionService(embedding_service=emb_service, vad_service=MagicMock())
 
     @pytest.mark.asyncio
-    async def test_rejects_wrong_dimension_512_when_db_expects_256(self):
-        service = self._service_returning_dim(512)
-        audio = _make_audio_samples(5.0)
-        with pytest.raises(ValueError, match=r"(?i)dimension|expected 256.*got 512|512.*256"):
-            await service.extract([audio], sample_rate=16000)
+    @pytest.mark.parametrize("dim", [192, 256, 512])
+    async def test_any_width_the_named_model_emits_is_accepted(self, dim: int) -> None:
+        service = self._service_returning_dim(dim)
+        result = await service.extract([_make_audio_samples(5.0)], sample_rate=16000)
+        assert len(result.embedding) == dim
 
     @pytest.mark.asyncio
-    async def test_error_message_mentions_model_id(self):
-        service = self._service_returning_dim(512)
-        audio = _make_audio_samples(5.0)
-        with pytest.raises(ValueError, match=r"pyannote/embedding"):
-            await service.extract([audio], sample_rate=16000)
+    async def test_attributes_the_result_to_the_model_that_produced_it(self) -> None:
+        service = self._service_returning_dim(192, model_id="speechbrain/spkrec-ecapa-voxceleb")
+        result = await service.extract([_make_audio_samples(5.0)], sample_rate=16000)
+        assert result.model_id == "speechbrain/spkrec-ecapa-voxceleb"
 
     @pytest.mark.asyncio
-    async def test_accepts_correct_256_dimension(self):
-        service = self._service_returning_dim(256)
-        audio = _make_audio_samples(5.0)
-        result = await service.extract([audio], sample_rate=16000)
-        assert len(result.embedding) == 256
+    async def test_refuses_to_attribute_a_profile_when_the_service_reports_no_model(self) -> None:
+        """Fail closed: an unattributed vector could never be matched by anything, and
+        guessing a model would put it in a space nothing enrolled in."""
+        emb_service = AsyncMock()
+        emb_service.is_loaded = True
+        emb_service._hf_model_id = None
+
+        async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
+            from stt.diarization.dto import SpeakerEmbedding
+
+            vec = np.ones(256, dtype=np.float32)
+            return SpeakerEmbedding(embedding=(vec / np.linalg.norm(vec)).tolist(), segment_start=0.0, segment_end=1.0)
+
+        emb_service.extract_from_samples = AsyncMock(side_effect=fake_extract)
+        service = ExtractionService(embedding_service=emb_service, vad_service=MagicMock())
+
+        with pytest.raises(ValueError, match=r"(?i)did not report the model"):
+            await service.extract([_make_audio_samples(5.0)], sample_rate=16000)
 
 
 class TestExtractionServiceConfigurableThreshold:
-    """The cross-sample similarity threshold is read from settings so dev
-    environments with consumer-grade microphones can lower it without code
-    changes. Production keeps the strict 0.6 default.
+    """TASK-887 — the cross-sample similarity floor is the AGENT's
+    `audioFrontEnd.diarization.matchThreshold`, pushed with the request. It replaced the
+    platform key `stt.voiceProfile.minSimilarity`, whose 0.6 survives as the engine default
+    for the "caller expressed no opinion" case.
     """
+
+    def test_the_engine_default_is_the_retired_platform_key_s_value(self) -> None:
+        assert DEFAULT_MIN_CROSS_SAMPLE_SIMILARITY == 0.6
+
+    def test_no_threshold_pushed_means_the_engine_default_not_a_settings_read(self) -> None:
+        service = ExtractionService(embedding_service=AsyncMock(), vad_service=MagicMock())
+        assert service._min_cross_sample_similarity == DEFAULT_MIN_CROSS_SAMPLE_SIMILARITY
 
     def _per_sample_vectors_service(self, vectors: list[np.ndarray]):
         emb_service = AsyncMock()
         emb_service.is_loaded = True
+        emb_service._hf_model_id = MODEL_SOURCE_URI
         iterator = iter(vectors)
 
         async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):

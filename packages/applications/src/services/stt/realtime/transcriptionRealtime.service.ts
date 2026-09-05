@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, MessageEvent } from '@nestjs/common';
+import { Inject, Injectable, Logger, MessageEvent, Optional } from '@nestjs/common';
 import { Observable, finalize, map, takeWhile } from 'rxjs';
 import type { ResolvedAsrSpec } from '@arcaai/types';
 import { uuidv7 } from 'uuidv7';
@@ -8,6 +8,7 @@ import { TranscriptionJobService } from '../job/transcriptionJob.service';
 import { TranscriptionEvent, TranscriptionEventType } from './dto';
 import { ITranscriptionRealtimeService } from './ITranscriptionRealtimeService';
 import { RedisSubscriberService } from './redisSubscriber.service';
+import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 
 /**
  * Transcription Realtime Service
@@ -33,6 +34,11 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     private readonly redisSubscriber: RedisSubscriberService,
     private readonly transcriptionJobService: TranscriptionJobService,
     @Inject(IRedisCacheService) private readonly cacheService: IRedisCacheService,
+    // TASK-887 — resolves the job user's ENROLLED voice profiles for the agent's embedding
+    // model. Optional and trailing: without it a job still transcribes and diarizes, with
+    // generic `Speaker N` labels. Resolved HERE rather than in each of the four callers so
+    // every batch dispatch pushes the same thing.
+    @Optional() @Inject(IVoiceProfileService) private readonly voiceProfileService?: IVoiceProfileService,
   ) {}
 
   /**
@@ -310,6 +316,21 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
    * The message also requires a `redis_message_id` in options
    * (a separate UUID from message_id) per Dramatiq's protocol.
    */
+  /**
+   * TASK-887 — the job user's ENROLLED voice profiles, filtered to the agent's
+   * speaker-embedding model, for the Dramatiq message.
+   *
+   * Same rule as the streaming path: nothing is resolved unless the job will use it
+   * (diarization on, an embedding model bound, a user to attribute), and the model is a
+   * WHERE clause rather than a post-filter — profiles from another embedding space are not
+   * comparable, so they are never fetched.
+   */
+  private async resolveVoiceProfiles(params: { tenantId: string; userId?: string; resolvedSpec?: ResolvedAsrSpec }): Promise<RuntimeVoiceProfile[]> {
+    const modelId = params.resolvedSpec?.models.embedding?.slug;
+    if (!this.voiceProfileService || !params.userId || !params.resolvedSpec?.audioFrontEnd.diarization.enabled || !modelId) return [];
+    return this.voiceProfileService.listForRuntime(params.userId, params.tenantId, modelId);
+  }
+
   async dispatchDramatiqJob(params: {
     jobId: string;
     tenantId: string;
@@ -335,6 +356,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
      */
     resolvedSpec?: ResolvedAsrSpec;
   }): Promise<void> {
+    const voiceProfiles = await this.resolveVoiceProfiles(params);
     const messageId = uuidv7();
     const redisMessageId = uuidv7(); // Required by Dramatiq protocol
     const message = {
@@ -364,6 +386,11 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         // pointer is sent only on the legacy pipeline path.
         ...(params.resolvedSpec ? { resolved_spec: params.resolvedSpec } : {}),
         ...(params.fallbackPipelineId && !params.resolvedSpec ? { fallback_pipeline_id: params.fallbackPipelineId } : {}),
+        // TASK-887 — the job user's enrolled profiles for THIS agent's embedding model, so
+        // the worker can label a matched speaker. Omitted entirely when there are none: the
+        // worker treats absence as "diarize generically", and an empty list would say the
+        // same thing in a second way.
+        ...(voiceProfiles.length > 0 ? { voice_profiles: voiceProfiles } : {}),
       },
       options: {
         redis_message_id: redisMessageId,

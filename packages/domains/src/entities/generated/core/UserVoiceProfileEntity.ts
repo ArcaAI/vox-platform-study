@@ -10,14 +10,18 @@ export interface IUserVoiceProfileEntity extends IBaseTenantEntity {
   userId: string;
   isActive: boolean;
   label?: string | null;
-  modelId?: string | null;
+  // TASK-887 — REQUIRED: the `AiModel` SLUG of the model that produced `embedding`. A profile
+  // is only ever compared against profiles from the SAME model (diarization is a declared
+  // ASR-agent option and the agent names the space), so a profile with no model is a vector
+  // nothing may safely match against.
+  modelId: string;
 }
 
 export class UserVoiceProfileEntity extends BaseTenantEntity {
   private _userId: IUserVoiceProfileEntity['userId'];
   private _isActive: IUserVoiceProfileEntity['isActive'];
   private _label?: IUserVoiceProfileEntity['label'];
-  private _modelId?: IUserVoiceProfileEntity['modelId'];
+  private _modelId: IUserVoiceProfileEntity['modelId'];
 
   constructor(init: IUserVoiceProfileEntity) {
     super(init);
@@ -62,6 +66,9 @@ export class UserVoiceProfileEntity extends BaseTenantEntity {
   public override validate(): void {
     if (!this._userId) {
       throw new BusinessException('User ID is required');
+    }
+    if (!this._modelId) {
+      throw new BusinessException('Embedding model slug is required');
     }
   }
 }

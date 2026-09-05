@@ -121,7 +121,23 @@ export interface AsrSpecAudioFrontEnd {
     speechPadMs?: number | null;
   };
   denoise: { enabled: boolean; level: AsrSpecDenoiseLevel };
-  diarization: { enabled: boolean; backend: AsrSpecDiarizationBackend; maxSpeakers: number | null };
+  diarization: {
+    enabled: boolean;
+    backend: AsrSpecDiarizationBackend;
+    maxSpeakers: number | null;
+    /**
+     * TASK-887 — the cosine floor at which a segment may be labelled with an ENROLLED
+     * voice profile, and the cross-sample consistency floor enrollment itself must
+     * clear. Replaces the platform key `stt.voiceProfile.minSimilarity`: how confidently
+     * a clinic wants a real name attached to speech is an agent decision, not one number
+     * for every tenant on the box.
+     *
+     * OPTIONAL on the wire with the omit-when-absent rule: absent means the agent said
+     * nothing and `DiarizationConfig.match_threshold` — the one source of the engine
+     * default — stands.
+     */
+    matchThreshold?: number | null;
+  };
   resample: boolean;
   normalize: boolean;
 }

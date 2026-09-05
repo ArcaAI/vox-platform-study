@@ -190,56 +190,84 @@ describe('buildResolvedAsrSpec — AiModel._metadata.asr rides each model', () =
 });
 
 /**
- * TASK-880 — the diarization guard.
+ * TASK-887 — diarization is a DECLARED agent option, and the AGENT names the space.
  *
- * `stt.diarization.hfModelId` is deliberately NOT moved onto the agent (owner default
- * assumption, option 1): it declares the embedding SPACE that enrolled
- * `UserVoiceProfile` rows live in — `vector(256)`, written by the 256-d wespeaker
- * model. TASK-877 found the other half of this: the runtime dropped an agent's
- * `models.embedding` entirely, so nobody had noticed that letting it through would feed
- * 192-d ECAPA vectors into a `vector(256)` column and fail every enrollment.
+ * This replaces TASK-880's `ASR_AGENT_EMBEDDING_SPACE_MISMATCH` block. That guard enforced ONE
+ * platform embedding space (`stt.diarization.hfModelId` + a `vector(256)` column), so an agent
+ * binding a 192-d row was refused. Under the owner's decision (target model item 8) the agent IS
+ * the space: a profile records the model that embedded it (`UserVoiceProfile.modelId`), the
+ * column is dimension-agnostic `vector`, and matching only ever considers profiles from the SAME
+ * model. A width mismatch is impossible by construction — there is nothing left to refuse.
  *
- * With the runtime half fixed, the producer must refuse the mismatch rather than ship a
- * spec that cannot enroll.
+ * What remains refusable is the fail-closed case: embedding diarization ON with no model named.
  */
-describe('buildResolvedAsrSpec — the agent may not re-space diarization', () => {
+describe('buildResolvedAsrSpec — the agent declares the diarization space', () => {
   const base = (fixture.platformDefault as FixtureCase).input.agent;
+  const baseParameters = base.compiledConfig.parameters as Record<string, unknown>;
+  const baseFrontEnd = baseParameters.audioFrontEnd as Record<string, unknown>;
 
-  const withEmbeddingDimension = (dimension: number | undefined): ResolvedAgent => ({
+  /** `base` with its diarization block replaced, and optionally its model list. */
+  const withDiarization = (diarization: Record<string, unknown>, models: ResolvedAgent['models'] = base.models): ResolvedAgent => ({
     ...base,
-    models: base.models.map((m) => (m.role === 'embedding' ? { ...m, metaData: dimension === undefined ? undefined : { embedding: { dimension } } } : m)),
+    models,
+    compiledConfig: {
+      ...base.compiledConfig,
+      parameters: { ...baseParameters, audioFrontEnd: { ...baseFrontEnd, diarization } },
+    },
   });
 
-  it('refuses an embedding model whose declared width the voice-profile column cannot hold', () => {
+  const withoutEmbeddingModel = (): ResolvedAgent['models'] => base.models.filter((m) => m.role !== 'embedding');
+
+  it('no longer refuses an embedding model whose declared width differs from the old platform space', () => {
+    // The exact case TASK-880 rejected with a 409: the fixture agent binds the 192-d ECAPA row.
+    // Enrolment now happens IN that row's space, so this is a legitimate agent, not a defect.
+    const agent: ResolvedAgent = {
+      ...base,
+      models: base.models.map((m) => (m.role === 'embedding' ? { ...m, metaData: { embedding: { dimension: 192 } } } : m)),
+    };
+    const spec = buildResolvedAsrSpec({ agent, fallbackAgent: null });
+    expect(spec.models.embedding?.slug).toBe('ecapa-tdnn-voxceleb');
+  });
+
+  it('refuses embedding diarization with no embedding model bound, naming the parameter to set', () => {
     let thrown: unknown;
     try {
-      buildResolvedAsrSpec({ agent: withEmbeddingDimension(192), fallbackAgent: null });
+      buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'embedding' }, withoutEmbeddingModel()), fallbackAgent: null });
     } catch (error) {
       thrown = error;
     }
     expect(thrown).toBeInstanceOf(AsrSpecBuildError);
-    expect((thrown as AsrSpecBuildError).code).toBe('ASR_AGENT_EMBEDDING_SPACE_MISMATCH');
-    // The message must name both numbers and the consequence — an operator reading a
-    // 409 needs to know this is an enrolment problem, not a missing model.
-    expect((thrown as AsrSpecBuildError).message).toContain('192');
-    expect((thrown as AsrSpecBuildError).message).toContain('256');
-    expect((thrown as AsrSpecBuildError).message).toMatch(/enrol/i);
+    expect((thrown as AsrSpecBuildError).code).toBe('ASR_AGENT_DIARIZATION_MODEL_MISSING');
+    expect((thrown as AsrSpecBuildError).message).toContain('audioFrontEnd.diarization.embeddingModelSlug');
   });
 
-  it('accepts the platform embedding space', () => {
-    expect(() => buildResolvedAsrSpec({ agent: withEmbeddingDimension(256), fallbackAgent: null })).not.toThrow();
+  it('leaves the sortformer backend alone — it carries its own weights', () => {
+    expect(() =>
+      buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'sortformer' }, withoutEmbeddingModel()), fallbackAgent: null }),
+    ).not.toThrow();
   });
 
-  it('cannot judge a row that declares no width, so it does not refuse one', () => {
-    // Every SYSTEM catalogue row declares its dimension (seeded in `ai-models/audio.ts`),
-    // so the only undeclared rows are tenant-authored. Refusing on absence would make an
-    // agent unrunnable over a fact nobody stated; the enrolment itself still rejects a
-    // wrong-width vector at the column.
-    expect(() => buildResolvedAsrSpec({ agent: withEmbeddingDimension(undefined), fallbackAgent: null })).not.toThrow();
+  it('says nothing about an agent with diarization off and no embedding model — the OFF default', () => {
+    expect(() => buildResolvedAsrSpec({ agent: withDiarization({ enabled: false }, withoutEmbeddingModel()), fallbackAgent: null })).not.toThrow();
   });
 
-  it('checks the FALLBACK chain too — a fallback agent may not re-space it either', () => {
-    const fallbackAgent = withEmbeddingDimension(192);
+  it('checks the FALLBACK chain too — a fallback agent may not diarize without a model either', () => {
+    const fallbackAgent = withDiarization({ enabled: true, backend: 'embedding' }, withoutEmbeddingModel());
     expect(() => buildResolvedAsrSpec({ agent: base, fallbackAgent })).toThrow(AsrSpecBuildError);
+  });
+
+  it('carries matchThreshold when the agent sets it, and OMITS the key when it does not', () => {
+    const set = buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'embedding', matchThreshold: 0.72 }), fallbackAgent: null });
+    expect(set.audioFrontEnd.diarization.matchThreshold).toBe(0.72);
+
+    // Omitted, never `null`: apps/stt's mirror is `extra='forbid'` and treats an absent key as
+    // "no opinion, keep my own default" — `DiarizationConfig.match_threshold`.
+    const unset = buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'embedding' }), fallbackAgent: null });
+    expect(unset.audioFrontEnd.diarization).not.toHaveProperty('matchThreshold');
+  });
+
+  it('ignores a non-numeric matchThreshold rather than forwarding a shape apps/stt would reject', () => {
+    const spec = buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'embedding', matchThreshold: 'high' }), fallbackAgent: null });
+    expect(spec.audioFrontEnd.diarization).not.toHaveProperty('matchThreshold');
   });
 });

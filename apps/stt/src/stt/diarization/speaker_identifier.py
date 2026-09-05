@@ -33,6 +33,16 @@ class SpeakerIdentifier:
         self._segmentation_service = segmentation_service
         self._config = config or DiarizationConfig()
 
+    def _is_enrolled(self, speaker_id: str) -> bool:
+        """True only when the tracker AFFIRMS the id came from an enrolled profile.
+
+        Explicit `is True`: a tracker double (MagicMock) answers every attribute truthily,
+        and silently demoting every confident match would be a far worse failure than
+        missing the guard in a test that never seeded a profile.
+        """
+        probe = getattr(self._tracker, "is_enrolled", None)
+        return callable(probe) and probe(speaker_id) is True
+
     async def identify(
         self,
         embedding: SpeakerEmbedding,
@@ -50,6 +60,28 @@ class SpeakerIdentifier:
         embed = np.asarray(embedding.embedding, dtype=np.float32)
 
         best_id, confidence = self._tracker.compare(embed)
+
+        # TASK-887 — an ENROLLED id carries a real clinician's name, so it may only be
+        # attached at or above the agent's `matchThreshold`
+        # (`audioFrontEnd.diarization.matchThreshold`, which replaced the platform key
+        # `stt.voiceProfile.minSimilarity`). Below it the speech is SOMEONE ELSE and gets a
+        # generic label; the ambiguous-zone fallback at the bottom of this method would
+        # otherwise hand the name out on a weak best-match. Anonymous ids keep the existing
+        # high/low thresholds — there is no name to get wrong.
+        if best_id is not None and confidence < cfg.match_threshold and self._is_enrolled(best_id):
+            new_id = self._tracker.register(embed)
+            if new_id is None:
+                # At capacity, and the only candidate is a name we may not use.
+                return SpeakerIdentification(
+                    speaker_id="unknown",
+                    confidence=None,
+                    is_new_speaker=False,
+                )
+            return SpeakerIdentification(
+                speaker_id=new_id,
+                confidence=None,
+                is_new_speaker=True,
+            )
 
         # Case 1: No speakers registered -> register first speaker
         if best_id is None:

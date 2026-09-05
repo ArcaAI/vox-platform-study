@@ -53,6 +53,7 @@ def transcribe_file(
     storage: dict[str, Any] | None = None,
     fallback_pipeline_id: str | None = None,
     resolved_spec: dict[str, Any] | None = None,
+    voice_profiles: list[dict[str, Any]] | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -82,6 +83,10 @@ def transcribe_file(
         code_switching: Optional flag to enable code-switching mode
         audio_bucket_name: Optional tenant-scoped bucket name
         user_id: Optional authenticated user ID
+        voice_profiles: TASK-887 — the end-user's ENROLLED voice profiles for the agent's
+            speaker-embedding model, resolved and pushed by the gateway. Biometric PHI: it
+            lives in this message for the life of the job and is never persisted or logged
+            here.
         storage: Optional per-tenant storage provider descriptor. When present,
             selects the provider (MinIO/S3/Azure) and bucket for this tenant;
             when absent, the global MinIO client and ``audio_bucket_name`` are
@@ -117,6 +122,7 @@ def transcribe_file(
                 storage=storage,
                 fallback_pipeline_id=fallback_pipeline_id,
                 resolved_spec=resolved_spec,
+                voice_profiles=voice_profiles,
             )
         )
 
@@ -135,6 +141,7 @@ async def _transcribe_file_async(
     storage: dict[str, Any] | None = None,
     fallback_pipeline_id: str | None = None,
     resolved_spec: dict[str, Any] | None = None,
+    voice_profiles: list[dict[str, Any]] | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -328,6 +335,7 @@ async def _transcribe_file_async(
                 user_id=user_id,
                 provider_overrides=provider_overrides,
                 model_configs=bundle.model_configs if bundle is not None else None,
+                voice_profiles=voice_profiles,
             )
 
         # The fallback engine: the spec's own `fallback` chain on the agent path,
