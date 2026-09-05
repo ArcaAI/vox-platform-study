@@ -120,24 +120,34 @@ class TestCatalogAndRouting:
         assert catalog.get("ml-male-1").bindings["sarvam"] == "shubh"
 
     @pytest.mark.asyncio
-    async def test_router_uses_sarvam_for_ml(self):
-        # sarvam is routable when the gateway injects an ml chain that includes
-        # it (a BYO/PHI-enabled tenant). Routing is DB-sourced — the
-        # router no longer carries a code default, so the chain is injected here.
+    async def test_router_uses_sarvam_when_the_agent_binds_it(self, monkeypatch):
+        # Sarvam serves when the tenant's agent binds the Sarvam registry row and its connection
+        # row is enabled — a BYO / PHI-enabled tenant. The engine-native voice name comes from the
+        # model's own binding, so nothing needs a provider-voice table.
+        import tts.routing.router as router_mod
+
+        from tts.tests.fakes import candidate, spec, voice_binding
+
+        monkeypatch.setattr(router_mod, "_build_spec_engine", lambda *_a, **_k: None)
         reg = ProviderRegistry()
         sarvam = FakeEngine("sarvam", chunks=2)
-        reg.register("sarvam", sarvam)  # azure / indic_parler NOT registered
-        router = TTSRouter(reg, VoiceCatalog(), Settings())
-        chunks = [
-            c
-            async for c in router.synthesize(
-                voice_id="ml-female-1",
-                text="ഹലോ.",
-                routing_ml=["azure", "sarvam", "indic_parler"],
+        reg.register("sarvam", sarvam)
+        router = TTSRouter(reg, Settings())
+        resolved = spec(
+            candidate(
+                "sarvam",
+                slug="sarvam-bulbul",
+                source_uri="bulbul:v3",
+                voices=[voice_binding("ml-female-1", locale="ml-IN", provider_voice="ishita")],
+                voice="ml-female-1",
+                language="ml",
+                base_url="https://api.sarvam.ai",
+                timeout_s=30,
             )
-        ]
+        )
+        chunks = [c async for c in router.synthesize(spec=resolved, text="ഹലോ.")]
         assert sarvam.calls == 1 and len(chunks) == 2
-        assert sarvam.requests[0].provider_voice == "ishita"  # resolved catalog binding
+        assert sarvam.requests[0].provider_voice == "ishita"
 
 
 @pytest.mark.e2e
