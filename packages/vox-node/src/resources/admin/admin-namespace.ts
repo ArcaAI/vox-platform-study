@@ -50,7 +50,6 @@ import { AdminTenantFrontendConfigResource } from './tenant-frontend-config';
 import { AdminTenantIdpConfigResource } from './tenant-idp-config';
 import { AdminTenantStorageResource } from './tenant-storage';
 import { AdminTenantSttConfigResource } from './tenant-stt-config';
-import { AdminTenantTtsConfigResource } from './tenant-tts-config';
 import { AdminTranscriptionJobResource } from './transcription-job';
 import { AdminUsageResource } from './usage';
 import { AdminUserResource } from './user';
@@ -62,7 +61,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (50 areas, 404 routes).
+ * per `svc:*` scope (49 areas, 400 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -167,8 +166,6 @@ export class AdminNamespace {
   readonly tenantStorage: AdminTenantStorageResource;
   /** `svc:admin:tenant-stt-config:manage` — 4 routes. */
   readonly tenantSttConfig: AdminTenantSttConfigResource;
-  /** `svc:admin:tenant-tts-config:manage` — 4 routes. */
-  readonly tenantTtsConfig: AdminTenantTtsConfigResource;
   /** `svc:admin:transcription-job:read` — 3 routes. */
   readonly transcriptionJob: AdminTranscriptionJobResource;
   /** `svc:admin:usage:manage` — 4 routes. */
@@ -228,7 +225,6 @@ export class AdminNamespace {
     this.tenantIdpConfig = new AdminTenantIdpConfigResource(transport);
     this.tenantStorage = new AdminTenantStorageResource(transport);
     this.tenantSttConfig = new AdminTenantSttConfigResource(transport);
-    this.tenantTtsConfig = new AdminTenantTtsConfigResource(transport);
     this.transcriptionJob = new AdminTranscriptionJobResource(transport);
     this.usage = new AdminUsageResource(transport);
     this.user = new AdminUserResource(transport);

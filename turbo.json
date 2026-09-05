@@ -585,7 +585,6 @@
         "TEXT_OTEL_EXPORTER_ENDPOINT",
         "TEXT_PORT",
         "TEXT_REDIS_URL",
-        "TEXT_SERVICE_TOKEN",
         "TEXT_SERVICE_URL",
         "TEXT_URL",
         "TOKEN",

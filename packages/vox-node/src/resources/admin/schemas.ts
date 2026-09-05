@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 378 component schemas the generated surface transitively
+ * Only the 372 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -1161,7 +1161,20 @@ export interface CreateModelRequest {
   /** The single file a single-file loader opens inside `bucketPrefix`. */
   primaryObject?: string;
   /** Canonical runtime provider id */
-  provider?: 'ollama' | 'lm-studio' | 'azure' | 'bedrock' | 'built-in' | 'sarvam' | 'openai' | 'anthropic' | 'vertex' | 'vllm' | 'llama-cpp';
+  provider?:
+    | 'ollama'
+    | 'lm-studio'
+    | 'azure'
+    | 'bedrock'
+    | 'built-in'
+    | 'sarvam'
+    | 'openai'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'anthropic'
+    | 'vertex'
+    | 'vllm'
+    | 'llama-cpp';
   /** Workload that executes the model. */
   servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy';
   /** URL-friendly unique identifier */
@@ -1811,33 +1824,6 @@ export interface EffectiveSttConfigResponse {
   fallbackPipelineId: string | null;
   /** Tenant the config was resolved for */
   tenantId: string;
-}
-
-export interface EffectiveTtsConfigResponse {
-  /** Effective provider whitelist */
-  allowedProviders: string[];
-  /** Effective default output format */
-  defaultFormat: string;
-  /** Effective default speed */
-  defaultSpeed: number;
-  /** Effective default English voice id */
-  defaultVoiceEn: string;
-  /** Effective default Malayalam voice id */
-  defaultVoiceMl: string;
-  /** Effective max input characters */
-  maxInputChars: number;
-  /** Effective provider chain for en-* */
-  routingEn: string[];
-  /** Effective provider chain for ml-* */
-  routingMl: string[];
-  /** Effective default sample rate (Hz) */
-  sampleRate: number;
-  /** Whether routing to the Sarvam public API is allowed */
-  sarvamPublicApiAllowed: boolean;
-  /** Tenant the config was resolved for */
-  tenantId: string;
-  /** Effective per-voice provider voice-name bindings: { [internalVoiceId]: { [provider]: providerVoiceName } } */
-  voiceBindings: Record<string, unknown>;
 }
 
 export interface EntitlementCapabilitiesResponse {
@@ -4709,41 +4695,6 @@ export interface TenantSttConfigResponse {
   version: number;
 }
 
-export interface TenantTtsConfigResponse {
-  /** Provider whitelist */
-  allowedProviders: string[];
-  /** Persisted config extras (incl. voiceBindings) */
-  configJson?: Record<string, unknown> | null;
-  /** Created timestamp (ISO) */
-  createdAt?: string;
-  /** Default output format */
-  defaultFormat?: string | null;
-  /** Default speed */
-  defaultSpeed?: number | null;
-  /** Default English voice id */
-  defaultVoiceEn?: string | null;
-  /** Default Malayalam voice id */
-  defaultVoiceMl?: string | null;
-  /** Max input characters */
-  maxInputChars?: number | null;
-  /** Resource status */
-  resourceStatus?: string;
-  /** Provider chain for en-* */
-  routingEn: string[];
-  /** Provider chain for ml-* */
-  routingMl: string[];
-  /** Default sample rate (Hz) */
-  sampleRate?: number | null;
-  /** Whether routing to the Sarvam public API is allowed */
-  sarvamPublicApiAllowed: boolean;
-  /** Owning tenant id */
-  tenantId: string;
-  /** Updated timestamp (ISO) */
-  updatedAt?: string;
-  /** OCC version. 0 when no row exists yet (create with expectedVersion=0). */
-  version: number;
-}
-
 export interface TenantUsageResponse {
   /** Configured storage quota in bytes (SUM of TenantBucket.quotaBytes); null when no bucket has a quota set. */
   storageQuotaBytes: number | null;
@@ -4931,33 +4882,6 @@ export interface TriggerModelDownloadResponse {
   jobId: string;
   /** Always DOWNLOADING on a successful trigger. */
   status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
-}
-
-export interface TtsCatalogProvider {
-  /** Human-readable engine name */
-  name: string;
-  /** TTS routing provider id (azure, sarvam, kokoro, indic_parler, indic_f5, ...) */
-  provider: string;
-  /** Backing AiModel registry slug (equals the provider id in the pre-seed fallback) */
-  slug: string;
-  /** Voices this engine offers (empty when the registry row declares none) */
-  voices: TtsCatalogVoice[];
-}
-
-export interface TtsCatalogVoice {
-  /** Voice gender when declared */
-  gender?: string;
-  /** Provider voice identifier (the value bound in voiceBindings) */
-  id: string;
-  /** BCP-47 locale of the voice */
-  locale: string;
-  /** Alternate display/binding name when declared */
-  name?: string;
-}
-
-export interface TtsPlatformCatalogResponse {
-  /** Platform TTS engines */
-  providers: TtsCatalogProvider[];
 }
 
 export interface UnregisteredBucketPrefix {
@@ -5288,7 +5212,20 @@ export interface UpdateModelRequest {
   /** The single file a single-file loader opens inside `bucketPrefix`. Send an empty string to clear. */
   primaryObject?: string;
   /** Canonical runtime provider id */
-  provider?: 'ollama' | 'lm-studio' | 'azure' | 'bedrock' | 'built-in' | 'sarvam' | 'openai' | 'anthropic' | 'vertex' | 'vllm' | 'llama-cpp';
+  provider?:
+    | 'ollama'
+    | 'lm-studio'
+    | 'azure'
+    | 'bedrock'
+    | 'built-in'
+    | 'sarvam'
+    | 'openai'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'anthropic'
+    | 'vertex'
+    | 'vllm'
+    | 'llama-cpp';
   /** Workload that executes the model. */
   servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy';
   /** URL-friendly unique identifier */
@@ -5592,33 +5529,6 @@ export interface UpdateTenantRequest {
   /** Resource status */
   resourceStatus?: 'ENABLED' | 'DISABLED';
   tenantId?: string;
-}
-
-export interface UpdateTenantTtsConfigRequest {
-  /** Provider whitelist; empty = all platform providers */
-  allowedProviders?: string[];
-  /** Default output format */
-  defaultFormat?: 'pcm' | 'wav' | 'mp3';
-  /** Default speed (0.25–4.0) */
-  defaultSpeed?: number;
-  /** Default English voice id (catalog), e.g. en-female-1 */
-  defaultVoiceEn?: string;
-  /** Default Malayalam voice id (catalog), e.g. ml-female-1 */
-  defaultVoiceMl?: string;
-  /** OCC token. 0 = create (no row yet); >0 = compare-and-set against the current version (412 on drift). */
-  expectedVersion: number;
-  /** Max input characters (clamped to the platform ceiling) */
-  maxInputChars?: number;
-  /** Ordered provider chain for en-* (clamped to allowed providers) */
-  routingEn?: string[];
-  /** Ordered provider chain for ml-* (clamped to allowed providers) */
-  routingMl?: string[];
-  /** Default sample rate (Hz) */
-  sampleRate?: number;
-  /** Allow routing to the Sarvam public API (⚠️ not PHI-safe by default) */
-  sarvamPublicApiAllowed?: boolean;
-  /** Per-voice provider voice-name bindings: { [internalVoiceId]: { [provider]: providerVoiceName } } */
-  voiceBindings?: Record<string, unknown>;
 }
 
 export interface UpdateUserDepartmentRequest {

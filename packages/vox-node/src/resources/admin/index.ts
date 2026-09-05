@@ -13,7 +13,7 @@
  *
  * The hand-authored {@link AdminResource} base — the part that holds judgment
  * (pagination, `If-Match` plumbing, scope-aware error mapping) — is
- * re-exported first; the 50 generated per-area resources follow.
+ * re-exported first; the 49 generated per-area resources follow.
  *
  * ## Deliberately absent
  *
@@ -91,7 +91,6 @@ export { AdminTenantFrontendConfigResource } from './tenant-frontend-config';
 export { AdminTenantIdpConfigResource } from './tenant-idp-config';
 export { AdminTenantStorageResource } from './tenant-storage';
 export { AdminTenantSttConfigResource } from './tenant-stt-config';
-export { AdminTenantTtsConfigResource } from './tenant-tts-config';
 export { AdminTranscriptionJobResource } from './transcription-job';
 export { AdminUsageResource } from './usage';
 export { AdminUserResource } from './user';
