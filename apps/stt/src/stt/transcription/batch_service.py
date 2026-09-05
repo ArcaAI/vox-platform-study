@@ -1242,10 +1242,20 @@ class BatchTranscriptionService:
             ``model_output`` contains ``{"segment_latencies": [...]}``.
         """
         settings = get_settings()
-        chunk_length_s = float(settings.transcription_chunk_length_s)
-        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
-        stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
-        stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
+        spec_chunk_length_sec = getattr(config, "chunk_length_sec", None)
+        spec_stride_length_sec = getattr(config, "stride_length_sec", None)
+        chunk_length_s = (
+            float(spec_chunk_length_sec)
+            if isinstance(spec_chunk_length_sec, (int, float))
+            and not isinstance(spec_chunk_length_sec, bool)
+            else float(settings.transcription_chunk_length_s)
+        )
+        if isinstance(spec_stride_length_sec, tuple) and len(spec_stride_length_sec) == 2:
+            stride_left, stride_right = (int(spec_stride_length_sec[0]), int(spec_stride_length_sec[1]))
+        else:
+            stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
+            stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
+            stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
         raw_carry = getattr(config, "prev_text_context_words", None)
         if isinstance(raw_carry, int) and not isinstance(raw_carry, bool):
             carry_max_words = max(0, raw_carry)

@@ -261,7 +261,9 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // NOTE: `TENANT_IDP_ENABLED` is deliberately ABSENT — it has no reader
     // anywhere in the repo despite an `.env.sample` comment claiming one.
     // See `feature-flags.descriptors.ts` for the evidence.
-    'semanticEndpoint.enabled': 'SEMANTIC_ENDPOINT_ENABLED',
+    // NOTE: `semanticEndpoint.enabled` (bare `SEMANTIC_ENDPOINT_ENABLED`) is
+    // deliberately ABSENT — TASK-877 deleted its only reader along with the rest
+    // of the `stt.semanticEndpoint.*` family; see `stt-runtime.descriptors.test.ts`.
     // `guardrailV2.groundedness.enabled` was here. Removed by TASK-872: no
     // pydantic field carries `GUARDRAIL_V2_GROUNDEDNESS_ENABLED` any more (the
     // live gate is `guardrail.groundedness.enabled`, tier `global-kv`, served

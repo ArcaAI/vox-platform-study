@@ -2348,6 +2348,80 @@ class TestPerSegmentInference:
         assert len(result.model_output["segment_latencies"]) == 1
 
 
+class TestPerSegmentInferenceChunkingConfig:
+    """TASK-877 follow-up: `ResolvedAsrSpec.decoding.{chunkLengthSec,strideLengthSec}`
+    must win over the platform `stt.transcription.*` settings when the agent sets
+    them, and the platform values must still apply when the agent does not.
+    """
+
+    @pytest.fixture
+    def service(self):
+        return BatchTranscriptionService()
+
+    @pytest.mark.asyncio
+    async def test_spec_chunking_wins_over_platform_settings(self, service):
+        """A spec-supplied chunk_length_sec/stride_length_sec sub-splits the
+        segment on ITS window, not the platform's — a 5s segment against a
+        2s/0s-stride spec must sub-split into 3 inference calls even though
+        the platform default (15s) would not split it at all.
+        """
+        from stt.transcription.dto import AudioSegment
+
+        samples = np.zeros(80000, dtype=np.float32)  # 5s at 16kHz
+        segments = [AudioSegment(start_time=0.0, end_time=5.0, is_speech=True)]
+        model = create_complete_loaded_model()
+        config = InferenceConfig(chunk_length_sec=2.0, stride_length_sec=(0, 0))
+
+        with (
+            patch("stt.transcription.batch_service.get_settings") as ms,
+            patch.object(service, "_run_inference", new_callable=AsyncMock) as mock,
+        ):
+            ms.return_value = MagicMock(
+                transcription_chunk_length_s=15,
+                transcription_stride_length_s="4,2",
+                segment_merge_gap_threshold_s=2.0,
+            )
+            mock.return_value = RawTranscription(text="hello")
+
+            await service._run_per_segment_inference(
+                samples, 16000, segments, model, config, job_id="test"
+            )
+
+        # 2s window, 0s stride, 5s segment -> chunks at [0-2), [2-4), [4-5) = 3 calls.
+        assert mock.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_platform_settings_used_when_spec_chunking_unset(self, service):
+        """With no spec opinion (both fields None, the dataclass default), the
+        same 5s segment must fall back to the platform's chunk_length_s and stay
+        a single inference call, unchanged from today's behaviour.
+        """
+        from stt.transcription.dto import AudioSegment
+
+        samples = np.zeros(80000, dtype=np.float32)  # 5s at 16kHz
+        segments = [AudioSegment(start_time=0.0, end_time=5.0, is_speech=True)]
+        model = create_complete_loaded_model()
+        config = InferenceConfig()
+
+        with (
+            patch("stt.transcription.batch_service.get_settings") as ms,
+            patch.object(service, "_run_inference", new_callable=AsyncMock) as mock,
+        ):
+            ms.return_value = MagicMock(
+                transcription_chunk_length_s=15,
+                transcription_stride_length_s="4,2",
+                segment_merge_gap_threshold_s=2.0,
+            )
+            mock.return_value = RawTranscription(text="hello")
+
+            await service._run_per_segment_inference(
+                samples, 16000, segments, model, config, job_id="test"
+            )
+
+        # 5s segment does not exceed the platform's 15s chunk_length_s.
+        assert mock.call_count == 1
+
+
 # =============================================================================
 # TIMING METRICS IN TRANSCRIBE TESTS
 # =============================================================================
