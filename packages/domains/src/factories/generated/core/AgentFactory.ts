@@ -16,6 +16,10 @@ export interface CreateAgentProps extends BaseEntityFactoryCreateProps {
   task: IAgentEntity['task'];
   versionNumber: IAgentEntity['versionNumber'];
   parentVersionId?: IAgentEntity['parentVersionId'];
+  sourceAgentId?: IAgentEntity['sourceAgentId'];
+  sourceTenantId?: IAgentEntity['sourceTenantId'];
+  sourceSlug?: IAgentEntity['sourceSlug'];
+  sourceVersionNumber?: IAgentEntity['sourceVersionNumber'];
   status?: IAgentEntity['status'];
   isActive?: IAgentEntity['isActive'];
   modelId: IAgentEntity['modelId'];
@@ -62,6 +66,10 @@ export class AgentFactory {
       task: props.task,
       versionNumber: props.versionNumber,
       parentVersionId: props.parentVersionId ?? null,
+      sourceAgentId: props.sourceAgentId ?? null,
+      sourceTenantId: props.sourceTenantId ?? null,
+      sourceSlug: props.sourceSlug ?? null,
+      sourceVersionNumber: props.sourceVersionNumber ?? null,
       status: props.status ?? Enums.WorkflowDefinitionStatus.DRAFT,
       isActive: props.isActive ?? false,
       modelId: props.modelId,

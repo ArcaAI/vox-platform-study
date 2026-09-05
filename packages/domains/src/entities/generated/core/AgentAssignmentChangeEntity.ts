@@ -15,6 +15,8 @@ export interface IAgentAssignmentChangeEntity extends IBaseTenantEntity {
   scope: Enums.PipelinePolicyScope;
   scopeId?: string | null;
   task: Enums.AgentTask;
+  /** TASK-884 — WHICH row of the tier changed; `''` for the unqualified assignment. */
+  selectorKey: string;
   changedBy?: string | null;
   assignmentVersion?: number | null;
   /** Null when this change CREATED the assignment. */
@@ -28,6 +30,7 @@ export class AgentAssignmentChangeEntity extends BaseTenantEntity {
   private _scope: IAgentAssignmentChangeEntity['scope'];
   private _scopeId?: IAgentAssignmentChangeEntity['scopeId'];
   private _task: IAgentAssignmentChangeEntity['task'];
+  private _selectorKey: IAgentAssignmentChangeEntity['selectorKey'];
   private _changedBy?: IAgentAssignmentChangeEntity['changedBy'];
   private _assignmentVersion?: IAgentAssignmentChangeEntity['assignmentVersion'];
   private _beforeSlug?: IAgentAssignmentChangeEntity['beforeSlug'];
@@ -39,6 +42,7 @@ export class AgentAssignmentChangeEntity extends BaseTenantEntity {
     this._scope = init.scope;
     this._scopeId = init.scopeId;
     this._task = init.task;
+    this._selectorKey = init.selectorKey ?? '';
     this._changedBy = init.changedBy;
     this._assignmentVersion = init.assignmentVersion;
     this._beforeSlug = init.beforeSlug;
@@ -56,6 +60,10 @@ export class AgentAssignmentChangeEntity extends BaseTenantEntity {
 
   get task(): IAgentAssignmentChangeEntity['task'] {
     return this._task;
+  }
+
+  get selectorKey(): IAgentAssignmentChangeEntity['selectorKey'] {
+    return this._selectorKey;
   }
 
   get changedBy(): IAgentAssignmentChangeEntity['changedBy'] {

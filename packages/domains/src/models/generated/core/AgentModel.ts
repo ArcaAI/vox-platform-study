@@ -14,6 +14,10 @@ export class Agent extends BaseTenantDataModel {
   public task: Enums.AgentTask;
   public versionNumber: number;
   public parentVersionId: string | null;
+  public sourceAgentId: string | null;
+  public sourceTenantId: string | null;
+  public sourceSlug: string | null;
+  public sourceVersionNumber: number | null;
   public status: Enums.WorkflowDefinitionStatus;
   public isActive: boolean;
   public modelId: string;
@@ -45,6 +49,10 @@ export class Agent extends BaseTenantDataModel {
     this.task = data.task;
     this.versionNumber = data.versionNumber;
     this.parentVersionId = data.parentVersionId;
+    this.sourceAgentId = data.sourceAgentId;
+    this.sourceTenantId = data.sourceTenantId;
+    this.sourceSlug = data.sourceSlug;
+    this.sourceVersionNumber = data.sourceVersionNumber;
     this.status = data.status;
     this.isActive = data.isActive;
     this.modelId = data.modelId;

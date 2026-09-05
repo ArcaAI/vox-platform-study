@@ -11,6 +11,8 @@ export interface CreateAgentAssignmentProps extends BaseEntityFactoryCreateProps
   scopeId?: IAgentAssignmentEntity['scopeId'];
   task: IAgentAssignmentEntity['task'];
   agentSlug: IAgentAssignmentEntity['agentSlug'];
+  /** Canonical `key:value` tag selector; omitted / `''` = the tier's unqualified assignment. */
+  selectorKey?: IAgentAssignmentEntity['selectorKey'];
 
   createdAt?: IAgentAssignmentEntity['createdAt'];
   updatedAt?: IAgentAssignmentEntity['updatedAt'];
@@ -36,6 +38,7 @@ export class AgentAssignmentFactory {
       scopeId: props.scopeId ?? null,
       task: props.task,
       agentSlug: props.agentSlug,
+      selectorKey: props.selectorKey ?? '',
     });
   }
 }
