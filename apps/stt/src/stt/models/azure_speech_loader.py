@@ -16,7 +16,6 @@ from azure.cognitiveservices.speech import (
     SpeechConfig,
 )
 
-from ..core.config.settings import get_settings
 from ..core.exceptions import CloudASRAuthError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
@@ -97,8 +96,7 @@ class AzureSpeechLoader(BaseModelLoader):
             provider_overrides: Optional per-tenant credential map (gateway
                 wire shape). The ``azure-speech`` entry (``api_key``/``region``/
                 ``endpoint``), when present, takes precedence over the inline
-                config and env credentials (BYOK). Env fallback
-                preserved.
+                config and env credentials (BYOK).
 
         Returns:
             ``LoadedModel`` with ``model`` set to a ``SpeechConfig``.
@@ -106,8 +104,6 @@ class AzureSpeechLoader(BaseModelLoader):
         Raises:
             CloudASRAuthError: If credentials are missing or invalid.
         """
-        settings = get_settings()
-
         override = None
         if provider_overrides:
             entry = provider_overrides.get("azure-speech")
@@ -118,22 +114,26 @@ class AzureSpeechLoader(BaseModelLoader):
         override_region = (override.get("region") or override.get("endpoint")) if override else None
 
         # Azure Speech is BYOK-only: the subscription KEY comes solely from the
-        # per-tenant / SYSTEM provider-connection override (there is no env
-        # fallback and no inline-config key path). The REGION is non-secret, so
-        # it may still come from the pipeline config or env.
+        # per-tenant / SYSTEM provider-connection override (there is no env fallback
+        # and no inline-config key path).
+        #
+        # TASK-880 — so is the REGION now. `stt.azureSpeech.region` is deleted: an
+        # override entry exists ONLY behind an enabled, keyed row, and that row is what
+        # carries `region`, so the platform key could only ever have patched a row that
+        # forgot to set its own. A row that carries a credential and no region is a
+        # misconfigured row, and it fails closed below with both halves named — the
+        # posture this loader already took for the endpoint.
         speech_key = override_key
 
-        speech_region = (
-            override_region or self._resolve_region(model_config) or settings.azure_speech_region
-        )
+        speech_region = override_region or self._resolve_region(model_config)
 
         if not speech_key or not speech_region:
             raise CloudASRAuthError(
                 "Azure Speech credentials not configured. Azure Speech is BYOK-only: "
                 "configure a tenant Azure Speech credential, or the platform "
-                "(SYSTEM-tenant) connection, in the provider-connection plane (the "
-                "region may still be set via pipeline config or AZURE_SPEECH_REGION). "
-                "There is no env fallback for the key.",
+                "(SYSTEM-tenant) connection, in the provider-connection plane, with its "
+                "`region` set on the same row (or on the pipeline config). There is no "
+                "env fallback for either.",
                 details={
                     "has_key": bool(speech_key),
                     "has_region": bool(speech_region),

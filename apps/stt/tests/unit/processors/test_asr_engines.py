@@ -240,17 +240,18 @@ class TestP3NewEngines:
             AzureFoundryEngine().make_streaming_callable(MagicMock(), MagicMock(), MagicMock())
 
     @pytest.mark.asyncio
-    async def test_azure_foundry_disabled_by_default(self):
-        # The Azure Foundry loader refuses unless azure_foundry_enabled is set.
-        from unittest.mock import MagicMock, patch
+    async def test_azure_foundry_unavailable_without_its_connection_row(self):
+        """TASK-880 — the loader refuses unless an `azure-foundry`
+        `AiProviderConnection` resolved for the tenant. That row (SYSTEM-seeded
+        disabled) replaced the `azure_foundry_enabled` platform flag: same OFF-by-
+        default preview posture, now decidable per tenant."""
+        from unittest.mock import MagicMock
 
         from stt.core.exceptions import CloudASRAuthError
         from stt.models.azure_foundry_loader import AzureFoundryLoader
 
-        settings = MagicMock(azure_foundry_enabled=False)
-        with patch("stt.models.azure_foundry_loader.get_settings", return_value=settings):
-            with pytest.raises(CloudASRAuthError, match="disabled"):
-                await AzureFoundryLoader().load(MagicMock())
+        with pytest.raises(CloudASRAuthError, match="not available for this tenant"):
+            await AzureFoundryLoader().load(MagicMock())
 
     def test_parakeet_adapter_contract(self):
         # Duck-typed binding: transcribe() dict → callable contract dict.

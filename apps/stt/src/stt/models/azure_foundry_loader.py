@@ -7,9 +7,23 @@ validates configuration and returns a lightweight ``LoadedModel`` whose
 API with ``enhancedMode``). Inference lives in
 ``BatchTranscriptionService._run_azure_foundry_inference``.
 
-MAI-Transcribe is a PREVIEW service (no SLA, no diarization) — the engine is
-DISABLED unless ``azure_foundry_enabled`` is set, and it is batch-only. Do not
+MAI-Transcribe is a PREVIEW service (no SLA, no diarization) and batch-only. Do not
 route PHI until GA + data-residency sign-off.
+
+TASK-880 — the engine's gate is its own ``AiProviderConnection(stt, azure-foundry)``
+row, not the platform flag ``stt.azureFoundry.enabled`` it replaces. The three-state
+row semantics ARE the gate the flag was imitating, and better: **no row** or a
+disabled/keyless one means no ``provider_overrides`` entry is injected, so the engine
+cannot load; the SYSTEM row seeds ``enabled: false``, which is the platform's
+preview veto; a tenant that has signed off brings its own credential and enables it,
+per tenant, instead of flipping one boolean for the whole platform. The endpoint rides
+the same row (``baseUrl``), replacing ``stt.azureFoundry.endpoint``.
+
+Foundry has its OWN connection row rather than aliasing ``azure-speech``. It used to
+read the ``azure-speech`` entry on the reasoning that a Foundry resource IS an Azure
+Speech resource — but that made one credential the gate for two engines with different
+data-residency postures, so a tenant could not enable Speech without also enabling a
+PREVIEW service for its PHI, and could not point Foundry at a different resource.
 
 The API key is BYOK-only — it comes solely from the per-tenant / SYSTEM
 provider-connection override, never from env (no ``compute_type`` smuggling
@@ -18,7 +32,6 @@ either — the AZURE_SPEECH ``"key:"`` wart is deliberately not repeated).
 
 import logging
 
-from ..core.config.settings import get_settings
 from ..core.exceptions import CloudASRAuthError, ConfigurationError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
@@ -33,7 +46,7 @@ class AzureFoundryLoader(BaseModelLoader):
     # gateway-injected `provider_overrides` entry (tenant -> SYSTEM
     # AiProviderConnection) read under `override_key`. There is no env fallback.
     credential_posture = CredentialPosture.BYOK
-    override_key = "azure-speech"
+    override_key = "azure-foundry"
 
     @property
     def supported_formats(self) -> list[AiModelFormat]:
@@ -44,21 +57,15 @@ class AzureFoundryLoader(BaseModelLoader):
         model_config: AiModelConfig,
         provider_overrides: dict[str, object] | None = None,
     ) -> LoadedModel:
-        settings = get_settings()
-
-        if not settings.azure_foundry_enabled:
-            raise CloudASRAuthError(
-                "Azure Foundry (MAI-Transcribe) engine is disabled "
-                "(azure_foundry_enabled=false). Decision D4: preview service — "
-                "enable explicitly once GA + data residency are signed off."
-            )
-
-        # Per-tenant BYOK override: the `azure-speech` credential row
-        # carries the Foundry endpoint/key too (a Foundry resource IS an Azure
-        # Speech resource).
+        # TASK-880 — the row IS the gate. An entry under `azure-foundry` exists only
+        # when an enabled, keyed `AiProviderConnection(stt, azure-foundry)` resolved for
+        # this tenant (tenant row, else the SYSTEM row, neither vetoed); absent means no
+        # tier serves the engine, which is exactly what the deleted
+        # `stt.azureFoundry.enabled` flag expressed — now per tenant rather than per
+        # platform, and defaulting to the same OFF via the seeded disabled SYSTEM row.
         override = None
         if provider_overrides:
-            entry = provider_overrides.get("azure-speech")
+            entry = provider_overrides.get(self.override_key)
             if isinstance(entry, dict) and entry:
                 override = entry
 
@@ -66,26 +73,29 @@ class AzureFoundryLoader(BaseModelLoader):
         # solely from the per-tenant / SYSTEM provider-connection override (there is
         # no env fallback). `azure.foundryApiKey` was ALREADY a registered vault-kv
         # platform-secret descriptor — the governance existed and this reader simply
-        # never asked for it, reading `AZURE_FOUNDRY_API_KEY` from env instead. The
-        # ENDPOINT is non-secret, so its env fallback legitimately stays.
+        # never asked for it, reading `AZURE_FOUNDRY_API_KEY` from env instead.
+        #
+        # TASK-880 — the ENDPOINT comes from the same row (`baseUrl` on the wire), not
+        # from `stt.azureFoundry.endpoint`. `endpoint` is accepted as the pre-unification
+        # `extraJson` spelling so a row written before the column existed still loads.
         api_key = override.get("api_key") if override else None
 
         endpoint = (
-            (override.get("endpoint") if override else None)
-            or settings.azure_foundry_endpoint
-            or ""
+            (override.get("base_url") or override.get("endpoint") if override else None) or ""
         ).rstrip("/")
 
         if not endpoint or not api_key:
             raise CloudASRAuthError(
-                "Azure Foundry credentials not configured. Azure Foundry is BYOK-only: "
-                "configure a tenant Azure Speech credential, or the platform "
-                "(SYSTEM-tenant) connection, in the provider-connection plane (the "
-                "endpoint may still be set via AZURE_FOUNDRY_ENDPOINT). There is no "
-                "env fallback for the key.",
+                "Azure Foundry (MAI-Transcribe) is not available for this tenant. It is "
+                "BYOK-only and PREVIEW: configure an `azure-foundry` connection — the "
+                "tenant's own, or the platform (SYSTEM-tenant) row — in the "
+                "provider-connection plane, ENABLED, with both a key and a `baseUrl`. "
+                "The SYSTEM row ships disabled on purpose: do not route PHI until GA "
+                "and data-residency sign-off. There is no env fallback for either half.",
                 details={
                     "has_key": bool(api_key),
                     "has_endpoint": bool(endpoint),
+                    "provider": self.override_key,
                 },
             )
 

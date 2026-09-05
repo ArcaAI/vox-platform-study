@@ -388,59 +388,27 @@ class Settings(BaseSettings):
             return None
         return str(v).strip()
 
-    # Azure Speech (cloud ASR engine)
-    # Azure Speech is BYOK-only. The subscription KEY is NOT an env var
-    # and NOT a settings field — it is resolved per request from the
-    # provider-connection plane (tenant / SYSTEM AiProviderConnection). Only the
-    # non-secret REGION remains here.
-    azure_speech_region: str | None = Field(
-        validation_alias=moved_alias("azure_speech_region"),
-        default=None,
-        description="Azure Speech service region (e.g., eastus, westeurope)",
-    )
-
-    # Azure AI Foundry — MAI-Transcribe (engine AZURE_FOUNDRY).
-    # PREVIEW service (no SLA, no diarization) — disabled by default,
-    # batch-only, and PHI must not flow until GA + data-residency sign-off.
-    # Azure Foundry is BYOK-only, like Azure Speech: the API KEY is NOT an env
-    # var and NOT a settings field — it is resolved per request from the
-    # provider-connection plane (tenant / SYSTEM AiProviderConnection), where
-    # `azure.foundryApiKey` has been a registered vault-kv descriptor all along.
-    # The MODEL is not a settings field either: selection is tenant/platform
-    # configuration carried by the pipeline's AiModel, and fails closed when
-    # unresolved. Only the non-secret enable flag and endpoint remain here.
-    # Env vars: AZURE_FOUNDRY_ENABLED / _ENDPOINT.
-    azure_foundry_enabled: bool = Field(
-        validation_alias=moved_alias("azure_foundry_enabled"),
-        default=False,
-        description="Enable the Azure AI Foundry MAI-Transcribe engine (preview, off by default)",
-    )
-    azure_foundry_endpoint: str | None = Field(
-        validation_alias=moved_alias("azure_foundry_endpoint"),
-        default=None,
-        description="Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com",
-    )
-
-    # Sarvam AI speech-to-text (engine SARVAM, cloud engine).
-    # Sarvam is BYOK-only. The api-subscription-KEY is NOT an env var and
-    # NOT a settings field — it is resolved per request from the provider-connection
-    # plane. Only the non-secret base URL remains here.
-    sarvam_base_url: str = Field(
-        validation_alias=moved_alias("sarvam_base_url"),
-        default="https://api.sarvam.ai",
-        description="Sarvam AI API base URL",
-    )
-
-    # OpenAI speech-to-text (engine OPENAI, cloud engine).
-    # base_url supports Azure-OpenAI-compatible endpoints (env: OPENAI_BASE_URL).
-    # OpenAI ASR is BYOK-only. The api KEY is NOT an env var and NOT a
-    # settings field — it is resolved per request from the provider-connection
-    # plane. Only the non-secret base URL remains here.
-    openai_base_url: str = Field(
-        validation_alias=moved_alias("openai_base_url"),
-        default="https://api.openai.com/v1",
-        description="OpenAI (or Azure-OpenAI-compatible) API base URL",
-    )
+    # CLOUD ASR ENGINES (Azure Speech, Azure AI Foundry, Sarvam, OpenAI) HAVE NO
+    # SETTINGS FIELDS AT ALL — TASK-880.
+    #
+    # Their KEYS never had one: every cloud STT engine is BYOK and its credential is
+    # resolved per request from `AiProviderConnection` (tenant, else SYSTEM). What
+    # remained here were the non-secret halves — `azure_speech_region`,
+    # `azure_foundry_endpoint`, `sarvam_base_url`, `openai_base_url` — plus the
+    # `azure_foundry_enabled` preview flag.
+    #
+    # Every one of them is a property of the CONNECTION, and a connection reaches a
+    # loader only as a `provider_overrides` entry, which exists only behind an ENABLED,
+    # KEYED row — the same row that carries `baseUrl` and `region`. So these fields
+    # could only ever have patched a row that forgot to set its own, while making a
+    # PUBLIC vendor endpoint (api.sarvam.ai, api.openai.com) the silent default on a
+    # PHI platform. The loaders now fail closed and name the row.
+    #
+    # `azure_foundry_enabled` is replaced by the row's own three states rather than by
+    # another flag: no row / disabled / keyless = no entry = the engine cannot load,
+    # which is the preview veto, seeded OFF on the SYSTEM row and now decidable per
+    # tenant. Foundry also has its OWN `azure-foundry` row instead of aliasing
+    # `azure-speech`, so enabling Speech no longer enables a PREVIEW service for PHI.
 
     # parakeet.cpp — ggml runtime for NVIDIA Parakeet/Nemotron ASR
     # (engine PARAKEET_CPP). No official Python bindings exist upstream

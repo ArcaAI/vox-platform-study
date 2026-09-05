@@ -1,15 +1,19 @@
 """Unit tests for the Sarvam speech-to-text loader.
 
-Covers BYOK-override-first / env-fallback credential resolution, the
-CloudASRAuthError when neither source has a key, and the security invariant
-that key material never appears in repr or logs.
+Covers connection-row credential resolution, the CloudASRAuthError when the row is
+missing either half, and the security invariant that key material never appears in
+repr or logs.
+
+TASK-880 — there is no env half left to fall back to. `stt.sarvam.baseUrl` is deleted
+along with the key: an override entry exists ONLY behind an enabled, keyed
+`AiProviderConnection(stt, sarvam)` row, and that row carries `baseUrl`. The deleted
+key's default was the PUBLIC api.sarvam.ai, which carries no BAA and must not be a
+silent default on a PHI platform.
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
 
 from stt.core.exceptions import CloudASRAuthError, ModelNotFoundError
 from stt.models.base_loader import LoadedModel
@@ -47,11 +51,13 @@ def _config(source_uri: str | None = "saaras:v4") -> AiModelConfig:
     )
 
 
-def _settings(sarvam_key: SecretStr | None) -> MagicMock:
-    return MagicMock(
-        sarvam_api_key=sarvam_key,
-        sarvam_base_url="https://api.sarvam.ai",
-    )
+#: A complete connection row on the wire: credential AND endpoint, as
+#: `toOverrideEntry` emits them (`base_url` from `AiProviderConnection.baseUrl`).
+_BASE_URL = "https://api.sarvam.ai"
+
+
+def _entry(**extra: object) -> dict[str, dict[str, object]]:
+    return {"sarvam": {"api_key": "byok-sarvam-key", "base_url": _BASE_URL, **extra}}
 
 
 class TestSarvamLoaderFormats:
@@ -66,12 +72,7 @@ class TestSarvamLoaderLoad:
     @pytest.mark.asyncio
     async def test_load_with_override_key(self):
         loader = SarvamLoader()
-        with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(None)
-            result = await loader.load(
-                _config(),
-                provider_overrides={"sarvam": {"api_key": "byok-sarvam-key"}},
-            )
+        result = await loader.load(_config(), provider_overrides=_entry())
         assert isinstance(result, LoadedModel)
         assert result.format == AiModelFormat.SARVAM
         assert result.device == "cloud"
@@ -80,54 +81,56 @@ class TestSarvamLoaderLoad:
         cfg = result.model
         assert isinstance(cfg, CloudRestConfig)
         assert cfg.api_key.get_secret_value() == "byok-sarvam-key"
+        assert cfg.base_url == _BASE_URL
         assert cfg.model_name == "saaras:v4"
 
     @pytest.mark.asyncio
-    async def test_env_key_is_ignored_byok_only(self):
-        """An env-set Sarvam key must NOT satisfy the loader — Sarvam is
-        BYOK-only. With no override, the loader fails closed even if the (legacy)
-        settings field somehow held a value."""
+    async def test_no_connection_row_fails_closed(self):
+        """With no override entry the loader fails closed. TASK-880 — there is no
+        env half left at all: the loader no longer reads `Settings`."""
         loader = SarvamLoader()
-        with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("env-sarvam-key"))
-            with pytest.raises(CloudASRAuthError) as exc:
-                await loader.load(_config())
+        with pytest.raises(CloudASRAuthError) as exc:
+            await loader.load(_config())
         assert exc.value.details["has_key"] is False
+        assert exc.value.details["has_base_url"] is False
 
     @pytest.mark.asyncio
-    async def test_override_key_wins_over_env(self):
+    async def test_a_row_with_a_key_but_no_base_url_fails_closed(self):
+        """TASK-880 — the endpoint is not optional now that no platform default backs
+        it. A keyed row with no `baseUrl` is a misconfigured row, and it says so."""
         loader = SarvamLoader()
-        with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("env-key"))
-            result = await loader.load(
-                _config(),
-                provider_overrides={"sarvam": {"api_key": "byok-key", "model": "saaras:v2"}},
-            )
+        with pytest.raises(CloudASRAuthError) as exc:
+            await loader.load(_config(), provider_overrides={"sarvam": {"api_key": "k"}})
+        assert exc.value.details["has_key"] is True
+        assert exc.value.details["has_base_url"] is False
+
+    @pytest.mark.asyncio
+    async def test_the_rows_model_override_wins(self):
+        loader = SarvamLoader()
+        result = await loader.load(
+            _config(), provider_overrides=_entry(api_key="byok-key", model="saaras:v2")
+        )
         cfg = result.model
         assert cfg.api_key.get_secret_value() == "byok-key"
         assert cfg.model_name == "saaras:v2"
 
     @pytest.mark.asyncio
     async def test_override_without_key_raises(self):
-        """An override carrying no api_key does NOT fall back to env —
-        it fails closed (BYOK-only)."""
+        """An override carrying no api_key fails closed (BYOK-only); there is no
+        other source to fall back to."""
         loader = SarvamLoader()
-        with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("env-key"))
-            with pytest.raises(CloudASRAuthError) as exc:
-                await loader.load(
-                    _config(),
-                    provider_overrides={"sarvam": {"model": "saaras:v2"}},
-                )
+        with pytest.raises(CloudASRAuthError) as exc:
+            await loader.load(
+                _config(),
+                provider_overrides={"sarvam": {"model": "saaras:v2", "base_url": _BASE_URL}},
+            )
         assert exc.value.details["has_key"] is False
 
     @pytest.mark.asyncio
     async def test_raises_when_no_key_anywhere(self):
         loader = SarvamLoader()
-        with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(None)
-            with pytest.raises(CloudASRAuthError) as exc:
-                await loader.load(_config())
+        with pytest.raises(CloudASRAuthError) as exc:
+            await loader.load(_config())
         assert exc.value.details["has_key"] is False
         assert exc.value.details["provider"] == "sarvam"
 
@@ -146,36 +149,23 @@ class TestSarvamLoaderLoad:
         attributed to the missing selection.
         """
         loader = SarvamLoader()
-        with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(None)
-            with pytest.raises(ModelNotFoundError) as exc:
-                await loader.load(
-                    _config(source_uri=None),
-                    provider_overrides={"sarvam": {"api_key": "byok-key"}},
-                )
+        with pytest.raises(ModelNotFoundError) as exc:
+            await loader.load(_config(source_uri=None), provider_overrides=_entry())
         assert exc.value.details["provider"] == "sarvam"
         assert exc.value.details["slug"] == "sarvam-stt"
 
     @pytest.mark.asyncio
     async def test_a_resolved_selection_reaches_the_wire(self):
         loader = SarvamLoader()
-        with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(None)
-            result = await loader.load(
-                _config(source_uri="saaras:v4"),
-                provider_overrides={"sarvam": {"api_key": "byok-key"}},
-            )
+        result = await loader.load(_config(source_uri="saaras:v4"), provider_overrides=_entry())
         assert result.model.model_name == "saaras:v4"
 
     @pytest.mark.asyncio
     async def test_key_absent_from_repr_and_logs(self, caplog):
         loader = SarvamLoader()
-        with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("super-secret-sarvam"))
-            with caplog.at_level("DEBUG"):
-                result = await loader.load(
-                    _config(),
-                    provider_overrides={"sarvam": {"api_key": "super-secret-sarvam"}},
-                )
+        with caplog.at_level("DEBUG"):
+            result = await loader.load(
+                _config(), provider_overrides=_entry(api_key="super-secret-sarvam")
+            )
         assert "super-secret-sarvam" not in repr(result.model)
         assert "super-secret-sarvam" not in caplog.text

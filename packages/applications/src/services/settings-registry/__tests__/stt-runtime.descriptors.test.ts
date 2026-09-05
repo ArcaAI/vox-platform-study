@@ -77,22 +77,20 @@ describe('STT_RUNTIME_SETTINGS', () => {
     }
   });
 
-  it('keeps every kill-switch defaulting OFF', () => {
-    // `SettingsRegistry.killSwitches()` asserts this globally; repeating it here
-    // names the one that is marked, and documents why `stt.pubsub.enabled` —
-    // which defaults ON — is deliberately NOT marked as one.
-    //
-    // `stt.semanticEndpoint.enabled` and `stt.punctuation.enabled` were the other
-    // two: TASK-877 deleted both. A kill-switch over an AGENT concept is the wrong
-    // shape — the agent chooses `streaming.endpointing` and `postProcessing.
-    // punctuation.enabled`, and the platform vetoes by not publishing the model row
-    // each needs. One marked kill-switch is left, over a genuinely platform concern.
-    const killSwitches = STT_RUNTIME_SETTINGS.filter((d) => d.killSwitch);
-    expect(killSwitches.map((d) => d.key).sort()).toEqual(['stt.azureFoundry.enabled']);
-    for (const descriptor of killSwitches) {
-      expect(descriptor.default, descriptor.key).toBe(false);
-    }
+  it('has no kill-switch left, and still refuses to mark the one flag that defaults ON', () => {
+    // Three lived here. `stt.semanticEndpoint.enabled` and `stt.punctuation.enabled`
+    // went in TASK-877, `stt.azureFoundry.enabled` in TASK-880 — and all three for the
+    // same reason: a kill-switch is the wrong SHAPE for a decision that belongs to the
+    // agent or to a connection row. The agent chooses `streaming.endpointing` and
+    // `postProcessing.punctuation.enabled` and the platform vetoes by not publishing
+    // the model row each needs; the Foundry preview veto is the SYSTEM
+    // `AiProviderConnection(stt, azure-foundry)` row seeded disabled, which is also
+    // decidable per tenant as a boolean never could be.
+    expect(STT_RUNTIME_SETTINGS.filter((d) => d.killSwitch)).toEqual([]);
 
+    // `stt.pubsub.enabled` defaults ON and is deliberately NOT marked: the registry
+    // refuses a kill-switch that defaults ON, and flipping it OFF would take live
+    // transcription off the air on first deploy. It is a data path, not a gate.
     const pubsub = STT_RUNTIME_SETTINGS.find((d) => d.key === 'stt.pubsub.enabled');
     expect(pubsub?.killSwitch).toBeUndefined();
     expect(pubsub?.default).toBe(true);
@@ -124,6 +122,11 @@ describe('STT_RUNTIME_SETTINGS', () => {
     ['stt.transcription.strideLengthS', 'agent decoding.strideLengthSec'],
     ['stt.whisperCpp.maxAudioSeconds', 'AiModel._metadata.asr.maxDecodeWindowSec'],
     ['stt.streaming.partialWindowS', 'AiModel._metadata.asr.partialWindowSec'],
+    ['stt.azureSpeech.region', 'AiProviderConnection(stt, azure-speech).region'],
+    ['stt.sarvam.baseUrl', 'AiProviderConnection(stt, sarvam).baseUrl'],
+    ['stt.openai.baseUrl', 'AiProviderConnection(stt, openai).baseUrl'],
+    ['stt.azureFoundry.endpoint', 'AiProviderConnection(stt, azure-foundry).baseUrl'],
+    ['stt.azureFoundry.enabled', 'the AiProviderConnection(stt, azure-foundry) row state'],
   ];
 
   it.each(MOVED_AWAY_TASK_880)('%s is gone from the registry entirely (now: %s)', (key) => {

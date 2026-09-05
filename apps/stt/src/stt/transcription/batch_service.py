@@ -122,17 +122,25 @@ _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
 # guessing the rest would risk silently forking a rollup dimension instead.
 _ENGINE_ID_OVERRIDES: dict[AiModelFormat, str] = {
     AiModelFormat.AZURE_SPEECH: "azure-speech",
+    # TASK-880 — AZURE_FOUNDRY lowercases to "azure_foundry" while its connection id
+    # is "azure-foundry" (it has its own row now, no longer aliasing azure-speech).
+    AiModelFormat.AZURE_FOUNDRY: "azure-foundry",
 }
 
-# Which ``provider_overrides`` KEY each cloud ASR format reads
-# its credential from. This is NOT the same as the ledger engine id above:
-# AZURE_FOUNDRY meters as its own engine but takes its credential from the
-# ``azure-speech`` entry (``azure_foundry_loader.py``). Kept in lockstep with
-# the loaders by ``tests/unit/test_batch_service_usage_attribution.py``, which
-# imports the loaders' own constants and asserts agreement.
+# Which ``provider_overrides`` KEY each cloud ASR format reads its credential from.
+# Kept in lockstep with the loaders by
+# ``tests/unit/test_batch_service_usage_attribution.py``, which imports the loaders'
+# own constants and asserts agreement.
+#
+# TASK-880 — AZURE_FOUNDRY reads ``azure-foundry``, not ``azure-speech``. Aliasing made
+# one credential the gate for two engines with different data-residency postures: a
+# tenant could not enable Speech without also enabling a PREVIEW service for its PHI,
+# and could not point Foundry at a different resource. Attribution follows the key the
+# LOADER actually reads, so this must move with it or a Foundry call served on the
+# tenant's own Foundry key would meter as platform CLOUD.
 _OVERRIDE_KEY_BY_FORMAT: dict[AiModelFormat, str] = {
     AiModelFormat.AZURE_SPEECH: "azure-speech",  # azure_speech_loader.py
-    AiModelFormat.AZURE_FOUNDRY: "azure-speech",  # azure_foundry_loader.py
+    AiModelFormat.AZURE_FOUNDRY: "azure-foundry",  # azure_foundry_loader.py
     AiModelFormat.SARVAM: "sarvam",  # sarvam_loader.SARVAM_OVERRIDE_KEY
     AiModelFormat.OPENAI: "openai",  # openai_loader.OPENAI_OVERRIDE_KEY
 }

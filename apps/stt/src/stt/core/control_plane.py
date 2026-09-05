@@ -104,15 +104,13 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "model_cache_ttl_seconds": "stt.modelCache.ttlSeconds",
     "worker_threads": "stt.workers.concurrency",
     "streaming_max_concurrent": "stt.streaming.maxConcurrent",
-    # ── cloud engine endpoints / regions ─────────────────────────────────────
-    # NOT credentials — every one of these engines is BYOK and its key already
-    # arrives per request from the provider-connection plane. These are the
-    # non-secret halves that were left behind in env.
-    "azure_speech_region": "stt.azureSpeech.region",
-    "azure_foundry_enabled": "stt.azureFoundry.enabled",
-    "azure_foundry_endpoint": "stt.azureFoundry.endpoint",
-    "sarvam_base_url": "stt.sarvam.baseUrl",
-    "openai_base_url": "stt.openai.baseUrl",
+    # ── cloud engine endpoints / regions: NOTHING is mapped here any more ────
+    # `azure_speech_region`, `azure_foundry_{enabled,endpoint}`, `sarvam_base_url` and
+    # `openai_base_url` were mapped here until TASK-880. Each is a property of the
+    # CONNECTION, and a connection reaches a loader only as a `provider_overrides`
+    # entry — which exists only behind an enabled, keyed `AiProviderConnection` row,
+    # the same row that carries `baseUrl`/`region`. The enable flag is replaced by that
+    # row's three states rather than by another flag.
     # ── local ggml runtimes ──────────────────────────────────────────────────
     "parakeet_cpp_library_path": "stt.parakeetCpp.libraryPath",
     "parakeet_cpp_num_threads": "stt.parakeetCpp.numThreads",
@@ -265,9 +263,9 @@ def _acceptable(current: Any, served: Any) -> bool:
     if isinstance(current, str):
         return isinstance(served, str)
     if current is None:
-        # `str | None` fields (vad_model_path, azure_speech_region,
-        # azure_foundry_endpoint, parakeet_cpp_library_path,
-        # punctuation_model_cache_dir).
+        # `str | None` fields (`parakeet_cpp_library_path`,
+        # `punctuation_model_cache_dir` — the other three went with TASK-880's
+        # provider-connection and model-row moves).
         #
         # An EMPTY STRING is how these five spell "no opinion" on the wire. The
         # registry has no null literal for a `string` descriptor, so their
