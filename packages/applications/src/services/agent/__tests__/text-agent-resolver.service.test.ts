@@ -214,11 +214,46 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
     ]);
   });
 
-  it('autoSwitch:false is CARRIED as the tenant’s toggle — the chain is still reported, the runtime decides not to switch', async () => {
+  // Owner decision: fallback is a PLATFORM HA capability. A tenant may disable it only for a
+  // primary it FUNDS; on a platform-funded primary the toggle is ignored. The resolver is the
+  // single chokepoint that decides this, so no consumer has to re-derive funding to obey it.
+  it('a BYO (tenant-funded) primary honours autoSwitch:false — the chain is reported, the runtime must not switch', async () => {
     bySlug({ 'platform-summarization': platformAgent() }, agent({ parameters: { fallback: { autoSwitch: false } } }));
     const spec = await make().resolve({ tenantId: TENANT });
+    expect(spec.primary.fundingTier).toBe('tenant');
     expect(spec.fallback.autoSwitch).toBe(false);
     expect(spec.fallback.chain).toHaveLength(1);
+  });
+
+  it('a PLATFORM-funded primary IGNORES autoSwitch:false — the chain is always walked (platform HA is platform-controlled)', async () => {
+    // A SYSTEM-owned agent the tenant pinned explicitly: the row that serves is SYSTEM's, so
+    // the generation is platform spend and the tenant does not get to switch HA off for it.
+    const systemOwned = agent({
+      agentId: 'sys-1',
+      agentVersionId: 'sys-1',
+      slug: 'platform-clinical',
+      tenantId: SYSTEM_TENANT_ID,
+      parameters: { fallback: { autoSwitch: false } },
+    });
+    bySlug({ 'platform-clinical': systemOwned, 'platform-summarization': platformAgent() });
+    const spec = await make().resolve({ tenantId: TENANT, agentSlug: 'platform-clinical' });
+    expect(spec.primary.fundingTier).toBe('platform');
+    expect(spec.fallback.autoSwitch).toBe(true);
+    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['platform-default']);
+  });
+
+  it('a tenant agent served by the PLATFORM cloud credential is platform-funded — autoSwitch:false is ignored there too', async () => {
+    bySlug(
+      { 'platform-summarization': platformAgent() },
+      agent({
+        parameters: { fallback: { autoSwitch: false } },
+        models: [model({ slug: 'azure-gpt', provider: 'azure', sourceUri: 'gpt-5.4-mini' })],
+      }),
+    );
+    credentials.resolve.mockResolvedValue({ override: { api_key: 'k', funding: 'platform' }, fundingTier: 'platform', connectionId: 'c1' });
+    const spec = await make().resolve({ tenantId: TENANT });
+    expect(spec.primary.fundingTier).toBe('platform');
+    expect(spec.fallback.autoSwitch).toBe(true);
   });
 
   it('a fallback agent that will not resolve DEGRADES to the next option — resilience config never blocks the primary', async () => {

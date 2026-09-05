@@ -45,7 +45,11 @@ export interface ResolvedTextCandidate {
 }
 
 export interface ResolvedTextFallback {
-  /** The tenant's per-agent HA toggle (`parameters.fallback.autoSwitch`, default ON). Carried, never decided here. */
+  /**
+   * The EFFECTIVE switch decision — already funding-gated by `effectiveAutoSwitch`, so a consumer
+   * reads it verbatim and never re-derives funding of its own. `false` here means "this call runs
+   * the primary and stops"; `true` means "walk the chain".
+   */
   autoSwitch: boolean;
   switchAfterConsecutiveFailures: number;
   /** Ordered: explicit fallback agent | the agent's own model chain, then the platform default. */
@@ -117,6 +121,22 @@ export function toTextCandidate(
     fundingTier: funding.fundingTier,
     ...(funding.providerOverride ? { providerOverride: funding.providerOverride } : {}),
   };
+}
+
+/**
+ * The EFFECTIVE fallback switch for a resolved spec.
+ *
+ * Owner decision (TASK-870 #4): fallback to the platform default is a PLATFORM HA capability —
+ * platform-controlled, metered as platform-funded. A tenant may switch it off only for a primary
+ * IT funds (BYO, `fundingTier === 'tenant'`); on a platform-funded primary the toggle is ignored
+ * and the chain is always walked, because the tenant is not the party paying for — or bearing the
+ * availability of — that generation.
+ *
+ * Applied ONCE, here, at the resolver's chokepoint: `ResolvedTextFallback.autoSwitch` therefore
+ * carries the answer, not the raw toggle, and no runtime lane has to re-derive funding to obey it.
+ */
+export function effectiveAutoSwitch(toggle: boolean, primaryFunding: AgentFundingTier): boolean {
+  return toggle || primaryFunding !== 'tenant';
 }
 
 /** Two candidates are the same runnable thing when they run the same agent version on the same model. */

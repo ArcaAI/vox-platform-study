@@ -11,6 +11,7 @@ import { ProviderVetoedException } from '../ai-provider-connection/provider-veto
 import { AgentResolverService } from './agent-resolver.service';
 import {
   RESOLVED_TEXT_SPEC_SCHEMA_VERSION,
+  effectiveAutoSwitch,
   fallbackModelsOf,
   fundingOfAgentRow,
   primaryModelOf,
@@ -48,9 +49,12 @@ export interface ResolveTextSpecInput {
  *     (kind `fallback-model`); and ALWAYS the SYSTEM-assigned agent of the same task as the
  *     terminal `platform-default` unless the primary already is it. A fallback that will not
  *     resolve DEGRADES to the next option — resilience configuration never blocks the primary;
- *  3. `autoSwitch` / `switchAfterConsecutiveFailures` are the tenant's per-agent toggle, read
- *     with the contract's declared defaults (`readAgentFallbackGovernance`) and CARRIED — the
- *     runtime lane decides whether to switch, this class never does;
+ *  3. `autoSwitch` is emitted as the EFFECTIVE value, not the raw toggle: fallback is a platform
+ *     HA capability, so a tenant may disable it only for a primary it FUNDS (BYO). On a
+ *     platform-funded primary the toggle is IGNORED and the chain is always walked. This class
+ *     is the single chokepoint for that rule — every consumer (the live loop, the harness
+ *     activity, `resolveTextFallbackSelection`) reads `fallback.autoSwitch` verbatim and must
+ *     never re-derive funding to second-guess it;
  *  4. every cloud candidate gets its credential from TASK-862's `ProviderCredentialResolver`
  *     (`llm`, provider, tenant) with its funding tier derived from the row that served IT; a
  *     self-hosted candidate is funded by whose agent row serves it (SYSTEM → platform). A veto
@@ -131,7 +135,11 @@ export class TextAgentResolverService {
       schemaVersion: RESOLVED_TEXT_SPEC_SCHEMA_VERSION,
       agent,
       primary,
-      fallback: { autoSwitch: governance.autoSwitch, switchAfterConsecutiveFailures: governance.switchAfterConsecutiveFailures, chain },
+      fallback: {
+        autoSwitch: effectiveAutoSwitch(governance.autoSwitch, primary.fundingTier),
+        switchAfterConsecutiveFailures: governance.switchAfterConsecutiveFailures,
+        chain,
+      },
     };
   }
 
