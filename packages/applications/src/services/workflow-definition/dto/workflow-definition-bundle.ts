@@ -2,8 +2,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
+import type { PortableBundle, PortableBundleTenantKind } from '@arcaai/workflow-contract';
 import type { PortableReference } from '../portable-graph';
-import type { PortableBundle, PortableSourceTenantKind } from '../portable-bundle.contract';
 
 /**
  * TASK-885 (owner #4) — the JSON a tenant admin exports and imports.
@@ -61,7 +61,7 @@ export class WorkflowDefinitionBundleSource {
   @ApiProperty({ description: 'Which tier authored the export: the platform template library, the platform build tenant, or a customer tenant.' })
   @IsString()
   @IsNotEmpty()
-  tenantKind: PortableSourceTenantKind;
+  tenantKind: PortableBundleTenantKind;
 
   @ApiProperty({ description: 'The exported definition’s slug.' })
   @IsString()
@@ -71,15 +71,25 @@ export class WorkflowDefinitionBundleSource {
   @ApiProperty({ description: 'The exact version row exported.' })
   @IsInt()
   @Min(1)
-  versionNumber: number;
+  version: number;
 }
 
-/** The envelope. See `portable-bundle.contract.ts` — lane F owns the shared shape. */
-export class WorkflowDefinitionBundle implements PortableBundle<'workflow-definition', WorkflowDefinitionBundlePayload> {
-  @ApiProperty({ description: 'Always `workflow-definition`.', example: 'workflow-definition' })
+/**
+ * The envelope — the SHARED `PortableBundle` from `@arcaai/workflow-contract` (TASK-889).
+ *
+ * This class exists to give the envelope class-validator decorators and a Swagger schema; the
+ * SHAPE is not its own. `implements PortableBundle<…>` is what keeps the two honest: if the
+ * shared envelope gains a field, this stops compiling rather than quietly exporting a document
+ * the shared validator would refuse.
+ *
+ * `kind` is `'workflow'`, one of `PORTABLE_BUNDLE_KINDS` — the same vocabulary the agent bundle
+ * draws from, which is what lets an importer of either kind refuse the other BY SHAPE.
+ */
+export class WorkflowDefinitionBundle implements PortableBundle<WorkflowDefinitionBundlePayload> {
+  @ApiProperty({ description: 'Always `workflow`.', example: 'workflow' })
   @IsString()
   @IsNotEmpty()
-  kind: 'workflow-definition';
+  kind: 'workflow';
 
   @ApiProperty({ description: 'Payload shape version. An import refuses a version it does not implement.', example: 1 })
   @IsInt()

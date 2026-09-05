@@ -17,7 +17,17 @@ const TENANT = '50000000-0000-0000-0000-000000000000';
 const PARTNER = '50000000-0000-0000-0000-000000000077';
 const STRANGER = '50000000-0000-0000-0000-000000000099';
 
-const cls = { get: vi.fn(), set: vi.fn() };
+const cls = {
+  get: vi.fn(),
+  set: vi.fn(),
+  // TASK-889 — a sync runs each cross-tenant step under its OWN CLS store
+  // (`runInTenantContext`). This fixture pins one tenant through `get`, so `run` only has to
+  // invoke the step; that the step's tenant is the right one is proven against the REAL
+  // tenant-scope extension in `agentPromotion/__tests__/membership-bounded-sync.task889.test.ts`.
+  run: vi.fn((optionsOrCallback: unknown, maybeCallback?: unknown) =>
+    (typeof optionsOrCallback === 'function' ? optionsOrCallback : (maybeCallback as () => unknown))(),
+  ),
+};
 const events = { emit: vi.fn() };
 const agentRepository = {
   findByIdVisible: vi.fn(),
