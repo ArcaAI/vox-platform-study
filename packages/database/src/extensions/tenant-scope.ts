@@ -139,12 +139,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // was DROPPED in — those rows now live in the unified
   // AiProviderConnection plane (service='stt').
   'TenantSttConfig', // also a SYSTEM-shared read model (platform-default row, below)
-  // ai-task-default.prisma (1) — per-tenant default model per AI task.
-  'AiTaskDefault', // also a SYSTEM-shared read model (platform-default row, below)
   // tenant-nlp-task-instructions.prisma (1) — tenant-writable topic/intent
   // instruction content for nlp.topic/nlp.intent. Deliberately NOT
-  // a SYSTEM-shared read model — unlike AiTaskDefault there is no platform
-  // default; a plain per-tenant resource (the TenantFrontendConfig pattern).
+  // a SYSTEM-shared read model — there is no platform default; a plain
+  // per-tenant resource (the TenantFrontendConfig pattern).
   'TenantNlpTaskInstructions',
   // ai-provider-connection.prisma (1) — config-plane core. WHERE a
   // serving provider lives + HOW to authenticate. SYSTEM row = platform
@@ -416,12 +414,6 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // carries a secret — BYO credentials live in AiProviderConnection
   // (service='stt'; see its own CAVEAT below for how ITS widening stays safe).
   'TenantSttConfig',
-  // Per-task default-model rows (guardrail.validate / nlp.*): the
-  // SYSTEM tenant row is the platform default every tenant merges under its
-  // own row (AiTaskDefaultService.getEffective). READS widen to
-  // [caller, SYSTEM]; WRITES are NOT widened (guardrail.* keys are additionally
-  // super-admin-only at the service layer).
-  'AiTaskDefault',
   // The provider CONNECTION catalog: the SYSTEM row records where a
   // serving provider lives and (as Vault-Transit ciphertext) how to auth to it.
   // Every tenant's `resolveConnection` cascade (tenant row → SYSTEM row → env)

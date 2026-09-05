@@ -183,7 +183,8 @@ enum ResourceType {
   // Tenant-scoped external identity provider (OIDC).
   TenantIdentityProvider
   FederatedIdentity
-  // Per-tenant default model per AI task.
+  // RETIRED (TASK-881): the AiTaskDefault table is dropped; a Postgres enum value
+  // cannot be dropped in place, so the member stays for historical AuditLog rows.
   AiTaskDefault
   // MCP external-tools registry.
   McpServer

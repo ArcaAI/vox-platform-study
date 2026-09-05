@@ -120,7 +120,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // Ordinary tenant-owned rows, NOT SYSTEM-shared.
     // 80 → 81: adds TenantNlpTaskInstructions — tenant-writable
     // nlp.topic/nlp.intent instruction content). Ordinary tenant-owned rows,
-    // deliberately NOT SYSTEM-shared (unlike AiTaskDefault, there is no
+    // deliberately NOT SYSTEM-shared (there is no
     // SYSTEM-tenant platform-default row for this model).
     // 81 → 83: adds WorkflowAssignment + WorkflowAssignmentChange
     // WHICH definition governs a tenant/department for a palette, and its
@@ -400,9 +400,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // platform default every tenant's resolveForTenant merges over. This model
       // never carries a secret — BYO credentials live in the unified
       // AiProviderConnection plane (service='tts'), never shared cross-tenant.
-      // AiTaskDefault's SYSTEM-tenant rows are the platform default
-      // model per AI task (guardrail.validate / nlp.*) every tenant's
-      // getEffective merges under its own row; writes are NOT widened.
       // McpServer's SYSTEM-tenant rows are the shared external-tools
       // registry every tenant's harness run reads to resolve a server; writes
       // are NOT widened (registry mutation is super-admin only).
@@ -433,7 +430,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // carries a secret — BYO credentials live in the unified
         // AiProviderConnection plane (service='stt'), never shared cross-tenant.
         'TenantSttConfig',
-        'AiTaskDefault',
         'McpServer',
         // SYSTEM-owned platform facts read under the caller's own
         // tenant CLS. Without widening, /changelog and /releases return nothing
