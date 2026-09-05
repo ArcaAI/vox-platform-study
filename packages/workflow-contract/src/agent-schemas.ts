@@ -773,3 +773,105 @@ export function agentConfigProblems(view: AgentConfigView, context: AgentConfigC
 export function hasBlockingAgentProblems(problems: readonly AgentConfigProblem[]): boolean {
   return problems.some((problem) => problem.severity === 'ERROR');
 }
+
+// =============================================================================================
+// Agent TAGS — the `key:value` alignment vocabulary (TASK-884, owner decision #6)
+// =============================================================================================
+
+/**
+ * The owner's ruling: there are NO tenant-managed conditions (department, visit type, …).
+ * Developers branch inside a workflow; tenant admins ALIGN AGENTS by `key:value` tags, and an
+ * `AgentAssignment` may carry a tag SELECTOR so a tier resolves "the TEXT_GENERATION agent
+ * tagged `specialty:rheumatology`" rather than a second condition table.
+ *
+ * That only works if a tag is a PAIR. A bare tag (`rheumatology`) has no key, so two tenants
+ * writing `cardiology` and `specialty:cardiology` produce a vocabulary that cannot be grouped,
+ * faceted or matched — which is exactly the drift the retired `(task, visitType) -> prompt`
+ * binding created. So the grammar is enforced on every WRITE:
+ *
+ *   key   — 1–32 chars, `[a-z0-9]` then `[a-z0-9_-]`, e.g. `specialty`, `tier`, `task`
+ *   value — 1–64 chars, `[a-z0-9]` then `[a-z0-9._-]`, e.g. `rheumatology`, `platform`, `v2.1`
+ *
+ * Lower-case only, and exactly ONE colon: a tag is compared by equality everywhere (list
+ * facets, selector matching, the console filter), and case- or separator-insensitive
+ * comparison is the kind of leniency that turns one vocabulary into three.
+ *
+ * Reads are NOT re-validated. Rows written before this grammar existed keep their bare tags and
+ * stay listable; they simply cannot be SELECTED by a selector, which is the honest outcome.
+ */
+export const AGENT_TAG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}:[a-z0-9][a-z0-9._-]{0,63}$/;
+
+/** How many tags one agent (or one selector) may carry. A selector longer than this is a query, not an alignment. */
+export const AGENT_TAG_MAX_COUNT = 24;
+
+export interface AgentTagPair {
+  readonly key: string;
+  readonly value: string;
+}
+
+/** `'specialty:rheumatology'` → `{ key, value }`; `null` for anything that is not a well-formed tag. */
+export function parseAgentTag(tag: unknown): AgentTagPair | null {
+  if (typeof tag !== 'string' || !AGENT_TAG_PATTERN.test(tag)) return null;
+  const colon = tag.indexOf(':');
+  return { key: tag.slice(0, colon), value: tag.slice(colon + 1) };
+}
+
+/**
+ * Every problem with a tag list: shape, count, and duplicates. ERROR-only — a malformed tag is
+ * refused rather than dropped, because silently dropping one changes which agent a selector
+ * resolves.
+ */
+export function agentTagProblems(tags: unknown, path = 'tags'): AgentConfigProblem[] {
+  if (tags === undefined || tags === null) return [];
+  if (!Array.isArray(tags)) {
+    return [{ severity: 'ERROR', path, message: '`tags` must be an array of `key:value` strings.' }];
+  }
+  const problems: AgentConfigProblem[] = [];
+  if (tags.length > AGENT_TAG_MAX_COUNT) {
+    problems.push({ severity: 'ERROR', path, message: `At most ${AGENT_TAG_MAX_COUNT} tags; this list has ${tags.length}.` });
+  }
+  const seen = new Set<string>();
+  tags.forEach((tag, index) => {
+    const at = `${path}[${index}]`;
+    if (parseAgentTag(tag) === null) {
+      problems.push({
+        severity: 'ERROR',
+        path: at,
+        message:
+          typeof tag === 'string' && !tag.includes(':')
+            ? `\`${tag}\` is a bare tag; agent tags are \`key:value\` pairs (e.g. \`specialty:${tag.toLowerCase()}\`).`
+            : `\`${String(tag)}\` is not a valid agent tag; expected lower-case \`key:value\` (key 1-32, value 1-64 chars).`,
+      });
+      return;
+    }
+    if (seen.has(tag as string)) {
+      problems.push({ severity: 'ERROR', path: at, message: `Duplicate tag \`${String(tag)}\`.` });
+      return;
+    }
+    seen.add(tag as string);
+  });
+  return problems;
+}
+
+/**
+ * The canonical form of a tag list: de-duplicated and sorted. Used as the STORED form of an
+ * assignment's selector so that `{a,b}` and `{b,a}` are one row rather than two competing ones,
+ * and so the uniqueness key over a tier is comparable at the database.
+ */
+export function canonicalAgentTags(tags: readonly string[]): string[] {
+  return [...new Set(tags)].sort();
+}
+
+/**
+ * Does an agent (or a request) carrying `available` satisfy a `selector`?
+ *
+ * SUBSET semantics, AND-joined: every selector tag must be present. An EMPTY selector matches
+ * everything — that is what makes an unqualified assignment the fallback rather than a
+ * competitor. Specificity for ordering is simply the selector's length, so a two-tag selector
+ * is tried before a one-tag one and both before the unqualified row.
+ */
+export function agentTagsSatisfy(available: readonly string[], selector: readonly string[]): boolean {
+  if (selector.length === 0) return true;
+  const have = new Set(available);
+  return selector.every((tag) => have.has(tag));
+}

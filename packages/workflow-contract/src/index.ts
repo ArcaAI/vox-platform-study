@@ -194,14 +194,20 @@ export {
   AGENT_IO_DEFAULTS,
   AGENT_PARAMETER_SCHEMAS,
   AGENT_PROTOCOLS,
+  AGENT_TAG_MAX_COUNT,
+  AGENT_TAG_PATTERN,
   AGENT_TASKS,
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
   AGENT_TOOLS_SCHEMA,
   ASR_ENDPOINTING_MODEL_SLUG_PATH,
   agentConfigProblems,
+  agentTagProblems,
+  agentTagsSatisfy,
+  canonicalAgentTags,
   hasBlockingAgentProblems,
   isAgentTask,
+  parseAgentTag,
   readAgentFallbackGovernance,
 } from './agent-schemas';
 export type {
@@ -213,5 +219,25 @@ export type {
   AgentModelView,
   AgentProtocol,
   AgentProviderCapabilities,
+  AgentTagPair,
   AgentTask,
 } from './agent-schemas';
+
+// TASK-884 — the portable bundle envelope a tenant admin exports and imports. Generic over
+// `kind` on purpose: agents ship it first, workflow definitions reuse the same envelope.
+export {
+  PORTABLE_BUNDLE_KINDS,
+  PORTABLE_BUNDLE_SCHEMA_VERSION,
+  PORTABLE_BUNDLE_TENANT_KINDS,
+  buildPortableBundle,
+  isPortableBundle,
+  portableBundleProblems,
+} from './portable-bundle';
+export type {
+  PortableBundle,
+  PortableBundleExpectation,
+  PortableBundleKind,
+  PortableBundleProblem,
+  PortableBundleSource,
+  PortableBundleTenantKind,
+} from './portable-bundle';
