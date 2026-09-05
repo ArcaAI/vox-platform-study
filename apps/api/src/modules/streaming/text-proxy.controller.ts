@@ -367,13 +367,13 @@ export class TextProxyController {
    * no tenant; that case DECLARES itself with the `tenantless:platform-operator`
    * marker rather than sending nothing, so an absent header stays unambiguously a bug.
    *
-   * D-D: the token is the ONE shared `INTERNAL_ACCESS_TOKEN`; `TEXT_SERVICE_TOKEN` is
-   * consulted only as the migration fallback. Both lookups are the SYNC cache read
-   * warmed at bootstrap, preserving the existing fail-open-on-miss behaviour.
+   * D-D: the token is the ONE shared `INTERNAL_ACCESS_TOKEN`. The per-service
+   * `TEXT_SERVICE_TOKEN` fallback was retired once the shared token was
+   * deployed everywhere. The lookup is the SYNC cache read warmed at bootstrap,
+   * preserving the existing fail-open-on-miss behaviour.
    */
   private getForwardHeaders(): Record<string, string> {
-    const serviceToken =
-      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TEXT_SERVICE_TOKEN') || '';
+    const serviceToken = this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || '';
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       [TENANT_ID_HEADER]: tenantHeaderValue(this.clsService?.get('tenantId'), TENANTLESS.PLATFORM_OPERATOR),

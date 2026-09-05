@@ -21,11 +21,11 @@ const EXPECTED_NETWORK_ERRORS = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOU
 export abstract class BaseProxyController {
   abstract readonly config: ProxyControllerConfig;
   /**
-   * Optional SecretsService accessor. Subclasses that proxy TEXT (or any
-   * upstream needing a service token) inject SecretsService and expose
-   * it here so the synchronous `on.proxyReq` hook can read the
-   * cache-warmed token via `getSecretSync`. Subclasses that don't need
-   * a token leave this undefined.
+   * Optional SecretsService accessor. A subclass proxying any upstream that
+   * needs the internal service token injects SecretsService and exposes it
+   * here, so the synchronous `on.proxyReq` hook can read the cache-warmed
+   * `INTERNAL_ACCESS_TOKEN` via `getSecretSync`. Subclasses that don't need a
+   * token leave this undefined.
    */
   protected get secrets(): SecretsService | undefined {
     return undefined;
@@ -62,10 +62,13 @@ export abstract class BaseProxyController {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (fixRequestBody as any)(proxyReq, req, res);
 
-            // Read TEXT token from SecretsService cache (warmed at bootstrap).
-            // Sync lookup because on.proxyReq cannot await. Cold cache -> no
-            // header (fail-open, same as an unset env var).
-            const serviceToken = this.secrets?.getSecretSync('TEXT_SERVICE_TOKEN');
+            // The ONE shared `INTERNAL_ACCESS_TOKEN` (owner rule: a single
+            // devops-set token authenticates every internal hop). Read from the
+            // SecretsService cache warmed at bootstrap — a sync lookup because
+            // `on.proxyReq` cannot await. Cold cache -> no header (fail-open,
+            // same as an unset env var, which is the local-dev bypass every
+            // Python `ServiceAuthMiddleware` implements).
+            const serviceToken = this.secrets?.getSecretSync('INTERNAL_ACCESS_TOKEN');
             if (serviceToken) {
               proxyReq.setHeader('X-Service-Token', serviceToken);
             }
