@@ -248,6 +248,7 @@ class TestVersionPin:
             resolved: ResolvedAgent,
             _started: Any,
             fallback: Any = None,
+            primary: Any = None,
         ) -> NodeActivityResult:
             seen.append(resolved)
             return NodeActivityResult(status="SUCCEEDED", output={"ok": True})
