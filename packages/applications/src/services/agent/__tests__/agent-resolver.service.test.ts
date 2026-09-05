@@ -89,3 +89,38 @@ describe('AgentResolverService.resolve', () => {
     ]);
   });
 });
+
+// TASK-880 H-4 — the model row's runtime `_metadata` slice rides the resolved model, and the
+// end-of-utterance (endpointing) model bound at `streaming.semantic.modelSlug` is materialised.
+describe('AgentResolverService.resolve — model metadata and the endpointing role (TASK-880 H-4)', () => {
+  it('carries the model row metaData slice onto the resolved model (absent when the row has none)', async () => {
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(published());
+    aiModelRepository.findById.mockResolvedValue(model({ metaData: { asr: { maxDecodeWindowSec: 30, partialWindowSec: 4 }, embedding: { dimension: 256 } } }));
+    const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
+    expect(resolved.models[0].metaData).toEqual({ asr: { maxDecodeWindowSec: 30, partialWindowSec: 4 }, embedding: { dimension: 256 } });
+
+    aiModelRepository.findById.mockResolvedValue(model({ metaData: null }));
+    const bare = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
+    expect('metaData' in bare.models[0]).toBe(false);
+  });
+
+  it('ASR agent → an endpointing model bound at streaming.semantic.modelSlug is materialised by slug', async () => {
+    const base = published().compiledConfig as { parameters: Record<string, unknown> };
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(
+      published({
+        task: AgentTask.SPEECH_TO_TEXT,
+        compiledConfig: {
+          ...base,
+          task: 'SPEECH_TO_TEXT',
+          service: 'stt',
+          model: { id: 'asr', slug: 'arcaai-whisper-large-ml-en-gguf', provider: null, taskType: 'AUTOMATIC_SPEECH_RECOGNITION' },
+          parameters: { ...base.parameters, streaming: { semantic: { modelSlug: 'eou-classifier' } } },
+        },
+      }),
+    );
+    aiModelRepository.findById.mockResolvedValue(model({ id: 'asr', slug: 'arcaai-whisper-large-ml-en-gguf', provider: null }));
+    aiModelRepository.findBySlug.mockImplementation(async (tenantId: string, slug: string) => (tenantId === SYSTEM_TENANT_ID ? model({ id: slug, slug, provider: null }) : null));
+    const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'x' });
+    expect(resolved.models.map((m) => [m.role, m.slug])).toContainEqual(['endpointing', 'eou-classifier']);
+  });
+});
