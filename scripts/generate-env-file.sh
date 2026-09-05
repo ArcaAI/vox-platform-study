@@ -76,16 +76,19 @@ _fill_secret() {
 # client secret is written through the admin API and sealed with Vault Transit on
 # its own `TenantIdentityProvider` row, so there is no env var for a developer to
 # paste and nothing to report as unfilled.
+#
+# Six harness/STT keys were listed here — the judge/Qdrant/HF/S3-mirror credentials.
+# They never belonged: each is env-CLOSED, its pydantic field aliased to a TOMBSTONE
+# (`..._API_KEY__ENV_REMOVED`) so no environment variable can reach it, and the value
+# resolves per tenant from the control plane instead. They only appeared in the sample
+# because `_ENV_REMOVED_TOMBSTONE` in scripts/python-env-surface.py matched
+# `__ENV_REMOVED_TASK_<n>` but not the bare `__ENV_REMOVED` suffix, so the tombstones
+# leaked into the manifest. Listing them here answered a leak with a lie — "paste a
+# real value" for a path deliberately closed. The regex is fixed; the keys are gone
+# from the sample; these entries went with them.
 _EXTERNAL_SECRET_KEYS=(
-  AZURE_FOUNDRY_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
+  AZURE_FOUNDRY_API_KEY
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
-  # surfaced once the six per-service samples became GENERATED, which
-  # widened the consolidated sample this script reports on. All five are real
-  # third-party credentials with no local equivalent to synthesize.
-  HARNESS_JUDGE_AZURE_API_KEY            # Azure OpenAI, sibling of the openai-compat key above
-  HARNESS_RETRIEVAL_QDRANT_API_KEY       # Qdrant Cloud; the local Qdrant needs none
-  HUGGINGFACE_TOKEN                      # HF Hub, for gated/private checkpoints
-  STT_MODEL_S3_ACCESS_KEY STT_MODEL_S3_SECRET_KEY   # an external S3 model mirror
 )
 
 # Legacy per-service tokens SUPERSEDED by the one shared INTERNAL_ACCESS_TOKEN
@@ -103,7 +106,47 @@ _SUPERSEDED_KEYS=(
 # closing report honest: without this they were reported as "paste a real value if you use that
 # provider", which is wrong advice for a credential `refresh-vault-creds.sh` is about to write.
 _MINTED_LATER_KEYS=(
-  VAULT_SECRET_ID VAULT_WRAPPED_SECRET_ID
+  VAULT_SECRET_ID
+)
+
+# Prod-only keys that must be EMPTY in the two files this script builds. The
+# wrapped secret_id is the production AppRole path; dev and test both take the
+# RAW path, which is why refresh-vault-creds.sh (dev) and ensure-test-vault-creds.sh
+# / test-setup.sh (test) all explicitly blank it. Left as the literal CHANGE_ME it
+# is not merely unset but WRONG: VaultSecretsProvider branches on truthiness
+# (`if (this.config.wrappedSecretId)`), so CHANGE_ME selects the wrapped path and
+# the provider tries to unwrap "CHANGE_ME" as a Vault token — Vault auth fails at
+# boot. Inside `pnpm setup:dev` the later mint step repaired it; a standalone run
+# of this script did not.
+_PROD_ONLY_BLANK_KEYS=(
+  VAULT_WRAPPED_SECRET_ID
+)
+
+# Independent local secrets: HMAC signing keys, hash peppers, the Vault DB
+# engine admin password, and the shared X-Service-Token per Python service.
+# INTERNAL_ACCESS_TOKEN leads the list deliberately: it is THE canonical internal
+# credential (owner decision D-D) and every per-service token below is only its
+# backward-compatibility fallback. It was absent here while all six legacy tokens were
+# generated, so a fresh dev box got a real value for each fallback and `CHANGE_ME` for the
+# one that supersedes them — which every service then PRESENTED on every internal hop.
+# WEBHOOK_SECRET_PEPPER was missing for no reason at all: it is a local hash pepper, exactly
+# like API_KEY_PEPPER and STORAGE_ACCESS_KEY_PEPPER on the line below it.
+#
+# NAMED, not inlined, because `_CARRY_FORWARD_KEYS` must contain every one of these:
+# a secret this script GENERATES but does not CARRY is re-minted on every rebuild.
+# Both lists were maintained by hand and had drifted — INTERNAL_ACCESS_TOKEN and
+# WEBHOOK_SECRET_PEPPER were generated but not carried, so each `pnpm setup:dev`
+# silently rotated the shared internal token (401ing services already running against
+# the old one) and the webhook pepper (orphaning every webhook-secret hash in the DB).
+# Sharing one array makes that particular drift unrepresentable.
+_GENERATED_SECRET_KEYS=(
+  INTERNAL_ACCESS_TOKEN
+  JWT_SECRET_KEY SESSION_SECRET_KEY ADMIN_SESSION_SECRET
+  API_KEY_PEPPER STORAGE_ACCESS_KEY_PEPPER WEBHOOK_SECRET_PEPPER
+  VAULT_DB_ADMIN_PASS REDIS_PASS MQTT_PASS
+  TEXT_SERVICE_TOKEN NLP_SERVICE_TOKEN GUARDRAIL_SERVICE_TOKEN
+  HARNESS_SERVICE_TOKEN TTS_SERVICE_TOKEN HARNESS_INTERNAL_SERVICE_TOKEN
+  API_GATEWAY_KEY
 )
 
 # Fill every locally-generatable CHANGE_ME secret with a fresh random value.
@@ -114,22 +157,7 @@ _MINTED_LATER_KEYS=(
 _fill_generated_secrets() {
   local file="$1" k
 
-  # Independent local secrets: HMAC signing keys, hash peppers, the Vault DB
-  # engine admin password, and the shared X-Service-Token per Python service.
-  # INTERNAL_ACCESS_TOKEN leads the list deliberately: it is THE canonical internal
-  # credential (owner decision D-D) and every per-service token below is only its
-  # backward-compatibility fallback. It was absent here while all six legacy tokens were
-  # generated, so a fresh dev box got a real value for each fallback and `CHANGE_ME` for the
-  # one that supersedes them — which every service then PRESENTED on every internal hop.
-  # WEBHOOK_SECRET_PEPPER was missing for no reason at all: it is a local hash pepper, exactly
-  # like API_KEY_PEPPER and STORAGE_ACCESS_KEY_PEPPER on the line below it.
-  for k in INTERNAL_ACCESS_TOKEN \
-           JWT_SECRET_KEY SESSION_SECRET_KEY ADMIN_SESSION_SECRET \
-           API_KEY_PEPPER STORAGE_ACCESS_KEY_PEPPER WEBHOOK_SECRET_PEPPER \
-           VAULT_DB_ADMIN_PASS REDIS_PASS MQTT_PASS \
-           TEXT_SERVICE_TOKEN NLP_SERVICE_TOKEN GUARDRAIL_SERVICE_TOKEN \
-           HARNESS_SERVICE_TOKEN TTS_SERVICE_TOKEN HARNESS_INTERNAL_SERVICE_TOKEN \
-           API_GATEWAY_KEY; do
+  for k in "${_GENERATED_SECRET_KEYS[@]}"; do
     _fill_secret "$file" "$k" "$(_rand_hex 32)"
   done
 
@@ -167,7 +195,7 @@ _fill_generated_secrets() {
 # credential that must stay unset is an instruction to do the wrong thing.
 _blank_superseded_secrets() {
   local file="$1" k
-  for k in "${_SUPERSEDED_KEYS[@]}"; do
+  for k in "${_SUPERSEDED_KEYS[@]}" "${_PROD_ONLY_BLANK_KEYS[@]}"; do
     grep -qE "^${k}=CHANGE_ME\s*$" "$file" 2>/dev/null || continue
     _set_env "$file" "$k" ""
   done
@@ -176,7 +204,13 @@ _blank_superseded_secrets() {
 # Report any CHANGE_ME the developer must still fill in by hand.
 _report_remaining_placeholders() {
   local file="$1" remaining k external minted superseded unexpected
-  remaining="$(grep -E '=CHANGE_ME' "$file" | cut -d= -f1 | sort || true)"
+  # ANCHORED, and the whole line must be exactly KEY=CHANGE_ME. The consolidated
+  # sample carries the same secret under several services, and every repeat is
+  # emitted as `# [duplicate key, see ... above] # KEY=CHANGE_ME` (env-sync.mts).
+  # An unanchored grep matched those comments too, and `cut -d= -f1` then handed
+  # the comment PROSE to an unquoted `for` — so the report word-split it into
+  # `#`, `[duplicate`, `key,` ... and cried bug on a file that was correct.
+  remaining="$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=CHANGE_ME\s*$' "$file" | cut -d= -f1 | sort || true)"
   [ -n "$remaining" ] || { green "→ Generated all local secrets; no CHANGE_ME placeholders remain."; return; }
 
   external=""; minted=""; superseded=""; unexpected=""
@@ -288,17 +322,15 @@ _apply_test_overrides() {
 # in — only NON-secret config resets to the sample. Superset of the generated
 # secrets, the storage/infra creds, the external provider keys, the Vault creds
 # and ADMIN_SESSION_SECRET.
+# VAULT_ROLE_ID joins its two partners: all three are minted by
+# refresh-vault-creds.sh, and carrying the secret_id while dropping the role_id
+# left AppRole login half-configured after a standalone rebuild.
 _CARRY_FORWARD_KEYS=(
-  JWT_SECRET_KEY SESSION_SECRET_KEY ADMIN_SESSION_SECRET
-  API_KEY_PEPPER STORAGE_ACCESS_KEY_PEPPER
-  VAULT_DB_ADMIN_PASS REDIS_PASS MQTT_PASS
-  TEXT_SERVICE_TOKEN NLP_SERVICE_TOKEN GUARDRAIL_SERVICE_TOKEN
-  HARNESS_SERVICE_TOKEN TTS_SERVICE_TOKEN HARNESS_INTERNAL_SERVICE_TOKEN
-  API_GATEWAY_KEY
+  "${_GENERATED_SECRET_KEYS[@]}"
   MINIO_ACCESS_KEY MINIO_SECRET_KEY S3_ACCESS_KEY S3_SECRET_KEY
   HARNESS_CLAIM_CHECK_ACCESS_KEY HARNESS_CLAIM_CHECK_SECRET_KEY
   STORAGE_PLATFORM_DEFAULT_CREDENTIALS
-  VAULT_SECRET_ID VAULT_WRAPPED_SECRET_ID
+  VAULT_ROLE_ID VAULT_SECRET_ID VAULT_WRAPPED_SECRET_ID
   "${_EXTERNAL_SECRET_KEYS[@]}"
 )
 

@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 407,
+  "distinctNames": 400,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -260,18 +260,6 @@
       "port": 8866,
       "title": "Clinical Documentation Harness",
       "fields": [
-        {
-          "name": "HARNESS_JUDGE_AZURE_API_KEY__ENV_REMOVED",
-          "aliases": [],
-          "class": "AzureJudgeConfig",
-          "field": "api_key",
-          "prefix": "HARNESS_JUDGE_AZURE_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "The empty default is load-bearing: `build_judge_client` REFUSES to build an Azure judge without a key, so an unresolved credential fails closed at construction and the inferential pass degrades \u2014 it can no longer be rescued by an environment variable."
-        },
         {
           "name": "HARNESS_JUDGE_AZURE_API_VERSION",
           "aliases": [],
@@ -791,18 +779,6 @@
           "description": "Per-call wall-clock timeout for a single MCP tool invocation."
         },
         {
-          "name": "HARNESS_JUDGE_OPENAI_COMPAT_API_KEY__ENV_REMOVED",
-          "aliases": [],
-          "class": "OpenAICompatJudgeConfig",
-          "field": "api_key",
-          "prefix": "HARNESS_JUDGE_OPENAI_COMPAT_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "The default is the harmless LM Studio placeholder, which is what an unauthenticated local endpoint sees when no row exists (outcome `absent`). A resolved row is applied by `_build_runtime_judge` via `model_copy`, which bypasses validation and therefore this guard."
-        },
-        {
           "name": "HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL",
           "aliases": [],
           "class": "OpenAICompatJudgeConfig",
@@ -945,18 +921,6 @@
           "dataType": "boolean",
           "default": "false",
           "description": "The landmine A.2 cited is still live and still worth heeding: a KEYLESS row injects on NEITHER tier. That is now a DEFINED outcome (`absent` \u21d2 call the endpoint unauthenticated) rather than a silent no-op."
-        },
-        {
-          "name": "HARNESS_RETRIEVAL_QDRANT_API_KEY__ENV_REMOVED",
-          "aliases": [],
-          "class": "RetrievalConfig",
-          "field": "qdrant_api_key",
-          "prefix": "HARNESS_RETRIEVAL_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "`None`, never `\"\"` \u2014 an empty string is itself a credential to Qdrant, so absent must mean absent (the `KnowledgeQdrantStore` unauthenticated path)."
         },
         {
           "name": "HARNESS_RETRIEVAL_QDRANT_TIMEOUT_S",
@@ -2682,18 +2646,6 @@
           "description": "HuggingFace model cache directory"
         },
         {
-          "name": "HUGGINGFACE_TOKEN__ENV_REMOVED",
-          "aliases": [],
-          "class": "Settings",
-          "field": "huggingface_token",
-          "prefix": "",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "DEPRECATED and env-CLOSED. The HuggingFace token is a model-registry provider connection, resolved per model-owner tenant."
-        },
-        {
           "name": "INTERNAL_ACCESS_TOKEN",
           "aliases": [],
           "class": "Settings",
@@ -3478,42 +3430,6 @@
           "dataType": "string",
           "default": "INFO",
           "description": ""
-        },
-        {
-          "name": "STT_MODEL_S3_ACCESS_KEY__ENV_REMOVED",
-          "aliases": [],
-          "class": "Settings",
-          "field": "model_s3_access_key",
-          "prefix": "",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's extraJson.accessKeyId."
-        },
-        {
-          "name": "STT_MODEL_S3_ENDPOINT__ENV_REMOVED",
-          "aliases": [],
-          "class": "Settings",
-          "field": "model_s3_endpoint",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": null,
-          "description": "DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's baseUrl."
-        },
-        {
-          "name": "STT_MODEL_S3_SECRET_KEY__ENV_REMOVED",
-          "aliases": [],
-          "class": "Settings",
-          "field": "model_s3_secret_key",
-          "prefix": "",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's encrypted key."
         },
         {
           "name": "STT_MODEL_S3_SECURE",

@@ -370,12 +370,21 @@ describe('generate-env-file.sh — every declared secret is accounted for', () =
     return new Set(body[1].split(/\s+/).filter((token) => /^[A-Z][A-Z0-9_]*$/.test(token)));
   }
 
-  /** Every key the generated-secrets function fills. */
+  /**
+   * Every key the generated-secrets function fills — from BOTH of its halves.
+   * The independent random secrets live in the `_GENERATED_SECRET_KEYS` array
+   * (named so `_CARRY_FORWARD_KEYS` can reuse it verbatim: a secret generated
+   * but not carried is re-minted on every rebuild). The storage group is still
+   * filled inline in the function body, because those keys are not independent
+   * — one access/secret pair is propagated across MinIO, S3 and the harness
+   * claim-check store — so it is scraped from the body as before.
+   */
   function generatedKeys(): Set<string> {
     const start = script.indexOf('_fill_generated_secrets()');
     const end = script.indexOf('# Report any CHANGE_ME');
     const body = script.slice(start, end);
-    return new Set([...body.matchAll(/\b([A-Z][A-Z0-9_]{3,})\b/g)].map((m) => m[1]).filter((k) => k !== 'CHANGE_ME'));
+    const inline = [...body.matchAll(/\b([A-Z][A-Z0-9_]{3,})\b/g)].map((m) => m[1]).filter((k) => k !== 'CHANGE_ME');
+    return new Set([...bashArray('_GENERATED_SECRET_KEYS'), ...inline]);
   }
 
   /** Every secret `env-sync` marks unfilled in the consolidated sample. */
@@ -394,9 +403,15 @@ describe('generate-env-file.sh — every declared secret is accounted for', () =
     // They are neither generated, nor external, nor minted: telling a developer
     // to paste a value would be instructing them to undo the migration.
     const superseded = bashArray('_SUPERSEDED_KEYS');
+    // a FIFTH category. VAULT_WRAPPED_SECRET_ID is the PRODUCTION AppRole path;
+    // dev and test both take the raw one, so every mint step blanks it. It is not
+    // "minted later" in these two files — it must end up EMPTY, and CHANGE_ME is
+    // worse than unset there: VaultSecretsProvider branches on truthiness, so the
+    // placeholder selects the wrapped path and unwrapping "CHANGE_ME" fails at boot.
+    const prodOnlyBlank = bashArray('_PROD_ONLY_BLANK_KEYS');
 
     const unclassified = declaredSecrets().filter(
-      (key) => !generated.has(key) && !external.has(key) && !minted.has(key) && !superseded.has(key),
+      (key) => !generated.has(key) && !external.has(key) && !minted.has(key) && !superseded.has(key) && !prodOnlyBlank.has(key),
     );
 
     expect(
