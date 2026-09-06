@@ -107,7 +107,9 @@ describe('cloudReadiness — consuming the real probe outcome', () => {
   });
 
   it('is unknown — never ready — when the endpoint could not be reached', async () => {
-    const { service } = makeHarness({ probeResult: { ok: false, message: 'Could not reach provider: timeout', probe: 'reachability', source: 'platform' } });
+    const { service } = makeHarness({
+      probeResult: { ok: false, message: 'Could not reach provider: timeout', probe: 'reachability', source: 'platform' },
+    });
 
     const snapshot = await service.sweep();
 

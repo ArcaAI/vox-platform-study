@@ -760,7 +760,11 @@ export class AiModelService extends BaseService implements IAiModelService {
    * `built-in` and the bucket-loaded self-host providers are NOT covered: their
    * weights are loaded from a path and nothing goes on a wire for them.
    */
-  private assertEngineServedWireId(provider: string | null | undefined, deploymentKind: AiDeploymentKind, wireModelId: string | null | undefined): void {
+  private assertEngineServedWireId(
+    provider: string | null | undefined,
+    deploymentKind: AiDeploymentKind,
+    wireModelId: string | null | undefined,
+  ): void {
     if (deploymentKind === AiDeploymentKind.CLOUD) return; // the entity owns that half
     if (!provider || !ENGINE_SERVED_PROVIDERS.has(provider)) return;
     if (!wireModelId?.trim()) {
