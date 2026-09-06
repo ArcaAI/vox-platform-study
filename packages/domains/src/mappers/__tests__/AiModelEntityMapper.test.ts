@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { AiModelEntityMapper } from '../generated/core/AiModelEntityMapper';
 import { AiModelEntity } from '../../entities';
-import { AiDeploymentKind, AiModelAvailability, AiModelDownloadStatus, AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, ResourceStatusType } from '../../enums';
+import { AiDeploymentKind, AiModelAvailability, AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, ResourceStatusType } from '../../enums';
 
 function entity(): AiModelEntity {
   return new AiModelEntity({
@@ -31,7 +31,6 @@ function entity(): AiModelEntity {
     languages: ['en'],
     availability: AiModelAvailability.UNKNOWN,
     isPlatformDefaultFor: [],
-    downloadStatus: AiModelDownloadStatus.NOT_DOWNLOADED,
     resourceStatus: ResourceStatusType.ENABLED,
     version: 7,
     tags: [],

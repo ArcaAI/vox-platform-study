@@ -21,6 +21,8 @@ export class Agent extends BaseTenantDataModel {
   public status: Enums.WorkflowDefinitionStatus;
   public isActive: boolean;
   public modelId: string;
+  public contextSchemaId: string | null;
+  public contextSchemaVersionNumber: number | null;
   public instruction: JsonValue | null;
   public parameters: JsonValue | null;
   public inputSchema: JsonValue | null;
@@ -56,6 +58,8 @@ export class Agent extends BaseTenantDataModel {
     this.status = data.status;
     this.isActive = data.isActive;
     this.modelId = data.modelId;
+    this.contextSchemaId = data.contextSchemaId;
+    this.contextSchemaVersionNumber = data.contextSchemaVersionNumber;
     this.instruction = data.instruction;
     this.parameters = data.parameters;
     this.inputSchema = data.inputSchema;

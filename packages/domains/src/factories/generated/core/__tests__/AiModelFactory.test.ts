@@ -9,7 +9,6 @@ import { AiModelFactory, CreateAiModelProps } from '../AiModelFactory';
 import {
   AiModelSource,
   AiModelFormat,
-  AiModelDownloadStatus,
   AiModelAvailability,
   AiDeploymentKind,
   ModelCategory,
@@ -60,10 +59,10 @@ describe('AiModelFactory', () => {
       expect(model.format).toBe(AiModelFormat.SAFETENSOR);
     });
 
-    it('should default downloadStatus to NOT_DOWNLOADED', () => {
+    it('leaves the BYO provenance unset — a catalogue row is not declared by a connection', () => {
       const model = AiModelFactory.CreateAiModel(baseProps);
 
-      expect(model.downloadStatus).toBe(AiModelDownloadStatus.NOT_DOWNLOADED);
+      expect(model.sourceConnectionId).toBeNull();
     });
 
     it('should set createdAt and updatedAt to current time', () => {
@@ -188,12 +187,9 @@ describe('AiModelFactory', () => {
       expect(model.createdBy).toBeNull();
     });
 
-    it('should initialize download-related fields to null', () => {
+    it('should initialize the verification checksum to null', () => {
       const model = AiModelFactory.CreateAiModel(baseProps);
 
-      expect(model.localPath).toBeNull();
-      expect(model.downloadedAt).toBeNull();
-      expect(model.fileSizeMb).toBeNull();
       expect(model.checksum).toBeNull();
     });
 
@@ -363,26 +359,6 @@ describe('AiModelFactory', () => {
       expect(model.changes).toEqual({});
     });
 
-    it('should create entity that can start download', () => {
-      const model = AiModelFactory.CreateAiModel({
-        tenantId: TEST_TENANT_ID,
-        name: 'Test Model',
-        slug: 'test-model',
-        category: ModelCategory.AUDIO,
-        taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
-        modelType: ModelType.BASE_MODEL,
-        source: AiModelSource.HUGGINGFACE,
-        sourceUri: 'test/model',
-        format: AiModelFormat.SAFETENSOR,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
-      });
-
-      expect(model.isNotDownloaded).toBe(true);
-      model.markAsDownloading();
-      expect(model.isDownloading).toBe(true);
-    });
   });
 
   describe('different model sources and formats', () => {

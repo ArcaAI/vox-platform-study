@@ -14,6 +14,9 @@ export interface CreatePromptTemplateProps extends BaseEntityFactoryCreateProps 
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
   approvedVersionNumber?: number | null;
+  /** Reference-set provenance — set by the clone path, never by an authoring request. */
+  sourceTemplateId?: string | null;
+  templateLocked?: boolean | null;
   departmentId?: string | null;
   scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL' | null;
   ownerUserId?: string | null;
@@ -47,6 +50,8 @@ export class PromptTemplateFactory {
       variables: props.variables ?? null,
       currentVersionNumber: props.currentVersionNumber ?? 1,
       approvedVersionNumber: props.approvedVersionNumber ?? null,
+      sourceTemplateId: props.sourceTemplateId ?? null,
+      templateLocked: props.templateLocked ?? false,
       departmentId: props.departmentId ?? null,
       scope: props.scope ?? 'TENANT_DEFAULT',
       ownerUserId: props.ownerUserId ?? null,
