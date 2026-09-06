@@ -14,6 +14,7 @@
  * directly — this package does.
  */
 import {
+  compiledTriggerContextSchema,
   declaredIoSchemas,
   declaredOutputProtocols,
   declaredTriggerKinds,
@@ -109,11 +110,33 @@ const RUN_EVENT_ENVELOPE_SCHEMA = Object.freeze({
 });
 
 /**
+ * The definition's Input schema: the payload schema publish FROZE for a reference-bound trigger,
+ * else whatever the authored graph declares, else `null`.
+ *
+ * TASK-890 (black-box J4-F4): a trigger bound by REFERENCE authors no inline schema, so reading
+ * the graph alone described every such definition as an open object. The resolved answer lives in
+ * `compiledConfig` — written once at publish, never re-derived here — so this is a read of bytes
+ * that already exist, not a second resolution path that could disagree with the first.
+ */
+export function inputSchemaOf(graph: Pick<WorkflowGraph, 'nodes'>, compiledConfig?: unknown): Record<string, unknown> | null {
+  const frozen = compiledConfig === undefined ? null : compiledTriggerContextSchema(compiledConfig);
+  return frozen ?? ((declaredIoSchemas(graph).input as Record<string, unknown> | null) ?? null);
+}
+
+/**
  * Describe one published definition. `graph` is the authored graph; a legacy (non-`core`) graph
  * yields open `object` schemas and every mode, exactly as the route family behaves for it today.
+ * `compiledConfig` is the published artifact, when the caller has it — the only place a
+ * reference-bound trigger's resolved payload schema exists (see {@link inputSchemaOf}).
  */
-export function describeWorkflow(slug: string, versionNumber: number, graph: Pick<WorkflowGraph, 'nodes'>): WorkflowSchemaDescription {
-  const { input, output } = declaredIoSchemas(graph);
+export function describeWorkflow(
+  slug: string,
+  versionNumber: number,
+  graph: Pick<WorkflowGraph, 'nodes'>,
+  compiledConfig?: unknown,
+): WorkflowSchemaDescription {
+  const { output } = declaredIoSchemas(graph);
+  const input = inputSchemaOf(graph, compiledConfig);
   const protocols = declaredOutputProtocols(graph);
   const triggerKinds = declaredTriggerKinds(graph);
   const inputName = componentName(slug, 'Input');
