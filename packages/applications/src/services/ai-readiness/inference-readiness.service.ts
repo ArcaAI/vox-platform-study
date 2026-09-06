@@ -397,7 +397,15 @@ export class InferenceReadinessService implements IInferenceReadinessService {
   ): { readiness: ModelReadiness; detail: string | null } {
     const state = engines.get(engine);
     if (!state || state.status === 'unknown') return { readiness: 'unknown', detail: 'engine not probed this sweep' };
-    if (state.status === 'down') return { readiness: 'engine_down', detail: state.detail };
+    // A CURATED phrase, never `state.detail`. That field carries TEXT's raw
+    // `probe_error` (`str(exc)` over a bare `except`), which for an httpx
+    // failure renders as `... for url 'http://<engine-host>:<port>/v1/models'`.
+    // The engine ENTRY keeps it — that document is super-admin-only — but a
+    // MODEL entry's detail is stamped onto the tenant-facing catalogue
+    // (`readinessDetail`), and platform topology is not a tenant's business.
+    // It is also the one free-form string in this file; every sibling verdict
+    // below is a fixed phrase, which is what makes it safe to project.
+    if (state.status === 'down') return { readiness: 'engine_down', detail: 'the serving engine did not answer the last probe' };
 
     // The engine names a model by its wire id; the registry row carries that as
     // `sourceUri` (the slug is the fallback the discovery merge already uses).

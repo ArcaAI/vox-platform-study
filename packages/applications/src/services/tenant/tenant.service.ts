@@ -1128,6 +1128,28 @@ export class TenantService extends BaseService implements ITenantService {
       throw new ForbiddenException(`Tenant '${GLOBAL_TENANT_KEY}' holds system defaults and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
     }
 
+    // TASK-890 §3.15 (OD-P) — the SAME platform-tier boundary
+    // `GlobalSettingService.assertPlatformTierWrite` declares, on the FIFTH
+    // write path to a `GlobalSetting` row. Without it this route was the way
+    // around that guard, and the chain was entirely mundane: the controller's
+    // scope check only 404s a UUID identifier that is not the caller's, so the
+    // KEY `__SYSTEM__` walks past it; `GlobalSetting` is a SYSTEM-shared READ
+    // model, so a tenant admin's `findById` resolves a platform row; the
+    // ownership check compares the row to the NAMED tenant, not to the caller;
+    // and the write goes through the UNSCOPED base client, which re-widens
+    // nothing because it never narrowed. `locked` stopped 5 of the 37 seeded
+    // SYSTEM rows and nothing stopped the other 32.
+    //
+    // A 403, not a 404, for the reason the sibling guard gives: the caller may
+    // legitimately READ these rows — they are the defaults serving its own
+    // tenant — so there is nothing to hide. A FOREIGN CUSTOMER tenant's row is
+    // a different case and is still invisible (the read extension widens to
+    // [caller, SYSTEM] only, so `findById` returns null and the caller gets the
+    // existing not-found), which keeps 404-over-403 intact for cross-tenant.
+    if (tenant.id === SYSTEM_TENANT_ID && !isSuperAdmin) {
+      throw new ForbiddenException(`Platform-wide settings are managed by ${SUPER_ADMIN_ROLE} users only.`);
+    }
+
     // All-or-nothing via Prisma's
     // interactive transaction. Each per-row CAS is issued through the
     // tx client; if any row's `_version` drifted (or any other failure
