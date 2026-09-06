@@ -31,7 +31,7 @@ import {
   validateWorkflowDefinition,
   type ListWorkflowDefinitionsParams,
 } from './client';
-import { listAgentOptions } from './client';
+import { listAgentOptions, listContextSchemaVersions, getWorkflowSchema } from './client';
 import { workflowStudioKeys } from './keys';
 import type {
   CloneWorkflowDefinitionRequest,
@@ -222,6 +222,18 @@ export function useAgentOptions(task: string, enabled = true) {
   });
 }
 
+/** One schema's published versions — fetched only once a schema is actually referenced. The
+ *  schema OPTION list itself is `@/shared/catalog`'s `useContextSchemaCatalog`. */
+export function useContextSchemaVersions(schemaId: string | null) {
+  return useQuery({
+    queryKey: workflowStudioKeys.contextSchemaVersions(schemaId ?? ''),
+    queryFn: () => listContextSchemaVersions(schemaId as string),
+    enabled: !!schemaId,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
 /**
  * TASK-885 — export one definition as a portable bundle.
  *
@@ -232,6 +244,20 @@ export function useAgentOptions(task: string, enabled = true) {
  */
 export function useExportWorkflowDefinition() {
   return useMutation({ mutationFn: (id: string) => exportWorkflowDefinition(id) });
+}
+
+/**
+ * TASK-890 §3.9/§3.10 — the resolved run contract for `PublishDialog`'s endpoints panel, once
+ * publish succeeds. Disabled until then — the route 404s on an unpublished/inactive slug, and
+ * a disabled query never fires the request that would produce that 404.
+ */
+export function useWorkflowSchema(slug: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: workflowStudioKeys.runSchema(slug ?? ''),
+    queryFn: () => getWorkflowSchema(slug as string),
+    enabled: enabled && !!slug,
+    retry: false,
+  });
 }
 
 /** TASK-885 — import a bundle as a new draft lineage; invalidates the whole studio namespace. */

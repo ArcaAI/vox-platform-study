@@ -1,0 +1,110 @@
+/**
+ * `ContextSchemaRefField` — `core.trigger`'s `config.contextSchema` binding (TASK-890 §3.4).
+ * Replaces the generic renderer's raw-json `inline` box + free-text `contextSchemaId` UUID box
+ * + bare `versionNumber` number box with: a reference-vs-inline radio, a Select over the
+ * TENANT's own context schemas (`@/shared/catalog`), and a version pin ("Follow latest" vs a
+ * specific published version).
+ */
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { axe } from 'vitest-axe';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { renderWithProviders } from '@/test/render';
+import { ContextSchemaRefField } from '../context-schema-ref-field';
+
+function stubFetch(impl?: (url: string) => unknown): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (impl) return Response.json(impl(url));
+      if (url.includes('/versions')) return Response.json([{ versionNumber: 2 }, { versionNumber: 1 }]);
+      return Response.json([
+        { id: 'schema-1', slug: 'consultation-legacy-v1', name: 'Consultation (legacy v1)', status: 'PUBLISHED', pinnedVersionNumber: 1, isDefault: true },
+        { id: 'schema-2', slug: 'intake-v2', name: 'Intake v2', status: 'PUBLISHED', pinnedVersionNumber: 3, isDefault: false },
+      ]);
+    }),
+  );
+}
+
+beforeAll(() => {
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  cleanup();
+});
+
+async function openSelect(label: string | RegExp) {
+  const trigger = await screen.findByLabelText(label);
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  return screen.findByRole('listbox');
+}
+
+describe('ContextSchemaRefField', () => {
+  it('defaults to the reference mode radio on a fresh node', () => {
+    stubFetch();
+    renderWithProviders(<ContextSchemaRefField idPrefix="n1" config={{}} onConfigChange={vi.fn()} />);
+    expect((screen.getByRole('radio', { name: /reference/i }) as HTMLInputElement).getAttribute('data-state')).toBe('checked');
+  });
+
+  it('lists the tenant`s own schemas and writes contextSchemaId on selection', async () => {
+    stubFetch();
+    const onConfigChange = vi.fn();
+    renderWithProviders(<ContextSchemaRefField idPrefix="n1" config={{}} onConfigChange={onConfigChange} />);
+
+    const listbox = await openSelect(/context schema/i);
+    fireEvent.click(within(listbox).getByRole('option', { name: /Intake v2/ }));
+
+    await waitFor(() => expect(onConfigChange).toHaveBeenCalledWith({ contextSchema: { contextSchemaId: 'schema-2' } }));
+  });
+
+  it('offers "Follow latest" vs a specific published version once a schema is referenced', async () => {
+    stubFetch();
+    renderWithProviders(<ContextSchemaRefField idPrefix="n1" config={{ contextSchema: { contextSchemaId: 'schema-1' } }} onConfigChange={vi.fn()} />);
+    expect(await screen.findByText(/follows the schema.s own pin/i)).toBeTruthy();
+    const listbox = await openSelect(/version/i);
+    expect(within(listbox).getByRole('option', { name: /^Follow latest/ })).toBeTruthy();
+    expect(within(listbox).getByRole('option', { name: 'v2' })).toBeTruthy();
+    expect(within(listbox).getByRole('option', { name: 'v1' })).toBeTruthy();
+  });
+
+  it('pinning a specific version writes versionNumber', async () => {
+    stubFetch();
+    const onConfigChange = vi.fn();
+    renderWithProviders(
+      <ContextSchemaRefField idPrefix="n1" config={{ contextSchema: { contextSchemaId: 'schema-1' } }} onConfigChange={onConfigChange} />,
+    );
+    const listbox = await openSelect(/version/i);
+    fireEvent.click(within(listbox).getByRole('option', { name: 'v2' }));
+    await waitFor(() => expect(onConfigChange).toHaveBeenCalledWith({ contextSchema: { contextSchemaId: 'schema-1', versionNumber: 2 } }));
+  });
+
+  it('switching the radio to inline clears the reference and hands the schema field back to a plain JSON editor', async () => {
+    stubFetch();
+    const onConfigChange = vi.fn();
+    renderWithProviders(
+      <ContextSchemaRefField idPrefix="n1" config={{ contextSchema: { contextSchemaId: 'schema-1' } }} onConfigChange={onConfigChange} />,
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /inline/i }));
+    expect(onConfigChange).toHaveBeenCalledWith({ contextSchema: { inline: {} } });
+  });
+
+  it('0 axe violations in reference mode', async () => {
+    stubFetch();
+    const { container } = renderWithProviders(<ContextSchemaRefField idPrefix="n1" config={{}} onConfigChange={vi.fn()} />);
+    await screen.findByLabelText(/context schema/i);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('0 axe violations in the dark theme, with a schema referenced and a version pinned', async () => {
+    document.documentElement.classList.add('dark');
+    stubFetch();
+    const { container } = renderWithProviders(
+      <ContextSchemaRefField idPrefix="n1" config={{ contextSchema: { contextSchemaId: 'schema-1', versionNumber: 2 } }} onConfigChange={vi.fn()} />,
+    );
+    await screen.findByLabelText(/version/i);
+    expect(await axe(container)).toHaveNoViolations();
+    document.documentElement.classList.remove('dark');
+  });
+});

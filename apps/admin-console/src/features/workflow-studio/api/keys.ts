@@ -24,4 +24,9 @@ export const workflowStudioKeys = {
   // legitimately referenced from several definitions).
   promptBindings: (definitionId: string) => [...workflowStudioKeys.root, 'prompt-bindings', definitionId] as const,
   promptTemplateVersions: (promptTemplateId: string) => [...workflowStudioKeys.root, 'prompt-template-versions', promptTemplateId] as const,
+  // TASK-890 §3.4 — `core.trigger`'s context-schema reference picker (the option list itself
+  // is `@/shared/catalog`'s own query key; this is the per-schema VERSION list only).
+  contextSchemaVersions: (schemaId: string) => [...workflowStudioKeys.root, 'context-schema-versions', schemaId] as const,
+  // TASK-890 §3.9/§3.10 — the PublishDialog's resolved endpoints panel.
+  runSchema: (slug: string) => [...workflowStudioKeys.root, 'run-schema', slug] as const,
 };

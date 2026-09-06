@@ -30,6 +30,8 @@ import type {
   WorkflowDefinitionBundle,
   WorkflowNodeRegistry,
   AgentOption,
+  ContextSchemaVersionOption,
+  WorkflowRunSchema,
 } from './types';
 
 const BASE = 'admin/workflow-definitions';
@@ -39,6 +41,12 @@ const ASSIGNMENTS_BASE = 'admin/workflow-assignments';
 const DEPARTMENTS_PATH = 'admin/departments';
 /** TASK-863 §3.5 — admin plane; the Studio only LISTS here (the picker), never writes. */
 const AGENTS_PATH = 'admin/agents';
+/** TASK-890 §3.4 — admin plane; the Studio only LISTS here (the reference picker), never writes — the
+ *  authoritative editor for context schemas is its own console surface. */
+const CONTEXT_SCHEMAS_PATH = 'admin/consultation-context-schemas';
+/** TASK-890 §3.9/§3.10 — the BUSINESS-plane route family (no `admin/` prefix); the Studio only
+ *  reads `:slug/schema` here, through the caller's own JWT session. */
+const WORKFLOWS_PATH = 'workflows';
 
 const definitionPath = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
@@ -242,4 +250,22 @@ export function listPromptTemplateVersions(promptTemplateId: string): Promise<Pr
 export async function listAgentOptions(task: string): Promise<AgentOption[]> {
   const result = await getJson<Paginated<AgentOption> | AgentOption[]>(AGENTS_PATH, { task, status: 'PUBLISHED', limit: 200 });
   return Array.isArray(result) ? result : result.data;
+}
+
+/**
+ * The published definition's resolved run contract (TASK-890 §3.9/§3.10) — what `PublishDialog`
+ * reads to show `POST /workflows/{slug}/runs`, the `?mode=` set and the vox-node snippet right
+ * after a publish. 404 until the definition is actually PUBLISHED and ACTIVE — the route the
+ * business-plane SDKs consume, read here through the JWT session rather than an API key.
+ */
+export function getWorkflowSchema(slug: string): Promise<WorkflowRunSchema> {
+  return getJson(`${WORKFLOWS_PATH}/${encodeURIComponent(slug)}/schema`);
+}
+
+/** One schema's published, immutable versions, newest first — the "pin vK" half of the picker.
+ *  The schema OPTION list itself is `@/shared/catalog`'s `useContextSchemaCatalog` (the same
+ *  read L5's agent form uses) — this feature only adds the per-schema VERSION read shared/catalog
+ *  does not have. */
+export function listContextSchemaVersions(schemaId: string): Promise<ContextSchemaVersionOption[]> {
+  return getJson(`${CONTEXT_SCHEMAS_PATH}/${encodeURIComponent(schemaId)}/versions`);
 }
