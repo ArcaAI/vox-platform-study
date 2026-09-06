@@ -321,6 +321,19 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // in the service).
       { action: 'manage', subject: 'Agent', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'AgentAssignment', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-890 — the model PICKER (`GET admin/ai-models/catalogue`). An agent
+      // author cannot bind a model it may not see, so `manage:Agent` without this
+      // is a code-correct, unreachable surface (the shape `tenant-admin-authority`
+      // exists to catch).
+      //
+      // READ ONLY, and deliberately so: the registry itself stays a super-admin
+      // plane (`manage:all` on every write, plus an imperative platform-admin
+      // assertion in the service). The tenant condition is the house form even
+      // though the rows this reads are SYSTEM-owned — a class-level CASL check
+      // carries no subject instance, so the condition constrains nothing here and
+      // is kept for the day one is supplied; the SYSTEM rows are reached through
+      // the shared-read widening, never through this grant.
+      { action: 'read', subject: 'AiModel', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {
@@ -541,6 +554,9 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'manage', subject: 'PromptTemplate', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'PromptVersion', conditions: { tenantId: '${context.tenantId}' } },
       { action: ['read', 'list'], subject: 'PromptUsageRecord', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-890 — a prompt author picks the model a test-run executes on, from
+      // the same catalogue (`GET admin/ai-models/catalogue`). Read only.
+      { action: 'read', subject: 'AiModel', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   // End-user (clinician) read-only prompt-template ability.
