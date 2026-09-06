@@ -4,10 +4,12 @@ import { ConfigService } from '@nestjs/config';
 import type { Readable } from 'node:stream';
 import { AsrPipelineRepository, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
+import { PromptTemplateSyntaxError, PromptVariableUnresolvedError, renderTemplate } from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
+import { buildAgentPromptScope } from './agent-prompt-scope';
 
 export interface AgentTextInvocationResult {
   text: string;
@@ -25,14 +27,6 @@ export interface AgentSpeechRequest {
   model?: string;
   language?: string;
   ssml?: boolean;
-}
-
-/** `{{var}}` substitution — the PromptManagementService.interpolateTemplate shape, for the agent's bound variables. */
-function interpolate(content: string, variables: Record<string, unknown>): string {
-  return content.replace(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g, (match, key: string) => {
-    const value = variables[key];
-    return value === undefined || value === null ? match : String(value);
-  });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -67,6 +61,21 @@ export class AgentInvocationService {
     return jsonSchemaValueProblems(resolved.compiledConfig.inputSchema, input);
   }
 
+  /**
+   * TIER 3 (TASK-890 §3.4) — the request's `context` object against the agent's BOUND context
+   * schema, as FROZEN into `compiledConfig.contextSchema.payloadSchema` at publish time.
+   *
+   * Frozen, not resolved: the runtime never reads a schema row (invariant 4), so a tenant that
+   * edits its schema after publishing does not silently change what a published agent accepts.
+   * An agent that binds no schema declares no `context` vocabulary, so there is nothing to
+   * check and nothing to refuse — `[]`, not "everything is invalid".
+   */
+  contextProblems(resolved: ResolvedAgent, context: unknown): string[] {
+    const payloadSchema = boundContextPayloadSchema(resolved);
+    if (payloadSchema === null) return [];
+    return jsonSchemaValueProblems(payloadSchema, context ?? {});
+  }
+
   async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'blocking'): Promise<AgentTextInvocationResult>;
   async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'stream'): Promise<{ stream: Readable }>;
   async invokeText(
@@ -78,12 +87,24 @@ export class AgentInvocationService {
     if (resolved.task !== 'TEXT_GENERATION') {
       throw new BadRequestException(`Agent '${resolved.slug}' is a ${resolved.task} agent; invocations apply to TEXT_GENERATION agents only.`);
     }
+    // TIER 3 (§3.4) — enforced HERE rather than only at the controller, so every caller of this
+    // service (the route, the draft test, a future job) gets the same refusal for the same
+    // reason. A context the agent's frozen schema does not admit never reaches a model.
+    const contextProblems = this.contextProblems(resolved, input.context ?? {});
+    if (contextProblems.length > 0) {
+      throw new BadRequestException(`\`context\` does not match the schema bound to agent '${resolved.slug}': ${contextProblems.join('; ')}`);
+    }
+
     const compiled = resolved.compiledConfig;
     const parameters = asRecord(compiled.parameters);
     const generation = asRecord(parameters.generation);
     const boundVariables = asRecord(asRecord(compiled.instruction).variables);
     const variables = { ...boundVariables, ...asRecord(input.variables) };
-    const systemPrompt = compiled.resolvedPrompt ? interpolate(compiled.resolvedPrompt.content, variables) : undefined;
+    // TASK-890 §3.3 — the SAME scope the workflow lanes build: `input.*` (this body), `context.*`
+    // (the request's context object, already validated against the agent's frozen schema by the
+    // controller through `contextProblems`) and the bare bound names, caller's winning.
+    const scope = buildAgentPromptScope({ variables, input, trigger: input.context as Record<string, unknown> | undefined });
+    const systemPrompt = compiled.resolvedPrompt ? this.render(compiled.resolvedPrompt.content, scope, resolved.slug) : undefined;
 
     const body: Record<string, unknown> = {
       prompt: String(input.text ?? ''),
@@ -130,6 +151,32 @@ export class AgentInvocationService {
       model: data.model ?? compiled.model.slug,
       usage: data.usage ? { promptTokens: data.usage.prompt_tokens ?? null, completionTokens: data.usage.completion_tokens ?? null } : null,
     };
+  }
+
+  /**
+   * Render the agent's instruction through the ONE grammar (§3.2), turning its two named
+   * failures into the 400 the caller can act on.
+   *
+   * A 400 rather than a 500 because both are the CALLER's: an unresolved placeholder means the
+   * request did not supply what the agent's prompt declares, and a syntax error means the
+   * published instruction is malformed (publish reports it as `PROMPT_TEMPLATE_SYNTAX`). Either
+   * way nothing is sent upstream — a half-substituted prompt, or one carrying a literal
+   * `{{…}}`, is the failure mode this grammar exists to end.
+   */
+  private render(content: string, scope: Record<string, unknown>, agentSlug: string): string {
+    try {
+      return renderTemplate(content, scope, { templateRef: `agent:${agentSlug}` });
+    } catch (error) {
+      if (error instanceof PromptVariableUnresolvedError) {
+        throw new BadRequestException(
+          `Agent '${agentSlug}' instruction references \`${error.path}\`, which this invocation does not supply. Provide it under \`context\` / \`input\` / \`variables\`, or give the placeholder a \`default("…")\`.`,
+        );
+      }
+      if (error instanceof PromptTemplateSyntaxError) {
+        throw new BadRequestException(`Agent '${agentSlug}' instruction is not a valid template: ${error.message}`);
+      }
+      throw error;
+    }
   }
 
   /** The agent-derived half of a TTS request; the gateway merges the tenant's TTS config + BYO overrides on top. */
@@ -190,6 +237,22 @@ export class AgentInvocationService {
     }
     return null;
   }
+}
+
+/**
+ * The agent's FROZEN context payload schema, or `null` when it binds none.
+ *
+ * Read structurally rather than off a typed field: `AgentCompiledConfig.contextSchema`
+ * (`packages/types/src/agent.ts`) is landed by L8/L14 in the same wave as this file, and a
+ * compiled config stamped before that column existed simply carries nothing here. Absent is
+ * "no vocabulary declared", never "invalid".
+ */
+function boundContextPayloadSchema(resolved: ResolvedAgent): Record<string, unknown> | null {
+  const contextSchema = asRecord((resolved.compiledConfig as unknown as Record<string, unknown>).contextSchema);
+  const payloadSchema = contextSchema.payloadSchema;
+  return payloadSchema !== null && typeof payloadSchema === 'object' && !Array.isArray(payloadSchema)
+    ? (payloadSchema as Record<string, unknown>)
+    : null;
 }
 
 function responseFormatOf(parameters: Record<string, unknown>): Record<string, unknown> {
