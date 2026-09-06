@@ -42,6 +42,24 @@ export interface AgentValidationReport {
   findings: AgentFinding[];
 }
 
+/**
+ * TASK-890 §3.3 — a bound instruction variable is either a literal, or a path resolved from the
+ * render scope (`context.*`, `trigger.*`, `input.*`, `vars.*`, `nodes.<id>.*`) BEFORE the
+ * bare-name overlay. Exactly one of the two is set.
+ */
+export interface AgentPromptVariableBinding {
+  value?: unknown;
+  path?: string;
+}
+
+/** `Agent.instruction` for a TEXT_GENERATION agent bound to an approved prompt template. */
+export interface TemplateInstruction {
+  promptTemplateId: string;
+  /** Pin a specific approved version; omitted ⇒ "follow the template's own approved version". */
+  promptVersionNumber?: number | null;
+  variables?: Record<string, AgentPromptVariableBinding>;
+}
+
 export interface Agent {
   id: string;
   tenantId: string;
@@ -51,9 +69,18 @@ export interface Agent {
   task: AgentTask;
   versionNumber: number;
   parentVersionId: string | null;
+  /** TASK-884 — the version this row was CLONED or SYNCED from; `sourceTenantId === SYSTEM` names a platform-origin clone. */
+  sourceAgentId: string | null;
+  sourceTenantId: string | null;
+  sourceSlug: string | null;
+  sourceVersionNumber: number | null;
   status: AgentStatus;
   isActive: boolean;
   modelId: string;
+  /** TASK-890 §3.4 — the tenant context schema this agent pins; `null` ⇒ none bound. */
+  contextSchemaId: string | null;
+  /** The pinned schema VERSION; `null` ⇒ follow the schema's own pin. */
+  contextSchemaVersionNumber: number | null;
   modelSlug: string | null;
   fallbacks: AgentFallback[];
   instruction: Record<string, unknown> | null;
@@ -82,6 +109,9 @@ export interface CreateAgentRequest {
   description?: string;
   task: AgentTask;
   modelId: string;
+  /** TASK-890 §3.4 — pin one of THIS tenant's consultation context schemas; frozen at publish. */
+  contextSchemaId?: string | null;
+  contextSchemaVersionNumber?: number | null;
   fallbackModelIds?: string[];
   instruction?: Record<string, unknown>;
   parameters?: Record<string, unknown>;
@@ -95,6 +125,8 @@ export interface UpdateAgentRequest {
   name?: string;
   description?: string;
   modelId?: string;
+  contextSchemaId?: string | null;
+  contextSchemaVersionNumber?: number | null;
   fallbackModelIds?: string[];
   instruction?: Record<string, unknown>;
   parameters?: Record<string, unknown>;
@@ -174,28 +206,54 @@ export interface ImportAgentRequest {
   name?: string;
 }
 
-/** The registry rows the Model step lists (`GET admin/ai-models`, filtered client-side by task type). */
-export interface RegistryModel {
-  id: string;
-  name: string;
-  slug: string;
-  taskType: string;
-  provider?: string | null;
-  localPath?: string | null;
-  downloadStatus?: string | null;
-  resourceStatus: string;
-  tenantId: string;
-  metaData?: Record<string, unknown> | null;
+/**
+ * TASK-890 §3.8 — the draft-agent test bench (`POST admin/agents/:id/test` + `:id/test/finalize`).
+ * Mirrors `TestAgentRequest` / `AgentTestAckResponse` / `AgentTestResultResponse`
+ * (`packages/applications/src/services/agent/dto`).
+ */
+export interface FinalizeAgentTestRequest {
+  taskId: string;
 }
 
-/** The instruction library the Instruction step picks from (`GET admin/prompt-templates`). */
-export interface InstructionTemplate {
-  id: string;
-  name: string;
-  status: 'DRAFT' | 'PUBLISHED' | 'APPROVED';
-  category?: string;
-  currentVersionNumber: number;
-  approvedVersionNumber?: number | null;
+export interface TestAgentRequest {
+  input?: Record<string, unknown>;
+  variables?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  provider?: string;
+  model?: string;
+  /** Default `true` — a dry run generates nothing and meters nothing. */
+  dryRun?: boolean;
+}
+
+export interface AgentTestTarget {
+  provider: string;
+  model: string;
+  fundingTier: 'platform' | 'tenant';
+  source: 'row' | 'override';
+}
+
+export interface AgentTestAck {
+  mode: 'dry-run' | 'stream';
+  findings: AgentFinding[];
+  assembledSystemPrompt: string | null;
+  assembledUserPrompt: string;
+  resolved: AgentTestTarget;
+  /** Stream mode only. */
+  taskId?: string;
+  streamUrl?: string;
+}
+
+export interface AgentTestUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface AgentTestResult {
+  output: string;
+  provider: string;
+  model: string;
+  usage: AgentTestUsage | null;
 }
 
 export interface Department {

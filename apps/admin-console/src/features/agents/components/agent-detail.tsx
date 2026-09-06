@@ -8,6 +8,7 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
+import { RadioGroup, RadioGroupItem } from '@arcaai/ui/components/shadcn/radio-group';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
@@ -31,10 +32,15 @@ import {
   useUpsertAgentAssignment,
   useValidateAgent,
   type Agent,
+  type AgentPromptVariableBinding,
   type AgentProblemBody,
 } from '../api';
-import { AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isPlatformAgent } from './agent-status-badge';
+import { AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isClonedFromPlatform } from './agent-status-badge';
+import { AgentPublishDialog } from './agent-publish-dialog';
+import { DraftTestPanel } from './draft-test-panel';
+import { InstructionBindingForm, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
+import { ModelPicker, useTaskModelCatalogue } from './model-picker';
 import { ParametersForm } from './parameters-form';
 
 /** Surfaces the gateway's coded finding when there is one — shared with the list screen's import action. */
@@ -84,7 +90,63 @@ function FindingsList({ agent }: { agent: Agent }) {
   );
 }
 
-/** Overview · Configuration · Versions · Test run · Usage (TASK-863 §3.6). */
+interface DraftState {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  inputSchema: Record<string, unknown> | null;
+  outputSchema: Record<string, unknown> | null;
+  modelId: string;
+  fallbackModelIds: string[];
+  tags: string;
+  instructionMode: 'template' | 'inline';
+  binding: InstructionBindingValue;
+  systemPrompt: string;
+  initialPrompt: string;
+  hotwords: string;
+}
+
+function stringField(instruction: Record<string, unknown> | null, key: string): string {
+  const value = instruction?.[key];
+  return typeof value === 'string' ? value : '';
+}
+
+/** TASK-890 §3.4/§3.6 — the row's OWN instruction/context-schema binding, seeded into the editor. */
+function instructionToBinding(agent: Agent): InstructionBindingValue {
+  const instruction = agent.instruction as Record<string, unknown> | null;
+  const promptTemplateId = instruction?.promptTemplateId;
+  const promptVersionNumber = instruction?.promptVersionNumber;
+  const variables = instruction?.variables;
+  return {
+    promptTemplateId: typeof promptTemplateId === 'string' ? promptTemplateId : null,
+    promptVersionNumber: typeof promptVersionNumber === 'number' ? promptVersionNumber : null,
+    variables: (variables && typeof variables === 'object' ? (variables as Record<string, AgentPromptVariableBinding>) : {}),
+    contextSchemaId: agent.contextSchemaId,
+    contextSchemaVersionNumber: agent.contextSchemaVersionNumber,
+  };
+}
+
+function draftFromAgent(agent: Agent): DraftState {
+  const instruction = agent.instruction as Record<string, unknown> | null;
+  const hotwords = instruction?.hotwords;
+  return {
+    name: agent.name,
+    description: agent.description ?? '',
+    parameters: agent.parameters ?? {},
+    inputSchema: agent.inputSchema,
+    outputSchema: agent.outputSchema,
+    modelId: agent.modelId,
+    fallbackModelIds: [...agent.fallbacks].sort((a, b) => a.priority - b.priority).map((fallback) => fallback.modelId),
+    tags: agent.tags.join(', '),
+    instructionMode: agent.task === 'TEXT_GENERATION' && typeof instruction?.promptTemplateId === 'string' ? 'template' : 'inline',
+    binding: instructionToBinding(agent),
+    systemPrompt: stringField(instruction, 'systemPrompt'),
+    initialPrompt: stringField(instruction, 'initialPrompt'),
+    hotwords: Array.isArray(hotwords) ? hotwords.join(', ') : '',
+  };
+}
+
+/** Overview · Configuration · Versions · Test run · Usage (TASK-863 §3.6; TASK-890 extends Configuration + Test run). */
 export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId: string | null; onOpenChange: (open: boolean) => void; onSelect: (id: string) => void }) {
   const detail = useAgent(agentId);
   const agent = detail.data?.data ?? null;
@@ -99,9 +161,12 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
   const update = useUpdateAgent();
   const upsertAssignment = useUpsertAgentAssignment();
   const exportAgent = useExportAgent();
+  const catalogue = useTaskModelCatalogue(agent?.task ?? 'TEXT_GENERATION');
   const [confirm, setConfirm] = useState<'deprecate' | 'delete' | null>(null);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<{ name: string; description: string; parameters: Record<string, unknown>; inputSchema: Record<string, unknown> | null; outputSchema: Record<string, unknown> | null } | null>(null);
+  const [draft, setDraft] = useState<DraftState | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState<Agent | null>(null);
   // TASK-884 — the assignment tier this section writes. Empty = the tenant's UNQUALIFIED
   // default (what the section always wrote); a `key:value` list addresses the tag-qualified
   // row of the same tier instead, which the cascade tries first for a request carrying them.
@@ -110,8 +175,9 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
-  const isPlatform = agent ? isPlatformAgent(agent.tenantId) : false;
-  const mutable = !!agent && !isPlatform && (agent.status === 'DRAFT' || agent.status === 'VALIDATED');
+  // TASK-890 OD-M — `GET admin/agents` answers only rows this tenant owns (its own clones
+  // included), so a row here is mutable by STATUS alone; "platform" is provenance, not a lock.
+  const mutable = !!agent && (agent.status === 'DRAFT' || agent.status === 'VALIDATED');
   const selectorTags = useMemo(
     () => [...new Set(selectorInput.split(',').map((tag) => tag.trim()).filter(Boolean))].sort(),
     [selectorInput],
@@ -121,10 +187,7 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
   // The row this section targets is the one whose SELECTOR matches — the selector is part of an
   // assignment's identity, so an empty box means the unqualified row, not "any row".
   const tenantDefault = useMemo(
-    () =>
-      (assignments.data ?? []).find(
-        (row) => row.scope === 'TENANT' && !isPlatformAgent(row.tenantId) && [...(row.selectorTags ?? [])].sort().join(',') === selectorKey,
-      ),
+    () => (assignments.data ?? []).find((row) => row.scope === 'TENANT' && [...(row.selectorTags ?? [])].sort().join(',') === selectorKey),
     [assignments.data, selectorKey],
   );
   const isTenantDefault = !!agent && tenantDefault?.agentSlug === agent.slug;
@@ -142,6 +205,27 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
 
   async function saveDraft() {
     if (!agent || !draft || !etag) return;
+    let instruction: Record<string, unknown> | undefined;
+    if (agent.task === 'TEXT_GENERATION') {
+      instruction =
+        draft.instructionMode === 'template'
+          ? {
+              promptTemplateId: draft.binding.promptTemplateId,
+              ...(draft.binding.promptVersionNumber !== null ? { promptVersionNumber: draft.binding.promptVersionNumber } : {}),
+              ...(Object.keys(draft.binding.variables).length ? { variables: draft.binding.variables } : {}),
+            }
+          : { systemPrompt: draft.systemPrompt };
+    } else if (agent.task === 'SPEECH_TO_TEXT') {
+      const hotwords = draft.hotwords
+        .split(',')
+        .map((word) => word.trim())
+        .filter(Boolean);
+      instruction = { ...(draft.initialPrompt ? { initialPrompt: draft.initialPrompt } : {}), ...(hotwords.length ? { hotwords } : {}) };
+    }
+    const tags = draft.tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
     try {
       await update.mutateAsync({
         id: agent.id,
@@ -149,7 +233,12 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
         patch: {
           name: draft.name,
           description: draft.description,
+          modelId: draft.modelId,
+          fallbackModelIds: draft.fallbackModelIds,
           parameters: draft.parameters,
+          tags,
+          ...(instruction ? { instruction } : {}),
+          ...(agent.task === 'TEXT_GENERATION' ? { contextSchemaId: draft.binding.contextSchemaId, contextSchemaVersionNumber: draft.binding.contextSchemaVersionNumber } : {}),
           ...(draft.inputSchema ? { inputSchema: draft.inputSchema } : {}),
           ...(draft.outputSchema ? { outputSchema: draft.outputSchema } : {}),
         },
@@ -158,6 +247,17 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
       setEditing(false);
     } catch (error) {
       problemToast(error, 'Could not save the draft.');
+    }
+  }
+
+  async function confirmPublish(activate: boolean) {
+    if (!agent) return;
+    try {
+      const result = await publish.mutateAsync({ id: agent.id, body: { activate } });
+      toast.success('Agent published');
+      setPublished(result);
+    } catch (error) {
+      problemToast(error, 'Publish failed.');
     }
   }
 
@@ -233,7 +333,7 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
             <>
               <AgentTaskBadge task={agent.task} />
               <AgentStatusBadge status={agent.status} isActive={agent.isActive} />
-              <AgentOwnerBadge tenantId={agent.tenantId} />
+              <AgentOwnerBadge sourceTenantId={agent.sourceTenantId} />
               {isTenantDefault ? <Badge variant="secondary">Tenant default</Badge> : null}
             </>
           ) : null
@@ -263,13 +363,20 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                     {validate.isPending ? <Spinner /> : <IconShieldCheck aria-hidden className="size-4" />}
                     Validate
                   </Button>
-                  <Button type="button" disabled={busy} onClick={() => void run(() => publish.mutateAsync({ id: agent.id, body: { activate: true } }), 'Agent published', 'Publish failed.')}>
+                  <Button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setPublished(null);
+                      setPublishing(true);
+                    }}
+                  >
                     {publish.isPending ? <Spinner /> : <IconRocket aria-hidden className="size-4" />}
                     Publish
                   </Button>
                 </>
               ) : null}
-              {!isPlatform && agent.status === 'PUBLISHED' ? (
+              {agent.status === 'PUBLISHED' ? (
                 <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirm('deprecate')}>
                   Deprecate
                 </Button>
@@ -283,15 +390,15 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                 variant="outline"
                 disabled={busy}
                 onClick={() =>
-                  void run(() => branch.mutateAsync({ id: agent.id }), isPlatform ? 'Branched into a tenant draft' : 'New draft version created', 'Could not branch a new version.').then((created) => {
+                  void run(() => branch.mutateAsync({ id: agent.id }), isClonedFromPlatform(agent.sourceTenantId) ? 'Branched a new draft version' : 'New draft version created', 'Could not branch a new version.').then((created) => {
                     if (created) onSelect(created.id);
                   })
                 }
               >
                 {branch.isPending ? <Spinner /> : <IconGitBranch aria-hidden className="size-4" />}
-                {isPlatform ? 'Branch as my agent' : 'New version'}
+                New version
               </Button>
-              {!isPlatform && !agent.isActive ? (
+              {!agent.isActive ? (
                 <Button type="button" variant="destructive" disabled={busy} onClick={() => setConfirm('delete')} aria-label="Delete this version">
                   <IconTrash aria-hidden className="size-4" />
                 </Button>
@@ -375,13 +482,14 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                   variant="outline"
                   className="self-start"
                   onClick={() => {
-                    setDraft({ name: agent.name, description: agent.description ?? '', parameters: agent.parameters ?? {}, inputSchema: agent.inputSchema, outputSchema: agent.outputSchema });
+                    setDraft(draftFromAgent(agent));
                     setEditing(true);
                   }}
                 >
                   Edit draft
                 </Button>
               ) : null}
+              {!mutable ? <p className="text-muted-foreground text-sm">{agent.status === 'PUBLISHED' ? 'Create vN to change the model, instruction, or tags.' : 'This version is deprecated and read-only.'}</p> : null}
               {editing && draft ? (
                 <form
                   className="flex flex-col gap-4"
@@ -400,6 +508,53 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                     <Label htmlFor="edit-description">Description</Label>
                     <Textarea id="edit-description" rows={2} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
                   </div>
+
+                  <ModelPicker id="edit-model" task={agent.task} value={draft.modelId} onChange={(modelId) => setDraft({ ...draft, modelId, fallbackModelIds: draft.fallbackModelIds.filter((id) => id !== modelId) })} />
+                  {draft.fallbackModelIds.length ? (
+                    <p className="text-muted-foreground text-xs">Fallbacks: {draft.fallbackModelIds.map((id) => catalogue.models.find((model) => model.id === id)?.name ?? id).join(' → ')}</p>
+                  ) : null}
+
+                  {agent.task === 'TEXT_GENERATION' ? (
+                    <fieldset className="flex flex-col gap-3">
+                      <legend className="text-sm font-medium">Instruction</legend>
+                      <RadioGroup value={draft.instructionMode} onValueChange={(mode) => setDraft({ ...draft, instructionMode: mode as DraftState['instructionMode'] })} aria-label="Instruction source">
+                        <div className="flex items-center gap-2">
+                          <RadioGroupItem id="edit-instr-template" value="template" />
+                          <Label htmlFor="edit-instr-template">Approved prompt template</Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <RadioGroupItem id="edit-instr-inline" value="inline" />
+                          <Label htmlFor="edit-instr-inline">Inline system prompt</Label>
+                        </div>
+                      </RadioGroup>
+                      {draft.instructionMode === 'template' ? (
+                        <InstructionBindingForm value={draft.binding} onChange={(binding) => setDraft({ ...draft, binding })} />
+                      ) : (
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="edit-system-prompt">System prompt</Label>
+                          <Textarea id="edit-system-prompt" rows={8} maxLength={50000} value={draft.systemPrompt} onChange={(event) => setDraft({ ...draft, systemPrompt: event.target.value })} />
+                        </div>
+                      )}
+                    </fieldset>
+                  ) : agent.task === 'SPEECH_TO_TEXT' ? (
+                    <fieldset className="flex flex-col gap-3">
+                      <legend className="text-sm font-medium">Instruction</legend>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="edit-initial-prompt">Initial prompt</Label>
+                        <Textarea id="edit-initial-prompt" rows={3} maxLength={1000} value={draft.initialPrompt} onChange={(event) => setDraft({ ...draft, initialPrompt: event.target.value })} />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="edit-hotwords">Hotwords</Label>
+                        <Input id="edit-hotwords" placeholder="comma-separated" value={draft.hotwords} onChange={(event) => setDraft({ ...draft, hotwords: event.target.value })} />
+                      </div>
+                    </fieldset>
+                  ) : null}
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="edit-tags">Tags</Label>
+                    <Input id="edit-tags" placeholder="key:value, key:value" value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} />
+                  </div>
+
                   <ParametersForm task={agent.task} value={draft.parameters} onChange={(parameters) => setDraft({ ...draft, parameters })} />
                   <JsonField label="Input schema" value={draft.inputSchema} onChange={(inputSchema) => setDraft({ ...draft, inputSchema })} />
                   <JsonField label="Output schema" value={draft.outputSchema} onChange={(outputSchema) => setDraft({ ...draft, outputSchema })} />
@@ -449,7 +604,9 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
             </TabsContent>
 
             <TabsContent value="test" className="flex flex-col gap-3">
-              {agent.task === 'TEXT_GENERATION' && agent.status === 'PUBLISHED' && agent.isActive ? (
+              {mutable ? (
+                <DraftTestPanel agent={agent} />
+              ) : agent.task === 'TEXT_GENERATION' && agent.status === 'PUBLISHED' && agent.isActive ? (
                 <>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="test-input">Input text</Label>
@@ -480,6 +637,20 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
           </>
         )}
       </DetailDrawer>
+
+      {agent ? (
+        <AgentPublishDialog
+          open={publishing}
+          onOpenChange={(open) => {
+            setPublishing(open);
+            if (!open) setPublished(null);
+          }}
+          onConfirm={(activate) => void confirmPublish(activate)}
+          confirming={publish.isPending}
+          agent={agent}
+          published={published}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={confirm === 'deprecate'}

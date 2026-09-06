@@ -4,14 +4,16 @@ import type {
   AgentAssignment,
   AgentBundle,
   AgentTask,
+  AgentTestAck,
+  AgentTestResult,
   CloneAgentRequest,
   CreateAgentRequest,
   Department,
+  FinalizeAgentTestRequest,
   ImportAgentRequest,
-  InstructionTemplate,
   NewAgentVersionRequest,
   PublishAgentRequest,
-  RegistryModel,
+  TestAgentRequest,
   UpdateAgentRequest,
   UpsertAgentAssignmentRequest,
 } from './types';
@@ -19,8 +21,14 @@ import type {
 const BASE = 'admin/agents';
 const ASSIGNMENTS = 'admin/agent-assignments';
 
+/**
+ * TASK-890 OD-M — no `includeTemplates`: the SYSTEM reference set is cloned into the tenant at
+ * provisioning (`TenantReferenceSetService`), never read live across tenants. `GET admin/agents`
+ * therefore answers only rows this tenant owns — including its own clones (`sourceTenantId` names
+ * the platform origin; `agent-status-badge.tsx`).
+ */
 export function listAgents(task?: AgentTask): Promise<Agent[]> {
-  return getJson(BASE, { ...(task ? { task } : {}), includeTemplates: 'true' });
+  return getJson(BASE, task ? { task } : undefined);
 }
 
 /** Detail read keeping the ETag for the later If-Match PATCH. */
@@ -94,15 +102,16 @@ export async function removeAgentAssignment(id: string, version: number, reason?
   return result.data;
 }
 
-/** Registry rows for the Model step. The registry feature owns the screen; this is a read-only picker feed. */
-export function listRegistryModels(): Promise<RegistryModel[]> {
-  return getJson('admin/ai-models');
+/**
+ * TASK-890 §3.8 — the draft-agent test bench. `test` is a dry run by default (nothing generated,
+ * nothing metered); `test/finalize` reads a finished non-dry run back SERVER-SIDE by `taskId`.
+ */
+export function testAgent(id: string, body: TestAgentRequest = {}): Promise<AgentTestAck> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/test`, body);
 }
 
-/** The instruction library for the Instruction step (APPROVED templates only are bindable). */
-export async function listInstructionTemplates(): Promise<InstructionTemplate[]> {
-  const page = await getJson<{ data?: InstructionTemplate[] } | InstructionTemplate[]>('admin/prompt-templates', { limit: 200, page: 0 });
-  return Array.isArray(page) ? page : (page.data ?? []);
+export function finalizeAgentTest(id: string, body: FinalizeAgentTestRequest): Promise<AgentTestResult> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/test/finalize`, body);
 }
 
 export async function listDepartments(): Promise<Department[]> {
