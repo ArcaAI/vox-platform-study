@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IconFilterOff, IconPlus, IconRobot, IconUpload } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { parseAsString, useQueryState } from 'nuqs';
@@ -20,7 +20,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { AGENT_TASKS, AGENT_TASK_LABEL, useAgents, useImportAgent, type Agent } from '../api';
 import { AgentDetailDrawer, problemToast } from './agent-detail';
-import { AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isPlatformAgent } from './agent-status-badge';
+import { AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isClonedFromPlatform } from './agent-status-badge';
 import { CreateAgentWizard } from './create-agent-wizard';
 
 const TASK_OPTIONS: FilterOption[] = AGENT_TASKS.map((task) => ({ value: task, label: AGENT_TASK_LABEL[task] }));
@@ -67,7 +67,15 @@ function AgentsBody() {
   const agentsQuery = useAgents();
   const query = useAdminGridParams();
   const [selectedParam, setSelectedParam] = useQueryState('agent', parseAsString.withDefault(''));
-  const [creating, setCreating] = useState(false);
+  // TASK-890 §3.10 — `?create=1` opens the wizard directly (the Studio's "Create a new agent"
+  // deep link, `agent-picker-field.tsx`'s CREATE_AGENT_HREF). Read once as the lazy initial
+  // state (the deep link is a fresh navigation, so this always runs at mount); the effect below
+  // only clears the URL param — never local state — so a refresh or Back doesn't re-open it.
+  const [createParam, setCreateParam] = useQueryState('create', parseAsString.withDefault(''));
+  const [creating, setCreating] = useState(() => createParam === '1');
+  useEffect(() => {
+    if (createParam === '1') void setCreateParam(null);
+  }, [createParam, setCreateParam]);
 
   const importAgent = useImportAgent();
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -86,7 +94,7 @@ function AgentsBody() {
       agents.filter((agent) => {
         if (task.length && !task.includes(agent.task)) return false;
         if (status.length && !status.includes(agent.status)) return false;
-        if (owner.length && !owner.includes(isPlatformAgent(agent.tenantId) ? 'platform' : 'tenant')) return false;
+        if (owner.length && !owner.includes(isClonedFromPlatform(agent.sourceTenantId) ? 'platform' : 'tenant')) return false;
         // AND-joined, matching how a selector narrows the assignment cascade: picking two tags
         // asks for the agents carrying BOTH, not either.
         if (tags.length && !tags.every((tag) => (agent.tags ?? []).includes(tag))) return false;
@@ -192,12 +200,12 @@ function AgentsBody() {
       },
       {
         id: 'owner',
-        accessorFn: (row) => (isPlatformAgent(row.tenantId) ? 'platform' : 'tenant'),
+        accessorFn: (row) => (isClonedFromPlatform(row.sourceTenantId) ? 'platform' : 'tenant'),
         header: 'Owner',
         enableSorting: false,
         size: 110,
         meta: { label: 'Owner', variant: 'multiSelect', options: OWNER_OPTIONS },
-        cell: ({ row }) => <AgentOwnerBadge tenantId={row.original.tenantId} />,
+        cell: ({ row }) => <AgentOwnerBadge sourceTenantId={row.original.sourceTenantId} />,
       },
       {
         id: 'tags',
@@ -301,7 +309,7 @@ function AgentsBody() {
               <EmptyState
                 icon={IconRobot}
                 title="No agents yet"
-                description="Create an agent: pick a task, bind a registry model, set its instruction and parameters, then publish it. Platform defaults appear here as read-only templates you can branch."
+                description="Create an agent: pick a task, bind a catalogue model, set its instruction and parameters, then publish it. A new tenant starts with the platform's default agents already cloned in — editable like any other."
                 action={
                   <Button onClick={() => setCreating(true)}>
                     <IconPlus aria-hidden className="size-4" />
