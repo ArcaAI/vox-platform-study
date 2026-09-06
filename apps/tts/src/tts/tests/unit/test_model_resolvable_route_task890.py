@@ -10,44 +10,91 @@ actually held.
 TTS is the service most often absent from a local stack, which is exactly why
 this route reports a FACT and the gateway sweep owns the interpretation: no
 answer means `unknown`, never a verdict. That half is asserted on the gateway
-side; here we pin what the service itself promises.
+side; here we pin what the service itself promises — including, since TASK-890
+F3, that it never calls `huggingface_hub` (whose no-download path still `open()`s
+the external `HF_HOME` volume, and one of those parked a sibling service's event
+loop for fifteen minutes) and that a stalled filesystem answers `resolvable:
+null` inside a budget rather than wedging the request.
 
-Hermetic: the hub is stubbed, so no test touches the network or a real cache.
+Hermetic: every test builds a real cache tree under `tmp_path` and points
+`HF_HOME`/`HOME` at it, so no test touches the network or the host's own cache.
 """
 
 from __future__ import annotations
 
 import sys
+import time
 import types
+from pathlib import Path
 from typing import Any
 
 import pytest
+from hope_runtime_models import clear_resolvable_cache
+from httpx import ASGITransport, AsyncClient
 
 ROUTE = "/api/v1/internal/models/resolvable"
 
+SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+
+
+def _stage(root: Path, repo_id: str, *, revision: str = "main") -> Path:
+    """One repo in the real HuggingFace cache layout, with one materialised file."""
+    storage = root / ("models--" + repo_id.replace("/", "--"))
+    snapshot = storage / "snapshots" / SHA
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "config.json").write_text("{}")
+    (storage / "refs").mkdir(parents=True, exist_ok=True)
+    (storage / "refs" / revision).write_text(SHA)
+    return snapshot
+
+
+def _never_returns(*_args: Any, **_kwargs: Any):
+    """A filesystem read that outlives the budget — the F3 failure, simulated."""
+    time.sleep(2)
+    raise AssertionError("unreachable: the budget must have expired long before this")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_cache():
+    """Each test measures its own tree, not the previous test's memoised verdict."""
+    clear_resolvable_cache()
+    yield
+    clear_resolvable_cache()
+
 
 @pytest.fixture
-def hub(monkeypatch):
-    """A stub hub. Records every call so the no-download clause is falsifiable."""
-    calls: list[dict[str, Any]] = []
-    cached: set[str] = set()
+def cache(tmp_path, monkeypatch) -> Path:
+    """The dir the local voice runtimes load from: the hub default under `$HF_HOME`.
 
-    def _snapshot_download(**kwargs: Any) -> str:
-        calls.append(kwargs)
-        repo_id = kwargs["repo_id"]
-        if repo_id not in cached:
-            raise FileNotFoundError(f"{repo_id} is not in the local cache")
-        return f"/cache/{repo_id.replace('/', '--')}"
+    `HOME` is redirected too — the resolver falls back to
+    `~/.cache/huggingface/hub`, and a test that accidentally read the developer's
+    real cache would pass for the wrong reason.
+    """
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    root = tmp_path / "hub"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+@pytest.fixture(autouse=True)
+def hub(monkeypatch):
+    """A hub that explodes on contact — the no-hub clause, made falsifiable."""
+
+    def _forbidden(*_args: Any, **_kwargs: Any):
+        raise AssertionError("the resolvability probe must never call huggingface_hub")
 
     module = types.ModuleType("huggingface_hub")
-    module.snapshot_download = _snapshot_download  # type: ignore[attr-defined]
+    module.snapshot_download = _forbidden  # type: ignore[attr-defined]
+    module.scan_cache_dir = _forbidden  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "huggingface_hub", module)
-    return types.SimpleNamespace(calls=calls, cached=cached)
+    return types.SimpleNamespace(forbidden=_forbidden)
 
 
 @pytest.mark.asyncio
-async def test_a_cached_snapshot_is_resolvable(async_client, hub):
-    hub.cached.add("hexgrad/Kokoro-82M")
+async def test_a_cached_snapshot_is_resolvable(async_client, cache):
+    snapshot = _stage(cache, "hexgrad/Kokoro-82M")
 
     resp = await async_client.post(
         ROUTE, json={"models": [{"id": "m1", "sourceUri": "hexgrad/Kokoro-82M"}]}
@@ -59,10 +106,11 @@ async def test_a_cached_snapshot_is_resolvable(async_client, hub):
     (result,) = body["results"]
     assert result["resolvable"] is True
     assert result["state"] == "hf_cache"
+    assert result["path"] == str(snapshot)
 
 
 @pytest.mark.asyncio
-async def test_an_absent_snapshot_is_not_resolvable(async_client, hub):
+async def test_an_absent_snapshot_is_not_resolvable(async_client, cache):
     resp = await async_client.post(
         ROUTE, json={"models": [{"id": "m2", "sourceUri": "ai4bharat/indic-parler-tts"}]}
     )
@@ -73,19 +121,39 @@ async def test_an_absent_snapshot_is_not_resolvable(async_client, hub):
 
 
 @pytest.mark.asyncio
-async def test_it_never_downloads(async_client, hub):
-    await async_client.post(
-        ROUTE, json={"models": [{"id": "m3", "sourceUri": "ai4bharat/indic-parler-tts"}]}
+async def test_it_never_calls_the_hub(async_client, cache):
+    """The `hub` fixture raises on contact; a 200 here is the whole assertion."""
+    _stage(cache, "hexgrad/Kokoro-82M")
+
+    resp = await async_client.post(
+        ROUTE,
+        json={
+            "models": [
+                {"id": "m3a", "sourceUri": "hexgrad/Kokoro-82M"},
+                {"id": "m3b", "sourceUri": "ai4bharat/indic-parler-tts"},
+            ]
+        },
     )
 
-    assert hub.calls, "the hub was never consulted"
-    for call in hub.calls:
-        assert call["local_files_only"] is True, "a readiness probe must never fetch weights"
+    assert resp.status_code == 200
+    assert [r["resolvable"] for r in resp.json()["results"]] == [True, False]
 
 
 @pytest.mark.asyncio
-async def test_the_batch_answers_every_row_in_order(async_client, hub):
-    hub.cached.add("a/one")
+async def test_the_stt_layout_under_hf_home_resolves_too(async_client, cache, tmp_path):
+    """Both layouts are live on this host; reading one reports the other cold."""
+    _stage(tmp_path, "hexgrad/Kokoro-82M")
+
+    resp = await async_client.post(
+        ROUTE, json={"models": [{"id": "m3c", "sourceUri": "hexgrad/Kokoro-82M"}]}
+    )
+
+    assert resp.json()["results"][0]["resolvable"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_batch_answers_every_row_in_order(async_client, cache):
+    _stage(cache, "a/one")
 
     resp = await async_client.post(
         ROUTE,
@@ -97,8 +165,75 @@ async def test_the_batch_answers_every_row_in_order(async_client, hub):
     assert [r["resolvable"] for r in results] == [True, False]
 
 
+@pytest.mark.asyncio
+async def test_thirty_rows_answer_inside_a_second(async_client, cache):
+    """The sweep asks about every self-hosted row at once, every cycle."""
+    for index in range(15):
+        _stage(cache, f"org{index}/repo")
+    rows = [{"id": f"r{i}", "sourceUri": f"org{i}/repo"} for i in range(15)]
+    rows += [{"id": f"a{i}", "sourceUri": f"absent{i}/repo"} for i in range(15)]
+
+    started = time.perf_counter()
+    resp = await async_client.post(ROUTE, json={"models": rows})
+    elapsed = time.perf_counter() - started
+
+    assert resp.status_code == 200
+    assert len(resp.json()["results"]) == 30
+    assert elapsed < 1.0, f"30 rows took {elapsed:.3f}s"
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_filesystem_answers_rather_than_hanging(async_client, cache, monkeypatch):
+    """The failure this route shipped with: one read that never returned.
+
+    It parked the event loop and took the health probe with it. Now the read runs
+    on a worker thread inside a budget, and a row that budget could not measure
+    comes back `null` — recorded by the gateway as `unknown`, never as "weights
+    missing".
+    """
+    import hope_runtime_models.resolvable as resolvable_module
+
+    monkeypatch.setattr(resolvable_module, "_check", _never_returns)
+    monkeypatch.setattr(resolvable_module, "DEFAULT_BUDGET_SECONDS", 0.2)
+
+    started = time.perf_counter()
+    resp = await async_client.post(
+        ROUTE, json={"models": [{"id": "slow", "sourceUri": "org/repo"}]}
+    )
+    elapsed = time.perf_counter() - started
+
+    assert resp.status_code == 200
+    (result,) = resp.json()["results"]
+    assert result["resolvable"] is None
+    assert result["state"] == "timeout"
+    assert elapsed < 5.0
+
+
 def test_the_route_is_not_auth_exempt():
     """A deployed process must reject an unauthenticated probe."""
     from tts.api.middleware.auth import EXEMPT_PATHS
 
     assert ROUTE not in EXEMPT_PATHS
+
+
+@pytest.mark.asyncio
+async def test_an_unauthenticated_probe_is_401(monkeypatch):
+    """The exempt-set check is necessary, not sufficient — prove the 401 fires."""
+    from pydantic import SecretStr
+
+    from tts.core.config import Settings
+    from tts.tests.conftest import create_app
+
+    token = "shared-internal-access-token-xyz"
+    settings = Settings(
+        host="127.0.0.1",
+        port=5099,
+        debug=True,
+        log_level="debug",
+        internal_access_token=SecretStr(token),
+    )
+    transport = ASGITransport(app=create_app(settings_override=settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as gated:
+        assert (await gated.post(ROUTE, json={"models": []})).status_code == 401
+        allowed = await gated.post(ROUTE, json={"models": []}, headers={"X-Service-Token": token})
+        assert allowed.status_code == 200

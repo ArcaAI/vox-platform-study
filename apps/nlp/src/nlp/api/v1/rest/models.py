@@ -14,9 +14,10 @@ sweep folds the verdict in.
 
 The cache dir is deliberately the PROCESS default (``cache_dir=None``): NLP
 loads through ``transformers`` / the hub library, which reads ``HF_HOME`` and
-resolves ``$HF_HOME/hub``. Passing ``HF_HOME`` itself here — the way STT must,
-because its resolver does — would read a different directory from the one the
-loaders use and report a warm cache as cold.
+resolves ``$HF_HOME/hub``. Since TASK-890 F3 the resolver tries BOTH layouts —
+``$HF_HOME/hub`` and ``HF_HOME`` itself, which is what STT's own resolver
+passes — so neither service can report a warm cache as cold by reading the
+other one's directory.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query
-from hope_runtime_models import ResolvableQuery, check_resolvable
+from hope_runtime_models import ResolvableQuery, check_resolvable_many
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/internal/models", tags=["internal"])
@@ -47,16 +48,25 @@ class ResolvableRequest(BaseModel):
     models: list[ResolvableItem] = Field(default_factory=list)
 
 
-def _verdict(item: ResolvableItem) -> dict[str, Any]:
-    return check_resolvable(
-        ResolvableQuery(
-            id=item.id,
-            source_uri=item.sourceUri,
-            library=item.library,
-            revision=item.revision,
-            local_path=item.localPath,
-        ),
-    ).as_dict()
+def _query(item: ResolvableItem) -> ResolvableQuery:
+    return ResolvableQuery(
+        id=item.id,
+        source_uri=item.sourceUri,
+        library=item.library,
+        revision=item.revision,
+        local_path=item.localPath,
+    )
+
+
+async def _verdicts(items: list[ResolvableItem]) -> list[dict[str, Any]]:
+    """Off the event loop, inside one budget — see `check_resolvable_many`.
+
+    Before TASK-890 F3 this ran synchronously in the handler, and a filesystem
+    read under `HF_HOME` that never returned took the whole service with it —
+    health probe included. Nothing on this path may block the loop again.
+    """
+    results = await check_resolvable_many([_query(item) for item in items])
+    return [result.as_dict() for result in results]
 
 
 @router.get("/resolvable")
@@ -67,12 +77,13 @@ async def resolvable_one(
     revision: str | None = Query(default=None),
 ) -> dict[str, Any]:
     """One row, for a hand check. The gateway sweep uses the batch POST."""
+    (result,) = await _verdicts(
+        [ResolvableItem(id=id, sourceUri=source_uri, library=library, revision=revision)]
+    )
     return {
         "service": SERVICE_NAME,
         "checkedAt": datetime.now(UTC).isoformat(),
-        "result": _verdict(
-            ResolvableItem(id=id, sourceUri=source_uri, library=library, revision=revision)
-        ),
+        "result": result,
     }
 
 
@@ -82,5 +93,5 @@ async def resolvable_batch(body: ResolvableRequest) -> dict[str, Any]:
     return {
         "service": SERVICE_NAME,
         "checkedAt": datetime.now(UTC).isoformat(),
-        "results": [_verdict(item) for item in body.models],
+        "results": await _verdicts(body.models),
     }
