@@ -6,16 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AiModelFactory, CreateAiModelProps } from '../AiModelFactory';
-import {
-  AiModelSource,
-  AiModelFormat,
-  AiModelDownloadStatus,
-  AiModelAvailability,
-  AiDeploymentKind,
-  ModelCategory,
-  ModelTaskType,
-  ModelType,
-} from '../../../../enums';
+import { AiModelSource, AiModelFormat, AiModelAvailability, AiDeploymentKind, ModelCategory, ModelTaskType, ModelType } from '../../../../enums';
 
 // tenantId is now required at the factory layer.
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -60,10 +51,10 @@ describe('AiModelFactory', () => {
       expect(model.format).toBe(AiModelFormat.SAFETENSOR);
     });
 
-    it('should default downloadStatus to NOT_DOWNLOADED', () => {
+    it('leaves the BYO provenance unset — a catalogue row is not declared by a connection', () => {
       const model = AiModelFactory.CreateAiModel(baseProps);
 
-      expect(model.downloadStatus).toBe(AiModelDownloadStatus.NOT_DOWNLOADED);
+      expect(model.sourceConnectionId).toBeNull();
     });
 
     it('should set createdAt and updatedAt to current time', () => {
@@ -188,12 +179,9 @@ describe('AiModelFactory', () => {
       expect(model.createdBy).toBeNull();
     });
 
-    it('should initialize download-related fields to null', () => {
+    it('should initialize the verification checksum to null', () => {
       const model = AiModelFactory.CreateAiModel(baseProps);
 
-      expect(model.localPath).toBeNull();
-      expect(model.downloadedAt).toBeNull();
-      expect(model.fileSizeMb).toBeNull();
       expect(model.checksum).toBeNull();
     });
 
@@ -354,34 +342,13 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'test/model',
         format: AiModelFormat.SAFETENSOR,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.hasChanges).toBe(false);
       expect(model.changes).toEqual({});
-    });
-
-    it('should create entity that can start download', () => {
-      const model = AiModelFactory.CreateAiModel({
-        tenantId: TEST_TENANT_ID,
-        name: 'Test Model',
-        slug: 'test-model',
-        category: ModelCategory.AUDIO,
-        taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
-        modelType: ModelType.BASE_MODEL,
-        source: AiModelSource.HUGGINGFACE,
-        sourceUri: 'test/model',
-        format: AiModelFormat.SAFETENSOR,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
-      });
-
-      expect(model.isNotDownloaded).toBe(true);
-      model.markAsDownloading();
-      expect(model.isDownloading).toBe(true);
     });
   });
 
@@ -397,9 +364,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'organization/model',
         format: AiModelFormat.SAFETENSOR,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.isHuggingFace).toBe(true);
@@ -416,9 +383,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.MLFLOW,
         sourceUri: 'models:/my-model/1',
         format: AiModelFormat.PYTORCH,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.isMLFlow).toBe(true);
@@ -498,9 +465,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'openai/whisper-large-v3',
         format: AiModelFormat.SAFETENSOR,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
       expect(model.provider).toBeNull();
       expect(model.architecture).toBeNull();

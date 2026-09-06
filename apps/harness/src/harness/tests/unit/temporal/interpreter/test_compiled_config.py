@@ -236,6 +236,72 @@ class TestDocumentTemplateRefs:
         assert config.policy_bindings.document_template_refs == []
 
 
+class TestTask890AdditivePolicyBindings:
+    """TASK-890 §3.4 / §3.14 — the two ADDITIVE policy bindings, on the Python side.
+
+    ``contextSchemaRefs`` pins WHICH context-schema version the trigger was frozen
+    against, and ``guardrail`` carries the workflow-level opt-out. Both are optional:
+    this model is ``extra='forbid'``, so the interpreter has to KNOW them before the
+    emitter ships them, and both must default so an artifact compiled before either
+    existed still parses. Absence is a fact in its own right — "binds no schema" and
+    "expresses no guardrail opinion" — never "unknown".
+    """
+
+    def test_context_schema_refs_are_parsed(self):
+        refs = [
+            {
+                "nodeId": "n_trigger",
+                "schemaId": "79000000-0000-0000-0001-000000000010",
+                "versionNumber": 2,
+                "versionId": "89000000-0000-0000-0001-000000000010",
+            }
+        ]
+        bindings = {**_sample_body()["policyBindings"], "contextSchemaRefs": refs}
+        config = parse_and_verify(_signed_document(policyBindings=bindings))
+        assert len(config.policy_bindings.context_schema_refs) == 1
+        assert config.policy_bindings.context_schema_refs[0].node_id == "n_trigger"
+        assert config.policy_bindings.context_schema_refs[0].version_number == 2
+        assert (
+            config.policy_bindings.context_schema_refs[0].version_id
+            == "89000000-0000-0000-0001-000000000010"
+        )
+
+    def test_an_unknown_key_inside_a_context_schema_ref_is_refused(self):
+        refs = [
+            {
+                "nodeId": "n_trigger",
+                "schemaId": "79000000-0000-0000-0001-000000000010",
+                "versionNumber": 2,
+                "versionId": "89000000-0000-0000-0001-000000000010",
+                "payloadSchema": {"type": "object"},
+            }
+        ]
+        bindings = {**_sample_body()["policyBindings"], "contextSchemaRefs": refs}
+        with pytest.raises(InterpreterConfigError):
+            parse_and_verify(_signed_document(policyBindings=bindings))
+
+    def test_the_workflow_guardrail_opinion_is_parsed(self):
+        bindings = {**_sample_body()["policyBindings"], "guardrail": {"enabled": False}}
+        config = parse_and_verify(_signed_document(policyBindings=bindings))
+        assert config.policy_bindings.guardrail is not None
+        assert config.policy_bindings.guardrail.enabled is False
+
+    def test_an_unknown_key_inside_the_guardrail_binding_is_refused(self):
+        bindings = {
+            **_sample_body()["policyBindings"],
+            "guardrail": {"enabled": False, "reason": "because"},
+        }
+        with pytest.raises(InterpreterConfigError):
+            parse_and_verify(_signed_document(policyBindings=bindings))
+
+    def test_a_config_carrying_neither_field_still_parses(self):
+        config = parse_and_verify(_signed_document())
+        assert config.policy_bindings.context_schema_refs == []
+        # ``None`` is the tri-state: this workflow said nothing, so the node and the
+        # agent decide. It is deliberately not ``False`` and not ``True``.
+        assert config.policy_bindings.guardrail is None
+
+
 class TestCanonicalJsonParityFixture:
     """Cross-language checksum parity guard — the byte-for-byte proof
     README named as a known gap: "not verified byte-for-byte against a live

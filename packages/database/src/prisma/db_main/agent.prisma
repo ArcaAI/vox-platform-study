@@ -94,6 +94,22 @@ model Agent {
   // write and again at publish.
   modelId String
 
+  // TASK-890 §3.4 — the consultation-context schema this agent's prompt is written
+  // against, held as a REFERENCE. The definition lives on the TENANT's own
+  // `ConsultationContextSchema` row (context schemas are CONTENT: cloned into a tenant,
+  // never shared from SYSTEM — `tenant-scope.ts` deliberately keeps the model out of
+  // `SYSTEM_SHARED_READ_MODELS`), and the pinned version's DERIVED payload schema is
+  // frozen into `compiledConfig.contextSchema` at publish, so the runtime never re-reads
+  // it. Absent = the agent declares no context and a `{{context.*}}` reference in its
+  // prompt is a publish finding.
+  //
+  // Deliberately NOT a relation, mirroring the `instruction.promptTemplateId` /
+  // `promptVersionNumber` pin: a version row is addressed by (schemaId, versionNumber),
+  // which Prisma cannot express as a composite FK here, and a schema must stay deletable
+  // without a cascade reaching into published agents.
+  contextSchemaId            String?
+  contextSchemaVersionNumber Int?
+
   // Task-specific instruction: { promptTemplateId, promptVersionNumber,
   // variables, evalGate } | { systemPrompt } (TEXT_GENERATION);
   // { initialPrompt, hotwords[] } (SPEECH_TO_TEXT); null (TEXT_TO_SPEECH).
@@ -140,6 +156,7 @@ model Agent {
   @@index([tenantId, slug, isActive], name: "Agent_tenant_slug_isActive_idx")
   @@index([tenantId, slug, status], name: "Agent_tenant_slug_status_idx")
   @@index([modelId], name: "Agent_modelId_idx")
+  @@index([contextSchemaId], name: "Agent_contextSchemaId_idx")
   @@index([parentVersionId], name: "Agent_parentVersionId_idx")
   @@schema("core")
 }

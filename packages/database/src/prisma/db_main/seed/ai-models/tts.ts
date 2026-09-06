@@ -26,10 +26,10 @@ import {
  *   `sourceUri`  the provider-native model id on the wire — what
  *                `tts.sarvam.model` ('bulbul:v3'), `tts.indicParler.hfModel` and
  *                `tts.indicF5.hfModel` used to hold.
- *   `localPath`  the ungated internal mirror — `tts.{indicParler,indicF5}.modelPath`.
- *                DEPLOYMENT-SPECIFIC, so it is deliberately NOT seeded: an empty
- *                value means "pull from the Hub", exactly as the retired keys'
- *                empty defaults did.
+ *   the mount path  the ungated internal mirror — `tts.{indicParler,indicF5}.modelPath`.
+ *                DERIVED from `bucketPrefix` at resolve time since TASK-890 dropped the
+ *                stored column, and never seeded: no bucket identity means "pull from
+ *                the Hub", exactly as the retired keys' empty defaults did.
  *   `metaData.artifacts`
  *                auxiliary loader paths beside the weights — today only
  *                `descEncoderPath` (the Parler description tokenizer, formerly
@@ -95,7 +95,8 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Indic Parler TTS',
     slug: 'indic-parler-tts',
-    description: 'AI4Bharat Indic Parler-TTS — local Malayalam synthesis (parler-tts). Gated Hub weights; served by the tts `[indic-parler]` image variant.',
+    description:
+      'AI4Bharat Indic Parler-TTS — local Malayalam synthesis (parler-tts). Gated Hub weights; served by the tts `[indic-parler]` image variant.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.TEXT_TO_SPEECH,
     modelType: ModelType.BASE_MODEL,
@@ -158,7 +159,8 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Sarvam Bulbul',
     slug: 'sarvam-bulbul',
-    description: 'Sarvam Bulbul v3 cloud TTS — Indic-language synthesis (Malayalam). API key via the tenant → SYSTEM `tts`/`sarvam` provider connection.',
+    description:
+      'Sarvam Bulbul v3 cloud TTS — Indic-language synthesis (Malayalam). API key via the tenant → SYSTEM `tts`/`sarvam` provider connection.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.TEXT_TO_SPEECH,
     modelType: ModelType.BASE_MODEL,

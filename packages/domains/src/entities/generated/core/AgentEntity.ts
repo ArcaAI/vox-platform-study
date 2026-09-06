@@ -33,6 +33,14 @@ export interface IAgentEntity extends IBaseTenantEntity {
   status: Enums.WorkflowDefinitionStatus;
   isActive: boolean;
   modelId: string;
+  /**
+   * TASK-890 §3.4 — the consultation-context schema this agent's prompt is written
+   * against, held as a REFERENCE into the TENANT's own schema row. The pinned
+   * version's derived payload schema is frozen into `compiledConfig.contextSchema`
+   * at publish; nothing resolves it again at run time.
+   */
+  contextSchemaId?: string | null;
+  contextSchemaVersionNumber?: number | null;
   instruction?: JsonValue | null;
   parameters?: JsonValue | null;
   inputSchema?: JsonValue | null;
@@ -69,6 +77,8 @@ export class AgentEntity extends BaseTenantEntity {
   private _status: IAgentEntity['status'];
   private _isActive: IAgentEntity['isActive'];
   private _modelId: IAgentEntity['modelId'];
+  private _contextSchemaId: IAgentEntity['contextSchemaId'];
+  private _contextSchemaVersionNumber: IAgentEntity['contextSchemaVersionNumber'];
   private _instruction?: IAgentEntity['instruction'];
   private _parameters?: IAgentEntity['parameters'];
   private _inputSchema?: IAgentEntity['inputSchema'];
@@ -97,6 +107,8 @@ export class AgentEntity extends BaseTenantEntity {
     this._status = init.status;
     this._isActive = init.isActive;
     this._modelId = init.modelId;
+    this._contextSchemaId = init.contextSchemaId;
+    this._contextSchemaVersionNumber = init.contextSchemaVersionNumber;
     this._instruction = init.instruction;
     this._parameters = init.parameters;
     this._inputSchema = init.inputSchema;
@@ -215,6 +227,22 @@ export class AgentEntity extends BaseTenantEntity {
     this.setProperty('modelId', value);
   }
 
+  get contextSchemaId(): IAgentEntity['contextSchemaId'] {
+    return this._contextSchemaId;
+  }
+
+  set contextSchemaId(value: IAgentEntity['contextSchemaId']) {
+    this.setProperty('contextSchemaId', value);
+  }
+
+  get contextSchemaVersionNumber(): IAgentEntity['contextSchemaVersionNumber'] {
+    return this._contextSchemaVersionNumber;
+  }
+
+  set contextSchemaVersionNumber(value: IAgentEntity['contextSchemaVersionNumber']) {
+    this.setProperty('contextSchemaVersionNumber', value);
+  }
+
   get instruction(): IAgentEntity['instruction'] {
     return this._instruction;
   }
@@ -314,7 +342,9 @@ export class AgentEntity extends BaseTenantEntity {
   public override validate(): void {
     super.validate();
     if (!this._slug || !AGENT_SLUG_PATTERN.test(this._slug)) {
-      throw new BusinessException('Agent slug must be 2-80 lowercase alphanumeric/hyphen/underscore characters, not starting or ending with a separator.');
+      throw new BusinessException(
+        'Agent slug must be 2-80 lowercase alphanumeric/hyphen/underscore characters, not starting or ending with a separator.',
+      );
     }
     if (!this._name || this._name.trim().length === 0) {
       throw new BusinessException('Agent name is required.');

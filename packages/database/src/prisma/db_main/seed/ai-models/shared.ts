@@ -387,23 +387,6 @@ export interface AiModelSeed {
   source: (typeof AiModelSource)[keyof typeof AiModelSource];
   sourceUri: string;
   sourceRevision: string;
-  /**
-   * Operator/admin override — HIGHEST precedence in every service's
-   * `resolve_model_dir` (stt, guardrail, nlp, harness; `stt.prisma:178-182`),
-   * ahead of `sourceUri` scheme dispatch. Weights are read IN PLACE from this
-   * path, never copied.
-   *
-   * DELIBERATELY NOT HAND-SET on any seed row. The path segment
-   * under the slug is CONTENT-DERIVED — `<quant>-<first 12 of
-   * sha256(SHA256SUMS)>`, produced by the `hope-models-publish` Job — so it
-   * cannot be known, let alone typed here, before a model is actually
-   * published to the `hope-models` bucket. The download
-   * action writes this field back automatically once a model is fetched,
-   * alongside `downloadStatus`/`checksum` — do NOT hand-author a value here;
-   * an absent value simply falls through to `sourceUri` scheme dispatch with
-   * a structlog warning, so it is always safe to omit.
- */
-  localPath?: string | null;
   format: (typeof AiModelFormat)[keyof typeof AiModelFormat];
   // ── TASK-860 registry identity ───────────────────────────────────────────
   /** Serving library — the Hub's `library_name` facet; loader selection. */
@@ -412,12 +395,11 @@ export interface AiModelSeed {
   servedBy: AiModelServedBy;
   deploymentKind: (typeof AiDeploymentKind)[keyof typeof AiDeploymentKind];
   /**
-   * Vendor wire id for CLOUD rows and the engine-host id for LM Studio rows.
-   * Today it EQUALS `sourceUri` on those rows: the Python cloud loaders and
-   * the TEXT router still read `source_uri` as the wire id, and re-pointing
-   * them is TASK-862's routing work. Once that lands, `sourceUri` becomes the
-   * Hub artifact (`metaData.hubArtifact` below) and this column is the only
-   * wire id.
+   * The ROUTED id — what goes on the wire for a CLOUD row or an engine-served
+   * (LM Studio / Ollama / vLLM) row. TASK-890 made this the id routing reads;
+   * `sourceUri` keeps its LOCATOR meaning (the Hub artifact the publisher
+   * fetches, `metaData.hubArtifact` below). Omitted on a SELF_HOSTED row whose
+   * identity IS its bucket prefix — there is no wire id to send.
    */
   wireModelId?: string;
   /** Model-card licence identifier (Hub spelling: `apache-2.0`, `mit`, `gemma`, …). */
@@ -431,9 +413,10 @@ export interface AiModelSeed {
   /**
    * Single file a single-file loader opens inside the published prefix
    * (whisper.cpp `ggml-*.bin`, llama.cpp `*.gguf`). DELIBERATELY unset in the
-   * seed for the same reason `localPath` is: the publisher discovers the real
-   * filename from the repo listing and writes it back; a hand-typed name that
-   * drifts from the repo is worse than none.
+   * seed: the publisher discovers the real filename from the repo listing and
+   * writes it back; a hand-typed name that drifts from the repo is worse than
+   * none. The mount path a resolver reads is DERIVED from this plus
+   * `bucketPrefix` — TASK-890 dropped the stored `localPath` column entirely.
    */
   primaryObject?: string;
   /** Rows with nothing in the bucket (cloud, package-bundled weights) seed NOT_APPLICABLE. */
@@ -456,7 +439,7 @@ export interface AiModelSeed {
    * or the resolving endpoint fails closed with 503), and — for the NLP safety
    * plane — the capability envelope, languages and label taxonomy
    * that keep model ids and label sets out of Python.
- */
+   */
   metaData?: {
     /**
      * The Hub repo the PUBLISHER fetches for an LM Studio row, where

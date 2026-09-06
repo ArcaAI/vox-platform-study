@@ -17,6 +17,9 @@ export interface CreateWorkflowDefinitionProps extends BaseEntityFactoryCreatePr
   versionNumber: IWorkflowDefinitionEntity['versionNumber'];
   parentVersionId?: IWorkflowDefinitionEntity['parentVersionId'];
   status?: IWorkflowDefinitionEntity['status'];
+  /** Reference-set provenance — set by the clone path, never by an authoring request. */
+  sourceTemplateSlug?: IWorkflowDefinitionEntity['sourceTemplateSlug'];
+  templateLocked?: IWorkflowDefinitionEntity['templateLocked'];
   graph: IWorkflowDefinitionEntity['graph'];
   graphChecksum: IWorkflowDefinitionEntity['graphChecksum'];
   compiledConfig?: IWorkflowDefinitionEntity['compiledConfig'];
@@ -42,7 +45,7 @@ export class WorkflowDefinitionFactory {
    * /719's validate/publish flows advance it). `isActive`/`needsReview`
    * default to `false`; every other server-owned column (`compiledConfig`,
    * `publishedAt`, ...) defaults to null/unset until the publish step sets it.
- */
+   */
   static CreateDefinition(props: CreateWorkflowDefinitionProps): WorkflowDefinitionEntity {
     const id = generateId();
     const now = props.createdAt || new Date();
@@ -63,6 +66,8 @@ export class WorkflowDefinitionFactory {
       versionNumber: props.versionNumber,
       parentVersionId: props.parentVersionId ?? null,
       status: props.status ?? Enums.WorkflowDefinitionStatus.DRAFT,
+      sourceTemplateSlug: props.sourceTemplateSlug ?? null,
+      templateLocked: props.templateLocked ?? false,
       graph: props.graph,
       graphChecksum: props.graphChecksum,
       compiledConfig: props.compiledConfig ?? null,

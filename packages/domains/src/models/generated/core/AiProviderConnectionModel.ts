@@ -27,6 +27,8 @@ export class AiProviderConnection extends BaseTenantDataModel {
   public resourceStatusUpdatedBy: string | null;
   @VirtualDbProperty()
   public routingPolicies: Models.AiRoutingPolicy[] | undefined;
+  @VirtualDbProperty()
+  public models: Models.AiModel[] | undefined;
 
   constructor(data: AiProviderConnection & BaseTenantDataModel) {
     super(data);
@@ -48,5 +50,6 @@ export class AiProviderConnection extends BaseTenantDataModel {
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
     this.routingPolicies = data.routingPolicies;
+    this.models = data.models;
   }
 }

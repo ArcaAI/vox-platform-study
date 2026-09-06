@@ -194,6 +194,37 @@ class CompiledDocumentTemplateRef(BaseModel):
     version_number: int = Field(alias="versionNumber")
 
 
+class CompiledContextSchemaRef(BaseModel):
+    """TASK-890 §3.4 — WHICH context-schema version one node was frozen against.
+
+    The mirror of ``CompiledContextSchemaRef`` in ``compiler.ts``. The derived payload
+    schema itself rides on the compiled TRIGGER node's ``config.contextSchema.resolved``,
+    not here: this ref is the IDENTITY of the pin (so a run can be explained and audited),
+    while the node config carries the shape the interpreter validates against. Keeping them
+    apart is what stops a large schema being duplicated into every artifact twice.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str = Field(alias="nodeId")
+    schema_id: str = Field(alias="schemaId")
+    version_number: int = Field(alias="versionNumber")
+    version_id: str = Field(alias="versionId")
+
+
+class CompiledGuardrailDecision(BaseModel):
+    """TASK-890 §3.14 — the WORKFLOW-level guardrail opinion, authored on ``core.trigger``.
+
+    Folded with the per-node and per-agent opinions at run time: node > workflow > agent >
+    on. Tri-state BY ABSENCE — a ``None`` binding means this workflow said nothing, which is
+    a different fact from ``{"enabled": true}``, a recorded decision to screen.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+
 class CompiledPolicyBindings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -210,6 +241,15 @@ class CompiledPolicyBindings(BaseModel):
     )
     context_schema_version_id: str | None = Field(alias="contextSchemaVersionId")
     entitlement_keys: list[str] = Field(default_factory=list, alias="entitlementKeys")
+    #: TASK-890 §3.4, additive-optional. Defaulted like its siblings on this model so an
+    #: artifact compiled before the field existed still parses — absence means "no node
+    #: binds a context schema by reference", never "unknown".
+    context_schema_refs: list[CompiledContextSchemaRef] = Field(
+        default_factory=list, alias="contextSchemaRefs"
+    )
+    #: TASK-890 §3.14, additive-optional and genuinely tri-state: ``None`` is "no workflow
+    #: opinion", so it must NOT default to a boolean.
+    guardrail: CompiledGuardrailDecision | None = None
 
 
 class CompiledCaps(BaseModel):

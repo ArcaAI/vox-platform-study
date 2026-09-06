@@ -51,7 +51,7 @@ export const DEFAULT_AI_MODELS: AiModelSeed[] = [...AUDIO_AI_MODELS, ...LLM_AI_M
  * decision survives), `availability` unless the seed pins NOT_APPLICABLE (a
  * measured value must never be reset to UNKNOWN by a seed), and the
  * publisher-owned bucket identity (`bucketPrefix`, `primaryObject`,
- * `manifestDigest`, `hfRevision`, `localPath`).
+ * `manifestDigest`, `hfRevision`).
  */
 export const seedAiModels = async (client: CorePrismaClient) => {
   console.log('Seeding AI Model Registry...');

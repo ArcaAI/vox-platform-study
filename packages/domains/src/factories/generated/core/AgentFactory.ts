@@ -23,6 +23,8 @@ export interface CreateAgentProps extends BaseEntityFactoryCreateProps {
   status?: IAgentEntity['status'];
   isActive?: IAgentEntity['isActive'];
   modelId: IAgentEntity['modelId'];
+  contextSchemaId?: IAgentEntity['contextSchemaId'];
+  contextSchemaVersionNumber?: IAgentEntity['contextSchemaVersionNumber'];
   instruction?: IAgentEntity['instruction'];
   parameters?: IAgentEntity['parameters'];
   inputSchema?: IAgentEntity['inputSchema'];
@@ -73,6 +75,8 @@ export class AgentFactory {
       status: props.status ?? Enums.WorkflowDefinitionStatus.DRAFT,
       isActive: props.isActive ?? false,
       modelId: props.modelId,
+      contextSchemaId: props.contextSchemaId ?? null,
+      contextSchemaVersionNumber: props.contextSchemaVersionNumber ?? null,
       instruction: props.instruction ?? null,
       parameters: props.parameters ?? null,
       inputSchema: props.inputSchema ?? null,

@@ -15,6 +15,8 @@ export class WorkflowDefinition extends BaseTenantDataModel {
   public versionNumber: number;
   public parentVersionId: string | null;
   public status: Enums.WorkflowDefinitionStatus;
+  public sourceTemplateSlug: string | null;
+  public templateLocked: boolean;
   public graph: JsonValue;
   public graphChecksum: string;
   public compiledConfig: JsonValue | null;
@@ -40,6 +42,8 @@ export class WorkflowDefinition extends BaseTenantDataModel {
     this.versionNumber = data.versionNumber;
     this.parentVersionId = data.parentVersionId;
     this.status = data.status;
+    this.sourceTemplateSlug = data.sourceTemplateSlug;
+    this.templateLocked = data.templateLocked;
     this.graph = data.graph;
     this.graphChecksum = data.graphChecksum;
     this.compiledConfig = data.compiledConfig;
