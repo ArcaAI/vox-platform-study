@@ -34,7 +34,7 @@
  * skeleton; on an empty/error list, a slug `Input` fallback so authoring is
  * never blocked on this surface being unavailable.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { IconExternalLink } from '@tabler/icons-react';
 import {
@@ -55,6 +55,9 @@ import { usePromptTemplateOptions, usePromptTemplateQuickView } from './hooks';
 import type { PromptPickerStatus, PromptPickerTemplate } from './types';
 
 const PROMPT_TEMPLATES_HREF = (id: string) => `/prompt-templates?template=${encodeURIComponent(id)}`;
+
+/** Radix `Select` forbids an empty-string item value, so "no tag filter" needs a sentinel. */
+const ALL_TAGS = '__all__';
 
 const STATUS_LABEL: Record<PromptPickerStatus, string> = {
   DRAFT: 'Draft',
@@ -116,6 +119,15 @@ export function PromptTemplateQuickView({ template }: { template: PromptPickerTe
           Open in Prompt Templates <IconExternalLink aria-hidden="true" className="size-3" />
         </Link>
       </div>
+      {(template.tags ?? []).length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5" aria-label="Tags">
+          {(template.tags ?? []).map((tag) => (
+            <Badge key={tag} variant="secondary" className="rounded-full font-mono text-[11px]">
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
       {variables.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5" aria-label="Declared variables">
           {variables.map((variable) => (
@@ -137,10 +149,22 @@ export function PromptTemplatePicker({ id, value, onChange, category, disabled, 
   const options = usePromptTemplateOptions(category ? { category } : undefined);
   const templates = options.data ?? [];
   const known = templates.find((template) => template.id === value);
+  // Tag narrowing is CLIENT-side on purpose: the hook loads the tenant's whole
+  // library in one page (`PICKER_LIMIT`), so filtering here is exact rather
+  // than a page-local guess. `known` is resolved against the FULL list above,
+  // so narrowing the options never orphans an already-bound template.
+  const [tag, setTag] = useState('');
+  const tagOptions = useMemo(
+    // Keyed on the QUERY result, not the `?? []` fallback — that literal is a
+    // new array every render and would re-run this on each one.
+    () => [...new Set((options.data ?? []).flatMap((template) => template.tags ?? []))].sort((a, b) => a.localeCompare(b)),
+    [options.data],
+  );
+  const visible = tag ? templates.filter((template) => (template.tags ?? []).includes(tag)) : templates;
   // The selected id may not be in a category-filtered (or paginated) list —
   // fall back to a direct read so the quick view still resolves.
   const fallback = usePromptTemplateQuickView(value && !known ? value : null);
-  const resolved = known ?? (fallback.data ?? null);
+  const resolved = known ?? fallback.data ?? null;
 
   // Report the resolved record on every actual change (selection, or the
   // initial load resolving an already-set `value`) — never on every render.
@@ -190,16 +214,27 @@ export function PromptTemplatePicker({ id, value, onChange, category, disabled, 
     <Field data-invalid={invalid}>
       <FieldLabel htmlFor={fieldId}>Prompt template</FieldLabel>
       <FieldDescription>The bound prompt&apos;s approved version is what actually runs — see the quick view below.</FieldDescription>
-      <Select
-        value={known ? value! : ''}
-        onValueChange={(next) => onChange(next || null)}
-        disabled={disabled}
-      >
+      {tagOptions.length > 0 ? (
+        <Select value={tag || ALL_TAGS} onValueChange={(next) => setTag(next === ALL_TAGS ? '' : next)} disabled={disabled}>
+          <SelectTrigger id={`${fieldId}-tag`} aria-label="Filter by tag" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_TAGS}>All tags</SelectItem>
+            {tagOptions.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+      <Select value={known ? value! : ''} onValueChange={(next) => onChange(next || null)} disabled={disabled}>
         <SelectTrigger id={fieldId} className="w-full">
           <SelectValue placeholder={value && !known ? `${value} (not in the list)` : 'Choose a prompt template'} />
         </SelectTrigger>
         <SelectContent>
-          {templates.map((template) => (
+          {visible.map((template) => (
             <SelectItem key={template.id} value={template.id}>
               {template.name} <span className="text-muted-foreground font-mono text-xs">{STATUS_LABEL[template.status] ?? template.status}</span>
             </SelectItem>

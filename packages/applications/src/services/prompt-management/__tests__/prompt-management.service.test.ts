@@ -2638,6 +2638,34 @@ describe('PromptManagementService', () => {
 
       await expect(service.listPromptTemplatesPaginated()).rejects.toThrow(BadRequestException);
     });
+
+    /**
+     * TASK-890 J2 — department scoping is moving from the `departmentId`
+     * column to TAGS, so the tenant's prompt library has to be listable BY
+     * tag (`dept:cardiology`, `pre-summary`, ...). `hasEvery` — every named
+     * tag must be present — so several tags narrow rather than widen: asking
+     * for `dept:cardiology` + `pre-summary` means the cardiology pre-summary,
+     * not "cardiology or pre-summary".
+     */
+    it('applies the tags filter into the where clause as hasEvery', async () => {
+      mockTemplateRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+      await service.listPromptTemplatesPaginated({ tags: ['dept:cardiology', 'pre-summary'] });
+
+      const [where] = mockTemplateRepo.findPaginated.mock.calls[0];
+      expect(where).toMatchObject({ tenantId: 'tenant-1', tags: { hasEvery: ['dept:cardiology', 'pre-summary'] } });
+    });
+
+    it('does not add a tags constraint for an omitted or empty tag list', async () => {
+      mockTemplateRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+      await service.listPromptTemplatesPaginated({ tags: [] });
+      await service.listPromptTemplatesPaginated({});
+
+      for (const call of mockTemplateRepo.findPaginated.mock.calls) {
+        expect(call[0]).not.toHaveProperty('tags');
+      }
+    });
   });
 
   // ─── usage analytics (groupBy dept / doctor / time) ─────
@@ -2954,6 +2982,16 @@ describe('PromptManagementService', () => {
 
       expect(mockQb.Where).toHaveBeenCalledWith({ scope: 'USER_PERSONAL' });
       expect(mockQb.Where).toHaveBeenCalledWith({ ownerUserId: 'target-user' });
+    });
+
+    it('listPromptTemplates folds the tags filter into the query builder', async () => {
+      const mockQb = createMockQueryBuilder();
+      mockTemplateRepo.$.mockReturnValue(mockQb);
+      mockQb.ToList.mockResolvedValue([]);
+
+      await service.listPromptTemplates({ tags: ['dept:cardiology'] });
+
+      expect(mockQb.Where).toHaveBeenCalledWith({ tags: { hasEvery: ['dept:cardiology'] } });
     });
 
     it('listPromptTemplatesPaginated folds scope + ownerUserId into the where clause', async () => {

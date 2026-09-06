@@ -2,7 +2,6 @@
 
 import { IconTrash } from '@tabler/icons-react';
 import { parseAsStringLiteral, useQueryState } from 'nuqs';
-import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
@@ -13,6 +12,7 @@ import { formatDateTime } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useTemplate } from '../api/hooks';
+import { ApprovalPin, TemplateStatusBadge } from './approval-pin';
 import type { PromptTemplate, PromptTemplateCategory } from '../api/types';
 import { CreateTemplateForm, EditTemplateForm } from './template-form-dialog';
 import { TestRunPanel } from './test-run-panel';
@@ -40,8 +40,20 @@ function useAgentTab() {
   return useQueryState('atab', parseAsStringLiteral(AGENT_TABS).withDefault('overview'));
 }
 
+/**
+ * Header status. The local badge this replaces collapsed everything that was
+ * not DRAFT into "Published", so an APPROVED template read as "Published" in
+ * the drawer while the grid (which uses these same two components) called it
+ * "Approved" — and the header said nothing at all about the version clinical
+ * resolution is actually pinned to.
+ */
 function StatusBadge({ template }: { template: PromptTemplate }) {
-  return template.status === 'DRAFT' ? <Badge variant="outline">Draft</Badge> : <Badge variant="secondary">Published</Badge>;
+  return (
+    <>
+      <TemplateStatusBadge status={template.status} />
+      <ApprovalPin template={template} />
+    </>
+  );
 }
 
 function AgentTabsList() {

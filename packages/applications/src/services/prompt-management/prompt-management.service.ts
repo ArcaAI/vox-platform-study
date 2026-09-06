@@ -753,6 +753,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // Admin scope/owner narrowing (e.g. list a user's personal prompts).
     if (filters?.scope) qb.Where({ scope: filters.scope });
     if (filters?.ownerUserId) qb.Where({ ownerUserId: filters.ownerUserId });
+    // Tag narrowing — `hasEvery`, so several tags intersect (see the filter type).
+    if (filters?.tags?.length) qb.Where({ tags: { hasEvery: filters.tags } });
     if (filters?.search) qb.Where({ name: { contains: filters.search, mode: 'insensitive' } });
     const models = await qb.ToList();
     const mapper = PromptTemplateEntityMapper.getInstance();
@@ -783,6 +785,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // Admin scope/owner narrowing folded into the paginated where.
     if (filters?.scope) where.scope = filters.scope;
     if (filters?.ownerUserId) where.ownerUserId = filters.ownerUserId;
+    // Tag narrowing — `hasEvery`, so several tags intersect (see the filter type).
+    if (filters?.tags?.length) where.tags = { hasEvery: filters.tags };
     if (filters?.search) where.name = { contains: filters.search, mode: 'insensitive' };
 
     const { data, count } = await this.promptTemplateRepository.findPaginated(where, page, limit);

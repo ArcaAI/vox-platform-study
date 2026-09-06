@@ -465,6 +465,123 @@ describe('PromptTemplatesScreen', () => {
     });
   });
 
+  /**
+   * TASK-890 J2 — the edit form used to POST the row's CURRENT status back on
+   * every save. `PATCH :id` accepts only DRAFT|PUBLISHED (approval is its own
+   * route), so saving ANY edit to an APPROVED template 400'd — and 41 of the
+   * 45 seeded templates are APPROVED, which made the cloned SYSTEM prompts
+   * uneditable from the console. An unchanged status must not travel.
+   */
+  it('saves an APPROVED template without sending the un-settable APPROVED status', async () => {
+    const calls = stubTemplates((call) => {
+      if (call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-ps') {
+        return Response.json({ ...PRE_SUMMARY, version: PRE_SUMMARY.version + 1 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates&template=pt-ps' });
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      const patch = calls.find((call) => call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-ps');
+      expect(patch).toBeDefined();
+      expect(patch?.body).not.toHaveProperty('status');
+    });
+  });
+
+  it('shows the approval status of the open template in the drawer header (not a flat "Published")', async () => {
+    stubTemplates();
+    renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates&template=pt-ps' });
+
+    const dialog = await screen.findByRole('dialog');
+    expect((await within(dialog).findAllByText('Approved')).length).toBeGreaterThan(0);
+    // The header badges only — the edit form's Status select legitimately
+    // carries a "Published" option.
+    const badges = [...dialog.querySelectorAll('[data-slot="badge"]')].map((badge) => badge.textContent);
+    expect(badges.some((label) => label === 'Published')).toBe(false);
+    expect(badges.some((label) => label?.includes('serving v3'))).toBe(true);
+  });
+
+  /**
+   * TASK-890 J2 — the owner is deprecating the `departmentId` scope in favour
+   * of department TAGS, and `PromptTemplate.tags` has been carried end to end
+   * (column, create/update DTOs, response) with no console surface at all.
+   */
+  describe('tags', () => {
+    it('lists a template’s tags in the grid', async () => {
+      stubTemplates();
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates' });
+
+      expect(await screen.findByText('pre-summary')).toBeDefined();
+    });
+
+    it('edits the tag set from the drawer and PATCHes it', async () => {
+      const calls = stubTemplates((call) => {
+        if (call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-ps') {
+          return Response.json({ ...PRE_SUMMARY, version: PRE_SUMMARY.version + 1 });
+        }
+        return undefined;
+      });
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates&template=pt-ps' });
+
+      const dialog = await screen.findByRole('dialog');
+      const tagBox = await within(dialog).findByRole('textbox', { name: 'Tags' });
+      fireEvent.change(tagBox, { target: { value: 'dept:cardiology' } });
+      fireEvent.keyDown(tagBox, { key: 'Enter' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => {
+        const patch = calls.find((call) => call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-ps');
+        expect(patch?.body).toMatchObject({ tags: [...(PRE_SUMMARY.tags ?? []), 'dept:cardiology'] });
+      });
+    });
+
+    it('removes a tag from the set before saving', async () => {
+      const calls = stubTemplates((call) => {
+        if (call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-ps') {
+          return Response.json({ ...PRE_SUMMARY, version: PRE_SUMMARY.version + 1 });
+        }
+        return undefined;
+      });
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates&template=pt-ps' });
+
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(await within(dialog).findByRole('button', { name: 'Remove tag arcaai' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => {
+        const patch = calls.find((call) => call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-ps');
+        expect(patch?.body).toMatchObject({ tags: ['clinical', 'pre-summary', 'text-v1'] });
+      });
+    });
+
+    it('creates a template carrying its tags', async () => {
+      const calls = stubTemplates((call) => {
+        if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates') {
+          return Response.json(template({ id: 'pt-9', name: 'Nephrology Notes' }));
+        }
+        return undefined;
+      });
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates' });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'New template' }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
+      fireEvent.change(within(dialog).getByRole('textbox', { name: /Prompt content/ }), { target: { value: 'You are a scribe.' } });
+      const tagBox = within(dialog).getByRole('textbox', { name: 'Tags' });
+      fireEvent.change(tagBox, { target: { value: 'dept:nephrology' } });
+      fireEvent.keyDown(tagBox, { key: 'Enter' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Create template' }));
+
+      await waitFor(() => {
+        const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates');
+        expect(post?.body).toMatchObject({ name: 'Nephrology Notes', tags: ['dept:nephrology'] });
+      });
+    });
+  });
+
   it('renders the block error state and retries the templates request', async () => {
     const calls = stubTemplates((call) => {
       if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/prompt-templates') {

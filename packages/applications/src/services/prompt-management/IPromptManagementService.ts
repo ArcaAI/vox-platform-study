@@ -30,6 +30,18 @@ export interface ListPromptTemplatesFilters {
   // list — the tenant filter is always applied first.
   scope?: string;
   ownerUserId?: string;
+  /**
+   * Tag narrowing (TASK-890 J2). `PromptTemplate` is a tagged entity, and tags
+   * are what the resolver already selects on (`pre-summary` / `dept-free` in
+   * `findTenantPreSummaryTemplateId`), so the admin list has to be filterable
+   * by them too — the department axis is moving from the `departmentId` column
+   * onto `dept:<slug>` tags.
+   *
+   * Semantics: EVERY tag must be present (`hasEvery`), so a multi-tag filter
+   * narrows. An empty array is treated as "no filter" rather than "match a row
+   * with no tags", which is what a cleared filter chip in the console means.
+   */
+  tags?: string[];
   page?: number;
   limit?: number;
 }

@@ -196,6 +196,36 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
             <span className="text-muted-foreground">{'— all —'}</span>
           ),
       },
+      /**
+       * Tags. `PromptTemplate` is a tagged entity and tags already decide
+       * resolution (`pre-summary`, minus `dept-free`); with the `departmentId`
+       * axis being deprecated in favour of `dept:<slug>` tags, a library you
+       * cannot see the tags of is a library you cannot reason about. Three
+       * chips plus an overflow count keeps the row height stable.
+       */
+      {
+        id: 'tags',
+        header: 'Tags',
+        enableSorting: false,
+        enableHiding: true,
+        size: 200,
+        minSize: 120,
+        meta: { label: 'Tags' },
+        cell: ({ row }) => {
+          const tags = row.original.tags ?? [];
+          if (tags.length === 0) return <span className="text-muted-foreground">{'—'}</span>;
+          return (
+            <span className="flex flex-wrap items-center gap-1">
+              {tags.slice(0, 3).map((tag) => (
+                <Badge key={tag} variant="outline" className="rounded-full font-mono text-[10px]">
+                  {tag}
+                </Badge>
+              ))}
+              {tags.length > 3 ? <span className="text-muted-foreground text-xs">+{tags.length - 3}</span> : null}
+            </span>
+          );
+        },
+      },
       {
         accessorKey: 'category',
         header: 'Type',

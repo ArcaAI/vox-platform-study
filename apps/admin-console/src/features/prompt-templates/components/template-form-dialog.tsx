@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { templateReferences } from '@arcaai/workflow-contract';
-import { IconPlus, IconTrash, IconWand } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconWand, IconX } from '@tabler/icons-react';
+import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
@@ -181,6 +182,76 @@ const STATUS_OPTIONS: { value: PromptTemplateStatus; label: string }[] = [
   { value: 'PUBLISHED', label: 'Published' },
 ];
 
+/**
+ * Tag editor (chips + an add box) — shared by the create and edit forms.
+ *
+ * `PromptTemplate` is a TAGGED entity end to end (column, create/update DTOs,
+ * response) and tags are already load-bearing at RESOLUTION time — the
+ * tenant-wide pre-summary is picked by the `pre-summary` tag, minus
+ * `dept-free` — yet the console had no way to read or write them. With the
+ * `departmentId` scope being deprecated in favour of `dept:<slug>` tags, an
+ * admin who cannot edit tags cannot steer resolution at all.
+ *
+ * Enter or a comma commits; a comma-separated paste adds several at once.
+ * Duplicates and blanks are dropped, and order is preserved (the resolver's
+ * tie-breaks are by row, never by tag order, so this is purely cosmetic).
+ */
+function TagsField({ idPrefix, tags, onChange }: { idPrefix: string; tags: string[]; onChange: (next: string[]) => void }) {
+  const [draft, setDraft] = useState('');
+
+  function commit(raw: string) {
+    const added = raw
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    if (added.length === 0) return;
+    const next = [...tags];
+    for (const tag of added) if (!next.includes(tag)) next.push(tag);
+    onChange(next);
+    setDraft('');
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={`${idPrefix}-tags`}>Tags</Label>
+      {tags.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {tags.map((tag) => (
+            <Badge key={tag} variant="outline" className="rounded-full py-0.5 pr-1 font-mono text-[11px]">
+              {tag}
+              <button
+                type="button"
+                aria-label={`Remove tag ${tag}`}
+                className="text-muted-foreground hover:text-foreground ml-1 cursor-pointer rounded-full"
+                onClick={() => onChange(tags.filter((entry) => entry !== tag))}
+              >
+                <IconX aria-hidden className="size-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+      <Input
+        id={`${idPrefix}-tags`}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ',') return;
+          event.preventDefault();
+          commit(draft);
+        }}
+        onBlur={() => commit(draft)}
+        placeholder="dept:cardiology — Enter to add"
+        autoComplete="off"
+      />
+      <p className="text-muted-foreground text-xs">
+        Tags select prompts at resolution time (<span className="font-mono">pre-summary</span>) and carry the department axis as{' '}
+        <span className="font-mono">dept:&lt;slug&gt;</span>.
+      </p>
+    </div>
+  );
+}
+
 function RequiredMark() {
   return (
     <span aria-hidden className="text-destructive">
@@ -208,6 +279,7 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
   const [description, setDescription] = useState('');
   const [content, setContent] = useState('');
   const [variables, setVariables] = useState<PromptVariableDeclaration[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -220,6 +292,7 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
         description: description.trim() || undefined,
         departmentId: departmentId || undefined,
         variables: variables.length > 0 ? variables : undefined,
+        tags: tags.length > 0 ? tags : undefined,
       },
       {
         onSuccess: (template) => {
@@ -320,6 +393,7 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
         />
       </div>
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
+      <TagsField idPrefix="create-template" tags={tags} onChange={setTags} />
       <FormActions>
         <Button type="button" variant="outline" onClick={onCancel} disabled={createTemplate.isPending}>
           Cancel
@@ -356,7 +430,15 @@ export function EditTemplateForm({
   const [content, setContent] = useState(template.content);
   const [status, setStatus] = useState<PromptTemplateStatus>(template.status);
   const [variables, setVariables] = useState<PromptVariableDeclaration[]>(template.declaredVariables ?? []);
+  const [tags, setTags] = useState<string[]>(template.tags ?? []);
   const [changeReason, setChangeReason] = useState('');
+  /**
+   * `PATCH :id` accepts DRAFT|PUBLISHED only — APPROVED is granted by
+   * `POST :id/approve`, never by an edit. So an APPROVED row needs its own
+   * (non-settable) entry here, or the Select renders an EMPTY trigger and the
+   * form has no honest way to show what the row's status actually is.
+   */
+  const statusOptions = template.status === 'APPROVED' ? [...STATUS_OPTIONS, { value: 'APPROVED' as const, label: 'Approved' }] : STATUS_OPTIONS;
   const occError =
     updateTemplate.error instanceof GatewayError && (updateTemplate.error.isVersionConflict || updateTemplate.error.isMissingPrecondition)
       ? updateTemplate.error
@@ -372,8 +454,13 @@ export function EditTemplateForm({
           name: name.trim(),
           description: description.trim() || undefined,
           content,
-          status,
+          // Only a CHANGED status travels. Sending the row's current status
+          // back is a no-op for every value except APPROVED, which the update
+          // DTO rejects outright (400) — which is how editing any approved
+          // template used to fail, including every cloned SYSTEM prompt.
+          ...(status === template.status ? {} : { status }),
           variables,
+          tags,
           changeReason: changeReason.trim() || undefined,
         },
         etag,
@@ -423,7 +510,7 @@ export function EditTemplateForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {STATUS_OPTIONS.map((option) => (
+              {statusOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>
@@ -450,6 +537,7 @@ export function EditTemplateForm({
         />
       </div>
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
+      <TagsField idPrefix="edit-template" tags={tags} onChange={setTags} />
       <div className="flex flex-col gap-2">
         <Label htmlFor="edit-template-change-reason">Change reason</Label>
         <Input

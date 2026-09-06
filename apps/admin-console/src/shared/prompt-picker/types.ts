@@ -37,4 +37,11 @@ export interface PromptPickerTemplate {
   currentVersionNumber: number;
   contentPreview?: string;
   declaredVariables?: PromptPickerVariableDeclaration[];
+  /**
+   * Tags. Load-bearing, not decoration: resolution already selects on them
+   * (`pre-summary` minus `dept-free`), and the department axis is moving off
+   * `PromptTemplate.departmentId` onto `dept:<slug>` tags — so they are what an
+   * agent author narrows a 45-row library by.
+   */
+  tags?: string[];
 }
