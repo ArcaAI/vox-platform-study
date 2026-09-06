@@ -174,6 +174,13 @@ async function copyPromptTemplates(client: CorePrismaClient, tenantId: string): 
         templateLocked: true,
         scope: 'TENANT_DEFAULT',
         ownerUserId: null,
+        // Tags TRAVEL on a prompt, unlike an agent's (see `copyAgents` below).
+        // A template's tags are descriptive CONTENT — the specialty, the
+        // document kind — and they are part of what the reference set exists to
+        // hand a tenant. Omitting the column here left a seeded tenant with
+        // untagged copies while `PromptManagementService.cloneFromSystem` gave
+        // a synced tenant tagged ones, from the same source rows.
+        tags: source.tags ?? [],
         createdBy: SYSTEM_USER_ID,
       },
     });
