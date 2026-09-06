@@ -59,6 +59,7 @@ import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 // write delegates to the existing UserProfile upsert (which is read back for resolution).
 import { IUserProfileService } from '../user/userProfile/IUserProfileService';
 import { DepartmentResponse } from '../department/dto';
+import { runInTenantContext } from '../agentPromotion/tenant-context';
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
@@ -330,6 +331,103 @@ export class PromptManagementService extends BaseService implements IPromptManag
     });
 
     return PromptManagementDtoMapper.toTemplateResponse(saved);
+  }
+
+  /**
+   * TASK-890 §3.4 (OD-H / OD-M) — the REFERENCE-SET copy of ONE SYSTEM template into a tenant.
+   *
+   * Deliberately NOT `createPromptTemplate`: that method answers an authoring REQUEST, so it
+   * checks the caller's ability and the tenant's template quota. Provisioning has neither — it
+   * runs inside `TenantService.create`, where there is no caller ability in the new tenant, and
+   * a plan quota must never be able to leave a tenant without the platform defaults its runtime
+   * fails closed without. What it does share is the shape of the write: template row + version
+   * 1, through the same factories and repositories.
+   *
+   * What travels: name, description, category, tags, scope and the APPROVED content (the
+   * pinned `PromptVersion` snapshot, not the mutable `content` column, unless the source never
+   * carried a pin). What is stamped: `sourceTemplateId` (the provenance the runtime resolves a
+   * `SYSTEM_DEFAULTS.*` pointer through) and `templateLocked`.
+   *
+   * The clone's version lineage restarts at 1 — a tenant's history is its own — so an APPROVED
+   * source pins the clone at 1, and every caller re-reads the pin rather than assuming it.
+   *
+   * MISSING-ONLY, by provenance first and by NAME second: a tenant that already carries a
+   * template of that name keeps it (the `(tenantId, name)` uniqueness the authoring path
+   * enforces would refuse the insert anyway, and silently renaming a platform default is worse
+   * than not copying it).
+   */
+  async cloneFromSystem(
+    systemTemplateId: string,
+    targetTenantId: string,
+  ): Promise<{ templateId: string; created: boolean; approvedVersionNumber: number | null }> {
+    const source = await this.promptTemplateRepository.findSystemReferenceById(systemTemplateId, this.databaseService.baseClient);
+    if (!source) {
+      throw new NotFoundException(`No SYSTEM prompt template ${systemTemplateId} to clone from.`);
+    }
+
+    // The source's APPROVED snapshot, read standing in SYSTEM's own context: `PromptVersion`
+    // leaves the shared-read set with its template, so the caller's tenant cannot see it.
+    const snapshot = await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, async () => {
+      const pinned = source.approvedVersionNumber ?? null;
+      if (pinned !== null) {
+        const version = await this.promptVersionRepository.findByVersionNumber(source.id, pinned).catch(() => null);
+        if (version?.content !== null && version?.content !== undefined) {
+          return { content: version.content, variables: (version.variables as Record<string, unknown> | null) ?? null };
+        }
+      }
+      return { content: source.content ?? '', variables: (source.variables as Record<string, unknown> | null) ?? null };
+    });
+
+    return runInTenantContext(this.clsService, targetTenantId, async () => {
+      const byProvenance = await this.promptTemplateRepository.findByTenantAndSourceTemplateId(targetTenantId, source.id);
+      if (byProvenance) {
+        return { templateId: byProvenance.id, created: false, approvedVersionNumber: byProvenance.approvedVersionNumber ?? null };
+      }
+      const byName = source.name ? await this.promptTemplateRepository.findByName(targetTenantId, source.name) : null;
+      if (byName) {
+        return { templateId: byName.id, created: false, approvedVersionNumber: byName.approvedVersionNumber ?? null };
+      }
+
+      const approvedVersionNumber = source.status === 'APPROVED' ? 1 : null;
+      const template = PromptTemplateFactory.CreatePromptTemplate({
+        tenantId: targetTenantId,
+        name: source.name ?? null,
+        description: source.description ?? null,
+        content: snapshot.content,
+        category: source.category ?? null,
+        status: source.status ?? 'DRAFT',
+        variables: snapshot.variables,
+        currentVersionNumber: 1,
+        approvedVersionNumber,
+        sourceTemplateId: source.id,
+        templateLocked: true,
+        // A DEPARTMENT_DEFAULT binding cannot cross a tenant boundary (the department ids
+        // differ), so the reference set carries TENANT_DEFAULT rows and the clone says so.
+        departmentId: null,
+        scope: 'TENANT_DEFAULT',
+        ownerUserId: null,
+        tags: source.tags ?? [],
+        createdBy: this.requestUserId ?? null,
+      });
+      const saved = await this.promptTemplateRepository.create(template);
+
+      const version = PromptVersionFactory.CreatePromptVersion({
+        tenantId: targetTenantId,
+        promptTemplateId: saved.id,
+        versionNumber: 1,
+        content: snapshot.content,
+        variables: snapshot.variables,
+        changeReason: 'Provisioned from the platform reference set',
+        changedBy: this.requestUserId ?? null,
+      });
+      await this.promptVersionRepository.create(version);
+
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: saved.id,
+        data: { action: 'reference-set-clone', name: saved.name, sourceTemplateId: source.id, targetTenantId },
+      });
+      return { templateId: saved.id, created: true, approvedVersionNumber };
+    });
   }
 
   async createPersonal(dto: CreatePromptTemplateRequest): Promise<PromptTemplateResponse> {
