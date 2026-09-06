@@ -83,6 +83,28 @@ export type {
 
 export { canonicalJson } from './canonical-json';
 
+// TASK-890 §3.2 — the ONE prompt-template grammar (`{{ path | default("…") }}`) that replaces the
+// six flavours §2.4 catalogued, mirrored in Python by the harness's `templating.py` and held to
+// `tests/contracts/prompt-template.fixture.json` by two loaders. Every TS renderer imports
+// `renderTemplate` from HERE — there is no dispatch, no syntax sniff and no per-caller copy.
+export {
+  PromptTemplateSyntaxError,
+  PromptVariableUnresolvedError,
+  renderTemplate,
+  templateReferenceProblems,
+  templateReferences,
+  templateSyntaxProblems,
+} from './template';
+export type { DeclaredNamespaces, RenderTemplateOptions, TemplateReference } from './template';
+
+// TASK-890 §3.14 (OD-R clause 3) — the guardrail opt-out's ONE precedence function
+// (node > workflow > agent > `true`), mirrored in Python by the harness's `guardrail_optout.py`
+// and held to `tests/contracts/guardrail-optout.fixture.json`. Guardrail POLICY is untouched:
+// this answers only "does the platform's guardrail run for THIS call", and a tenant may only
+// opt OUT.
+export { GUARDRAIL_DECISION_SOURCES, guardrailOptOutOf, resolveGuardrailDecision } from './guardrail-optout';
+export type { GuardrailDecision, GuardrailDecisionSource, GuardrailOptOutInputs } from './guardrail-optout';
+
 export {
   AGENTIC_NODE_TYPES,
   AGENTIC_PALETTE_KEY,
@@ -145,9 +167,14 @@ export type {
 export { NODE_PORTS } from './node-ports';
 export type { WorkflowNodePorts } from './node-ports';
 
-export { isValidConnection, nodeDescriptorContractProblems, workflowEdgePortProblems, workflowPublishProblems } from './port-validation';
+export { isValidConnection, nodeDescriptorContractProblems, workflowEdgePortProblems } from './port-validation';
 export type { PortValidationOptions } from './port-validation';
 
+// TASK-890 §3.5 (F-10) — the ONE publish gate, as machine-readable findings. It REPLACES
+// `workflowPublishProblems`, which was a real gate nothing ever called (BLOCKER 1c), re-emits
+// every one of its checks with a `code`, and adds the per-node config-schema check nobody ran.
+export { PUBLISH_FINDING_RULE_ID, TEMPLATE_REFERENCE_SEVERITY_RELEASE_1, WORKFLOW_PUBLISH_FINDING_CODES, publishFindings } from './publish-findings';
+export type { GenerationRange, GenerationRanges, PublishAgentView, PublishContext, WorkflowPublishFindingCode } from './publish-findings';
 // step 7 TIER 2 — shallow schema compatibility, WARNING-severity only. Tier 1 (the
 // port lattice, above) blocks; tier 3 is runtime validation at the node boundary. Never promote
 // this to a publish gate: it reads two DECLARATIONS and guesses, which is useful as a hint and
@@ -201,6 +228,7 @@ export {
   AGENT_TASK_SERVICE,
   AGENT_TOOLS_SCHEMA,
   ASR_ENDPOINTING_MODEL_SLUG_PATH,
+  PROMPT_VARIABLE_PATH_PATTERN,
   agentConfigProblems,
   agentTagProblems,
   agentTagsSatisfy,

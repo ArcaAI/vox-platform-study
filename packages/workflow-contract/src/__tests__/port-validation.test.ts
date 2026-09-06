@@ -13,7 +13,8 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowGraph } from '../graph-model';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
-import { isValidConnection, workflowEdgePortProblems, workflowPublishProblems } from '../port-validation';
+import { isValidConnection, workflowEdgePortProblems } from '../port-validation';
+import { publishProblems as workflowPublishProblems } from './publish-problems.helper';
 
 function graph(nodes: WorkflowGraph['nodes'], edges: WorkflowGraph['edges']): WorkflowGraph {
   return { version: 1, nodes, edges };
@@ -177,7 +178,7 @@ describe('isValidConnection — the canvas predicate (same relation, one edge at
   });
 });
 
-describe('workflowPublishProblems — the publish gate', () => {
+describe('the publish gate (now `publishFindings`, via the string adapter)', () => {
   it('is empty for a graph whose edges all type-check', () => {
     expect(
       workflowPublishProblems(

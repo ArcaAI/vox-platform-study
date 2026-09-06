@@ -13,7 +13,14 @@ export type AgentFindingCode =
   | 'TEMPLATE_NOT_FOUND'
   | 'TEMPLATE_NOT_APPROVED'
   | 'TEMPLATE_VERSION_NOT_FOUND'
-  | 'CAPABILITY';
+  | 'CAPABILITY'
+  // TASK-890 §3.5 — the codes an agent shares with the workflow publish gate
+  // (`WORKFLOW_PUBLISH_FINDING_CODES`). ONE vocabulary across both surfaces, so a console renders
+  // the same fix for the same problem whether it was found on a graph node or on an agent.
+  | 'PROMPT_TEMPLATE_SYNTAX'
+  | 'PROMPT_VARIABLE_UNDECLARED'
+  | 'CONTEXT_SCHEMA_NOT_FOUND'
+  | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND';
 
 export interface AgentFinding extends AgentConfigProblem {
   readonly code: AgentFindingCode;

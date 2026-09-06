@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import * as agenticContract from '../agentic-contract';
 import * as portValidation from '../port-validation';
+import { publishProblems } from './publish-problems.helper';
 
 const { GENERATION_HYPERPARAMETERS, agenticNodeConfigProblems, hyperparameterCapabilityProblems } = agenticContract;
 
@@ -176,26 +177,26 @@ describe('the per-node checks are WIRED into the publish gate', () => {
   }
 
   it('REFUSES a loop with no cost ceiling at publish', () => {
-    const problems = portValidation.workflowPublishProblems(
+    const problems = publishProblems(
       graphWith({ id: 'loop_node', type: 'agentic.loop', config: { bounds: { maxIterations: 50, maxDurationSeconds: 300 }, orchestratorNodeId: 'start' } }),
     );
     expect(problems.some((problem) => problem.includes('maxTotalTokens'))).toBe(true);
   });
 
   it('REFUSES an agent whose provider binding names neither source', () => {
-    const problems = portValidation.workflowPublishProblems(graphWith({ id: 'agent_node', type: 'agentic.agent', config: { providerConfigRef: {} } }));
+    const problems = publishProblems(graphWith({ id: 'agent_node', type: 'agentic.agent', config: { providerConfigRef: {} } }));
     expect(problems.some((problem) => problem.includes('exactly one'))).toBe(true);
   });
 
   it('REFUSES a guard reference naming a node that is not in the graph', () => {
-    const problems = portValidation.workflowPublishProblems(
+    const problems = publishProblems(
       graphWith({ id: 'agent_node', type: 'agentic.agent', config: { providerConfigRef: { taskKey: 'text.finalize' }, guards: { output: ['ghost'] } } }),
     );
     expect(problems.some((problem) => problem.includes('ghost'))).toBe(true);
   });
 
   it('PASSES a correctly bound agent — the gate is not simply refusing everything', () => {
-    const problems = portValidation.workflowPublishProblems(
+    const problems = publishProblems(
       graphWith({ id: 'agent_node', type: 'agentic.agent', config: { providerConfigRef: { taskKey: 'text.finalize' } } }),
     );
     expect(problems.filter((problem) => problem.includes('exactly one') || problem.includes('bounds.'))).toEqual([]);

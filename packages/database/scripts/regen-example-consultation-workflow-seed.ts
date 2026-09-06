@@ -29,6 +29,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import * as contract from '../../workflow-contract/dist/index.mjs';
+// TASK-890 — `publishFindings` takes its JSON-Schema value checker from the caller (the
+// contract package has zero runtime dependencies). `packages/database` does not depend on
+// `@arcaai/json-schema-subset`, so it is loaded by path, exactly as the contract already is.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import * as jsonSchemaSubset from '../../json-schema-subset/dist/index.mjs';
 import {
   COMPILED_AT,
   GRAMMAR_FIX_GRAPH,
@@ -38,7 +43,9 @@ import {
 import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID } from '../src/prisma/db_main/seed/00-constants';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-console */
-const { canonicalJson, compile, nodeInfo, registryChecksum, validate, workflowNodeClassLookup, workflowPublishProblems } = contract as any;
+const { canonicalJson, compile, nodeInfo, publishFindings, registryChecksum, TEMPLATE_REFERENCE_SEVERITY_RELEASE_1, validate, workflowNodeClassLookup } =
+  contract as any;
+const { jsonSchemaValueProblems } = jsonSchemaSubset as any;
 
 /** MUST mirror `WorkflowDefinitionService`'s own constants — this is what a real publish stamps. */
 const COMPILER_VERSION = '0.1.0';
@@ -120,11 +127,18 @@ function main(): void {
       failed = true;
     }
 
-    // `workflowPublishProblems` is the only check that enforces a node
-    // descriptor's `requires[]`, and it has NO production caller — so a seeded
-    // graph could ship with a generation node whose mandatory guard was never
-    // wired and no gate would say so. Run it here as well as in the test.
-    const publishProblems = workflowPublishProblems(variant.graph);
+    // `publishFindings` is the only check that enforces a node descriptor's
+    // `requires[]`. TASK-890 wired it into `WorkflowDefinitionService.publishEntity`, but a
+    // SEED never goes through that service, so this stays the seed's own gate: without it a
+    // seeded graph could ship with a generation node whose mandatory guard was never wired.
+    // ERROR severity only — a WARNING (`GUARDRAIL_OPTED_OUT`, the `PROMPT_VARIABLE_UNDECLARED`
+    // ramp) never blocked a publish and must not fail a regen.
+    const publishProblems = publishFindings(variant.graph, {
+      schemaValueProblems: jsonSchemaValueProblems,
+      templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+    })
+      .filter((finding: any) => finding.severity === 'ERROR')
+      .map((finding: any) => `${finding.code}: ${finding.message}`);
     if (publishProblems.length > 0) {
       console.error(`!! ${variant.key} has ${publishProblems.length} publish problem(s):`);
       console.error(JSON.stringify(publishProblems, null, 2));
