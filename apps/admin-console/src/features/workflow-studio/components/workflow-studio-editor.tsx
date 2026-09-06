@@ -574,6 +574,15 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               }}
               onNodesChange={(next) => {
                 for (const node of next) storeApi.getState().moveNode(node.id, node.position);
+                // `moveNode` deliberately leaves `dirty` alone (layout is display bookkeeping,
+                // not graph shape — `create-graph-store.ts`), and the graph autosave effect
+                // early-returns while `!dirty`. So a drag has to schedule its own patch, exactly
+                // as `handleAutoLayout` does; without this the node moves on screen, the footer
+                // still reads "All changes saved", and a reload restores the old position.
+                if (!readOnly) {
+                  const { nodes: moved, edges: unchanged } = storeApi.getState();
+                  autosave.schedule({ graph: toWorkflowGraph(moved, unchanged) });
+                }
               }}
             />
           ) : (
