@@ -28,7 +28,7 @@ const mockDnaWritingStyleRepository = { findById: vi.fn() };
 
 const TENANT = 'tenant-revisit';
 
-function createTemplate(content = 'Summarize for {conversation_language}.') {
+function createTemplate(content = 'Summarize for {{context.conversation_language}}.') {
   return {
     id: 'template-revisit',
     name: 'Revisit',
@@ -90,13 +90,13 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
     expect(userPrompt).toMatch(/not.*current[- ]visit evidence|never.*without current-visit evidence/i);
   });
 
-  it('substitutes {prior_visit_summary} when the template consumes it, without appending a duplicate block', async () => {
-    mockPromptTemplateRepository.findById.mockResolvedValue(createTemplate('Summarize for {conversation_language}. Prior: {prior_visit_summary}.'));
+  it('substitutes {{context.prior_visit_summary}} when the template consumes it, without appending a duplicate block', async () => {
+    mockPromptTemplateRepository.findById.mockResolvedValue(createTemplate('Summarize for {{context.conversation_language}}. Prior: {{context.prior_visit_summary}}.'));
     const service = await buildService();
 
     const { userPrompt } = await assemble(service as never, { priorVisitSummary: 'PRIOR-NOTE-MARKER stable' });
 
-    expect(userPrompt).not.toContain('{prior_visit_summary}');
+    expect(userPrompt).not.toContain('{{context.prior_visit_summary}}');
     // Consumed by the template ⇒ exactly one occurrence, no appended duplicate.
     expect(userPrompt.split('PRIOR-NOTE-MARKER stable').length - 1).toBe(1);
   });
@@ -113,7 +113,7 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
 
   it('no longer accepts the dead sameDayPrequelSummary variable', async () => {
     mockPromptTemplateRepository.findById.mockResolvedValue(
-      createTemplate('Summarize for {conversation_language}. Prequel: {same_day_prequel_summary}.'),
+      createTemplate('Summarize for {{context.conversation_language}}. Prequel: {same_day_prequel_summary}.'),
     );
     const service = await buildService();
 
