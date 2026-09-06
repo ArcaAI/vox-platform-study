@@ -11,6 +11,7 @@ import { IServiceHealthMonitoringService } from '../baseServices/serviceHealth';
 import { DISCOVERABLE_AI_MODEL_PROVIDERS } from '../ai-model/constants';
 import { CLOUD_BYO_PROVIDERS, ENGINE_SERVED_PROVIDERS, ProviderService, isPlatformSelfHostProvider } from '../ai-provider-connection/constants';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
+import { ProviderConnectionProbe } from '../ai-provider-connection/provider-connection-probe';
 import { IInferenceReadinessService } from './IInferenceReadinessService';
 import {
   HEARTBEAT_STALE_AFTER_SECONDS,
@@ -130,6 +131,11 @@ export class InferenceReadinessService implements IInferenceReadinessService {
     @Inject(IServiceHealthMonitoringService) private readonly serviceHealth: IServiceHealthMonitoringService,
     @Inject(IRedisCacheService) private readonly redisCache: IRedisCacheService,
     @Optional() private readonly secretsService?: SecretsService,
+    // TASK-890 §3.7 — the ephemeral vendor probe, now that it reports
+    // `discoveredModels`. `@Optional()` and TRAILING: without it the cloud
+    // verdict is the credential-only one this service already produced, which
+    // is a weaker answer but never a wrong one.
+    @Optional() private readonly connectionProbe?: ProviderConnectionProbe,
   ) {}
 
   // ── Schedule ─────────────────────────────────────────────────────────────
@@ -465,7 +471,7 @@ export class InferenceReadinessService implements IInferenceReadinessService {
         // neither tier, so it is a setup that looks complete and serves nothing.
         verdict = { readiness: 'credential_missing', detail: 'the platform connection has no credential' };
       } else {
-        verdict = { readiness: 'ready', detail: 'platform credential present (not vendor-probed)' };
+        verdict = await this.probedCloudVerdict(service, provider);
       }
     } catch (error) {
       verdict = { readiness: 'unknown', detail: 'the connection could not be resolved this sweep' };
@@ -478,6 +484,44 @@ export class InferenceReadinessService implements IInferenceReadinessService {
 
     this.cloudMemo.set(key, { at: Date.now(), ...verdict });
     return verdict;
+  }
+
+  /**
+   * Ask the vendor, when there is something to ask with (TASK-890 §3.7).
+   *
+   * Reached only for a connection that already RESOLVED WITH A KEY, so the
+   * question is no longer "is one configured" but "does the vendor accept it" —
+   * which is the case the credential-only verdict used to call `ready` and hide.
+   * Memoised by the caller for `cloudProbeIntervalSeconds`, so a fleet of cloud
+   * rows costs at most one vendor call per provider per interval.
+   *
+   * A failed REACHABILITY probe is `unknown`, not `engine_down`: a cloud row has
+   * no engine of ours to be down, and an endpoint that did not answer says
+   * nothing about the credential. Any error from the probe itself falls back to
+   * the credential-only verdict rather than downgrading a working provider on a
+   * fault of our own.
+   */
+  private async probedCloudVerdict(service: ProviderService, provider: string): Promise<{ readiness: ModelReadiness; detail: string | null }> {
+    const credentialOnly = { readiness: 'ready' as ModelReadiness, detail: 'platform credential present (not vendor-probed)' };
+    if (!this.connectionProbe) return credentialOnly;
+    try {
+      const outcome = await this.connectionProbe.test(service, provider, SYSTEM_TENANT_ID, {});
+      if (outcome.ok) {
+        const listed = outcome.discoveredModels?.length;
+        return { readiness: 'ready', detail: listed ? `vendor answered; ${listed} model(s) listed` : 'vendor answered' };
+      }
+      // An AUTH probe that failed is the vendor refusing THIS key — actionable,
+      // and the one verdict the old credential-only answer got wrong.
+      if (outcome.probe === 'auth') return { readiness: 'credential_missing', detail: outcome.message };
+      return { readiness: 'unknown', detail: outcome.message };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Vendor probe failed during the readiness sweep; falling back to the credential-only verdict',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return credentialOnly;
+    }
   }
 
   // ── Store ────────────────────────────────────────────────────────────────
