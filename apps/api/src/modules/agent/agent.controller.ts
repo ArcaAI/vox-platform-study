@@ -171,6 +171,10 @@ export class AgentController {
   @ApiResponse({ status: 200, description: 'The generated output (JSON) or the SSE stream.' })
   @ApiResponse({ status: 400, description: 'The body does not match the agent’s inputSchema, or the agent is not a TEXT_GENERATION agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
+  @ApiResponse({
+    status: 429,
+    description: 'The tenant has reached its `monthlyLlmTokens` allowance. Refused before the model runs, so nothing is billed.',
+  })
   async invoke(@Param('slug') slug: string, @Body() body: AgentInvocationBody, @Res() res: Response, @Query('mode') mode?: string): Promise<void> {
     const tenantId = this.requireTenant();
     const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug });
