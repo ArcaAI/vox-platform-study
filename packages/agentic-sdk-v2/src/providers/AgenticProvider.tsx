@@ -32,7 +32,7 @@ import { createSDKLogger, installGlobalCapture, type SDKLogger, type ISDKLogger 
 import { useStore } from 'zustand';
 import { createAgenticStore, AgenticStoreContext, type AgenticStoreApi } from '../store';
 import { DEFAULT_AUDIO_CONFIG, DEFAULT_PERSONALIZATION_CONFIG } from '../types';
-import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS, PERSONALIZATION_ENDPOINTS, USER_SETTINGS_ENDPOINTS } from '../core/constants';
+import { AUTH_ENDPOINTS, PERSONALIZATION_ENDPOINTS, USER_SETTINGS_ENDPOINTS } from '../core/constants';
 // Single source of truth for the `arcaai-config` IDB
 // schema (now v2 with `user-preferences` and `personalization` stores).
 import { configDBGet, configDBSet, USER_PREFERENCES_STORE } from '../core/configDB';
@@ -648,26 +648,14 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
       }
 
-      // ---- Step 3 (DEF-C5): if a departmentId is present, fetch the
-      // department prompt-config and apply tier 2.
-      if (me?.departmentId) {
-        try {
-          const deptCfg = await apiClient.get<{
-            overrides?: DeepPartial<AppConfig>;
-            lockedPaths?: string[];
-          }>(DEPARTMENT_ENDPOINTS.PROMPT_CONFIG(me.departmentId));
-          if (deptCfg) {
-            configManager.setDepartmentConfig(deptCfg.overrides ?? {}, deptCfg.lockedPaths ?? []);
-          }
-        } catch (error) {
-          providerLogger.warn('Failed to apply department cascade tier (continuing)', {
-            operation: 'initConfigManager',
-            component: 'AgenticProvider',
-            error: error as Error,
-            attributes: { departmentId: me.departmentId },
-          });
-        }
-      }
+      // ---- Step 3 (DEF-C5): the department tier is NOT applied.
+      // It never was: the read targeted `GET admin/departments/:id/prompt-config`,
+      // a route the gateway does not serve (it serves the PATCH alone), so every
+      // call 404'd into the catch below and the tier stayed empty. TASK-890's
+      // wave-3 close removed the dead read rather than leave the SDK claiming a
+      // cascade tier it cannot resolve; restoring it needs a self-scoped READ
+      // route on the gateway first (§8 follow-up) — an admin-plane path is
+      // refused outright by `AgenticClient` now (OD-F/OD-K).
 
       // ---- Step 4: load user preferences (IDB -> LS) for the now-known namespace.
       try {
@@ -956,25 +944,10 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
           await configManager.loadUserPreferences();
         }
 
-        if (effectiveDepartmentId) {
-          try {
-            const deptCfg = await apiClient.get<{
-              overrides?: DeepPartial<AppConfig>;
-              lockedPaths?: string[];
-            }>(DEPARTMENT_ENDPOINTS.PROMPT_CONFIG(effectiveDepartmentId));
-            if (deptCfg) {
-              configManager.setDepartmentConfig(deptCfg.overrides ?? {}, deptCfg.lockedPaths ?? []);
-            }
-          } catch (error) {
-            providerLogger.warn('Department rehydration failed', {
-              operation: 'rehydrateUserNamespace',
-              component: 'AgenticProvider',
-              error: error as Error,
-            });
-          }
-        } else {
-          configManager.clearDepartmentConfig();
-        }
+        // The department tier carries nothing (see step 3 of `initConfigManager`):
+        // there is no gateway READ route behind it, so the only correct state on
+        // a user/department change is an EMPTY tier rather than a stale one.
+        configManager.clearDepartmentConfig();
 
         store.setResolvedConfig(configManager.getResolved());
         store.setConfigReady(true);

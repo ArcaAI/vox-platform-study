@@ -25,8 +25,8 @@ export const IAgentService = Symbol('IAgentService');
  * `isActive` election, immutable from here) → `newVersion` (branch from ANY version) → `deprecate`.
  */
 export interface IAgentService {
-  /** Admin list: the caller tenant's own rows (every version), plus SYSTEM's when `includeTemplates`. */
-  list(task?: AgentTask, includeTemplates?: boolean): Promise<AgentResponse[]>;
+  /** Admin list: the caller tenant's OWN rows (every version). SYSTEM is never widened into it (OD-M). */
+  list(task?: AgentTask): Promise<AgentResponse[]>;
   /** A row visible to the tenant (own or SYSTEM); anything else is 404. */
   getById(id: string): Promise<AgentResponse>;
   listVersions(id: string): Promise<AgentResponse[]>;

@@ -173,6 +173,17 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
       warnings: [],
     };
 
+    // `refresh-locked` is DECLARED and not yet implemented: every kind below reconciles
+    // missing-only. Saying so in `warnings` is the difference between a repair that did nothing
+    // and a repair that did nothing SILENTLY — an operator reaching for this mode is trying to
+    // fast-forward a pristine clone, and "0 added" would read as "already up to date".
+    // Implementing it is the §8 follow-up.
+    if (mode === 'refresh-locked') {
+      summary.warnings.push(
+        'mode: `refresh-locked` is not implemented yet — this run reconciled missing rows only and fast-forwarded no `templateLocked` row.',
+      );
+    }
+
     // REFERENCE_SET_KINDS order, whatever order the caller listed them in: prompts before
     // agents (an agent's instruction is re-pointed at the tenant's prompt clone), agents before
     // assignments (an assignment must name a slug that already resolves in the tenant).

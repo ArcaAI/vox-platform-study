@@ -18537,7 +18537,7 @@
           },
           "mode": {
             "default": "missing-only",
-            "description": "`missing-only` (default) adds what the tenant lacks and touches nothing it has. `refresh-locked` additionally re-copies rows still marked `templateLocked` (pristine clones) and NEVER touches a row the tenant has edited.",
+            "description": "`missing-only` (default) adds what the tenant lacks and touches nothing it has. `refresh-locked` is accepted but NOT IMPLEMENTED yet: it currently behaves as `missing-only` and the response says so in `warnings`. Its intent is to additionally re-copy rows still marked `templateLocked` (pristine clones) while never touching a row the tenant has edited.",
             "enum": [
               "missing-only",
               "refresh-locked"
@@ -26068,15 +26068,6 @@
               ],
               "type": "string"
             }
-          },
-          {
-            "description": "Also return SYSTEM’s published agents (read-only templates).",
-            "in": "query",
-            "name": "includeTemplates",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
           }
         ],
         "responses": {
@@ -26102,7 +26093,7 @@
             "bearer": []
           }
         ],
-        "summary": "List the caller tenant’s agent versions (optionally the SYSTEM templates too)",
+        "summary": "List the caller tenant’s agent versions",
         "tags": [
           "admin-agents"
         ],
@@ -50869,7 +50860,7 @@
     },
     "/api/v1/admin/tenants/{id}/reference-set/sync": {
       "post": {
-        "description": "Copies the platform reference set — context schemas, prompt templates, agents (with their TENANT assignments) and workflow definitions — into one tenant. `missing-only` (the default) adds what the tenant lacks and touches nothing it already has; `refresh-locked` additionally fast-forwards rows still marked `templateLocked` and NEVER touches a row the tenant has edited. Idempotent: a second run reports zero added. Per-row failures are reported in `warnings` rather than aborting the run.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant:write`).\n\n**Abilities** — `manage:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Copies the platform reference set — context schemas, prompt templates, agents (with their TENANT assignments) and workflow definitions — into one tenant. `missing-only` (the default) adds what the tenant lacks and touches nothing it already has; `refresh-locked` is accepted but NOT IMPLEMENTED yet — it behaves as `missing-only` and the response says so in `warnings`. Idempotent: a second run reports zero added. Per-row failures are reported in `warnings` rather than aborting the run.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant:write`).\n\n**Abilities** — `manage:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantReferenceSetController_sync",
         "parameters": [
           {

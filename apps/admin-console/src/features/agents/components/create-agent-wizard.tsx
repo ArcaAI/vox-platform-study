@@ -12,6 +12,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
+import { usePromptTemplateQuickView } from '@/shared/prompt-picker';
 import { AGENT_TASKS, AGENT_TASK_LABEL, useCreateAgent, usePublishAgent, type Agent, type AgentProblemBody, type AgentPromptVariableBinding, type AgentTask, type CreateAgentRequest } from '../api';
 import { InstructionBindingForm, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
@@ -130,6 +131,10 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
   const create = useCreateAgent();
   const publish = usePublishAgent();
   const catalogue = useTaskModelCatalogue(state.task);
+  // The Review step names the bound prompt by NAME, not by id: a UUID tells the author nothing
+  // about what they are about to publish. `enabled` is the id itself, so nothing is fetched
+  // until one is chosen (and the picker has usually warmed this query already).
+  const boundTemplate = usePromptTemplateQuickView(state.instructionMode === 'template' ? (state.binding.promptTemplateId ?? null) : null);
 
   const stepIndex = STEPS.indexOf(step);
   const patch = (next: Partial<WizardState>) => setState((current) => ({ ...current, ...next }));
@@ -357,7 +362,7 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
           <dd>
             {state.task === 'TEXT_GENERATION'
               ? state.instructionMode === 'template'
-                ? (state.binding.promptTemplateId ?? '—')
+                ? (boundTemplate.data?.name ?? state.binding.promptTemplateId ?? '—')
                 : `${state.systemPrompt.slice(0, 80)}${state.systemPrompt.length > 80 ? '…' : ''}`
               : state.task === 'SPEECH_TO_TEXT'
                 ? state.initialPrompt || state.hotwords

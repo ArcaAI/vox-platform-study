@@ -253,4 +253,15 @@ describe('TenantReferenceSetService.resync', () => {
     expect(added).toBe(0);
     expect(summary.warnings).toEqual([]);
   });
+
+  /**
+   * Wave-3 close — `refresh-locked` is declared on the route and not implemented. The run must
+   * SAY it reconciled missing-only: an operator reaching for the mode is trying to fast-forward
+   * a pristine clone, and a bare "0 added" would read as "already up to date".
+   */
+  it('says so in `warnings` when asked for the unimplemented `refresh-locked` mode', async () => {
+    const summary = await make().resync(TENANT, { mode: 'refresh-locked', kinds: ['contextSchemas'] });
+    expect(summary.mode).toBe('refresh-locked');
+    expect(summary.warnings.some((warning) => warning.includes('refresh-locked') && warning.includes('not implemented'))).toBe(true);
+  });
 });

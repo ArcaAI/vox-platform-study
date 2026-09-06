@@ -796,6 +796,13 @@ export const DOCUMENTATION_SURFACES = [
     // The admin console's developer portal: @arcaai/vox-node SDK and REST
     // samples showing a consumer how to configure THEIR service.
     'apps/admin-console/src/features/developer-docs/',
+    // TASK-890 — the SHARED snippet module the two publish dialogs render from:
+    // the same kind of thing as the portal, showing a tenant's developer how to
+    // call the agent / workflow they just published with THEIR
+    // `process.env.HOPE_API_KEY`. It is a directory, like every entry here must
+    // be (`env-sync.test.ts` "excludes directories only"), which is exactly why
+    // the snippets live in one rather than inline in each dialog.
+    'apps/admin-console/src/shared/docs/',
 ];
 
 /**

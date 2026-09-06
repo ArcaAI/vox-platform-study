@@ -13,7 +13,6 @@ import {
   DepartmentRepository,
   PipelinePolicyScope,
   ResourceType,
-  SYSTEM_TENANT_ID,
   SysEventType,
 } from '@arcaai/domains';
 import { agentTagProblems, agentTagsSatisfy, canonicalAgentTags } from '@arcaai/workflow-contract';

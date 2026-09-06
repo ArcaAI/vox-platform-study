@@ -16,13 +16,15 @@
  *     `@deprecated TASK-865 — removed in R4`; that removal is TASK-865/901's
  *     job, not this lane's.
  *   - `POLICY_ENDPOINTS` — `usePolicies` was never in the 25-hook removal set.
- *   - `DEPARTMENT_ENDPOINTS.PROMPT_CONFIG` — read by `AgenticProvider`'s own
- *     config cascade (tier 2, DEF-C5) for the CALLER's own department; a
- *     business-plane read that happens to sit behind an admin-gated backend
- *     route.
+ * `DEPARTMENT_ENDPOINTS.PROMPT_CONFIG` was a THIRD documented exception until
+ * the wave-3 close measured it against the gateway: there is no
+ * `GET admin/departments/:id/prompt-config` route (only the PATCH), so the two
+ * `AgenticProvider` reads behind it had always 404'd into their own catch and
+ * the DEF-C5 department tier had never applied. Constant and call sites are
+ * removed; a self-scoped READ route is the follow-up.
  * The client-side refusal in `AgenticClient` still blocks any actual network
- * call through these paths for every OTHER caller — see the second describe
- * block below.
+ * call through the two remaining paths for every OTHER caller — see the second
+ * describe block below.
  *
  * @vitest-environment jsdom
  */
@@ -43,8 +45,8 @@ function codeLines(src: string): string[] {
   });
 }
 
-/** The three documented, out-of-lane exceptions (see the file header). */
-const DOCUMENTED_ADMIN_PATH_PREFIXES = ['/admin/audio/pipelines', '/admin/rbac/policies', '/admin/departments/'];
+/** The two documented, out-of-lane exceptions (see the file header). */
+const DOCUMENTED_ADMIN_PATH_PREFIXES = ['/admin/audio/pipelines', '/admin/rbac/policies'];
 
 describe('business-plane only (TASK-890, OD-F/OD-K)', () => {
   describe('no undocumented /admin/ path survives in core/constants.ts', () => {
@@ -85,6 +87,16 @@ describe('business-plane only (TASK-890, OD-F/OD-K)', () => {
       for (const name of removedGroups) {
         expect(CONSTANTS_SRC).not.toMatch(new RegExp(`export const ${name}\\b`));
       }
+    });
+
+    it('DEPARTMENT_ENDPOINTS is gone with its unreachable prompt-config read (wave-3 close)', () => {
+      expect(CONSTANTS_SRC).not.toMatch(/export const DEPARTMENT_ENDPOINTS\b/);
+      const providerSrc = readFileSync(join(__dirname, '../providers/AgenticProvider.tsx'), 'utf8');
+      expect(providerSrc).not.toContain('DEPARTMENT_ENDPOINTS');
+      // The provider must not reach an admin-plane path by any other spelling
+      // either — `AgenticClient` would refuse it, and the refusal was being
+      // swallowed by the cascade's own catch.
+      expect(codeLines(providerSrc).filter((line) => line.includes("'/admin/") || line.includes('`/admin/'))).toEqual([]);
     });
   });
 

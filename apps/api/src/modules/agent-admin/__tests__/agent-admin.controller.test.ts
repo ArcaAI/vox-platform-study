@@ -71,13 +71,14 @@ describe('AgentAdminController — delegation', () => {
     await controller.newVersion('a1', { name: 'v2' });
     await controller.deprecate('a1');
     await controller.remove('a1');
-    await controller.fetchAll('TEXT_GENERATION' as never, 'true');
+    await controller.fetchAll('TEXT_GENERATION' as never);
     expect(service.validate).toHaveBeenCalledWith('a1');
     expect(service.publish).toHaveBeenCalledWith('a1', { activate: false });
     expect(service.newVersion).toHaveBeenCalledWith('a1', { name: 'v2' });
     expect(service.deprecate).toHaveBeenCalledWith('a1');
     expect(service.deleteById).toHaveBeenCalledWith('a1');
-    expect(service.list).toHaveBeenCalledWith('TEXT_GENERATION', true);
+    // TASK-890 OD-M — the list takes the task alone; `includeTemplates` is gone, not ignored.
+    expect(service.list).toHaveBeenCalledWith('TEXT_GENERATION');
   });
 });
 

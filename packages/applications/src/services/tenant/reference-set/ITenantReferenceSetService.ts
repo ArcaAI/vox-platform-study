@@ -32,10 +32,12 @@ export type ReferenceSetKind = (typeof REFERENCE_SET_KINDS)[number];
  * `missing-only` adds what the tenant lacks and NEVER touches a row it already has — the mode
  * provisioning and the backfill both use, and the only mode that is safe to run unattended.
  *
- * `refresh-locked` additionally re-copies rows that are still `templateLocked` (pristine
- * clones), and never touches an UNLOCKED one: unlocked means the tenant edited it, or the
- * lineage could not be proven pristine. Both mean hands off. Same semantics as
- * `PipelineTemplateResyncService`, for the same reason.
+ * `refresh-locked` is DECLARED but NOT IMPLEMENTED (TASK-890 wave-3 close). Its intent is to
+ * additionally re-copy rows that are still `templateLocked` (pristine clones) and never touch an
+ * UNLOCKED one — unlocked means the tenant edited it, or the lineage could not be proven
+ * pristine, and both mean hands off; the same semantics as `PipelineTemplateResyncService`, for
+ * the same reason. Until it exists, a run asking for it reconciles MISSING-ONLY and says so in
+ * `warnings` rather than reporting a fast-forward it did not perform.
  */
 export type ReferenceSetSyncMode = 'missing-only' | 'refresh-locked';
 

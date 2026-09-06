@@ -139,4 +139,88 @@ describe('ComprehensiveSummaryProcessor.callTextService — explicit tenant id (
 
     expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
   });
+
+  /**
+   * TASK-890 (OD-M), wave-3 close — the prompt chains no longer widen to SYSTEM: the summary
+   * chain's platform-default tier resolves the TENANT'S OWN clone and fails closed with
+   * `PROMPT_DEFAULT_NOT_PROVISIONED` when it cannot. A BullMQ job has no request CLS to fall
+   * back on, so BOTH prompt calls must state the tenant — and a consultation with NO department
+   * is the case that proves it, because the department is the only other source of a tenant.
+   */
+  it('states the tenant on resolve() and assemble() even when the consultation carries no department', async () => {
+    const noDepartment = createConsultation({ departmentId: null, Department: null });
+    const jobService = { notifyProgress: vi.fn(), notifyComplete: vi.fn(), notifyFailed: vi.fn() };
+    const chainSummaryService = {
+      resolveLinkedConsultations: vi.fn().mockResolvedValue([noDepartment]),
+      gatherSections: vi.fn().mockResolvedValue([
+        {
+          consultationId: 'consultation-A',
+          department: null,
+          doctor: 'Dr. A',
+          type: 'summary',
+          content: 'Patient presents with headache.',
+          createdAt: '2026-02-17T09:00:00.000Z',
+        },
+      ]),
+      gatherNamedEntities: vi.fn().mockResolvedValue({}),
+    };
+    const contextItemRepo = { create: vi.fn().mockImplementation((item) => Promise.resolve(item)), encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined) };
+    const consultationRepo = { findById: vi.fn().mockResolvedValue(noDepartment) };
+    const summaryMetaRepo = {
+      create: vi.fn().mockResolvedValue({ id: 'meta-comprehensive-1' }),
+      encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
+    };
+    const namedEntityRepo = { findByContextItem: vi.fn().mockResolvedValue([]) };
+    const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'S', modelName: 'm' } }) } };
+    const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'TEXT_URL' ? 'http://text:8862' : undefined)) };
+    const promptResolutionService = {
+      resolve: vi.fn().mockResolvedValue({ template: 'comprehensive', promptId: 'p', contextVariables: {}, resolvedFrom: 'default' }),
+    };
+    const promptAssemblyService = {
+      assemble: vi.fn().mockResolvedValue({ userPrompt: 'p', systemPrompt: '', hyperparameters: {}, responseFormat: null, resolvedFrom: 'default' }),
+    };
+    const jobMetrics = {
+      recordJobStart: vi.fn().mockReturnValue(vi.fn()),
+      recordJobComplete: vi.fn(),
+      recordJobFailed: vi.fn(),
+      recordWaitingDuration: vi.fn(),
+      recordTextCallDuration: vi.fn(),
+    };
+    const clsService = createMockClsService();
+    const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }) };
+    const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
+    const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
+
+    const processor = new ComprehensiveSummaryProcessor(
+      jobService as any,
+      chainSummaryService as any,
+      contextItemRepo as any,
+      consultationRepo as any,
+      summaryMetaRepo as any,
+      namedEntityRepo as any,
+      httpService as any,
+      configService as any,
+      promptResolutionService as any,
+      promptAssemblyService as any,
+      jobMetrics as any,
+      clsService as any,
+      secretsStub as any,
+      harnessPolicyService as any,
+      configResolver as any,
+    );
+
+    await processor.process(
+      createMockJob({
+        jobId: 'job-comp-002',
+        consultationId: 'consultation-A',
+        tenantId: 'tenant-1',
+        userId: 'doctor-A',
+        // No `template`, so the resolve() branch actually runs.
+        request: { includeNER: false },
+      } as unknown as GenerateComprehensiveSummaryJobPayload),
+    );
+
+    expect(promptResolutionService.resolve).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', departmentId: undefined }));
+    expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', departmentId: undefined }));
+  });
 });

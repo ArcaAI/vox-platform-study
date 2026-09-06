@@ -48,13 +48,20 @@ import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIf
 export class AgentAdminController {
   constructor(@Inject(IAgentService) private readonly agentService: IAgentService) {}
 
+  /**
+   * TASK-890 OD-M/OD-K — `includeTemplates` is GONE, not deprecated. It used to append the SYSTEM
+   * library to a tenant's list; an agent is CONTENT, so a tenant sees the copies it was
+   * provisioned with (each carrying `sourceTenantId = SYSTEM` for the "from platform" badge) and
+   * SYSTEM is never read on a tenant-facing path. An undeclared query key is ignored by Nest, so a
+   * caller still sending `includeTemplates=true` gets exactly what it got while the parameter was
+   * accepted-and-ignored.
+   */
   @Get()
-  @ApiOperation({ summary: 'List the caller tenant’s agent versions (optionally the SYSTEM templates too)' })
+  @ApiOperation({ summary: 'List the caller tenant’s agent versions' })
   @ApiQuery({ name: 'task', required: false, enum: AgentTask })
-  @ApiQuery({ name: 'includeTemplates', required: false, type: Boolean, description: 'Also return SYSTEM’s published agents (read-only templates).' })
   @ApiResponse({ status: 200, type: [AgentResponse] })
-  async fetchAll(@Query('task') task?: AgentTask, @Query('includeTemplates') includeTemplates?: string): Promise<AgentResponse[]> {
-    return this.agentService.list(task, includeTemplates === 'true');
+  async fetchAll(@Query('task') task?: AgentTask): Promise<AgentResponse[]> {
+    return this.agentService.list(task);
   }
 
   @Get(':id')

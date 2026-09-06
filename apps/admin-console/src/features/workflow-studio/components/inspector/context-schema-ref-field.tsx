@@ -155,9 +155,14 @@ export function ContextSchemaRefField({ idPrefix, config, onConfigChange, errors
                 </Select>
               )}
               <FieldDescription>
-                {binding.versionNumber != null
-                  ? `Pinned to v${binding.versionNumber} — the run always validates against this version.`
-                  : "Follows the schema's own pin — a republish changes what this trigger accepts."}
+                {versions.isError
+                  ? // A failed version read must not read as "this schema has no other versions":
+                    // the picker would then offer only "Follow latest" and the author would pin
+                    // nothing while believing there was nothing to pin.
+                    'The version list could not be loaded, so only “Follow latest” is offered. Reopen the inspector to try again.'
+                  : binding.versionNumber != null
+                    ? `Pinned to v${binding.versionNumber} — the run always validates against this version.`
+                    : "Follows the schema's own pin — a republish changes what this trigger accepts."}
               </FieldDescription>
             </Field>
           ) : null}

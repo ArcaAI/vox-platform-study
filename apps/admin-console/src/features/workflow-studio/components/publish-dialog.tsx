@@ -37,6 +37,7 @@ import {
 } from '@arcaai/ui';
 import { useState } from 'react';
 import { CopyButton } from '@/shared/copy-button';
+import { workflowVoxNodeSnippet } from '@/shared/docs/sdk-snippets';
 import { useWorkflowSchema } from '../api/hooks';
 
 const API_KEYS_HREF = '/api-keys';
@@ -51,19 +52,6 @@ export interface PublishDialogProps {
   published?: boolean;
   /** The definition's slug — required to fetch `GET workflows/{slug}/schema` once published. */
   slug?: string;
-}
-
-function voxNodeSnippet(slug: string): string {
-  return [
-    "import { HopeClient } from '@arcaai/vox-node';",
-    '',
-    "const hope = new HopeClient({ apiKey: process.env.HOPE_API_KEY! });",
-    '',
-    `const run = await hope.workflows.runs.create('${slug}', {`,
-    '  input: { /* this workflow`s trigger payload */ },',
-    "  mode: 'blocking',",
-    '});',
-  ].join('\n');
 }
 
 function EndpointsPanel({ slug }: { slug: string }) {
@@ -91,7 +79,7 @@ function EndpointsPanel({ slug }: { slug: string }) {
 
   const runPath = `POST /workflows/${slug}/runs`;
   const modes = (schema.data?.modes ?? []).filter((mode) => mode !== SOCKET_MODE);
-  const snippet = voxNodeSnippet(slug);
+  const snippet = workflowVoxNodeSnippet(slug);
 
   return (
     <div className="flex flex-col gap-4">
