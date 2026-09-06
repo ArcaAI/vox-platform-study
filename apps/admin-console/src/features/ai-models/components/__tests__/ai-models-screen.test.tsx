@@ -95,7 +95,16 @@ const REPORT: ModelInventoryReport = {
   checkedAt: '2026-09-04T10:00:00.000Z',
   counts: { available: 1, missing: 0, partial: 0, notApplicable: 1 },
   rows: [{ id: 'm-1', slug: MODEL.slug, availability: 'AVAILABLE', detail: {} }],
-  unregistered: [{ bucketPrefix: 'orphan-model/q4-0-123456789abc/', layout: 'flat', slug: 'orphan-model', version: 'q4-0-123456789abc', objectCount: 3, totalBytes: 1024 * 1024 }],
+  unregistered: [
+    {
+      bucketPrefix: 'orphan-model/q4-0-123456789abc/',
+      layout: 'flat',
+      slug: 'orphan-model',
+      version: 'q4-0-123456789abc',
+      objectCount: 3,
+      totalBytes: 1024 * 1024,
+    },
+  ],
 };
 
 function envelope(models: AiModel[]): PaginatedModels {
@@ -256,7 +265,13 @@ describe('AiModelsScreen — register / edit / retire', () => {
     await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
     const patch = calls.find((call) => call.method === 'PATCH')!;
     expect(patch.headers.get('if-match')).toBe('"4"');
-    expect(patch.body).toMatchObject({ name: 'Renamed', expectedVersion: 4, libraryName: 'whisper.cpp', servedBy: 'stt', bucketPrefix: MODEL.bucketPrefix });
+    expect(patch.body).toMatchObject({
+      name: 'Renamed',
+      expectedVersion: 4,
+      libraryName: 'whisper.cpp',
+      servedBy: 'stt',
+      bucketPrefix: MODEL.bucketPrefix,
+    });
     expect(patch.body).not.toHaveProperty('localPath');
   });
 
@@ -299,6 +314,11 @@ describe('AiModelsScreen — register / edit / retire', () => {
 describe('AiModelsScreen — inventory + "in bucket, not registered"', () => {
   it('runs the inventory on demand, then opens the unregistered panel and registers from a bucket prefix with the prefix pre-filled', async () => {
     const calls = stubFetch((url, method) => {
+      // TASK-890 J1 MINOR-7 split the two: GET reads the LAST report (cheap, on
+      // mount), POST measures. This case is about the POST, so the GET answers
+      // "the platform has none stored" and the button starts disabled exactly as
+      // it did before.
+      if (url.endsWith('/admin/ai-models/inventory') && method === 'GET') return Response.json(null);
       if (url.endsWith('/admin/ai-models/inventory')) return Response.json(REPORT);
       if (method === 'POST') return Response.json({ ...MODEL, id: 'm-9' });
       return Response.json(envelope([MODEL]));
@@ -307,7 +327,7 @@ describe('AiModelsScreen — inventory + "in bucket, not registered"', () => {
     await screen.findByText('ArcaAI Whisper ML-EN (GGUF)');
 
     const unregisteredButton = screen.getByRole('button', { name: /in bucket, not registered/i }) as HTMLButtonElement;
-    expect(unregisteredButton.disabled).toBe(true);
+    await waitFor(() => expect(unregisteredButton.disabled).toBe(true));
 
     fireEvent.click(screen.getByRole('button', { name: 'Run inventory' }));
     await waitFor(() => expect(calls.some((call) => call.url.endsWith('/admin/ai-models/inventory') && call.method === 'POST')).toBe(true));
@@ -323,12 +343,39 @@ describe('AiModelsScreen — inventory + "in bucket, not registered"', () => {
     expect(within(form).getByTestId('derived-local-path').textContent).toBe('/mnt/models-bucket/orphan-model/q4-0-123456789abc/');
   });
 
-  it('never probes the discovery route or the inventory on page load', async () => {
-    const calls = stubFetch(() => Response.json(envelope([MODEL])));
+  // AMENDED by TASK-890 J1 MINOR-7. The clause was "no expensive work on page
+  // load", and it was expressed as "no request whose URL contains 'inventory'"
+  // because at the time there was only one such request — the POST, which lists
+  // the whole bucket and reads a manifest per published row. There are now two,
+  // and the GET is a stored read: it exists precisely so the operator does NOT
+  // have to run the expensive one to see a list the platform already has. The
+  // clause is unchanged; only its expression is sharpened to the METHOD.
+  it('never probes the discovery route or MEASURES the inventory on page load', async () => {
+    const calls = stubFetch((url, method) => {
+      if (url.endsWith('/admin/ai-models/inventory') && method === 'GET') return Response.json(REPORT);
+      return Response.json(envelope([MODEL]));
+    });
     renderWithProviders(<AiModelsScreen />);
     await screen.findByText('ArcaAI Whisper ML-EN (GGUF)');
+
     expect(calls.some((call) => call.url.includes('discovery'))).toBe(false);
-    expect(calls.some((call) => call.url.includes('inventory'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('inventory') && call.method === 'POST')).toBe(false);
+  });
+
+  it('reads the LAST inventory report on mount, so the unregistered panel is actionable on a fresh load', async () => {
+    stubFetch((url, method) => {
+      if (url.endsWith('/admin/ai-models/inventory') && method === 'GET') return Response.json(REPORT);
+      return Response.json(envelope([MODEL]));
+    });
+    renderWithProviders(<AiModelsScreen />);
+    await screen.findByText('ArcaAI Whisper ML-EN (GGUF)');
+
+    const unregisteredButton = screen.getByRole('button', { name: /in bucket, not registered/i }) as HTMLButtonElement;
+    await waitFor(() => expect(unregisteredButton.disabled).toBe(false));
+
+    fireEvent.click(unregisteredButton);
+    const panel = await screen.findByRole('dialog', { name: 'In bucket, not registered' });
+    expect(within(panel).getByText('orphan-model/q4-0-123456789abc/')).toBeDefined();
   });
 });
 
@@ -344,7 +391,10 @@ describe('AiModelsScreen — platform-default election', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Set platform default for ArcaAI Whisper ML-EN (GGUF)' }));
     const dialog = await screen.findByRole('dialog', { name: 'Platform default for tasks' });
     // Seeded from the row: SPEECH_TO_TEXT is already ticked.
-    expect((within(dialog).getByLabelText('Speech to text') as HTMLInputElement).getAttribute('aria-checked') ?? (within(dialog).getByLabelText('Speech to text') as HTMLInputElement).checked).toBeTruthy();
+    expect(
+      (within(dialog).getByLabelText('Speech to text') as HTMLInputElement).getAttribute('aria-checked') ??
+        (within(dialog).getByLabelText('Speech to text') as HTMLInputElement).checked,
+    ).toBeTruthy();
     fireEvent.click(within(dialog).getByLabelText('Text generation'));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save defaults' }));
 

@@ -8,6 +8,7 @@ import {
   discoverModels,
   getModel,
   getModelBySlug,
+  getLastModelInventory,
   getModelDownloadState,
   getModelRegistryConnectionStatus,
   listModels,
@@ -85,13 +86,24 @@ export function useRunModelInventory() {
   });
 }
 
-/** The last inventory report of this session, if a run happened (never fetched on its own). */
+/**
+ * The last inventory report — fetched on mount (TASK-890 J1 MINOR-7).
+ *
+ * It used to be a session-only cache slot (`enabled: false`, resolving `null`),
+ * so "In bucket, not registered" was disabled on every fresh load and the only
+ * way to populate it was to re-run a full bucket sweep — one listing plus a
+ * manifest read per published row — for a list the platform already had. The
+ * gateway now stores the report, so this reads it.
+ *
+ * `staleTime: Infinity` because the report only changes when a run happens, and
+ * `useRunModelInventory` writes the new one into this exact cache key.
+ */
 export function useLastInventoryReport() {
   return useQuery<ModelInventoryReport | null>({
     queryKey: aiModelKeys.inventory(),
-    queryFn: () => Promise.resolve(null),
-    enabled: false,
+    queryFn: () => getLastModelInventory(),
     staleTime: Infinity,
+    retry: false,
   });
 }
 

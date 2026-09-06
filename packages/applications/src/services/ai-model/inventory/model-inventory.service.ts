@@ -1,8 +1,11 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AiModelAvailability, AiModelEntity, AiModelRepository, CoreDatabaseService, ResourceStatusType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { IS3Service } from '../../baseServices/storage';
+import { IRedisCacheService } from '../../baseServices/redis';
+import { IInferenceReadinessService } from '../../ai-readiness/IInferenceReadinessService';
 import { HOPE_MODELS_BUCKET } from '../constants';
 import { sha256Hex } from '../publish/model-version.util';
+import { MODEL_INVENTORY_REPORT_KEY, MODEL_INVENTORY_REPORT_TTL_SECONDS } from './model-inventory.constants';
 import type { ModelInventoryReport, ModelInventoryRow, UnregisteredBucketPrefix } from './dto';
 
 /**
@@ -38,10 +41,20 @@ interface ManifestSummary {
 export class ModelInventoryService {
   private readonly logger = new Logger(ModelInventoryService.name);
 
+  /** The last report this process produced — the fallback when Redis is absent. */
+  private lastReport: ModelInventoryReport | null = null;
+
   constructor(
     private readonly aiModelRepository: AiModelRepository,
     @Inject(IS3Service) private readonly s3Service: IS3Service,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    // TASK-890 J1 MINOR-6/7, both `@Optional()` and TRAILING so every existing
+    // positional unit fixture keeps its arity. Neither is load-bearing for the
+    // MEASUREMENT: without Redis the report is in-process only, and without the
+    // readiness port the snapshot expires on its own TTL instead of being
+    // refreshed. Absent collaborators degrade the follow-up, never the run.
+    @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
+    @Optional() @Inject(IInferenceReadinessService) private readonly readiness?: { sweep(): Promise<unknown> },
   ) {}
 
   async runInventory(): Promise<ModelInventoryReport> {
@@ -84,7 +97,78 @@ export class ModelInventoryService {
 
     this.logger.log({ message: 'Model inventory completed', ...counts, unregistered: unregistered.length });
 
-    return { checkedAt, counts, rows: verdicts, unregistered };
+    const report: ModelInventoryReport = { checkedAt, counts, rows: verdicts, unregistered };
+    this.lastReport = report;
+    await this.storeReport(report);
+    await this.refreshReadiness();
+
+    return report;
+  }
+
+  /**
+   * The last report, for `GET admin/ai-models/inventory` (J1 MINOR-7).
+   *
+   * `null` is a first-class answer — no run has been stored — and the console
+   * says "not measured" rather than rendering a fabricated empty bucket.
+   */
+  async getLastReport(): Promise<ModelInventoryReport | null> {
+    if (this.redisCache?.isConnected()) {
+      try {
+        const raw = await this.redisCache.get(MODEL_INVENTORY_REPORT_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as ModelInventoryReport;
+          // `checkedAt` round-trips through JSON as a string. Restore it so the
+          // field means the same thing whichever path served the report.
+          return { ...parsed, checkedAt: new Date(parsed.checkedAt) };
+        }
+      } catch (error) {
+        this.logger.warn({
+          message: 'Inventory report read failed; serving the in-process report',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return this.lastReport;
+  }
+
+  /** Publish the report so a reader in ANOTHER process (or a fresh tab) has it. */
+  private async storeReport(report: ModelInventoryReport): Promise<void> {
+    if (!this.redisCache?.isConnected()) return;
+    try {
+      await this.redisCache.setex(MODEL_INVENTORY_REPORT_KEY, MODEL_INVENTORY_REPORT_TTL_SECONDS, JSON.stringify(report));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Inventory report store failed; the report is in-process only',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Re-observe readiness now that availability has been rewritten (J1 MINOR-6).
+   *
+   * `AiModel.availability` is one of the two inputs to a self-hosted row's
+   * readiness verdict, and the readiness snapshot is STORED with a TTL of three
+   * sweep intervals — so without this, an operator who clicked "Run inventory"
+   * kept being served a `readinessDetail` derived from the availability the run
+   * had just replaced. An immediate re-sweep is cheaper and more honest than
+   * dropping the snapshot: dropping it would report `unknown` on every row until
+   * the next scheduled sweep, which is a worse answer than a fresh one.
+   *
+   * A sweep failure is logged and swallowed: the measurement this method follows
+   * is already written, and failing the inventory over its follow-up would throw
+   * away the valuable half of the work.
+   */
+  private async refreshReadiness(): Promise<void> {
+    if (!this.readiness) return;
+    try {
+      await this.readiness.sweep();
+    } catch (error) {
+      this.logger.warn({
+        message: 'Readiness re-sweep after the inventory failed; the stored snapshot stands until its TTL',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** The verdict for one row, from the listing + (when needed) the manifest bytes. */

@@ -26897,6 +26897,38 @@
       }
     },
     "/api/v1/admin/ai-models/inventory": {
+      "get": {
+        "description": "Returns the most recent `POST admin/ai-models/inventory` result without measuring anything — the availability verdicts and the manifest-bearing bucket prefixes no registry row references. `null` when no run has been stored (the hourly sweep is off and nobody has run one, or the stored report has expired). Read-only: it never lists the bucket and never writes `availability`.",
+        "operationId": "AiModelAdminController_lastInventory",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInventoryReport"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Platform administrators only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the last model-bucket inventory report",
+        "tags": [
+          "admin-ai-models"
+        ]
+      },
       "post": {
         "description": "Verifies every registry row's `bucketPrefix` + `manifestDigest` + manifest objects against `s3://hope-models`, writes the measured `availability` (AVAILABLE / MISSING / PARTIAL / NOT_APPLICABLE) back, and lists the prefixes in the bucket that no row references (\"In bucket, not registered → Register\"). The same sweep runs hourly when `modelRegistry.inventory.enabled` is on.",
         "operationId": "AiModelAdminController_runInventory",

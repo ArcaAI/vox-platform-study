@@ -1001,6 +1001,29 @@
     },
     {
       "controller": "AiModelAdminController",
+      "handler": "lastInventory",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/inventory",
+      "routePath": "/admin/ai-models/inventory",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
       "handler": "runInventory",
       "method": "POST",
       "path": "/api/v1/admin/ai-models/inventory",

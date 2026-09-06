@@ -66,6 +66,33 @@ export class AiModelAdminController {
     return this.modelInventoryService.runInventory();
   }
 
+  /**
+   * The LAST inventory report, without running a new one (TASK-890 J1 MINOR-7).
+   *
+   * The report used to live only in the browser tab that produced it, so the
+   * "In bucket, not registered → Register" drawer was disabled on a fresh load
+   * and an operator had to re-run a full bucket sweep — one listing plus a
+   * manifest read per published row — to see a list the platform had already
+   * computed. `null` when nothing has been stored: the console says "not
+   * measured" rather than rendering a fabricated empty bucket.
+   *
+   * Static path, registered BEFORE the `:id` family below for the same reason
+   * the POST above is.
+   */
+  @Get('inventory')
+  @ApiOperation({
+    summary: 'Read the last model-bucket inventory report',
+    description:
+      'Returns the most recent `POST admin/ai-models/inventory` result without measuring anything — the availability verdicts and the ' +
+      'manifest-bearing bucket prefixes no registry row references. `null` when no run has been stored (the hourly sweep is off and ' +
+      'nobody has run one, or the stored report has expired). Read-only: it never lists the bucket and never writes `availability`.',
+  })
+  @ApiResponse({ status: 200, type: ModelInventoryReport })
+  @ApiResponse({ status: 403, description: 'Platform administrators only.' })
+  async lastInventory(): Promise<ModelInventoryReport | null> {
+    return this.modelInventoryService.getLastReport();
+  }
+
   @ApiEndpoint({
     returnedModel: ModelResponse,
     method: HttpMethod.POST,

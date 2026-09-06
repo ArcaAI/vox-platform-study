@@ -27459,6 +27459,52 @@
       }
     },
     "/api/v1/admin/ai-models/inventory": {
+      "get": {
+        "description": "Returns the most recent `POST admin/ai-models/inventory` result without measuring anything — the availability verdicts and the manifest-bearing bucket prefixes no registry row references. `null` when no run has been stored (the hourly sweep is off and nobody has run one, or the stored report has expired). Read-only: it never lists the bucket and never writes `availability`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-model:manage`).\n\n**Abilities** — `manage:all`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AiModelAdminController_lastInventory",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInventoryReport"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Platform administrators only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the last model-bucket inventory report",
+        "tags": [
+          "admin-ai-models"
+        ],
+        "x-hope-abilities": [
+          "manage:all"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:ai-model:manage"
+        ]
+      },
       "post": {
         "description": "Verifies every registry row's `bucketPrefix` + `manifestDigest` + manifest objects against `s3://hope-models`, writes the measured `availability` (AVAILABLE / MISSING / PARTIAL / NOT_APPLICABLE) back, and lists the prefixes in the bucket that no row references (\"In bucket, not registered → Register\"). The same sweep runs hourly when `modelRegistry.inventory.enabled` is on.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-model:manage`).\n\n**Abilities** — `manage:all`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AiModelAdminController_runInventory",

@@ -43,7 +43,10 @@ const AI_MODEL_DEFAULT_SORT: SortRule[] = [{ id: 'name', desc: false }];
 const LIBRARY_FILTER_OPTIONS: FilterOption[] = LIBRARY_OPTIONS.map((library) => ({ value: library, label: library }));
 const SERVED_BY_FILTER_OPTIONS: FilterOption[] = SERVED_BY_OPTIONS.map((workload) => ({ value: workload, label: workload }));
 const DEPLOYMENT_FILTER_OPTIONS: FilterOption[] = DEPLOYMENT_KIND_OPTIONS.map((kind) => ({ value: kind, label: DEPLOYMENT_KIND_LABELS[kind] }));
-const AVAILABILITY_FILTER_OPTIONS: FilterOption[] = AVAILABILITY_OPTIONS.map((availability) => ({ value: availability, label: AVAILABILITY_META[availability].label }));
+const AVAILABILITY_FILTER_OPTIONS: FilterOption[] = AVAILABILITY_OPTIONS.map((availability) => ({
+  value: availability,
+  label: AVAILABILITY_META[availability].label,
+}));
 const STATUS_OPTIONS: FilterOption[] = [
   { value: 'ENABLED', label: 'Enabled' },
   { value: 'DISABLED', label: 'Disabled' },
@@ -52,7 +55,17 @@ const STATUS_OPTIONS: FilterOption[] = [
 ];
 
 /** Edit / platform-default / retire row actions — module-level so the column memo stays stable. */
-function ModelRowActions({ model, onEdit, onPlatformDefault, onDelete }: { model: AiModel; onEdit: () => void; onPlatformDefault: () => void; onDelete: () => void }) {
+function ModelRowActions({
+  model,
+  onEdit,
+  onPlatformDefault,
+  onDelete,
+}: {
+  model: AiModel;
+  onEdit: () => void;
+  onPlatformDefault: () => void;
+  onDelete: () => void;
+}) {
   return (
     <span className="flex w-full items-center justify-end gap-1">
       <Button variant="ghost" size="icon-sm" aria-label={`Edit ${model.name}`} onClick={onEdit}>
@@ -70,7 +83,10 @@ function ModelRowActions({ model, onEdit, onPlatformDefault, onDelete }: { model
 
 /** Rows in Hugging Face task order, then by name — the "grouped by pipeline_tag" reading of the page. */
 function orderByPipelineTag(rows: AiModel[]): AiModel[] {
-  return [...rows].sort((a, b) => pipelineTagRank(a.pipelineTag) - pipelineTagRank(b.pipelineTag) || a.pipelineTag.localeCompare(b.pipelineTag) || a.name.localeCompare(b.name));
+  return [...rows].sort(
+    (a, b) =>
+      pipelineTagRank(a.pipelineTag) - pipelineTagRank(b.pipelineTag) || a.pipelineTag.localeCompare(b.pipelineTag) || a.name.localeCompare(b.name),
+  );
 }
 
 /**
@@ -299,7 +315,10 @@ export function AiModelsScreen() {
                 <span className="flex flex-wrap items-center gap-2">
                   <span>{formatNumber(totalCount)} models in the platform catalogue</span>
                   {unassignedProviderCount > 0 ? (
-                    <Badge variant="outline" title="These rows name no provider this platform can serve, so no picker lists them. Set a provider on each row to make it selectable.">
+                    <Badge
+                      variant="outline"
+                      title="These rows name no provider this platform can serve, so no picker lists them. Set a provider on each row to make it selectable."
+                    >
                       {formatNumber(unassignedProviderCount)} with no provider
                     </Badge>
                   ) : null}
@@ -312,11 +331,18 @@ export function AiModelsScreen() {
                   <IconRadar aria-hidden />
                   Loaded on engines
                 </Button>
+                {/*
+                  The report is FETCHED on mount (TASK-890 J1 MINOR-7), so this
+                  is actionable on a fresh load; it used to be disabled until the
+                  operator re-ran a full bucket sweep in this very tab. `?.` on
+                  `unregistered` because one optional panel must not be able to
+                  take the whole registry screen down over a payload shape.
+                */}
                 <Button variant="outline" onClick={() => setUnregisteredOpen(true)} disabled={!lastInventory.data}>
                   <IconDatabaseSearch aria-hidden />
                   In bucket, not registered
-                  {lastInventory.data && lastInventory.data.unregistered.length > 0 ? (
-                    <Badge variant="secondary">{lastInventory.data.unregistered.length}</Badge>
+                  {(lastInventory.data?.unregistered?.length ?? 0) > 0 ? (
+                    <Badge variant="secondary">{lastInventory.data!.unregistered.length}</Badge>
                   ) : null}
                 </Button>
                 <Button variant="outline" onClick={runInventory} disabled={inventoryMutation.isPending}>
@@ -383,7 +409,12 @@ export function AiModelsScreen() {
         />
       </ScreenTemplate>
       <DiscoveryDrawer open={discoveryOpen} onOpenChange={setDiscoveryOpen} />
-      <UnregisteredPrefixesDrawer open={unregisteredOpen} onOpenChange={setUnregisteredOpen} report={lastInventory.data} onRegister={registerFromBucket} />
+      <UnregisteredPrefixesDrawer
+        open={unregisteredOpen}
+        onOpenChange={setUnregisteredOpen}
+        report={lastInventory.data}
+        onRegister={registerFromBucket}
+      />
       <ModelFormSheet
         open={sheetOpen}
         onOpenChange={(open) => {

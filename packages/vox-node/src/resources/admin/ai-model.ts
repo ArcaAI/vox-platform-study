@@ -38,7 +38,7 @@ import type {
  * the scope above is the one that reaches EVERY route.
  *
  * Backed by controllers AiModelAdminController, AiModelCatalogueController, AiModelDiscoveryController
- * (14 routes). Several controllers sharing one scope share one
+ * (15 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -274,6 +274,22 @@ export class AdminAiModelResource extends AdminResource {
       method: 'POST',
       path: 'admin/ai-models/discovery/register',
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read the last model-bucket inventory report
+   *
+   * Returns the most recent `POST admin/ai-models/inventory` result without measuring anything — the availability verdicts and the manifest-bearing bucket prefixes no registry row references. `null` when no run has been stored (the hourly sweep is off and nobody has run one, or the stored report has expired). Read-only: it never lists the bucket and never writes `availability`.
+   *
+   * `GET /api/v1/admin/ai-models/inventory` — `AiModelAdminController.lastInventory`.
+   */
+  lastInventory(options: AdminRequestOptions = {}): Promise<ModelInventoryReport> {
+    return this.request<ModelInventoryReport>({
+      method: 'GET',
+      path: 'admin/ai-models/inventory',
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
