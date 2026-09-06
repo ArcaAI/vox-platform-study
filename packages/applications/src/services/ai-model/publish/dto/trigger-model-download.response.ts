@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { AiModelDownloadStatus } from '@arcaai/domains';
+import { MODEL_PUBLISH_STATUSES, type ModelPublishStatus } from '../model-download-meta.util';
 
 /**
  * `POST admin/ai-models/:id/download` response body — 202 Accepted.
@@ -11,6 +11,6 @@ export class TriggerModelDownloadResponse {
   @ApiProperty({ description: 'BullMQ job id for the enqueued download — poll with GET :id/download.' })
   jobId: string;
 
-  @ApiProperty({ description: 'Always DOWNLOADING on a successful trigger.', enum: AiModelDownloadStatus })
-  status: AiModelDownloadStatus;
+  @ApiProperty({ description: 'Always DOWNLOADING on a successful trigger.', enum: MODEL_PUBLISH_STATUSES })
+  status: ModelPublishStatus;
 }

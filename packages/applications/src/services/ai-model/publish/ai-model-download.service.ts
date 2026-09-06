@@ -5,10 +5,11 @@ import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { uuidv7 } from 'uuidv7';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { AiModelDownloadStatus, AiModelRepository, JobQueue, ResourceType, SysEventType } from '@arcaai/domains';
+import { AiModelRepository, JobQueue, ResourceType, SysEventType } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
-import { mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util';
+import { derivePublishStatus, mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util';
+import { derivedLocalPath } from '../constants';
 import { ModelDownloadStatusResponse, TriggerModelDownloadResponse } from './dto';
 import type { DownloadAiModelJobPayload } from './ai-model-download.processor';
 
@@ -57,7 +58,9 @@ export class AiModelDownloadService extends BaseService {
     if (!existing) {
       throw new NotFoundException(`Model ${id} not found`);
     }
-    if (existing.downloadStatus === AiModelDownloadStatus.DOWNLOADING) {
+    // TASK-890 §3.11 — the in-flight test is the run bookkeeping, not the dropped
+    // `downloadStatus` column. Same guard, same 409, one fewer column.
+    if (derivePublishStatus(readDownloadMeta(existing.metaData), existing.availability) === 'DOWNLOADING') {
       throw new ConflictException(`A download for model ${id} is already in progress`);
     }
 
@@ -65,8 +68,10 @@ export class AiModelDownloadService extends BaseService {
     const expectedVersion = existing.version;
     const startedAt = new Date().toISOString();
 
-    existing.markAsDownloading(userId ?? undefined);
-    existing.metaData = mergeDownloadMeta(existing.metaData, { jobId, startedAt, finishedAt: null, error: null });
+    // The CLAIM is the bookkeeping write itself: it changes the row, so the CAS
+    // below still closes the double-POST race exactly as the status write did.
+    existing.metaData = mergeDownloadMeta(existing.metaData, { jobId, startedAt, finishedAt: null, error: null, sizeMb: null });
+    if (userId) existing.updatedBy = userId;
 
     let updated;
     try {
@@ -83,10 +88,10 @@ export class AiModelDownloadService extends BaseService {
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
-      data: { downloadStatus: updated.downloadStatus, jobId },
+      data: { publishStatus: 'DOWNLOADING', jobId },
     });
 
-    return { jobId, status: updated.downloadStatus };
+    return { jobId, status: 'DOWNLOADING' };
   }
 
   /** Poll the most recent download job's status for `id`. */
@@ -99,12 +104,12 @@ export class AiModelDownloadService extends BaseService {
     const meta = readDownloadMeta(existing.metaData);
 
     return {
-      status: existing.downloadStatus,
+      status: derivePublishStatus(meta, existing.availability),
       startedAt: meta?.startedAt ? new Date(meta.startedAt) : null,
-      finishedAt: meta?.finishedAt ? new Date(meta.finishedAt) : (existing.downloadedAt ?? null),
-      fileSizeMb: existing.fileSizeMb ?? null,
+      finishedAt: meta?.finishedAt ? new Date(meta.finishedAt) : null,
+      fileSizeMb: meta?.sizeMb ?? null,
       sha256: existing.checksum ?? null,
-      localPath: existing.localPath ?? null,
+      localPath: derivedLocalPath(existing),
       error: meta?.error ?? null,
     };
   }

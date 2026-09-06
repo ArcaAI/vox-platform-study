@@ -150,6 +150,9 @@ const ROUTE_DECLARED_PAIRS: ReadonlyArray<readonly [action: string, subject: str
   ['manage', 'WorkflowTestFixture'],
   ['manage', 'all'],
   ['read', 'AgentTrajectory'],
+  // TASK-890 — `GET admin/ai-models/catalogue`, the tenant model picker. The
+  // rest of `admin/ai-models` stays `manage:all`.
+  ['read', 'AiModel'],
   ['read', 'ApiKey'],
   ['read', 'AsrPipeline'],
   ['read', 'AuditLog'],

@@ -34,6 +34,7 @@ import type { AiProviderConnectionResponse } from '../ai-provider-connection/dto
 import { AI_TASK_KEYS, type AiTaskKey } from '../ai-routing-policy/constants';
 import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
 import type { AiModelService } from '../ai-model/aiModel.service';
+import { derivedLocalPath } from '../ai-model/constants';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { MODEL_WEIGHT_SERVICES } from '../settings-registry/descriptors/service-runtime.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from '../settings-registry/registry';
@@ -407,7 +408,8 @@ export class EffectiveConfigService implements IEffectiveConfigService {
 
           weights[slug] = {
             sourceUri: model.sourceUri,
-            localPath: model.localPath ?? null,
+            // TASK-890 §3.11 — DERIVED from the bucket identity, never the column.
+            localPath: derivedLocalPath(model),
             checksum: model.checksum ?? null,
           };
         } catch (error) {

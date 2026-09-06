@@ -411,6 +411,20 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'all' }],
     reserved: true,
   },
+  // TASK-890 — the READ half of the model-registry area, for the tenant
+  // catalogue (`GET admin/ai-models/catalogue`). It exists here only so
+  // SERVICE_ACCOUNT_SCOPE_REGISTRY can DERIVE its `svc:admin:ai-model:read`
+  // twin; like every `admin:*` scope it is RESERVED and no API key can hold it.
+  // Its implication is deliberately the narrow `read:AiModel` the route
+  // declares, NOT the `manage:all` of the write twin above — a read-only
+  // machine identity that could also elect platform defaults would defeat the
+  // reason for splitting the scope at all.
+  'admin:ai-model:read': {
+    description: 'Read the AI model catalogue',
+    category: 'Admin',
+    implies: [{ action: 'read', subject: 'AiModel' }],
+    reserved: true,
+  },
   'admin:ai-provider:manage': {
     description: 'Manage AI/model provider connections (HIGH sensitivity — provider credentials)',
     category: 'Admin',

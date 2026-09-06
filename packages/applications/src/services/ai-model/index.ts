@@ -2,6 +2,8 @@ export * from './constants';
 export * from './dto';
 export * from './IAiModelService';
 export * from './aiModel.dto.mapper';
+export * from './model-catalogue.mapper';
+export * from './model-readiness.port';
 export * from './aiModel.service';
 export * from './aiModel.service.module';
 export * from './publish';

@@ -1062,4 +1062,105 @@ describe('GlobalSettingService', () => {
       expect(result3.data).toHaveLength(1);
     });
   });
+
+  /**
+   * TASK-890 §3.15 (OD-P) — the PLATFORM TIER of a tenant-manageable resource.
+   *
+   * `manage:GlobalSetting` is a tenant-admin grant, and the SYSTEM-tenant rows
+   * are the platform's own defaults that every tenant inherits. Nothing in this
+   * service distinguished them: a tenant admin was stopped only EMERGENTLY, by
+   * the context interceptor refusing a foreign `x-tenant-id` and by the scope
+   * extension throwing a raw `Error` on a tenant mismatch — a 400/500 where the
+   * answer is a 403, and neither is a guard anyone declared.
+   *
+   * Same shape as `SettingsRegistryWriteService.assertMayWriteAtScope` and
+   * `AiProviderConnectionService.assertWriteAllowed`: a privilege boundary on
+   * the caller's OWN plane, so 403 — never the 404-over-403 cross-tenant
+   * posture, which still applies to a row belonging to somebody else.
+   */
+  describe('TASK-890 platform-tier write guard', () => {
+    const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+    function asSuperAdmin(): void {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+        if (key === 'tenantId') return 'tenant-1';
+        return null;
+      });
+    }
+
+    it('refuses a tenant admin creating a SYSTEM-tenant row (403)', async () => {
+      await expect(
+        service.create({ tenantId: SYSTEM_TENANT_ID, name: 'n', key: 'k', value: 'v', dataType: ValueType.String } as never),
+      ).rejects.toThrow(/super administrators only/i);
+      expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('lets a super admin create a SYSTEM-tenant row', async () => {
+      asSuperAdmin();
+      const created = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID });
+      mockGlobalSettingRepository.create.mockResolvedValue(created);
+
+      const result = await service.create({ tenantId: SYSTEM_TENANT_ID, name: 'n', key: 'k', value: 'v', dataType: ValueType.String } as never);
+
+      expect(result).toBe(created);
+      expect(mockGlobalSettingRepository.create).toHaveBeenCalled();
+    });
+
+    it('lets a tenant admin create a row in its OWN tenant', async () => {
+      const created = createMockGlobalSettingEntity({ id: 'own-1', tenantId: 'tenant-1' });
+      mockGlobalSettingRepository.create.mockResolvedValue(created);
+
+      const result = await service.create({ name: 'n', key: 'k', value: 'v', dataType: ValueType.String } as never);
+
+      expect(result).toBe(created);
+    });
+
+    it('refuses a tenant admin updating a SYSTEM-tenant row (403), and never mutates it', async () => {
+      const row = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, version: 4 });
+      mockGlobalSettingRepository.findById.mockResolvedValue(row);
+
+      await expect(service.update('sys-1', { value: 'x', expectedVersion: 4 } as never)).rejects.toThrow(/super administrators only/i);
+      expect(mockGlobalSettingRepository.updateWithVersion).not.toHaveBeenCalled();
+    });
+
+    it('resolves EXISTENCE before privilege: an unknown id is the repository 404, never a 403', async () => {
+      mockGlobalSettingRepository.findById.mockRejectedValue(new DataNotFoundException('globalSetting', 'nope'));
+
+      await expect(service.update('nope', { value: 'x', expectedVersion: 1 } as never)).rejects.toBeInstanceOf(DataNotFoundException);
+    });
+
+    it('refuses a tenant admin deleting a SYSTEM-tenant row (403) — and LOADS the row first, so a foreign id still 404s', async () => {
+      const row = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID });
+      mockGlobalSettingRepository.findById.mockResolvedValue(row);
+
+      await expect(service.deleteById('sys-1')).rejects.toThrow(/super administrators only/i);
+      expect(mockGlobalSettingRepository.softDelete).not.toHaveBeenCalled();
+
+      mockGlobalSettingRepository.findById.mockRejectedValue(new DataNotFoundException('globalSetting', 'foreign'));
+      await expect(service.deleteById('foreign')).rejects.toBeInstanceOf(DataNotFoundException);
+      expect(mockGlobalSettingRepository.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('lets a super admin delete a SYSTEM-tenant row', async () => {
+      asSuperAdmin();
+      const row = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID });
+      mockGlobalSettingRepository.findById.mockResolvedValue(row);
+      mockGlobalSettingRepository.softDelete.mockResolvedValue(row);
+
+      await expect(service.deleteById('sys-1')).resolves.toBe(row);
+      expect(mockGlobalSettingRepository.softDelete).toHaveBeenCalledWith('sys-1');
+    });
+
+    it('guards the revive-on-create branch too — a soft-deleted SYSTEM row is not a back door', async () => {
+      const deleted = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, resourceStatus: ResourceStatus.DELETED });
+      mockGlobalSettingRepository.findFirst.mockResolvedValue(deleted);
+
+      await expect(
+        service.create({ tenantId: SYSTEM_TENANT_ID, name: 'n', key: 'k', value: 'v', dataType: ValueType.String } as never),
+      ).rejects.toThrow(/super administrators only/i);
+      expect(mockGlobalSettingRepository.restore).not.toHaveBeenCalled();
+    });
+  });
+
 });

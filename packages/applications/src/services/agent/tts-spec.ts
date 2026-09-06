@@ -152,6 +152,7 @@ function toSpecModel(model: ResolvedAgentModel, metaData: unknown): TtsSpecModel
     format: model.format,
     sourceUri: model.sourceUri,
     sourceRevision: model.sourceRevision ?? null,
+    // Already DERIVED by `AgentResolverService` (TASK-890 §3.11); forwarded verbatim.
     localPath: model.localPath ?? null,
     checksum: model.checksum ?? null,
     computeType: model.computeType ?? null,
