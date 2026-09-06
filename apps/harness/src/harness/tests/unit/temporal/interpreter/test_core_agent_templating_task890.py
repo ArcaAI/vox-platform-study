@@ -218,7 +218,9 @@ class TestCoreAgentBindingForm:
 
     def test_a_path_binding_resolves_from_the_roots(self) -> None:
         prompt = core._system_prompt(
-            _resolved("Age {{age}} / {{context.patientAge}}", {"age": {"path": "context.patientAge"}}),
+            _resolved(
+                "Age {{age}} / {{context.patientAge}}", {"age": {"path": "context.patientAge"}}
+            ),
             {},
             _run_context(),
         )
@@ -336,7 +338,9 @@ class TestCoreAgentGuardrailDecision:
 
     @pytest.mark.asyncio
     async def test_the_node_overrides_the_agent_in_the_on_direction(self, captured) -> None:
-        _result, calls = await self._run(captured, {"guardrail": {"enabled": True}}, agent_guardrail=False)
+        _result, calls = await self._run(
+            captured, {"guardrail": {"enabled": True}}, agent_guardrail=False
+        )
 
         assert calls[0]["guardrail_policy"] == {"enabled": True}
 
@@ -346,3 +350,102 @@ class TestCoreAgentGuardrailDecision:
         _result, calls = await self._run(captured, {}, agent_guardrail="false")
 
         assert calls[0]["guardrail_policy"] == {"enabled": True}
+
+
+class TestSingleKindContextEnvelope:
+    """J3-5 — one kind keyed ``context`` is not an envelope, on the durable lane either.
+
+    ``payloadSchemaFromDefinition`` keys a declaration's payload under each KIND, so the seeded
+    bridge schema ``consultation_legacy_v1`` — a single kind whose key is ``context`` — produces
+    ``{"context": {"safe_age": …}}``. On a workflow run that IS the validated trigger, and the
+    ``context`` alias binds it whole, so the seeded ``{{context.safe_age}}`` resolved to nothing
+    and the only spelling that could work was ``{{context.context.safe_age}}``.
+
+    The gateway unwraps it (``unwrapSingleKindContextPayload``,
+    ``packages/applications/src/services/consultation-context-schema/context-schema-definition.ts``)
+    and this is the hand-written mirror. It must stay a mirror: an agent whose prompt renders one
+    way on ``POST /agents/:slug/invocations`` and another way inside a Temporal run is the exact
+    failure the ONE-scope rule of §3.3 exists to prevent.
+    """
+
+    _LEGACY_SCHEMA = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "context": {
+                "type": "object",
+                "properties": {"safe_age": {"type": "string"}},
+            }
+        },
+    }
+
+    _MULTI_SCHEMA = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "context": {"type": "object", "properties": {"safe_age": {"type": "string"}}},
+            "audio": {"type": "object"},
+        },
+    }
+
+    @staticmethod
+    def _bound(prompt: str, payload_schema: dict[str, Any]) -> ResolvedAgent:
+        resolved = _resolved(prompt)
+        assert resolved.compiled_config is not None
+        resolved.compiled_config["contextSchema"] = {
+            "schemaId": "schema-legacy",
+            "versionNumber": 1,
+            "versionId": "schema-legacy-v1",
+            "payloadSchema": payload_schema,
+        }
+        return resolved
+
+    def test_the_alias_unwraps_the_sole_context_kind(self) -> None:
+        context = {"trigger": {"context": {"safe_age": "41"}}, "vars": {}, "nodes": {}}
+
+        prompt = core._system_prompt(
+            self._bound("Age {{context.safe_age}}.", self._LEGACY_SCHEMA), {}, context
+        )
+
+        assert prompt == "Age 41."
+
+    def test_trigger_keeps_the_envelope_verbatim(self) -> None:
+        """``trigger`` IS the run payload; only the ``context`` alias is the unwrapped view."""
+        context = {"trigger": {"context": {"safe_age": "41"}}, "vars": {}, "nodes": {}}
+
+        prompt = core._system_prompt(
+            self._bound("Age {{trigger.context.safe_age}}.", self._LEGACY_SCHEMA), {}, context
+        )
+
+        assert prompt == "Age 41."
+
+    def test_a_flat_payload_is_left_alone(self) -> None:
+        """A run whose trigger already carries the flat kind object needs no unwrap."""
+        context = {"trigger": {"safe_age": "41"}, "vars": {}, "nodes": {}}
+
+        prompt = core._system_prompt(
+            self._bound("Age {{context.safe_age}}.", self._LEGACY_SCHEMA), {}, context
+        )
+
+        assert prompt == "Age 41."
+
+    def test_a_multi_kind_envelope_stays_verbatim(self) -> None:
+        context = {
+            "trigger": {"context": {"safe_age": "41"}, "audio": {"uri": "s3://x"}},
+            "vars": {},
+            "nodes": {},
+        }
+
+        prompt = core._system_prompt(
+            self._bound("Age {{context.context.safe_age}}.", self._MULTI_SCHEMA), {}, context
+        )
+
+        assert prompt == "Age 41."
+
+    def test_an_unbound_agent_keeps_the_plain_alias(self) -> None:
+        """No bound schema, no rule to apply — the §3.3 alias is unchanged."""
+        context = {"trigger": {"patientAge": 41}, "vars": {}, "nodes": {}}
+
+        prompt = core._system_prompt(_resolved("Age {{context.patientAge}}."), {}, context)
+
+        assert prompt == "Age 41."

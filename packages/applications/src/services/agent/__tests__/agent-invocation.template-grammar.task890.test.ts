@@ -194,3 +194,84 @@ describe('the invocation itself refuses a context the bound schema does not admi
     expect(sentBody().system_prompt).toBe('Age 41');
   });
 });
+
+/**
+ * J3-5 — one kind keyed `context` is not an envelope, and the agent path unwraps it.
+ *
+ * The bridge schema `consultation_legacy_v1` declares exactly one kind whose key is `context`,
+ * so `payloadSchemaFromDefinition` produced `{ context: { safe_age, … } }` while every seeded
+ * template reads `{{context.safe_age}}` and the render scope aliases `context` to the whole
+ * envelope. The reference resolved to nothing; the only spelling that could have worked was
+ * `{{context.context.safe_age}}`. The seed ships that exact pairing, so the seeded combination
+ * could not run on an agent at all.
+ *
+ * Narrow by decision: only when there is ONE kind and its key IS the namespace root. A
+ * multi-kind envelope is unchanged — there the key is the only thing saying which kind a value
+ * belongs to.
+ */
+describe('the single-kind `context` envelope (J3-5)', () => {
+  const legacyBound = {
+    contextSchema: {
+      schemaId: 'schema-legacy',
+      versionNumber: 1,
+      payloadSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          context: { type: 'object', properties: { safe_age: { type: 'string' }, visit_type: { type: 'string' } } },
+        },
+      },
+    },
+  };
+
+  const multiBound = {
+    contextSchema: {
+      schemaId: 'schema-multi',
+      versionNumber: 1,
+      payloadSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          context: { type: 'object', properties: { safe_age: { type: 'string' } } },
+          audio: { type: 'object' },
+        },
+      },
+    },
+  };
+
+  it('accepts a FLAT context payload against the sole kind`s own schema', () => {
+    expect(service().contextProblems(resolved(legacyBound), { safe_age: '41', visit_type: 'follow-up' })).toEqual([]);
+  });
+
+  it('still reports a violation inside that kind — unwrapping is not a bypass', () => {
+    const problems = service().contextProblems(resolved(legacyBound), { safe_age: 41 });
+    expect(problems.join(' ')).toContain('safe_age');
+  });
+
+  it('renders `{{context.safe_age}}` from the flat payload — the seeded template, running', async () => {
+    await service().invokeText(
+      withPrompt('Patient age {{context.safe_age}}.', legacyBound),
+      TENANT,
+      { text: 't', context: { safe_age: '41' } },
+      'blocking',
+    );
+
+    expect(sentBody().system_prompt).toBe('Patient age 41.');
+  });
+
+  it('also renders from the ENVELOPE form, so one prompt is portable from a workflow trigger', async () => {
+    await service().invokeText(
+      withPrompt('Patient age {{context.safe_age}}.', legacyBound),
+      TENANT,
+      { text: 't', context: { context: { safe_age: '41' } } },
+      'blocking',
+    );
+
+    expect(sentBody().system_prompt).toBe('Patient age 41.');
+  });
+
+  it('leaves a MULTI-kind envelope verbatim — a flat payload there is still a violation', () => {
+    const problems = service().contextProblems(resolved(multiBound), { safe_age: '41' });
+    expect(problems.length).toBeGreaterThan(0);
+  });
+});

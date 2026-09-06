@@ -1,34 +1,53 @@
 {
-  "_comment": "TASK-890 §3.2 — the CROSS-LANGUAGE parity fixture for the ONE prompt-template grammar. Asserted from BOTH tests/contracts/prompt-template-parity.contract.test.ts (TypeScript, packages/workflow-contract/src/template.ts — the gateway renderer and the publish-time checks) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_templating_parity.py (Python, harness.temporal.interpreter.templating — the durable interpreter's renderer). Neither runtime can import the other's renderer, so this file IS the contract: every case names a template, the scope it renders against, and EITHER the exact string both sides must produce OR the named error both must raise. Adding a capability to one renderer without a case here is drift the two suites cannot see. `error` is `PromptVariableUnresolved` or `PromptTemplateSyntaxError`.",
+  "_comment": "TASK-890 \u00a73.2 \u2014 the CROSS-LANGUAGE parity fixture for the ONE prompt-template grammar. Asserted from BOTH tests/contracts/prompt-template-parity.contract.test.ts (TypeScript, packages/workflow-contract/src/template.ts \u2014 the gateway renderer and the publish-time checks) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_templating_parity.py (Python, harness.temporal.interpreter.templating \u2014 the durable interpreter's renderer). Neither runtime can import the other's renderer, so this file IS the contract: every case names a template, the scope it renders against, and EITHER the exact string both sides must produce OR the named error both must raise. Adding a capability to one renderer without a case here is drift the two suites cannot see. `error` is `PromptVariableUnresolved` or `PromptTemplateSyntaxError`.",
   "cases": [
     {
       "name": "dotted-resolution",
       "template": "Patient age: {{trigger.patient.age}}.",
-      "scope": { "trigger": { "patient": { "age": 67, "name": "A" } } },
+      "scope": {
+        "trigger": {
+          "patient": {
+            "age": 67,
+            "name": "A"
+          }
+        }
+      },
       "expected": "Patient age: 67."
     },
     {
       "name": "bare-name",
       "template": "Department: {{department}}",
-      "scope": { "department": "cardiology" },
+      "scope": {
+        "department": "cardiology"
+      },
       "expected": "Department: cardiology"
     },
     {
       "name": "missing-path-errors",
       "template": "{{context.absent}}",
-      "scope": { "context": { "present": 1 } },
+      "scope": {
+        "context": {
+          "present": 1
+        }
+      },
       "error": "PromptVariableUnresolved"
     },
     {
       "name": "default-applied",
       "template": "{{context.absent | default(\"n/a\")}}",
-      "scope": { "context": {} },
+      "scope": {
+        "context": {}
+      },
       "expected": "n/a"
     },
     {
       "name": "default-not-applied-when-present",
       "template": "{{context.value | default(\"n/a\")}}",
-      "scope": { "context": { "value": "real" } },
+      "scope": {
+        "context": {
+          "value": "real"
+        }
+      },
       "expected": "real"
     },
     {
@@ -40,67 +59,109 @@
     {
       "name": "escape",
       "template": "{{{{a}} and {{b}}",
-      "scope": { "b": "B" },
+      "scope": {
+        "b": "B"
+      },
       "expected": "{{a}} and B"
     },
     {
       "name": "value-with-braces-not-reparsed",
       "template": "{{a}}",
-      "scope": { "a": "{{b}}", "b": "NEVER" },
+      "scope": {
+        "a": "{{b}}",
+        "b": "NEVER"
+      },
       "expected": "{{b}}"
     },
     {
       "name": "whitespace-tolerance",
       "template": "[{{ a.b }}][{{a.b}}][{{\ta.b\t}}][{{ a.b | default(\"d\") }}]",
-      "scope": { "a": { "b": "x" } },
+      "scope": {
+        "a": {
+          "b": "x"
+        }
+      },
       "expected": "[x][x][x][x]"
     },
     {
       "name": "object-value-json-sorted",
       "template": "{{vars.obj}}",
-      "scope": { "vars": { "obj": { "b": [1, 2], "a": 1 } } },
+      "scope": {
+        "vars": {
+          "obj": {
+            "b": [1, 2],
+            "a": 1
+          }
+        }
+      },
       "expected": "{\"a\":1,\"b\":[1,2]}"
     },
     {
       "name": "scalar-values-json",
       "template": "{{vars.n}}|{{vars.t}}|{{vars.f}}",
-      "scope": { "vars": { "n": 3, "t": true, "f": 1.5 } },
+      "scope": {
+        "vars": {
+          "n": 3,
+          "t": true,
+          "f": 1.5
+        }
+      },
       "expected": "3|true|1.5"
     },
     {
       "name": "array-not-indexable",
       "template": "{{vars.list.0}}",
-      "scope": { "vars": { "list": [1, 2] } },
+      "scope": {
+        "vars": {
+          "list": [1, 2]
+        }
+      },
       "error": "PromptTemplateSyntaxError"
     },
     {
       "name": "array-is-not-a-namespace",
       "template": "{{vars.list.length}}",
-      "scope": { "vars": { "list": [1, 2] } },
+      "scope": {
+        "vars": {
+          "list": [1, 2]
+        }
+      },
       "error": "PromptVariableUnresolved"
     },
     {
       "name": "null-is-missing",
       "template": "{{vars.notes}}",
-      "scope": { "vars": { "notes": null } },
+      "scope": {
+        "vars": {
+          "notes": null
+        }
+      },
       "error": "PromptVariableUnresolved"
     },
     {
       "name": "null-is-missing-so-default-applies",
       "template": "{{vars.notes | default(\"none\")}}",
-      "scope": { "vars": { "notes": null } },
+      "scope": {
+        "vars": {
+          "notes": null
+        }
+      },
       "expected": "none"
     },
     {
       "name": "unknown-filter-is-syntax-error",
       "template": "{{a | upper}}",
-      "scope": { "a": "x" },
+      "scope": {
+        "a": "x"
+      },
       "error": "PromptTemplateSyntaxError"
     },
     {
       "name": "unterminated-is-syntax-error",
       "template": "{{a",
-      "scope": { "a": "x" },
+      "scope": {
+        "a": "x"
+      },
       "error": "PromptTemplateSyntaxError"
     },
     {
@@ -118,13 +179,22 @@
     {
       "name": "nodes-namespace",
       "template": "{{nodes.n1.text}}",
-      "scope": { "nodes": { "n1": { "text": "hello" } } },
+      "scope": {
+        "nodes": {
+          "n1": {
+            "text": "hello"
+          }
+        }
+      },
       "expected": "hello"
     },
     {
       "name": "single-brace-is-literal",
       "template": "Answer in {language_name} for {{name}}.",
-      "scope": { "name": "Ada", "language_name": "NEVER" },
+      "scope": {
+        "name": "Ada",
+        "language_name": "NEVER"
+      },
       "expected": "Answer in {language_name} for Ada."
     },
     {
@@ -139,9 +209,172 @@
       "name": "offsets-and-defaults",
       "template": "x {{a.b}} y {{c | default(\"z\")}} {{{{d}}",
       "expected": [
-        { "path": "a.b", "hasDefault": false, "offset": 2 },
-        { "path": "c", "hasDefault": true, "offset": 12 }
+        {
+          "path": "a.b",
+          "hasDefault": false,
+          "offset": 2
+        },
+        {
+          "path": "c",
+          "hasDefault": true,
+          "offset": 12
+        }
       ]
+    }
+  ],
+  "_contextEnvelopesComment": "J3-5 \u2014 the SCOPE rule the two renderers must share, as distinct from the grammar cases above. `payloadSchemaFromDefinition` keys a context declaration's payload under each declared KIND, so a schema with one kind keyed `context` yields the envelope {context: {...}} while every seeded template reads {{context.safe_age}} and the render scope aliases `context` to the envelope \u2014 the reference resolves to nothing and the only spelling that would work, {{context.context.safe_age}}, is the one the seed does not ship. So EXACTLY when a schema declares one kind whose key IS the namespace root `context`, the agent path unwraps. Each case gives the frozen `payloadSchema` and the supplied `payload`; `expectedContext` is the object `{{context.*}}` must resolve against. Asserted by unwrapSingleKindContextPayload (TypeScript, context-schema-definition.ts) and by _unwrap_single_kind_context (Python, temporal/interpreter/nodes/core.py). A multi-kind envelope is returned VERBATIM \u2014 there the key is the only thing saying which kind a value belongs to.",
+  "contextEnvelopes": [
+    {
+      "name": "sole-context-kind-envelope-unwrapped",
+      "payloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "type": "object",
+            "properties": {
+              "safe_age": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "payload": {
+        "context": {
+          "safe_age": "41"
+        }
+      },
+      "expectedContext": {
+        "safe_age": "41"
+      }
+    },
+    {
+      "name": "sole-context-kind-flat-payload-unchanged",
+      "payloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "type": "object",
+            "properties": {
+              "safe_age": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "payload": {
+        "safe_age": "41",
+        "visit_type": "follow-up"
+      },
+      "expectedContext": {
+        "safe_age": "41",
+        "visit_type": "follow-up"
+      }
+    },
+    {
+      "name": "multi-kind-envelope-verbatim",
+      "payloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "type": "object",
+            "properties": {
+              "safe_age": {
+                "type": "string"
+              }
+            }
+          },
+          "audio": {
+            "type": "object"
+          }
+        }
+      },
+      "payload": {
+        "context": {
+          "safe_age": "41"
+        },
+        "audio": {
+          "uri": "s3://x"
+        }
+      },
+      "expectedContext": {
+        "context": {
+          "safe_age": "41"
+        },
+        "audio": {
+          "uri": "s3://x"
+        }
+      }
+    },
+    {
+      "name": "sole-kind-under-another-name-verbatim",
+      "payloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "patient": {
+            "type": "object",
+            "properties": {
+              "age": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "payload": {
+        "patient": {
+          "age": "41"
+        }
+      },
+      "expectedContext": {
+        "patient": {
+          "age": "41"
+        }
+      }
+    },
+    {
+      "name": "no-bound-schema-verbatim",
+      "payloadSchema": null,
+      "payload": {
+        "context": {
+          "safe_age": "41"
+        }
+      },
+      "expectedContext": {
+        "context": {
+          "safe_age": "41"
+        }
+      }
+    },
+    {
+      "name": "ambiguous-flat-payload-with-a-context-field-is-not-unwrapped",
+      "payloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "type": "object",
+            "properties": {
+              "safe_age": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "payload": {
+        "context": "a value",
+        "safe_age": "41"
+      },
+      "expectedContext": {
+        "context": "a value",
+        "safe_age": "41"
+      }
     }
   ]
 }
