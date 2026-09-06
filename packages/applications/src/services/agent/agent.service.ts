@@ -853,7 +853,14 @@ export class AgentService extends BaseService implements IAgentService {
         slug: source.slug,
         name: source.name,
         description: source.description ?? null,
-        tags: source.tags ?? [],
+        // DROPPED, matching `seed/26-tenant-reference-set.ts` `copyAgents` (TASK-890 J7-2):
+        // the platform's tags assert something about the PLATFORM's row, not a tenant's copy.
+        // An agent tag is `key:value`, and the platform's values (`platform-default`, the tier
+        // markers `modelAllowedForTier` reads) become false claims once they sit on a tenant row
+        // the platform does not own. This used to carry `source.tags ?? []` while the seed wrote
+        // `[]`, so a synced tenant and a seeded tenant ended up with different rows from the same
+        // source. Prompts are the OTHER way round — their tags are content, and they travel.
+        tags: [],
         ...(instruction !== undefined ? { instruction } : {}),
       });
 
