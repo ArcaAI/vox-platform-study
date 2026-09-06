@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { Connection, Edge, Node, NodeChange, NodeDimensionChange } from '@xyflow/react';
+import type { Connection, Edge, Node, NodeChange, NodeDimensionChange, ReactFlowInstance } from '@xyflow/react';
 import { Background, BackgroundVariant, MiniMap, ReactFlow, applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -158,6 +158,7 @@ export function WorkflowCanvas({
   isValidConnection,
   onSelect,
   onDeleteRequest,
+  onPaneDrop,
   emptyState,
   minimap = true,
   className,
@@ -251,6 +252,35 @@ export function WorkflowCanvas({
     [isValidConnection],
   );
 
+  // The instance is captured on `onInit` rather than read with `useReactFlow()`: this component
+  // RENDERS `<ReactFlow>`, so it sits outside its context and the hook would throw here.
+  const instanceRef = React.useRef<ReactFlowInstance<Node<WorkflowNodeData>, Edge> | null>(null);
+
+  const dropEnabled = onPaneDrop !== undefined && !readOnly;
+  const handleDragOver = React.useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (!dropEnabled) return;
+      // Without BOTH the preventDefault and an explicit `dropEffect`, the browser treats the pane
+      // as a non-drop target and the drop never fires at all.
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    },
+    [dropEnabled],
+  );
+  const handleDrop = React.useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (!dropEnabled) return;
+      event.preventDefault();
+      const point = { x: event.clientX, y: event.clientY };
+      // Before `onInit` there is no projection to apply; a rect-relative point is still a
+      // sensible place to put the node, and is what an un-panned, un-zoomed pane would give.
+      const rect = event.currentTarget.getBoundingClientRect();
+      const position = instanceRef.current?.screenToFlowPosition(point) ?? { x: point.x - rect.left, y: point.y - rect.top };
+      onPaneDrop?.(event, position);
+    },
+    [dropEnabled, onPaneDrop],
+  );
+
   const handleConnect = React.useCallback(
     (connection: Connection) => {
       onConnect?.({
@@ -268,6 +298,8 @@ export function WorkflowCanvas({
       data-slot="workflow-canvas"
       data-reduced-motion={reducedMotion ? 'true' : 'false'}
       className={cn('workflow-canvas relative size-full min-h-0', className)}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
       <span className="sr-only">
         Workflow graph editor. Press Tab to move between nodes. Use the structured list view for a pointer-free way to add, configure, connect,
@@ -283,6 +315,9 @@ export function WorkflowCanvas({
         onConnect={handleConnect}
         isValidConnection={handleIsValidConnection}
         onSelectionChange={handleSelectionChange}
+        onInit={(instance) => {
+          instanceRef.current = instance;
+        }}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         edgesReconnectable={!readOnly}

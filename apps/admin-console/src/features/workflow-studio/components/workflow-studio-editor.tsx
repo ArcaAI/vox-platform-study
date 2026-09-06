@@ -40,6 +40,7 @@ import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/cl
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
 import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
 import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
+import { readPaletteDragType } from '../lib/palette-drag';
 import { actionKeyOf, effectiveNodePorts } from '../lib/core-ports';
 import { humanizeKey } from '../lib/schema-form';
 import {
@@ -317,6 +318,47 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     [storeApi, descriptorByType],
   );
 
+  // Palette CLICK — the pointer-free path (WCAG 2.5.7), and the one that nests.
+  const handleAddNode = useCallback(
+    (descriptor: WorkflowNodeDescriptor) => {
+      // TASK-864 B1 — with a loop selected, the new node joins its body (pointer-free
+      // nesting: no drag-into-group is ever required).
+      const parent = selectedNode?.type === LOOP_NODE_TYPE ? selectedNode : undefined;
+      const siblings = parent ? nodes.filter((node) => node.parentId === parent.id).length : nodes.length;
+      const position = parent ? { x: 24 + siblings * 260, y: 56 } : { x: 120, y: 120 + siblings * 100 };
+      storeApi
+        .getState()
+        .addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position, parent ? { parentId: parent.id } : undefined);
+    },
+    [nodes, selectedNode, storeApi],
+  );
+
+  /**
+   * TASK-890 black-box J4-F1 — palette DROP. The canvas hands over the drop point already
+   * projected into flow coordinates; this decides what the payload means, which is the half only
+   * the consumer can know: an unrecognised drag (a file, dragged prose) and a type the live
+   * registry does not carry are both ignored, so a drop can never author a node the palette
+   * itself would refuse.
+   *
+   * Deliberately TOP-LEVEL: a drop names a point, not a container. Nesting into a `core.loop`
+   * body stays the click path's job (select the loop, click the type), where the intent is
+   * explicit and no group hit-testing has to be guessed at.
+   *
+   * `addNode` marks the graph dirty, so the existing autosave effect persists it — unlike a MOVE,
+   * which has to schedule its own patch (see `onNodesChange` below).
+   */
+  const handlePaneDrop = useCallback(
+    (event: { dataTransfer: DataTransfer | null }, position: { x: number; y: number }) => {
+      if (readOnly) return;
+      const type = readPaletteDragType(event.dataTransfer);
+      const descriptor = type ? descriptorByType.get(type) : undefined;
+      if (!descriptor || descriptor.implemented === false) return;
+      storeApi.getState().addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position);
+      storeApi.getState().selectNode(null);
+    },
+    [readOnly, descriptorByType, storeApi],
+  );
+
   useStudioShortcuts({ enabled: !readOnly, onUndo: handleUndo, onRedo: handleRedo, onDuplicate: duplicateSelected });
 
   // TASK-864 B1 — auto layout (built-in layered engine; an ELK engine can be injected later),
@@ -522,19 +564,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     >
       <div className="grid min-h-0 grid-cols-1 gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:h-full [@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[240px_1fr_320px]">
         <aside className="min-h-0 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Node palette panel">
-          <PaletteRail
-            descriptors={registryNodes}
-            onAddNode={(descriptor) => {
-              // TASK-864 B1 — with a loop selected, the new node joins its body (pointer-free
-              // nesting: no drag-into-group is ever required).
-              const parent = selectedNode?.type === LOOP_NODE_TYPE ? selectedNode : undefined;
-              const siblings = parent ? nodes.filter((node) => node.parentId === parent.id).length : nodes.length;
-              const position = parent ? { x: 24 + siblings * 260, y: 56 } : { x: 120, y: 120 + siblings * 100 };
-              storeApi
-                .getState()
-                .addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position, parent ? { parentId: parent.id } : undefined);
-            }}
-          />
+          <PaletteRail descriptors={registryNodes} onAddNode={handleAddNode} />
         </aside>
         <div className="min-h-[26rem] [@media(min-width:64rem)_and_(min-height:32rem)]:min-h-0">
           {viewMode === 'canvas' ? (
@@ -546,6 +576,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               readOnly={readOnly}
               selectedNodeId={selectedNodeId}
               onSelect={selectNodeById}
+              onPaneDrop={handlePaneDrop}
               isValidConnection={isValidConnection}
               emptyState={
                 <Empty>
