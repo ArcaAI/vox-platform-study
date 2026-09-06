@@ -68,6 +68,18 @@ export function runModelInventory(): Promise<ModelInventoryReport> {
 }
 
 /**
+ * The LAST inventory report, without measuring anything (TASK-890 J1 MINOR-7).
+ *
+ * The "In bucket, not registered" drawer used to be disabled until the operator
+ * ran a full bucket sweep in THIS tab, because the report lived nowhere else.
+ * The gateway now keeps it, so a fresh load can read it. `null` when the
+ * platform has none stored — a real answer, not an empty bucket.
+ */
+export function getLastModelInventory(): Promise<ModelInventoryReport | null> {
+  return getJson(`${BASE}/inventory`);
+}
+
+/**
  * Merge the registry with the live engine listings. Probes run
  * upstream (the text-generation service aggregates them under a per-provider timeout), so this call can
  * take a couple of seconds: it is fired lazily when the drawer opens, never on

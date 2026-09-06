@@ -5,6 +5,7 @@ import {
   discoverModels,
   getModel,
   getModelBySlug,
+  getLastModelInventory,
   getModelDownloadState,
   getModelRegistryConnectionStatus,
   listModels,
@@ -144,7 +145,13 @@ describe('download client', () => {
 
   it('GETs :id/download for the polled job state', async () => {
     const calls = installFetchMock(() =>
-      Response.json({ status: 'DOWNLOADED', fileSizeMb: 512, sha256: 'abc', localPath: '/mnt/models-bucket/m/v/', finishedAt: '2026-09-01T00:00:00.000Z' }),
+      Response.json({
+        status: 'DOWNLOADED',
+        fileSizeMb: 512,
+        sha256: 'abc',
+        localPath: '/mnt/models-bucket/m/v/',
+        finishedAt: '2026-09-01T00:00:00.000Z',
+      }),
     );
 
     const result = await getModelDownloadState('m-1');
@@ -188,7 +195,12 @@ describe('model-registry connection status client', () => {
 // =============================================================================
 describe('inventory + platform-default client', () => {
   it('POSTs admin/ai-models/inventory with no body and returns the report', async () => {
-    const report = { checkedAt: '2026-09-04T10:00:00.000Z', counts: { available: 1, missing: 0, partial: 0, notApplicable: 0 }, rows: [], unregistered: [] };
+    const report = {
+      checkedAt: '2026-09-04T10:00:00.000Z',
+      counts: { available: 1, missing: 0, partial: 0, notApplicable: 0 },
+      rows: [],
+      unregistered: [],
+    };
     const calls = installFetchMock(() => Response.json(report));
 
     const result = await runModelInventory();
@@ -197,6 +209,32 @@ describe('inventory + platform-default client', () => {
     expect(calls[0].url).toContain('admin/ai-models/inventory');
     expect(calls[0].body).toBeUndefined();
     expect(result).toEqual(report);
+  });
+
+  // TASK-890 J1 MINOR-7 — the report used to live only in the tab that produced
+  // it, so "In bucket, not registered" was disabled on a fresh load and the only
+  // way to fill it was to re-run a full bucket sweep for a list the platform
+  // already had.
+  it('GETs admin/ai-models/inventory for the LAST report, measuring nothing', async () => {
+    const report = {
+      checkedAt: '2026-09-04T10:00:00.000Z',
+      counts: { available: 1, missing: 0, partial: 0, notApplicable: 0 },
+      rows: [],
+      unregistered: [],
+    };
+    const calls = installFetchMock(() => Response.json(report));
+
+    const result = await getLastModelInventory();
+
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].url).toContain('admin/ai-models/inventory');
+    expect(result).toEqual(report);
+  });
+
+  it('passes a null last report through — the platform has none, which is an answer', async () => {
+    installFetchMock(() => Response.json(null));
+
+    expect(await getLastModelInventory()).toBeNull();
   });
 
   it('PATCHes admin/ai-models/:id/platform-default with the task list (no If-Match — not an OCC field edit)', async () => {
