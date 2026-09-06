@@ -14,6 +14,7 @@
 import { getJson, getWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type {
+  DeclareConnectionModelsRequest,
   ProviderConnection,
   ProviderService,
   RoutingBinding,
@@ -53,6 +54,29 @@ export function putProviderConnection(
     etag: etag ?? FIRST_EDIT_ETAG,
     params: tenantParams(tenantId),
   });
+}
+
+/**
+ * TASK-890 §3.7a — declare the models this connection serves.
+ *
+ * The body is the WHOLE list (a replacement), and there is no `If-Match`: the
+ * write lands registry rows, not the connection row, so it carries no version.
+ * A 409 `BYO_SLUG_SHADOWS_PLATFORM` carries `slug` / `systemModelId` /
+ * `suggestedSlug` for the caller to re-send.
+ */
+export async function putConnectionModels(
+  service: ProviderService,
+  provider: string,
+  body: DeclareConnectionModelsRequest,
+  tenantId?: string,
+): Promise<ProviderConnection> {
+  // No ETag to carry: the route writes registry rows, not the connection row.
+  const { data } = await request<ProviderConnection>(`${BASE}/${service}/${provider}/models`, {
+    method: 'PUT',
+    body,
+    params: tenantParams(tenantId),
+  });
+  return data;
 }
 
 /** Remove the tenant's credential (soft delete) — returns the provider to "platform default". */

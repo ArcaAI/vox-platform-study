@@ -1,6 +1,6 @@
 import { AiProviderConnectionEntity } from '@arcaai/domains';
 import { ProviderService } from './constants';
-import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
+import { AiProviderConnectionResponse, DeclareConnectionModelsRequest, UpsertAiProviderConnectionRequest } from './dto';
 import { ProviderExtraValue } from './provider-extras';
 
 export type { ProviderService } from './constants';
@@ -211,6 +211,23 @@ export interface IProviderConnectionService {
     dto: UpsertAiProviderConnectionRequest,
     tenantId?: string,
     expectedVersion?: number,
+  ): Promise<AiProviderConnectionResponse>;
+
+  /**
+   * TASK-890 §3.7a (OD-A) — declare the models this tenant's connection serves.
+   *
+   * A full REPLACEMENT of the list: each entry becomes (or stays) a
+   * TENANT-OWNED `AiModel` row carrying `sourceConnectionId`; an entry that
+   * left the list is soft-deleted. Refuses the SYSTEM tier (403 — platform
+   * models are declared in `/admin/ai-models`), a provider the tenant may not
+   * hold a row for (403), and a generated slug that would shadow a platform row
+   * (409 `BYO_SLUG_SHADOWS_PLATFORM`, nothing written).
+   */
+  declareModels(
+    service: ProviderService,
+    provider: string,
+    dto: DeclareConnectionModelsRequest,
+    tenantId?: string,
   ): Promise<AiProviderConnectionResponse>;
 
   /** Soft-delete one (service, tenant, provider) row. */

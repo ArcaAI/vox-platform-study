@@ -1,6 +1,7 @@
 import {
   AiProviderConnectionResponse,
   CONNECTION_ENABLED_SEMANTICS,
+  DeclareConnectionModelsRequest,
   IActiveUserContext,
   IProviderConnectionService,
   PROVIDER_SERVICES,
@@ -40,7 +41,10 @@ function assertProviderService(value: string): ProviderService {
  *                                 `version: 0` placeholder when none exists yet).
  *  - `PUT :service/:provider`   → create (`expectedVersion` 0) or CAS-update under
  *                                 `If-Match` (drift → 412, missing → 428).
- *  - `DELETE :service/:provider`→ soft-delete.
+ *  - `PUT :service/:provider/models` → declare the models this connection serves
+ *                                 (TASK-890 §3.7a): each becomes a tenant-owned
+ *                                 registry row; the list is a full replacement.
+ *  - `DELETE :service/:provider`→ soft-delete (its declared models go with it).
  *  - `POST :service/:provider/test` → ephemeral "Test connection" probe (TASK-862):
  *                                 never persisted, no OCC; omitted fields fall
  *                                 back to the stored row (tenant → SYSTEM).
@@ -140,6 +144,36 @@ export class ProviderConnectionController {
     // create-vs-412.
     const dto = { ...request, expectedVersion: expectedFromHeader ?? request.expectedVersion };
     return this.connectionService.upsertRow(assertProviderService(service), provider, dto, this.resolveTenantId(tenantId));
+  }
+
+  @Put(':service/:provider/models')
+  @CanManage('GlobalSetting')
+  @ApiOperation({
+    summary: "Declare the models this tenant's connection serves.",
+    description:
+      'Bring provider AND model together (TASK-890): the connection says WHERE the vendor account is, this says WHICH ' +
+      'models it serves. Each entry becomes a TENANT-OWNED registry row visible only in this tenant\u2019s catalogue, ' +
+      'bindable by an agent. The body is the WHOLE list — an entry that leaves it is soft-deleted (an agent still bound ' +
+      'to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable; a ' +
+      'generated slug that would shadow a platform model is refused with `409 BYO_SLUG_SHADOWS_PLATFORM`, which names ' +
+      'the platform row and a `byo-` prefixed `suggestedSlug` to re-send. No `If-Match`: this writes registry rows, not ' +
+      'the connection row, so it carries no version of its own. Platform models are declared in `/admin/ai-models`.',
+  })
+  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
+  @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
+  @ApiQuery({ name: 'tenantId', required: false })
+  @ApiResponse({ status: 200, type: AiProviderConnectionResponse, description: 'The connection, with its declared `models[]`.' })
+  @ApiResponse({ status: 400, description: 'Unknown service, a task type the capability does not serve, or a duplicated model id.' })
+  @ApiResponse({ status: 403, description: 'A SYSTEM connection, or a provider this tenant may not hold a row for.' })
+  @ApiResponse({ status: 404, description: 'No connection row yet — save the credential before declaring its models.' })
+  @ApiResponse({ status: 409, description: 'A generated slug would shadow a platform model (`BYO_SLUG_SHADOWS_PLATFORM`).' })
+  async declareModels(
+    @Param('service') service: string,
+    @Param('provider') provider: string,
+    @Body() request: DeclareConnectionModelsRequest,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<AiProviderConnectionResponse> {
+    return this.connectionService.declareModels(assertProviderService(service), provider, request, this.resolveTenantId(tenantId));
   }
 
   @Delete(':service/:provider')

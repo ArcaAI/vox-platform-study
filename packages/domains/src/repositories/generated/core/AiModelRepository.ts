@@ -46,6 +46,31 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
   }
 
   /**
+   * Every model DECLARED on one provider connection (TASK-890 §3.7a).
+   *
+   * `sourceConnectionId` is the PROVENANCE of a tenant-materialised BYO row:
+   * set only by `AiProviderConnectionService.declareModels`, never by an admin
+   * edit, and NULL on every SYSTEM row. The `tenantId` filter is explicit
+   * rather than left to the scope extension because the caller may be a super
+   * admin acting on another tenant through the base-client lane, where the
+   * extension does not run — the same `tx` routing rule as `findBySlug`.
+   */
+  async findBySourceConnection(sourceConnectionId: string, tenantId: string, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity[]> {
+    const where = {
+      tenantId,
+      sourceConnectionId,
+      resourceStatus: ResourceStatusType.ENABLED,
+    };
+
+    if (tx) {
+      const models = await (tx as Record<string, any>).aiModel.findMany({ where, orderBy: { createdAt: 'asc' } });
+      return models.map((model: any) => AiModelEntityMapper.getInstance().toDomainEntity(model));
+    }
+
+    return this.findAll({ filters: where, sort: [{ createdAt: 'asc' }] } as any);
+  }
+
+  /**
    * Find a catalogue row by id, returning `null` rather than throwing.
    *
    * Same `tx` routing rule as `findBySlug`: with an explicit transaction / base
