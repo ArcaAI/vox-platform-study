@@ -12,7 +12,14 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { GUARDRAIL_DISPOSITIONS, USAGE_ATTRIBUTE_KEYS, USAGE_TRIGGERS, validateUsageAttributes, withUsageTrigger } from '../usage-attributes';
+import {
+  GUARDRAIL_DISPOSITIONS,
+  USAGE_ATTRIBUTE_KEYS,
+  USAGE_TRIGGERS,
+  validateUsageAttributes,
+  withUsageAttributes,
+  withUsageTrigger,
+} from '../usage-attributes';
 
 describe('validateUsageAttributes — the allow-list', () => {
   it('accepts the declared keys with enum-ish / id / scalar values', () => {
@@ -178,5 +185,20 @@ describe('withUsageTrigger — stamping an already-built batch', () => {
   it('creates the attribute bag when the builder produced none', () => {
     const bare = { common: { tenantId: 't1', idempotencyKey: 'k' }, units: [] } as never;
     expect(withUsageTrigger(bare, 'WORKFLOW_RUN').common.attributesJson).toEqual({ trigger: 'WORKFLOW_RUN' });
+  });
+});
+
+describe('withUsageAttributes — the general form L14 stamps `guardrail` through', () => {
+  it('merges without disturbing what the builder set', () => {
+    const batch = { common: { tenantId: 't1', attributesJson: { interrupted: true, trigger: 'CONSULTATION' } }, units: [] } as never;
+    expect(withUsageAttributes(batch, { guardrail: 'opted_out' }).common.attributesJson).toEqual({
+      interrupted: true,
+      trigger: 'CONSULTATION',
+      guardrail: 'opted_out',
+    });
+  });
+
+  it('passes a null batch through', () => {
+    expect(withUsageAttributes(null, { guardrail: 'screened' })).toBeNull();
   });
 });

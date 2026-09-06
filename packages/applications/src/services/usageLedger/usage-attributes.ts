@@ -174,26 +174,34 @@ function describeType(value: unknown): string {
 }
 
 /**
- * Stamp `trigger` onto a batch a builder already produced.
+ * Merge extra allow-listed dimensions into a batch a builder already produced.
  *
- * The LLM builders (`buildLlmUsageInput` and friends) map an `apps/text` usage
- * block onto ledger rows; they know nothing about WHY the call happened, and
- * threading a caller-supplied dimension through every builder signature would
- * put the same optional parameter on five functions. So the activity is stamped
- * here, by the caller that knows it, in one place all four lanes share.
+ * The builders map an upstream usage block onto ledger rows; they know nothing
+ * about WHY the call happened or how it was screened, and threading a
+ * caller-supplied dimension through every builder signature would put the same
+ * optional parameter on five functions. So the dimensions the CALLER knows are
+ * merged here, in one place all the emitting lanes share.
  *
  * Returns a NEW batch — a caller may legitimately build once and emit twice
  * (the abort path and the completion path converge on one idempotency key), so
- * mutating the input would let the second emission inherit the first's dimension.
- * A `null` batch (nothing was consumed) passes through as `null`.
+ * mutating the input would let the second emission inherit the first's
+ * dimensions. A `null` batch (nothing was consumed) passes through as `null`.
  */
-export function withUsageTrigger<T extends { common: { attributesJson?: UsageAttributes | null } }>(
+export function withUsageAttributes<T extends { common: { attributesJson?: UsageAttributes | null } }>(
   batch: T | null,
-  trigger: UsageTrigger,
+  extra: UsageAttributes,
 ): T | null {
   if (!batch) return null;
   return {
     ...batch,
-    common: { ...batch.common, attributesJson: { ...(batch.common.attributesJson ?? {}), trigger } },
+    common: { ...batch.common, attributesJson: { ...(batch.common.attributesJson ?? {}), ...extra } },
   };
+}
+
+/** {@link withUsageAttributes} for the one dimension four lanes stamp. */
+export function withUsageTrigger<T extends { common: { attributesJson?: UsageAttributes | null } }>(
+  batch: T | null,
+  trigger: UsageTrigger,
+): T | null {
+  return withUsageAttributes(batch, { trigger });
 }
