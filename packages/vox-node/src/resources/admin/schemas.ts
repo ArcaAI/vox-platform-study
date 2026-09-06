@@ -3945,10 +3945,16 @@ export interface PromptTemplateResponse {
   resourceStatus?: 'ENABLED' | 'DISABLED';
   /** Template scope (e.g. USER_PERSONAL, DEPARTMENT_DEFAULT, TENANT_DEFAULT) */
   scope?: string;
+  /** The SYSTEM reference row this template was cloned from at provisioning. Null = the tenant authored it. */
+  sourceTemplateId?: string | null;
   /** Publication status */
   status: 'DRAFT' | 'PUBLISHED' | 'APPROVED';
   /** Tags */
   tags?: string[];
+  /** The clone is platform-managed: the tenant may not edit it. */
+  templateLocked?: boolean;
+  /** Owning tenant id. The SYSTEM tenant marks a platform/library template. */
+  tenantId?: string;
   /** Last update timestamp */
   updatedAt: string;
   /** Template variable definitions (raw, as stored) */

@@ -62,6 +62,7 @@ export class AdminPromptTemplateResource extends AdminResource {
         scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
         search?: string;
         status?: 'DRAFT' | 'PUBLISHED';
+        tags?: string;
       };
     } = {},
   ): Promise<PaginatedResponse & { data?: PromptTemplateResponse[] }> {
