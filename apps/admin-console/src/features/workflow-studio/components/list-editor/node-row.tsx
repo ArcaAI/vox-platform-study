@@ -2,13 +2,14 @@
 
 /**
  * One row of the structured list/tree editor — a focusable element with an
- * accessible name, its safety-class badge, its validation status, and row actions (Configure /
- * move up/down / Delete), all real `<button>`s. `mandatory` rows expose no Delete and say why —
+ * accessible name (TASK-890 black-box J4-F3: the node's label, else its type plus a short id —
+ * two same-typed rows are no longer indistinguishable), its safety-class badge, its validation
+ * status, and row actions (Configure / move up/down / Delete), all real `<button>`s. `mandatory` rows expose no Delete and say why —
  * the SAME rule the canvas enforces (`store.deleteNode`), never re-implemented per editor.
  */
 import { Badge, Button } from '@arcaai/ui';
 import { IconArrowDown, IconArrowUp, IconCopy, IconSettings, IconTrash } from '@tabler/icons-react';
-import { humanizeKey } from '../../lib/schema-form';
+import { nodeDisplayName } from '../../lib/node-identity';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreEdge, GraphStoreNode } from '../../store/types';
 import { EdgeEditor } from './edge-editor';
@@ -35,7 +36,7 @@ const SEVERITY_VARIANT = { ERROR: 'destructive', WARNING: 'secondary' } as const
 export function NodeRow({ node, edges, otherNodes, problems, selected, readOnly, canMoveUp, canMoveDown, onSelect, onDeleteRequest, onMove, onDuplicate, onConnect, onDisconnect }: NodeRowProps) {
   const mandatory = node.safetyClasses.includes('mandatory');
   const worstSeverity = problems.some((problem) => problem.severity === 'ERROR') ? 'ERROR' : problems.length > 0 ? 'WARNING' : null;
-  const label = humanizeKey(node.type);
+  const label = nodeDisplayName(node);
   const nodeEdges = edges.filter((edge) => edge.source === node.id);
 
   return (

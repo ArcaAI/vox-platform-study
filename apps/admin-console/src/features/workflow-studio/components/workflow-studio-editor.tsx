@@ -42,6 +42,7 @@ import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/g
 import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
 import { readPaletteDragType } from '../lib/palette-drag';
 import { actionKeyOf, effectiveNodePorts } from '../lib/core-ports';
+import { nodeDisplayName } from '../lib/node-identity';
 import { humanizeKey } from '../lib/schema-form';
 import {
   GraphStoreProvider,
@@ -454,7 +455,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const canvasNodes: WorkflowCanvasNode[] = nodes.map((node) => ({
     id: node.id,
     type: node.type,
-    label: humanizeKey(node.type),
+    // TASK-890 black-box J4-F3 — the header names the NODE (label, else type + short id), so two
+    // `core.agent` boxes are tellable apart on the canvas and in their Remove buttons.
+    label: nodeDisplayName(node),
     position: node.position,
     safetyClasses: node.safetyClasses,
     config: node.config,
