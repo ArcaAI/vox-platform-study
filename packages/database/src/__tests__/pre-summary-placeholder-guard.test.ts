@@ -14,13 +14,24 @@
  * dependency), so the nine-variable list is declared LOCALLY here, following
  * the same precedent already used in
  * `packages/database/src/prisma/db_main/seed/07b-arcaai-clinical-templates.ts`
- * (`PRE_SUMMARY_VARIABLES`, :144-154) — both copies must independently list
+ * (`PRE_SUMMARY_VARIABLES`, :224-233) — both copies must independently list
  * the same nine names as the shared source of truth,
  * `packages/applications/src/services/consultation/prompt/pre-summary-variables.ts`
  * (`PRE_SUMMARY_TEMPLATE_VARIABLES`). This test asserts THIS package's local
  * copy still matches the seed module's local copy, so the two cannot
  * silently diverge from each other, and separately asserts every seeded
  * pre-summary body actually carries its expected placeholders.
+ *
+ * TASK-890 §3.2/§3.11 — the nine v1 SINGLE-BRACE placeholders (`{name}`) were
+ * converted to the ONE `{{context.name}}` grammar in `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT`
+ * (`07-prompt-template.ts`) and `SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT`
+ * (`07d-dept-free-pre-summary-default.ts`), the two SYSTEM defaults every
+ * tenant resolves to today. `PRE_SUMMARY_CONTENT` (`07b-arcaai-clinical-content.ts`,
+ * the v1 HISTORICAL snapshot) was deliberately left untouched (B-10, the
+ * seed-conversion census scopes conversion to the SYSTEM default + the v3
+ * corpus only) and still carries the single-brace form. The guard below is
+ * therefore brace-STYLE-AWARE: it checks each body against the grammar it
+ * actually carries, never a single hardcoded brace shape.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -51,89 +62,105 @@ const NINE_V1_PLACEHOLDERS = [
 /** The regression phrase that replaced all nine placeholders when this shipped. */
 const REGRESSION_PHRASE = 'provided in the request context';
 
-function placeholdersPresentIn(body: string): string[] {
-  return NINE_V1_PLACEHOLDERS.filter((name) => body.includes(`{${name}}`));
+type BraceStyle = 'single' | 'context';
+
+/** The literal token a body carries for `name`, in the given brace style. */
+function tokenFor(name: string, style: BraceStyle): string {
+  return style === 'single' ? `{${name}}` : `{{context.${name}}}`;
+}
+
+function placeholdersPresentIn(body: string, style: BraceStyle): string[] {
+  return NINE_V1_PLACEHOLDERS.filter((name) => body.includes(tokenFor(name, style)));
 }
 
 /**
  * Builds a "de-parameterized" copy of a body the way the shipped defect did:
- * every `{placeholder}` literally replaced with the regression phrase. This
- * is a LOCAL FIXTURE STRING constructed inside the test — it never touches
- * the seed files on disk.
+ * every placeholder token (in the body's OWN brace style) literally replaced
+ * with the regression phrase. This is a LOCAL FIXTURE STRING constructed
+ * inside the test — it never touches the seed files on disk.
  */
-function deParameterize(body: string): string {
+function deParameterize(body: string, style: BraceStyle): string {
   let result = body;
   for (const name of NINE_V1_PLACEHOLDERS) {
-    result = result.split(`{${name}}`).join(REGRESSION_PHRASE);
+    result = result.split(tokenFor(name, style)).join(REGRESSION_PHRASE);
   }
   return result;
 }
 
 describe('seeded pre-summary bodies still carry all v1 placeholders', () => {
   it('this package’s local placeholder list matches the seed module’s local list (07b-arcaai-clinical-templates.ts, PRE_SUMMARY_VARIABLES)', () => {
-    // `PRE_SUMMARY_VARIABLES` (07b-arcaai-clinical-templates.ts:144-154) is
-    // private (not exported), but it is assigned verbatim to the `variables`
-    // field of the seeded ArcaAI PRE_SUMMARY template row — the one exported
-    // surface that lets us prove the two independently-declared nine-variable
-    // lists have not drifted apart, without either package importing the
-    // other.
+    // `PRE_SUMMARY_VARIABLES` (07b-arcaai-clinical-templates.ts) is
+    // private (not exported), but it is assigned (as typed declarations,
+    // TASK-890 §3.6) to the `variables` field of the seeded ArcaAI
+    // PRE_SUMMARY template row — the one exported surface that lets us prove
+    // the two independently-declared nine-variable lists have not drifted
+    // apart, without either package importing the other.
     const preSummaryTemplate = ARCAAI_CLINICAL_TEMPLATES.find(
       (template) => template.id === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
     );
     expect(preSummaryTemplate, 'no ARCAAI_CLINICAL_TEMPLATES row for ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY').toBeDefined();
-    expect(preSummaryTemplate!.variables).toEqual([...NINE_V1_PLACEHOLDERS]);
+    expect(preSummaryTemplate!.variables).toEqual(NINE_V1_PLACEHOLDERS.map((name) => ({ name, type: 'string', required: true })));
   });
 
-  it('PRE_SUMMARY_CONTENT (07b-arcaai-clinical-content.ts) contains all nine placeholders and not the regression phrase', () => {
-    const found = placeholdersPresentIn(PRE_SUMMARY_CONTENT);
+  // v1 HISTORICAL snapshot — deliberately NOT converted (B-10); still
+  // single-brace.
+  it('PRE_SUMMARY_CONTENT (07b-arcaai-clinical-content.ts) contains all nine single-brace placeholders and not the regression phrase', () => {
+    const found = placeholdersPresentIn(PRE_SUMMARY_CONTENT, 'single');
     expect(found, `missing placeholders: ${NINE_V1_PLACEHOLDERS.filter((n) => !found.includes(n)).join(', ')}`).toEqual([
       ...NINE_V1_PLACEHOLDERS,
     ]);
     expect(PRE_SUMMARY_CONTENT).not.toContain(REGRESSION_PHRASE);
   });
 
-  it('SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT (07-prompt-template.ts) contains all nine placeholders and not the regression phrase', () => {
-    const found = placeholdersPresentIn(SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT);
+  // Converted (TASK-890 §3.2) to the ONE `{{context.*}}` grammar.
+  it('SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT (07-prompt-template.ts) contains all nine {{context.*}} placeholders and not the regression phrase', () => {
+    const found = placeholdersPresentIn(SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT, 'context');
     expect(found, `missing placeholders: ${NINE_V1_PLACEHOLDERS.filter((n) => !found.includes(n)).join(', ')}`).toEqual([
       ...NINE_V1_PLACEHOLDERS,
     ]);
     expect(SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT).not.toContain(REGRESSION_PHRASE);
+    // And the old single-brace form must not have survived the conversion.
+    for (const name of NINE_V1_PLACEHOLDERS) {
+      expect(SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT).not.toContain(`{${name}}`);
+    }
   });
 
-  it('SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT (07d-dept-free-pre-summary-default.ts) contains its seven placeholders (deliberately drops current_department and visit_type) and not the regression phrase', () => {
+  it('SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT (07d-dept-free-pre-summary-default.ts) contains its seven {{context.*}} placeholders (deliberately drops current_department and visit_type) and not the regression phrase', () => {
     // Per this file's own header (07d-dept-free-pre-summary-default.ts:20-21),
-    // the dept-free fork deliberately drops `{current_department}` and
-    // `{visit_type}` — it must NOT carry those two, but must still carry the
-    // remaining seven.
+    // the dept-free fork deliberately drops `{{context.current_department}}`
+    // and `{{context.visit_type}}` — it must NOT carry those two, but must
+    // still carry the remaining seven.
     const DEPT_FREE_EXPECTED = NINE_V1_PLACEHOLDERS.filter(
       (name) => name !== 'current_department' && name !== 'visit_type',
     );
     expect(DEPT_FREE_EXPECTED).toHaveLength(7);
 
-    const found = placeholdersPresentIn(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT);
+    const found = placeholdersPresentIn(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT, 'context');
     expect(found, `missing placeholders: ${DEPT_FREE_EXPECTED.filter((n) => !found.includes(n)).join(', ')}`).toEqual(
       DEPT_FREE_EXPECTED,
     );
 
-    // And it must NOT have regained the two dropped axes.
+    // And it must NOT have regained the two dropped axes, in EITHER brace style.
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('{current_department}');
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('{visit_type}');
+    expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('{{context.current_department}}');
+    expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('{{context.visit_type}}');
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain(REGRESSION_PHRASE);
   });
 
   describe('guard self-test — proves the guard actually fails against a de-parameterized body', () => {
     // These three specs pin the CURRENT, correctly-parameterized bodies as
     // fixture strings (captured at write time), de-parameterize a COPY exactly
-    // the way the shipped defect did (every `{placeholder}` -> the regression
-    // phrase), and assert the guard's own assertions would fail against that
-    // copy. Nothing here touches the seed files on disk — the "regression" is a
-    // local string only.
+    // the way the shipped defect did (every placeholder token -> the
+    // regression phrase), and assert the guard's own assertions would fail
+    // against that copy. Nothing here touches the seed files on disk — the
+    // "regression" is a local string only.
     it.each([
-      ['PRE_SUMMARY_CONTENT', PRE_SUMMARY_CONTENT],
-      ['SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT', SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT],
-      ['SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT', SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT],
-    ] as const)('%s: a de-parameterized copy fails both the placeholder-presence and regression-phrase checks', (_label, body) => {
-      const deParameterized = deParameterize(body);
+      ['PRE_SUMMARY_CONTENT', PRE_SUMMARY_CONTENT, 'single'],
+      ['SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT', SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT, 'context'],
+      ['SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT', SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT, 'context'],
+    ] as const)('%s: a de-parameterized copy fails both the placeholder-presence and regression-phrase checks', (_label, body, style) => {
+      const deParameterized = deParameterize(body, style);
 
       // Sanity: de-parameterizing a real (parameterized) body must actually
       // change it — otherwise this "proof" would be vacuous.
@@ -141,7 +168,7 @@ describe('seeded pre-summary bodies still carry all v1 placeholders', () => {
 
       // The de-parameterized copy carries NONE of the nine placeholders
       // anymore (this is the exact shipped failure mode).
-      const foundInBroken = placeholdersPresentIn(deParameterized);
+      const foundInBroken = placeholdersPresentIn(deParameterized, style);
       expect(foundInBroken).toEqual([]);
 
       // And it now carries the regression phrase — this is what the real

@@ -1,0 +1,140 @@
+/**
+ * `<PromptTemplatePicker>` — the ONE shared prompt-template picker (TASK-890
+ * REQ-6, §4.1 L4). Both consumers (agents form, Studio inspector) render this
+ * component rather than hand-rolling their own picker.
+ */
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { axe } from 'vitest-axe';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { renderWithProviders } from '@/test/render';
+import { PromptTemplatePicker } from '../prompt-template-picker';
+import type { PromptPickerTemplate } from '../types';
+
+function template(overrides: Partial<PromptPickerTemplate> = {}): PromptPickerTemplate {
+  return {
+    id: 'tpl-1',
+    name: 'SOAP Summary',
+    status: 'APPROVED',
+    category: 'SUMMARY',
+    approvedVersionNumber: 3,
+    currentVersionNumber: 3,
+    contentPreview: 'You are a clinical assistant...',
+    declaredVariables: [
+      { name: 'topic', type: 'string', required: true },
+      { name: 'depth', type: 'string', required: false },
+    ],
+    ...overrides,
+  };
+}
+
+function stubList(templates: PromptPickerTemplate[]): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ data: templates, count: templates.length, limit: 200, page: 1 })),
+  );
+}
+
+function renderPicker(value: string | null, onChange = vi.fn(), extra: Record<string, unknown> = {}) {
+  return { onChange, ...renderWithProviders(<PromptTemplatePicker id="prompt" value={value} onChange={onChange} {...extra} />) };
+}
+
+async function openSelect(label: string | RegExp) {
+  const trigger = await screen.findByLabelText(label);
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  return screen.findByRole('listbox');
+}
+
+beforeAll(() => {
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  document.documentElement.classList.remove('dark');
+  cleanup();
+});
+
+describe('PromptTemplatePicker — the picker', () => {
+  it('shows a Skeleton while the list loads, never a spinner', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    const { container } = renderPicker(null);
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+  });
+
+  it('falls back to an id box when the list is unavailable, keeping the value editable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 500 })));
+    const onChange = vi.fn();
+    renderPicker('', onChange);
+    const box = await screen.findByLabelText(/prompt template id/i);
+    fireEvent.change(box, { target: { value: 'tpl-x' } });
+    expect(onChange).toHaveBeenCalledWith('tpl-x');
+    expect(screen.getByText(/unavailable/i)).toBeTruthy();
+  });
+
+  it('lists the tenant’s templates and reports the chosen id', async () => {
+    stubList([template(), template({ id: 'tpl-2', name: 'Cardiology Note', status: 'DRAFT', approvedVersionNumber: null })]);
+    const onChange = vi.fn();
+    renderPicker(null, onChange);
+
+    const listbox = await openSelect('Prompt template');
+    fireEvent.click(within(listbox).getByRole('option', { name: /Cardiology Note/ }));
+    expect(onChange).toHaveBeenCalledWith('tpl-2');
+  });
+
+  it('renders the quick view once a template is selected: status, approval pin, variable chips, preview, and the deep link', async () => {
+    stubList([template()]);
+    renderPicker('tpl-1');
+
+    const quickView = within(await screen.findByTestId('prompt-template-quick-view'));
+    expect(quickView.getByText('Approved')).toBeTruthy();
+    expect(quickView.getByText(/serving v3/i)).toBeTruthy();
+    expect(quickView.getByText('topic')).toBeTruthy();
+    expect(quickView.getByText('depth?')).toBeTruthy();
+    expect(quickView.getByText(/You are a clinical assistant/)).toBeTruthy();
+    const link = quickView.getByRole('link', { name: /open in prompt templates/i });
+    expect(link.getAttribute('href')).toBe('/prompt-templates?template=tpl-1');
+  });
+
+  it('shows "not approved" when the template has never been approved', async () => {
+    stubList([template({ approvedVersionNumber: null, status: 'DRAFT' })]);
+    renderPicker('tpl-1');
+    const quickView = within(await screen.findByTestId('prompt-template-quick-view'));
+    expect(quickView.getByText('not approved')).toBeTruthy();
+  });
+
+  it('reports the resolved quick-view record via onTemplateChange, once, on initial resolution', async () => {
+    stubList([template()]);
+    const onTemplateChange = vi.fn();
+    renderPicker('tpl-1', vi.fn(), { onTemplateChange });
+    await screen.findByTestId('prompt-template-quick-view');
+    expect(onTemplateChange).toHaveBeenCalledWith(expect.objectContaining({ id: 'tpl-1' }));
+  });
+
+  it('falls back to a direct read when the selected id is not in a filtered list', async () => {
+    const fetchMock = vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('/tpl-1')) return Response.json(template({ id: 'tpl-1', name: 'Direct Read' }));
+      return Response.json({ data: [template({ id: 'tpl-2' })], count: 1, limit: 200, page: 1 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPicker('tpl-1');
+    expect(await screen.findByText(/You are a clinical assistant/)).toBeTruthy();
+  });
+});
+
+describe('PromptTemplatePicker — accessibility', () => {
+  it('0 axe violations in the light theme, with a selected template on screen', async () => {
+    stubList([template()]);
+    const { container } = renderPicker('tpl-1');
+    await screen.findByTestId('prompt-template-quick-view');
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('0 axe violations in the dark theme, on the empty list fallback', async () => {
+    document.documentElement.classList.add('dark');
+    stubList([]);
+    const { container } = renderPicker(null);
+    await screen.findByLabelText(/prompt template id/i);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});

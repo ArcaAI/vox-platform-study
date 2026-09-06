@@ -67,6 +67,11 @@ describe('R-T1 / R-T2 — the prompt-template test route accepts the full test-b
   it.each([
     ['provider', 'R-T2 — caller-selected LLM provider'],
     ['model', 'R-T2 — caller-selected LLM model'],
+    // TASK-890 §3.7 — the console catalogue picker's selector: a tenant-catalogue
+    // `AiModel` row id, resolved server-side to the wire provider/model (never
+    // exposing the routing identifier the catalogue DTO omits). Mutually
+    // exclusive with provider/model.
+    ['modelId', 'R-T2/TASK-890 §3.7 — catalogue-picker model selection'],
     ['dryRun', 'R-T1/B-11 — test without mutating the template under OCC'],
     ['versionNumber', 'R-T1/B-11 — test an immutable PromptVersion, not the mutable draft'],
     ['goldenCaseId', 'R-T1 — PREDEFINED example data (golden case)'],
@@ -85,7 +90,7 @@ describe('R-T1 / R-T2 — the prompt-template test route accepts the full test-b
 
   it('adds no undeclared field beyond the documented test-bench contract', () => {
     expect([...properties].sort()).toEqual(
-      ['dryRun', 'expectedVersion', 'goldenCaseId', 'model', 'provider', 'sampleInput', 'variables', 'versionNumber'].sort(),
+      ['dryRun', 'expectedVersion', 'goldenCaseId', 'model', 'modelId', 'provider', 'sampleInput', 'variables', 'versionNumber'].sort(),
     );
   });
 });

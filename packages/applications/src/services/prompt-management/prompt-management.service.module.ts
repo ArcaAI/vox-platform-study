@@ -11,6 +11,7 @@ import { TextRequestServiceModule } from '../text-request/text-request.service.m
 import { UserProfileServiceModule } from '../user/userProfile/userProfile.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { EvalServiceModule } from '../eval/eval.service.module';
+import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.module';
 
 @Module({
   // HttpModule + ConfigModule wire the TEXT/text-generation client
@@ -21,7 +22,9 @@ import { EvalServiceModule } from '../eval/eval.service.module';
   // TextRequestServiceModule supplies the shared tenant-credential + runtime-profile
   // enrichment the TEXT proxy uses.
   // UserProfileServiceModule supplies the preferred-template write.
-  // EntitlementsServiceModule supplies the maxPromptTemplates quota check.
+  // EntitlementsServiceModule supplies the maxPromptTemplates quota check AND
+  // (TASK-890 §3.13) the monthlyLlmTokens precheck on a non-dry test run.
+  // UsageLedgerServiceModule supplies the finalize-time usage record.
   imports: [
     CommonServiceModule,
     CoreDatabaseModule,
@@ -33,6 +36,7 @@ import { EvalServiceModule } from '../eval/eval.service.module';
     UserProfileServiceModule,
     EntitlementsServiceModule,
     EvalServiceModule,
+    UsageLedgerServiceModule,
   ],
   providers: [
     PromptManagementService,
