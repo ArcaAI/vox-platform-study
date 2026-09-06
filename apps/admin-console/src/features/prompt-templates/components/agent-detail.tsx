@@ -12,7 +12,7 @@ import { formatDateTime } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useTemplate } from '../api/hooks';
-import { ApprovalPin, TemplateStatusBadge } from './approval-pin';
+import { ApprovalPin, TemplateOriginBadge, TemplateStatusBadge } from './approval-pin';
 import type { PromptTemplate, PromptTemplateCategory } from '../api/types';
 import { CreateTemplateForm, EditTemplateForm } from './template-form-dialog';
 import { TestRunPanel } from './test-run-panel';
@@ -145,6 +145,7 @@ export function AgentDetailDrawer({
           template ? (
             <>
               <StatusBadge template={template} />
+              <TemplateOriginBadge template={template} />
               <ResourceStatusBadge status={template.resourceStatus} />
             </>
           ) : null

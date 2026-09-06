@@ -66,6 +66,14 @@ export interface PromptTemplate {
    * actually running. Optional here because older gateways omit the field.
    */
   approvedVersionNumber?: number | null;
+  /**
+   * TASK-890 §3.4 — reference-set provenance, the prompt counterpart of
+   * `Agent.sourceAgentId`. Set = this row was CLONED from the SYSTEM reference
+   * set when the tenant was provisioned; `templateLocked` = the platform owns
+   * it and the tenant may not edit it. Optional: older gateways omit both.
+   */
+  sourceTemplateId?: string | null;
+  templateLocked?: boolean;
   departmentId?: string;
   tags?: string[];
   createdAt: string;

@@ -43,6 +43,41 @@ describe('PromptManagementDtoMapper', () => {
       expect(result.updatedAt).toBe('2026-02-18T12:00:00.000Z');
     });
 
+    // TASK-890 J2-5 — reference-set provenance. `AgentResponse` already
+    // carries `sourceAgentId`, and the console badges "Platform origin" off
+    // it; a cloned PROMPT was indistinguishable from a hand-written one.
+    it('should surface reference-set provenance (sourceTemplateId / templateLocked)', () => {
+      const cloned = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-clone',
+        name: 'ArcaAI SOAP Summary',
+        content: 'x',
+        category: 'SUMMARY',
+        currentVersionNumber: 1,
+        sourceTemplateId: 'sys-tpl-1',
+        templateLocked: true,
+        createdAt: new Date('2026-02-18T10:00:00Z'),
+        updatedAt: new Date('2026-02-18T10:00:00Z'),
+      } as never);
+
+      expect(cloned.sourceTemplateId).toBe('sys-tpl-1');
+      expect(cloned.templateLocked).toBe(true);
+    });
+
+    it('should report a hand-written template as unlocked with no source', () => {
+      const own = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-own',
+        name: 'Mine',
+        content: 'x',
+        category: 'CUSTOM',
+        currentVersionNumber: 1,
+        createdAt: new Date('2026-02-18T10:00:00Z'),
+        updatedAt: new Date('2026-02-18T10:00:00Z'),
+      } as never);
+
+      expect(own.sourceTemplateId).toBeNull();
+      expect(own.templateLocked).toBe(false);
+    });
+
     // The pinned approval snapshot is what resolution serves; the admin
     // console cannot show "running v3, edited to v5" without it.
     it('should surface approvedVersionNumber, and null when never approved', () => {

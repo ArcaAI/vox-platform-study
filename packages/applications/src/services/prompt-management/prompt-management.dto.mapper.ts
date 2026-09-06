@@ -26,6 +26,10 @@ export class PromptManagementDtoMapper {
       // The snapshot resolution actually serves. Without it the console cannot
       // distinguish "approved and running v3" from "edited to v5 since".
       approvedVersionNumber: entity.approvedVersionNumber ?? null,
+      // Reference-set provenance — what the console badges "Platform origin"
+      // off, and why an edit on a locked clone is refused.
+      sourceTemplateId: entity.sourceTemplateId ?? null,
+      templateLocked: entity.templateLocked ?? false,
       departmentId: entity.departmentId ?? undefined,
       tags: entity.tags ?? undefined,
       createdAt: entity.createdAt.toISOString(),

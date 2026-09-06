@@ -71,6 +71,23 @@ export class PromptTemplateResponse {
   })
   approvedVersionNumber?: number | null;
 
+  /**
+   * TASK-890 §3.4 — REFERENCE-SET provenance, the prompt counterpart of
+   * `AgentResponse.sourceAgentId`. `sourceTemplateId` names the SYSTEM row this
+   * one was CLONED from when the tenant was provisioned (null = hand-written by
+   * the tenant); `templateLocked` means the tenant may not edit it, so a console
+   * that cannot see either field cannot explain why an edit is refused, or which
+   * rows a re-sync would replace.
+   */
+  @ApiPropertyOptional({
+    description: 'The SYSTEM reference row this template was cloned from at provisioning. Null = the tenant authored it.',
+    nullable: true,
+  })
+  sourceTemplateId?: string | null;
+
+  @ApiPropertyOptional({ description: 'The clone is platform-managed: the tenant may not edit it.', default: false })
+  templateLocked?: boolean;
+
   @ApiPropertyOptional({ description: 'Department ID' })
   departmentId?: string;
 

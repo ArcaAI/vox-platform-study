@@ -73,3 +73,23 @@ export function ApprovalPin({ template }: { template: Pick<PromptTemplate, 'appr
     </Badge>
   );
 }
+
+/**
+ * TASK-890 J2-5 — reference-set provenance, mirroring `AgentOwnerBadge`.
+ *
+ * `GET admin/prompt-templates` answers only rows this tenant OWNS (the SYSTEM
+ * library is cloned at provisioning, never read live), so "Platform origin"
+ * names where the row's CONTENT came from, not who may edit it. A locked clone
+ * is the one exception, and it says so — otherwise a refused edit has no
+ * visible cause.
+ */
+export function TemplateOriginBadge({ template }: { template: Pick<PromptTemplate, 'sourceTemplateId' | 'templateLocked'> }) {
+  if (template.sourceTemplateId === undefined) return null;
+  if (!template.sourceTemplateId) return <Badge variant="outline">Tenant</Badge>;
+  return (
+    <Badge variant="secondary" title={`Cloned from the platform reference template ${template.sourceTemplateId}.`}>
+      Platform origin
+      {template.templateLocked ? ' · locked' : ''}
+    </Badge>
+  );
+}
