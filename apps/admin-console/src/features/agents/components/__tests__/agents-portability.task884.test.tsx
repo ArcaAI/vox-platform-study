@@ -28,9 +28,15 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     task: 'TEXT_GENERATION',
     versionNumber: 2,
     parentVersionId: null,
+    sourceAgentId: null,
+    sourceTenantId: null,
+    sourceSlug: null,
+    sourceVersionNumber: null,
     status: 'PUBLISHED',
     isActive: true,
     modelId: 'm-llm',
+    contextSchemaId: null,
+    contextSchemaVersionNumber: null,
     modelSlug: 'lms-gemma-4-e2b-it-qat',
     fallbacks: [],
     instruction: { systemPrompt: 'You are a scribe.' },
@@ -55,10 +61,13 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   };
 }
 
+// TASK-890 OD-M — sys-1 is THIS tenant's own CLONE of a platform template (`sourceTenantId`
+// names the origin), not a live SYSTEM row: `GET admin/agents` never returns `tenantId ===
+// SYSTEM` to a tenant caller. The tag content itself is what these tests actually exercise.
 const AGENTS: Agent[] = [
   agent(),
   agent({ id: 'a-2', slug: 'clinic-general', name: 'Clinic general', tags: ['tier:tenant', 'specialty:general'] }),
-  agent({ id: 'sys-1', tenantId: SYSTEM, slug: 'platform-summarization', name: 'Platform summarization', tags: ['tier:platform-default', 'task:llm'] }),
+  agent({ id: 'sys-1', sourceTenantId: SYSTEM, sourceSlug: 'platform-summarization', slug: 'clinic-platform-summarization', name: 'Platform summarization', tags: ['tier:platform-default', 'task:llm'] }),
 ];
 
 interface RecordedCall {
@@ -97,7 +106,8 @@ function stubFetch(extra: (call: RecordedCall) => Response | undefined = () => u
       if (path === '/api/hope/admin/agents/a-1') return Response.json(AGENTS[0], { headers: { etag: '"3"' } });
       if (path.endsWith('/versions')) return Response.json([AGENTS[0]]);
       if (path === '/api/hope/admin/agent-assignments') return Response.json([]);
-      if (path === '/api/hope/admin/ai-models') return Response.json([]);
+      if (path === '/api/hope/admin/ai-models/catalogue') return Response.json({ providers: [], models: [] });
+      if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([]);
       if (path === '/api/hope/admin/prompt-templates') return Response.json({ data: [] });
       throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
     }),

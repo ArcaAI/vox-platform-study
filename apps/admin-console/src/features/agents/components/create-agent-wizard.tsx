@@ -3,49 +3,31 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { AGENT_IO_DEFAULTS } from '@arcaai/workflow-contract';
-import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { RadioGroup, RadioGroupItem } from '@arcaai/ui/components/shadcn/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
-import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
-import {
-  AGENT_TASKS,
-  AGENT_TASK_LABEL,
-  AGENT_TASK_MODEL_TASK_TYPE,
-  useCreateAgent,
-  useInstructionTemplates,
-  usePublishAgent,
-  useRegistryModels,
-  type Agent,
-  type AgentProblemBody,
-  type AgentTask,
-  type CreateAgentRequest,
-  type RegistryModel,
-} from '../api';
+import { AGENT_TASKS, AGENT_TASK_LABEL, useCreateAgent, usePublishAgent, type Agent, type AgentProblemBody, type AgentPromptVariableBinding, type AgentTask, type CreateAgentRequest } from '../api';
+import { InstructionBindingForm, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
+import { ModelPicker, useTaskModelCatalogue } from './model-picker';
 import { ParametersForm } from './parameters-form';
 
 const STEPS = ['Task', 'Model', 'Instruction', 'Parameters', 'Schemas', 'Review'] as const;
 type Step = (typeof STEPS)[number];
 
-/** Mirrors CLOUD_BYO_PROVIDERS for the three agent services — a hint, the gateway is the authority. */
-const CLOUD_PROVIDERS = new Set(['azure', 'azure-speech', 'bedrock', 'openai', 'anthropic', 'vertex', 'sarvam']);
-const ENGINE_PROVIDERS = new Set(['lm-studio', 'lmstudio', 'ollama', 'vllm', 'llama-cpp']);
-
-export function modelAvailabilityHint(model: RegistryModel): { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' } {
-  if (model.resourceStatus !== 'ENABLED') return { label: 'Disabled', variant: 'destructive' };
-  const provider = model.provider ?? '';
-  if (CLOUD_PROVIDERS.has(provider)) return { label: 'Needs a provider credential', variant: 'secondary' };
-  if (ENGINE_PROVIDERS.has(provider)) return { label: 'Engine-served', variant: 'default' };
-  if (model.localPath || model.downloadStatus === 'DOWNLOADED') return { label: 'Weights staged', variant: 'default' };
-  return { label: 'Weights not staged', variant: 'destructive' };
-}
+const NO_INSTRUCTION: InstructionBindingValue = {
+  promptTemplateId: null,
+  promptVersionNumber: null,
+  variables: {},
+  contextSchemaId: null,
+  contextSchemaVersionNumber: null,
+};
 
 export function slugify(name: string): string {
   return name
@@ -64,7 +46,7 @@ interface WizardState {
   modelId: string;
   fallbackModelIds: string[];
   instructionMode: 'template' | 'inline';
-  promptTemplateId: string;
+  binding: InstructionBindingValue;
   systemPrompt: string;
   initialPrompt: string;
   hotwords: string;
@@ -82,7 +64,7 @@ const INITIAL: WizardState = {
   modelId: '',
   fallbackModelIds: [],
   instructionMode: 'template',
-  promptTemplateId: '',
+  binding: NO_INSTRUCTION,
   systemPrompt: '',
   initialPrompt: '',
   hotwords: '',
@@ -91,10 +73,22 @@ const INITIAL: WizardState = {
   outputSchema: null,
 };
 
+/** `{ path: 'x' }` when set, `{ value: 'x' }` otherwise — mirrors `InstructionBindingForm`'s own bindings verbatim, so nothing is re-typed here. */
+function bindingsToRequest(variables: Record<string, AgentPromptVariableBinding>): Record<string, AgentPromptVariableBinding> | undefined {
+  return Object.keys(variables).length ? variables : undefined;
+}
+
 export function buildCreateRequest(state: WizardState): CreateAgentRequest {
   let instruction: Record<string, unknown> | undefined;
   if (state.task === 'TEXT_GENERATION') {
-    instruction = state.instructionMode === 'template' ? { promptTemplateId: state.promptTemplateId } : { systemPrompt: state.systemPrompt };
+    instruction =
+      state.instructionMode === 'template'
+        ? {
+            promptTemplateId: state.binding.promptTemplateId,
+            ...(state.binding.promptVersionNumber !== null ? { promptVersionNumber: state.binding.promptVersionNumber } : {}),
+            ...(bindingsToRequest(state.binding.variables) ? { variables: state.binding.variables } : {}),
+          }
+        : { systemPrompt: state.systemPrompt };
   } else if (state.task === 'SPEECH_TO_TEXT') {
     const hotwords = state.hotwords
       .split(',')
@@ -108,6 +102,9 @@ export function buildCreateRequest(state: WizardState): CreateAgentRequest {
     ...(state.description.trim() ? { description: state.description.trim() } : {}),
     task: state.task,
     modelId: state.modelId,
+    ...(state.task === 'TEXT_GENERATION' && state.binding.contextSchemaId
+      ? { contextSchemaId: state.binding.contextSchemaId, contextSchemaVersionNumber: state.binding.contextSchemaVersionNumber }
+      : {}),
     ...(state.fallbackModelIds.length ? { fallbackModelIds: state.fallbackModelIds } : {}),
     ...(instruction && Object.keys(instruction).length ? { instruction } : {}),
     ...(Object.keys(state.parameters).length ? { parameters: state.parameters } : {}),
@@ -132,19 +129,17 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
   const [state, setState] = useState<WizardState>(INITIAL);
   const create = useCreateAgent();
   const publish = usePublishAgent();
-  const models = useRegistryModels();
-  const templates = useInstructionTemplates();
+  const catalogue = useTaskModelCatalogue(state.task);
 
   const stepIndex = STEPS.indexOf(step);
   const patch = (next: Partial<WizardState>) => setState((current) => ({ ...current, ...next }));
 
-  const taskModels = useMemo(() => (models.data ?? []).filter((model) => model.taskType === AGENT_TASK_MODEL_TASK_TYPE[state.task]), [models.data, state.task]);
-  const approvedTemplates = useMemo(() => (templates.data ?? []).filter((template) => template.status === 'APPROVED'), [templates.data]);
+  const fallbackCandidates = useMemo(() => catalogue.models.filter((model) => model.id !== state.modelId && !state.fallbackModelIds.includes(model.id)), [catalogue.models, state.modelId, state.fallbackModelIds]);
 
   const canAdvance: Record<Step, boolean> = {
     Task: state.name.trim().length > 0 && /^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$/.test(state.slug),
     Model: state.modelId.length > 0,
-    Instruction: state.task !== 'TEXT_GENERATION' || (state.instructionMode === 'template' ? state.promptTemplateId.length > 0 : state.systemPrompt.trim().length > 0),
+    Instruction: state.task !== 'TEXT_GENERATION' || (state.instructionMode === 'template' ? !!state.binding.promptTemplateId : state.systemPrompt.trim().length > 0),
     Parameters: true,
     Schemas: true,
     Review: true,
@@ -226,7 +221,10 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
             <legend className="text-sm font-medium">
               Task <span aria-hidden>*</span>
             </legend>
-            <RadioGroup value={state.task} onValueChange={(task) => patch({ task: task as AgentTask, modelId: '', fallbackModelIds: [], parameters: {}, inputSchema: null, outputSchema: null })}>
+            <RadioGroup
+              value={state.task}
+              onValueChange={(task) => patch({ task: task as AgentTask, modelId: '', fallbackModelIds: [], binding: NO_INSTRUCTION, parameters: {}, inputSchema: null, outputSchema: null })}
+            >
               {AGENT_TASKS.map((task) => (
                 <div key={task} className="flex items-center gap-2">
                   <RadioGroupItem id={`task-${task}`} value={task} />
@@ -257,56 +255,26 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
 
       {step === 'Model' ? (
         <div className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">Registry models whose task type is {AGENT_TASK_MODEL_TASK_TYPE[state.task]}. Publish fails closed when the model is unavailable.</p>
-          {models.isPending ? (
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
-            </div>
-          ) : (
-            <RadioGroup value={state.modelId} onValueChange={(modelId) => patch({ modelId, fallbackModelIds: state.fallbackModelIds.filter((id) => id !== modelId) })} aria-label="Model">
-              {taskModels.map((model) => {
-                const hint = modelAvailabilityHint(model);
-                return (
-                  <div key={model.id} className="flex items-center gap-2 rounded-md border px-3 py-2">
-                    <RadioGroupItem id={`model-${model.id}`} value={model.id} />
-                    <Label htmlFor={`model-${model.id}`} className="flex flex-1 flex-col">
-                      <span>{model.name}</span>
-                      <span className="text-muted-foreground font-mono text-xs">
-                        {model.slug}
-                        {model.provider ? ` · ${model.provider}` : ''}
-                      </span>
-                    </Label>
-                    <Badge variant={hint.variant}>{hint.label}</Badge>
-                  </div>
-                );
-              })}
-              {taskModels.length === 0 ? <p className="text-muted-foreground text-sm">No registry model of this task type is visible to this tenant.</p> : null}
-            </RadioGroup>
-          )}
+          <p className="text-muted-foreground text-sm">Pick a provider, then a model of this task. Publish fails closed when the model is unusable.</p>
+          <ModelPicker task={state.task} value={state.modelId} onChange={(modelId) => patch({ modelId, fallbackModelIds: state.fallbackModelIds.filter((id) => id !== modelId) })} />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-fallbacks">Fallback models (in order)</Label>
-            <Select
-              value=""
-              onValueChange={(modelId) => patch({ fallbackModelIds: state.fallbackModelIds.includes(modelId) ? state.fallbackModelIds : [...state.fallbackModelIds, modelId] })}
-            >
+            <Select value="" onValueChange={(modelId) => patch({ fallbackModelIds: state.fallbackModelIds.includes(modelId) ? state.fallbackModelIds : [...state.fallbackModelIds, modelId] })}>
               <SelectTrigger id="agent-fallbacks">
                 <SelectValue placeholder="Add a fallback" />
               </SelectTrigger>
               <SelectContent>
-                {taskModels
-                  .filter((model) => model.id !== state.modelId && !state.fallbackModelIds.includes(model.id))
-                  .map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      {model.name}
-                    </SelectItem>
-                  ))}
+                {fallbackCandidates.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             {state.fallbackModelIds.length ? (
               <ol className="flex flex-wrap gap-2">
                 {state.fallbackModelIds.map((id, index) => {
-                  const model = taskModels.find((candidate) => candidate.id === id);
+                  const model = catalogue.models.find((candidate) => candidate.id === id);
                   return (
                     <li key={id}>
                       <Button type="button" size="sm" variant="outline" aria-label={`Remove fallback ${model?.name ?? id}`} onClick={() => patch({ fallbackModelIds: state.fallbackModelIds.filter((other) => other !== id) })}>
@@ -336,24 +304,7 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
                 </div>
               </RadioGroup>
               {state.instructionMode === 'template' ? (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="agent-template">
-                    Template <span aria-hidden>*</span>
-                  </Label>
-                  <Select value={state.promptTemplateId} onValueChange={(promptTemplateId) => patch({ promptTemplateId })}>
-                    <SelectTrigger id="agent-template">
-                      <SelectValue placeholder={templates.isPending ? 'Loading…' : 'Pick an APPROVED template'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {approvedTemplates.map((template) => (
-                        <SelectItem key={template.id} value={template.id}>
-                          {template.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-muted-foreground text-xs">Only APPROVED templates are bindable; the approved version is pinned at publish.</p>
-                </div>
+                <InstructionBindingForm value={state.binding} onChange={(binding) => patch({ binding })} />
               ) : (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="agent-system-prompt">
@@ -399,14 +350,14 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
           <dt className="text-muted-foreground">Slug</dt>
           <dd className="font-mono">{state.slug}</dd>
           <dt className="text-muted-foreground">Model</dt>
-          <dd className="font-mono">{taskModels.find((model) => model.id === state.modelId)?.slug ?? state.modelId}</dd>
+          <dd className="font-mono">{catalogue.models.find((model) => model.id === state.modelId)?.slug ?? state.modelId}</dd>
           <dt className="text-muted-foreground">Fallbacks</dt>
-          <dd className="font-mono">{state.fallbackModelIds.map((id) => taskModels.find((model) => model.id === id)?.slug ?? id).join(', ') || '—'}</dd>
+          <dd className="font-mono">{state.fallbackModelIds.map((id) => catalogue.models.find((model) => model.id === id)?.slug ?? id).join(', ') || '—'}</dd>
           <dt className="text-muted-foreground">Instruction</dt>
           <dd>
             {state.task === 'TEXT_GENERATION'
               ? state.instructionMode === 'template'
-                ? (approvedTemplates.find((template) => template.id === state.promptTemplateId)?.name ?? state.promptTemplateId)
+                ? (state.binding.promptTemplateId ?? '—')
                 : `${state.systemPrompt.slice(0, 80)}${state.systemPrompt.length > 80 ? '…' : ''}`
               : state.task === 'SPEECH_TO_TEXT'
                 ? state.initialPrompt || state.hotwords
@@ -414,6 +365,8 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
                   : '—'
                 : 'None'}
           </dd>
+          <dt className="text-muted-foreground">Context schema</dt>
+          <dd className="font-mono">{state.task === 'TEXT_GENERATION' ? (state.binding.contextSchemaId ?? '—') : '—'}</dd>
           <dt className="text-muted-foreground">Parameters</dt>
           <dd className="font-mono text-xs">{Object.keys(state.parameters).length ? JSON.stringify(state.parameters) : 'defaults'}</dd>
           <dt className="text-muted-foreground">Schemas</dt>
