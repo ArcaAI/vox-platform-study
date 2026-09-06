@@ -74,6 +74,21 @@ const LEDGER_PROVIDER_BY_TEXT_KEY: Readonly<Record<string, string>> = Object.fre
 const SELF_HOSTED_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lm-studio', 'vllm', 'llama-cpp', 'built-in']);
 
 /**
+ * The ledger's deployment dimension for a CANONICAL provider slug (i.e. one that has already
+ * been through {@link toLedgerProvider}).
+ *
+ * Exported because the two BENCH finalize paths bill from a `GET /tasks/{id}` read-back that
+ * may carry no usage block at all, and they still have to answer this question. Stamping a
+ * constant there — which the prompt bench did, always `CLOUD` — forks the rollup dimension:
+ * every local `lm-studio` bench run landed in the cloud bucket and the self-hosted totals
+ * silently under-reported.
+ */
+export function resolveDeployment(provider: string, byok: boolean): AiDeploymentKind {
+  if (byok) return AiDeploymentKind.BYOK;
+  return SELF_HOSTED_PROVIDERS.has(provider) ? AiDeploymentKind.SELF_HOSTED : AiDeploymentKind.CLOUD;
+}
+
+/**
  * Translate an TEXT provider key to the canonical ledger slug.
  *
  * An UNKNOWN provider is passed through (lower-cased to satisfy the id shape)
@@ -313,10 +328,6 @@ function normalizeUnits(usage: TextUsageDetail): ReturnType<typeof toUsageUnitQu
  * SELF_HOSTED / CLOUD / BYOK — the economics, independent of the provider name.
  * A BYOK call is tenant-funded regardless of which vendor served it.
  */
-function resolveDeployment(provider: string, byok: boolean): AiDeploymentKind {
-  if (byok) return AiDeploymentKind.BYOK;
-  return SELF_HOSTED_PROVIDERS.has(provider) ? AiDeploymentKind.SELF_HOSTED : AiDeploymentKind.CLOUD;
-}
 
 /**
  * The allow-listed dimensions this lane may record. Anything descriptive is

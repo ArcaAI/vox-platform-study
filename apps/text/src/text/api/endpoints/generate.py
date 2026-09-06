@@ -749,8 +749,21 @@ async def generate(
         # frozen "stop" the pre-AD-1 endpoint always reported.
         finish_reason = stats.stop_reason_raw or stats.stop_reason or "stop"
 
-        # TASK-890 — the blocking path records the same two fields the streaming terminal does,
-        # so `GET /tasks/{id}` answers identically whichever way the generation ran.
+        # TASK-890 — the blocking path records the same fields the streaming terminal does,
+        # so `GET /tasks/{id}` answers identically whichever way the generation ran. Built ONCE
+        # here and reused on the response below, so the persisted block and the returned block
+        # can never disagree about what this generation cost.
+        usage_detail = build_usage_detail(
+            task_id=task.task_id,
+            request_id=ctx.get("request_id"),
+            provider=request_body.provider,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            raw=raw_usage_from_stats(stats),
+            byok=_used_byok_credential(request_body),
+        )
         await task_manager.update_task(
             task.task_id,
             status=TaskStatus.COMPLETED,
@@ -761,6 +774,7 @@ async def generate(
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
             },
+            usage_detail=usage_detail.model_dump(mode="json"),
         )
 
         GENERATION_TOTAL.labels(
@@ -838,17 +852,7 @@ async def generate(
             latency_ms=latency_ms,
             finish_reason=finish_reason,
             stats=stats,
-            usage_detail=build_usage_detail(
-                task_id=task.task_id,
-                request_id=ctx.get("request_id"),
-                provider=request_body.provider,
-                model=model,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total_tokens,
-                raw=raw_usage_from_stats(stats),
-                byok=_used_byok_credential(request_body),
-            ),
+            usage_detail=usage_detail,
             guardrail_usage=guardrail_usage,
         )
         # Cache the completed generation so a replayed request carrying the

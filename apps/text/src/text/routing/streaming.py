@@ -388,7 +388,8 @@ async def run_generation_producer(
         done_data.setdefault("finish_reason", stopped_reason or stream_finish_reason or "stop")
         if stopped_reason:
             done_data["stopped_reason"] = stopped_reason
-        done_data["usage"] = _usage_detail(interrupted=bool(stopped_reason))
+        terminal_usage_detail = _usage_detail(interrupted=bool(stopped_reason))
+        done_data["usage"] = terminal_usage_detail
         await emit_terminal(StreamChunk(type="done", data=done_data))
 
         terminal_status = TaskStatus.CANCELLED if stopped_reason else TaskStatus.COMPLETED
@@ -406,6 +407,11 @@ async def run_generation_producer(
                 "completion_tokens": total_output_tokens,
                 "total_tokens": total_input_tokens + total_output_tokens,
             },
+            # J3-4 — the SAME block the terminal frame just carried. A bench that
+            # finalizes by reading the task back needs the meterable form, not three
+            # counts: without an `endpoint_kind` the gateway ledger records nothing
+            # rather than guess an arithmetic convention.
+            usage_detail=terminal_usage_detail,
         )
         GENERATION_TOTAL.labels(
             provider=resolved_provider,

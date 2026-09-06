@@ -100,5 +100,7 @@ class TaskResponse(BaseModel):
     error: str | None = None
     content: str | None = None
     usage: TokenUsage | None = None
+    # J3-4 — what a gateway bench meters from. See `models/task.TaskState.usage_detail`.
+    usage_detail: UsageDetail | None = None
     total_chunks: int = 0
     total_tokens: int = 0
