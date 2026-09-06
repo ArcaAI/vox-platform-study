@@ -196,7 +196,8 @@ export class WorkflowsController {
   @CanRead('WorkflowRun')
   @RequiredScopes('workflow:run:read')
   @ApiOperation({
-    summary: 'The live state of one Human-review node of a run: whether it is waiting, how many times it has escalated, and the decision if one was made.',
+    summary:
+      'The live state of one Human-review node of a run: whether it is waiting, how many times it has escalated, and the decision if one was made.',
     description:
       'A graph may carry several review nodes, so a review is addressed by `(runId, nodeId)`. ' +
       '`exists: false` is a NORMAL 200 — the node has not been reached yet, or the review already settled and its durable child is gone. ' +
@@ -234,7 +235,10 @@ export class WorkflowsController {
   @ApiResponse({ status: 200, type: WorkflowReviewDecisionResponse })
   @ApiResponse({ status: 400, description: 'A decision outside `approved` / `rejected`, or an undeclared body field such as `reviewerId`.' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
-  @ApiResponse({ status: 404, description: "Cross-tenant run id, a runId that does not belong to slug's lineage, or no review child under that nodeId." })
+  @ApiResponse({
+    status: 404,
+    description: "Cross-tenant run id, a runId that does not belong to slug's lineage, or no review child under that nodeId.",
+  })
   @ApiResponse({ status: 503, description: 'The interpreter could not be reached; no decision was recorded.' })
   async decideReview(
     @Param('slug') slug: string,

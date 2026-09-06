@@ -16,7 +16,10 @@ import { IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator
  * dropped field — which is the difference between "you may not do that" and "we ignored you".
  */
 export class ReviewDecisionRequest {
-  @ApiProperty({ enum: ['approved', 'rejected'], description: 'The human decision. There is no third value: a timeout is the workflow’s own outcome, never a decision.' })
+  @ApiProperty({
+    enum: ['approved', 'rejected'],
+    description: 'The human decision. There is no third value: a timeout is the workflow’s own outcome, never a decision.',
+  })
   @IsIn(['approved', 'rejected'])
   decision: 'approved' | 'rejected';
 

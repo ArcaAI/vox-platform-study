@@ -34,14 +34,7 @@ const runs = { getRun: vi.fn(), recordRunStarted: vi.fn(), recordRunFinished: vi
 const config = { getConfigValue: vi.fn((key: string) => (key === 'WORKFLOW_EXPOSURE_ENABLED' ? true : undefined)) };
 
 function service(): WorkflowExposureService {
-  return new WorkflowExposureService(
-    definitions as never,
-    harness as never,
-    runs as never,
-    config as never,
-    eventEmitter as never,
-    cls as never,
-  );
+  return new WorkflowExposureService(definitions as never, harness as never, runs as never, config as never, eventEmitter as never, cls as never);
 }
 
 const OWNED_RUN = {

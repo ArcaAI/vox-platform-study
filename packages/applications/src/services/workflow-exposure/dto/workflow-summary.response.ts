@@ -49,7 +49,8 @@ export class WorkflowSummaryResponse {
 
   @ApiProperty({
     type: [String],
-    description: 'Output protocols the definition publishes (`http`, `http-sse`, `socket`, …) — what bounds `?mode=`. `[]` for a legacy graph (unrestricted).',
+    description:
+      'Output protocols the definition publishes (`http`, `http-sse`, `socket`, …) — what bounds `?mode=`. `[]` for a legacy graph (unrestricted).',
   })
   protocols: string[];
 
