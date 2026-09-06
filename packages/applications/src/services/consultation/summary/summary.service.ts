@@ -50,6 +50,7 @@ import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildTextGeneratePayload, mapTextGenerateResponse, type LegacyTextSummaryResponse } from './text-generate';
 import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
+import { withUsageTrigger } from '../../usageLedger/usage-attributes';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
 import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -792,25 +793,34 @@ export class SummaryService extends BaseService implements ISummaryService {
     operation: UsageOperation,
     attribution: SummaryUsageAttribution,
   ): Promise<void> {
+    // TASK-890 (OD-E) — WHICH activity produced these rows. Every generation
+    // this service performs is a clinical consultation; the dimension is what
+    // lets a tenant's spend be split from a prompt bench's or a workflow's.
     const llmInput = textResponse.usage
-      ? buildLlmUsageInput({
-          usage: textResponse.usage,
-          tenantId: attribution.tenantId,
-          operation,
-          consultationId: attribution.consultationId,
-          doctorId: attribution.doctorId,
-          departmentId: attribution.departmentId,
-        })
+      ? withUsageTrigger(
+          buildLlmUsageInput({
+            usage: textResponse.usage,
+            tenantId: attribution.tenantId,
+            operation,
+            consultationId: attribution.consultationId,
+            doctorId: attribution.doctorId,
+            departmentId: attribution.departmentId,
+          }),
+          'CONSULTATION',
+        )
       : null;
     const guardrailInput = textResponse.guardrailUsage
-      ? buildGuardrailUsageInput({
-          usage: textResponse.guardrailUsage,
-          tenantId: attribution.tenantId,
-          consultationId: attribution.consultationId,
-          doctorId: attribution.doctorId,
-          departmentId: attribution.departmentId,
-          fallbackRequestId: textResponse.usage?.taskId ?? null,
-        })
+      ? withUsageTrigger(
+          buildGuardrailUsageInput({
+            usage: textResponse.guardrailUsage,
+            tenantId: attribution.tenantId,
+            consultationId: attribution.consultationId,
+            doctorId: attribution.doctorId,
+            departmentId: attribution.departmentId,
+            fallbackRequestId: textResponse.usage?.taskId ?? null,
+          }),
+          'CONSULTATION',
+        )
       : null;
 
     const inputs = [llmInput, guardrailInput].filter((input): input is NonNullable<typeof input> => input !== null);
@@ -1507,6 +1517,13 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BusinessException('PHI redactor is not available; refusing to send unredacted content to the NLP service');
     }
     const redactedContent = await this.phiRedactor.redact(contextItem.content, 'pseudonymize');
+
+    // TASK-890 (§3.13) — the NLP text-unit allowance. `ner.extract` rows were
+    // RECORDED and never GATED: the allowance existed and nothing consulted
+    // it. Post-hoc debit (D6), the same call shape the summary path uses —
+    // kill-switch-gated inside, → 429 once over. Placed after redaction and
+    // before the call, so a refused tenant's content never leaves the process.
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyNlpTextUnits');
 
     const nerResponse = await this.callNlpService(redactedContent);
     const entities = nerResponse.entities ?? [];
