@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsEnum, IsObject, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEnum, IsInt, IsObject, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { AgentTask } from '@arcaai/domains';
 import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
 
@@ -34,6 +34,22 @@ export class CreateAgentRequest {
   @IsString()
   @MaxLength(64)
   modelId!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-890 §3.4 — pin one of THIS tenant’s consultation context schemas. Its derived payload schema is FROZEN into `compiledConfig.contextSchema` at publish, so `{{context.*}}` resolves against the declaration that was in force then and the runtime never re-reads the row. A SYSTEM or foreign id is not resolvable: a schema is cloned into a tenant, never shared from the platform tier.',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  contextSchemaId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Pin a specific published version of that schema. Omitted ⇒ the schema’s own pinned version.', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  contextSchemaVersionNumber?: number | null;
 
   @ApiPropertyOptional({ description: 'Ordered fallback model ids of the same task (priority = array position).', type: [String] })
   @IsOptional()

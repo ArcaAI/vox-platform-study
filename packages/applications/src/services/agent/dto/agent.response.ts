@@ -42,6 +42,13 @@ export class AgentResponse {
   @ApiProperty({ enum: ['DRAFT', 'VALIDATED', 'PUBLISHED', 'DEPRECATED'] }) status!: string;
   @ApiProperty() isActive!: boolean;
   @ApiProperty() modelId!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'TASK-890 §3.4 — the tenant context schema this agent pins; its derived payload schema is frozen into `compiledConfig.contextSchema` at publish.',
+  })
+  contextSchemaId!: string | null;
+  @ApiPropertyOptional({ nullable: true, description: 'The pinned schema VERSION; null ⇒ follow the schema’s own pin.' })
+  contextSchemaVersionNumber!: number | null;
   @ApiPropertyOptional({ nullable: true, description: 'The backing model`s registry slug (joined for display).' }) modelSlug!: string | null;
   @ApiProperty({ type: [AgentFallbackResponse] }) fallbacks!: AgentFallbackResponse[];
   @ApiPropertyOptional({ nullable: true, type: 'object', additionalProperties: true }) instruction!: Record<string, unknown> | null;
