@@ -93,6 +93,58 @@ export interface AgenticInstructionsParams {
    * tenant-admin defined; TASK-882 retired that catalogue outright (workflow
    * authors branch, and tenants align agents by `Agent.tags`), so the field is
    * now simply an open key and never a closed vocabulary.
- */
+   */
   promptType?: string;
+}
+
+/**
+ * ── Inference readiness (TASK-890 §3.12) ───────────────────────────────────
+ *
+ * Unlike the guardrail/NLP documents above, this shape IS ours: a hand-declared
+ * mirror of `InferenceReadinessResponse` in @arcaai/applications, field for
+ * field (the BFF boundary means no server import). It is a snapshot the PLATFORM
+ * took, not a live probe — `checkedAt` is part of the contract, not decoration.
+ */
+
+/** How a model is served, which is what decides how its readiness was derived. */
+export type ReadinessProviderClass = 'cloud-byo' | 'cloud-platform' | 'engine-served' | 'platform-self-host';
+
+/** `unknown` means nothing was measured — never a synonym for "bad". */
+export type ModelReadiness = 'ready' | 'loadable' | 'engine_down' | 'weights_missing' | 'credential_missing' | 'unknown';
+
+export interface ReadinessEngine {
+  provider: string;
+  providerClass: ReadinessProviderClass;
+  /** Host only; the gateway never sends the full endpoint to a browser. */
+  baseUrlHost: string | null;
+  /** `unknown` = the probe aggregator did not answer, which is not "down". */
+  status: 'up' | 'down' | 'unknown';
+  latencyMs: number | null;
+  loadedCount: number;
+  listedCount: number;
+  detail: string | null;
+}
+
+export interface ReadinessService {
+  key: string;
+  healthy: boolean;
+  lastSeenAt: string | null;
+}
+
+export interface ReadinessModel {
+  id: string;
+  slug: string;
+  taskType: string;
+  provider: string | null;
+  providerClass: ReadinessProviderClass | null;
+  readiness: ModelReadiness;
+  detail: string | null;
+}
+
+export interface InferenceReadiness {
+  /** `null` with empty collections = nothing has been observed yet. */
+  checkedAt: string | null;
+  engines: ReadinessEngine[];
+  services: ReadinessService[];
+  models: ReadinessModel[];
 }
