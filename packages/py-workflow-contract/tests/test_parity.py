@@ -42,8 +42,10 @@ from hope_workflow_contract import (
     COMPILED_CONFIG_FORMAT_VERSION,
     CompiledBranchGuard,
     CompiledCaps,
+    CompiledContextSchemaRef,
     CompiledDocumentTemplateRef,
     CompiledGate,
+    CompiledGuardrailDecision,
     CompiledInputBinding,
     CompiledLoop,
     CompiledLoopBody,
@@ -114,6 +116,15 @@ PROMPT_TEMPLATE_REF_SCHEMA = SCHEMA["$defs"]["policyBindings"]["properties"]["pr
 DOCUMENT_TEMPLATE_REF_SCHEMA = SCHEMA["$defs"]["policyBindings"]["properties"][
     "documentTemplateRefs"
 ]["items"]
+# TASK-890 — the third pin of the same family: `promptTemplateRefs` pins WHAT the model is
+#: told, `documentTemplateRefs` WHAT SHAPE it is decoded into, `contextSchemaRefs` WHICH
+#: context vocabulary the run payload is validated against. Both TASK-890 nodes are inline
+#: objects rather than `$defs` entries, so they are lifted here exactly like the two above —
+#: otherwise the field-set gate would never see them and the fourth twin could drift.
+CONTEXT_SCHEMA_REF_SCHEMA = SCHEMA["$defs"]["policyBindings"]["properties"]["contextSchemaRefs"][
+    "items"
+]
+GUARDRAIL_DECISION_SCHEMA = SCHEMA["$defs"]["policyBindings"]["properties"]["guardrail"]
 
 #: (label, pydantic model, normative schema node). Every object in the normative
 #: schema appears exactly once — a new `$defs` entry with no model here is itself
@@ -129,6 +140,9 @@ PAIRS: list[tuple[str, type[BaseModel], dict[str, Any]]] = [
     ("caps", CompiledCaps, SCHEMA["$defs"]["caps"]),
     ("promptTemplateRef", CompiledPromptTemplateRef, PROMPT_TEMPLATE_REF_SCHEMA),
     ("documentTemplateRef", CompiledDocumentTemplateRef, DOCUMENT_TEMPLATE_REF_SCHEMA),
+    # TASK-890 — the context-schema pin and the workflow-level guardrail opinion.
+    ("contextSchemaRef", CompiledContextSchemaRef, CONTEXT_SCHEMA_REF_SCHEMA),
+    ("guardrailDecision", CompiledGuardrailDecision, GUARDRAIL_DECISION_SCHEMA),
     # TASK-864 — branch guards and loop bodies (both OPTIONAL on the artifact; omitted when empty).
     ("branchGuard", CompiledBranchGuard, SCHEMA["$defs"]["branchGuard"]),
     ("loopBody", CompiledLoopBody, SCHEMA["$defs"]["loopBody"]),
