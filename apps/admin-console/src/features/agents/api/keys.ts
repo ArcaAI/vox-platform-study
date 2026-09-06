@@ -7,7 +7,5 @@ export const agentKeys = {
   detail: (id: string) => [...agentKeys.root, 'detail', id] as const,
   versions: (id: string) => [...agentKeys.root, 'versions', id] as const,
   assignments: (task?: AgentTask) => [...agentKeys.root, 'assignments', task ?? 'all'] as const,
-  registryModels: () => [...agentKeys.root, 'registry-models'] as const,
-  instructionTemplates: () => [...agentKeys.root, 'instruction-templates'] as const,
   departments: () => [...agentKeys.root, 'departments'] as const,
 };

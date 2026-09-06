@@ -8,17 +8,17 @@ import {
   deleteAgent,
   deprecateAgent,
   exportAgent,
+  finalizeAgentTest,
   getAgent,
   importAgent,
   listAgentAssignments,
   listAgentVersions,
   listAgents,
   listDepartments,
-  listInstructionTemplates,
-  listRegistryModels,
   newAgentVersion,
   publishAgent,
   removeAgentAssignment,
+  testAgent,
   updateAgent,
   updateAgentAssignment,
   validateAgent,
@@ -28,9 +28,11 @@ import type {
   AgentTask,
   CloneAgentRequest,
   CreateAgentRequest,
+  FinalizeAgentTestRequest,
   ImportAgentRequest,
   NewAgentVersionRequest,
   PublishAgentRequest,
+  TestAgentRequest,
   UpdateAgentRequest,
   UpsertAgentAssignmentRequest,
 } from './types';
@@ -49,14 +51,6 @@ export function useAgentVersions(id: string | null) {
 
 export function useAgentAssignments(task?: AgentTask) {
   return useQuery({ queryKey: agentKeys.assignments(task), queryFn: () => listAgentAssignments(task) });
-}
-
-export function useRegistryModels() {
-  return useQuery({ queryKey: agentKeys.registryModels(), queryFn: listRegistryModels, staleTime: 60_000 });
-}
-
-export function useInstructionTemplates() {
-  return useQuery({ queryKey: agentKeys.instructionTemplates(), queryFn: listInstructionTemplates, staleTime: 60_000 });
 }
 
 export function useDepartments() {
@@ -131,4 +125,15 @@ export function useUpsertAgentAssignment() {
 export function useRemoveAgentAssignment() {
   const invalidate = useInvalidateAgents();
   return useMutation({ mutationFn: ({ id, version, reason }: { id: string; version: number; reason?: string }) => removeAgentAssignment(id, version, reason), onSuccess: invalidate });
+}
+
+// TASK-890 §3.8 — the draft-agent test bench. Neither mutation invalidates the agent list: a
+// test run touches nothing on the row (findings, tokens, output are all ephemeral to the call).
+
+export function useTestAgent() {
+  return useMutation({ mutationFn: ({ id, body }: { id: string; body?: TestAgentRequest }) => testAgent(id, body) });
+}
+
+export function useFinalizeAgentTest() {
+  return useMutation({ mutationFn: ({ id, body }: { id: string; body: FinalizeAgentTestRequest }) => finalizeAgentTest(id, body) });
 }
