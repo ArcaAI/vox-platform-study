@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -12,6 +13,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
+  AiModelEntity,
+  AiModelFactory,
+  AiModelRepository,
   AiProviderConnectionEntity,
   AiProviderConnectionFactory,
   AiProviderConnectionRepository,
@@ -37,8 +41,19 @@ import {
   ResolvedProviderOverrides,
 } from './IProviderConnectionService';
 import { AiProviderConnectionDtoMapper } from './ai-provider-connection.dto.mapper';
+import {
+  BYO_DECLARABLE_SERVICES,
+  ByoDeclarableService,
+  ByoModelDeclaration,
+  buildByoModelProps,
+  byoModelSlug,
+  isByoDeclarableService,
+  isTaskTypeOfService,
+  suggestedByoModelSlug,
+  taskTypesOfService,
+} from './byo-model-declaration';
 import { PROVIDER_SERVICES, ProviderService, isCloudByoProvider } from './constants';
-import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
+import { AiProviderConnectionResponse, DeclareConnectionModelsRequest, UpsertAiProviderConnectionRequest } from './dto';
 import { sanitizeProviderExtras } from './provider-extras';
 import { ConnectionRequirementSubject, validateProviderRequirements } from './provider-requirements';
 
@@ -82,6 +97,15 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // platform's money on a wiring mistake; failing closed reproduces exactly
     // the pre-cascade behaviour (tenant tier only), which is a safe default.
     @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
+    // TASK-890 §3.7a — the registry rows a BYO declaration MATERIALISES. The
+    // repository, not `AiModelService`: that service's whole surface is
+    // SYSTEM-pinned behind `assertPlatformAdmin` (REQ-5 — the registry stays
+    // platform-only), and injecting it would also close a DI cycle, since it
+    // already injects this service for the catalogue's connection facts.
+    // `@Optional()` and TRAILING so every existing positional fixture keeps its
+    // arity; an ABSENT repository makes `declareModels` fail closed rather than
+    // silently succeed having written nothing.
+    @Optional() private readonly aiModelRepository?: AiModelRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.AiProviderConnection);
   }
@@ -97,7 +121,146 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
     const tx = this.crossTenantLane(scopedTenantId);
     const row = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
-    return row ? AiProviderConnectionDtoMapper.toResponse(row) : AiProviderConnectionDtoMapper.placeholder(service, scopedTenantId, provider);
+    if (!row) return { ...AiProviderConnectionDtoMapper.placeholder(service, scopedTenantId, provider), models: [] };
+    // TASK-890 §3.7a — the single-row read carries the models declared on it, so
+    // the console edits credential and model list from ONE payload.
+    return AiProviderConnectionDtoMapper.toResponse(row, await this.declaredModels(row, scopedTenantId, tx));
+  }
+
+  /**
+   * TASK-890 §3.7a (OD-A) — DECLARE the models this tenant's connection serves.
+   *
+   * The one act a BYO tenant actually performs: "here is my Azure resource, and
+   * here are the deployments on it". Each entry becomes a TENANT-OWNED `AiModel`
+   * row stamped with `sourceConnectionId`, which is what makes it visible in
+   * that tenant's catalogue (under `byo:<service>:<provider>`), bindable by an
+   * agent, and invisible to every other tenant.
+   *
+   * FIVE properties this method must keep:
+   *
+   *  1. **It is a full REPLACEMENT.** The list is the fact; an entry that leaves
+   *     it is soft-deleted (never hard-deleted — an agent's FK is `Restrict`,
+   *     and its next publish failing observably beats a binding that vanished).
+   *  2. **Nothing is written until everything validates**, including the
+   *     slug-shadow check. A half-applied declaration would leave the tenant's
+   *     list and its rows disagreeing, which is the one state the replacement
+   *     semantics exist to prevent.
+   *  3. **A generated slug may never shadow a SYSTEM slug** (P-29, §2.7 #25):
+   *     `AiModel` uniqueness is `(tenantId, slug)` and every by-slug resolver
+   *     prefers the caller's own row, so a `azure-gpt-4o-mini` tenant row would
+   *     silently replace the platform's row of that name for that tenant. 409,
+   *     naming the platform row and a `byo-` prefixed suggestion.
+   *  4. **It never asks for platform admin.** REQ-5 keeps the REGISTRY
+   *     (`/admin/ai-models`) platform-only; a tenant declaring its own vendor's
+   *     models is the tenant-admin act this ticket exists to enable.
+   *  5. **The SYSTEM tier is refused here**, even for a super admin, and says
+   *     where platform models are declared instead — one home per fact.
+   */
+  async declareModels(
+    service: ProviderService,
+    provider: string,
+    dto: DeclareConnectionModelsRequest,
+    tenantId?: string,
+  ): Promise<AiProviderConnectionResponse> {
+    const scopedTenantId = this.resolveScopedTenantId(tenantId);
+    if (scopedTenantId === SYSTEM_TENANT_ID) {
+      throw new ForbiddenException('Platform models are declared in /admin/ai-models; a SYSTEM connection declares none.');
+    }
+    // The SAME class gate as every other write on this row: a provider the
+    // tenant may not hold a connection for cannot be given models either.
+    this.assertWriteAllowed(service, provider, scopedTenantId);
+    if (!isByoDeclarableService(service)) {
+      throw new BadRequestException(
+        `The '${service}' capability serves no per-tenant model rows. Declarable services: ${BYO_DECLARABLE_SERVICES.join(', ')}.`,
+      );
+    }
+    if (!this.aiModelRepository) {
+      throw new ServiceUnavailableException('The model registry is unavailable; models cannot be declared right now.');
+    }
+
+    const tx = this.crossTenantLane(scopedTenantId);
+    const connection = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
+    if (!connection) {
+      throw new NotFoundException(
+        `No connection row for provider '${provider}' (service '${service}'). Save the connection before declaring its models.`,
+      );
+    }
+
+    const entries = this.validateDeclaration(service, provider, dto);
+
+    // (3) The shadow check runs over EVERY entry before any write.
+    for (const entry of entries) {
+      const shadowed = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, entry.slug, this.databaseService.baseClient);
+      if (shadowed) {
+        throw new ConflictException({
+          code: 'BYO_SLUG_SHADOWS_PLATFORM',
+          message:
+            `A platform model already uses the name '${entry.slug}'. Declaring it here would shadow that model for your ` +
+            `tenant everywhere it is resolved by name. Re-send this entry with slug '${entry.suggestedSlug}' to keep both.`,
+          slug: entry.slug,
+          systemModelId: shadowed.id,
+          suggestedSlug: entry.suggestedSlug,
+        });
+      }
+    }
+
+    const existing = await this.aiModelRepository.findBySourceConnection(connection.id, scopedTenantId, tx);
+    const bySlug = new Map(existing.map((row) => [row.slug, row]));
+    const userId = this.requestUserId ?? undefined;
+    const kept: AiModelEntity[] = [];
+    let created = 0;
+    let updated = 0;
+
+    for (const entry of entries) {
+      const current = bySlug.get(entry.slug);
+      if (current) {
+        bySlug.delete(entry.slug);
+        const changed = this.applyDeclaration(current, entry.declaration, userId);
+        if (changed) {
+          current.validate();
+          kept.push(await this.aiModelRepository.update(current.id, current, tx));
+          updated += 1;
+        } else {
+          kept.push(current);
+        }
+        continue;
+      }
+      const model = AiModelFactory.CreateAiModel(
+        buildByoModelProps({
+          service: service as ByoDeclarableService,
+          provider,
+          tenantId: scopedTenantId,
+          connectionId: connection.id,
+          slug: entry.slug,
+          entry: entry.declaration,
+          ...(userId ? { createdBy: userId } : {}),
+        }),
+      );
+      model.validate();
+      kept.push(await this.aiModelRepository.create(model, tx));
+      created += 1;
+    }
+
+    // (1) Whatever is left over left the list.
+    const removed = [...bySlug.values()];
+    for (const row of removed) {
+      await this.aiModelRepository.softDelete(row.id, userId, tx);
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: connection.id,
+      data: {
+        service,
+        provider,
+        tenantId: scopedTenantId,
+        action: 'connection-models-declared',
+        created,
+        updated,
+        removed: removed.length,
+      },
+    });
+
+    return AiProviderConnectionDtoMapper.toResponse(connection, kept);
   }
 
   async upsertRow(
@@ -286,6 +449,11 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // `softDelete(id, updatedBy)` takes no tx client — it writes through the
     // extended client, relying on the SYSTEM-shared-read widening for a global
     // admin deleting a SYSTEM row under a working tenant.
+    // TASK-890 §3.7a — the models DECLARED on this connection go first: the
+    // `AiModel.sourceConnectionId` FK is `Restrict`, so a connection may not
+    // vanish under rows that still point at it, and a declared model outliving
+    // its credential is a row nothing can serve.
+    await this.softDeleteDeclaredModels(existing, scopedTenantId, tx);
     await this.connectionRepository.softDelete(existing.id, this.requestUserId ?? undefined);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: existing.id,
@@ -778,6 +946,109 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   }
 
   // ────────────────────────────── internals ──────────────────────────────
+
+  /**
+   * The declared-model rows of ONE connection (TASK-890 §3.7a).
+   *
+   * Empty — never an error — when the registry repository was not wired or the
+   * row is the SYSTEM tier: a platform connection declares no per-tenant models
+   * by construction, so "none" is the truth rather than a missing answer.
+   */
+  private async declaredModels(
+    connection: AiProviderConnectionEntity,
+    tenantId: string,
+    tx?: CoreDatabaseService['baseClient'],
+  ): Promise<AiModelEntity[]> {
+    if (!this.aiModelRepository || tenantId === SYSTEM_TENANT_ID) return [];
+    return this.aiModelRepository.findBySourceConnection(connection.id, tenantId, tx).catch(() => []);
+  }
+
+  /** Soft-delete every model declared on a connection that is going away. */
+  private async softDeleteDeclaredModels(
+    connection: AiProviderConnectionEntity,
+    tenantId: string,
+    tx?: CoreDatabaseService['baseClient'],
+  ): Promise<void> {
+    const rows = await this.declaredModels(connection, tenantId, tx);
+    for (const row of rows) {
+      await this.aiModelRepository!.softDelete(row.id, this.requestUserId ?? undefined, tx);
+    }
+  }
+
+  /**
+   * Validate the WHOLE declaration up front and compute each entry's slug.
+   *
+   * Every refusal here is a 400 naming the offending entry, and it happens
+   * before the first write — property (2) of `declareModels`.
+   */
+  private validateDeclaration(
+    service: ByoDeclarableService | ProviderService,
+    provider: string,
+    dto: DeclareConnectionModelsRequest,
+  ): Array<{ slug: string; suggestedSlug: string; declaration: ByoModelDeclaration }> {
+    const entries = dto.models ?? [];
+    const seenWireIds = new Set<string>();
+    const seenSlugs = new Set<string>();
+    return entries.map((entry) => {
+      const wireModelId = entry.wireModelId?.trim() ?? '';
+      if (!wireModelId) throw new BadRequestException('Every declared model needs a wireModelId.');
+      if (seenWireIds.has(wireModelId)) {
+        throw new BadRequestException(`Model id '${wireModelId}' is declared twice; each model may appear once.`);
+      }
+      seenWireIds.add(wireModelId);
+      if (!isTaskTypeOfService(service as ProviderService, entry.taskType)) {
+        throw new BadRequestException(
+          `Task type '${entry.taskType}' is not served by the '${service}' capability. Expected one of: ` +
+            `${taskTypesOfService(service as ProviderService).join(', ')}.`,
+        );
+      }
+      // The slug is server-generated; an explicit one is accepted ONLY as the
+      // `byo-` suggestion a shadow conflict offered, so a tenant cannot invent a
+      // name that shadows a platform row through the front door either.
+      const generated = byoModelSlug(provider, wireModelId);
+      const suggestedSlug = suggestedByoModelSlug(provider, wireModelId);
+      const slug = entry.slug?.trim() ? entry.slug.trim() : generated;
+      if (slug !== generated && slug !== suggestedSlug) {
+        throw new BadRequestException(
+          `Slug '${slug}' is not a name this platform generates for '${wireModelId}'. Omit it, or send '${suggestedSlug}'.`,
+        );
+      }
+      if (seenSlugs.has(slug)) throw new BadRequestException(`Two declared models resolve to the same name '${slug}'.`);
+      seenSlugs.add(slug);
+      return {
+        slug,
+        suggestedSlug,
+        declaration: {
+          wireModelId,
+          name: entry.name.trim(),
+          taskType: entry.taskType,
+          ...(entry.capabilities ? { capabilities: { ...entry.capabilities } } : {}),
+        },
+      };
+    });
+  }
+
+  /**
+   * Fold a re-declared entry onto its existing row through the entity's
+   * change-tracking setters. Returns whether anything actually changed, so an
+   * unchanged re-declaration writes nothing and bumps no timestamp.
+   *
+   * The slug is NOT among the fields: it is the row's identity for every
+   * binding that already resolved it.
+   */
+  private applyDeclaration(row: AiModelEntity, declaration: ByoModelDeclaration, userId?: string): boolean {
+    if (row.name !== declaration.name) row.name = declaration.name;
+    if (row.wireModelId !== declaration.wireModelId) row.wireModelId = declaration.wireModelId;
+    if (row.sourceUri !== declaration.wireModelId) row.sourceUri = declaration.wireModelId;
+    if (row.taskType !== declaration.taskType) row.taskType = declaration.taskType;
+    const nextMeta = declaration.capabilities ? { capabilities: { ...declaration.capabilities } } : {};
+    if (JSON.stringify((row.metaData as unknown) ?? {}) !== JSON.stringify(nextMeta)) {
+      row.metaData = nextMeta as AiModelEntity['metaData'];
+    }
+    if (!row.hasChanges) return false;
+    if (userId) row.updatedBy = userId;
+    return true;
+  }
 
   /**
    * The two privilege boundaries. Both throw 403 rather than 404: the caller is
