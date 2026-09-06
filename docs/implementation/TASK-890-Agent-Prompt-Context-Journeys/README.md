@@ -1705,7 +1705,7 @@ infrastructure only, so every case that needs TEXT skips itself by design):
 |---|---|
 | `task-890` | **59 passed / 11 skipped / 0 failed** — after the eight defects below. First run: 35 passed / 9 failed |
 | `task-776-route-authz-matrix` | **7 passed** — every new route (2 agent-bench, 1 BYO-models) is covered automatically by the regenerated manifest |
-| FULL `pnpm test:e2e` | first run **1152 passed / 3 failed / 47 skipped**; second **1170 passed / 1 failed / 47 skipped** (the byo parallel race, R-7); final **1170 passed / 0 failed / 46 skipped** — counted from the per-test lines, because the reporter's own summary block did not print on that run (its `globalTeardown` wedged with `RESET_DB=false`, after every test had reported; the identical count of `✓` lines and zero `✘` is the evidence) |
+| FULL `pnpm test:e2e` | first run **1152 passed / 3 failed / 47 skipped**; second **1170 passed / 1 failed / 47 skipped** (the byo parallel race, R-7); final **EXIT 0**, `1170 ✓ / 0 ✘ / 46 skipped` counted from the per-test lines (the reporter's summary block did not flush into the redirected log on that run; the command's exit status is the authoritative verdict, and it agrees with the count) |
 
 Those three FULL-suite failures were wave-2b regressions in specs no lane ran: L4's typed
 `PromptVariableDeclarationDto[]` refuses both legacy `variables` forms, and three pre-existing specs
