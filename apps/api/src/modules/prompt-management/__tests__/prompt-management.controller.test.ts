@@ -115,6 +115,39 @@ describe('PromptManagementController', () => {
       });
     });
 
+    // TASK-890 J2-4 — `?tags=a,b` was silently dropped by the inline query
+    // type even though the service resolves it (`hasEvery`).
+    it('should forward a comma-separated tags filter as an array', async () => {
+      mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity]));
+
+      await controller.list({ tags: 'pre-summary,dept-free' } as any);
+
+      expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: ['pre-summary', 'dept-free'] }),
+      );
+    });
+
+    it('should forward a repeated tags query param as an array', async () => {
+      mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity]));
+
+      await controller.list({ tags: ['pre-summary', 'dept-free'] } as any);
+
+      expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: ['pre-summary', 'dept-free'] }),
+      );
+    });
+
+    // An empty / whitespace-only chip is "no filter", not "match a row with no
+    // tags" — the service treats an empty array the same way, but sending
+    // `[]` from a cleared chip would be indistinguishable from a real filter.
+    it('should send no tags filter when the param is empty', async () => {
+      mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity]));
+
+      await controller.list({ tags: ' , ' } as any);
+
+      expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith(expect.objectContaining({ tags: undefined }));
+    });
+
     it('should pass includeDisabled: true when query param is "true"', async () => {
       mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity]));
 

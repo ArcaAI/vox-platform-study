@@ -114,6 +114,8 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
   /** super_admin scoped to the ARCAAI tenant — foreign to the __GLOBAL__ throwaway template below. */
   let crossTenantToken: string;
   let promptId: string;
+  /** Unique tag stamped on the throwaway row so the `?tags=` filter has an unambiguous target. */
+  let uniqueTag: string;
 
   test.beforeAll(async ({ request }) => {
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
@@ -125,6 +127,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
     crossTenantToken = sa!.token;
 
     const stamp = Date.now().toString(36);
+    uniqueTag = `e2e-tag-${stamp}`;
     const created = await request.post(PROMPTS, {
       headers: auth(tenantAdminToken),
       data: {
@@ -134,6 +137,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
         status: 'PUBLISHED',
         // TASK-890 §3.6 (L4) — the legacy MAP form is refused; declarations are an array.
         variables: [{ name: 'department', type: 'string', required: true }],
+        tags: [uniqueTag, 'test-bench'],
       },
     });
     expect([200, 201], `create throwaway template → ${created.status()}`).toContain(created.status());
@@ -351,6 +355,23 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
       data: { goldenCaseId: SYNTHETIC_GOLDEN_CASE_ID, dryRun: true },
     });
     expect(res.status()).toBe(404);
+  });
+
+  // ── TASK-890 J2-4 — `?tags=` narrows the admin list (`hasEvery`) ───────
+
+  test('tags filter: `?tags=` narrows to the tagged row, and a second unmatched tag empties it (hasEvery)', async ({ request }) => {
+    const list = async (tags: string) => {
+      const res = await request.get(`${PROMPTS}?limit=200&tags=${encodeURIComponent(tags)}`, { headers: auth(tenantAdminToken) });
+      expect(res.status(), await res.text()).toBe(200);
+      const body = await res.json();
+      return (Array.isArray(body) ? body : body.data) as PromptTemplateRow[];
+    };
+
+    const matched = await list(uniqueTag);
+    expect(matched.map((row) => row.id), 'the unique tag must select exactly the throwaway row').toEqual([promptId]);
+
+    // `hasEvery`: adding a tag the row does not carry must empty the result, not widen it.
+    expect(await list(`${uniqueTag},not-a-tag-on-this-row`)).toHaveLength(0);
   });
 
   // ── Cross-tenant (404-over-403, pattern) ───────────────────────
