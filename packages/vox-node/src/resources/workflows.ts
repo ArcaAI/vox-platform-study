@@ -40,11 +40,15 @@ import type { Transport } from '../core/transport';
 import { encodePathSegment } from '../core/url';
 import type {
   StartWorkflowRunRequest,
+  WorkflowReview,
+  WorkflowReviewDecision,
+  WorkflowReviewDecisionResult,
   WorkflowRunCancelResult,
   WorkflowRunEvent,
   WorkflowRunEventPayload,
   WorkflowRunHandle,
   WorkflowRunStatus,
+  WorkflowSchemaDescription,
   WorkflowSummary,
 } from '../types/workflow';
 import { isTerminalRunStatus } from '../types/workflow';
@@ -60,10 +64,13 @@ import { isTerminalRunStatus } from '../types/workflow';
  */
 export const WORKFLOW_PLANE_ROUTES: ReadonlyArray<{ method: string; path: string }> = Object.freeze([
   { method: 'GET', path: '/api/v1/workflows' },
+  { method: 'GET', path: '/api/v1/workflows/{slug}/schema' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs' },
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/cancel' },
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/stream' },
+  { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}' },
+  { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide' },
   { method: 'GET', path: '/api/v1/consultations/{consultationId}/workflows' },
   { method: 'POST', path: '/api/v1/consultations/{consultationId}/workflows/{slug}/runs' },
 ]);
@@ -134,6 +141,10 @@ function runsPath(slug: string): string {
 
 function runPath(slug: string, runId: string): string {
   return `${runsPath(slug)}/${encodePathSegment(runId)}`;
+}
+
+function reviewPath(slug: string, runId: string, nodeId: string): string {
+  return `${runPath(slug, runId)}/reviews/${encodePathSegment(nodeId)}`;
 }
 
 /**
@@ -371,6 +382,79 @@ async function* readFrames(response: Response, state: ResumeState, signal?: Abor
 }
 
 /**
+ * `hope.workflows.reviews` — read and release a run's `core.humanReview` nodes (TASK-890).
+ *
+ * A Human-review node parks a run on a person and waits, durably, for as long as the node
+ * says. Everything downstream of the handle that does not fire is skipped. So this is the
+ * surface that decides whether a paused run ever finishes — and the two properties it holds
+ * are both about what it will NOT do:
+ *
+ * 1. **It never invents a reviewer.** `reviewerId` is not part of the request body and cannot
+ *    be sent; the gateway stamps the acting user from your credential. An approval is an
+ *    attribution, and a field here would let one caller sign another's name to it.
+ * 2. **It never turns a failure into "nothing to decide".** `exists: false` is the
+ *    interpreter's own answer for a review that has not started or has already settled. A
+ *    gateway or interpreter outage throws instead — because a reviewer UI that renders an
+ *    empty queue during an outage silently loses the work it was built to protect.
+ *
+ * A review is decided ONCE: the durable child ignores a second signal, so `decide` is safe to
+ * retry.
+ */
+export class WorkflowReviewsResource {
+  constructor(
+    private readonly transport: Transport,
+    private readonly isServiceAccount: boolean,
+  ) {}
+
+  private surfaceName(): string {
+    return 'The workflow human-review plane (`hope.workflows.reviews`)';
+  }
+
+  /**
+   * `GET /api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}` — is this review waiting, and
+   * what has been decided?
+   *
+   * A graph may carry several review nodes, which is why a review is addressed by
+   * `(runId, nodeId)` and not by the run alone.
+   */
+  async get(slug: string, runId: string, nodeId: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowReview> {
+    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    return this.transport.request<WorkflowReview>({ path: reviewPath(slug, runId, nodeId), signal: options.signal });
+  }
+
+  /**
+   * `POST …/reviews/{nodeId}/decide` — release the review; the graph resumes down the
+   * `approved` or `rejected` handle.
+   *
+   * Returns once the signal was SENT. The run continues on its own clock, so watch the run
+   * stream (or poll `getRun`) for what happens next rather than reading the return value as
+   * "the workflow has moved on".
+   */
+  async decide(
+    slug: string,
+    runId: string,
+    nodeId: string,
+    body: WorkflowReviewDecision,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<WorkflowReviewDecisionResult> {
+    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    return this.transport.request<WorkflowReviewDecisionResult>({
+      method: 'POST',
+      path: `${reviewPath(slug, runId, nodeId)}/decide`,
+      // Rebuilt field by field rather than spread: the gateway DTO forbids undeclared
+      // properties, so forwarding a caller's object wholesale turns one stray key — a
+      // hand-written `reviewerId` most of all — into a 400 the caller cannot read.
+      body: {
+        decision: body.decision,
+        ...(body.comment === undefined ? {} : { comment: body.comment }),
+        ...(body.editedPayload === undefined ? {} : { editedPayload: body.editedPayload }),
+      },
+      signal: options.signal,
+    });
+  }
+}
+
+/**
  * `hope.workflows` — run a tenant's published workflows.
  *
  * ```ts
@@ -383,8 +467,15 @@ async function* readFrames(response: Response, state: ResumeState, signal?: Abor
  * ```
  */
 export class WorkflowsResource extends WorkflowInvocationBase {
+  /**
+   * `hope.workflows.reviews` — the human-review sub-surface. Composed here rather than hung off
+   * the client so it is reachable exactly where the runs it acts on are.
+   */
+  readonly reviews: WorkflowReviewsResource;
+
   constructor(transport: Transport, isServiceAccount = false) {
     super(transport, isServiceAccount);
+    this.reviews = new WorkflowReviewsResource(transport, isServiceAccount);
   }
 
   protected surfaceName(): string {
@@ -402,6 +493,20 @@ export class WorkflowsResource extends WorkflowInvocationBase {
   /** `GET /api/v1/workflows` — the tenant's published, invokable workflows. Never `null`: `[]` means the tenant has published none. */
   async list(options: { signal?: AbortSignal } = {}): Promise<WorkflowSummary[]> {
     return this.listWorkflows(undefined, options.signal);
+  }
+
+  /**
+   * `GET /api/v1/workflows/{slug}/schema` — the generated contract of one published
+   * definition: input/output component schemas, trigger kinds, output protocols, the delivery
+   * lanes it admits, and an AsyncAPI fragment for its run events.
+   *
+   * {@link list} already carries the same four facts per workflow, so reach for this when you
+   * want the OpenAPI/AsyncAPI PROJECTIONS — generating a client, rendering a portal page —
+   * rather than deciding what to send. Discovering a catalogue does not need an N+1 of these.
+   */
+  async schema(slug: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowSchemaDescription> {
+    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    return this.transport.request<WorkflowSchemaDescription>({ path: `workflows/${encodePathSegment(slug)}/schema`, signal: options.signal });
   }
 
   /**
