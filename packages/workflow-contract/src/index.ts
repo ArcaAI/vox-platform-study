@@ -173,7 +173,7 @@ export type { PortValidationOptions } from './port-validation';
 // TASK-890 §3.5 (F-10) — the ONE publish gate, as machine-readable findings. It REPLACES
 // `workflowPublishProblems`, which was a real gate nothing ever called (BLOCKER 1c), re-emits
 // every one of its checks with a `code`, and adds the per-node config-schema check nobody ran.
-export { PUBLISH_FINDING_RULE_ID, WORKFLOW_PUBLISH_FINDING_CODES, publishFindings } from './publish-findings';
+export { PUBLISH_FINDING_RULE_ID, TEMPLATE_REFERENCE_SEVERITY_RELEASE_1, WORKFLOW_PUBLISH_FINDING_CODES, publishFindings } from './publish-findings';
 export type { GenerationRange, GenerationRanges, PublishAgentView, PublishContext, WorkflowPublishFindingCode } from './publish-findings';
 // step 7 TIER 2 — shallow schema compatibility, WARNING-severity only. Tier 1 (the
 // port lattice, above) blocks; tier 3 is runtime validation at the node boundary. Never promote

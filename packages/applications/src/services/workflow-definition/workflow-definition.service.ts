@@ -20,14 +20,18 @@ import {
 } from '@arcaai/domains';
 import type { JsonValue } from '@arcaai/domains';
 import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
+import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import {
   buildPortableBundle,
   canonicalJson,
   compile,
+  hasBlockingFindings,
   hyperparameterCapabilityProblems,
   nodeInfo as registryNodeInfo,
   portableBundleProblems,
+  publishFindings,
   registryChecksum,
+  TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
   validate,
   WORKFLOW_NODE_REGISTRY,
   workflowNodeClassLookup,
@@ -1170,16 +1174,28 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     this.assertMutable(entity);
 
     const graph = entity.graph as unknown as WorkflowGraph;
-    const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
+    const baseReport = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
+    // TASK-890 — the publish gate's findings are RECORDED here, never enforced: `validate()` is
+    // authoring feedback, and refusing a draft for a problem publish will refuse anyway would
+    // just move the same wall earlier in the author's day.
+    const publishGate = this.graphPublishFindings(graph);
+    const report: WorkflowValidationReport =
+      publishGate.length === 0
+        ? baseReport
+        : { ...baseReport, ok: baseReport.ok && !hasBlockingFindings(publishGate), findings: [...baseReport.findings, ...publishGate] };
     // Same bindings publish() will stamp — a validate() that compiled against different
     // policyBindings would greenlight an artifact the publish() then produces differently.
     const compileResult = compile(graph, this.buildCompilerContext(entity, graph, await this.resolveContextSchemaVersionId()));
-    const engineClean = !reportIsShapeBroken(report) && !('findings' in compileResult);
+    // TASK-890 — a blocking PUBLISH finding also keeps the row a DRAFT. VALIDATED means
+    // "publishable", and promoting a graph that `publish()` would then 400 on hands the console a
+    // status it cannot act on. `validate()` still never THROWS — recording without refusing is
+    // about the response, not about lying in the status column.
+    const engineClean = !reportIsShapeBroken(report) && !('findings' in compileResult) && !hasBlockingFindings(publishGate);
 
     entity.validationReport = report as unknown as JsonValue;
     entity.validatedAt = new Date();
     // DRAFT rule-catalogue findings never block this transition (decision #3) — only the
-    // engine gate (shape + compile()) decides DRAFT -> VALIDATED.
+    // engine gate (shape + compile() + the publish gate) decides DRAFT -> VALIDATED.
     entity.status = engineClean ? WorkflowDefinitionStatus.VALIDATED : WorkflowDefinitionStatus.DRAFT;
 
     if (!entity.hasChanges) {
@@ -1221,9 +1237,26 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     await this.assertPaletteEntitled(entity);
 
     const graph = entity.graph as unknown as WorkflowGraph;
-    const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
-    if (reportIsShapeBroken(report)) {
-      throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
+    const baseReport = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
+    if (reportIsShapeBroken(baseReport)) {
+      throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: baseReport.findings });
+    }
+
+    // TASK-890 §3.5 — the publish gate. Runs AFTER the shape check (a malformed graph has
+    // nothing coherent to check) and BEFORE compile and any entity mutation, so a refusal writes
+    // nothing — the same discipline as the capability gate below it. WARNINGs
+    // (`GUARDRAIL_OPTED_OUT`, and `PROMPT_VARIABLE_UNDECLARED` during the OD-C ramp) are recorded
+    // and never block: an opt-out is a decision to record, not a defect to refuse.
+    const publishGate = this.graphPublishFindings(graph);
+    const report: WorkflowValidationReport =
+      publishGate.length === 0
+        ? baseReport
+        : { ...baseReport, ok: baseReport.ok && !hasBlockingFindings(publishGate), findings: [...baseReport.findings, ...publishGate] };
+    if (hasBlockingFindings(publishGate)) {
+      throw new BadRequestException({
+        message: 'The workflow graph does not pass the publish gate.',
+        findings: publishGate.filter((f) => f.severity === 'ERROR'),
+      });
     }
 
     // the gate, at the moment it matters. A node that tunes a parameter its bound
@@ -1713,6 +1746,31 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * inside it, including a repository throw, resolves to a `WF-INTERNAL` ERROR finding with
    * `ok: false`, never an exception and never `ok: true`.
    */
+  /**
+   * TASK-890 §3.5 (F-10, BLOCKER 1c) — the publish gate, at the ONE point that decides.
+   *
+   * `workflowPublishProblems` was a complete gate with zero callers, so a graph could be
+   * published with a `core.agent` naming no agent, an unparseable CEL branch, or a node config
+   * its own schema rejects, and the failure surfaced at RUN time — in a consultation. This is
+   * that gate, wired: `publish()` refuses on an ERROR finding and `validate()` records the same
+   * findings without refusing, so a draft gets the feedback long before anyone publishes it.
+   *
+   * `templateReferenceSeverity` comes from ONE contract constant (the OD-C ramp): today an
+   * undeclared prompt variable is a WARNING, because no agent binds a context schema yet (gap
+   * 4e) and enforcing it now would be a migration wearing a gate's clothes.
+   *
+   * The per-agent slots (`agents`, `triggerContextSchema`) are deliberately left unresolved here.
+   * They need reads this method does not have — the referenced agent row, the tenant's context
+   * schema — and TASK-890 L2/L8 supply them. Absent, the contract SKIPS those checks rather than
+   * guessing, which is why an unresolved slot is safe and a WRONG one would not be.
+   */
+  private graphPublishFindings(graph: WorkflowGraph): WorkflowFinding[] {
+    return publishFindings(graph, {
+      schemaValueProblems: jsonSchemaValueProblems,
+      templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+    });
+  }
+
   private async validateGraph(graph: WorkflowGraph, paletteKey: string, tenantId: string): Promise<WorkflowValidationReport> {
     const report = this.workflowValidator
       ? await this.workflowValidator.validateGraph(tenantId, paletteKey, graph)
