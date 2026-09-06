@@ -6,15 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AiModelFactory, CreateAiModelProps } from '../AiModelFactory';
-import {
-  AiModelSource,
-  AiModelFormat,
-  AiModelAvailability,
-  AiDeploymentKind,
-  ModelCategory,
-  ModelTaskType,
-  ModelType,
-} from '../../../../enums';
+import { AiModelSource, AiModelFormat, AiModelAvailability, AiDeploymentKind, ModelCategory, ModelTaskType, ModelType } from '../../../../enums';
 
 // tenantId is now required at the factory layer.
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -350,15 +342,14 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'test/model',
         format: AiModelFormat.SAFETENSOR,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.hasChanges).toBe(false);
       expect(model.changes).toEqual({});
     });
-
   });
 
   describe('different model sources and formats', () => {
@@ -373,9 +364,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'organization/model',
         format: AiModelFormat.SAFETENSOR,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.isHuggingFace).toBe(true);
@@ -392,9 +383,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.MLFLOW,
         sourceUri: 'models:/my-model/1',
         format: AiModelFormat.PYTORCH,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.isMLFlow).toBe(true);
@@ -474,9 +465,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'openai/whisper-large-v3',
         format: AiModelFormat.SAFETENSOR,
-      libraryName: 'transformers',
-      servedBy: 'stt',
-      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
       expect(model.provider).toBeNull();
       expect(model.architecture).toBeNull();

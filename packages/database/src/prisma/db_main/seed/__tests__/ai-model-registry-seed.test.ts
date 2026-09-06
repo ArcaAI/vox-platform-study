@@ -143,7 +143,15 @@ describe('the platform model catalogue (33 SYSTEM rows)', () => {
   it('models every CLOUD row as NOT_APPLICABLE for availability with a vendor wire id, and no self-hosted row as CLOUD', () => {
     const cloud = catalog.filter((m) => m.deploymentKind === 'CLOUD');
     expect(cloud.map((m) => m.slug).sort()).toEqual(
-      ['azure-speech-stt', 'mai-transcribe-1.5', 'sarvam-saaras-v4', 'openai-gpt4o-transcribe', 'azure-neural-voices', 'sarvam-bulbul', 'azure-gpt-5.4-mini'].sort(),
+      [
+        'azure-speech-stt',
+        'mai-transcribe-1.5',
+        'sarvam-saaras-v4',
+        'openai-gpt4o-transcribe',
+        'azure-neural-voices',
+        'sarvam-bulbul',
+        'azure-gpt-5.4-mini',
+      ].sort(),
     );
     cloud.forEach((m) => {
       expect(m.availability, m.slug).toBe('NOT_APPLICABLE');

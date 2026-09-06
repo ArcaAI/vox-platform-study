@@ -439,7 +439,7 @@ export interface AiModelSeed {
    * or the resolving endpoint fails closed with 503), and — for the NLP safety
    * plane — the capability envelope, languages and label taxonomy
    * that keep model ids and label sets out of Python.
- */
+   */
   metaData?: {
     /**
      * The Hub repo the PUBLISHER fetches for an LM Studio row, where

@@ -31,10 +31,7 @@ import {
 import { SYSTEM_TENANT_ID } from '../00-constants';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DEFINITION_MODULE = path.resolve(
-  HERE,
-  '../../../../../../applications/src/services/consultation-context-schema/context-schema-definition.ts',
-);
+const DEFINITION_MODULE = path.resolve(HERE, '../../../../../../applications/src/services/consultation-context-schema/context-schema-definition.ts');
 
 const JSON_SCHEMA_SUBSET_DIST = path.resolve(HERE, '../../../../../../json-schema-subset/dist/index.mjs');
 if (!existsSync(JSON_SCHEMA_SUBSET_DIST)) {
@@ -47,8 +44,12 @@ if (!existsSync(JSON_SCHEMA_SUBSET_DIST)) {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const definitionContract: any = await import(/* @vite-ignore */ DEFINITION_MODULE);
-const { computeDefinitionChecksum, contextSchemaDefinitionProblems, payloadSchemaFromDefinition, LEGACY_CONTEXT_SCHEMA_SLUG: SLUG_FROM_APPLICATIONS } =
-  definitionContract;
+const {
+  computeDefinitionChecksum,
+  contextSchemaDefinitionProblems,
+  payloadSchemaFromDefinition,
+  LEGACY_CONTEXT_SCHEMA_SLUG: SLUG_FROM_APPLICATIONS,
+} = definitionContract;
 
 const kind = () => (LEGACY_CONTEXT_SCHEMA_DEFINITION as { kinds: Array<Record<string, unknown>> }).kinds[0]!;
 

@@ -78,7 +78,7 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
    * the engine itself answers to — while `AiRuntimeProfile.modelSlug` is keyed by
    * the catalog `slug`. This is the translation between the two. Same routing
    * rule as `findBySlug`: an explicit `tx` bypasses the tenant-scope extension.
- */
+   */
   async findByProviderAndSourceUri(
     tenantId: string,
     provider: string,

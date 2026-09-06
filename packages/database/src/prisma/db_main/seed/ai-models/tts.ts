@@ -95,7 +95,8 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Indic Parler TTS',
     slug: 'indic-parler-tts',
-    description: 'AI4Bharat Indic Parler-TTS — local Malayalam synthesis (parler-tts). Gated Hub weights; served by the tts `[indic-parler]` image variant.',
+    description:
+      'AI4Bharat Indic Parler-TTS — local Malayalam synthesis (parler-tts). Gated Hub weights; served by the tts `[indic-parler]` image variant.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.TEXT_TO_SPEECH,
     modelType: ModelType.BASE_MODEL,
@@ -158,7 +159,8 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Sarvam Bulbul',
     slug: 'sarvam-bulbul',
-    description: 'Sarvam Bulbul v3 cloud TTS — Indic-language synthesis (Malayalam). API key via the tenant → SYSTEM `tts`/`sarvam` provider connection.',
+    description:
+      'Sarvam Bulbul v3 cloud TTS — Indic-language synthesis (Malayalam). API key via the tenant → SYSTEM `tts`/`sarvam` provider connection.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.TEXT_TO_SPEECH,
     modelType: ModelType.BASE_MODEL,
