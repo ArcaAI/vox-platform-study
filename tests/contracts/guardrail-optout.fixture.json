@@ -1,0 +1,45 @@
+{
+  "_comment": "TASK-890 §3.14 (OD-R clause 3) — the CROSS-LANGUAGE parity fixture for the guardrail opt-out's precedence. Asserted from BOTH tests/contracts/guardrail-optout-parity.contract.test.ts (TypeScript, packages/workflow-contract/src/guardrail-optout.ts — the gateway's realtime `core.agent` lane, the agent invocation path and the publish-time finding) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_guardrail_optout_parity.py (Python, harness.temporal.interpreter.guardrail_optout — the durable lane). The two lanes execute the SAME node, so a divergence here means one lane screens a call the other does not, which is a safety difference no test outside this fixture would see. `null` = no opinion at that level (ABSENT means inherit; there is no `unset false`).",
+  "cases": [
+    {
+      "name": "all-absent-defaults-on",
+      "input": { "node": null, "workflow": null, "agent": null },
+      "expected": { "enabled": true, "source": "default" }
+    },
+    {
+      "name": "agent-only-off",
+      "input": { "node": null, "workflow": null, "agent": false },
+      "expected": { "enabled": false, "source": "agent" }
+    },
+    {
+      "name": "agent-only-on",
+      "input": { "node": null, "workflow": null, "agent": true },
+      "expected": { "enabled": true, "source": "agent" }
+    },
+    {
+      "name": "workflow-off-beats-agent-on",
+      "input": { "node": null, "workflow": false, "agent": true },
+      "expected": { "enabled": false, "source": "workflow" }
+    },
+    {
+      "name": "workflow-on-beats-agent-off",
+      "input": { "node": null, "workflow": true, "agent": false },
+      "expected": { "enabled": true, "source": "workflow" }
+    },
+    {
+      "name": "node-off-beats-workflow-on-and-agent-on",
+      "input": { "node": false, "workflow": true, "agent": true },
+      "expected": { "enabled": false, "source": "node" }
+    },
+    {
+      "name": "node-on-beats-workflow-off-and-agent-off",
+      "input": { "node": true, "workflow": false, "agent": false },
+      "expected": { "enabled": true, "source": "node" }
+    },
+    {
+      "name": "node-off-with-nothing-below-it",
+      "input": { "node": false, "workflow": null, "agent": null },
+      "expected": { "enabled": false, "source": "node" }
+    }
+  ]
+}

@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import { NODE_CONFIG_SCHEMAS } from '../node-config-schemas';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
-import { isValidConnection, nodeDescriptorContractProblems, workflowPublishProblems } from '../port-validation';
+import { isValidConnection, nodeDescriptorContractProblems } from '../port-validation';
+import { publishProblems as workflowPublishProblems } from './publish-problems.helper';
 import { TERMINOLOGY_PURPOSE_SCOPES } from '../node-config-schemas';
 
 const REGISTRY = WORKFLOW_NODE_REGISTRY;

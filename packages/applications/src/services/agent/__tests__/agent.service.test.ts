@@ -36,8 +36,27 @@ const mockProviderConnections = { resolveConnection: vi.fn(), resolveTenantCloud
 const mockPromptTemplateRepository = { findById: vi.fn() };
 const mockPromptVersionRepository = { findByVersionNumber: vi.fn() };
 
-const LLM_MODEL = { id: 'model-llm', tenantId: SYSTEM_TENANT_ID, slug: 'lms-gemma-4-e2b-it-qat', taskType: 'TEXT_GENERATION', provider: 'lm-studio', localPath: null, resourceStatus: ResourceStatusType.ENABLED, metaData: null };
-const ASR_MODEL = { id: 'model-asr', tenantId: SYSTEM_TENANT_ID, slug: 'nemotron-3.5-asr-streaming-0.6b', taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'built-in', localPath: null, downloadStatus: 'NOT_DOWNLOADED', resourceStatus: ResourceStatusType.ENABLED, metaData: null };
+const LLM_MODEL = {
+  id: 'model-llm',
+  tenantId: SYSTEM_TENANT_ID,
+  slug: 'lms-gemma-4-e2b-it-qat',
+  taskType: 'TEXT_GENERATION',
+  provider: 'lm-studio',
+  localPath: null,
+  resourceStatus: ResourceStatusType.ENABLED,
+  metaData: null,
+};
+const ASR_MODEL = {
+  id: 'model-asr',
+  tenantId: SYSTEM_TENANT_ID,
+  slug: 'nemotron-3.5-asr-streaming-0.6b',
+  taskType: 'AUTOMATIC_SPEECH_RECOGNITION',
+  provider: 'built-in',
+  localPath: null,
+  downloadStatus: 'NOT_DOWNLOADED',
+  resourceStatus: ResourceStatusType.ENABLED,
+  metaData: null,
+};
 const STAGED_ASR = { ...ASR_MODEL, id: 'model-asr-staged', slug: 'arcaai-whisper-large-ml-en-gguf', localPath: '/mnt/models/whisper' };
 const AZURE_LLM = { ...LLM_MODEL, id: 'model-azure', slug: 'azure-gpt-5.4-mini', provider: 'azure' };
 
@@ -134,12 +153,21 @@ describe('create', () => {
   });
 
   it('refuses an unknown model id', async () => {
-    await expect(makeService().create({ slug: 'bad', name: 'Bad', task: AgentTask.TEXT_GENERATION, modelId: 'nope' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(makeService().create({ slug: 'bad', name: 'Bad', task: AgentTask.TEXT_GENERATION, modelId: 'nope' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('refuses a forbidden key in parameters (reference-only rule)', async () => {
     await expect(
-      makeService().create({ slug: 'bad', name: 'Bad', task: AgentTask.TEXT_GENERATION, modelId: 'model-llm', instruction: { systemPrompt: 'x' }, parameters: { generation: { endpoint: 'http://x' } } }),
+      makeService().create({
+        slug: 'bad',
+        name: 'Bad',
+        task: AgentTask.TEXT_GENERATION,
+        modelId: 'model-llm',
+        instruction: { systemPrompt: 'x' },
+        parameters: { generation: { endpoint: 'http://x' } },
+      }),
     ).rejects.toMatchObject({ response: { code: 'CONFIG' } });
   });
 });
@@ -152,14 +180,24 @@ describe('publish — fails closed', () => {
     const published = await makeService().publish('agent-1', {});
     expect(published.status).toBe('PUBLISHED');
     expect(published.isActive).toBe(true);
-    expect(published.compiledConfig).toMatchObject({ task: 'TEXT_GENERATION', service: 'llm', model: { slug: 'lms-gemma-4-e2b-it-qat' }, resolvedPrompt: { source: 'inline' } });
+    expect(published.compiledConfig).toMatchObject({
+      task: 'TEXT_GENERATION',
+      service: 'llm',
+      model: { slug: 'lms-gemma-4-e2b-it-qat' },
+      resolvedPrompt: { source: 'inline' },
+    });
     expect(published.compiledConfigChecksum).toMatch(/^sha256:/);
     expect(previous.isActive).toBe(false);
-    expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ data: expect.objectContaining({ action: 'publish' }) }));
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+      SysEventType.ResourceUpdated,
+      expect.objectContaining({ data: expect.objectContaining({ action: 'publish' }) }),
+    );
   });
 
   it('refuses MODEL_UNAVAILABLE for bucket-staged weights that are not present (the nemotron proof)', async () => {
-    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr', instruction: null, parameters: null }));
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr', instruction: null, parameters: null }),
+    );
     await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_UNAVAILABLE' } });
     // The report is persisted so the console can show WHY, but nothing is published.
     const persisted = mockAgentRepository.update.mock.calls[0][1] as { status: string; validationReport: { blocking: boolean } };
@@ -168,7 +206,9 @@ describe('publish — fails closed', () => {
   });
 
   it('publishes a built-in ASR model whose weights ARE staged (localPath set)', async () => {
-    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr-staged', instruction: null, parameters: { decoding: { languageMode: 'ml-en' } } }));
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr-staged', instruction: null, parameters: { decoding: { languageMode: 'ml-en' } } }),
+    );
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
     const published = await makeService().publish('agent-1', {});
     expect(published.status).toBe('PUBLISHED');
@@ -200,15 +240,102 @@ describe('publish — fails closed', () => {
   it('resolves an APPROVED template`s pinned version into compiledConfig.resolvedPrompt', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ instruction: { promptTemplateId: 'tpl-1', promptVersionNumber: 2 } }));
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
-    mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'tpl-1', name: 'SOAP', status: 'APPROVED', content: 'head', approvedVersionNumber: 2 });
+    mockPromptTemplateRepository.findById.mockResolvedValue({
+      id: 'tpl-1',
+      name: 'SOAP',
+      status: 'APPROVED',
+      content: 'head',
+      approvedVersionNumber: 2,
+    });
     mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 2, content: 'Summarise as SOAP.' });
     const published = await makeService().publish('agent-1', {});
-    expect(published.compiledConfig).toMatchObject({ resolvedPrompt: { source: 'template', promptTemplateId: 'tpl-1', promptVersionNumber: 2, content: 'Summarise as SOAP.' } });
+    expect(published.compiledConfig).toMatchObject({
+      resolvedPrompt: { source: 'template', promptTemplateId: 'tpl-1', promptVersionNumber: 2, content: 'Summarise as SOAP.' },
+    });
   });
 
   it('refuses to publish an already PUBLISHED row (immutable — branch a new version)', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ status: WorkflowDefinitionStatus.PUBLISHED, compiledConfig: {} }));
     await expect(makeService().publish('agent-1', {})).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+/**
+ * TASK-890 §3.5 — the resolved prompt is a TEMPLATE, so publish checks it like one. Before this
+ * ticket nothing looked at prompt CONTENT at all: an agent could publish with a prompt that no
+ * renderer could parse, and the failure surfaced mid-consultation instead of at authoring time.
+ *
+ * The severity split is the point. A template that does not PARSE can never render, so it is an
+ * ERROR. A reference to a variable nobody declared MIGHT still resolve at runtime (the caller can
+ * pass it), so in release 1 it is a WARNING — the OD-C ramp, promoted by one contract constant.
+ */
+describe('publish — the resolved prompt is checked as a template', () => {
+  const withPrompt = (content: string) => agent({ instruction: { systemPrompt: content } });
+
+  it('refuses PROMPT_TEMPLATE_SYNTAX for a prompt that cannot parse', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(withPrompt('Summarise {{a | upper}}'));
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'PROMPT_TEMPLATE_SYNTAX' } });
+    const persisted = mockAgentRepository.update.mock.calls[0][1] as { status: string; validationReport: { blocking: boolean } };
+    expect(persisted.status).toBe('DRAFT');
+    expect(persisted.validationReport.blocking).toBe(true);
+  });
+
+  it('records PROMPT_VARIABLE_UNDECLARED as a WARNING and still publishes (release 1 ramp)', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(withPrompt('Summarise for {{context.patientAge}}'));
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    const published = await makeService().publish('agent-1', {});
+    expect(published.status).toBe('PUBLISHED');
+    const report = published.validationReport as unknown as { blocking: boolean; findings: Array<{ code: string; severity: string }> };
+    expect(report.blocking).toBe(false);
+    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'PROMPT_VARIABLE_UNDECLARED', severity: 'WARNING' }));
+  });
+
+  it('says nothing about a reference the agent`s own `instruction.variables` declares', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ instruction: { promptTemplateId: 'tpl-1', promptVersionNumber: 1, variables: { tone: { value: 'concise' } } } }),
+    );
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockPromptTemplateRepository.findById.mockResolvedValue({
+      id: 'tpl-1',
+      name: 'SOAP',
+      status: 'APPROVED',
+      content: 'x',
+      approvedVersionNumber: 1,
+    });
+    mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 1, content: 'Write in a {{tone}} voice.' });
+    const published = await makeService().publish('agent-1', {});
+    const report = published.validationReport as unknown as { findings: Array<{ code: string }> };
+    expect(report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED')).toEqual([]);
+  });
+
+  it('resolves `input.*` against the agent`s own `inputSchema`', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({
+        instruction: { systemPrompt: 'Note: {{input.note}}. Missing: {{input.nope}}' },
+        inputSchema: { type: 'object', additionalProperties: false, properties: { note: { type: 'string' } } },
+      }),
+    );
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    const published = await makeService().publish('agent-1', {});
+    const report = published.validationReport as unknown as { findings: Array<{ code: string; message: string }> };
+    const undeclared = report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
+    expect(undeclared).toHaveLength(1);
+    expect(undeclared[0]?.message).toContain('input.nope');
+  });
+
+  it('REFUSES the retired flat-string `instruction.variables` form (OD-K)', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ instruction: { promptTemplateId: 'tpl-1', promptVersionNumber: 1, variables: { tone: 'concise' } } }),
+    );
+    mockPromptTemplateRepository.findById.mockResolvedValue({
+      id: 'tpl-1',
+      name: 'SOAP',
+      status: 'APPROVED',
+      content: 'x',
+      approvedVersionNumber: 1,
+    });
+    mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 1, content: 'x' });
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: expect.stringMatching(/CONFIG|SCHEMA/) } });
   });
 });
 
@@ -219,21 +346,33 @@ describe('404-over-403', () => {
   });
 
   it('a SYSTEM template is readable but not writable by a tenant (404, not 403)', async () => {
-    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.PUBLISHED, compiledConfig: {} }));
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.PUBLISHED, compiledConfig: {} }),
+    );
     await expect(makeService().getById('agent-1')).resolves.toMatchObject({ tenantId: SYSTEM_TENANT_ID });
     await expect(makeService().update('agent-1', { name: 'x' })).rejects.toBeInstanceOf(NotFoundException);
     await expect(makeService().deprecate('agent-1')).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('a foreign row never leaks through the visible read', async () => {
-    mockAgentRepository.findByIdVisible.mockImplementation(async (_id: string, tenantId: string) => (tenantId === OTHER ? agent({ tenantId: OTHER }) : null));
+    mockAgentRepository.findByIdVisible.mockImplementation(async (_id: string, tenantId: string) =>
+      tenantId === OTHER ? agent({ tenantId: OTHER }) : null,
+    );
     await expect(makeService().getById('agent-1')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
 describe('newVersion / deprecate', () => {
   it('branches a SYSTEM template into a NEW lineage in the caller tenant (DRAFT, parentVersionId = source)', async () => {
-    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, slug: 'platform-summarization', status: WorkflowDefinitionStatus.PUBLISHED, compiledConfig: {} }));
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({
+        id: 'sys-1',
+        tenantId: SYSTEM_TENANT_ID,
+        slug: 'platform-summarization',
+        status: WorkflowDefinitionStatus.PUBLISHED,
+        compiledConfig: {},
+      }),
+    );
     mockAgentRepository.findMaxVersionNumber.mockResolvedValue(0);
     const branched = await makeService().newVersion('sys-1', { slug: 'my-summarizer' });
     expect(branched).toMatchObject({ tenantId: TENANT, slug: 'my-summarizer', versionNumber: 1, status: 'DRAFT', parentVersionId: 'sys-1' });
@@ -255,7 +394,9 @@ describe('newVersion / deprecate', () => {
 
 describe('listPublished', () => {
   it('projects the business summary with isTenantDefault from the assignment cascade and default I/O schemas', async () => {
-    mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([agent({ status: WorkflowDefinitionStatus.PUBLISHED, isActive: true, compiledConfig: {} })]);
+    mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([
+      agent({ status: WorkflowDefinitionStatus.PUBLISHED, isActive: true, compiledConfig: {} }),
+    ]);
     mockAssignments.resolve.mockResolvedValue({ agentSlug: 'clinic-summarizer', source: 'tenant' });
     const [summary] = await makeService().listPublished();
     expect(summary).toMatchObject({ slug: 'clinic-summarizer', task: 'TEXT_GENERATION', isTenantDefault: true, protocols: ['http', 'http-sse'] });
