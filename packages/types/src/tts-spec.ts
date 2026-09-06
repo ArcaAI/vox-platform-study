@@ -78,7 +78,10 @@ export interface TtsSpecModel {
   format: string;
   sourceUri: string;
   sourceRevision: string | null;
-  /** Operator/admin local-mirror override — highest precedence in the loader. */
+  /**
+   * Highest precedence in the loader. DERIVED from `AiModel.bucketPrefix`
+   * [+ `primaryObject`] since TASK-890 §3.11 — never a stored column.
+   */
   localPath: string | null;
   checksum: string | null;
   computeType: string | null;

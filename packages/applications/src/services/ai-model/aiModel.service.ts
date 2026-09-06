@@ -32,7 +32,6 @@ import {
 import { AiModelDtoMapper } from './aiModel.dto.mapper';
 import { toCatalogueModel } from './model-catalogue.mapper';
 import { IInferenceReadinessService, type IInferenceReadinessServicePort } from './model-readiness.port';
-import { deriveLocalPath } from './constants';
 import {
   MODEL_TASK_TYPE_SERVICE,
   PROVIDER_GROUP_HOPE,
@@ -103,12 +102,13 @@ function hasKeyMaterial(ciphertext: Uint8Array | null | undefined): boolean {
  * explicit `tenantId = SYSTEM` filter is exactly what the shared-read merge
  * admits.
  *
- * ## Derived, never typed
+ * ## Derived, never stored
  *
- * `localPath` is `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]
- * (D-2). The DTOs do not accept it; this service writes it whenever the bucket
- * identity changes so the Python resolvers — which still read `localPath` as
- * the highest-precedence override — keep working unchanged.
+ * `localPath` is `/mnt/models-bucket/` + `bucketPrefix`, plus `primaryObject`
+ * for a single-file loader. The DTOs do not accept it and, since TASK-890
+ * §3.11, nothing WRITES it either: the column is dropped and every reader
+ * derives the value from the bucket identity (`derivedLocalPath`). The Python
+ * resolvers still receive `local_path` on the wire, unchanged.
  */
 @Injectable()
 export class AiModelService extends BaseService implements IAiModelService {
@@ -275,9 +275,6 @@ export class AiModelService extends BaseService implements IAiModelService {
       tags: dto.tags,
       createdBy: userId ?? undefined,
     });
-    if (dto.bucketPrefix) {
-      model.localPath = deriveLocalPath(dto.bucketPrefix, dto.primaryObject);
-    }
     model.validate();
 
     const saved = await this.aiModelRepository.create(model, tx);
@@ -342,13 +339,12 @@ export class AiModelService extends BaseService implements IAiModelService {
     if (dto.checksum !== undefined) existing.checksum = dto.checksum;
     if (dto.tags !== undefined) existing.tags = dto.tags;
 
-    // Bucket identity → derived localPath (D-2). Clearing the prefix clears
-    // the path so scheme dispatch on `sourceUri` resumes in the resolvers.
-    if (dto.bucketPrefix !== undefined || dto.primaryObject !== undefined) {
-      if (dto.bucketPrefix !== undefined) existing.bucketPrefix = dto.bucketPrefix || null;
-      if (dto.primaryObject !== undefined) existing.primaryObject = dto.primaryObject || null;
-      existing.localPath = existing.bucketPrefix ? deriveLocalPath(existing.bucketPrefix, existing.primaryObject) : null;
-    }
+    // The bucket IDENTITY is the only thing stored; `localPath` is derived from
+    // it on every read (TASK-890 §3.11). Clearing the prefix therefore clears the
+    // path everywhere at once, and scheme dispatch on `sourceUri` resumes in the
+    // resolvers — the same behaviour, with nothing to keep in step.
+    if (dto.bucketPrefix !== undefined) existing.bucketPrefix = dto.bucketPrefix || null;
+    if (dto.primaryObject !== undefined) existing.primaryObject = dto.primaryObject || null;
 
     existing.updatedBy = userId ?? null;
     existing.validate();

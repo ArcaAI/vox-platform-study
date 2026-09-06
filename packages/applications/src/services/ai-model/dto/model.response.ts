@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   AiDeploymentKind,
   AiModelAvailability,
-  AiModelDownloadStatus,
   AiModelFormat,
   AiModelSource,
   AiTaskKind,
@@ -119,21 +118,13 @@ export class ModelResponse {
   @ApiPropertyOptional({ description: 'Compute type' })
   computeType?: string | null;
 
-  @ApiProperty({ description: 'Download status', enum: AiModelDownloadStatus, deprecated: true })
-  downloadStatus: AiModelDownloadStatus;
-
   @ApiPropertyOptional({
     description:
-      'DERIVED (TASK-860): `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. Read by every service resolver as the ' +
-      'highest-precedence weight location. Falls back to the legacy stored value on rows that predate `bucketPrefix`.',
+      'DERIVED, never stored (TASK-890 §3.11): `/mnt/models-bucket/` + `bucketPrefix`, plus `primaryObject` for a single-file loader. ' +
+      'Read by every service resolver as the highest-precedence weight location; null when the row has no bucket identity, which is ' +
+      'the signal to fall back to `sourceUri` scheme dispatch.',
   })
   localPath?: string | null;
-
-  @ApiPropertyOptional({ description: 'Download timestamp', deprecated: true })
-  downloadedAt?: Date | null;
-
-  @ApiPropertyOptional({ description: 'File size in MB', deprecated: true })
-  fileSizeMb?: number | null;
 
   @ApiPropertyOptional({ description: 'SHA256 checksum' })
   checksum?: string | null;

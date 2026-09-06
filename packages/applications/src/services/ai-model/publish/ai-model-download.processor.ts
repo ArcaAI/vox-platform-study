@@ -2,11 +2,11 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
-import { AiModelRepository, JobQueue } from '@arcaai/domains';
+import { AiModelAvailability, AiModelRepository, JobQueue } from '@arcaai/domains';
 import { IS3Service } from '../../baseServices/storage';
 import { assertEqualTenants, createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
-import { HF_CACHE_LIBRARIES, HOPE_MODELS_BUCKET, deriveLocalPath } from '../constants';
+import { HF_CACHE_LIBRARIES, HOPE_MODELS_BUCKET, SINGLE_FILE_LIBRARIES, deriveLocalPath } from '../constants';
 import { mergeDownloadMeta } from './model-download-meta.util';
 import { buildAiModelManifest } from './model-manifest.util';
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
@@ -15,12 +15,6 @@ import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenam
 
 // Re-exported for the existing importers (tests, the API module); the constant moved to `../constants`.
 export { HOPE_MODELS_BUCKET };
-
-/**
- * Libraries whose loader opens ONE file (so the derived `localPath` names the
- * primary object) rather than a directory.
- */
-const SINGLE_FILE_LIBRARIES: ReadonlySet<string> = new Set(['whisper.cpp', 'llama.cpp', 'onnxruntime', 'parakeet.cpp']);
 
 const HF_REPO_RE = /^(?:hf:)?([\w.-]+)\/([\w.-]+)$/;
 
@@ -165,17 +159,20 @@ export class AiModelDownloadProcessor extends WorkerHost {
         if (!fresh) {
           throw new Error(`AiModel ${aiModelId} disappeared during download`);
         }
-        fresh.recordPublish({
-          bucketPrefix: prefix,
-          primaryObject,
-          manifestDigest: sha256Hex(manifestBytes),
-          localPath,
-          fileSizeMb,
-          checksum: primarySha256 ?? undefined,
-          hfRevision: hub?.sha ?? null,
-          userId,
-        });
-        fresh.metaData = mergeDownloadMeta(fresh.metaData, { jobId, finishedAt: new Date().toISOString(), error: null });
+        // TASK-890 §3.11 — the write-back is the BUCKET IDENTITY plus the
+        // MEASURED availability, and nothing else. The four bookkeeping columns
+        // (`downloadStatus`, `downloadedAt`, `fileSizeMb`, `localPath`) are
+        // dropped by L2: the mount path is DERIVED from the identity written
+        // here (`derivedLocalPath`), and the published size — a fact about THIS
+        // run, not about the row — rides in the run bookkeeping below.
+        fresh.bucketPrefix = prefix;
+        fresh.primaryObject = primaryObject ?? null;
+        fresh.manifestDigest = sha256Hex(manifestBytes);
+        if (hub?.sha !== undefined) fresh.hfRevision = hub?.sha ?? null;
+        if (primarySha256) fresh.checksum = primarySha256;
+        if (userId) fresh.updatedBy = userId;
+        fresh.markAvailability(AiModelAvailability.AVAILABLE, null);
+        fresh.metaData = mergeDownloadMeta(fresh.metaData, { jobId, finishedAt: new Date().toISOString(), error: null, sizeMb: fileSizeMb });
         await this.aiModelRepository.updateWithVersion(aiModelId, fresh, fresh.version);
 
         await job.updateProgress(100);
@@ -197,7 +194,11 @@ export class AiModelDownloadProcessor extends WorkerHost {
 
         const fresh = await this.aiModelRepository.findById(aiModelId);
         if (fresh) {
-          fresh.markAsDownloadFailed(userId);
+          // The failure is recorded in the run bookkeeping; `availability` is
+          // deliberately NOT re-measured. A failed re-publish does not remove
+          // the weights a previous run staged, and claiming MISSING here would
+          // make a working row unusable on the strength of a network error.
+          if (userId) fresh.updatedBy = userId;
           fresh.metaData = mergeDownloadMeta(fresh.metaData, { jobId, finishedAt: new Date().toISOString(), error: message });
           await this.aiModelRepository.updateWithVersion(aiModelId, fresh, fresh.version);
         }
