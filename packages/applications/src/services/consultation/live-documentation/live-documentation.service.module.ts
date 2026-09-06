@@ -20,6 +20,7 @@ import { TextRequestServiceModule } from '../../text-request/text-request.servic
 import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
 import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workflow-assignment.service.module';
 import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.service.module';
+import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -101,6 +102,11 @@ import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.s
     // correction node already uses; absent ⇒ proposals are computed and returned on the node's
     // output but nothing reaches the clinician's assist feed.
     HarnessLiveAssistServiceModule,
+    // TASK-890 §3.13 (OD-E) — resolves the @Optional IUsageLedgerService so this lane's TEXT
+    // calls are RECORDED. Until this ticket the realtime lane posted to `apps/text` directly and
+    // produced no ledger rows at all: a production LLM path that billed nothing. The quota half
+    // (`IEntitlementsService`) already resolves through `EntitlementsServiceModule` above.
+    UsageLedgerServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],

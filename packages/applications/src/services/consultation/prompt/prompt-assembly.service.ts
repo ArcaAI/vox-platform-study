@@ -11,8 +11,19 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { PromptResolutionService, PromptResolutionTier, type PromptTypeSelector } from './prompt-resolution.service';
-import { buildPreSummaryVariables, templateReferencesPreSummaryVariables } from './pre-summary-variables';
-import { PromptTemplateRepository, DnaWritingStyleReportRepository, DepartmentRepository } from '@arcaai/domains';
+import { PRE_SUMMARY_TEMPLATE_VARIABLES, buildPreSummaryVariables } from './pre-summary-variables';
+import {
+  PromptTemplateRepository,
+  DnaWritingStyleReportRepository,
+  DepartmentRepository,
+  ConsultationContextSchemaRepository,
+  ConsultationContextSchemaVersionRepository,
+} from '@arcaai/domains';
+// TASK-890 §3.2 — the ONE prompt grammar, shared with the agent lanes and the harness.
+import { PromptTemplateSyntaxError, renderTemplate, templateReferences } from '@arcaai/workflow-contract';
+// TASK-890 §3.4 — the legacy bridge: the SYSTEM schema that DECLARES the v1 prompt vocabulary,
+// cloned into every tenant by the reference set. The slug is imported, never re-typed.
+import { LEGACY_CONTEXT_SCHEMA_SLUG, payloadSchemaFromDefinition } from '../../consultation-context-schema/context-schema-definition';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
@@ -20,7 +31,6 @@ import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
 import { IActiveUserContext } from '../../../interfaces';
 import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
 
-const VARIABLE_PATTERN = /\{([a-zA-Z_][\w-]*)\}/g;
 
 /**
  * The platform-tier system prompt (F-20).
@@ -101,10 +111,43 @@ function fingerprintExemplarSet(input: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function substituteVariables(template: string, variables: Record<string, string>): string {
-  return template.replace(VARIABLE_PATTERN, (match, name: string) => {
-    return Object.prototype.hasOwnProperty.call(variables, name) ? variables[name] : match;
-  });
+
+/**
+ * Does this body reference any of v1's nine pre-summary names, in the ONE grammar?
+ *
+ * Replaces the pre-890 `templateReferencesPreSummaryVariables`, which looked for the SINGLE
+ * brace form and therefore stopped firing the moment the seeds were converted — leaving every
+ * one of the nine to render empty. Both spellings the namespace admits count: `{{safe_age}}`
+ * and `{{context.safe_age}}`.
+ *
+ * The gate exists so a SUMMARY template never pays for the department lookup the nine need.
+ */
+function referencesPreSummaryVariables(content: string): boolean {
+  const names = new Set<string>(PRE_SUMMARY_TEMPLATE_VARIABLES);
+  return templateReferences(content).some((reference) => names.has(reference.path.replace(/^context\./, '')));
+}
+
+/** Does `path` resolve in `scope`? Mirrors `renderTemplate`'s own traversal (own keys, plain objects). */
+function resolvesInScope(scope: Record<string, unknown>, path: string): boolean {
+  let current: unknown = scope;
+  for (const segment of path.split('.')) {
+    if (current === null || typeof current !== 'object' || Array.isArray(current)) return false;
+    if (!Object.prototype.hasOwnProperty.call(current, segment)) return false;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current !== null && current !== undefined;
+}
+
+/** Bind `path` to the empty string, creating the intermediate objects it names. */
+function bindEmpty(scope: Record<string, unknown>, path: string): void {
+  const segments = path.split('.');
+  let current: Record<string, unknown> = scope;
+  for (const segment of segments.slice(0, -1)) {
+    const next = current[segment];
+    if (next === null || typeof next !== 'object' || Array.isArray(next)) current[segment] = {};
+    current = current[segment] as Record<string, unknown>;
+  }
+  current[segments[segments.length - 1] as string] = '';
 }
 
 /**
@@ -360,6 +403,16 @@ export class PromptAssemblyService {
     // @Optional + trailing for the same reason as the four above (positional
     // test fixtures); absent ⇒ v1's `'General'` default, never a literal brace.
     @Optional() @Inject(DepartmentRepository) private readonly departmentRepository?: DepartmentRepository,
+    // TASK-890 §3.4 — the TENANT's clone of the `consultation_legacy_v1` bridge schema, which
+    // DECLARES the prompt vocabulary this service populates. Read by slug under the caller's
+    // tenant: context schemas are CONTENT (§1.5), so there is no SYSTEM tier to widen to and
+    // the SYSTEM row is deliberately never read here. @Optional + trailing so every positional
+    // fixture keeps its arity; absent ⇒ the code-owned builders alone, which is the transition
+    // behaviour until L13 backfills every tenant.
+    @Optional() @Inject(ConsultationContextSchemaRepository) private readonly contextSchemaRepository?: ConsultationContextSchemaRepository,
+    @Optional()
+    @Inject(ConsultationContextSchemaVersionRepository)
+    private readonly contextSchemaVersionRepository?: ConsultationContextSchemaVersionRepository,
   ) {}
 
   /**
@@ -483,7 +536,7 @@ export class PromptAssemblyService {
 
     let userPrompt: string;
     if (bodyTemplate) {
-      userPrompt = substituteVariables(bodyTemplate, variables);
+      userPrompt = await this.renderBody(bodyTemplate, variables, params, resolved.promptId ?? null);
     } else {
       userPrompt = params.transcript;
     }
@@ -632,6 +685,123 @@ export class PromptAssemblyService {
     };
   }
 
+  /**
+   * TASK-890 §3.2/§3.4 — render the governed body through the ONE grammar over `context.*`.
+   *
+   * ## Why `context` and not the bare names
+   *
+   * The five surfaces that render an agent instruction now share one vocabulary (§3.3), and the
+   * legacy consultation names are a NAMESPACE inside it: `{{context.conversation_language}}`.
+   * That is what a tenant's `consultation_legacy_v1` schema clone declares, which is what makes
+   * the reference checkable at PUBLISH time instead of discoverable in production. The bare
+   * names are ALSO bound, unqualified, so a template authored either way renders the same
+   * bytes — the two spellings carry the identical value, so there is no ambiguity to resolve,
+   * only a migration not to break.
+   *
+   * ## The missing-value policy is the CALLER's
+   *
+   * `renderTemplate` raises on an unresolved placeholder, which is right for an agent
+   * invocation (a 400 the caller can fix) and wrong here: this body assembles a CLINICAL note
+   * that a clinician is waiting for, and refusing to generate one because a template mentions a
+   * variable this encounter has no value for would be a worse outcome than an empty slot. So
+   * every unresolved, undefaulted reference is bound to the EMPTY STRING and logged — the same
+   * contract the pre-890 builders already honoured for `ner_entities` / `clinician_notes` /
+   * `doctor_highlights` ("always define it, empty when none, so no literal placeholder reaches
+   * the LLM"), generalised to whatever the tenant's schema declares.
+   *
+   * A single brace is NOT a placeholder (§3.11): an unconverted `{language_name}` renders
+   * verbatim, so the omission is visible rather than silently honoured by a fallback pass.
+   */
+  private async renderBody(
+    bodyTemplate: string,
+    variables: Record<string, string>,
+    params: PromptAssemblyParams,
+    promptId: string | null,
+  ): Promise<string> {
+    const context: Record<string, unknown> = { ...variables };
+    const scope: Record<string, unknown> = { ...variables, context };
+
+    // A reference that CARRIES a default is not missing — the author already said what an
+    // absent value should read as, and pre-binding an empty string would silence them.
+    const unresolved = templateReferences(bodyTemplate)
+      .filter((reference) => !reference.hasDefault && !resolvesInScope(scope, reference.path))
+      .map((reference) => reference.path);
+    if (unresolved.length > 0) {
+      // DECLARED-but-empty is expected (this encounter has no prior visit); UNDECLARED is a
+      // defect the publish check should have caught, so the two are reported apart.
+      const declared = new Set(await this.declaredContextNames(params));
+      const undeclared = unresolved.filter((path) => !declared.has(path.replace(/^context\./, '')));
+      this.logger.warn({
+        message: 'Prompt template references variables this assembly did not populate; they render EMPTY',
+        promptId,
+        promptType: params.promptType,
+        tenantId: params.tenantId ?? this.cls?.get('tenantId') ?? null,
+        paths: unresolved,
+        undeclaredByTheTenantSchema: undeclared,
+      });
+      for (const path of unresolved) bindEmpty(scope, path);
+    }
+
+    try {
+      return renderTemplate(bodyTemplate, scope, { templateRef: promptId ?? params.promptType });
+    } catch (error) {
+      if (error instanceof PromptTemplateSyntaxError) {
+        // A malformed template is a governance defect, reported at publish as
+        // `PROMPT_TEMPLATE_SYNTAX`. It must not cost the clinician this note, so the body is
+        // used as authored and the defect is logged loudly.
+        this.logger.error({
+          message: 'Governed prompt template does not parse; assembling it verbatim',
+          promptId,
+          promptType: params.promptType,
+          error: error.message,
+        });
+        return bodyTemplate;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The names the TENANT's `consultation_legacy_v1` clone declares under its `context` kind.
+   *
+   * Read by slug under the caller's tenant — never SYSTEM's row. A context schema is CONTENT
+   * (§1.5): SYSTEM holds the reference set the tenant is CLONED from, and reading it at runtime
+   * would serve the platform's copy to a tenant that has its own.
+   *
+   * TRANSITION: until the reference-set backfill lands, a tenant may not have a clone yet. That
+   * is WARNed, never fatal — the code-owned value builders still populate `context.*`, so a
+   * live consultation behaves exactly as it does today.
+   */
+  private async declaredContextNames(params: PromptAssemblyParams): Promise<string[]> {
+    const tenantId = params.tenantId ?? this.cls?.get('tenantId');
+    if (!tenantId || !this.contextSchemaRepository || !this.contextSchemaVersionRepository) return [];
+    try {
+      const schema = await this.contextSchemaRepository.findByTenantAndSlug(tenantId, LEGACY_CONTEXT_SCHEMA_SLUG);
+      if (!schema || schema.pinnedVersionNumber == null) {
+        this.logger.warn({
+          message: 'PROMPT_CONTEXT_SCHEMA_UNBOUND — this tenant has no pinned clone of the legacy context schema; assembling from the code-owned variables',
+          tenantId,
+          slug: LEGACY_CONTEXT_SCHEMA_SLUG,
+        });
+        return [];
+      }
+      const version = await this.contextSchemaVersionRepository.findBySchemaAndVersionNumber(schema.id, schema.pinnedVersionNumber);
+      if (!version) return [];
+      const payloadSchema = payloadSchemaFromDefinition(version.definition);
+      const properties = (payloadSchema.properties as Record<string, unknown> | undefined)?.context;
+      const fields = properties !== null && typeof properties === 'object' ? (properties as { properties?: Record<string, unknown> }).properties : undefined;
+      return fields ? Object.keys(fields) : [];
+    } catch (error) {
+      // A governance lookup must never fail a generation (the `resolveWarmStartEnabled` rule).
+      this.logger.warn({
+        message: 'Legacy context-schema lookup failed; assembling from the code-owned variables',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
   private async buildVariables(params: PromptAssemblyParams, resolvedContent: string | null): Promise<Record<string, string>> {
     const variables: Record<string, string> = {
       conversation_language: params.conversationLanguage,
@@ -658,7 +828,7 @@ export class PromptAssemblyService {
     //
     // Gated on the resolved body actually referencing them, so a summary
     // template never pays for the department lookup.
-    if (resolvedContent && templateReferencesPreSummaryVariables(resolvedContent)) {
+    if (resolvedContent && referencesPreSummaryVariables(resolvedContent)) {
       Object.assign(
         variables,
         buildPreSummaryVariables({
@@ -700,9 +870,12 @@ export class PromptAssemblyService {
         // resolved template content, rather than unconditionally filling all 11 —
         // so an unused slot is never populated and the variables map only carries
         // keys the template references.
-        const content = resolvedContent ?? '';
+        // TASK-890 §3.2 — asked of the ONE grammar rather than by substring search for a single
+        // brace, which stopped matching the moment the seeds were converted. Both spellings the
+        // namespace admits count (`{{style_DNA_…}}` and `{{context.style_DNA_…}}`).
+        const referenced = new Set(templateReferences(resolvedContent ?? '').map((reference) => reference.path.replace(/^context\./, '')));
         for (const key of this.getDnaVariableKeys()) {
-          if (content.includes(`{${key}}`)) {
+          if (referenced.has(key)) {
             variables[key] = styleText;
           }
         }
