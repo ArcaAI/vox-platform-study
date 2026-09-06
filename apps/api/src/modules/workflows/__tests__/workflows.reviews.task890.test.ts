@@ -17,7 +17,9 @@ import { WorkflowsController } from '../workflows.controller';
 
 function makeController() {
   const workflowExposureService = {
-    getReview: vi.fn().mockResolvedValue({ runId: 'run-1', nodeId: 'n_review', exists: true, phase: 'WAITING', escalations: 0, decided: false, decision: null }),
+    getReview: vi
+      .fn()
+      .mockResolvedValue({ runId: 'run-1', nodeId: 'n_review', exists: true, phase: 'WAITING', escalations: 0, decided: false, decision: null }),
     decideReview: vi.fn().mockResolvedValue({ runId: 'run-1', nodeId: 'n_review', decision: 'approved', signaled: true, reviewerId: 'user-9' }),
   };
   const workflowStreamService = { stream: vi.fn() };
@@ -34,7 +36,10 @@ describe('WorkflowsController — human review', () => {
     ['decideReview', 'workflow:run:write'],
   ] as const)('%s', (method, expectedScope) => {
     it('carries an authorization decorator (REQUIRED_PERMISSIONS_KEY)', () => {
-      const meta = reflector.getAllAndOverride<{ action: string; subject: string }[]>(REQUIRED_PERMISSIONS_KEY, [handlerOf(method), WorkflowsController]);
+      const meta = reflector.getAllAndOverride<{ action: string; subject: string }[]>(REQUIRED_PERMISSIONS_KEY, [
+        handlerOf(method),
+        WorkflowsController,
+      ]);
       expect(meta).toBeDefined();
       expect(meta!.length).toBeGreaterThan(0);
     });
@@ -46,8 +51,14 @@ describe('WorkflowsController — human review', () => {
   });
 
   it('reads the ability from the RUN, not the definition — a review is a run-scoped act', () => {
-    const read = reflector.getAllAndOverride<{ action: string; subject: string }[]>(REQUIRED_PERMISSIONS_KEY, [handlerOf('getReview'), WorkflowsController]);
-    const write = reflector.getAllAndOverride<{ action: string; subject: string }[]>(REQUIRED_PERMISSIONS_KEY, [handlerOf('decideReview'), WorkflowsController]);
+    const read = reflector.getAllAndOverride<{ action: string; subject: string }[]>(REQUIRED_PERMISSIONS_KEY, [
+      handlerOf('getReview'),
+      WorkflowsController,
+    ]);
+    const write = reflector.getAllAndOverride<{ action: string; subject: string }[]>(REQUIRED_PERMISSIONS_KEY, [
+      handlerOf('decideReview'),
+      WorkflowsController,
+    ]);
     expect(read).toEqual([{ action: 'read', subject: 'WorkflowRun' }]);
     expect(write).toEqual([{ action: 'update', subject: 'WorkflowRun' }]);
   });

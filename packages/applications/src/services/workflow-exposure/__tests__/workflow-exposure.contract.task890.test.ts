@@ -96,11 +96,17 @@ describe('modesFor — the socket lane is named, not silently dropped', () => {
   });
 
   it('lists the socket mode for exactly the graphs describeWorkflow gives a ws channel', () => {
-    const withSocket = describeWorkflow('triage', 1, coreGraph(['socket'])) as unknown as { modes: string[]; asyncapi: { channels: Record<string, unknown> } };
+    const withSocket = describeWorkflow('triage', 1, coreGraph(['socket'])) as unknown as {
+      modes: string[];
+      asyncapi: { channels: Record<string, unknown> };
+    };
     expect(withSocket.modes).toContain('socket');
     expect(Object.keys(withSocket.asyncapi.channels)).toContain('ws/workflows');
 
-    const withoutSocket = describeWorkflow('triage', 1, coreGraph(['http-sse'])) as unknown as { modes: string[]; asyncapi: { channels: Record<string, unknown> } };
+    const withoutSocket = describeWorkflow('triage', 1, coreGraph(['http-sse'])) as unknown as {
+      modes: string[];
+      asyncapi: { channels: Record<string, unknown> };
+    };
     expect(withoutSocket.modes).not.toContain('socket');
     expect(Object.keys(withoutSocket.asyncapi.channels)).not.toContain('ws/workflows');
   });

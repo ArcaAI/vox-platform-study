@@ -46,7 +46,11 @@ describe('getWorkflowRunReview', () => {
   });
 
   it('returns the interpreter payload verbatim — exists:false is a normal answer, not an error', async () => {
-    await expect(build().getWorkflowRunReview('run-1', 'n_review', 'tenant-1')).resolves.toEqual({ runId: 'run-1', nodeId: 'n_review', exists: false });
+    await expect(build().getWorkflowRunReview('run-1', 'n_review', 'tenant-1')).resolves.toEqual({
+      runId: 'run-1',
+      nodeId: 'n_review',
+      exists: false,
+    });
   });
 
   it('percent-encodes a run id and a node id that carry path characters', async () => {

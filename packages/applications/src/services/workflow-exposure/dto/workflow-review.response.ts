@@ -28,7 +28,11 @@ export class WorkflowReviewResponse {
   @ApiProperty({ description: 'Whether a decision signal has been accepted. A review is decided once; a second signal is ignored.' })
   decided: boolean;
 
-  @ApiPropertyOptional({ nullable: true, enum: ['approved', 'rejected'], description: 'The decision, once made. `null` while waiting — NEVER a default, because a timeout must not read as an approval.' })
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: ['approved', 'rejected'],
+    description: 'The decision, once made. `null` while waiting — NEVER a default, because a timeout must not read as an approval.',
+  })
   decision: 'approved' | 'rejected' | null;
 }
 
