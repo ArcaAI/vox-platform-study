@@ -136,4 +136,71 @@ describe('PromptVariablesField', () => {
     expect(await axe(container)).toHaveNoViolations();
     document.documentElement.classList.remove('dark');
   });
+
+  /**
+   * TASK-890 black-box J4-F5 — the chips offered only namespace ROOTS, and the root is not the
+   * path: a trigger payload is keyed by the context schema's KIND KEY
+   * (`{{trigger.<kindKey>.<field>}}`). When the workflow's trigger binds a schema the concrete
+   * paths are offered; when it does not, the hint says what the missing segment is.
+   */
+  it('offers the workflow`s concrete trigger paths as chips, in place of the bare root', () => {
+    const onConfigChange = vi.fn();
+    render(
+      <PromptVariablesField
+        idPrefix="n1"
+        config={{}}
+        onConfigChange={onConfigChange}
+        declaredVariableNames={['topic']}
+        triggerPaths={['trigger.intake_form', 'trigger.intake_form.chiefComplaint']}
+      />,
+    );
+    const row = screen.getByLabelText('topic').closest('[data-slot="field"]') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'trigger.intake_form.chiefComplaint' }));
+    expect(onConfigChange).toHaveBeenCalledWith({ overrides: { promptVariables: { topic: '{{trigger.intake_form.chiefComplaint}}' } } });
+    // The skeleton root is redundant once the real paths are known.
+    expect(within(row).queryByRole('button', { name: 'trigger' })).toBeNull();
+  });
+
+  it('explains the kind-key segment when the trigger binds no context schema', () => {
+    render(<PromptVariablesField idPrefix="n1" config={{}} onConfigChange={vi.fn()} declaredVariableNames={['topic']} />);
+    expect(screen.getByText(/kindKey/)).toBeTruthy();
+    const row = screen.getByLabelText('topic').closest('[data-slot="field"]') as HTMLElement;
+    expect(within(row).getByRole('button', { name: 'trigger' })).toBeTruthy();
+  });
+
+  /**
+   * TASK-890 black-box J4-F6 — the seeded platform agents carry an EMPTY `instruction.variables`
+   * while the prompt template they are bound to declares several, so the field showed zero rows
+   * for an agent whose prompt plainly has variables. The template's declaration is the fallback,
+   * labelled as such so an admin can tell where the name came from.
+   */
+  it('falls back to the bound prompt template`s declared variables, marked as from the template', () => {
+    render(
+      <PromptVariablesField
+        idPrefix="n1"
+        config={{}}
+        onConfigChange={vi.fn()}
+        declaredVariableNames={[]}
+        templateVariableNames={['chief_complaint', 'tone']}
+      />,
+    );
+    expect(screen.getByLabelText('chief_complaint')).toBeTruthy();
+    expect(screen.getByLabelText('tone')).toBeTruthy();
+    expect(screen.getByText(/from the bound prompt template/i)).toBeTruthy();
+  });
+
+  it('prefers the agent`s own declarations when it has them — the template is only a fallback', () => {
+    render(
+      <PromptVariablesField
+        idPrefix="n1"
+        config={{}}
+        onConfigChange={vi.fn()}
+        declaredVariableNames={['topic']}
+        templateVariableNames={['chief_complaint']}
+      />,
+    );
+    expect(screen.getByLabelText('topic')).toBeTruthy();
+    expect(screen.queryByLabelText('chief_complaint')).toBeNull();
+    expect(screen.queryByText(/from the bound prompt template/i)).toBeNull();
+  });
 });

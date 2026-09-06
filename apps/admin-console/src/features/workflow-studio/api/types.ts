@@ -366,7 +366,12 @@ export interface AgentOption {
    * `GET admin/agents` already returns the full `AgentResponse` (no new route) — this just
    * widens the projection this feature reads from the same payload.
    */
-  instruction?: { variables?: Record<string, unknown> } | null;
+  instruction?: {
+    variables?: Record<string, unknown>;
+    /** TASK-890 J4-F6 — the template the agent binds. Its `declaredVariables` are the fallback
+     *  when `variables` is empty, which is every seeded platform agent's state. */
+    promptTemplateId?: string | null;
+  } | null;
   /**
    * TASK-890 §3.14 — the agent-tier guardrail default (`Agent.parameters.guards.enabled`).
    * Absent/undefined means the platform default (ON) — the same `parameters.guards.enabled`
@@ -379,6 +384,10 @@ export interface AgentOption {
  *  The schema OPTION list itself comes from `@/shared/catalog`'s `useContextSchemaCatalog`. */
 export interface ContextSchemaVersionOption {
   versionNumber: number;
+  /** The published declaration itself. Already on the wire
+   *  (`ConsultationContextSchemaVersionResponse.definition`); mirrored here since TASK-890 J4-F5,
+   *  which derives this workflow's `{{trigger.<kindKey>.<field>}}` paths from it. */
+  definition?: Record<string, unknown>;
 }
 
 /**
