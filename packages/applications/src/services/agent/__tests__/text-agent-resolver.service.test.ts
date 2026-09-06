@@ -73,13 +73,22 @@ const agent = (over: Partial<ResolvedAgent> & { parameters?: Record<string, unkn
   };
 };
 
-const platformAgent = (): ResolvedAgent =>
+/**
+ * The tenant's OWN clone of the platform agent (TASK-890 §3.4). It is a TENANT row: after OD-M
+ * the SYSTEM tenant is the reference set a tenant is provisioned FROM, never a row a runtime
+ * resolver reads, so the only way `platform-summarization` reaches this tenant is as its own
+ * provisioned copy — which is tenant-funded, like every other row the tenant owns.
+ */
+const platformClone = (): ResolvedAgent =>
   agent({
     agentId: 'platform-1',
     agentVersionId: 'platform-1',
     slug: 'platform-summarization',
-    tenantId: SYSTEM_TENANT_ID,
-    source: 'platform-default',
+    tenantId: TENANT,
+    source: 'tenant',
+    // A DIFFERENT endpoint from the default fixture: the chain dedupes by dispatch endpoint, so
+    // a clone sharing the primary's model would (correctly) be dropped rather than listed.
+    models: [model({ slug: 'lms-platform-default', sourceUri: 'platform-default-model' })],
   });
 
 const agents = { resolve: vi.fn() };
@@ -106,12 +115,12 @@ function bySlug(map: Record<string, ResolvedAgent | Error>, unassigned?: Resolve
 beforeEach(() => {
   vi.clearAllMocks();
   credentials.resolve.mockResolvedValue(null);
-  assignments.resolve.mockResolvedValue({ agentSlug: 'platform-summarization', source: 'platform-default' });
+  assignments.resolve.mockResolvedValue({ agentSlug: 'platform-summarization', source: 'tenant' });
 });
 
 describe('TextAgentResolverService.resolve — the primary', () => {
   it('no slug → the assignment cascade through the ONE agent resolver, task pinned to TEXT_GENERATION', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    bySlug({ 'platform-summarization': platformClone() }, agent());
     const spec = await make().resolve({ tenantId: TENANT, departmentId: 'dept-1' });
     expect(agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.TEXT_GENERATION, agentSlug: null, departmentId: 'dept-1' });
     expect(spec.schemaVersion).toBe(1);
@@ -128,7 +137,7 @@ describe('TextAgentResolverService.resolve — the primary', () => {
 
   it('the wire provider is what apps/text registers (`azure` → `azure-openai`) and the model is the provider-native wireModelId', async () => {
     bySlug(
-      { 'platform-summarization': platformAgent() },
+      { 'platform-summarization': platformClone() },
       agent({ models: [model({ slug: 'azure-gpt', provider: 'azure', sourceUri: 'gpt-5.4-mini' })] }),
     );
     const spec = await make(false).resolve({ tenantId: TENANT });
@@ -137,7 +146,7 @@ describe('TextAgentResolverService.resolve — the primary', () => {
   });
 
   it('explicit slug + matching version pin passes; a drifted pin FAILS CLOSED (409), exactly as the Temporal lane refuses it', async () => {
-    bySlug({ 'clinic-summarizer': agent(), 'platform-summarization': platformAgent() });
+    bySlug({ 'clinic-summarizer': agent(), 'platform-summarization': platformClone() });
     await expect(make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer', versionNumber: 3 })).resolves.toMatchObject({
       primary: { agent: { versionNumber: 3 } },
     });
@@ -161,30 +170,19 @@ describe('TextAgentResolverService.resolve — the primary', () => {
 });
 
 describe('TextAgentResolverService.resolve — the ordered fallback chain', () => {
-  it('a tenant agent with no fallback of its own still falls back to the SYSTEM-assigned agent (platform HA, on by default)', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent());
+  // TASK-890 OD-M — the chain used to END with a candidate built from the SYSTEM tenant's own
+  // TEXT_GENERATION assignment, read behind the caller's back. That tier is GONE: an agent is
+  // CONTENT (§1.5), so "fallback" is the tenant's decision, expressed on the agent — its
+  // `AgentModelFallback` rows, or the `parameters.fallback.agentSlug` it names — and resolved
+  // entirely inside the caller's tenant.
+  it('a tenant agent with no fallback of its own has an EMPTY chain, and the SYSTEM assignment tier is never consulted', async () => {
+    bySlug({ 'platform-summarization': platformClone() }, agent());
     const spec = await make().resolve({ tenantId: TENANT });
-    expect(assignments.resolve).toHaveBeenCalledWith(SYSTEM_TENANT_ID, AgentTask.TEXT_GENERATION, null);
     expect(spec.fallback).toMatchObject({ autoSwitch: true });
     // The TEXT block declares no `switchAfterConsecutiveFailures` — both text lanes are per-call.
     expect(spec.fallback).not.toHaveProperty('switchAfterConsecutiveFailures');
-    expect(spec.fallback.chain.map((c) => [c.kind, c.agent.slug])).toEqual([['platform-default', 'platform-summarization']]);
-    // The platform agent resolves VISIBLE TO THE TENANT (it is a SYSTEM row), never as a cross-tenant read.
-    expect(agents.resolve).toHaveBeenCalledWith({
-      tenantId: TENANT,
-      task: AgentTask.TEXT_GENERATION,
-      agentSlug: 'platform-summarization',
-      departmentId: null,
-    });
-  });
-
-  it('when the primary IS the platform default the chain is empty (nothing to fall back to)', async () => {
-    bySlug({}, platformAgent());
-    const spec = await make().resolve({ tenantId: TENANT });
-    expect(spec.primary.kind).toBe('primary');
-    expect(spec.primary.agent.source).toBe('platform-default');
     expect(spec.fallback.chain).toEqual([]);
-    expect(assignments.resolve).not.toHaveBeenCalled();
+    expect(assignments.resolve).not.toHaveBeenCalledWith(SYSTEM_TENANT_ID, AgentTask.TEXT_GENERATION, null);
   });
 
   it('an explicit parameters.fallback.agentSlug is resolved first; the agent’s own model chain is then NOT used', async () => {
@@ -198,16 +196,13 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
       parameters: { fallback: { agentSlug: 'clinic-backup', autoSwitch: true } },
       models: [model(), model({ role: 'fallback', priority: 0, slug: 'own-fallback', sourceUri: 'own-fallback' })],
     });
-    bySlug({ 'clinic-backup': backup, 'platform-summarization': platformAgent() }, primary);
+    bySlug({ 'clinic-backup': backup, 'platform-summarization': platformClone() }, primary);
     const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.fallback).toMatchObject({ autoSwitch: true });
-    expect(spec.fallback.chain.map((c) => [c.kind, c.agent.slug, c.modelSlug])).toEqual([
-      ['fallback-agent', 'clinic-backup', 'backup-model'],
-      ['platform-default', 'platform-summarization', 'lms-gemma-4-e2b-it-qat'],
-    ]);
+    expect(spec.fallback.chain.map((c) => [c.kind, c.agent.slug, c.modelSlug])).toEqual([['fallback-agent', 'clinic-backup', 'backup-model']]);
   });
 
-  it('without an explicit agent, the agent’s own AgentModelFallback chain serves in priority order, then the platform default', async () => {
+  it('without an explicit agent, the agent’s own AgentModelFallback chain serves in priority order — and ends there', async () => {
     const primary = agent({
       models: [
         model(),
@@ -215,12 +210,11 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
         model({ role: 'fallback', priority: 0, slug: 'first', sourceUri: 'first-uri' }),
       ],
     });
-    bySlug({ 'platform-summarization': platformAgent() }, primary);
+    bySlug({ 'platform-summarization': platformClone() }, primary);
     const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.fallback.chain.map((c) => [c.kind, c.agent.slug, c.modelSlug, c.model])).toEqual([
       ['fallback-model', 'clinic-summarizer', 'first', 'first-uri'],
       ['fallback-model', 'clinic-summarizer', 'second', 'second-uri'],
-      ['platform-default', 'platform-summarization', 'lms-gemma-4-e2b-it-qat', 'gemma-4-e2b-it-qat'],
     ]);
   });
 
@@ -228,7 +222,13 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
   // primary it FUNDS; on a platform-funded primary the toggle is ignored. The resolver is the
   // single chokepoint that decides this, so no consumer has to re-derive funding to obey it.
   it('a BYO (tenant-funded) primary honours autoSwitch:false — the chain is reported, the runtime must not switch', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent({ parameters: { fallback: { autoSwitch: false } } }));
+    bySlug(
+      { 'platform-summarization': platformClone() },
+      agent({
+        parameters: { fallback: { autoSwitch: false } },
+        models: [model(), model({ role: 'fallback', priority: 0, slug: 'own-fallback', sourceUri: 'own-fallback' })],
+      }),
+    );
     const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.primary.fundingTier).toBe('tenant');
     expect(spec.fallback.autoSwitch).toBe(false);
@@ -236,27 +236,31 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
   });
 
   it('a PLATFORM-funded primary IGNORES autoSwitch:false — the chain is always walked (platform HA is platform-controlled)', async () => {
-    // A SYSTEM-owned agent the tenant pinned explicitly: the row that serves is SYSTEM's, so
-    // the generation is platform spend and the tenant does not get to switch HA off for it.
-    const systemOwned = agent({
-      agentId: 'sys-1',
-      agentVersionId: 'sys-1',
-      slug: 'platform-clinical',
-      tenantId: SYSTEM_TENANT_ID,
-      parameters: { fallback: { autoSwitch: false } },
-      // A DIFFERENT endpoint from the platform default, or the two would dedupe.
-      models: [model({ slug: 'lms-clinical', sourceUri: 'clinical-8b' })],
-    });
-    bySlug({ 'platform-clinical': systemOwned, 'platform-summarization': platformAgent() });
-    const spec = await make().resolve({ tenantId: TENANT, agentSlug: 'platform-clinical' });
+    // Funding is derived from the ROW that serves, not from the cascade: a platform cloud
+    // credential makes the generation platform spend, and the tenant does not get to switch HA
+    // off for spend it does not pay for.
+    bySlug(
+      { 'platform-summarization': platformClone() },
+      agent({
+        parameters: { fallback: { autoSwitch: false } },
+        models: [
+          model({ slug: 'azure-gpt', provider: 'azure', sourceUri: 'gpt-5.4-mini' }),
+          model({ role: 'fallback', priority: 0, slug: 'own-fallback', sourceUri: 'own-fallback' }),
+        ],
+      }),
+    );
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) =>
+      provider === 'azure' ? { override: { api_key: 'k', funding: 'platform' }, fundingTier: 'platform', connectionId: 'c1' } : null,
+    );
+    const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.primary.fundingTier).toBe('platform');
     expect(spec.fallback.autoSwitch).toBe(true);
-    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['platform-default']);
+    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['fallback-model']);
   });
 
   it('a tenant agent served by the PLATFORM cloud credential is platform-funded — autoSwitch:false is ignored there too', async () => {
     bySlug(
-      { 'platform-summarization': platformAgent() },
+      { 'platform-summarization': platformClone() },
       agent({
         parameters: { fallback: { autoSwitch: false } },
         models: [model({ slug: 'azure-gpt', provider: 'azure', sourceUri: 'gpt-5.4-mini' })],
@@ -268,14 +272,15 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
     expect(spec.fallback.autoSwitch).toBe(true);
   });
 
-  it('a fallback agent that will not resolve DEGRADES to the next option — resilience config never blocks the primary', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent({ parameters: { fallback: { agentSlug: 'deleted-agent' } } }));
+  it('a fallback agent that will not resolve DEGRADES to an empty chain — resilience config never blocks the primary', async () => {
+    bySlug({ 'platform-summarization': platformClone() }, agent({ parameters: { fallback: { agentSlug: 'deleted-agent' } } }));
     const spec = await make().resolve({ tenantId: TENANT });
-    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['platform-default']);
+    expect(spec.primary.kind).toBe('primary');
+    expect(spec.fallback.chain).toEqual([]);
   });
 
-  it('the platform default is never listed twice (explicit fallback agent IS the platform agent)', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent({ parameters: { fallback: { agentSlug: 'platform-summarization' } } }));
+  it('an explicit fallback agent is listed once, even when it is the tenant’s clone of the platform agent', async () => {
+    bySlug({ 'platform-summarization': platformClone() }, agent({ parameters: { fallback: { agentSlug: 'platform-summarization' } } }));
     const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.fallback.chain.map((c) => [c.kind, c.agent.slug])).toEqual([['fallback-agent', 'platform-summarization']]);
   });
@@ -289,36 +294,34 @@ describe('TextAgentResolverService.resolve — the ordered fallback chain', () =
       slug: 'clinic-twin',
       models: [model({ slug: 'a-different-registry-slug', provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' })],
     });
-    bySlug({ 'clinic-twin': twin, 'platform-summarization': platformAgent() }, agent({ parameters: { fallback: { agentSlug: 'clinic-twin' } } }));
+    bySlug({ 'clinic-twin': twin, 'platform-summarization': platformClone() }, agent({ parameters: { fallback: { agentSlug: 'clinic-twin' } } }));
     const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.primary.model).toBe('gemma-4-e2b-it-qat');
-    // The twin is dropped. The platform default names the same provider + model but is served by
-    // the PLATFORM's row (different funding, therefore a different credential and endpoint), so
-    // it survives — that is real HA, not a retry.
-    expect(spec.fallback.chain.map((c) => [c.kind, c.fundingTier])).toEqual([['platform-default', 'platform']]);
-  });
-
-  it('no SYSTEM assignment at all → the chain ends without a platform default (reported, never invented)', async () => {
-    assignments.resolve.mockResolvedValue({ agentSlug: null, source: 'platform-default' });
-    bySlug({}, agent());
-    const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.fallback.chain).toEqual([]);
   });
 });
 
 describe('TextAgentResolverService.resolve — funding is derived per candidate from the row that serves it', () => {
-  it('self-hosted models: a tenant-owned agent row is tenant-funded, the SYSTEM-owned platform default is platform-funded', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent());
+  it('self-hosted models: every row the TENANT owns is tenant-funded, and no credential resolver is consulted', async () => {
+    bySlug(
+      { 'platform-summarization': platformClone() },
+      agent({ models: [model(), model({ role: 'fallback', priority: 0, slug: 'own', sourceUri: 'own' })] }),
+    );
     const spec = await make().resolve({ tenantId: TENANT });
     expect(spec.primary.fundingTier).toBe('tenant');
-    expect(spec.fallback.chain[0].fundingTier).toBe('platform');
+    expect(spec.fallback.chain[0].fundingTier).toBe('tenant');
     expect(credentials.resolve).not.toHaveBeenCalled();
   });
 
   it('a cloud provider resolves its credential through the ONE credential resolver, funding from the binding', async () => {
     bySlug(
-      { 'platform-summarization': platformAgent() },
-      agent({ models: [model({ slug: 'azure-gpt', provider: 'azure', sourceUri: 'gpt-5.4-mini' })] }),
+      { 'platform-summarization': platformClone() },
+      agent({
+        models: [
+          model({ slug: 'azure-gpt', provider: 'azure', sourceUri: 'gpt-5.4-mini' }),
+          model({ role: 'fallback', priority: 0, slug: 'own-fallback', sourceUri: 'own-fallback' }),
+        ],
+      }),
     );
     credentials.resolve.mockImplementation(async (_service: string, provider: string) =>
       provider === 'azure'
@@ -329,8 +332,9 @@ describe('TextAgentResolverService.resolve — funding is derived per candidate 
     expect(credentials.resolve).toHaveBeenCalledWith('llm', 'azure', TENANT);
     expect(spec.primary.fundingTier).toBe('platform');
     expect(spec.primary.providerOverride).toMatchObject({ provider: 'azure', api_key: 'k', funding: 'platform', deployment_name: 'gpt' });
-    // The self-hosted platform default keeps its own row-derived funding.
-    expect(spec.fallback.chain[0]).toMatchObject({ kind: 'platform-default', fundingTier: 'platform' });
+    // Funding is per CANDIDATE: the cloud primary is platform-funded because the platform's
+    // credential served it, while the agent's own self-hosted fallback row stays tenant-funded.
+    expect(spec.fallback.chain[0]).toMatchObject({ kind: 'fallback-model', fundingTier: 'tenant' });
     expect(spec.fallback.chain[0].providerOverride).toBeUndefined();
   });
 
@@ -342,18 +346,18 @@ describe('TextAgentResolverService.resolve — funding is derived per candidate 
       models: [model({ slug: 'az', provider: 'azure', sourceUri: 'gpt' })],
     });
     bySlug(
-      { 'cloud-backup': cloudBackup, 'platform-summarization': platformAgent() },
+      { 'cloud-backup': cloudBackup, 'platform-summarization': platformClone() },
       agent({ parameters: { fallback: { agentSlug: 'cloud-backup' } } }),
     );
     credentials.resolve.mockRejectedValueOnce(new ProviderVetoedException('llm', 'azure', TENANT));
     const spec = await make().resolve({ tenantId: TENANT });
-    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['platform-default']);
+    expect(spec.fallback.chain).toEqual([]);
 
     credentials.resolve.mockRejectedValueOnce(new QuotaExceededException('featurePlatformDefaultCredential'));
     const spec2 = await make().resolve({ tenantId: TENANT });
-    expect(spec2.fallback.chain.map((c) => c.kind)).toEqual(['platform-default']);
+    expect(spec2.fallback.chain).toEqual([]);
 
-    bySlug({ 'platform-summarization': platformAgent() }, agent({ models: [model({ slug: 'az', provider: 'azure', sourceUri: 'gpt' })] }));
+    bySlug({ 'platform-summarization': platformClone() }, agent({ models: [model({ slug: 'az', provider: 'azure', sourceUri: 'gpt' })] }));
     credentials.resolve.mockRejectedValueOnce(new ProviderVetoedException('llm', 'azure', TENANT));
     await expect(make().resolve({ tenantId: TENANT })).rejects.toBeInstanceOf(ProviderVetoedException);
   });
@@ -366,13 +370,13 @@ describe('TextAgentResolverService.resolve — funding is derived per candidate 
       models: [model({ slug: 'az', provider: 'openai', sourceUri: 'gpt' })],
     });
     bySlug(
-      { 'cloud-backup': cloudBackup, 'platform-summarization': platformAgent() },
+      { 'cloud-backup': cloudBackup, 'platform-summarization': platformClone() },
       agent({ parameters: { fallback: { agentSlug: 'cloud-backup' } } }),
     );
     const spec = await make().resolve({ tenantId: TENANT });
-    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['platform-default']);
+    expect(spec.fallback.chain).toEqual([]);
 
-    bySlug({ 'platform-summarization': platformAgent() }, agent({ models: [model({ slug: 'az', provider: 'openai', sourceUri: 'gpt' })] }));
+    bySlug({ 'platform-summarization': platformClone() }, agent({ models: [model({ slug: 'az', provider: 'openai', sourceUri: 'gpt' })] }));
     const spec2 = await make().resolve({ tenantId: TENANT });
     expect(spec2.primary).toMatchObject({ provider: 'openai', fundingTier: 'tenant' });
     expect(spec2.primary.providerOverride).toBeUndefined();
@@ -380,7 +384,7 @@ describe('TextAgentResolverService.resolve — funding is derived per candidate 
 
   it('without TASK-862’s resolver wired, the agent resolver’s own providerOverride / fundingTier serve the primary', async () => {
     bySlug(
-      { 'platform-summarization': platformAgent() },
+      { 'platform-summarization': platformClone() },
       agent({
         models: [model({ slug: 'az', provider: 'azure', sourceUri: 'gpt' })],
         providerOverride: { provider: 'azure', api_key: 'k', funding: 'tenant' },
@@ -397,17 +401,18 @@ describe('TextAgentResolverService.resolve — funding is derived per candidate 
 // candidate — ~10 round trips) at four call sites per flush.
 describe('TextAgentResolverService.resolve — the short-TTL, tenant-keyed spec cache', () => {
   it('collapses repeated resolutions of the same key into ONE', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    bySlug({ 'platform-summarization': platformClone() }, agent());
     const service = make();
     await service.resolve({ tenantId: TENANT });
     await service.resolve({ tenantId: TENANT });
     await service.resolve({ tenantId: TENANT });
-    // 2 = the primary cascade + the platform-default lookup, once.
-    expect(agents.resolve).toHaveBeenCalledTimes(2);
+    // ONE: the primary cascade. TASK-890 OD-M removed the second round trip this used to make
+    // (the SYSTEM-assigned platform-default lookup), so the cached shape is one call, not two.
+    expect(agents.resolve).toHaveBeenCalledTimes(1);
   });
 
   it('keys by tenant FIRST — one tenant`s agent (and credential) can never serve another', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    bySlug({ 'platform-summarization': platformClone() }, agent());
     const service = make();
     await service.resolve({ tenantId: TENANT });
     agents.resolve.mockClear();
@@ -416,7 +421,7 @@ describe('TextAgentResolverService.resolve — the short-TTL, tenant-keyed spec 
   });
 
   it('keys by department and explicit slug too', async () => {
-    bySlug({ 'clinic-summarizer': agent(), 'platform-summarization': platformAgent() }, agent());
+    bySlug({ 'clinic-summarizer': agent(), 'platform-summarization': platformClone() }, agent());
     const service = make();
     await service.resolve({ tenantId: TENANT });
     agents.resolve.mockClear();
@@ -430,7 +435,7 @@ describe('TextAgentResolverService.resolve — the short-TTL, tenant-keyed spec 
   it('re-resolves once the TTL is spent', async () => {
     vi.useFakeTimers();
     try {
-      bySlug({ 'platform-summarization': platformAgent() }, agent());
+      bySlug({ 'platform-summarization': platformClone() }, agent());
       const service = make();
       await service.resolve({ tenantId: TENANT });
       agents.resolve.mockClear();
@@ -443,14 +448,14 @@ describe('TextAgentResolverService.resolve — the short-TTL, tenant-keyed spec 
   });
 
   it('single-flights concurrent callers — a flush burst makes ONE round trip, not N', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    bySlug({ 'platform-summarization': platformClone() }, agent());
     const service = make();
     await Promise.all([service.resolve({ tenantId: TENANT }), service.resolve({ tenantId: TENANT }), service.resolve({ tenantId: TENANT })]);
-    expect(agents.resolve).toHaveBeenCalledTimes(2);
+    expect(agents.resolve).toHaveBeenCalledTimes(1);
   });
 
   it('hands every caller its own copy — one consumer cannot mutate another`s spec', async () => {
-    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    bySlug({ 'platform-summarization': platformClone() }, agent());
     const service = make();
     const first = await service.resolve({ tenantId: TENANT });
     first.primary.model = 'mutated';
@@ -459,7 +464,7 @@ describe('TextAgentResolverService.resolve — the short-TTL, tenant-keyed spec 
   });
 
   it('enforces a version PIN against the CACHED spec — a shared entry still fails closed on drift', async () => {
-    bySlug({ 'clinic-summarizer': agent(), 'platform-summarization': platformAgent() });
+    bySlug({ 'clinic-summarizer': agent(), 'platform-summarization': platformClone() });
     const service = make();
     await service.resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer', versionNumber: 3 });
     await expect(service.resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer', versionNumber: 2 })).rejects.toBeInstanceOf(ConflictException);
@@ -469,7 +474,7 @@ describe('TextAgentResolverService.resolve — the short-TTL, tenant-keyed spec 
     bySlug({});
     const service = make();
     await expect(service.resolve({ tenantId: TENANT })).rejects.toBeInstanceOf(NotFoundException);
-    bySlug({ 'platform-summarization': platformAgent() }, agent());
+    bySlug({ 'platform-summarization': platformClone() }, agent());
     await expect(service.resolve({ tenantId: TENANT })).resolves.toMatchObject({ primary: { kind: 'primary' } });
   });
 });

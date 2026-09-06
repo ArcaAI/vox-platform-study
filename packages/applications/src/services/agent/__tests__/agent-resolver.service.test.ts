@@ -1,6 +1,6 @@
 /** TASK-863 — AgentResolverService: explicit slug, cascade, foreign 404, cloud override + funding tier. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { AgentTask, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AgentResolverService } from '../agent-resolver.service';
 
@@ -91,9 +91,22 @@ describe('AgentResolverService.resolve', () => {
     expect(resolved).toMatchObject({ slug: 'platform-summarization', source: 'platform-default', tenantId: SYSTEM_TENANT_ID });
   });
 
-  it('no slug and nothing assigned → 404', async () => {
-    assignments.resolve.mockResolvedValue({ agentSlug: null, source: 'platform-default' });
-    await expect(make().resolve({ tenantId: TENANT, task: AgentTask.TEXT_GENERATION })).rejects.toBeInstanceOf(NotFoundException);
+  // TASK-890 §3.4 (OD-M) — nothing assigned is not "not found": the agent is not missing, the
+  // TENANT'S OPINION about which agent serves this task is. It answers a NAMED 503 carrying the
+  // task and the tenant, so the caller is pointed at an assignment (or a reference-set re-sync)
+  // rather than at a hunt for a row.
+  it('no slug and nothing assigned → a named AGENT_NOT_ASSIGNED 503, never a 404', async () => {
+    assignments.resolve.mockResolvedValue({ agentSlug: null, source: 'unassigned' });
+    const error = await make()
+      .resolve({ tenantId: TENANT, task: AgentTask.TEXT_GENERATION, departmentId: 'dept-1' })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ServiceUnavailableException);
+    expect((error as ServiceUnavailableException).getResponse()).toMatchObject({
+      code: 'AGENT_NOT_ASSIGNED',
+      task: AgentTask.TEXT_GENERATION,
+      tenantId: TENANT,
+      departmentId: 'dept-1',
+    });
   });
 
   it('cloud provider → providerOverride derived from the (service, provider) cascade with the funding tier', async () => {

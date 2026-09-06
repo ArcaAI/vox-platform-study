@@ -3,8 +3,15 @@ import { AgentAssignmentResponse, UpsertAgentAssignmentRequest } from './dto';
 
 export const IAgentAssignmentService = Symbol('IAgentAssignmentService');
 
-/** Which tier supplied the resolved slug. `platform-default` = the SYSTEM tenant's row (or nothing). */
-export type AgentAssignmentSource = 'department' | 'tenant' | 'platform-default';
+/**
+ * Which tier supplied the resolved slug.
+ *
+ * TASK-890 OD-M — `platform-default` is GONE. It named the SYSTEM tenant's row, and an
+ * assignment is CONTENT (§1.5): SYSTEM is the reference set a tenant is provisioned from, not a
+ * tier it resolves through. `unassigned` is the honest answer when neither of the two real tiers
+ * supplied a resolvable agent, and it is always paired with `agentSlug: null`.
+ */
+export type AgentAssignmentSource = 'department' | 'tenant' | 'unassigned';
 
 export interface ResolvedAgentAssignment {
   /** `null` ⇒ no tier assigned a resolvable agent for this task. */
@@ -20,9 +27,10 @@ export interface ResolvedAgentAssignment {
 
 export interface IAgentAssignmentService {
   /**
-   * `department override → tenant default → SYSTEM platform default` — the first tier whose
-   * slug resolves to an ACTIVE PUBLISHED agent of `task` wins (a stale reference is skipped
-   * with a warning, never served silently).
+   * `department override → tenant default` — the first tier whose slug resolves to an ACTIVE
+   * PUBLISHED agent of `task` wins (a stale reference is skipped with a warning, never served
+   * silently). Neither tier matching answers `{ agentSlug: null, source: 'unassigned' }`, which
+   * every caller turns into `AGENT_NOT_ASSIGNED`; there is no SYSTEM tier below them.
    *
    * TASK-884: `selectorTags` are the request's `key:value` tags. WITHIN a tier, a row whose
    * selector is a SUBSET of them is a candidate, most specific first, and the unqualified row

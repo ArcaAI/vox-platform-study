@@ -41,6 +41,9 @@ const mockAgentRepository = {
   findAllForTenant: vi.fn(),
   findPublishedActiveVisible: vi.fn(),
   findPublishedActiveBySlug: vi.fn(),
+  // TASK-890 L13 — the reference-library reads that replaced the shared-read widening.
+  findSystemReferences: vi.fn(async () => []),
+  findSystemReferenceBySlug: vi.fn(async () => null),
   findOwnActiveBySlug: vi.fn(),
   findAllVersionsBySlug: vi.fn(),
   findMaxVersionNumber: vi.fn(),
@@ -681,7 +684,8 @@ describe('the source tenant`s fallback chain is read under the SOURCE`s tenant (
   it('clone() copies the SYSTEM template`s chain', async () => {
     const observed = chainVisibleOnlyToSystem();
     mockAgentRepository.findAllVersionsBySlug.mockResolvedValue([]);
-    mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue(SYSTEM_SOURCE);
+    // TASK-890 L13 — the SYSTEM source arrives through the explicit reference read.
+    mockAgentRepository.findSystemReferenceBySlug.mockResolvedValue(SYSTEM_SOURCE);
     mockAgentRepository.findMaxVersionNumber.mockResolvedValue(0);
 
     const cloned = await makeService().clone('platform-summarization', { newSlug: 'my-summarizer' });

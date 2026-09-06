@@ -1,4 +1,4 @@
-/** TASK-863 — AgentAssignmentService: the department → tenant → SYSTEM cascade, stale-reference skipping, WORM change rows. */
+/** TASK-863 / TASK-890 L13 — AgentAssignmentService: the department → tenant → null cascade, stale-reference skipping, WORM change rows. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { AgentTask, PipelinePolicyScope, SYSTEM_TENANT_ID, SysEventType } from '@arcaai/domains';
@@ -23,7 +23,15 @@ const eventEmitter = { emit: vi.fn() };
 const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'u1' } : undefined)), set: vi.fn() };
 
 function make() {
-  return new AgentAssignmentService(assignmentRepository as never, changeRepository as never, agentRepository as never, departmentRepository as never, databaseService as never, eventEmitter as never, cls as never);
+  return new AgentAssignmentService(
+    assignmentRepository as never,
+    changeRepository as never,
+    agentRepository as never,
+    departmentRepository as never,
+    databaseService as never,
+    eventEmitter as never,
+    cls as never,
+  );
 }
 
 /** A tier read that answers with rows keyed by `(tenantId, scope)` — the shape `findAllForScope` returns. */
@@ -43,19 +51,34 @@ describe('resolve', () => {
     expect(await make().resolve(TENANT, AgentTask.SPEECH_TO_TEXT, 'dept-1')).toEqual({ agentSlug: 'dept-asr', source: 'department', selector: [] });
   });
 
-  it('skips a tier whose slug no longer resolves and keeps walking to SYSTEM (never a silent stale serve)', async () => {
+  it('skips a tier whose slug no longer resolves and fails CLOSED — never a silent stale serve, and never a SYSTEM read', async () => {
     tierRows({
-      [`${TENANT}|${PipelinePolicyScope.TENANT}`]: [{ agentSlug: 'retired-asr', selectorKey: '' }],
-      [`${SYSTEM_TENANT_ID}|${PipelinePolicyScope.TENANT}`]: [{ agentSlug: 'platform-transcription', selectorKey: '' }],
+      [`${TENANT}|${PipelinePolicyScope.DEPARTMENT}`]: [{ agentSlug: 'retired-asr', selectorKey: '' }],
+      [`${TENANT}|${PipelinePolicyScope.TENANT}`]: [{ agentSlug: 'also-retired', selectorKey: '' }],
     });
-    agentRepository.findPublishedActiveBySlug.mockImplementation(async (_t: string, slug: string) => (slug === 'platform-transcription' ? { slug, task: AgentTask.SPEECH_TO_TEXT } : null));
-    expect(await make().resolve(TENANT, AgentTask.SPEECH_TO_TEXT)).toEqual({ agentSlug: 'platform-transcription', source: 'platform-default', selector: [] });
-    expect(assignmentRepository.findAllForScope).toHaveBeenCalledWith(SYSTEM_TENANT_ID, PipelinePolicyScope.TENANT, null, AgentTask.SPEECH_TO_TEXT);
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(null);
+    expect(await make().resolve(TENANT, AgentTask.SPEECH_TO_TEXT, 'dept-1')).toEqual({ agentSlug: null, source: 'unassigned', selector: [] });
   });
 
-  it('nothing assigned anywhere → null', async () => {
+  // TASK-890 OD-M — an agent is CONTENT (§1.5), so SYSTEM is the set a tenant is PROVISIONED
+  // from, never a tier it resolves through. The platform default reaches a tenant as its OWN
+  // cloned assignment row; a tenant that has none is `unassigned`, which the callers raise as
+  // `AGENT_NOT_ASSIGNED` naming the task and the tenant.
+  it('never reads the SYSTEM tenant, at any tier', async () => {
+    tierRows({
+      [`${TENANT}|${PipelinePolicyScope.TENANT}`]: [{ agentSlug: 'tenant-asr', selectorKey: '' }],
+      [`${SYSTEM_TENANT_ID}|${PipelinePolicyScope.TENANT}`]: [{ agentSlug: 'platform-transcription', selectorKey: '' }],
+    });
+    agentRepository.findPublishedActiveBySlug.mockImplementation(async (_t: string, slug: string) => ({ slug, task: AgentTask.SPEECH_TO_TEXT }));
+    expect(await make().resolve(TENANT, AgentTask.SPEECH_TO_TEXT)).toEqual({ agentSlug: 'tenant-asr', source: 'tenant', selector: [] });
+    const tenantsRead = assignmentRepository.findAllForScope.mock.calls.map((call: unknown[]) => call[0]);
+    expect(tenantsRead).not.toContain(SYSTEM_TENANT_ID);
+  });
+
+  it('nothing assigned anywhere → `unassigned`, and the SYSTEM tier is not consulted', async () => {
     tierRows({});
-    expect(await make().resolve(TENANT, AgentTask.TEXT_TO_SPEECH)).toEqual({ agentSlug: null, source: 'platform-default', selector: [] });
+    expect(await make().resolve(TENANT, AgentTask.TEXT_TO_SPEECH)).toEqual({ agentSlug: null, source: 'unassigned', selector: [] });
+    expect(assignmentRepository.findAllForScope).not.toHaveBeenCalledWith(SYSTEM_TENANT_ID, expect.anything(), expect.anything(), expect.anything());
   });
 });
 
@@ -97,7 +120,10 @@ describe('resolve — tag selection within a tier', () => {
         { agentSlug: 'rheum-notes', selectorKey: 'specialty:rheumatology' },
       ],
     });
-    expect(await make().resolve(TENANT, AgentTask.TEXT_GENERATION, null, ['specialty:cardiology'])).toMatchObject({ agentSlug: 'general-notes', selector: [] });
+    expect(await make().resolve(TENANT, AgentTask.TEXT_GENERATION, null, ['specialty:cardiology'])).toMatchObject({
+      agentSlug: 'general-notes',
+      selector: [],
+    });
   });
 
   it('the MOST SPECIFIC matching selector wins within a tier', async () => {
@@ -108,7 +134,9 @@ describe('resolve — tag selection within a tier', () => {
         { agentSlug: 'rheum-ml', selectorKey: 'lang:ml,specialty:rheumatology' },
       ],
     });
-    expect(await make().resolve(TENANT, AgentTask.TEXT_GENERATION, null, ['specialty:rheumatology', 'lang:ml'])).toMatchObject({ agentSlug: 'rheum-ml' });
+    expect(await make().resolve(TENANT, AgentTask.TEXT_GENERATION, null, ['specialty:rheumatology', 'lang:ml'])).toMatchObject({
+      agentSlug: 'rheum-ml',
+    });
   });
 
   it('the TIER order still outranks the selector: a department default beats a tenant tag match', async () => {
@@ -116,7 +144,10 @@ describe('resolve — tag selection within a tier', () => {
       [`${TENANT}|${PipelinePolicyScope.DEPARTMENT}`]: [{ agentSlug: 'dept-default', selectorKey: '' }],
       [`${TENANT}|${PipelinePolicyScope.TENANT}`]: [{ agentSlug: 'rheum-notes', selectorKey: 'specialty:rheumatology' }],
     });
-    expect(await make().resolve(TENANT, AgentTask.TEXT_GENERATION, 'dept-1', ['specialty:rheumatology'])).toMatchObject({ agentSlug: 'dept-default', source: 'department' });
+    expect(await make().resolve(TENANT, AgentTask.TEXT_GENERATION, 'dept-1', ['specialty:rheumatology'])).toMatchObject({
+      agentSlug: 'dept-default',
+      source: 'department',
+    });
   });
 
   it('a tag-qualified row whose agent no longer resolves is SKIPPED, not served', async () => {
@@ -126,7 +157,9 @@ describe('resolve — tag selection within a tier', () => {
         { agentSlug: 'retired-rheum', selectorKey: 'specialty:rheumatology' },
       ],
     });
-    agentRepository.findPublishedActiveBySlug.mockImplementation(async (_t: string, slug: string) => (slug === 'retired-rheum' ? null : { slug, task: AgentTask.TEXT_GENERATION }));
+    agentRepository.findPublishedActiveBySlug.mockImplementation(async (_t: string, slug: string) =>
+      slug === 'retired-rheum' ? null : { slug, task: AgentTask.TEXT_GENERATION },
+    );
     expect(await make().resolve(TENANT, AgentTask.TEXT_GENERATION, null, ['specialty:rheumatology'])).toMatchObject({ agentSlug: 'general-notes' });
   });
 });
@@ -134,11 +167,18 @@ describe('resolve — tag selection within a tier', () => {
 describe('upsert', () => {
   it('creates the row and its WORM change in one transaction, refusing a slug that is not a published agent of the task', async () => {
     agentRepository.findPublishedActiveBySlug.mockResolvedValue(null);
-    await expect(make().upsert({ scope: PipelinePolicyScope.TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'nope' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(make().upsert({ scope: PipelinePolicyScope.TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'nope' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
 
     agentRepository.findPublishedActiveBySlug.mockResolvedValue({ slug: 'platform-transcription', task: AgentTask.SPEECH_TO_TEXT });
     assignmentRepository.findForScopeSelector.mockResolvedValue(null);
-    const created = await make().upsert({ scope: PipelinePolicyScope.TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'platform-transcription', reason: 'go' });
+    const created = await make().upsert({
+      scope: PipelinePolicyScope.TENANT,
+      task: AgentTask.SPEECH_TO_TEXT,
+      agentSlug: 'platform-transcription',
+      reason: 'go',
+    });
     expect(created.agentSlug).toBe('platform-transcription');
     expect(created.selectorTags).toEqual([]);
     expect(databaseService.baseClient.$transaction).toHaveBeenCalledTimes(1);
@@ -149,7 +189,9 @@ describe('upsert', () => {
   });
 
   it('rejects DOCTOR scope', async () => {
-    await expect(make().upsert({ scope: PipelinePolicyScope.DOCTOR, scopeId: 'u', task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'x' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      make().upsert({ scope: PipelinePolicyScope.DOCTOR, scopeId: 'u', task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'x' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   // TASK-884
@@ -164,7 +206,13 @@ describe('upsert', () => {
       // `{a,b}` are one assignment rather than two competing for the same tier.
       selectorTags: ['specialty:rheumatology', 'lang:ml'],
     });
-    expect(assignmentRepository.findForScopeSelector).toHaveBeenCalledWith(TENANT, PipelinePolicyScope.TENANT, null, AgentTask.TEXT_GENERATION, 'lang:ml,specialty:rheumatology');
+    expect(assignmentRepository.findForScopeSelector).toHaveBeenCalledWith(
+      TENANT,
+      PipelinePolicyScope.TENANT,
+      null,
+      AgentTask.TEXT_GENERATION,
+      'lang:ml,specialty:rheumatology',
+    );
     expect(created.selectorTags).toEqual(['lang:ml', 'specialty:rheumatology']);
     expect((changeRepository.create.mock.calls[0][0] as { selectorKey: string }).selectorKey).toBe('lang:ml,specialty:rheumatology');
   });

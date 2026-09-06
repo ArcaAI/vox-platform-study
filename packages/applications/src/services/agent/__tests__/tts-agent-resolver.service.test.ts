@@ -61,14 +61,19 @@ const agent = (over: Partial<ResolvedAgent> & { parameters?: Record<string, unkn
   };
 };
 
-const platformAgent = (): ResolvedAgent =>
+/**
+ * The tenant's own clone of the platform TTS agent (TASK-890 §3.4). A TENANT row: after OD-M the
+ * SYSTEM tenant is the reference set a tenant is provisioned FROM, and no runtime resolver reads
+ * it, so `platform-tts` reaches this tenant only as its own provisioned copy.
+ */
+const platformClone = (): ResolvedAgent =>
   agent({
     agentId: 'platform-tts',
     agentVersionId: 'platform-tts',
     slug: 'platform-tts',
     versionNumber: 1,
-    tenantId: SYSTEM_TENANT_ID,
-    source: 'platform-default',
+    tenantId: TENANT,
+    source: 'tenant',
   });
 
 const META: Record<string, unknown> = {
@@ -106,7 +111,7 @@ function harness(over: { agents?: unknown; connections?: unknown; credentials?: 
 describe('TtsAgentResolverService — selection', () => {
   it('resolves through the AgentAssignment cascade when no slug is named', async () => {
     const h = harness();
-    h.agents.resolve.mockResolvedValueOnce(platformAgent());
+    h.agents.resolve.mockResolvedValueOnce(platformClone());
     const { spec } = await h.service.resolve({ tenantId: TENANT, departmentId: 'dept-1' });
 
     expect(h.agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.TEXT_TO_SPEECH, agentSlug: null, departmentId: 'dept-1' });
@@ -149,7 +154,7 @@ describe('TtsAgentResolverService — the connection block', () => {
       },
     });
     const a = agent({ models: [model({ slug: 'sarvam-bulbul', provider: 'sarvam', sourceUri: 'bulbul:v3', format: 'CLOUD_API' })] });
-    h.agents.resolve.mockResolvedValue(platformAgent());
+    h.agents.resolve.mockResolvedValue(platformClone());
     const { spec } = await h.service.resolveFromAgent(a, TENANT);
 
     expect(spec.primary.connection).toEqual({
@@ -164,10 +169,12 @@ describe('TtsAgentResolverService — the connection block', () => {
 
   it('emits `connection: null` for a self-hosted engine the platform has not enabled', async () => {
     const h = harness({ connections: { resolveConnection: vi.fn(async () => null) }, assignment: null });
-    const a = agent({ tenantId: SYSTEM_TENANT_ID, source: 'platform-default', models: [model({ slug: 'kokoro' })] });
+    const a = agent({ tenantId: SYSTEM_TENANT_ID, models: [model({ slug: 'kokoro' })] });
     const { spec } = await h.service.resolveFromAgent(a, TENANT);
     expect(spec.primary.connection).toBeNull();
-    // …and the funding falls back to whose AGENT row serves it — SYSTEM ⇒ platform.
+    // …and the funding falls back to whose AGENT ROW serves it — SYSTEM ⇒ platform. (The row is
+    // SYSTEM-owned here to exercise that derivation; after TASK-890 L13 a tenant resolves its own
+    // clone, which is tenant-funded — the rule being tested is the derivation, not the cascade.)
     expect(spec.primary.fundingTier).toBe('platform');
   });
 });
@@ -189,7 +196,7 @@ describe('TtsAgentResolverService — the fallback chain', () => {
         model({ role: 'fallback', slug: 'sarvam-bulbul', provider: 'sarvam', sourceUri: 'bulbul:v3', priority: 0 }),
       ],
     });
-    h.agents.resolve.mockResolvedValue(platformAgent());
+    h.agents.resolve.mockResolvedValue(platformClone());
     h.credentials.resolve.mockImplementation(async (_s: string, provider: string) => ({
       override: { api_key: `k-${provider}`, funding: 'tenant' },
       fundingTier: 'tenant',
@@ -198,9 +205,10 @@ describe('TtsAgentResolverService — the fallback chain', () => {
 
     const { spec, providerOverrides } = await h.service.resolveFromAgent(a, TENANT);
     expect(spec.fallback.autoSwitch).toBe(true);
-    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['fallback-model', 'platform-default']);
+    // TASK-890 OD-M — the chain is the agent's OWN governance and stops there; the terminal
+    // SYSTEM-assigned candidate this used to append is gone.
+    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['fallback-model']);
     expect(spec.fallback.chain[0]?.model.provider).toBe('sarvam');
-    expect(spec.fallback.chain[1]?.model.provider).toBe('kokoro');
     expect(providerOverrides).toEqual({ azure: { api_key: 'k-azure', funding: 'tenant' }, sarvam: { api_key: 'k-sarvam', funding: 'tenant' } });
   });
 
@@ -220,14 +228,14 @@ describe('TtsAgentResolverService — the fallback chain', () => {
       ],
     });
     h.agents.resolve.mockImplementation(async ({ agentSlug }: { agentSlug: string | null }) =>
-      agentSlug === 'backup-voice' ? other : platformAgent(),
+      agentSlug === 'backup-voice' ? other : platformClone(),
     );
     h.credentials.resolve.mockResolvedValue({ override: { api_key: 'k', funding: 'platform' }, fundingTier: 'platform', connectionId: 'c1' });
 
     // The agent's OWN model chain (kokoro) is not consulted at all when it names a fallback agent.
     const { spec } = await h.service.resolveFromAgent(a, TENANT);
-    expect(spec.fallback.chain.map((c) => c.model.slug)).toEqual(['sarvam-bulbul', 'kokoro']);
-    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['fallback-agent', 'platform-default']);
+    expect(spec.fallback.chain.map((c) => c.model.slug)).toEqual(['sarvam-bulbul']);
+    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['fallback-agent']);
   });
 
   it('degrades past a fallback agent that will not resolve rather than failing the synthesis', async () => {
@@ -235,16 +243,16 @@ describe('TtsAgentResolverService — the fallback chain', () => {
     const a = azurePrimary({ parameters: { voice: 'en-IN-NeerjaNeural', fallback: { agentSlug: 'deleted-voice' } } });
     h.agents.resolve.mockImplementation(async ({ agentSlug }: { agentSlug: string | null }) => {
       if (agentSlug === 'deleted-voice') throw new NotFoundException('Agent not found');
-      return platformAgent();
+      return platformClone();
     });
     h.credentials.resolve.mockResolvedValue({ override: { api_key: 'k', funding: 'platform' }, fundingTier: 'platform', connectionId: 'c1' });
     const { spec } = await h.service.resolveFromAgent(a, TENANT);
-    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['platform-default']);
+    expect(spec.fallback.chain).toEqual([]);
   });
 
-  it('never appends a platform default to an agent that already IS the platform default', async () => {
+  it('never consults the SYSTEM assignment tier for a terminal candidate (TASK-890 OD-M)', async () => {
     const h = harness();
-    const { spec } = await h.service.resolveFromAgent(platformAgent(), TENANT);
+    const { spec } = await h.service.resolveFromAgent(platformClone(), TENANT);
     expect(spec.fallback.chain).toEqual([]);
     expect(h.assignments.resolve).not.toHaveBeenCalled();
   });
@@ -267,35 +275,37 @@ describe('TtsAgentResolverService — cloud credentials', () => {
         model({ role: 'fallback', slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://x', priority: 0 }),
       ],
     });
-    h.agents.resolve.mockResolvedValue(platformAgent());
+    h.agents.resolve.mockResolvedValue(platformClone());
     h.credentials.resolve.mockImplementation(async (_s: string, provider: string) => {
       if (provider === 'azure') throw new QuotaExceededException('not entitled', { capability: 'x', limit: 0, used: 0, requested: 1 });
       return { override: { api_key: 'k', funding: 'tenant' }, fundingTier: 'tenant', connectionId: 'c1' };
     });
 
     const { spec, providerOverrides } = await h.service.resolveFromAgent(a, TENANT);
-    expect(spec.fallback.chain.map((c) => c.kind)).toEqual(['platform-default']);
+    expect(spec.fallback.chain).toEqual([]);
     expect(providerOverrides).toEqual({ sarvam: { api_key: 'k', funding: 'tenant' } });
   });
 
   it('carries no credential for an engine the de-duped chain dropped', async () => {
     const h = harness();
-    // The platform default binds the SAME engine + model id behind the SAME tier as the primary,
-    // so the chain drops it — and the key must not ride the wire for an engine nothing routes to.
-    const a = agent({ models: [model({ slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://neural-voices' })] });
+    // The named fallback agent binds the SAME engine + model id behind the SAME tier as the
+    // primary, so the chain drops it — and the key must not ride the wire for an engine nothing
+    // routes to.
+    const a = agent({
+      parameters: { voice: 'af_heart', fallback: { agentSlug: 'twin-voice' } },
+      models: [model({ slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://neural-voices' })],
+    });
     h.agents.resolve.mockResolvedValue(
       agent({
         agentId: 'p',
         agentVersionId: 'p',
-        slug: 'platform-tts',
-        tenantId: SYSTEM_TENANT_ID,
-        source: 'platform-default',
-        models: [model({ slug: 'kokoro' })],
+        slug: 'twin-voice',
+        models: [model({ slug: 'azure-neural-voices', provider: 'azure', sourceUri: 'azure://neural-voices' })],
       }),
     );
     h.credentials.resolve.mockResolvedValue({ override: { api_key: 'k', funding: 'platform' }, fundingTier: 'platform', connectionId: 'c1' });
     const { spec, providerOverrides } = await h.service.resolveFromAgent(a, TENANT);
-    expect(spec.fallback.chain).toHaveLength(1);
+    expect(spec.fallback.chain).toEqual([]);
     expect(providerOverrides).toEqual({ azure: { api_key: 'k', funding: 'platform' } });
   });
 });
