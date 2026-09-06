@@ -76,6 +76,11 @@ export * from './text-request';
 export * from './stt';
 // The SYSTEM-only model registry (TASK-860): catalogue CRUD, publish-to-bucket, inventory.
 export * from './ai-model';
+// The inference-readiness sweep (TASK-890 §3.12) — the platform's stored answer
+// to "could this model have served, at the last time anyone looked?". Declares
+// the canonical `ModelReadiness` / `ReadinessProviderClass` vocabulary the model
+// catalogue stamps onto every row.
+export * from './ai-readiness';
 export * from './pstudio';
 export * from './tenant-bucket';
 export * from './storage-access-key';
