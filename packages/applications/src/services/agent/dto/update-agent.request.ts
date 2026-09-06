@@ -21,6 +21,22 @@ export class UpdateAgentRequest {
   @MaxLength(64)
   modelId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'TASK-890 §3.4 — pin (or, with `null`, unpin) one of THIS tenant’s consultation context schemas. Frozen into `compiledConfig.contextSchema` at publish.',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  contextSchemaId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Pin a specific published version of that schema; `null` ⇒ follow the schema’s own pin.', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  contextSchemaVersionNumber?: number | null;
+
   @ApiPropertyOptional({ description: 'Replaces the whole fallback chain.', type: [String] })
   @IsOptional()
   @IsArray()

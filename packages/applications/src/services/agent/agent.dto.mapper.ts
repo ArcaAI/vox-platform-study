@@ -33,6 +33,8 @@ export class AgentDtoMapper {
       isActive: entity.isActive,
       modelId: entity.modelId,
       modelSlug: modelSlugs.get(entity.modelId) ?? null,
+      contextSchemaId: entity.contextSchemaId ?? null,
+      contextSchemaVersionNumber: entity.contextSchemaVersionNumber ?? null,
       fallbacks: [...fallbacks]
         .sort((a, b) => a.priority - b.priority)
         .map((fallback) => ({

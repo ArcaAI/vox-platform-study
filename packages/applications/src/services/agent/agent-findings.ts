@@ -20,7 +20,18 @@ export type AgentFindingCode =
   | 'PROMPT_TEMPLATE_SYNTAX'
   | 'PROMPT_VARIABLE_UNDECLARED'
   | 'CONTEXT_SCHEMA_NOT_FOUND'
-  | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND';
+  | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND'
+  // TASK-890 §3.12 — ADVISORY. The last readiness observation says the thing that would serve
+  // this model was not answering (`engine_down`) or does not have the artifact
+  // (`weights_missing`). It is a WARNING and never blocks: an engine that is down while an
+  // author publishes may be up when the graph runs, and the RUN-time 503 is the real gate.
+  // `MODEL_UNAVAILABLE` (the `usable` axis) stays the ERROR.
+  | 'MODEL_NOT_READY'
+  // TASK-890 §3.14 (OD-R) — the agent's own guardrail opt-out (`parameters.guards.enabled:
+  // false`), recorded as a WARNING so the omission is visible on the row that made it rather
+  // than merely permitted. Shares the name with the graph-side finding `publishFindings` emits
+  // on a `core.agent` node.
+  | 'GUARDRAIL_OPTED_OUT';
 
 export interface AgentFinding extends AgentConfigProblem {
   readonly code: AgentFindingCode;

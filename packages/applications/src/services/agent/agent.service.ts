@@ -37,11 +37,14 @@ import {
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
   TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+  PromptTemplateSyntaxError,
+  PromptVariableUnresolvedError,
   agentConfigProblems,
   agentTagProblems,
   buildPortableBundle,
   canonicalJson,
   portableBundleProblems,
+  renderTemplate,
   templateReferenceProblems,
   templateSyntaxProblems,
   type AgentConfigView,
@@ -60,7 +63,22 @@ import { IAgentAssignmentService } from '../agent-assignment/IAgentAssignmentSer
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../agent-assignment/IAgentAssignmentService';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
 import type { IProviderConnectionService as IProviderConnectionServicePort } from '../ai-provider-connection/IProviderConnectionService';
-import { isCloudByoProvider } from '../ai-provider-connection/constants';
+// TASK-890 L1 §3.7 — the provider CLASS table lives with the connection vocabulary it is derived
+// from. This service is one of three consumers (the tenant catalogue and the BYO declaration are
+// the others); the private `ENGINE_SERVED_PROVIDERS` that used to sit at the top of THIS file is
+// gone, because two copies of "which providers serve their own weights" is two answers.
+import { ENGINE_SERVED_PROVIDERS, MODEL_TASK_TYPE_SERVICE, providerClassOf, type ProviderClass, type ProviderService } from '../ai-provider-connection/constants';
+import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
+import type {
+  ContextSchemaReferenceResolution,
+  IConsultationContextSchemaService as IConsultationContextSchemaServicePort,
+} from '../consultation-context-schema/IConsultationContextSchemaService';
+import { IInferenceReadinessService } from '../ai-readiness/IInferenceReadinessService';
+import type { IInferenceReadinessService as IInferenceReadinessServicePort } from '../ai-readiness/IInferenceReadinessService';
+import { modelReadinessFrom } from '../ai-readiness/inference-readiness.types';
+import type { InferenceReadinessSnapshot } from '../ai-readiness/inference-readiness.types';
+import { AgentDraftTestService } from './agent-draft-test.service';
+import { textWireProvider } from './text-generation-spec';
 import { AgentDtoMapper } from './agent.dto.mapper';
 import { codeForConfigProblem, hasBlocking, type AgentFinding, type AgentValidationReport } from './agent-findings';
 import {
@@ -79,29 +97,19 @@ import {
   AgentResponse,
   AgentSummaryResponse,
   AgentSyncResponse,
+  AgentTestAckResponse,
+  AgentTestResultResponse,
   CloneAgentRequest,
   CreateAgentRequest,
+  FinalizeAgentTestRequest,
   ImportAgentRequest,
   NewAgentVersionRequest,
   PublishAgentRequest,
   SyncAgentRequest,
+  TestAgentRequest,
   UpdateAgentRequest,
 } from './dto';
 import { IAgentService } from './IAgentService';
-
-/**
- * Providers that SERVE weights themselves (an engine process the platform runs and that hosts
- * its own model store), as opposed to a cloud vendor (needs a credential) or weights the
- * platform's own services load from the bucket (`built-in`, `null` — need `localPath` /
- * DOWNLOADED). Engine-served rows are available whenever ENABLED.
- *
- * `built-in` is deliberately NOT here: `apps/stt`/`apps/tts` resolve those weights through
- * `resolve_model_dir`, so a row without staged weights (the nemotron / parakeet.cpp case) must
- * FAIL CLOSED at publish — the ticket's own proof.
- *
- * TODO(TASK-860): replace this whole predicate with the measured `AiModel.availability`.
- */
-const ENGINE_SERVED_PROVIDERS: ReadonlySet<string> = new Set(['lm-studio', 'lmstudio', 'ollama', 'vllm', 'llama-cpp']);
 
 const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
   WorkflowDefinitionStatus.PUBLISHED,
@@ -110,8 +118,66 @@ const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
 
 type ResolvedPrompt = AgentCompiledConfig['resolvedPrompt'];
 
+/**
+ * TASK-890 §3.4 / §3.14 — the two fields this lane FREEZES into a published agent's compiled
+ * config. They are declared here as an additive intersection rather than on `AgentCompiledConfig`
+ * itself because `packages/types/src/agent.ts` has ONE writer per wave (§4.3) and it is not this
+ * one: L14 lands `contextSchema` and `guardrail` on the canonical interface (and exposes
+ * `guardrail` on `ResolvedAgent`) in the same wave. When it does, this intersection collapses to
+ * a no-op and is deleted in one line — the shapes below are the shapes handed over.
+ *
+ * Both are OPTIONAL on the type and UNCONDITIONAL in `compile()`: every agent published after
+ * this lane carries `guardrail`, and carries `contextSchema` exactly when it pins one. Optional
+ * is what keeps the artifacts a PREVIOUS release compiled readable.
+ */
+export interface AgentCompiledContextSchema {
+  /** The tenant's own schema row (never SYSTEM's — a schema is cloned, not shared: §3.4). */
+  schemaId: string;
+  versionNumber: number;
+  /** The immutable version row the payload schema was derived from — the provenance edge. */
+  versionId: string;
+  /** `payloadSchemaFromDefinition(version.definition)`, frozen. The runtime NEVER re-reads the row. */
+  payloadSchema: Record<string, unknown>;
+}
+
+type CompiledAgentConfig = AgentCompiledConfig & {
+  contextSchema?: AgentCompiledContextSchema | null;
+  guardrail?: { enabled: boolean };
+};
+
+/**
+ * What the caller of `publishFindings` needs to know about ONE agent a `core.agent` node
+ * references (`PublishAgentView` in `@arcaai/workflow-contract`). Restated structurally rather
+ * than imported so this service does not depend on the publish-gate module's own shape.
+ */
+export interface AgentPublishView {
+  declaredVariables: string[];
+  contextPayloadSchema: Record<string, unknown> | null;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+/**
+ * Whether a connection row actually CARRIES key material (§3.7, the "resolves but never
+ * delivers" split). An ENABLED but KEYLESS row is an incomplete setup, not a working credential:
+ * publishing onto it sends the author to a 503 at run time with no clue why.
+ */
+function hasKeyMaterial(ciphertext: Uint8Array | null | undefined): boolean {
+  return ciphertext !== null && ciphertext !== undefined && ciphertext.length > 0;
+}
+
+/**
+ * TASK-890 §3.14 — the AGENT level of the `node > workflow > agent > true` guardrail precedence.
+ *
+ * ABSENT MEANS ON, at every level. Guardrail is platform-managed and screening is the floor a
+ * tenant opts OUT of; a missing `parameters.guards.enabled` is "no opinion", which resolves to
+ * `true`, never to "off because nobody said on".
+ */
+function guardrailEnabledOf(parameters: unknown): boolean {
+  const guards = asRecord(asRecord(parameters)?.guards);
+  return guards?.enabled === false ? false : true;
 }
 
 /**
@@ -142,6 +208,14 @@ export class AgentService extends BaseService implements IAgentService {
     // `McpServerRepository` re-checks tool bindings when a copy crosses a tenant boundary.
     @Optional() private readonly policyEngine?: PolicyEngine,
     @Optional() private readonly mcpServerRepository?: McpServerRepository,
+    // TASK-890 L8. TRAILING and @Optional() for the same reason as the block above: positional
+    // unit fixtures keep their arity. Each absence has a DECLARED consequence, never a silent
+    // pass — an unresolvable context pin is an ERROR finding, absent readiness reports
+    // `unknown` (which never blocks), and a draft test without its transport is a 400 that
+    // names the misconfiguration.
+    @Optional() @Inject(IConsultationContextSchemaService) private readonly contextSchemas?: IConsultationContextSchemaServicePort,
+    @Optional() @Inject(IInferenceReadinessService) private readonly readiness?: IInferenceReadinessServicePort,
+    @Optional() private readonly draftTest?: AgentDraftTestService,
   ) {
     super(eventEmitter, clsService, ResourceType.Agent);
   }
@@ -216,6 +290,8 @@ export class AgentService extends BaseService implements IAgentService {
         task: dto.task,
         versionNumber: maxVersionNumber + 1,
         modelId: dto.modelId,
+        contextSchemaId: dto.contextSchemaId ?? null,
+        contextSchemaVersionNumber: dto.contextSchemaVersionNumber ?? null,
         instruction: (dto.instruction ?? null) as JsonValue | null,
         parameters: (dto.parameters ?? null) as JsonValue | null,
         inputSchema: (dto.inputSchema ?? null) as JsonValue | null,
@@ -256,6 +332,8 @@ export class AgentService extends BaseService implements IAgentService {
     if (dto.name !== undefined) entity.name = dto.name;
     if (dto.description !== undefined) entity.description = dto.description;
     if (dto.modelId !== undefined) entity.modelId = dto.modelId;
+    if (dto.contextSchemaId !== undefined) entity.contextSchemaId = dto.contextSchemaId;
+    if (dto.contextSchemaVersionNumber !== undefined) entity.contextSchemaVersionNumber = dto.contextSchemaVersionNumber;
     if (dto.instruction !== undefined) entity.instruction = dto.instruction as JsonValue;
     if (dto.parameters !== undefined) entity.parameters = dto.parameters as JsonValue;
     if (dto.inputSchema !== undefined) entity.inputSchema = dto.inputSchema as JsonValue;
@@ -329,7 +407,7 @@ export class AgentService extends BaseService implements IAgentService {
     const entity = await this.loadOwned(id);
     this.assertMutable(entity);
 
-    const { report, model, fallbackModels, resolvedPrompt } = await this.collectFindings(entity);
+    const { report, model, fallbackModels, resolvedPrompt, contextSchema } = await this.collectFindings(entity);
     entity.validationReport = report as unknown as JsonValue;
     entity.validatedAt = new Date();
     if (report.blocking) {
@@ -340,7 +418,7 @@ export class AgentService extends BaseService implements IAgentService {
     }
 
     const fallbackRows = await this.fallbackRepository.findByAgentId(entity.id);
-    const compiled = this.compile(entity, model as AiModelEntity, fallbackModels, fallbackRows, resolvedPrompt);
+    const compiled = this.compile(entity, model as AiModelEntity, fallbackModels, fallbackRows, resolvedPrompt, contextSchema);
     entity.compiledConfig = compiled as unknown as JsonValue;
     entity.compiledConfigChecksum = checksumOf(compiled);
     entity.status = WorkflowDefinitionStatus.PUBLISHED;
@@ -375,7 +453,9 @@ export class AgentService extends BaseService implements IAgentService {
       throw new BadRequestException('A new version of your own agent keeps its slug; branch a SYSTEM agent to start a new lineage.');
     }
     const slug = ownLineage ? source.slug : (dto.slug ?? source.slug);
-    const sourceFallbacks = await this.fallbackRepository.findByAgentId(source.id);
+    // TASK-890 H-6, the BRANCH half: a new version off a SYSTEM template must inherit the
+    // template's fallback chain, and that chain is only readable under the SOURCE's tenant.
+    const sourceFallbacks = await runInTenantContext(this.clsService, source.tenantId, () => this.fallbackRepository.findByAgentId(source.id));
     const fallbackModels = await this.loadFallbackModelsOrThrow(
       sourceFallbacks.map((row) => row.modelId),
       tenantId,
@@ -392,6 +472,8 @@ export class AgentService extends BaseService implements IAgentService {
         versionNumber: maxVersionNumber + 1,
         parentVersionId: source.id,
         modelId: source.modelId,
+        contextSchemaId: ownLineage ? (source.contextSchemaId ?? null) : null,
+        contextSchemaVersionNumber: ownLineage ? (source.contextSchemaVersionNumber ?? null) : null,
         instruction: source.instruction ?? null,
         parameters: source.parameters ?? null,
         inputSchema: source.inputSchema ?? null,
@@ -434,6 +516,188 @@ export class AgentService extends BaseService implements IAgentService {
       data: { action: 'deprecate', versionNumber: updated.versionNumber },
     });
     return this.respond(updated);
+  }
+
+  // ============================================================
+  // The draft-agent test bench (TASK-890 §3.8, F-7)
+  // ============================================================
+  //
+  // The gap this closes: before it, the only way to find out what an agent's prompt actually
+  // renders to was to publish it, assign it and start a consultation. Every authoring mistake
+  // — an unresolved variable, a template bound to the wrong version, a model nothing serves —
+  // surfaced in front of a clinician instead of in front of its author.
+  //
+  // The bench compiles the DRAFT through the SAME `collectFindings` + `compile` path publish
+  // uses and never persists `compiledConfig`. That identity is the whole point: a bench that
+  // ran a different assembly would be a second implementation of the thing being tested, and
+  // "it worked on the bench" would stop meaning anything.
+
+  /**
+   * §3.8 — assemble (and optionally run) one DRAFT agent.
+   *
+   * A dry run (the DEFAULT) generates nothing, meters nothing and returns the exact bytes that
+   * would have gone to TEXT. That is the cheapest possible answer to "why is my prompt wrong",
+   * and it is the default precisely so that finding out costs nothing.
+   *
+   * A non-dry run charges the tenant's own `monthlyLlmTokens` (OD-E: the test COUNTS — a bench
+   * that spent platform money invisibly would be the one path where usage did not add up).
+   *
+   * @throws ConflictException — the row is PUBLISHED/DEPRECATED (a published agent is invoked,
+   *   not tested: `POST /agents/{slug}/invocations`)
+   * @throws NotFoundException — unknown, foreign, or SYSTEM id (404-over-403)
+   * @throws BadRequestException — a blocking finding (with the findings), an unresolved prompt
+   *   variable (naming the path), or a partial `{provider, model}` override
+   */
+  async testDraft(id: string, dto: TestAgentRequest): Promise<AgentTestAckResponse> {
+    const entity = await this.loadOwned(id);
+    if (PUBLISHED_OR_DEPRECATED.has(entity.status)) {
+      throw new ConflictException({
+        message: `Agent ${entity.id} is ${entity.status}; a published agent is INVOKED, not tested. Use POST /agents/${entity.slug}/invocations, or branch a new version to keep editing.`,
+        code: 'AGENT_NOT_DRAFT',
+      });
+    }
+    if (dto.provider !== undefined || dto.model !== undefined) {
+      if (!dto.provider || !dto.model) {
+        throw new BadRequestException({ message: '`provider` and `model` must be supplied together.', code: 'PROVIDER_MODEL_PAIR' });
+      }
+    }
+
+    const { report, model, fallbackModels, resolvedPrompt, contextSchema } = await this.collectFindings(entity);
+    // The same refusal publish makes, with the same shape the console already renders. Nothing
+    // is persisted: a test must not move a draft's status or overwrite its stored report.
+    this.throwIfBlocking(report.findings, 'The agent cannot be tested.');
+    const compiled = this.compile(entity, model as AiModelEntity, fallbackModels, await this.fallbackRepository.findByAgentId(entity.id), resolvedPrompt, contextSchema);
+
+    const scope = this.testScope(entity, dto, contextSchema);
+    const assembledSystemPrompt = compiled.resolvedPrompt ? this.render(compiled.resolvedPrompt.content, scope, 'instruction') : null;
+    const assembledUserPrompt = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
+
+    const resolved = await this.testTarget(entity, model as AiModelEntity, dto);
+    const ack: AgentTestAckResponse = {
+      mode: 'dry-run',
+      findings: report.findings as AgentTestAckResponse['findings'],
+      assembledSystemPrompt,
+      assembledUserPrompt,
+      resolved,
+    };
+    if (dto.dryRun ?? true) return ack;
+
+    if (entity.task !== AgentTask.TEXT_GENERATION) {
+      // ASR / TTS drafts answer dry-run only: there is no prompt to stream and the resolved-spec
+      // preview IS the useful answer. Saying so beats pretending to run something.
+      throw new BadRequestException({
+        message: `A ${entity.task} agent can only be dry-run: there is nothing to stream. Re-send with \`dryRun: true\` to see its resolved spec.`,
+        code: 'DRY_RUN_ONLY',
+      });
+    }
+    if (!this.draftTest) {
+      throw new BadRequestException('A non-dry agent test cannot run: the test transport is not wired in this composition.');
+    }
+
+    const submission = await this.draftTest.submit({
+      tenantId: entity.tenantId,
+      prompt: assembledUserPrompt,
+      systemPrompt: assembledSystemPrompt,
+      provider: resolved.provider,
+      model: resolved.model,
+      guardrailEnabled: compiled.guardrail?.enabled ?? true,
+    });
+    return { ...ack, mode: 'stream', taskId: submission.taskId, streamUrl: submission.streamUrl };
+  }
+
+  /** §3.8 — read the finished run back SERVER-SIDE and record what it consumed (`trigger: AGENT_TEST`). */
+  async finalizeDraftTest(id: string, dto: FinalizeAgentTestRequest): Promise<AgentTestResultResponse> {
+    // The agent is re-checked even though the result comes from TEXT: `taskId` alone would let
+    // any caller holding `manage:Agent` read back a generation started by another tenant.
+    const entity = await this.loadOwned(id);
+    if (!this.draftTest) {
+      throw new BadRequestException('An agent test cannot be finalised: the test transport is not wired in this composition.');
+    }
+    return this.draftTest.finalize(entity.tenantId, dto.taskId);
+  }
+
+  /**
+   * The §3.3 render scope for a draft test, in the SAME order the runtime builds it:
+   * `context.*` (aliased as `trigger.*` so one prompt is portable between the two call shapes),
+   * `input.*`, then the bare-name namespace — the agent's own `instruction.variables` bindings
+   * resolved FIRST, then overlaid by the caller's `variables` (the caller wins, exactly as
+   * `overrides.promptVariables` wins at a `core.agent` node).
+   *
+   * A `{ path }` binding is resolved through `renderTemplate` itself rather than a private
+   * traversal: one grammar, one resolution, one set of edge cases (own properties only, `null`
+   * is missing, non-strings canonically serialised).
+   */
+  private testScope(entity: AgentEntity, dto: TestAgentRequest, contextSchema: AgentCompiledContextSchema | null): Record<string, unknown> {
+    const context = dto.context ?? {};
+    this.assertContextConforms(context, contextSchema);
+    const base: Record<string, unknown> = { context, trigger: context, input: dto.input ?? {} };
+
+    const bindings = asRecord(asRecord(entity.instruction)?.variables) ?? {};
+    for (const [name, binding] of Object.entries(bindings)) {
+      const spec = asRecord(binding);
+      if (!spec) continue;
+      if (typeof spec.value === 'string') base[name] = spec.value;
+      else if (typeof spec.path === 'string') base[name] = this.render(`{{${spec.path}}}`, base, `instruction.variables.${name}`);
+    }
+    return { ...base, ...(dto.variables ?? {}) };
+  }
+
+  /**
+   * TASK-890 §3.4 — the frozen payload schema is ENFORCING, not advisory.
+   *
+   * An agent that pins a context schema declares what it needs to do its job; a call that omits
+   * a REQUIRED kind is not a degraded call, it is a call that cannot be answered correctly, and
+   * the honest failure is a refusal that NAMES the kind (TASK-859 invariant 3, fail closed).
+   * Relaxing this to advisory is deliberately a one-line change: drop the throw.
+   */
+  private assertContextConforms(context: Record<string, unknown>, contextSchema: AgentCompiledContextSchema | null): void {
+    if (!contextSchema) return;
+    const problems = jsonSchemaValueProblems(contextSchema.payloadSchema, context, 'context');
+    if (problems.length === 0) return;
+    throw new BadRequestException({
+      message: `The supplied context does not satisfy the schema this agent binds (version ${contextSchema.versionNumber}).`,
+      code: 'CONTEXT_SCHEMA_VIOLATION',
+      findings: problems,
+    });
+  }
+
+  /** One render, with an unresolved variable turned into a 400 that NAMES the path. */
+  private render(content: string, scope: Record<string, unknown>, templateRef: string): string {
+    try {
+      return renderTemplate(content, scope, { templateRef });
+    } catch (error) {
+      if (error instanceof PromptVariableUnresolvedError) {
+        throw new BadRequestException({ message: error.message, code: 'PROMPT_VARIABLE_UNRESOLVED', path: error.path });
+      }
+      if (error instanceof PromptTemplateSyntaxError) {
+        throw new BadRequestException({ message: error.message, code: 'PROMPT_TEMPLATE_SYNTAX' });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * What the run would go to, and who pays. `override` is the caller's explicit `{provider,
+   * model}` pair (verbatim, as the prompt bench accepts one); `row` is the agent's own bound
+   * model, sent as the wire provider apps/text registers and the provider-native `sourceUri`.
+   *
+   * Funding is DERIVED exactly as production derives it: the SYSTEM tier paying makes it
+   * `platform`, the tenant's own row makes it `tenant`. Nothing here stamps a `test` tier — a
+   * bench run is ordinary spend on an ordinary credential.
+   */
+  private async testTarget(entity: AgentEntity, model: AiModelEntity, dto: TestAgentRequest): Promise<AgentTestAckResponse['resolved']> {
+    const provider = dto.provider ?? textWireProvider(model.provider ?? '');
+    const wireModel = dto.model ?? model.sourceUri ?? model.slug;
+    const source: 'row' | 'override' = dto.provider ? 'override' : 'row';
+
+    let fundingTier: 'platform' | 'tenant' = entity.tenantId === SYSTEM_TENANT_ID ? 'platform' : 'tenant';
+    const connectionProvider = model.provider ?? null;
+    const service = MODEL_TASK_TYPE_SERVICE[model.taskType as ModelTaskType] ?? AGENT_TASK_SERVICE[entity.task];
+    if (this.providerConnections && connectionProvider && service) {
+      const connection = await this.providerConnections.resolveConnection(service, connectionProvider, entity.tenantId).catch(() => null);
+      if (connection) fundingTier = connection.source === 'system' ? 'platform' : 'tenant';
+    }
+    return { provider, model: wireModel, fundingTier, source };
   }
 
   // ============================================================
@@ -869,7 +1133,13 @@ export class AgentService extends BaseService implements IAgentService {
     overrides: { slug: string; name?: string; description?: string | null; tags?: string[] },
   ): Promise<{ saved: AgentEntity; fallbacks: AgentModelFallbackEntity[]; warnings: string[] }> {
     if (targetTenantId !== source.tenantId) await this.assertPortableAcrossTenants(source);
-    return this.databaseService.baseClient.$transaction(async (tx) => this.writeCopy(source, targetTenantId, overrides, tx));
+    // TASK-890 H-6, the CLONE half. `AgentModelFallback` is a plain tenant-scoped model — it is
+    // NOT shared-read — so reading the SOURCE's chain under the CALLER's working tenant answers
+    // `[]` for every SYSTEM template, and the copy silently lands with no fallbacks at all. Name
+    // the tenant each step acts on, exactly as `syncToTenants` does (`:654`); the runtime half of
+    // the same defect was fixed in `AgentResolverService`.
+    const sourceFallbacks = await runInTenantContext(this.clsService, source.tenantId, () => this.fallbackRepository.findByAgentId(source.id));
+    return this.databaseService.baseClient.$transaction(async (tx) => this.writeCopy(source, targetTenantId, overrides, tx, sourceFallbacks));
   }
 
   private async writeCopy(
@@ -919,6 +1189,11 @@ export class AgentService extends BaseService implements IAgentService {
       // `parentVersionId` stays NULL: it means "the previous version of THIS lineage", and a
       // copy starts a different one. The provenance edge is the four `source*` columns.
       modelId,
+      // The context pin travels only WITHIN a tenant: a schema is cloned, not shared, so a
+      // cross-tenant copy would otherwise point at a row the target cannot read. Re-binding it
+      // to the target's own clone is the reference-set's job (L13), not the copier's.
+      contextSchemaId: crossTenant ? null : (source.contextSchemaId ?? null),
+      contextSchemaVersionNumber: crossTenant ? null : (source.contextSchemaVersionNumber ?? null),
       instruction: (hadInstruction ? instruction : null) as JsonValue | null,
       parameters: source.parameters ?? null,
       inputSchema: source.inputSchema ?? null,
@@ -997,8 +1272,12 @@ export class AgentService extends BaseService implements IAgentService {
     model: AiModelEntity | null;
     fallbackModels: AiModelEntity[];
     resolvedPrompt: ResolvedPrompt;
+    contextSchema: AgentCompiledContextSchema | null;
   }> {
     const findings: AgentFinding[] = [];
+    const context = await this.resolveContextSchema(entity);
+    findings.push(...context.findings);
+    findings.push(...this.guardrailFindings(entity));
     const model = await this.loadModel(entity.modelId, entity.tenantId);
     if (!model) {
       findings.push({
@@ -1033,9 +1312,12 @@ export class AgentService extends BaseService implements IAgentService {
       ),
     );
 
-    if (model) findings.push(...(await this.availabilityFindings(model, entity.task, entity.tenantId, 'modelId')));
+    // ONE readiness read per validate/publish, shared by the primary model and every fallback:
+    // it is a single stored snapshot, and re-reading it per row would say the same thing N times.
+    const snapshot = this.readiness ? await this.readiness.getSnapshot().catch(() => null) : null;
+    if (model) findings.push(...(await this.availabilityFindings(model, entity.task, entity.tenantId, 'modelId', snapshot)));
     for (const [index, fallback] of fallbackModels.entries()) {
-      findings.push(...(await this.availabilityFindings(fallback, entity.task, entity.tenantId, `fallbacks[${index}]`)));
+      findings.push(...(await this.availabilityFindings(fallback, entity.task, entity.tenantId, `fallbacks[${index}]`, snapshot)));
     }
 
     let resolvedPrompt: ResolvedPrompt = null;
@@ -1043,11 +1325,124 @@ export class AgentService extends BaseService implements IAgentService {
       const outcome = await this.resolvePrompt(asRecord(entity.instruction));
       findings.push(...outcome.findings);
       resolvedPrompt = outcome.resolvedPrompt;
-      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt));
+      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, context.resolved));
     }
 
     const report: AgentValidationReport = { checkedAt: new Date().toISOString(), blocking: hasBlocking(findings), findings };
-    return { report, model, fallbackModels, resolvedPrompt };
+    return { report, model, fallbackModels, resolvedPrompt, contextSchema: context.resolved };
+  }
+
+  /**
+   * TASK-890 §3.4 — resolve the agent's context-schema PIN, in the CALLER's tenant only.
+   *
+   * A schema is CONTENT: it is cloned into a tenant and never shared from SYSTEM (OD-H, §1.5), so
+   * `resolveReference` answers 404-shaped for a SYSTEM id exactly as it does for another
+   * customer's. That is why an unresolvable pin is a FINDING rather than a throw — the code has
+   * to distinguish "no such schema here" from "that version does not exist", and the console
+   * offers a different fix for each.
+   *
+   * The resolved payload schema is FROZEN into `compiledConfig.contextSchema` by `compile()`. The
+   * runtime never re-reads the row (TASK-859 invariant 4): a schema published after this agent
+   * was must not retroactively change what a live invocation is validated against.
+   */
+  private async resolveContextSchema(entity: AgentEntity): Promise<{ resolved: AgentCompiledContextSchema | null; findings: AgentFinding[] }> {
+    const schemaId = entity.contextSchemaId ?? null;
+    if (!schemaId) return { resolved: null, findings: [] };
+
+    if (!this.contextSchemas) {
+      // Fail CLOSED: an agent that PINS a schema and cannot have it resolved would otherwise
+      // publish with no frozen snapshot, and its invocations would validate against nothing.
+      return {
+        resolved: null,
+        findings: [
+          {
+            severity: 'ERROR',
+            code: 'CONTEXT_SCHEMA_NOT_FOUND',
+            path: 'contextSchemaId',
+            message: 'Context schemas are not available to this service instance, so the pinned schema cannot be resolved.',
+          },
+        ],
+      };
+    }
+
+    let outcome: ContextSchemaReferenceResolution;
+    try {
+      outcome = await this.contextSchemas.resolveReference(schemaId, entity.contextSchemaVersionNumber ?? null);
+    } catch {
+      outcome = { outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' };
+    }
+
+    if (outcome.outcome === 'failed') {
+      return {
+        resolved: null,
+        findings: [
+          {
+            severity: 'ERROR',
+            code: outcome.failure,
+            path: outcome.failure === 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' ? 'contextSchemaVersionNumber' : 'contextSchemaId',
+            message:
+              outcome.failure === 'CONTEXT_SCHEMA_VERSION_NOT_FOUND'
+                ? `Context schema ${schemaId} has no version ${entity.contextSchemaVersionNumber ?? '(pinned)'} in this tenant.`
+                : `Context schema ${schemaId} is not visible to this tenant. A schema is cloned into a tenant, never shared from the platform tier.`,
+          },
+        ],
+      };
+    }
+
+    return {
+      resolved: {
+        schemaId: outcome.schemaId,
+        versionNumber: outcome.versionNumber,
+        versionId: outcome.versionId,
+        payloadSchema: outcome.payloadSchema,
+      },
+      findings: [],
+    };
+  }
+
+  /**
+   * TASK-890 §3.14 (OD-R) — an agent that opts OUT of platform guardrail says so on its own row.
+   *
+   * A WARNING, never a block. The point is attribution: the omission is recorded at authoring
+   * time (here), on every call (`attributesJson.guardrail`) and in TEXT's own response reason, so
+   * "this agent was not screened" is a fact somebody can find rather than a silence.
+   */
+  private guardrailFindings(entity: AgentEntity): AgentFinding[] {
+    if (guardrailEnabledOf(entity.parameters)) return [];
+    return [
+      {
+        severity: 'WARNING',
+        code: 'GUARDRAIL_OPTED_OUT',
+        path: 'parameters.guards.enabled',
+        message: 'This agent opts OUT of platform guardrail screening: its input and output are not screened, and every call records `guardrail: opted_out`.',
+      },
+    ];
+  }
+
+  /**
+   * TASK-890 §3.5 — what `publishFindings` needs to know about the agents a graph's `core.agent`
+   * nodes reference, by slug. The workflow publish gate is a PURE function in a package with no
+   * database, so the per-agent facts have to be resolved by a service and handed in; this is that
+   * resolution, and it is public for exactly one caller.
+   *
+   * Resolution is the published, active row visible to the caller (the same row the runtime would
+   * resolve), and an unknown slug is simply ABSENT from the map — `publishFindings` already emits
+   * `AGENT_REF_MISSING` for a node whose agent it was told nothing about, and inventing an empty
+   * view here would mask that with a variable finding instead.
+   */
+  async publishAgentViews(slugs: readonly string[]): Promise<Record<string, AgentPublishView>> {
+    const tenantId = this.requireTenant();
+    const views: Record<string, AgentPublishView> = {};
+    for (const slug of new Set(slugs)) {
+      const entity = await this.agentRepository.findPublishedActiveBySlug(tenantId, slug).catch(() => null);
+      if (!entity) continue;
+      const context = await this.resolveContextSchema(entity);
+      views[slug] = {
+        declaredVariables: Object.keys(asRecord(asRecord(entity.instruction)?.variables) ?? {}),
+        contextPayloadSchema: context.resolved?.payloadSchema ?? null,
+      };
+    }
+    return views;
   }
 
   /**
@@ -1069,7 +1464,11 @@ export class AgentService extends BaseService implements IAgentService {
    * context schema (L8 resolves the row and freezes the derived payload schema); until then a
    * reference to them is legitimately undeclared, which is exactly what the WARNING says.
    */
-  private promptTemplateFindings(entity: AgentEntity, resolvedPrompt: ResolvedPrompt): AgentFinding[] {
+  private promptTemplateFindings(
+    entity: AgentEntity,
+    resolvedPrompt: ResolvedPrompt,
+    contextSchema: AgentCompiledContextSchema | null,
+  ): AgentFinding[] {
     const content = resolvedPrompt?.content;
     if (typeof content !== 'string' || content.length === 0) return [];
 
@@ -1091,7 +1490,7 @@ export class AgentService extends BaseService implements IAgentService {
 
     const instruction = asRecord(entity.instruction) ?? {};
     const variables = asRecord(instruction.variables) ?? {};
-    const contextPayloadSchema = this.boundContextPayloadSchema(entity);
+    const contextPayloadSchema = this.boundContextPayloadSchema(contextSchema);
     const declared: DeclaredNamespaces = {
       roots: {
         ...(contextPayloadSchema === null ? {} : { context: contextPayloadSchema, trigger: contextPayloadSchema }),
@@ -1111,13 +1510,14 @@ export class AgentService extends BaseService implements IAgentService {
   /**
    * The derived payload schema of the agent's bound context schema, or `null` when it binds none.
    *
-   * `null` TODAY for every agent: the `contextSchemaId` / `contextSchemaVersionNumber` columns and
-   * the resolution that freezes `compiledConfig.contextSchema.payloadSchema` are TASK-890 L2/L8.
-   * Split out as its own method so that lane fills ONE body rather than threading a parameter
-   * through the findings pipeline.
+   * TASK-890 L8 — filled. It is the resolution `collectFindings` already made (one read per
+   * validate/publish, not one per finding), projected onto the `context.*` / `trigger.*` roots
+   * of §3.3. `null` means the agent pins no schema OR the pin did not resolve — in the second
+   * case an ERROR finding is already blocking, so the WARNING-level "undeclared variable" check
+   * running against an empty namespace cannot mislead anyone.
    */
-  private boundContextPayloadSchema(_entity: AgentEntity): Record<string, unknown> | null {
-    return null;
+  private boundContextPayloadSchema(contextSchema: AgentCompiledContextSchema | null): Record<string, unknown> | null {
+    return contextSchema?.payloadSchema ?? null;
   }
 
   /** Pure checks: the contract's `agentConfigProblems` + JSON-Schema value checks + authorable I/O schemas. */
@@ -1160,51 +1560,128 @@ export class AgentService extends BaseService implements IAgentService {
   }
 
   /**
-   * Availability, fail-closed (R-7): ENABLED; a cloud provider needs an enabled
-   * `AiProviderConnection(service, provider)` at tenant or SYSTEM; an engine-served provider
-   * needs nothing more; bucket-staged weights need MEASURED presence in the bucket.
+   * TASK-890 §3.7 / §3.11 / §3.12 — the publish gate, on the SAME provider-class table the
+   * tenant catalogue answers from, plus advisory readiness.
    *
-   * TASK-890 L2 — the last reader of the dropped `localPath` / `downloadStatus` columns. The
-   * check now reads `availability`, the fact the inventory job and the publish processor
-   * measure, with the SAME verdict as the pair it replaces: a row nobody has confirmed
-   * weights for (UNKNOWN, as every freshly seeded self-hosted row is) is still refused, and
-   * a row that needs no weights at all (NOT_APPLICABLE) still passes. L8 owns the wider
-   * rewrite of this branch onto `providerClassOf` + readiness (§3.11).
+   * ## Two axes, deliberately not one
+   *
+   * `usable` (this ERROR) asks *could an agent bound to this row ever run?* — a class fact about
+   * the row and its connection. `readiness` (the WARNING) asks *would it have run at the last
+   * moment anybody looked?* — an observation with a timestamp. An engine that is down while an
+   * author publishes may be up when the graph runs tomorrow, so readiness must never refuse a
+   * publish; that is what the RUN-time 503 is for. Collapsing them would make a transient probe
+   * failure permanently unpublishable.
+   *
+   * ## The class table (`providerClassOf`, `ai-provider-connection/constants.ts`)
+   *
+   * | Class | usable when |
+   * |---|---|
+   * | `platform-self-host` | the MEASURED `availability` is AVAILABLE / NOT_APPLICABLE — a HOPE service loads these weights from the bucket, so presence IS usability |
+   * | `engine-served` | the SYSTEM engine connection resolves (ENABLED). There is no credential to bring, so ENABLED is the whole test — but it IS a test: a disabled engine row is a deliberate platform veto |
+   * | `cloud-byo` | the tenant's own connection is ENABLED **and carries key material** — the "resolves but never delivers" split |
+   * | `cloud-platform` | the cascade resolved a KEYED connection (tenant row wins, SYSTEM on absence, `null` on veto or a withheld platform-credential entitlement) |
+   *
+   * A row whose provider this platform cannot classify at all (`null`) is refused rather than
+   * assumed usable — the seeds carry rows with no provider, and guessing for them is how an
+   * agent reaches production bound to something nothing serves.
+   *
+   * Service comes from the MODEL's own task type (`MODEL_TASK_TYPE_SERVICE`) and falls back to
+   * the AGENT's task: a fallback chain may legitimately hold a row whose task type maps to no
+   * connection plane, and the agent's own service is the honest answer there.
    */
-  private async availabilityFindings(model: AiModelEntity, task: AgentTask, tenantId: string, path: string): Promise<AgentFinding[]> {
+  private async availabilityFindings(
+    model: AiModelEntity,
+    task: AgentTask,
+    tenantId: string,
+    path: string,
+    snapshot: InferenceReadinessSnapshot | null,
+  ): Promise<AgentFinding[]> {
     if (model.resourceStatus !== ResourceStatusType.ENABLED) {
       return [{ severity: 'ERROR', code: 'MODEL_DISABLED', path, message: `Model \`${model.slug}\` is ${model.resourceStatus}.` }];
     }
-    const service = AGENT_TASK_SERVICE[task];
+
+    const service: ProviderService | null = MODEL_TASK_TYPE_SERVICE[model.taskType as ModelTaskType] ?? AGENT_TASK_SERVICE[task];
+    const providerClass = providerClassOf(service, model.provider ?? null, model);
+    const unusable = await this.unusableReason(providerClass, service, model, tenantId);
+    if (unusable) {
+      return [{ severity: 'ERROR', code: 'MODEL_UNAVAILABLE', path, message: `Model \`${model.slug}\`: ${unusable}` }];
+    }
+    return this.readinessFindings(model, path, snapshot);
+  }
+
+  /** `null` = usable. A string = the reason it is not, in the author's words. */
+  private async unusableReason(
+    providerClass: ProviderClass | null,
+    service: ProviderService | null,
+    model: AiModelEntity,
+    tenantId: string,
+  ): Promise<string | null> {
+    if (providerClass === null) {
+      return `its provider \`${model.provider ?? '(none)'}\` is not one this platform serves, so nothing would run it.`;
+    }
+
+    if (providerClass === 'platform-self-host') {
+      const staged = model.availability === AiModelAvailability.AVAILABLE || model.availability === AiModelAvailability.NOT_APPLICABLE;
+      return staged
+        ? null
+        : `it has no staged weights (availability is ${model.availability}); publish is refused until the weights are available.`;
+    }
+
+    // Every remaining class needs the connection plane. An absent collaborator FAILS CLOSED with
+    // a named cause — an optimistic pass here is how an agent publishes onto a credential nobody
+    // ever configured.
     const provider = model.provider ?? null;
-    if (provider && isCloudByoProvider(service, provider)) {
-      // TODO(TASK-862): ProviderCredentialResolver.resolve(service, provider, tenantId) → { override, fundingTier, connectionId }.
-      const connection = this.providerConnections ? await this.providerConnections.resolveConnection(service, provider, tenantId) : null;
-      if (!connection) {
-        return [
-          {
-            severity: 'ERROR',
-            code: 'MODEL_UNAVAILABLE',
-            path,
-            message: `Model \`${model.slug}\` is served by \`${provider}\` and no enabled ${service}/${provider} provider connection exists at the tenant or SYSTEM tier.`,
-          },
-        ];
+    if (!this.providerConnections || !service || !provider) {
+      return 'its provider connection could not be resolved by this service instance.';
+    }
+
+    if (providerClass === 'cloud-byo') {
+      const row = this.providerConnections.findRow ? await this.providerConnections.findRow(service, provider, tenantId).catch(() => null) : null;
+      if (!row || !row.enabled) {
+        return `it is a bring-your-own \`${provider}\` model and this tenant has no ENABLED ${service}/${provider} connection.`;
       }
-      return [];
+      if (!hasKeyMaterial(row.encryptedApiKey)) {
+        return `it is a bring-your-own \`${provider}\` model and this tenant's ${service}/${provider} connection carries no credential.`;
+      }
+      return null;
     }
-    if (provider && ENGINE_SERVED_PROVIDERS.has(provider)) return [];
-    const staged = model.availability === AiModelAvailability.AVAILABLE || model.availability === AiModelAvailability.NOT_APPLICABLE;
-    if (!staged) {
-      return [
-        {
-          severity: 'ERROR',
-          code: 'MODEL_UNAVAILABLE',
-          path,
-          message: `Model \`${model.slug}\` has no staged weights (availability is ${model.availability}); publish is refused until the weights are available.`,
-        },
-      ];
+
+    const connection = await this.providerConnections.resolveConnection(service, provider, tenantId).catch(() => null);
+    if (!connection) {
+      return `it is served by \`${provider}\` and no enabled ${service}/${provider} provider connection exists at the tenant or platform tier.`;
     }
-    return [];
+    if (providerClass === 'cloud-platform' && !hasKeyMaterial(connection.encryptedApiKey)) {
+      return `it is served by the cloud provider \`${provider}\` and the resolved ${service}/${provider} connection carries no credential.`;
+    }
+    // `engine-served`: ENABLED is the whole test — an engine the platform runs brings its own
+    // weights and needs no key (`ENGINE_SERVED_PROVIDERS`).
+    return null;
+  }
+
+  /**
+   * §3.12 — ADVISORY. The platform's LAST observation of this model, never a probe: a tenant
+   * publishing an agent must not be able to make the gateway call an engine.
+   *
+   * `unknown` is not a verdict and never produces a finding (cold snapshot, sweep switched off,
+   * inventory never ran). `ready` / `loadable` / `credential_missing` say nothing new here —
+   * a missing credential is already the ERROR above, and `loadable` only means the first call
+   * pays a model load.
+   */
+  private readinessFindings(model: AiModelEntity, path: string, snapshot: InferenceReadinessSnapshot | null): AgentFinding[] {
+    if (!snapshot) return [];
+    const verdict = modelReadinessFrom(snapshot, model.id);
+    if (verdict.readiness !== 'engine_down' && verdict.readiness !== 'weights_missing') return [];
+    return [
+      {
+        severity: 'WARNING',
+        code: 'MODEL_NOT_READY',
+        path,
+        message:
+          `Model \`${model.slug}\` was ${verdict.readiness === 'engine_down' ? 'not answering' : 'missing its weights'} at the last readiness check` +
+          `${verdict.checkedAt ? ` (${verdict.checkedAt.toISOString()})` : ''}${verdict.detail ? `: ${verdict.detail}` : ''}. ` +
+          'Publishing is allowed — readiness is measured at a moment, not at run time.',
+      },
+    ];
   }
 
   /** Template-bound instruction ⇒ the template must be APPROVED and the pinned version must exist (R-7). */
@@ -1296,13 +1773,26 @@ export class AgentService extends BaseService implements IAgentService {
     return { supportedGenerationParams: supported, supportsSsml, label: `${model.provider ?? 'local'}/${model.slug}` };
   }
 
+  /**
+   * TASK-890 — `compile()` FREEZES two more facts, and freezing is the point (invariant 4: the
+   * runtime never re-reads what publish decided).
+   *
+   * `contextSchema` carries the derived payload schema of the version the agent pinned, so an
+   * invocation is validated against the declaration that was in force when the agent was
+   * published — a schema published later must not retroactively invalidate a live call, and an
+   * earlier one must not silently keep applying.
+   *
+   * `guardrail` carries the agent's own opt-out decision, so the resolver and every TEXT post can
+   * read it without a second lookup and the usage row can attribute it.
+   */
   private compile(
     entity: AgentEntity,
     model: AiModelEntity,
     fallbackModels: AiModelEntity[],
     fallbackRows: AgentModelFallbackEntity[],
     resolvedPrompt: ResolvedPrompt,
-  ): AgentCompiledConfig {
+    contextSchema: AgentCompiledContextSchema | null,
+  ): CompiledAgentConfig {
     const byId = new Map(fallbackModels.map((row) => [row.id, row]));
     const defaults = AGENT_IO_DEFAULTS[entity.task];
     return {
@@ -1323,6 +1813,8 @@ export class AgentService extends BaseService implements IAgentService {
       outputSchema: asRecord(entity.outputSchema) ?? (defaults.outputSchema as Record<string, unknown>),
       tools: (Array.isArray(entity.tools) ? entity.tools : []) as Array<{ mcpServerId: string; toolName: string }>,
       protocols: [...AGENT_PROTOCOLS[entity.task]],
+      contextSchema,
+      guardrail: { enabled: guardrailEnabledOf(entity.parameters) },
     };
   }
 
@@ -1338,10 +1830,22 @@ export class AgentService extends BaseService implements IAgentService {
 
   private viewOf(
     task: AgentTask,
-    source: { instruction?: unknown; parameters?: unknown; inputSchema?: unknown; outputSchema?: unknown; tools?: unknown },
+    source: {
+      instruction?: unknown;
+      parameters?: unknown;
+      inputSchema?: unknown;
+      outputSchema?: unknown;
+      tools?: unknown;
+      contextSchemaId?: string | null;
+      contextSchemaVersionNumber?: number | null;
+    },
   ): AgentConfigView {
     return {
       task,
+      // TASK-890 §3.4 — the contract owns "half a reference is not a reference" (a pinned
+      // version with no schema id). It can only enforce it if the view CARRIES the pair.
+      contextSchemaId: source.contextSchemaId ?? null,
+      contextSchemaVersionNumber: source.contextSchemaVersionNumber ?? null,
       instruction: asRecord(source.instruction) ?? null,
       parameters: asRecord(source.parameters) ?? null,
       inputSchema: asRecord(source.inputSchema) ?? null,
@@ -1459,6 +1963,6 @@ function toModelView(model: AiModelEntity): AgentModelView {
   return { slug: model.slug, taskType: String(model.taskType), provider: model.provider ?? undefined };
 }
 
-function checksumOf(compiled: AgentCompiledConfig): string {
+function checksumOf(compiled: CompiledAgentConfig): string {
   return `sha256:${createHash('sha256').update(canonicalJson(compiled)).digest('hex')}`;
 }
