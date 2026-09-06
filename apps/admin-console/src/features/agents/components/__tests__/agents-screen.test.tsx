@@ -1,8 +1,10 @@
 /**
- * TASK-863 — Agents screen: fill-height grid over `GET /admin/agents?includeTemplates=true`
- * (tenant rows + SYSTEM templates), the detail slide-over following the `agent` param, the
- * publish-fails-closed findings surfacing in the drawer, and the create wizard's task → model
- * filtering. fetch is stubbed at the network boundary.
+ * TASK-863/TASK-890 — Agents screen: fill-height grid over `GET /admin/agents` (this tenant's
+ * own rows only — TASK-890 OD-M dropped `includeTemplates`: the SYSTEM reference set is CLONED
+ * into the tenant at provisioning, never read live), the detail slide-over following the `agent`
+ * param, the publish-fails-closed findings surfacing in the drawer, `?create=1` opening the
+ * wizard, and the create wizard's Task → Model step over the tenant catalogue. fetch is stubbed
+ * at the network boundary.
  */
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -25,9 +27,15 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     task: 'TEXT_GENERATION',
     versionNumber: 2,
     parentVersionId: null,
+    sourceAgentId: null,
+    sourceTenantId: null,
+    sourceSlug: null,
+    sourceVersionNumber: null,
     status: 'DRAFT',
     isActive: false,
     modelId: 'm-llm',
+    contextSchemaId: null,
+    contextSchemaVersionNumber: null,
     modelSlug: 'lms-gemma-4-e2b-it-qat',
     fallbacks: [],
     instruction: { systemPrompt: 'You are a scribe.' },
@@ -52,14 +60,31 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   };
 }
 
+// TASK-890 OD-M — a2 is THIS tenant's own row (a clone the reference set made at provisioning),
+// not a live SYSTEM row: `tenantId` is the caller's tenant, `sourceTenantId` names the platform
+// origin. `GET admin/agents` would never return a true `tenantId === SYSTEM` row to a tenant caller.
 const AGENTS: Agent[] = [
   agent(),
-  agent({ id: 'sys-1', tenantId: SYSTEM, slug: 'platform-transcription', name: 'Platform transcription', task: 'SPEECH_TO_TEXT', status: 'PUBLISHED', isActive: true, modelId: 'm-asr', modelSlug: 'arcaai-whisper-large-ml-en-gguf', compiledConfig: { task: 'SPEECH_TO_TEXT' }, compiledConfigChecksum: 'sha256:abc' }),
+  agent({
+    id: 'a-2',
+    slug: 'clinic-transcription',
+    name: 'Clinic transcription',
+    sourceTenantId: SYSTEM,
+    sourceSlug: 'platform-transcription',
+    task: 'SPEECH_TO_TEXT',
+    status: 'PUBLISHED',
+    isActive: true,
+    modelId: 'm-asr',
+    modelSlug: 'arcaai-whisper-large-ml-en-gguf',
+    compiledConfig: { task: 'SPEECH_TO_TEXT' },
+    compiledConfigChecksum: 'sha256:abc',
+  }),
 ];
 
-const MODELS = [
-  { id: 'm-llm', name: 'Gemma 4 E2B', slug: 'lms-gemma-4-e2b-it-qat', taskType: 'TEXT_GENERATION', provider: 'lm-studio', resourceStatus: 'ENABLED', tenantId: SYSTEM },
-  { id: 'm-asr', name: 'Whisper ML/EN', slug: 'arcaai-whisper-large-ml-en-gguf', taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'built-in', resourceStatus: 'ENABLED', tenantId: SYSTEM },
+/** `GET admin/ai-models/catalogue` — one "Hope provider" holding both task's models (TASK-890 §3.7). */
+const CATALOGUE_MODELS = [
+  { id: 'm-llm', slug: 'lms-gemma-4-e2b-it-qat', name: 'Gemma 4 E2B', taskType: 'TEXT_GENERATION', providerId: 'hope', provider: 'lm-studio', providerClass: 'engine-served', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  { id: 'm-asr', slug: 'arcaai-whisper-large-ml-en-gguf', name: 'Whisper ML/EN', taskType: 'AUTOMATIC_SPEECH_RECOGNITION', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
 ];
 
 interface RecordedCall {
@@ -92,17 +117,23 @@ function session() {
 }
 
 function defaultHandler(call: RecordedCall): Response | undefined {
-  const path = new URL(call.url, 'http://test.local').pathname;
+  const url = new URL(call.url, 'http://test.local');
+  const path = url.pathname;
   if (call.url.includes('/users/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
   if (call.method !== 'GET') return undefined;
   if (path === '/api/auth/session') return Response.json(session());
   if (path === '/api/hope/admin/agents') return Response.json(AGENTS);
   if (path === '/api/hope/admin/agents/a-1') return Response.json(AGENTS[0], { headers: { etag: '"3"' } });
-  if (path === '/api/hope/admin/agents/sys-1') return Response.json(AGENTS[1], { headers: { etag: '"1"' } });
+  if (path === '/api/hope/admin/agents/a-2') return Response.json(AGENTS[1], { headers: { etag: '"1"' } });
   if (path.endsWith('/versions')) return Response.json([AGENTS[0]]);
   if (path === '/api/hope/admin/agent-assignments') return Response.json([]);
-  if (path === '/api/hope/admin/ai-models') return Response.json(MODELS);
-  if (path === '/api/hope/admin/prompt-templates') return Response.json({ data: [{ id: 'tpl-1', name: 'SOAP', status: 'APPROVED', currentVersionNumber: 1 }] });
+  if (path === '/api/hope/admin/ai-models/catalogue') {
+    const taskType = url.searchParams.get('taskType');
+    const models = taskType ? CATALOGUE_MODELS.filter((model) => model.taskType === taskType) : CATALOGUE_MODELS;
+    return Response.json({ providers: [{ id: 'hope', group: 'hope', name: 'Hope provider', providerClass: null, connectionId: null, usable: true, reason: null, modelCount: models.length }], models });
+  }
+  if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([]);
+  if (path === '/api/hope/admin/prompt-templates') return Response.json({ data: [{ id: 'tpl-1', name: 'SOAP', status: 'APPROVED', currentVersionNumber: 1, category: 'SUMMARY' }] });
   return undefined;
 }
 
@@ -116,14 +147,14 @@ afterEach(() => {
 });
 
 describe('AgentsScreen', () => {
-  it('lists the tenant agents and the platform templates, one row per version, with task/status/owner', async () => {
+  it('lists this tenant’s own agents, including its clones of the platform reference set, and never sends includeTemplates', async () => {
     const calls = stubAgents();
     renderWithProviders(<AgentsScreen />);
     expect(await screen.findByText('Clinic summarizer')).toBeTruthy();
-    expect(screen.getByText('Platform transcription')).toBeTruthy();
-    expect(screen.getAllByText('Platform').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Clinic transcription')).toBeTruthy();
+    expect(screen.getAllByText('Platform origin').length).toBeGreaterThanOrEqual(1);
     const list = calls.find((call) => new URL(call.url, 'http://test.local').pathname === '/api/hope/admin/agents');
-    expect(list?.url).toContain('includeTemplates=true');
+    expect(list?.url).not.toContain('includeTemplates');
   });
 
   it('opens the detail slide-over for the clicked row with the five tabs and the publish action on a draft', async () => {
@@ -139,8 +170,7 @@ describe('AgentsScreen', () => {
     expect(within(drawer).getByRole('button', { name: /^Validate$/ })).toBeTruthy();
   });
 
-  it('publish fails closed: a 400 with coded findings is surfaced, nothing pretends to be published', async () => {
-    const { toast } = await import('sonner');
+  it('publish opens the confirm dialog; publish fails closed on a 400 with coded findings', async () => {
     const calls = stubAgents((call) => {
       if (call.method === 'POST' && call.url.endsWith('/admin/agents/a-1/publish')) {
         return Response.json({ message: 'The agent cannot be published.', code: 'MODEL_UNAVAILABLE', findings: [{ severity: 'ERROR', code: 'MODEL_UNAVAILABLE', path: 'modelId', message: 'no staged weights' }] }, { status: 400 });
@@ -151,21 +181,29 @@ describe('AgentsScreen', () => {
     fireEvent.click(await screen.findByText('Clinic summarizer'));
     const drawer = await screen.findByRole('dialog');
     fireEvent.click(await within(drawer).findByRole('button', { name: /^Publish$/ }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('MODEL_UNAVAILABLE')));
-    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/publish'))).toBe(true);
+    const confirmDialog = await screen.findByRole('dialog', { name: /Publish Clinic summarizer\?/ });
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Publish' }));
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/publish'))).toBe(true));
     expect(calls.find((call) => call.method === 'POST' && call.url.endsWith('/publish'))?.body).toEqual({ activate: true });
   });
 
-  it('the platform template offers "Branch as my agent" and never Publish/Deprecate', async () => {
+  it('an agent cloned from the platform is badged "Platform origin" but mutable like any other tenant row (OD-M — content is cloned, not read-only)', async () => {
     stubAgents();
-    renderWithProviders(<AgentsScreen />, { searchParams: 'agent=sys-1' });
+    renderWithProviders(<AgentsScreen />, { searchParams: 'agent=a-2' });
     const drawer = await screen.findByRole('dialog');
-    expect(await within(drawer).findByRole('button', { name: 'Branch as my agent' })).toBeTruthy();
-    expect(within(drawer).queryByRole('button', { name: /^Publish$/ })).toBeNull();
-    expect(within(drawer).queryByRole('button', { name: 'Deprecate' })).toBeNull();
+    expect(await within(drawer).findByText('Platform origin')).toBeTruthy();
+    expect(within(drawer).getByRole('button', { name: 'Deprecate' })).toBeTruthy();
+    expect(within(drawer).getByRole('button', { name: 'New version' })).toBeTruthy();
   });
 
-  it('the create wizard walks Task → Model and lists only registry models of the chosen task', async () => {
+  it('?create=1 opens the wizard directly (the Studio’s create-agent deep link)', async () => {
+    stubAgents();
+    renderWithProviders(<AgentsScreen />, { searchParams: 'create=1' });
+    await screen.findByText('Clinic summarizer');
+    expect(await screen.findByRole('dialog', { name: 'New agent' })).toBeTruthy();
+  });
+
+  it('the create wizard walks Task → Model and lists only catalogue models of the chosen task', async () => {
     stubAgents();
     renderWithProviders(<AgentsScreen />);
     await screen.findByText('Clinic summarizer');
@@ -175,15 +213,16 @@ describe('AgentsScreen', () => {
     fireEvent.change(within(wizard).getByLabelText(/^Name/), { target: { value: 'Ward ASR' } });
     expect((within(wizard).getByLabelText(/^Slug/) as HTMLInputElement).value).toBe('ward-asr');
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' }));
-    expect(await within(wizard).findByText('Whisper ML/EN')).toBeTruthy();
-    expect(within(wizard).queryByText('Gemma 4 E2B')).toBeNull();
-    expect(within(wizard).getByText('Weights not staged')).toBeTruthy();
+    // Radix Select renders its options into a portal — query the document, not the dialog subtree.
+    fireEvent.click(await screen.findByLabelText('Model'));
+    expect(await screen.findByRole('option', { name: /Whisper ML\/EN/ })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /Gemma 4 E2B/ })).toBeNull();
   });
 
   it('has no axe violations on the loaded grid, nor inside the open detail slide-over (WCAG 2.2 AA gate)', async () => {
     stubAgents();
     const { container } = renderWithProviders(<AgentsScreen />);
-    await screen.findByText('Platform transcription');
+    await screen.findByText('Clinic transcription');
     // The page with the drawer CLOSED: a Radix sheet marks everything behind it aria-hidden,
     // which axe (correctly) flags as hidden-but-focusable if scanned together.
     expect(await axe(container)).toHaveNoViolations();

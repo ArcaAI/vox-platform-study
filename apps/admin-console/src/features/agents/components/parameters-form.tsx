@@ -2,12 +2,13 @@
 
 import { useId } from 'react';
 import { AGENT_PARAMETER_SCHEMAS } from '@arcaai/workflow-contract';
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@arcaai/ui';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
+import { useModelCatalogue } from '@/shared/catalog';
 import type { AgentTask } from '../api';
-import { useRegistryModels } from '../api';
 import { JsonField } from './json-field';
 
 type Schema = Record<string, unknown>;
@@ -57,6 +58,9 @@ function setPath(value: Value, path: string[], next: unknown): Value {
  *
  * Falls back to the plain text input while the catalogue is loading or if the row a saved
  * agent references is not in it — an unrecognised slug must stay editable, never be dropped.
+ *
+ * TASK-890 — reads `GET admin/ai-models/catalogue` (`read:AiModel`), not `admin/ai-models`
+ * (`manage:all` since TASK-890 L1 — a tenant admin's read would 403).
  */
 function ModelSlugField({
   id,
@@ -73,13 +77,13 @@ function ModelSlugField({
   value: unknown;
   onChange: (next: unknown) => void;
 }) {
-  const models = useRegistryModels();
+  const catalogue = useModelCatalogue({ taskType });
   const description = typeof schema.description === 'string' ? schema.description : undefined;
-  const options = (models.data ?? []).filter((model) => model.taskType === taskType);
+  const options = catalogue.data?.models ?? [];
   const current = value === undefined ? '' : String(value);
   const knownSlug = current === '' || options.some((model) => model.slug === current);
 
-  if (models.isPending || models.isError || !knownSlug) {
+  if (catalogue.isPending || catalogue.isError || !knownSlug) {
     return <ScalarField id={id} name={name} schema={schema} value={value} onChange={onChange} />;
   }
 
@@ -215,6 +219,26 @@ function ScalarField({ id, name, schema, value, onChange }: { id: string; name: 
   );
 }
 
+/**
+ * TASK-890 §3.10/§3.14 (OD-R clause 3) — `parameters.guards.enabled`, the AGENT-level default of
+ * the node > workflow > agent > `true` precedence `resolveGuardrailDecision` implements. ABSENT
+ * MEANS ON: guardrail is platform-managed and screening is the floor a tenant opts OUT of, per
+ * agent — never a switch to remember to turn on. A `false` here is a publish WARNING
+ * (`GUARDRAIL_OPTED_OUT`), a per-call usage attribute (`guardrail: 'opted_out'`), and a TEXT
+ * response `reason`, so the omission is attributable, not merely permitted.
+ */
+function GuardrailScreeningField({ id, value, onChange }: { id: string; value: unknown; onChange: (next: unknown) => void }) {
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={id}>Guardrail screening</FieldLabel>
+        <FieldDescription>Platform guardrail runs on this agent&apos;s input and output; a node or workflow can override.</FieldDescription>
+      </FieldContent>
+      <Switch id={id} checked={value !== false} onCheckedChange={(checked) => onChange(checked ? undefined : false)} />
+    </Field>
+  );
+}
+
 function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: string; schema: Schema; path: string[]; value: Value; onChange: (next: Value) => void }) {
   return (
     <>
@@ -245,6 +269,13 @@ function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: s
               rows={6}
             />
           );
+        }
+        // TASK-890 §3.10/§3.14 (OD-R) — the agent-level guardrail default gets its own labelled
+        // copy rather than the generic boolean renderer's bare "Enabled": this switch is the
+        // bottom of the node > workflow > agent > `true` precedence, so what it says has to name
+        // that, not just the JSON key.
+        if (childPath.join('.') === 'guards.enabled') {
+          return <GuardrailScreeningField key={name} id={id} value={getPath(value, childPath)} onChange={(next) => onChange(setPath(value, childPath, next))} />;
         }
         // TASK-887 — a property annotated with `modelTaskType` is a registry REFERENCE, so
         // the admin picks from the tenant's catalogue instead of typing a slug.

@@ -10,21 +10,29 @@ import { renderWithProviders } from '@/test/render';
 import { ParametersForm } from '../parameters-form';
 
 /**
- * TASK-887 — a property annotated `modelTaskType` renders a picker over the tenant's registry
- * (`GET admin/ai-models`), so the form now needs a QueryClient. Every test renders through the
- * shared provider harness for that reason; `fetch` is stubbed per test.
+ * TASK-887 — a property annotated `modelTaskType` renders a picker over the tenant's catalogue
+ * (`GET admin/ai-models/catalogue` — TASK-890: `admin/ai-models` itself is `manage:all` and 403s
+ * a tenant admin), so the form now needs a QueryClient. Every test renders through the shared
+ * provider harness for that reason; `fetch` is stubbed per test and filters by `taskType` the
+ * same way the server does.
  */
-const REGISTRY_MODELS = [
-  { id: 'm-1', name: 'WeSpeaker ResNet34', slug: 'wespeaker-voxceleb-resnet34', taskType: 'SPEAKER_EMBEDDING', resourceStatus: 'ENABLED', tenantId: 'sys' },
-  { id: 'm-2', name: 'ECAPA-TDNN', slug: 'ecapa-tdnn-voxceleb', taskType: 'SPEAKER_EMBEDDING', resourceStatus: 'ENABLED', tenantId: 'sys' },
-  { id: 'm-3', name: 'Silero VAD', slug: 'silero-vad', taskType: 'VOICE_ACTIVITY_DETECTION', resourceStatus: 'ENABLED', tenantId: 'sys' },
+const CATALOGUE_MODELS = [
+  { id: 'm-1', slug: 'wespeaker-voxceleb-resnet34', name: 'WeSpeaker ResNet34', taskType: 'SPEAKER_EMBEDDING', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  { id: 'm-2', slug: 'ecapa-tdnn-voxceleb', name: 'ECAPA-TDNN', taskType: 'SPEAKER_EMBEDDING', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  { id: 'm-3', slug: 'silero-vad', name: 'Silero VAD', taskType: 'VOICE_ACTIVITY_DETECTION', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
 ];
 
-function stubRegistry(models: unknown[] = REGISTRY_MODELS) {
+function stubRegistry(models: unknown[] = CATALOGUE_MODELS) {
   vi.stubGlobal(
     'fetch',
-    // `getJson` returns the parsed body itself — `GET admin/ai-models` answers a bare array.
-    vi.fn(async () => new Response(JSON.stringify(models), { status: 200, headers: { 'content-type': 'application/json' } })),
+    vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input), 'http://test.local');
+      const taskType = url.searchParams.get('taskType');
+      const rows = models as { taskType: string }[];
+      const filtered = taskType ? rows.filter((model) => model.taskType === taskType) : rows;
+      const body = { providers: [{ id: 'hope', group: 'hope', name: 'Hope provider', providerClass: null, connectionId: null, usable: true, reason: null, modelCount: filtered.length }], models: filtered };
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    }),
   );
 }
 
@@ -150,5 +158,24 @@ describe('ParametersForm', () => {
     expect((screen.getByLabelText('Temperature') as HTMLInputElement).value).toBe('0.2');
     expect(screen.getByLabelText('Max Tokens')).toBeTruthy();
     expect(screen.getByLabelText('Response Schema')).toBeTruthy();
+  });
+
+  /** TASK-890 §3.10/§3.14 (OD-R) — the agent-level guardrail opt-out, ABSENT MEANS ON. */
+  describe('TEXT_GENERATION guardrail screening (TASK-890)', () => {
+    it('renders as a labelled switch, on by default, with the override copy', () => {
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} />);
+      const toggle = screen.getByLabelText('Guardrail screening');
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+      expect(screen.getByText(/a node or workflow can override/)).toBeTruthy();
+    });
+
+    it('turning it off writes guards.enabled: false; turning it back on removes the key (absent = on)', () => {
+      const onChange = vi.fn();
+      render(<Host task="TEXT_GENERATION" onChange={onChange} />);
+      fireEvent.click(screen.getByLabelText('Guardrail screening'));
+      expect(onChange).toHaveBeenLastCalledWith({ guards: { enabled: false } });
+      fireEvent.click(screen.getByLabelText('Guardrail screening'));
+      expect(onChange).toHaveBeenLastCalledWith({});
+    });
   });
 });

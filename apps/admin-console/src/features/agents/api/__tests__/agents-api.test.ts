@@ -1,10 +1,12 @@
 /**
  * TASK-863 — Agents API module: paths and envelopes verified against apps/api
  * AgentAdminController / AgentAssignmentAdminController (If-Match OCC on PATCH and on
- * assignment DELETE, the lifecycle POSTs, `includeTemplates` on the list).
+ * assignment DELETE, the lifecycle POSTs). TASK-890 OD-M: the list no longer sends
+ * `includeTemplates` — the SYSTEM reference set is cloned into the tenant at provisioning, never
+ * read live across tenants, so `GET admin/agents` answers this tenant's own rows only.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgent, deprecateAgent, listAgents, newAgentVersion, publishAgent, removeAgentAssignment, updateAgent, validateAgent } from '../client';
+import { createAgent, deprecateAgent, finalizeAgentTest, listAgents, newAgentVersion, publishAgent, removeAgentAssignment, testAgent, updateAgent, validateAgent } from '../client';
 import { agentKeys } from '../keys';
 
 interface RecordedCall {
@@ -33,12 +35,24 @@ function installFetchMock(): RecordedCall[] {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('agents client', () => {
-  it('lists with includeTemplates and an optional task filter', async () => {
+  it('lists with an optional task filter, and never sends includeTemplates (OD-M — no cross-tenant SYSTEM read)', async () => {
     const calls = installFetchMock();
     await listAgents('SPEECH_TO_TEXT');
     expect(calls[0].url).toContain('/api/hope/admin/agents?');
     expect(calls[0].url).toContain('task=SPEECH_TO_TEXT');
-    expect(calls[0].url).toContain('includeTemplates=true');
+    expect(calls[0].url).not.toContain('includeTemplates');
+  });
+
+  it('the draft-agent test bench posts to :id/test and :id/test/finalize', async () => {
+    const calls = installFetchMock();
+    await testAgent('a-1', { input: { text: 'hi' }, dryRun: true });
+    await finalizeAgentTest('a-1', { taskId: 't-1' });
+    expect(calls.map((call) => [call.method, new URL(call.url, 'http://t').pathname])).toEqual([
+      ['POST', '/api/hope/admin/agents/a-1/test'],
+      ['POST', '/api/hope/admin/agents/a-1/test/finalize'],
+    ]);
+    expect(calls[0].body).toEqual({ input: { text: 'hi' }, dryRun: true });
+    expect(calls[1].body).toEqual({ taskId: 't-1' });
   });
 
   it('PATCH carries If-Match and the derived expectedVersion', async () => {
