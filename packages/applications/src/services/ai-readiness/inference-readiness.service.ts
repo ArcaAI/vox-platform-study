@@ -38,6 +38,11 @@ import type {
 /** TEXT's probe reply, per provider (`ai-model-discovery.service.ts` shares this shape). */
 interface TextProviderEntry {
   name: string;
+  /**
+   * TEXT's verdict on the ENGINE (`available` / `unavailable`) — distinct from
+   * `probe_status`, which only says whether the probe CALL raised inside TEXT.
+   */
+  status?: string;
   models?: Array<{ name: string; state?: string | null }>;
   probe_status?: string;
   probe_latency_ms?: number;
@@ -349,7 +354,13 @@ export class InferenceReadinessService implements IInferenceReadinessService {
       const entry = liveByProvider.get(provider);
       const models = entry?.models ?? [];
       const probeStatus = entry?.probe_status;
-      const status: ReadinessEngineEntry['status'] = probeStatus === 'ok' ? 'up' : probeStatus === undefined ? 'unknown' : 'down';
+      // TWO facts, both required. `probe_status` says whether the probe CALL
+      // raised inside TEXT; `status` says whether the ENGINE answered. Every
+      // adapter swallows a connection error into `status: "unavailable"` with
+      // `probe_status: "ok"`, so reading the latter alone reported an engine
+      // that does not even resolve as "Up · 0 ms" on `/ai-services`.
+      const answered = entry?.status === undefined || entry.status === 'available';
+      const status: ReadinessEngineEntry['status'] = probeStatus === undefined ? 'unknown' : probeStatus !== 'ok' ? 'down' : answered ? 'up' : 'down';
 
       return {
         provider,
@@ -359,7 +370,9 @@ export class InferenceReadinessService implements IInferenceReadinessService {
         latencyMs: typeof entry?.probe_latency_ms === 'number' ? entry.probe_latency_ms : null,
         loadedCount: models.filter((model) => model.state === 'loaded').length,
         listedCount: models.length,
-        detail: entry?.probe_error ?? (status === 'unknown' ? 'not probed this sweep' : null),
+        detail:
+          entry?.probe_error ??
+          (status === 'unknown' ? 'not probed this sweep' : status === 'down' && answered === false ? 'the engine did not answer the probe' : null),
       };
     });
   }

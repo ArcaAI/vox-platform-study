@@ -142,6 +142,35 @@ describe('InferenceReadinessService — engine-served rows', () => {
     expect(snapshot.engines.find((e) => e.provider === 'ollama')).toMatchObject({ status: 'down' });
   });
 
+  // TEXT reports TWO facts: `probe_status` (did the probe CALL raise) and
+  // `status` (did the ENGINE answer). Every adapter swallows a connection error
+  // into `status: "unavailable"` with `probe_status: "ok"`, so trusting the
+  // latter alone showed Ollama / vLLM / llama.cpp as "Up" on `/ai-services`
+  // while none of them was reachable at all.
+  it('marks an engine DOWN when TEXT answered but the engine did not', async () => {
+    const { service } = makeHarness({
+      models: [makeModel({ id: 'm-o', slug: 'o', sourceUri: 'o', provider: 'ollama' })],
+      probe: [{ name: 'ollama', status: 'unavailable', models: [], probe_status: 'ok', probe_latency_ms: 3 }],
+    });
+
+    const snapshot = await service.sweep();
+
+    expect(snapshot.engines.find((e) => e.provider === 'ollama')).toMatchObject({ status: 'down' });
+    expect(snapshot.models['m-o']!.readiness).toBe('engine_down');
+  });
+
+  it('keeps an engine UP when it answered', async () => {
+    const { service } = makeHarness({
+      models: [makeModel({ id: 'm-a', slug: 'a', sourceUri: 'a', provider: 'lm-studio' })],
+      probe: [{ name: 'lm-studio', status: 'available', models: [{ name: 'a', state: 'loaded' }], probe_status: 'ok', probe_latency_ms: 12 }],
+    });
+
+    const snapshot = await service.sweep();
+
+    expect(snapshot.engines.find((e) => e.provider === 'lm-studio')).toMatchObject({ status: 'up' });
+    expect(snapshot.models['m-a']!.readiness).toBe('ready');
+  });
+
   it('reports weights_missing for a registered row the engine does not list, but only when the probe succeeded', async () => {
     const { service } = makeHarness({
       models: [makeModel({ id: 'm-ghost', slug: 'ghost', sourceUri: 'ghost', provider: 'lm-studio' })],
