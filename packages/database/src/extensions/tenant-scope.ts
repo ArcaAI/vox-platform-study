@@ -328,9 +328,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // and there is no tenant-facing read surface — every rule route is
   // `manage all`. Widening reads here would buy no consumer anything.
   'RateLimitRule',
-  // TASK-863 — the first-class Agent substrate. `Agent` + `AgentAssignment` are
-  // also SYSTEM-shared-read (platform-default agents resolve tenant → SYSTEM);
-  // the fallback chain and the WORM change log are plain tenant-scoped.
+  // TASK-863 — the first-class Agent substrate. All four are PLAIN tenant-scoped: TASK-890
+  // step v removed `Agent` and `AgentAssignment` from the shared-read set, because an agent is
+  // CONTENT and a tenant runs its own provisioned clone of a platform agent rather than reading
+  // SYSTEM's row (see the note under SYSTEM_SHARED_READ_MODELS).
   'Agent',
   'AgentModelFallback',
   'AgentAssignment',
@@ -498,38 +499,6 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // tenant-owned row is reserved for a negotiated enterprise rate. No secret
   // material: prices are integer micros.
   'AiPriceBook',
-  // . The PLATFORM-DEFAULT prompt catalog lives
-  // under the SYSTEM tenant and every tenant's PromptResolutionService chain
-  // must read it while running under that tenant's own CLS:
-  //   - `SYSTEM_DEFAULTS.preSummaryPromptId` (…040), re-owned to SYSTEM by
-  //     migration 20260808000100. Before this widening a non-Global tenant's
-  //     `findById` missed, `isApprovedTemplate` returned false, and the
-  //     pre-summary chain fell through to its 503 fail-closed instead of the
-  //     platform fallback — the exact silent-fallback failure mode documented
-  //     for GlobalSetting above, but failing CLOSED.
-  //   - the SYSTEM live-summarization default (seed/07c-live-agent-defaults.ts),
-  //     which is unreachable cross-tenant without this.
-  //   - the 13 SYSTEM golden library templates, which
-  //     `DepartmentAgentService.assertTemplateBindable` already codes for
-  //     (`template.tenantId !== SYSTEM_TENANT_ID` allowance) but could never
-  //     reach, because the read missed first.
-  // READS widen to [caller, SYSTEM]; WRITES are NOT widened, so an
-  // update/delete of a SYSTEM-owned template from tenant CLS still yields
-  // P2025 → 404. No secret material: `content` is the prompt body, and the
-  // encrypted `lastTestOutput` ciphertext is inert without a gateway-side
-  // Vault-Transit decrypt and never appears in a read DTO.
-  //
-  // LIST-SURFACE CAVEAT: the objection recorded in
-  // seed/07a-agent-golden-library.ts was that widening would surface SYSTEM
-  // rows inside tenants' own template pickers. It does not, because every
-  // list/count read in `PromptManagementService` pins an EXPLICIT
-  // `tenantId: <caller>` predicate, which `mergeSharedReadTenantIntoWhere`
-  // preserves verbatim (it only injects `IN [caller, SYSTEM]` when the caller
-  // supplied no tenantId at all). By-ID reads — resolution, assertTemplateBindable,
-  // version fetches — are the ones that get the widening, which is the intent.
-  // A new list surface MUST keep pinning tenantId explicitly.
-  'PromptTemplate',
-  'PromptVersion',
   // workflow-invariant-rule.prisma. The SYSTEM-tenant rows ARE the
   // platform invariant register made executable; every tenant's
   // `WorkflowValidatorService` must read them (merged with its own
@@ -543,13 +512,34 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // widened — a tenant can read but never mutate a SYSTEM-owned rule row
   // (the one-way-strictness rule enforced in the service).
   'WorkflowInvariantRule',
-  // TASK-863 — a tenant resolves SYSTEM's published agents as its platform
-  // defaults (`AgentResolverService`: explicit slug widened [tenant, SYSTEM];
-  // assignment cascade department → tenant → SYSTEM). Writes are NOT widened:
-  // a tenant never edits a SYSTEM agent, it branches its own.
-  'Agent',
-  'AgentAssignment',
 ]);
+
+/**
+ * TASK-890 L13 step v (OD-M) — WHAT LEFT THIS SET, and why it can never come back.
+ *
+ * `Agent`, `AgentAssignment`, `PromptTemplate` and `PromptVersion` were members. They are
+ * CONTENT, and the owner rule (§1.5) is that **content is CLONED and config CASCADES**: the
+ * SYSTEM tenant holds a REFERENCE SET that `TenantReferenceSetService` copies into a tenant at
+ * creation, not a tier a runtime read widens into. Every entry that remains above is CONFIG —
+ * a catalogue, a policy, a platform setting — where widening on ABSENCE is exactly right.
+ *
+ * The difference is what a MISS means. A widened content read answered a tenant's question with
+ * the PLATFORM's row, and did it silently: a tenant with no assignment ran the platform's agent
+ * and could neither see nor edit the thing serving its clinicians. After the flip a miss is a
+ * NAMED, fail-closed error — `AGENT_NOT_ASSIGNED`, `PROMPT_DEFAULT_NOT_PROVISIONED`,
+ * `LEGACY_CONTEXT_SCHEMA_MISSING` — each naming the tenant and the remedy (a re-sync).
+ *
+ * Three content models were never here for the same reason, and their comments above say so:
+ * `ConsultationContextSchema` / `…Version`, `DocumentTemplate` / `…Version` and
+ * `WorkflowDefinition`. The four that just left join them.
+ *
+ * Re-adding any of them would restore the silent read. The reads that must still see the
+ * reference set say so EXPLICITLY on the unscoped client instead —
+ * `AgentRepository.findSystemReferences` / `findSystemReferenceBySlug`,
+ * `PromptTemplateRepository.findSystemReferenceById`, and the older
+ * `WorkflowDefinitionRepository.findCloneSource` / `findSystemTemplates` they were copied from —
+ * and they are consumed by provisioning and the super-admin library screens only.
+ */
 
 export function isSystemSharedReadModel(model: string): boolean {
   if (SYSTEM_SHARED_READ_MODELS.has(model)) return true;

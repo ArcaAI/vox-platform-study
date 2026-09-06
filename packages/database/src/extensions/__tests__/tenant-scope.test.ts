@@ -467,16 +467,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'AiPriceBook',
         // The platform-default PROMPT catalog is SYSTEM-owned
         // and must be readable from every tenant's own CLS: the pre-summary
-        // tier-2 fallback (…040, re-owned to SYSTEM by migration
-        // 20260808000100), the SYSTEM live-summarization default, and the 13
-        // golden library templates. Without the widening a non-Global tenant's
-        // pre-summary chain fell through to its 503 fail-closed. READS widen to
-        // [caller, SYSTEM]; WRITES are NOT widened, so a tenant can never
-        // mutate a SYSTEM-owned template. Tenant LIST surfaces are unaffected
-        // because PromptManagementService pins an explicit caller `tenantId`,
-        // which mergeSharedReadTenantIntoWhere preserves verbatim.
-        'PromptTemplate',
-        'PromptVersion',
         // WorkflowInvariantRule's SYSTEM-tenant rows ARE the platform
         // invariant register made executable; every tenant's
         // WorkflowValidatorService must read them merged with its own
@@ -485,50 +475,83 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // above. READS widen to [caller, SYSTEM]; WRITES are
         // NOT widened — a tenant can never mutate a SYSTEM-owned rule row.
         'WorkflowInvariantRule',
-        // TASK-863 — platform-default agents + assignments resolve tenant → SYSTEM.
-        'Agent',
-        'AgentAssignment',
       ]),
     );
   });
 
-  // The widening is READ-ONLY, and its exact shape matters:
-  // an explicit caller-supplied tenantId must survive untouched (that is what
-  // keeps SYSTEM rows out of tenant list surfaces), while a read that supplies
-  // no tenantId gets `IN [caller, SYSTEM]`.
-  describe('PromptTemplate read widening (B-12)', () => {
+  /**
+   * TASK-890 L13 step v (OD-M) — the FLIP.
+   *
+   * `Agent`, `AgentAssignment`, `PromptTemplate` and `PromptVersion` are CONTENT (§1.5): SYSTEM
+   * holds a REFERENCE SET a tenant is provisioned from, not a tier it resolves through. Their
+   * membership here was the last mechanism through which a runtime read of one tenant's content
+   * could answer with another tenant's row, so their ABSENCE is the assertion — and it is
+   * asserted separately from the membership list above, because a set this important should
+   * fail loudly on a re-addition rather than quietly on a diff.
+   *
+   * What remains in the set is CONFIG, every entry of it.
+   */
+  it('holds NO content model — the four that left at the flip are absent', () => {
+    for (const contentModel of ['Agent', 'AgentAssignment', 'PromptTemplate', 'PromptVersion']) {
+      expect(SYSTEM_SHARED_READ_MODELS.has(contentModel), `${contentModel} is CONTENT — it must not be shared-read`).toBe(false);
+      expect(isSystemSharedReadModel(contentModel)).toBe(false);
+    }
+    // The three content models that were NEVER in the set stay out, for the same reason.
+    for (const alwaysExcluded of ['ConsultationContextSchema', 'ConsultationContextSchemaVersion', 'DocumentTemplate', 'WorkflowDefinition']) {
+      expect(isSystemSharedReadModel(alwaysExcluded)).toBe(false);
+    }
+  });
+
+  /**
+   * TASK-890 L13 step v — what the B-12 widening block used to assert, INVERTED.
+   *
+   * B-12 widened `PromptTemplate` / `PromptVersion` by-id reads to `[caller, SYSTEM]` so that
+   * `SYSTEM_DEFAULTS.*` resolved from inside any tenant. OD-M replaced that mechanism entirely:
+   * each tenant is PROVISIONED with its own clone of every platform template, and
+   * `PromptResolutionService` resolves a `SYSTEM_DEFAULTS.*` pointer through `sourceTemplateId`
+   * to that clone — so the widening is not merely unnecessary, it is the thing that would let
+   * an unprovisioned tenant keep working by reading the platform's row instead of saying so.
+   *
+   * These four cases are the same four, asserting the opposite.
+   */
+  describe('PromptTemplate reads are NOT widened after the flip (TASK-890 L13 step v)', () => {
     const CALLER = '50000000-0000-0000-0001-000000000000';
 
-    it('widens an unscoped findFirst to [caller, SYSTEM] so the SYSTEM default resolves', async () => {
+    it('pins an unscoped findFirst to the CALLER — a SYSTEM_DEFAULTS id no longer resolves through the extension', async () => {
       const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
       const args: Record<string, unknown> = { where: { id: '71000000-0000-0000-0000-000000000040' } };
       await cfg.query.$allModels.findFirst({ model: 'PromptTemplate', args, query: async (a) => a });
-      expect(args.where).toEqual({
-        id: '71000000-0000-0000-0000-000000000040',
-        tenantId: { in: [CALLER, SYSTEM_TENANT_ID] },
-      });
+      expect(args.where).toEqual({ id: '71000000-0000-0000-0000-000000000040', tenantId: CALLER });
     });
 
-    it('leaves an EXPLICIT caller tenantId alone (admin list surfaces do not grow SYSTEM rows)', async () => {
+    it('still leaves an EXPLICIT caller tenantId alone', async () => {
       const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
       const args: Record<string, unknown> = { where: { tenantId: CALLER, status: 'APPROVED' } };
       await cfg.query.$allModels.findMany({ model: 'PromptTemplate', args, query: async (a) => a });
       expect(args.where).toEqual({ tenantId: CALLER, status: 'APPROVED' });
     });
 
-    it('does NOT widen writes — an update still injects the exact caller tenant', async () => {
+    it('still pins writes to the exact caller tenant', async () => {
       const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
       const args: Record<string, unknown> = { where: { id: '71000000-0000-0000-0000-000000000040' }, data: { name: 'hijack' } };
       await cfg.query.$allModels.update({ model: 'PromptTemplate', args, query: async (a) => a });
-      // Exact-tenant injection ⇒ the SYSTEM-owned row is not matched ⇒ P2025 ⇒ 404.
       expect(args.where).toEqual({ id: '71000000-0000-0000-0000-000000000040', tenantId: CALLER });
     });
 
-    it('applies the same widening to PromptVersion (the snapshot the resolver actually serves)', async () => {
+    it('pins PromptVersion the same way — the snapshot travels with its template', async () => {
       const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
       const args: Record<string, unknown> = { where: { promptTemplateId: '71000000-0000-0000-0000-000000000040', versionNumber: 1 } };
       await cfg.query.$allModels.findFirst({ model: 'PromptVersion', args, query: async (a) => a });
-      expect((args.where as Record<string, unknown>).tenantId).toEqual({ in: [CALLER, SYSTEM_TENANT_ID] });
+      expect((args.where as Record<string, unknown>).tenantId).toBe(CALLER);
+    });
+
+    it('pins Agent and AgentAssignment the same way — the assignment cascade reads one tenant', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
+      for (const model of ['Agent', 'AgentAssignment']) {
+        const args: Record<string, unknown> = { where: { slug: 'platform-summarization' } };
+        await cfg.query.$allModels.findFirst({ model, args, query: async (a) => a });
+        expect((args.where as Record<string, unknown>).tenantId, `${model} must not widen`).toBe(CALLER);
+      }
     });
   });
 
@@ -564,9 +587,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
 
     it('throws for a non-super-admin caller with no tenant context at all (Role now requires one like any other tenant-scoped model)', async () => {
       const cfg = captureExtensionConfig({ getTenantId: () => undefined, isSuperAdmin: () => false });
-      await expect(
-        cfg.query.$allModels.findMany({ model: 'Role', args: {}, query: async (a) => a }),
-      ).rejects.toThrow(/tenant context required/);
+      await expect(cfg.query.$allModels.findMany({ model: 'Role', args: {}, query: async (a) => a })).rejects.toThrow(/tenant context required/);
     });
 
     it('passes a super admin with no tenant context straight through (cross-tenant platform view, unchanged)', async () => {

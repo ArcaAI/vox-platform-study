@@ -126,30 +126,33 @@ describe('RF-2 — at most ONE tenant pre-summary candidate per (tenant, surface
 });
 
 // ---------------------------------------------------------------------------
-// B-12: the SYSTEM pre-summary default is readable from a non-owning tenant
+// B-12, as amended by TASK-890 L13 step v: the SYSTEM defaults are the REFERENCE
+// SET each tenant is provisioned from, not rows a tenant reads across the boundary
 // ---------------------------------------------------------------------------
 
-describe('B-12 — the SYSTEM-owned pre-summary default is reachable cross-tenant', () => {
+describe('the SYSTEM prompt defaults are a reference set, and their seeded rows still say so', () => {
   /**
-   * The EXTENSION half of B-12 (that a cross-tenant read is actually widened,
-   * and that writes are not) is proven behaviourally in
-   * `packages/database/src/extensions/__tests__/tenant-scope.test.ts`
-   * ('PromptTemplate read widening (B-12)'). Asserted here only as a cheap
-   * membership lock, because the seed row below is USELESS without it: SYSTEM
-   * ownership plus no shared-read widening is strictly worse than the old
-   * GLOBAL ownership (nobody could read it at all).
+   * B-12 made `PromptTemplate` / `PromptVersion` SYSTEM-shared-read so a non-owning tenant could
+   * resolve the platform defaults by id. TASK-890 OD-M replaced that mechanism: a prompt is
+   * CONTENT (§1.5), so each tenant is PROVISIONED with its own clone (seed phase
+   * `26-tenant-reference-set.ts`, `TenantReferenceSetService` at runtime) and
+   * `PromptResolutionService` resolves a `SYSTEM_DEFAULTS.*` pointer through `sourceTemplateId`
+   * to that clone.
+   *
+   * The seeded rows below are UNCHANGED and still matter — they are the source the clone is
+   * taken from. What changed is the reachability mechanism, and this locks the new one: the two
+   * models are tenant-scoped and NOT shared-read, so nothing resolves them by widening.
    */
-  it('PromptTemplate and PromptVersion are tenant-scoped AND SYSTEM-shared for reads', () => {
+  it('PromptTemplate and PromptVersion are tenant-scoped and NOT SYSTEM-shared (the flip)', () => {
     for (const model of ['PromptTemplate', 'PromptVersion']) {
       expect(TENANT_SCOPED_MODELS.has(model)).toBe(true);
-      expect(SYSTEM_SHARED_READ_MODELS.has(model)).toBe(true);
+      expect(SYSTEM_SHARED_READ_MODELS.has(model), `${model} is CONTENT — it is cloned, not shared`).toBe(false);
     }
   });
 
   it('the SYSTEM catch-all SOAP fallback (…036) is owned by the SYSTEM tenant and pinned APPROVED v1 ', () => {
     const row = ALL_SEEDED_TEMPLATES.find((t) => t.id === TEMPLATE_IDS.CATCHALL_SOAP) as
-      | (SeedTemplateLike & { approvedVersionNumber?: number })
-      | undefined;
+      (SeedTemplateLike & { approvedVersionNumber?: number }) | undefined;
 
     expect(row).toBeDefined();
     // `SYSTEM_DEFAULTS.promptId` — the platform-wide SOAP fallback `assemble`
@@ -163,8 +166,7 @@ describe('B-12 — the SYSTEM-owned pre-summary default is reachable cross-tenan
 
   it('the SYSTEM pre-summary default (…040) is owned by the SYSTEM tenant and pinned APPROVED v1', () => {
     const row = ALL_SEEDED_TEMPLATES.find((t) => t.id === TEMPLATE_IDS.PRE_SUMMARY_DEFAULT) as
-      | (SeedTemplateLike & { approvedVersionNumber?: number })
-      | undefined;
+      (SeedTemplateLike & { approvedVersionNumber?: number }) | undefined;
 
     expect(row).toBeDefined();
     // Before the C2 fold-in this row belonged to the GLOBAL customer tenant, so
@@ -201,7 +203,7 @@ describe('R-C3 (ii) flip — the seeded department-free pre-summary fork (D2)', 
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('(Latest Dept Note)');
   });
 
-  it("dept-free surface scan now sees exactly this one candidate for the SYSTEM tenant", () => {
+  it('dept-free surface scan now sees exactly this one candidate for the SYSTEM tenant', () => {
     const candidates = candidatesFor('dept-free');
     expect(candidates.get(SYSTEM_TENANT_ID)).toEqual([SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID]);
   });
