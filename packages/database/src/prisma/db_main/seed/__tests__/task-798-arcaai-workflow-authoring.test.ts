@@ -62,6 +62,21 @@ const CONTRACT_SRC = path.resolve(HERE, '../../../../../../workflow-contract/src
 const contract: any = await import(/* @vite-ignore */ CONTRACT_SRC);
 const { canonicalJson, compile, nodeInfo, registryChecksum, validate, workflowNodeClassLookup } = contract;
 
+// TASK-890 §3.5 — `workflowPublishProblems` is GONE: it was a real publish gate nothing called
+// (BLOCKER 1c), and its checks now run inside `publishFindings`, which the gateway's
+// `WorkflowDefinitionService.publishEntity` actually invokes. A SEED never goes through that
+// service, so this suite keeps running the same gate directly. The contract takes its
+// JSON-Schema value checker from the caller (it has zero runtime dependencies) and
+// `packages/database` does not depend on `@arcaai/json-schema-subset`, so it is loaded by path
+// exactly as the contract is. ERROR severity only: a WARNING never blocked a publish.
+const SUBSET_SRC = path.resolve(HERE, '../../../../../../json-schema-subset/src/index.ts');
+const { jsonSchemaValueProblems }: any = await import(/* @vite-ignore */ SUBSET_SRC);
+const workflowPublishProblems = (graph: any): string[] =>
+  contract
+    .publishFindings(graph, { schemaValueProblems: jsonSchemaValueProblems, templateReferenceSeverity: 'WARNING' })
+    .filter((finding: any) => finding.severity === 'ERROR')
+    .map((finding: any) => finding.message);
+
 /** Mirrors `WorkflowDefinitionService`'s own publish constants — what a REAL publish stamps. */
 const COMPILER_VERSION = '0.1.0';
 const RULE_SET_VERSION = 1;
@@ -157,7 +172,9 @@ describe(' W1 — derived blobs are real compiler output', () => {
     '%s: graphChecksum equals sha256(canonicalJson(graph)) computed by the real engine',
     (slug) => {
       const row = definitionBySlug(slug);
-      const expected = createHash('sha256').update(canonicalJson(graphFor(slug))).digest('hex');
+      const expected = createHash('sha256')
+        .update(canonicalJson(graphFor(slug)))
+        .digest('hex');
       expect(row.graphChecksum).toBe(expected);
     },
   );
@@ -446,10 +463,11 @@ describe('Lane R (R2) — a pre-summarization node exists BY DEFAULT (owner ruli
   });
 
   it.each(GRAPHS)('%s passes the PUBLISH gate, so every requires[] guard is really attached', (_slug, graph) => {
-    // `workflowPublishProblems` is the only check that enforces `requires[]`, and it has NO
-    // production caller — nothing in the gateway invokes it, so a seeded graph could ship with a
-    // generation node whose mandatory guard was never wired and no gate would say so.
+    // `publishFindings` is the only check that enforces `requires[]`. TASK-890 wired it into
+    // `WorkflowDefinitionService.publishEntity`, but a SEED never goes through that service, so
+    // this assertion is still the only thing standing between a seeded graph and shipping a
+    // generation node whose mandatory guard was never wired.
     // `agent.presummarization` requires `guard.groundedness`; this is what proves it is attached.
-    expect(contract.workflowPublishProblems(graph)).toEqual([]);
+    expect(workflowPublishProblems(graph)).toEqual([]);
   });
 });

@@ -22,9 +22,7 @@
  * belongs to whichever lane owns that path. Everything here is pure and total: it returns `problems: string[]` (the house idiom) and
  * never throws, whatever it is handed.
  */
-import { agenticNodeConfigProblems } from './agentic-contract';
-import type { AgenticGraphContext } from './agentic-contract';
-import { coreNodeConfigProblems, effectivePorts, loopBodyProblems } from './core-contract';
+import { effectivePorts } from './core-contract';
 import type { WorkflowGraph } from './graph-model';
 import type { WorkflowNodeDescriptor } from './node-registry';
 import { WORKFLOW_NODE_REGISTRY } from './node-registry';
@@ -229,96 +227,13 @@ export function nodeDescriptorContractProblems(descriptor: WorkflowNodeDescripto
 }
 
 /**
- * The publish gate: every port problem in the graph, every descriptor-contract violation among
- * the node types it uses, and every UNSATISFIED GUARD ATTACHMENT.
+ * The publish gate MOVED (TASK-890 §3.5). `workflowPublishProblems` lived here, returned
+ * `string[]`, and nothing in the gateway ever called it — an unwired gate is not a gate
+ * (BLOCKER 1c). Its checks now run inside `publishFindings` (`publish-findings.ts`), which emits
+ * `WorkflowFinding`s the Studio can map onto a canvas node and a console can branch on by
+ * `code`, and which `WorkflowDefinitionService.publishEntity` actually calls.
  *
- * `requires[]` is checked **per node INSTANCE**, not per type: two `generate.text` nodes in one
- * graph each need their own attached guard, because a guard wired to one of them says nothing
- * about the other. A guard counts as attached when an edge connects the instance to a node of
- * the required type in EITHER direction — a pre-guard and a post-guard are both attachments.
- *
- * Every descriptor in the shipped registry declares `requires: []`, so this imposes nothing
- * today; the `guard.*` node types the target catalogue names do not exist yet, and assigning
- * real guard requirements before they do would make every seeded graph unpublishable. The
- * MECHANISM is what this ticket owes; the POLICY belongs to the lane that adds the guards.
+ * Nothing was dropped in the move: the port lattice below, `nodeDescriptorContractProblems`,
+ * `requires[]` guard attachment, the loop-body rules and the `agentic.*` / `core.*` config checks
+ * all run there. What is gone is a `string[]` API with no callers.
  */
-export function workflowPublishProblems(graph: WorkflowGraph, options?: PortValidationOptions): string[] {
-  const registry = resolveRegistry(options);
-  const problems: string[] = [...workflowEdgePortProblems(graph, options)];
-
-  const nodes = graph.nodes ?? [];
-  const edges = graph.edges ?? [];
-  const typeById = new Map<string, string>();
-  for (const node of nodes) {
-    if (typeof node?.id === 'string' && typeof node?.type === 'string') typeById.set(node.id, node.type);
-  }
-
-  // the `agentic.*` per-node checks a JSON Schema cannot express: exactly-one
-  // provider-configuration selection source, the three-axis loop bounds (including the COST
-  // ceiling), and guard/orchestrator references that must name real nodes of the right class.
-  //
-  // Wired HERE and not left as an exported helper, because an unwired gate is not a gate. The
-  // schema governs what may be AUTHORED; this is the only thing that governs what may be
-  // PUBLISHED, and a definition that arrived through an importer — or that predates a schema
-  // change — reaches publish without ever passing through the schema.
-  //
-  // `nodeIds`/`nodeTypesById` are supplied from THIS graph, so the cross-node reference checks
-  // are exact rather than skipped. A node-level caller (the Studio inspector, before the node is
-  // wired) can call `agenticNodeConfigProblems` with no context and still get the within-node
-  // rules — that asymmetry is the function's own contract, not an accident here.
-  const agenticContext: AgenticGraphContext = { nodeIds: [...typeById.keys()], nodeTypesById: Object.fromEntries(typeById) };
-  for (const node of nodes) {
-    if (typeof node?.id !== 'string' || typeof node?.type !== 'string') continue;
-    problems.push(
-      ...agenticNodeConfigProblems({ id: node.id, type: node.type, config: node.config as Record<string, unknown> | undefined }, agenticContext).map(
-        (problem) => `/nodes: ${problem}`,
-      ),
-    );
-  }
-
-  // TASK-864 — the `core` vocabulary's own publish checks: router handles unique and non-reserved,
-  // CEL conditions that parse and read only the declared context roots, loop bounds and modes,
-  // output protocols, action keys, and the loop-body wiring rules.
-  for (const node of nodes) {
-    if (typeof node?.id !== 'string' || typeof node?.type !== 'string') continue;
-    problems.push(
-      ...coreNodeConfigProblems({ id: node.id, type: node.type, config: node.config as Record<string, unknown> | undefined }).map(
-        (problem) => `/nodes: ${problem}`,
-      ),
-    );
-  }
-  problems.push(...loopBodyProblems(graph));
-
-  const seenTypes = new Set<string>();
-  for (const node of nodes) {
-    const descriptor = registry[node?.type];
-    if (descriptor === undefined) continue;
-
-    if (!seenTypes.has(node.type)) {
-      seenTypes.add(node.type);
-      problems.push(...nodeDescriptorContractProblems(descriptor));
-    }
-
-    if (descriptor.requires.length === 0) continue;
-    const neighbourTypes = new Set<string>();
-    for (const edge of edges) {
-      if (edge?.from === node.id) {
-        const neighbour = typeById.get(edge.to);
-        if (neighbour !== undefined) neighbourTypes.add(neighbour);
-      }
-      if (edge?.to === node.id) {
-        const neighbour = typeById.get(edge.from);
-        if (neighbour !== undefined) neighbourTypes.add(neighbour);
-      }
-    }
-    for (const required of descriptor.requires) {
-      if (!neighbourTypes.has(required)) {
-        problems.push(
-          `/nodes: node ${JSON.stringify(node.id)} (${node.type}) requires an attached ${JSON.stringify(required)} guard, and none is connected to this instance`,
-        );
-      }
-    }
-  }
-
-  return problems;
-}

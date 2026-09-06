@@ -50,7 +50,7 @@ const EXTERNAL_WRITE_KEYS = new Set<string>([
 ]);
 
 describe('consultation palette node registry', () => {
-  it('carries all thirteen node types of the node-types.md table, plus \'s three R3 capabilities', () => {
+  it("carries all thirteen node types of the node-types.md table, plus 's three R3 capabilities", () => {
     for (const key of CONSULTATION_KEYS) {
       expect(WORKFLOW_NODE_REGISTRY[key], `${key} is missing from the registry`).toBeDefined();
     }
@@ -87,7 +87,7 @@ describe('consultation palette node registry', () => {
     }
   });
 
-  it('hitlGate is the palette\'s only `gate`-classed node — the compiler lifts exactly one node into gates[]', () => {
+  it("hitlGate is the palette's only `gate`-classed node — the compiler lifts exactly one node into gates[]", () => {
     const gateClassed = CONSULTATION_KEYS.filter((key) => WORKFLOW_NODE_REGISTRY[key].classes.includes('gate'));
     expect(gateClassed).toEqual(['consultation.hitlGate']);
   });
