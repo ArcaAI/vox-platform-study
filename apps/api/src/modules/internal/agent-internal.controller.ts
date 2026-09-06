@@ -1,7 +1,7 @@
-import { AgentResolverService, AgentTask, IActiveUserContext, TextAgentResolverService } from '@arcaai/applications';
+import { AgentResolverService, AgentTask, IActiveUserContext, IEntitlementsService, TextAgentResolverService } from '@arcaai/applications';
 import type { ResolvedAgent, ResolvedTextGenerationAgent } from '@arcaai/applications';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { Controller, Get, Headers, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Headers, Inject, Optional, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
@@ -41,6 +41,9 @@ export class AgentInternalController {
     private readonly resolver: AgentResolverService,
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly textAgents: TextAgentResolverService,
+    // Optional + trailing so existing positional constructions keep their arity;
+    // absent ⇒ no gate (metering is additive and must never break resolution).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {}
 
   @Get('resolve')
@@ -73,6 +76,12 @@ export class AgentInternalController {
         departmentId: departmentId || null,
       });
       if (resolved.task !== AgentTask.TEXT_GENERATION) return resolved;
+      // TASK-890 — the workflow-step LLM allowance, checked BEFORE the answer is
+      // handed over. Post-hoc debit (D6): the step's token count is unknowable
+      // here, so this compares month-to-date rollups against the allowance, the
+      // same call shape `summary.service.ts` uses. Only TEXT_GENERATION pays it:
+      // an ASR or TTS resolution spends no LLM tokens.
+      await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
       const spec = await this.textAgents.resolveFromAgent(resolved, tenantId);
       return { ...resolved, textPrimary: spec.primary, textFallback: spec.fallback };
     });

@@ -30,7 +30,16 @@ function make() {
     ),
   };
   const cls = fakeCls();
-  return { controller: new AgentInternalController(resolver as never, cls as never, textAgents as never), resolver, textAgents, cls };
+  // TASK-890 L11 — the ONE gateway touch every durable `core.agent` step makes,
+  // and therefore the only place a workflow's LLM spend can be gated.
+  const entitlements = { assertMeterQuota: vi.fn(async () => undefined) };
+  return {
+    controller: new AgentInternalController(resolver as never, cls as never, textAgents as never, entitlements as never),
+    resolver,
+    textAgents,
+    cls,
+    entitlements,
+  };
 }
 
 describe('AgentInternalController', () => {
@@ -91,5 +100,43 @@ describe('AgentInternalController', () => {
     const answer = await controller.resolve(undefined, undefined, 'platform-tts', undefined, 't1');
     expect(textAgents.resolveFromAgent).not.toHaveBeenCalled();
     expect(answer).toEqual({ slug: 'platform-tts', task: 'TEXT_TO_SPEECH' });
+  });
+
+  /**
+   * TASK-890 L11 (§3.13) — a durable workflow's `core.agent` step calls TEXT
+   * from the harness, never through this gateway, so this resolve is the ONE
+   * touch point where its LLM allowance can be enforced. Without it a tenant
+   * over its cap keeps generating for as long as its workflows run.
+   */
+  describe('the workflow-step LLM allowance (TASK-890 OD-E)', () => {
+    it('prechecks `monthlyLlmTokens` for a TEXT_GENERATION resolution', async () => {
+      const { controller, resolver, entitlements } = make();
+      resolver.resolve.mockResolvedValueOnce({ slug: 'clinic-summarizer', task: 'TEXT_GENERATION' });
+      await controller.resolve(undefined, undefined, 'clinic-summarizer', undefined, 't1');
+      expect(entitlements.assertMeterQuota).toHaveBeenCalledWith('t1', 'monthlyLlmTokens');
+    });
+
+    it('does NOT charge an LLM allowance against an ASR or TTS resolution', async () => {
+      const { controller, resolver, entitlements } = make();
+      resolver.resolve.mockResolvedValueOnce({ slug: 'platform-tts', task: 'TEXT_TO_SPEECH' });
+      await controller.resolve(undefined, undefined, 'platform-tts', undefined, 't1');
+      expect(entitlements.assertMeterQuota).not.toHaveBeenCalled();
+    });
+
+    it('propagates the block — the step goes DEGRADED, never silently unmetered', async () => {
+      const { controller, resolver, entitlements, textAgents } = make();
+      resolver.resolve.mockResolvedValueOnce({ slug: 'clinic-summarizer', task: 'TEXT_GENERATION' });
+      entitlements.assertMeterQuota.mockRejectedValueOnce(new Error('quota exceeded'));
+      await expect(controller.resolve(undefined, undefined, 'clinic-summarizer', undefined, 't1')).rejects.toThrow('quota exceeded');
+      // Refused BEFORE the fallback chain is built: nothing is handed to a
+      // caller that is not allowed to use it.
+      expect(textAgents.resolveFromAgent).not.toHaveBeenCalled();
+    });
+
+    it('resolves normally when no entitlements service is wired (metering is additive)', async () => {
+      const resolver = { resolve: vi.fn(async () => ({ slug: 'x', task: 'TEXT_TO_SPEECH' })) };
+      const controller = new AgentInternalController(resolver as never, fakeCls() as never, {} as never, undefined);
+      await expect(controller.resolve(undefined, undefined, 'x', undefined, 't1')).resolves.toMatchObject({ slug: 'x' });
+    });
   });
 });

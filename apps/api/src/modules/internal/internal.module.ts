@@ -3,6 +3,7 @@ import {
   AiProviderConnectionServiceModule,
   AsrAgentResolverServiceModule,
   EffectiveConfigServiceModule,
+  EntitlementsServiceModule,
   SttInternalServiceModule,
   StreamingSessionServiceModule,
 } from '@arcaai/applications';
@@ -30,6 +31,10 @@ import { SttInternalController } from './stt-internal.controller';
     AiProviderConnectionServiceModule,
     // TASK-863 — `AgentInternalController` (`/internal/agents/resolve`) resolves through the ONE agent resolver.
     AgentServiceModule,
+    // TASK-890 — `IEntitlementsService` for the workflow-step `monthlyLlmTokens`
+    // gate on that same route (§3.13): the harness calls TEXT directly, so this
+    // resolution is the only gateway touch a durable `core.agent` step makes.
+    EntitlementsServiceModule,
   ],
   controllers: [SttInternalController, EffectiveConfigController, ModelRegistryInternalController, AgentInternalController],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can
