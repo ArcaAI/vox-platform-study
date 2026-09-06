@@ -2,8 +2,12 @@
 
 Probe contract. Every registered provider is probed IN PARALLEL
 under the per-provider probe cap in ``core/runtime_defaults.py`` (5 s), and
-each entry reports its own ``probe_status`` (``ok`` / ``timeout`` / ``error``),
-``probe_latency_ms`` and ``probe_error``. Consequences, all deliberate:
+each entry reports its own ``probe_status`` (``ok`` / ``timeout`` / ``error`` /
+``skipped``), ``probe_latency_ms`` and ``probe_error``. ``skipped`` is the
+no-connection case: the adapter answered ``unavailable`` and nothing was
+addressed, so there is no engine to blame. An adapter that swallows its
+transport error into ``status: "unavailable"`` never reports ``ok`` — see the
+downgrade in ``_probe``. Consequences, all deliberate:
 
 * one hung or down engine NEVER stalls or 500s the listing — it degrades to a
   single entry with ``status: "unavailable"`` and the reason attached;
@@ -91,6 +95,31 @@ async def _probe(
         payload = _unavailable(name)
         probe_status = "error"
         probe_error = str(exc)
+
+    if probe_status == "ok" and payload.get("status") == "unavailable":
+        # A SWALLOWED failure. Every adapter catches its own transport error and
+        # returns a well-formed ``ProviderInfo(status="unavailable")`` instead of
+        # raising, so the ``try`` above completes and would stamp ``ok`` — a probe
+        # that came back holding `unavailable` reported as a successful probe.
+        # ``probe_status`` answers "how did the probe go", so it is downgraded
+        # here, and the two outcomes are distinguished by whether there was
+        # anything to probe AT ALL:
+        #
+        #   * a connection WAS resolved for this provider -> ``error``: an address
+        #     was given and nothing usable came back.
+        #   * no connection -> ``skipped``: nothing was addressed, so calling it
+        #     an error would blame an engine nobody asked for. This is the normal
+        #     state of every provider a deployment has not configured.
+        #
+        # Never overwrites a raised error's own message: this branch runs only
+        # while ``probe_status`` is still ``ok``.
+        probe_status = "error" if connection is not None else "skipped"
+        probe_error = (
+            "the engine did not answer this probe (the adapter reported "
+            "status='unavailable' without raising)"
+            if connection is not None
+            else "no connection is configured for this provider; nothing was probed"
+        )
 
     payload["name"] = name
     payload["probe_status"] = probe_status

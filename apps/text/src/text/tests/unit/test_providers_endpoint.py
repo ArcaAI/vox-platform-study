@@ -224,3 +224,90 @@ class TestLmStudioNativeEnrichment:
         assert info.status == "unavailable"
         assert info.models == []
         assert any("get_info" in ev for ev, _ in events)
+
+
+class TestSwallowedUnavailability:
+    """TASK-890 J1 MAJOR-C — a swallowed connection error must not read as `ok`.
+
+    Every adapter catches its own transport failure and returns a well-formed
+    ``ProviderInfo(status="unavailable")`` rather than raising, so ``_probe``'s
+    ``try`` block completes and stamps ``probe_status: "ok"``. The gateway's
+    readiness sweep learned to read BOTH fields, but every OTHER consumer —
+    ``/ai-services``, the discovery merge, an operator reading the JSON — sees a
+    dead engine reported as a successful probe.
+
+    ``probe_status`` answers "how did the probe go", and a probe that came back
+    holding `unavailable` did not go fine. Two outcomes, distinguished by
+    whether there was anything to probe AT ALL:
+
+      * a connection WAS configured -> ``error``: something was addressed and
+        did not answer.
+      * no connection -> ``skipped``: nothing was addressed, so "error" would
+        blame an engine nobody asked for.
+    """
+
+    @pytest.mark.asyncio
+    async def test_unavailable_with_no_connection_is_skipped(self, client):
+        dead = AsyncMock()
+        dead.get_info = AsyncMock(
+            return_value=ProviderInfo(
+                name="dead", display_name="dead", status="unavailable", default_model=""
+            )
+        )
+        client.registry.register("dead", dead)
+
+        resp = await client.get("/api/v1/providers")
+
+        entry = resp.json()[0]
+        assert entry["status"] == "unavailable"
+        assert entry["probe_status"] == "skipped"
+        assert entry["probe_error"]
+
+    @pytest.mark.asyncio
+    async def test_unavailable_with_a_configured_connection_is_error(self, client):
+        # A PLAIN stub, not an AsyncMock: `_describe` dispatches on
+        # `isinstance(provider, ConnectionAwareProbe)`, and an AsyncMock answers
+        # every attribute, so it would satisfy that runtime-checkable protocol
+        # and take the `discover_models` branch this test is not about.
+        class _Dead:
+            async def get_info(self):
+                return ProviderInfo(
+                    name="dead", display_name="dead", status="unavailable", default_model=""
+                )
+
+        client.registry.register("dead", _Dead())
+
+        resp = await client.post(
+            "/api/v1/providers/probe",
+            json={"connections": {"dead": {"base_url": "http://127.0.0.1:9/v1"}}},
+        )
+
+        entry = resp.json()[0]
+        assert entry["status"] == "unavailable"
+        assert entry["probe_status"] == "error"
+        assert entry["probe_error"]
+
+    @pytest.mark.asyncio
+    async def test_an_available_provider_still_reports_ok(self, client):
+        healthy = AsyncMock()
+        healthy.get_info = AsyncMock(return_value=_info("healthy"))
+        client.registry.register("healthy", healthy)
+
+        resp = await client.get("/api/v1/providers")
+
+        entry = resp.json()[0]
+        assert entry["probe_status"] == "ok"
+        assert entry["probe_error"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_raised_error_keeps_its_own_message(self, client):
+        """The downgrade must never overwrite a real exception's reason."""
+        boom = AsyncMock()
+        boom.get_info = AsyncMock(side_effect=RuntimeError("connection refused"))
+        client.registry.register("boom", boom)
+
+        resp = await client.get("/api/v1/providers")
+
+        entry = resp.json()[0]
+        assert entry["probe_status"] == "error"
+        assert "connection refused" in entry["probe_error"]
