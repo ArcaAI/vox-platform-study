@@ -8,3 +8,6 @@ export * from './sync-agent.request';
 export * from './agent.response';
 export * from './agent-bundle.response';
 export * from './agent-summary.response';
+export * from './test-agent.request';
+export * from './agent-test-ack.response';
+export * from './agent-test-result.response';

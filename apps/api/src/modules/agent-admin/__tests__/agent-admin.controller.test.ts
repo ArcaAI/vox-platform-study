@@ -24,6 +24,8 @@ function makeAdmin() {
     publish: vi.fn(async (id: string, dto: unknown) => ({ id, dto, status: 'PUBLISHED' })),
     newVersion: vi.fn(async (id: string, dto: unknown) => ({ parentVersionId: id, dto })),
     deprecate: vi.fn(async (id: string) => ({ id, status: 'DEPRECATED' })),
+    testDraft: vi.fn(async (id: string, dto: unknown) => ({ id, dto, mode: 'dry-run' })),
+    finalizeDraftTest: vi.fn(async (id: string, dto: unknown) => ({ id, dto, output: 'x' })),
   };
   return { controller: new AgentAdminController(service as never), service };
 }
@@ -82,7 +84,10 @@ describe('AgentAdminController — delegation', () => {
 describe('AgentAssignmentAdminController', () => {
   it('reuses the Agent subject + svc scope and folds If-Match on PATCH/DELETE', async () => {
     expect(Reflect.getMetadata('path', AgentAssignmentAdminController)).toBe('admin/agent-assignments');
-    const permissions = new Reflector().getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [AgentAssignmentAdminController.prototype.create, AgentAssignmentAdminController]);
+    const permissions = new Reflector().getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [
+      AgentAssignmentAdminController.prototype.create,
+      AgentAssignmentAdminController,
+    ]);
     expect(permissions).toEqual([{ action: 'manage', subject: 'Agent' }]);
     const service = { list: vi.fn(async () => []), getById: vi.fn(), upsert: vi.fn(async () => ({})), remove: vi.fn(async () => ({})) };
     const controller = new AgentAssignmentAdminController(service as never);
@@ -155,5 +160,46 @@ describe('AgentAdminController — portability (TASK-884)', () => {
     expect(markers).toHaveLength(2);
     expect(source).toContain('SUPER_ADMIN-only');
     expect(source).toContain('answers 404, NOT 403');
+  });
+});
+
+/**
+ * TASK-890 §3.8 — the draft-test bench routes. Metadata only (the behaviour lives in the service
+ * suite): the two things a route can get wrong here are the id-vs-slug shape of the path and the
+ * throttle tier, and both are invisible until something is already in production.
+ */
+describe('AgentAdminController — the draft-test bench (TASK-890 §3.8)', () => {
+  it('mounts both halves under the id-addressed family and answers 200, not 201', () => {
+    const proto = AgentAdminController.prototype;
+    expect(Reflect.getMetadata('path', proto.test)).toBe(':id/test');
+    expect(Reflect.getMetadata('path', proto.finalizeTest)).toBe(':id/test/finalize');
+    expect(Reflect.getMetadata('__httpCode__', proto.test)).toBe(200);
+    expect(Reflect.getMetadata('__httpCode__', proto.finalizeTest)).toBe(200);
+  });
+
+  it('opts the run route into the `heavy` throttle tier (it spends the tenant’s own tokens)', () => {
+    // `@Throttle({ heavy: … })` stores ONE metadata key per named tier (`THROTTLER:LIMIT-heavy`),
+    // so the tier NAME is only observable on the key — asserting on the value alone would pass
+    // for a route that opted into the wrong tier with the same numbers.
+    const proto = AgentAdminController.prototype;
+    const keys = Reflect.getMetadataKeys(proto.test).map(String);
+    const heavy = keys.filter((key) => key.includes('heavy'));
+    expect(heavy.length).toBeGreaterThanOrEqual(2);
+    const values = heavy.map((key) => Reflect.getMetadata(key, proto.test));
+    expect(values).toContain(20);
+    expect(values).toContain(60000);
+  });
+
+  it('inherits the class gate: manage:Agent, and the API-key ban', () => {
+    const permissions = new Reflector().getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [AgentAdminController.prototype.test, AgentAdminController]);
+    expect(permissions).toEqual([{ action: 'manage', subject: 'Agent' }]);
+  });
+
+  it('delegates both halves, defaulting a missing body to `{}` on the run route only', async () => {
+    const { controller, service } = makeAdmin();
+    await controller.test('a1', undefined as never);
+    expect(service.testDraft).toHaveBeenCalledWith('a1', {});
+    await controller.finalizeTest('a1', { taskId: 'task-1' });
+    expect(service.finalizeDraftTest).toHaveBeenCalledWith('a1', { taskId: 'task-1' });
   });
 });

@@ -4,12 +4,16 @@ import {
   AgentResponse,
   AgentSummaryResponse,
   AgentSyncResponse,
+  AgentTestAckResponse,
+  AgentTestResultResponse,
   CloneAgentRequest,
   CreateAgentRequest,
+  FinalizeAgentTestRequest,
   ImportAgentRequest,
   NewAgentVersionRequest,
   PublishAgentRequest,
   SyncAgentRequest,
+  TestAgentRequest,
   UpdateAgentRequest,
 } from './dto';
 
@@ -49,6 +53,28 @@ export interface IAgentService {
   importBundle(dto: ImportAgentRequest): Promise<AgentResponse>;
   /** Push one of the caller's own agents into other tenants the caller manages; an unmanaged target is 404. */
   syncToTenants(slug: string, dto: SyncAgentRequest): Promise<AgentSyncResponse>;
+
+  /**
+   * TASK-890 §3.8 — the draft-agent test bench. Compiles the DRAFT in memory through the SAME
+   * path publish uses, renders its prompt over the §3.3 scope and (unless `dryRun`, the default)
+   * streams one generation on the tenant's own `monthlyLlmTokens` quota.
+   *
+   * A PUBLISHED row is refused with 409 — it is INVOKED, not tested.
+   */
+  testDraft(id: string, dto: TestAgentRequest): Promise<AgentTestAckResponse>;
+  /** Read the finished run back SERVER-SIDE by task id and record it (`trigger: AGENT_TEST`). */
+  finalizeDraftTest(id: string, dto: FinalizeAgentTestRequest): Promise<AgentTestResultResponse>;
+
+  /**
+   * TASK-890 §3.5 — what `publishFindings` needs to know about the agents a graph's `core.agent`
+   * nodes reference, by slug: their declared variable names and their bound context payload
+   * schema. The workflow publish gate is a PURE function in a package with no database, so these
+   * per-agent facts are resolved HERE and handed in. An unknown slug is simply absent from the
+   * map — the gate already emits `AGENT_REF_MISSING` for it.
+   */
+  publishAgentViews(
+    slugs: readonly string[],
+  ): Promise<Record<string, { declaredVariables: string[]; contextPayloadSchema: Record<string, unknown> | null }>>;
 
   /** Business plane: the published, active agents visible to the tenant (one per slug), optionally by task. */
   listPublished(task?: AgentTask): Promise<AgentSummaryResponse[]>;

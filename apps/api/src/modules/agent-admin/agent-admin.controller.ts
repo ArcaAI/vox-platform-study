@@ -3,17 +3,22 @@ import {
   AgentResponse,
   AgentSyncResponse,
   AgentTask,
+  AgentTestAckResponse,
+  AgentTestResultResponse,
   CloneAgentRequest,
   CreateAgentRequest,
+  FinalizeAgentTestRequest,
   IAgentService,
   ImportAgentRequest,
   NewAgentVersionRequest,
   PublishAgentRequest,
   SyncAgentRequest,
+  TestAgentRequest,
   UpdateAgentRequest,
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIfMatch } from '../../decorators';
 
 /**
@@ -164,6 +169,63 @@ export class AgentAdminController {
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
   async deprecate(@Param('id') id: string): Promise<AgentResponse> {
     return this.agentService.deprecate(id);
+  }
+
+  // =========================================================================
+  // The draft-agent test bench (TASK-890 §3.8)
+  // =========================================================================
+  //
+  // Two calls, for the same reason the prompt-template bench has two: the BROWSER is the real
+  // consumer of the stream. `test` opens the generation and answers with a gateway-relative SSE
+  // path the browser subscribes to with its own single-use ticket; `test/finalize` reads the
+  // finished text back SERVER-SIDE by task id, because a client that could hand back the output
+  // could decide what the platform records about the run.
+  //
+  // `@Throttle({ heavy })` is opt-in (the `default` tier gates everything anyway): a bench that
+  // spends real tokens on the tenant's own quota is exactly the "AI processing" class that tier
+  // was defined for.
+
+  @Post(':id/test')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ heavy: { limit: 20, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Assemble (and optionally run) a DRAFT agent without publishing it',
+    description:
+      'Compiles the DRAFT in memory through the SAME checks `publish` runs — nothing is persisted — renders its prompt over the runtime ' +
+      'variable scope (`context.*` / `trigger.*`, `input.*`, and the bare names from `instruction.variables` overlaid by this request’s ' +
+      '`variables`), and reports the resolved `{provider, model, fundingTier}`. `dryRun` DEFAULTS TO TRUE: a dry run generates nothing, ' +
+      'costs nothing and meters nothing. With `dryRun: false` the run is charged to the tenant’s own `monthlyLlmTokens` quota (checked ' +
+      'BEFORE anything is sent) and answers a `taskId` + gateway-relative `streamUrl`.',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, type: AgentTestAckResponse })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Blocking findings (same `code` + `findings` shape as publish), an unresolved prompt variable (`PROMPT_VARIABLE_UNRESOLVED`, naming the path), ' +
+      'a context payload that violates the agent’s bound schema (`CONTEXT_SCHEMA_VIOLATION`), a partial `{provider, model}` pair, or a non-TEXT_GENERATION agent asked for a live run.',
+  })
+  @ApiResponse({ status: 404, description: 'Not found (also returned for another tenant’s agent, and for a SYSTEM template).' })
+  @ApiResponse({ status: 409, description: 'The row is PUBLISHED/DEPRECATED — a published agent is INVOKED, not tested.' })
+  @ApiResponse({ status: 429, description: 'Rate limited, or the tenant’s `monthlyLlmTokens` allowance is exhausted.' })
+  async test(@Param('id') id: string, @Body() request: TestAgentRequest): Promise<AgentTestAckResponse> {
+    return this.agentService.testDraft(id, request ?? {});
+  }
+
+  @Post(':id/test/finalize')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Read a finished draft-test generation back from TEXT and record its usage',
+    description:
+      'The output is read SERVER-SIDE by `taskId` and never accepted from the request body. Records `generate.stream` against the tenant ' +
+      'with `trigger: AGENT_TEST`. Nothing is written to the agent row — a draft test is an authoring aid, not a version fact.',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, type: AgentTestResultResponse })
+  @ApiResponse({ status: 400, description: 'The generation has not reached a terminal completed state (the state is named).' })
+  @ApiResponse({ status: 404, description: 'Not found (also returned for another tenant’s agent), or an unknown `taskId`.' })
+  async finalizeTest(@Param('id') id: string, @Body() request: FinalizeAgentTestRequest): Promise<AgentTestResultResponse> {
+    return this.agentService.finalizeDraftTest(id, request);
   }
 
   // =========================================================================
