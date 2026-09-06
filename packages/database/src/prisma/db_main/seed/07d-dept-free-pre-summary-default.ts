@@ -3,7 +3,7 @@
  *
  * Owner decision OD-1(b) + refinement RF-1: R-C3 flagged that the
  * pre-summary resolution chain is department-agnostic in SELECTION but the
- * v1-parity prompt BODY still interpolates `{current_department}`/`{visit_type}`
+ * v1-parity prompt BODY still interpolates `{{context.current_department}}`/`{{context.visit_type}}`
  * and its three "(Latest Dept Note)" FORMAT headings. RF-1 forbids stripping
  * those out of the shared v1 body: the v1-compat response mapper
  * (`apps/api/src/modules/text-compat/summary-response.mapper.ts`,
@@ -17,9 +17,9 @@
  * DERIVATION (from `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT`, hand-applied, not
  * generated — this file's own checksum test locks the result so it cannot
  * silently drift from the diff below):
- *   - dropped `- **Department:** {current_department}`
- *   - dropped `- **Visit Type:** {visit_type}`
- *   - dropped `- Notes from {current_department}` from PRIORITIZE (replaced by
+ *   - dropped `- **Department:** {{context.current_department}}`
+ *   - dropped `- **Visit Type:** {{context.visit_type}}`
+ *   - dropped `- Notes from {{context.current_department}}` from PRIORITIZE (replaced by
  *     the pre-existing sibling bullet, "Most recent encounters")
  *   - "the latest note in the current department" / "the latest department
  *     note" → "the latest note" (CAPTURE section, 3 occurrences)
@@ -64,10 +64,10 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT =
   'Do not carry over information from any other patient. Treat each request independently..**\n\n' +
   '---\n\n' +
   '### ** Contextual data is provided by **\n\n' +
-  '- **Demographics:** Age {safe_age}, DOB {safe_dob}, Gender {safe_gender}\n\n' +
-  '- **Recent Vitals:** {safe_vitals} (two most recent encounters)\n\n' +
-  '- **Test Results:** {formatted_test_results}\n\n' +
-  '- **Previous Visits:** {formatted_previous_visits}\n\n' +
+  '- **Demographics:** Age {{context.safe_age}}, DOB {{context.safe_dob}}, Gender {{context.safe_gender}}\n\n' +
+  '- **Recent Vitals:** {{context.safe_vitals}} (two most recent encounters)\n\n' +
+  '- **Test Results:** {{context.formatted_test_results}}\n\n' +
+  '- **Previous Visits:** {{context.formatted_previous_visits}}\n\n' +
   '---\n\n' +
   '## REQUIREMENTS\n\n' +
   '### PRIORITIZE:\n\n' +
@@ -93,18 +93,18 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT =
   '- Use bullet points\n\n' +
   '- Group by clinical importance, not strictly chronology\n\n' +
   '- Maintain brevity: keep each bullet to one sentence or phrase\n\n' +
-  '- Language: {language_name}\n\n' +
+  '- Language: {{context.language_name}}\n\n' +
   '### INSTRUCTIONS\n\n' +
   '- Use the following section headers EXACTLY as written (in English) and do NOT translate them.\n' +
-  '- Write ALL bullet content in {language_name}, including any text inside parentheses.\n' +
-  '- Translate ALL English descriptors from context into {language_name}\n' +
-  '- Translate ALL text that appears in parentheses into {language_name}\n' +
-  '- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {language_name}. If a direct translation is unclear, paraphrase briefly in {language_name}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).\n' +
+  '- Write ALL bullet content in {{context.language_name}}, including any text inside parentheses.\n' +
+  '- Translate ALL English descriptors from context into {{context.language_name}}\n' +
+  '- Translate ALL text that appears in parentheses into {{context.language_name}}\n' +
+  '- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {{context.language_name}}. If a direct translation is unclear, paraphrase briefly in {{context.language_name}}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).\n' +
   '- Do NOT include English words in bullet items or parentheses, except for:\n' +
   '- Standard clinical abbreviations (e.g., BP, HR, RR, Temp, SpO2)\n' +
   '- Measurement units (e.g., °C, mmHg, mg, ml)\n' +
-  '- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {language_name} equivalents.\n' +
-  '- Translate or localize any status or qualifier terms or any text inside parentheses into {language_name}.\n\n' +
+  '- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {{context.language_name}} equivalents.\n' +
+  '- Translate or localize any status or qualifier terms or any text inside parentheses into {{context.language_name}}.\n\n' +
   '---\n\n' +
   '## FORMAT\n\n' +
   'Pre-Summary of Medical History  \n\n' +
@@ -121,8 +121,8 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE = {
   tenantId: SYSTEM_TENANT_ID,
   name: 'Pre-Summary Default Template (Department-Free)',
   description:
-    'Native-only department-free pre-summary template (D2 / OD-1b / RF-1). No {current_department} or ' +
-    '{visit_type} placeholder and no "(Latest Dept Note)" heading; served to native callers via ' +
+    'Native-only department-free pre-summary template (D2 / OD-1b / RF-1). No {{context.current_department}} or ' +
+    '{{context.visit_type}} placeholder and no "(Latest Dept Note)" heading; served to native callers via ' +
     "preSummaryVariant: 'dept-free'. The v1-compat surface never resolves this row — it keeps the v1-parity body " +
     'forever (RF-1 wire contract, PRE_SUMMARY_DISPLAY_TITLES title-match).',
   content: SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT,

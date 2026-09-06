@@ -29,8 +29,17 @@ import { describe, it, expect } from 'vitest';
 
 import { SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT } from '../prisma/db_main/seed/07d-dept-free-pre-summary-default';
 
-/** Pinned sha256 of `SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT` as of.*/
-const PINNED_SHA256 = '0751eb9a4221e6f58ea9892a9dcf42116965d48ea4cb6d6ad0e3f76a4bdb3e39';
+/**
+ * Pinned sha256 of `SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT`.
+ *
+ * Updated 2026-09-06 (TASK-890 §3.2/§3.11): the seven remaining v1
+ * single-brace placeholders were converted to the ONE `{{context.*}}`
+ * grammar, mirroring the same conversion applied to
+ * `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT` — a deliberate, reviewed content
+ * change. `{current_department}` / `{visit_type}` remain ABSENT (unaffected
+ * by this ticket — RF-1's wire-contract split is untouched).
+ */
+const PINNED_SHA256 = '076241d02f41cef8cebde7a7e559dfd8b1d802b52b58f127f50f9083514ab898';
 
 function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
@@ -57,7 +66,8 @@ describe('department-free pre-summary fork content drift lock', () => {
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('(Latest Dept Note)');
   });
 
-  it('keeps the remaining seven v1 variables intact', () => {
+  // TASK-890 §3.2 — converted to the ONE `{{context.*}}` grammar.
+  it('keeps the remaining seven v1 variables intact, as {{context.*}}', () => {
     for (const name of [
       'safe_age',
       'safe_dob',
@@ -67,7 +77,8 @@ describe('department-free pre-summary fork content drift lock', () => {
       'formatted_previous_visits',
       'language_name',
     ]) {
-      expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).toContain(`{${name}}`);
+      expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).toContain(`{{context.${name}}}`);
+      expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain(`{${name}}`);
     }
   });
 });

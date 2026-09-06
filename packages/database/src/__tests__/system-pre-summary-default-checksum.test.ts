@@ -35,8 +35,18 @@ import { describe, it, expect } from 'vitest';
 
 import { SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT } from '../prisma/db_main/seed/07-prompt-template';
 
-/** Pinned sha256 of `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT` as of.*/
-const PINNED_SHA256 = 'be6be5760819c34c22029ac1293474b452e0f75a34c885fb9f0eeab3ce05335a';
+/**
+ * Pinned sha256 of `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT`.
+ *
+ * Updated 2026-09-06 (TASK-890 §3.2/§3.11): the nine v1 single-brace
+ * placeholders (`{current_department}`, …) were converted to the ONE
+ * `{{context.*}}` grammar — a deliberate, reviewed content change, not drift.
+ * `PRE_SUMMARY_CONTENT` (`07b-arcaai-clinical-content.ts`) was CONSCIOUSLY
+ * left untouched per B-10: it is a v1 HISTORICAL snapshot (already-served
+ * bytes), not a live default, and TASK-890's seed-conversion census scopes
+ * conversion to the SYSTEM default + the v3 corpus only.
+ */
+const PINNED_SHA256 = 'd394eeb740f4fa4c3bed6205740a53ff231e49bc44b748caf6430729d22db242';
 
 function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');

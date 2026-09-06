@@ -942,12 +942,17 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
       'Medications Prescribed (Latest Dept Note):',
     ].forEach((title) => expect(preSummary!.content).toContain(`- ${title}`));
 
-    // The nine single-brace placeholders survive (markdown escaped them in the
-    // source; extraction unescapes). A lost placeholder ships a literal brace.
-    // v3 makes the pre-summary English-only but RETAINS {language_name}, so the
-    // contract with renderPreSummaryTemplate is unchanged across versions.
+    // The nine placeholders survive (markdown escaped them in the source;
+    // extraction unescapes). A lost placeholder ships a literal brace. v3
+    // makes the pre-summary English-only but RETAINS language_name, so the
+    // nine-variable contract is unchanged across versions.
+    //
+    // TASK-890 §3.2/§3.11 converted v3 (and ONLY v3 — v2 is a HISTORICAL
+    // snapshot, deliberately left single-brace, B-10) from the nine
+    // single-brace placeholders to the ONE `{{context.*}}` grammar.
+    const braceFor = (name: string) => (versionNumber === 3 ? `{{context.${name}}}` : `{${name}}`);
     ['current_department', 'visit_type', 'safe_age', 'safe_dob', 'safe_gender', 'safe_vitals', 'formatted_test_results', 'formatted_previous_visits', 'language_name'].forEach((name) =>
-      expect(preSummary!.content).toContain(`{${name}}`),
+      expect(preSummary!.content).toContain(braceFor(name)),
     );
 
     // The pre-summary reads typed EMR text, not ASR output — the RULE 6
@@ -1743,11 +1748,12 @@ describe('Prompt Template Seed Data', () => {
       expect(preSummary?.category).toBe('SYSTEM');
     });
 
+    // TASK-890 §3.2 — converted from single-brace to the ONE `{{context.*}}` grammar.
     it('should have PRE_SUMMARY_DEFAULT with required template variables', () => {
       const preSummary = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.PRE_SUMMARY_DEFAULT);
       expect(preSummary).toBeDefined();
       const content = preSummary!.content;
-      const requiredVars = ['{current_department}', '{visit_type}', '{safe_age}'];
+      const requiredVars = ['{{context.current_department}}', '{{context.visit_type}}', '{{context.safe_age}}'];
       requiredVars.forEach((v) => {
         expect(content).toContain(v);
       });

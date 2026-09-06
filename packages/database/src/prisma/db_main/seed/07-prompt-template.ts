@@ -21,6 +21,33 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SYSTEM_TENANT_ID } from 
 // built-in catalog; DNA_ANALYSIS stays DRAFT (not a clinical generation flow).
 const resolvePromptStatus = (category: string): PromptTemplateStatus => (category === 'DNA_ANALYSIS' ? 'DRAFT' : 'APPROVED') as PromptTemplateStatus;
 
+/**
+ * TASK-890 §3.6 (OD-K) — `PromptTemplate.variables` / `PromptVersion.variables`
+ * now store a typed declaration ARRAY (`{ name, type, required }[]`), not the
+ * pre-ticket `{ [name]: { type, required } }` map every literal below still
+ * reads as (kept for readability; the wrapper converts it once at module
+ * load). There is NO read-side normaliser for the map any more, so every
+ * `variables:` literal in this file is written through one of these two
+ * converters.
+ */
+function declareTypedVariables(
+  map: Record<string, { type: 'string' | 'number' | 'boolean' | 'date' | 'json'; required: boolean }>,
+): Array<{ name: string; type: 'string' | 'number' | 'boolean' | 'date' | 'json'; required: boolean }> {
+  return Object.entries(map).map(([name, def]) => ({ name, type: def.type, required: def.required }));
+}
+
+/**
+ * Converts the simpler `{ [name]: 'description' }` map (the legacy shape used
+ * by informational/assembler-substituted placeholders, e.g. the v1 pre-summary
+ * names) into the same typed declaration array — always `type: 'string'`,
+ * `required: true` (these were never left unsubstituted; the test bench now
+ * asks the admin to supply a sample value the same way the consultation
+ * assembler always supplied one).
+ */
+function declareDescribedVariables(map: Record<string, string>): Array<{ name: string; type: 'string'; required: true; description: string }> {
+  return Object.entries(map).map(([name, description]) => ({ name, type: 'string' as const, required: true as const, description }));
+}
+
 export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 export const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
 
@@ -325,17 +352,17 @@ Do not carry over information from any other patient. Treat each request indepen
 
 ### ** Contextual data is provided by **
 
-- **Department:** {current_department}
+- **Department:** {{context.current_department}}
 
-- **Visit Type:** {visit_type}
+- **Visit Type:** {{context.visit_type}}
 
-- **Demographics:** Age {safe_age}, DOB {safe_dob}, Gender {safe_gender}
+- **Demographics:** Age {{context.safe_age}}, DOB {{context.safe_dob}}, Gender {{context.safe_gender}}
 
-- **Recent Vitals:** {safe_vitals} (two most recent encounters)
+- **Recent Vitals:** {{context.safe_vitals}} (two most recent encounters)
 
-- **Test Results:** {formatted_test_results}
+- **Test Results:** {{context.formatted_test_results}}
 
-- **Previous Visits:** {formatted_previous_visits}
+- **Previous Visits:** {{context.formatted_previous_visits}}
 
 ---
 
@@ -343,7 +370,7 @@ Do not carry over information from any other patient. Treat each request indepen
 
 ### PRIORITIZE:
 
-- Notes from {current_department}
+- Notes from {{context.current_department}}
 
 - Most recent encounters
 
@@ -389,20 +416,20 @@ Do not carry over information from any other patient. Treat each request indepen
 
 - Maintain brevity: keep each bullet to one sentence or phrase
 
-- Language: {language_name}
+- Language: {{context.language_name}}
 
 ### INSTRUCTIONS
 
 - Use the following section headers EXACTLY as written (in English) and do NOT translate them.
-- Write ALL bullet content in {language_name}, including any text inside parentheses.
-- Translate ALL English descriptors from context into {language_name}
-- Translate ALL text that appears in parentheses into {language_name}
-- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {language_name}. If a direct translation is unclear, paraphrase briefly in {language_name}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).
+- Write ALL bullet content in {{context.language_name}}, including any text inside parentheses.
+- Translate ALL English descriptors from context into {{context.language_name}}
+- Translate ALL text that appears in parentheses into {{context.language_name}}
+- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {{context.language_name}}. If a direct translation is unclear, paraphrase briefly in {{context.language_name}}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).
 - Do NOT include English words in bullet items or parentheses, except for:
 - Standard clinical abbreviations (e.g., BP, HR, RR, Temp, SpO2)
 - Measurement units (e.g., °C, mmHg, mg, ml)
-- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {language_name} equivalents.
-- Translate or localize any status or qualifier terms or any text inside parentheses into {language_name}.
+- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {{context.language_name}} equivalents.
+- Translate or localize any status or qualifier terms or any text inside parentheses into {{context.language_name}}.
 
 ---
 
@@ -434,10 +461,10 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     content:
       'You are a clinical documentation assistant. Generate accurate, concise medical notes based on the consultation. Use standard medical terminology and maintain patient confidentiality. Format output according to the specified template.',
     category: 'SYSTEM',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       department: { type: 'string', required: false },
-    },
+    }),
     currentVersionNumber: 1,
     departmentId: null,
     tags: [],
@@ -451,12 +478,12 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     content:
       'Generate a SOAP-format clinical summary with enhanced structure.\n\nInclude:\n- Subjective: patient history, chief complaint, HPI, review of systems\n- Objective: vitals, physical exam findings, labs, imaging\n- Assessment: primary diagnosis, differentials, severity grading — by name; do not write, guess, or transcribe a diagnostic code in this field — codes are attached separately from a verified terminology source\n- Plan: medications with dosages, referrals, follow-up timeline, patient education\n\nUse concise clinical language. Flag critical values. Include confidence levels for differential diagnoses.',
     category: 'SUMMARY',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       chief_complaint: { type: 'string', required: true },
       department: { type: 'string', required: false },
       severity: { type: 'string', required: false },
-    },
+    }),
     // Activate structured SOAP output (json_schema).
     metaData: { promptConfig: SOAP_PROMPT_CONFIG } as Prisma.InputJsonValue,
     // bumped 3 -> 4 — v4 (EXTRA_PROMPT_VERSIONS id …0105) removes the
@@ -475,10 +502,10 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     description: 'Prompt for analyzing doctor writing style patterns',
     content: DNA_ANALYSIS_CONTENT_V3,
     category: 'DNA_ANALYSIS',
-    variables: {
+    variables: declareTypedVariables({
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
-    },
+    }),
     // Constrain DNA output to the closed-vocabulary schema ( PHI
     // containment) — same mechanism as SOAP_PROMPT_CONFIG above.
     metaData: { promptConfig: DNA_PROMPT_CONFIG } as Prisma.InputJsonValue,
@@ -495,11 +522,11 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     content:
       'Generate cardiology-specific clinical documentation. Include cardiac history, relevant vitals (BP, HR, rhythm), ECG findings when applicable, and cardiovascular examination. Use cardiology-standard terminology and abbreviations (e.g., LVEF, NYHA, STEMI).',
     category: 'CUSTOM',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       cardiac_history: { type: 'string', required: false },
       ecg_results: { type: 'string', required: false },
-    },
+    }),
     currentVersionNumber: 1,
     departmentId: null,
     tags: [],
@@ -689,10 +716,10 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     tenantId: SYSTEM_TENANT_ID,
     approvedVersionNumber: 1,
     name: 'Pre-Summary Default Template',
-    description: 'Unified pre-summary template for all departments. Uses {current_department} for department-aware prioritization.',
+    description: 'Unified pre-summary template for all departments. Uses {{context.current_department}} for department-aware prioritization.',
     content: SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT,
     category: 'SYSTEM',
-    variables: {
+    variables: declareDescribedVariables({
       current_department: 'Department name injected at runtime',
       visit_type: 'new-visit or revisit',
       safe_age: 'Patient age',
@@ -702,7 +729,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
       formatted_test_results: 'Formatted test results',
       formatted_previous_visits: 'Formatted previous visit summaries',
       language_name: 'Output language name',
-    },
+    }),
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['pre-summary', 'system', 'unified', 'tenant-default'],
@@ -795,11 +822,11 @@ When no department-specific template matches the current encounter's department,
 - Patient/family education provided
 - Follow-up instructions and timelines`,
     category: 'SUMMARY',
-    variables: {
+    variables: declareTypedVariables({
       conversation_language: { type: 'string', required: true },
       pre_summary_text: { type: 'string', required: false },
       prior_visit_summary: { type: 'string', required: false },
-    },
+    }),
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['department', 'catchall', 'soap', 'text-v1'],
@@ -865,7 +892,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.OPD,
@@ -899,7 +926,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.OPD,
@@ -933,7 +960,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.IPD,
@@ -966,7 +993,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.IPD,
@@ -1000,7 +1027,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.ER,
@@ -1034,7 +1061,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.PERI,
@@ -1067,7 +1094,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.PERI,
@@ -1099,7 +1126,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.RAD,
@@ -1131,7 +1158,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.LAB,
@@ -1165,7 +1192,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.BEH,
@@ -1199,7 +1226,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.BEH,
@@ -1234,7 +1261,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.PEDS,
@@ -1268,7 +1295,7 @@ Transcript:
 {{transcript}}`,
     category: 'SUMMARY',
     status: 'APPROVED',
-    variables: { transcript: 'Encounter transcript' },
+    variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
     departmentId: DEPT.PEDS,
@@ -1518,10 +1545,10 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
     content:
       'You are ArcaAI, an ambient clinical documentation assistant. Produce accurate, concise notes from the consultation. Preserve the conversation language, use standard medical terminology, never invent findings, and keep all patient identifiers confidential. Format output according to the active department template.',
     category: 'SYSTEM',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       department: { type: 'string', required: false },
-    },
+    }),
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['arcaai', 'system'],
@@ -1534,11 +1561,11 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
     content:
       'Generate a SOAP-format clinical summary for an ArcaAI outpatient encounter.\n\n- Subjective: chief complaint, HPI, relevant history\n- Objective: vitals, examination findings, available investigations\n- Assessment: working diagnosis and key differentials\n- Plan: medications, referrals, follow-up timeline, patient education\n\nUse concise clinical language and flag any critical values.',
     category: 'SUMMARY',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       chief_complaint: { type: 'string', required: true },
       department: { type: 'string', required: false },
-    },
+    }),
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['arcaai', 'soap', 'summary'],
@@ -1551,10 +1578,10 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
     content:
       "Analyse the clinician's documentation style from the supplied ArcaAI transcripts and notes. Extract sentence-structure preferences, terminology and abbreviation habits, section ordering, and tone. Output a structured style profile with confidence scores that can steer future summaries to match this clinician.\n\nDo not reproduce, quote, or paraphrase any patient name, identifier, date, medication, dose, or other encounter-specific fact from the source material — describe stylistic patterns only, never patient content.",
     category: 'DNA_ANALYSIS',
-    variables: {
+    variables: declareTypedVariables({
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
-    },
+    }),
     // PHI containment: this is the tenant whose DNA feature is
     // LIVE today (the former `14-pipeline-policy.ts` ARCAAI_PIPELINE_POLICY_OVERRIDE, retired by TASK-861,
     // sets `dnaStyleEnabled: true`), so the schema constraint that closes the
@@ -1575,10 +1602,10 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
     content:
       'Generate cardiology documentation for ArcaAI. Capture cardiac history, relevant vitals (BP, HR, rhythm), ECG findings when present, and the cardiovascular examination. Use cardiology-standard terminology (LVEF, NYHA, STEMI) and highlight any time-critical findings.',
     category: 'CUSTOM',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       ecg_results: { type: 'string', required: false },
-    },
+    }),
     currentVersionNumber: 1,
     // departmentId is null: the former ArcaAI CARD department was retired in
     // The ArcaAI tenant now carries the 7 v1 clinica
@@ -1614,12 +1641,12 @@ export const EXTRA_PROMPT_VERSIONS = [
     versionNumber: 2,
     content:
       'Generate a SOAP-format clinical summary with enhanced structure. Include Subjective (patient history, chief complaint, HPI), Objective (vitals, physical exam, labs), Assessment (primary diagnosis, differentials, severity), and Plan (medications, referrals, follow-up timeline). Use concise clinical language. Flag critical values.',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       chief_complaint: { type: 'string', required: true },
       department: { type: 'string', required: false },
       severity: { type: 'string', required: false },
-    },
+    }),
     changeReason: 'Added critical value flagging',
     changedBy: SYSTEM_USER_ID,
   },
@@ -1637,12 +1664,12 @@ export const EXTRA_PROMPT_VERSIONS = [
     versionNumber: 3,
     content:
       'Generate a SOAP-format clinical summary with enhanced structure.\n\nInclude:\n- Subjective: patient history, chief complaint, HPI, review of systems\n- Objective: vitals, physical exam findings, labs, imaging\n- Assessment: primary diagnosis, differentials, severity grading, ICD-10 codes\n- Plan: medications with dosages, referrals, follow-up timeline, patient education\n\nUse concise clinical language. Flag critical values. Include confidence levels for differential diagnoses.',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       chief_complaint: { type: 'string', required: true },
       department: { type: 'string', required: false },
       severity: { type: 'string', required: false },
-    },
+    }),
     // reworded from "Restructured with bullet points, added ICD-10
     // codes and confidence levels" — that phrasing described ICD-10 emission
     // as a positive change, which is misleading once the model is no longer
@@ -1661,12 +1688,12 @@ export const EXTRA_PROMPT_VERSIONS = [
     versionNumber: 4,
     content:
       'Generate a SOAP-format clinical summary with enhanced structure.\n\nInclude:\n- Subjective: patient history, chief complaint, HPI, review of systems\n- Objective: vitals, physical exam findings, labs, imaging\n- Assessment: primary diagnosis, differentials, severity grading — by name; do not write, guess, or transcribe a diagnostic code in this field — codes are attached separately from a verified terminology source\n- Plan: medications with dosages, referrals, follow-up timeline, patient education\n\nUse concise clinical language. Flag critical values. Include confidence levels for differential diagnoses.',
-    variables: {
+    variables: declareTypedVariables({
       patient_name: { type: 'string', required: true },
       chief_complaint: { type: 'string', required: true },
       department: { type: 'string', required: false },
       severity: { type: 'string', required: false },
-    },
+    }),
     changeReason:
       'ICD-10 prompt containment: removed the free-text ICD-10 code instruction from the Assessment section — diagnosis codes are attached from a verified terminology source, never free-written by the model',
     changedBy: SYSTEM_USER_ID,
@@ -1678,10 +1705,10 @@ export const EXTRA_PROMPT_VERSIONS = [
     versionNumber: 2,
     content:
       "Analyze the physician's writing style from the provided consultation transcripts and summaries.\n\nExtract patterns for:\n1. Sentence structure preferences (active/passive, length, complexity)\n2. Medical terminology usage (formal vs colloquial, abbreviation frequency)\n3. Documentation style (narrative vs structured, level of detail)\n4. Common phrases and transition words\n5. Section ordering preferences\n6. Tone and formality level\n\nOutput a structured DNA profile that can be used to generate future summaries matching this physician's style. Include confidence scores for each extracted pattern.",
-    variables: {
+    variables: declareTypedVariables({
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
-    },
+    }),
     changeReason: 'Added confidence scores and expanded pattern categories',
     changedBy: SYSTEM_USER_ID,
   },
@@ -1691,10 +1718,10 @@ export const EXTRA_PROMPT_VERSIONS = [
     promptTemplateId: TEMPLATE_IDS.DNA_ANALYSIS,
     versionNumber: 3,
     content: DNA_ANALYSIS_CONTENT_V3,
-    variables: {
+    variables: declareTypedVariables({
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
-    },
+    }),
     changeReason: 'PHI containment: constrained output to a closed-vocabulary JSON schema (metaData.promptConfig) and added an explicit no-patient-content instruction',
     changedBy: SYSTEM_USER_ID,
   },
