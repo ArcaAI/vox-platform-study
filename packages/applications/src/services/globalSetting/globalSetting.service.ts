@@ -9,6 +9,7 @@ import {
   GlobalSettingEntity,
   GlobalSettingFactory,
   GlobalSettingRepository,
+  SYSTEM_TENANT_ID,
   UserRepository,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
@@ -39,6 +40,33 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
     super(eventEmitter, clsService, ResourceType.GlobalSetting);
+  }
+
+  /**
+   * TASK-890 §3.15 (OD-P) — the PLATFORM TIER of a tenant-manageable resource.
+   *
+   * `manage:GlobalSetting` is a tenant-admin grant, and the SYSTEM-tenant rows
+   * are the platform defaults every tenant inherits when it has no opinion of
+   * its own. A route decorator expresses `action + subject` and cannot express
+   * "…except the platform's own rows", so the boundary is imperative — the same
+   * shape as `SettingsRegistryWriteService.assertMayWriteAtScope` and
+   * `AiProviderConnectionService.assertWriteAllowed`.
+   *
+   * A 403, not a 404: the caller may legitimately READ this row (it is the
+   * default serving its own tenant), so there is nothing to hide — the rule is
+   * "you may not write this", not "this may not exist". The 404-over-403
+   * posture still governs a row owned by another CUSTOMER tenant, and every
+   * call site here loads the row FIRST so that distinction survives.
+   *
+   * Until now a tenant admin was stopped only emergently: the context
+   * interceptor refuses a foreign `x-tenant-id`, and the scope extension throws
+   * a raw `Error` on a tenant mismatch — a 400 or a 500 where the answer is a
+   * 403, and neither is a guard anybody declared.
+   */
+  private assertPlatformTierWrite(targetTenantId: string | null | undefined): void {
+    if (targetTenantId === SYSTEM_TENANT_ID && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Platform-wide settings are managed by super administrators only.');
+    }
   }
 
   /**
@@ -80,6 +108,9 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     // else the CLS tenant the tenant-scope extension would inject); with
     // neither, there is no unique identity to collide with — plain create.
     const effectiveTenantId = request.tenantId ?? this.tenantId;
+    // TASK-890 §3.15 — before the revive probe, so a soft-deleted SYSTEM row is
+    // not a back door into the platform tier.
+    this.assertPlatformTierWrite(effectiveTenantId);
     if (effectiveTenantId) {
       try {
         const deleted = await this.globalSettingRepository.findFirst({
@@ -257,6 +288,12 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   async update(id: EntityId, request: UpdateGlobalSettingRequest): Promise<GlobalSettingEntity> {
     const globalSetting = await this.globalSettingRepository.findById(id);
 
+    // TASK-890 §3.15 — EXISTENCE first (the load above 404s), privilege second.
+    // Gating before the lookup would make an unknown id 403 while a real
+    // foreign id stays 404, handing the caller an existence oracle over the id
+    // space (rule 05 §Imperative Privilege Checks).
+    this.assertPlatformTierWrite(globalSetting.tenantId);
+
     // `locked` rows are platform-owned defaults (e.g. the
     // `enable-local-raw-capture` capability). Only a SUPER_ADMIN may write
     // them; everyone else is refused BEFORE any mutation. Mirrors the
@@ -308,6 +345,12 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   async deleteById(id: EntityId): Promise<GlobalSettingEntity> {
+    // TASK-890 §3.15 — the load is what makes the ORDER right: a foreign id 404s
+    // here, and only a row that exists and belongs to the platform tier reaches
+    // the 403. The previous blind soft-delete could not tell the two apart.
+    const existing = await this.globalSettingRepository.findById(id);
+    this.assertPlatformTierWrite(existing.tenantId);
+
     const globalSetting = await this.globalSettingRepository.softDelete(id);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
