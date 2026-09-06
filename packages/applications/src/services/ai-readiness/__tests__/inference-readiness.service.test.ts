@@ -240,7 +240,16 @@ describe('InferenceReadinessService — platform-served rows', () => {
     expect(snapshot.models['m-stt']!.readiness).toBe('engine_down');
   });
 
-  it('is weights_missing when the bucket inventory measured MISSING or PARTIAL, whatever the heartbeat says', async () => {
+  // AMENDED by TASK-890 J1 MAJOR-A. This used to assert `weights_missing`
+  // "whatever the heartbeat says", on the belief that the bucket is the whole
+  // truth about a self-hosted row's weights. It is not: `apps/stt` resolves
+  // `source_uri` into the HuggingFace cache and never reads the bucket for these
+  // rows, so an empty bucket says nothing about whether the service can load
+  // them. With no answer from the serving service — which is this harness, whose
+  // stub returns no `results` — the honest verdict is `unknown`. The
+  // `weights_missing` case is now what it always meant: BOTH sources say no, and
+  // it is pinned in `inference-readiness.runtime-resolvable.task890.test.ts`.
+  it('is unknown when the bucket measured MISSING or PARTIAL and the serving service did not answer', async () => {
     const { service } = makeHarness({
       models: [
         makeModel({ id: 'm-miss', provider: 'built-in', servedBy: 'stt', availability: AiModelAvailability.MISSING }),
@@ -250,8 +259,9 @@ describe('InferenceReadinessService — platform-served rows', () => {
     });
 
     const snapshot = await service.sweep();
-    expect(snapshot.models['m-miss']!.readiness).toBe('weights_missing');
-    expect(snapshot.models['m-part']!.readiness).toBe('weights_missing');
+    expect(snapshot.models['m-miss']!.readiness).toBe('unknown');
+    expect(snapshot.models['m-part']!.readiness).toBe('unknown');
+    expect(snapshot.models['m-miss']!.detail).toMatch(/did not answer/);
   });
 
   it('is unknown while availability has never been measured — the inventory sweep has not run', async () => {

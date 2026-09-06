@@ -81,6 +81,36 @@ const SERVED_BY_TO_PROVIDER_SERVICE: Readonly<Record<string, ProviderService>> =
 });
 
 /**
+ * `AiModel.servedBy` → the `IConfigService` key holding that deployable's base
+ * URL, for the runtime-resolvability probe (TASK-890 J1 MAJOR-A).
+ *
+ * Only the three services that serve weights out of their own caches are here.
+ * A `servedBy` outside this map is never asked, and its rows fall back to the
+ * bucket measurement — which is the right answer for a row nothing self-hosts.
+ * Rule 05: a downstream address comes from `IConfigService`, never `process.env`.
+ */
+const SERVED_BY_TO_URL_KEY: Readonly<Record<string, 'STT_URL' | 'NLP_URL' | 'TTS_URL'>> = Object.freeze({
+  stt: 'STT_URL',
+  nlp: 'NLP_URL',
+  tts: 'TTS_URL',
+});
+
+/**
+ * Is this row served by one of HOPE's own services out of its own storage?
+ *
+ * Extracted so the resolvability pre-pass and `classify` cannot disagree about
+ * WHICH rows are self-hosted — asking a service about a row it does not serve,
+ * or failing to ask about one it does, are both silent.
+ */
+function isPlatformSelfHostRow(row: AiModelEntity): boolean {
+  const provider = row.provider?.trim() || null;
+  if (!provider) return false;
+  if (ENGINE_SERVED_PROVIDERS.has(provider)) return false;
+  const service = SERVED_BY_TO_PROVIDER_SERVICE[row.servedBy ?? ''] ?? 'llm';
+  return provider === PLATFORM_SELF_HOST_SENTINEL || isPlatformSelfHostProvider(service, provider);
+}
+
+/**
  * InferenceReadinessService — the platform's periodic answer to "could this
  * model have served?" (TASK-890 §3.12, OD-A / OD-L).
  *
@@ -216,10 +246,11 @@ export class InferenceReadinessService implements IInferenceReadinessService {
     const engineByProvider = new Map(engines.map((engine) => [engine.provider, engine]));
     const listingByProvider = new Map(live.map((entry) => [normalizeEngineProvider(entry.name), entry.models ?? []]));
     const serviceByKey = new Map(services.map((entry) => [entry.key, entry]));
+    const runtime = await this.readRuntimeResolvable(rows);
 
     const models: Record<string, ReadinessModelEntry> = {};
     for (const row of rows) {
-      models[row.id] = await this.classify(row, engineByProvider, listingByProvider, serviceByKey);
+      models[row.id] = await this.classify(row, engineByProvider, listingByProvider, serviceByKey, runtime);
     }
 
     const snapshot: InferenceReadinessSnapshot = { checkedAt: checkedAt.toISOString(), engines, services, models };
@@ -310,6 +341,80 @@ export class InferenceReadinessService implements IInferenceReadinessService {
   }
 
   /**
+   * ASK each serving service whether it can load its own rows' weights, without
+   * fetching anything (TASK-890 J1 MAJOR-A).
+   *
+   * `GET|POST /api/v1/internal/models/resolvable` on `apps/{stt,nlp,tts}` reads
+   * that process's caches and answers per row. ONE batch call per service, so a
+   * catalogue of any size costs at most three requests per sweep.
+   *
+   * Failure posture, matching the rest of this file: an absent address, an
+   * unreachable service or a malformed reply yields NO entry for those rows,
+   * and an absent entry is `unknown` — never a verdict. One service's failure
+   * cannot change another's rows, because each is asked independently.
+   *
+   * It resolves the address through `IConfigService` (rule 05) and sends the
+   * platform-operator internal headers, the same way `probeText` does.
+   */
+  private async readRuntimeResolvable(rows: AiModelEntity[]): Promise<Map<string, boolean>> {
+    const byService = new Map<string, AiModelEntity[]>();
+    for (const row of rows) {
+      if (!isPlatformSelfHostRow(row)) continue;
+      const servedBy = row.servedBy ?? '';
+      if (!(servedBy in SERVED_BY_TO_URL_KEY)) continue;
+      const bucket = byService.get(servedBy);
+      if (bucket) bucket.push(row);
+      else byService.set(servedBy, [row]);
+    }
+    if (byService.size === 0) return new Map();
+
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    const headers = internalServiceHeaders({
+      serviceToken,
+      tenantId: null,
+      tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+    });
+
+    const verdicts = new Map<string, boolean>();
+    await Promise.all(
+      [...byService].map(async ([servedBy, serviceRows]) => {
+        const base = this.configService.getConfigValue(SERVED_BY_TO_URL_KEY[servedBy]!);
+        if (!base) {
+          // No declared address is not a failure to report — it is a service
+          // this deployment does not run. Its rows stay unmeasured.
+          this.logger.debug({ message: 'No address for a serving service; its rows stay unknown', servedBy });
+          return;
+        }
+        const body = {
+          models: serviceRows.map((row) => ({
+            id: row.id,
+            sourceUri: row.sourceUri ?? null,
+            library: row.libraryName ?? null,
+            revision: row.sourceRevision ?? null,
+          })),
+        };
+        try {
+          const response = await this.httpService.axiosRef.post(`${base}/api/v1/internal/models/resolvable`, body, { headers, timeout: 10_000 });
+          const results = (response.data?.results ?? []) as Array<{ id?: string; resolvable?: unknown }>;
+          for (const result of results) {
+            // Only a literal `true` counts. An absent or non-boolean field is
+            // an unmeasured row, not a negative one.
+            if (typeof result?.id === 'string' && typeof result.resolvable === 'boolean') verdicts.set(result.id, result.resolvable);
+          }
+        } catch (error) {
+          this.logger.warn({
+            message: 'Runtime resolvability probe failed; those rows stay unknown for this sweep',
+            servedBy,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }),
+    );
+
+    return verdicts;
+  }
+
+  /**
    * The six heartbeats, through the monitoring service that owns them rather
    * than a second raw read of its Redis keys.
    */
@@ -384,6 +489,7 @@ export class InferenceReadinessService implements IInferenceReadinessService {
     engines: Map<string, ReadinessEngineEntry>,
     listings: Map<string, Array<{ name: string; state?: string | null }>>,
     services: Map<string, ReadinessServiceEntry>,
+    runtime: Map<string, boolean>,
   ): Promise<ReadinessModelEntry> {
     const provider = row.provider?.trim() || null;
     const base = { id: row.id, slug: row.slug, taskType: String(row.taskType), provider };
@@ -394,8 +500,8 @@ export class InferenceReadinessService implements IInferenceReadinessService {
       return { ...base, providerClass: 'engine-served', ...this.engineReadiness(row, engine, engines, listings) };
     }
 
-    if (provider === PLATFORM_SELF_HOST_SENTINEL || (provider && isPlatformSelfHostProvider(service, provider))) {
-      return { ...base, providerClass: 'platform-self-host', ...this.selfHostReadiness(row, services) };
+    if (isPlatformSelfHostRow(row)) {
+      return { ...base, providerClass: 'platform-self-host', ...this.selfHostReadiness(row, services, runtime) };
     }
 
     if (provider && (row.deploymentKind === AiDeploymentKind.CLOUD || CLOUD_BYO_PROVIDERS[service]?.includes(provider))) {
@@ -438,9 +544,54 @@ export class InferenceReadinessService implements IInferenceReadinessService {
     return { readiness: 'loadable', detail: 'listed; the engine reported no load state' };
   }
 
-  private selfHostReadiness(row: AiModelEntity, services: Map<string, ReadinessServiceEntry>): { readiness: ModelReadiness; detail: string | null } {
+  private selfHostReadiness(
+    row: AiModelEntity,
+    services: Map<string, ReadinessServiceEntry>,
+    runtime: Map<string, boolean>,
+  ): { readiness: ModelReadiness; detail: string | null } {
+    const servedByName = row.servedBy ?? null;
+
+    // ── The RUNTIME path wins, because it is the one that actually serves ──
+    //
+    // TASK-890 J1 MAJOR-A. This method used to read `availability` alone — a
+    // measurement of the `hope-models` MinIO bucket, stamped MISSING on every
+    // row with a NULL `bucketPrefix`. But `apps/stt` resolves `source_uri` into
+    // the HuggingFace cache and `apps/nlp` does the same through `HF_HOME`;
+    // neither reads that bucket for these rows. So the platform reported 21 of
+    // 33 catalogue rows unusable with the weights on the serving host's disk.
+    //
+    // The serving process is now asked directly, and its YES is decisive: it is
+    // the only party that can answer "could I load this without fetching?".
+    const runtimeAnswer = runtime.get(row.id);
+    if (runtimeAnswer === true) {
+      return { readiness: 'ready', detail: servedByName ? `the ${servedByName} service can load these weights locally` : null };
+    }
+
     const availability = row.availability;
+    // NOT_APPLICABLE = the library ships its weights inside the Python package,
+    // so there is nothing in the bucket to find and nothing to fetch.
+    const bucketHasIt = availability === AiModelAvailability.AVAILABLE || availability === AiModelAvailability.NOT_APPLICABLE;
+
+    // A runtime NO is only a verdict when the bucket has nothing either. A
+    // bucket-AVAILABLE row the service has not fetched yet is still servable —
+    // the first load pays a download — so downgrading it here would trade one
+    // wrong answer for another.
+    if (runtimeAnswer === false && !bucketHasIt) {
+      return {
+        readiness: 'weights_missing',
+        detail: servedByName
+          ? `the ${servedByName} service cannot resolve these weights locally, and the bucket has none`
+          : 'the weights are nowhere',
+      };
+    }
+
     if (availability === AiModelAvailability.MISSING || availability === AiModelAvailability.PARTIAL) {
+      // No runtime answer (service down, no address, or not asked) and an empty
+      // bucket. Saying `weights_missing` here would claim more than was
+      // measured, so it stays `unknown` — nobody who could answer was asked.
+      if (runtimeAnswer === undefined && servedByName) {
+        return { readiness: 'unknown', detail: `the bucket has no artifact and the ${servedByName} service did not answer this sweep` };
+      }
       return { readiness: 'weights_missing', detail: `bucket inventory measured ${String(availability).toLowerCase()}` };
     }
     if (availability === AiModelAvailability.UNKNOWN || availability === null || availability === undefined) {

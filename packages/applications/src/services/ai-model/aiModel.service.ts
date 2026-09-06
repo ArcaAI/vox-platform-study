@@ -38,6 +38,7 @@ import { toCatalogueModel } from './model-catalogue.mapper';
 import { IInferenceReadinessService } from '../ai-readiness/IInferenceReadinessService';
 import type { IInferenceReadinessService as InferenceReadinessContract } from '../ai-readiness/IInferenceReadinessService';
 import { modelReadinessFrom } from '../ai-readiness/inference-readiness.types';
+import type { ModelReadiness } from '../ai-readiness/inference-readiness.types';
 
 type ReadinessSnapshotReader = Pick<InferenceReadinessContract, 'getSnapshot'>;
 import {
@@ -205,11 +206,15 @@ export class AiModelService extends BaseService implements IAiModelService {
 
     const models: CatalogueModelResponse[] = [];
     for (const { entity, service, providerClass, providerId } of classified) {
-      const usability = await this.usabilityOf(providerClass, service, entity, tenantId, facts);
       // ONE projection helper, owned by the lane that writes the snapshot: a
       // model the snapshot does not name is `unknown` as of NOW, not stale as
       // of the sweep — so it carries no timestamp at all.
+      //
+      // Read BEFORE the usability verdict since J1 MAJOR-A: a platform-self-host
+      // row is usable on the bucket measurement OR the runtime one, and the
+      // runtime one lives here.
       const verdict = modelReadinessFrom(snapshot, entity.id);
+      const usability = await this.usabilityOf(providerClass, service, entity, tenantId, facts, verdict.readiness);
       models.push(
         toCatalogueModel(entity, {
           providerId,
@@ -629,19 +634,33 @@ export class AiModelService extends BaseService implements IAiModelService {
     entity: AiModelEntity,
     tenantId: string,
     cache: Map<string, ConnectionFacts>,
+    readiness: ModelReadiness,
   ): Promise<Usability> {
-    // The MEASURED column, never `localPath` (§3.11): the platform's own
-    // services load these weights from the bucket, so presence IS usability.
     if (providerClass === 'platform-self-host') {
-      // `NOT_APPLICABLE` on a self-host row is the inventory saying there is
-      // NOTHING to fetch — the library ships its weights inside the Python
-      // package (`pyrnnoise`, `deepfilternet`). The readiness sweep already
-      // calls those rows `ready`; refusing them here contradicted the platform's
-      // own verdict inside a single payload.
+      // TWO ways to have the weights, and either one is enough (J1 MAJOR-A).
+      //
+      // `availability` is the BUCKET measurement (`ModelInventoryService`), and
+      // it is the only one this used to read. That was wrong for most of the
+      // catalogue: the serving services resolve `source_uri` through the
+      // HuggingFace cache and never touch `s3://hope-models` for these rows, so
+      // every row with a NULL `bucketPrefix` was stamped MISSING and reported
+      // unusable while `apps/stt` / `apps/nlp` held the weights on disk — 21 of
+      // 33 rows, including every whisper row.
+      //
+      // `readiness === 'ready'` is the RUNTIME measurement: the readiness sweep
+      // asked the serving service, and it said it can load this without
+      // fetching. It is the authority on its own filesystem.
+      //
+      // Neither is a guess and neither is inferred from the other, so this stays
+      // `false` with its named reason when both are absent — including when
+      // readiness is `unknown`, which means nobody looked, not "probably fine".
+      //
+      // `NOT_APPLICABLE` counts as the bucket having it: the inventory stamps it
+      // when the library ships its weights INSIDE the Python package
+      // (`pyrnnoise`, `deepfilternet`), i.e. there is nothing to fetch at all.
       const measured = entity.availability;
-      return measured === AiModelAvailability.AVAILABLE || measured === AiModelAvailability.NOT_APPLICABLE
-        ? USABLE
-        : { usable: false, reason: 'weights-not-available' };
+      const bucketHasIt = measured === AiModelAvailability.AVAILABLE || measured === AiModelAvailability.NOT_APPLICABLE;
+      return bucketHasIt || readiness === 'ready' ? USABLE : { usable: false, reason: 'weights-not-available' };
     }
 
     // Every other class needs the connection plane. Absent collaborator ⇒ fail

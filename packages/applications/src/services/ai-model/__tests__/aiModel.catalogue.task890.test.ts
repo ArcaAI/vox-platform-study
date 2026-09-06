@@ -364,3 +364,95 @@ describe('TASK-890 AiModelService.getCatalogue', () => {
     expect(args.filters.tenantId).toBeUndefined();
   });
 });
+
+/**
+ * TASK-890 J1 MAJOR-A — `usable` follows the RUNTIME path, not the bucket alone.
+ *
+ * `usabilityOf` read `AiModel.availability` and nothing else for a
+ * platform-self-host row. That column is a measurement of the `hope-models`
+ * MinIO bucket (`ModelInventoryService`, MISSING whenever `bucketPrefix` is
+ * NULL) — and the serving services do not read that bucket for these rows:
+ * `apps/stt` resolves `source_uri` into the HuggingFace cache and `apps/nlp`
+ * does the same via `HF_HOME`. So 21 of 33 catalogue rows were unselectable
+ * while the process that serves them had the weights on disk.
+ *
+ * The rule is now **bucket OR runtime**: either measurement is a real way to
+ * obtain the weights, so either one makes the row usable. Neither, and it stays
+ * `false` with the same named reason — the catalogue still never guesses.
+ *
+ * The `/ai-models` grid is unaffected: its Availability column keeps showing the
+ * BUCKET measurement, which is what an operator publishing artifacts needs.
+ */
+describe('TASK-890 J1 MAJOR-A — usable follows the runtime path', () => {
+  function withReadiness(readinessByModel: Record<string, string>) {
+    return {
+      getSnapshot: vi.fn().mockResolvedValue({
+        checkedAt: new Date().toISOString(),
+        models: Object.fromEntries(Object.entries(readinessByModel).map(([id, readiness]) => [id, { id, readiness, detail: null }])),
+      }),
+    };
+  }
+
+  function buildWith(readiness: unknown): AiModelService {
+    return new (AiModelService as unknown as new (...args: unknown[]) => AiModelService)(
+      mockModelRepository,
+      mockDatabaseService,
+      mockEventEmitter,
+      mockClsService,
+      mockConnections,
+      mockTenantRepository,
+      readiness,
+    );
+  }
+
+  it('is usable when the readiness sweep says the serving service can load it, though the bucket says MISSING', async () => {
+    mockModelRepository.findAll.mockResolvedValue([{ ...SELF_HOST_ROW, id: 'm-hf', availability: AiModelAvailability.MISSING }] as never);
+
+    const result = await buildWith(withReadiness({ 'm-hf': 'ready' })).getCatalogue();
+    const model = result.models.find((m) => m.id === 'm-hf')!;
+
+    expect(model.usable).toBe(true);
+    expect(model.unusableReason).toBeNull();
+  });
+
+  it('stays unusable when the bucket says MISSING and readiness is not `ready`', async () => {
+    mockModelRepository.findAll.mockResolvedValue([{ ...SELF_HOST_ROW, id: 'm-cold', availability: AiModelAvailability.MISSING }] as never);
+
+    for (const readiness of ['weights_missing', 'engine_down', 'unknown', 'loadable']) {
+      const result = await buildWith(withReadiness({ 'm-cold': readiness })).getCatalogue();
+      const model = result.models.find((m) => m.id === 'm-cold')!;
+      expect(model.usable, `readiness=${readiness}`).toBe(false);
+      expect(model.unusableReason).toBe('weights-not-available');
+    }
+  });
+
+  it('keeps a bucket-AVAILABLE row usable even when the runtime has not fetched it', async () => {
+    mockModelRepository.findAll.mockResolvedValue([{ ...SELF_HOST_ROW, id: 'm-bucket', availability: AiModelAvailability.AVAILABLE }] as never);
+
+    const result = await buildWith(withReadiness({ 'm-bucket': 'weights_missing' })).getCatalogue();
+
+    expect(result.models.find((m) => m.id === 'm-bucket')!.usable).toBe(true);
+  });
+
+  it('does not let readiness rescue a class whose blocker is a CREDENTIAL, not weights', async () => {
+    // A `ready` verdict on a cloud row means the platform holds a key. It must
+    // not override the tenant's own VETO, which is an authorization decision
+    // rather than an availability one.
+    mockConnections.list.mockResolvedValue([]);
+    mockConnections.findRow.mockImplementation(async (service: string, provider: string, tenantId: string) =>
+      tenantId === TENANT_ID && provider === 'azure'
+        ? { id: 'conn-1', tenantId: TENANT_ID, service, provider, enabled: false, encryptedApiKey: null }
+        : null,
+    );
+    mockConnections.resolveConnection.mockImplementation(async (service: string, provider: string) =>
+      provider === 'azure' ? null : { service, provider, encryptedApiKey: null, source: 'system' },
+    );
+    mockModelRepository.findAll.mockResolvedValue([CLOUD_ROW] as never);
+
+    const result = await buildWith(withReadiness({ 'm-cloud': 'ready' })).getCatalogue();
+    const model = result.models.find((m) => m.id === 'm-cloud')!;
+
+    expect(model.usable).toBe(false);
+    expect(model.unusableReason).toBe('no-enabled-connection');
+  });
+});
