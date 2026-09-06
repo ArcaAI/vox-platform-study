@@ -147,7 +147,7 @@ function extractDeclaredVariableNames(variables?: Record<string, unknown> | null
 }
 
 /** Coerce a caller-supplied or `default` string value to a declaration's `type` (§3.6). */
-function coercePromptVariableValue(type: PromptVariableType, value: unknown): unknown {
+export function coercePromptVariableValue(type: PromptVariableType, value: unknown): unknown {
   switch (type) {
     case 'number': {
       if (typeof value === 'number') return value;
@@ -161,7 +161,14 @@ function coercePromptVariableValue(type: PromptVariableType, value: unknown): un
       return value;
     }
     case 'date': {
-      const d = value instanceof Date ? value : new Date(String(value));
+      if (value instanceof Date) return value.toISOString();
+      const raw = String(value).trim();
+      // A calendar date stays a calendar date. Running it through
+      // `new Date(...).toISOString()` put `2026-09-06T00:00:00.000Z` — a
+      // midnight-UTC instant nobody entered, in the wrong day for half the
+      // planet — into a prompt that asked for a date.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      const d = new Date(raw);
       return Number.isNaN(d.getTime()) ? value : d.toISOString();
     }
     case 'json': {
