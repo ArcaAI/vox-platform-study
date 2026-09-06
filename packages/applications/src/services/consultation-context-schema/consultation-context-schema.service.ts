@@ -360,23 +360,23 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
     // another customer's. Reporting it as "found but forbidden" would both leak existence
     // and suggest a binding the runtime would never be able to honour.
     if (!entity || entity.tenantId !== tenantId) {
-      return { ok: false, failure: 'CONTEXT_SCHEMA_NOT_FOUND' };
+      return { outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' };
     }
 
     // No explicit pin ⇒ the schema's own. An UNPINNED schema is not servable, so it is a
     // missing VERSION rather than a missing schema: the reference itself was resolvable.
     const wanted = versionNumber ?? entity.pinnedVersionNumber ?? null;
     if (wanted === null) {
-      return { ok: false, failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
+      return { outcome: 'failed', failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
     }
 
     const version = await this.versionRepository.findBySchemaAndVersionNumber(entity.id, wanted).catch(() => null);
     if (!version) {
-      return { ok: false, failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
+      return { outcome: 'failed', failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
     }
 
     return {
-      ok: true,
+      outcome: 'resolved',
       schemaId: entity.id,
       versionNumber: version.versionNumber,
       versionId: version.id,

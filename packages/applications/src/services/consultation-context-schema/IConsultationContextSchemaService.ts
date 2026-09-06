@@ -84,10 +84,14 @@ export interface ValidatedContextPayload {
  * (`CONTEXT_SCHEMA_NOT_FOUND` / `CONTEXT_SCHEMA_VERSION_NOT_FOUND`); for the console it is
  * an empty variable picker. Throwing would collapse both into one 404 the gate could not
  * name.
+ *
+ * The discriminant is a STRING, not an `ok: boolean`: this package compiles without
+ * `strictNullChecks`, and TypeScript does not narrow a union on a boolean-literal discriminant
+ * in that mode — every consumer would have to cast. A string discriminant narrows either way.
  */
 export type ContextSchemaReferenceResolution =
   | {
-      ok: true;
+      outcome: 'resolved';
       schemaId: string;
       versionNumber: number;
       /** The immutable version row — what gets frozen into a compiled artifact. */
@@ -95,7 +99,7 @@ export type ContextSchemaReferenceResolution =
       /** The DERIVED payload schema (`payloadSchemaFromDefinition`) — the `context.*` namespace. */
       payloadSchema: Record<string, unknown>;
     }
-  | { ok: false; failure: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
+  | { outcome: 'failed'; failure: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
 
 export const IConsultationContextSchemaService = Symbol('IConsultationContextSchemaService');
 
