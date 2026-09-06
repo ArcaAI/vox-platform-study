@@ -85,6 +85,46 @@ export class AgentRepository extends Repository<AgentEntity, Agent> {
     return [...bySlug.values()].map((row) => mapper.toDomainEntity(row));
   }
 
+  /**
+   * TASK-890 §3.4 (OD-M) — the REFERENCE LIBRARY: the SYSTEM tenant's live published agents,
+   * read on the UNSCOPED base client with an EXPLICIT `tenantId` pin.
+   *
+   * `Agent` LEAVES `SYSTEM_SHARED_READ_MODELS` (§1.5: an agent is CONTENT, and content is
+   * cloned rather than shared), so there is no read widening left to lean on and none is
+   * wanted: after the flip a tenant sees its OWN agents and nothing else. The reference set is
+   * still real — it is what a tenant is provisioned FROM — so exactly one family of reads is
+   * allowed to see two tenants, and it says so in its own `where` rather than through an
+   * extension. Line for line the `WorkflowDefinitionRepository.findCloneSource` /
+   * `findSystemTemplates` pattern, for the same reason it exists there.
+   *
+   * `client` is REQUIRED and is the unscoped base client — the scoped one would merge the
+   * caller's tenant into this `where` and answer nothing.
+   *
+   * Consumed ONLY by `TenantReferenceSetService` (provisioning / re-sync) and by
+   * `AgentService.resolveVisibleSource`'s platform-library branch. NEVER by a runtime resolver:
+   * a runtime miss is `AGENT_NOT_ASSIGNED`, never a SYSTEM read.
+   */
+  async findSystemReferences(client: unknown, task?: AgentTask): Promise<AgentEntity[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors WorkflowDefinitionRepository.findSystemTemplates; the caller-supplied client's delegate shape isn't exposed through DomainModel typings.
+    const model: any = (client as Record<string, any>)[this._modelName];
+    const rows: Agent[] = await model.findMany({
+      where: { ...(task ? { task } : {}), tenantId: SYSTEM_TENANT_ID, ...AgentRepository.PUBLISHED_AND_ACTIVE },
+      orderBy: [{ slug: 'asc' }],
+    });
+    const mapper = AgentEntityMapper.getInstance();
+    return (rows ?? []).map((row) => mapper.toDomainEntity(row));
+  }
+
+  /** ONE reference-library row by slug — the same predicate {@link findSystemReferences} lists, so what is listed can always be cloned. */
+  async findSystemReferenceBySlug(slug: string, client: unknown): Promise<AgentEntity | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see findSystemReferences.
+    const model: any = (client as Record<string, any>)[this._modelName];
+    const row: Agent | null = await model.findFirst({
+      where: { slug, tenantId: SYSTEM_TENANT_ID, ...AgentRepository.PUBLISHED_AND_ACTIVE },
+    });
+    return row ? AgentEntityMapper.getInstance().toDomainEntity(row) : null;
+  }
+
   /** A row by id, visible when it belongs to the caller or to SYSTEM; `null` otherwise. */
   async findByIdVisible(id: string, tenantId: string): Promise<AgentEntity | null> {
     const rows = await this.findManyTolerant({ where: { id } });
