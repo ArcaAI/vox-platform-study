@@ -23,6 +23,13 @@ import { ServiceUnavailableException } from '@nestjs/common';
 import { PromptResolutionService, SYSTEM_DEFAULTS } from '../prompt-resolution.service';
 import type { DepartmentEntity } from '@arcaai/domains';
 
+/**
+ * TASK-890 §3.4 (OD-M) — a `SYSTEM_DEFAULTS.*` pointer resolves the TENANT's clone of that
+ * platform template, so a resolution now NAMES its tenant. Production always did (a resolution
+ * is consultation-scoped); these fixtures did not, and a tenantless call can have no clone.
+ */
+const TENANT = '50000000-0000-0000-0000-000000000000';
+
 // ============================================================================
 // Mocks
 // ============================================================================
@@ -36,6 +43,12 @@ const mockPromptTemplateRepository = {
   // The tenant pre-summary tier queries by (tenant, scope, status,
   // departmentId, tag). Default: the tenant has no pre-summary template.
   findAll: vi.fn(),
+  // TASK-890 §3.4 (OD-M) — a `SYSTEM_DEFAULTS.*` pointer resolves the TENANT's clone of that
+  // platform template. This fixture models a PROVISIONED tenant, where the clone stands in for
+  // the pointer, so every chain assertion below is unchanged; the unprovisioned case
+  // (`PROMPT_DEFAULT_NOT_PROVISIONED`) is pinned in
+  // `prompt-resolution.reference-set.task890.test.ts`.
+  findByTenantAndSourceTemplateId: vi.fn(async (_tenantId: string, sourceTemplateId: string) => ({ id: sourceTemplateId })),
 };
 
 // Tier-1a (workflow node config). Default: no governing definition →
@@ -131,7 +144,7 @@ describe('PromptResolutionService', () => {
 
   describe('resolve — system defaults', () => {
     it('should resolve with system defaults when no department provided', async () => {
-      const result = await service.resolve({});
+      const result = await service.resolve({ tenantId: TENANT });
 
       expect(result.template).toBe(SYSTEM_DEFAULTS.template);
       expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
@@ -144,7 +157,7 @@ describe('PromptResolutionService', () => {
     });
 
     it('should NOT have dnaStyleId in resolved config', async () => {
-      const result = await service.resolve({});
+      const result = await service.resolve({ tenantId: TENANT });
 
       expect(result).not.toHaveProperty('dnaStyleId');
     });
@@ -300,6 +313,7 @@ describe('PromptResolutionService', () => {
       mockDepartmentRepository.findById.mockRejectedValue(new Error('Database connection failed'));
 
       const result = await service.resolve({
+        tenantId: TENANT,
         departmentId: 'dept-001',
       });
 
@@ -375,7 +389,7 @@ describe('PromptResolutionService', () => {
     });
 
     it('performs no preferred-tier lookup when no preferred id is supplied (default tier still resolves governed content)', async () => {
-      const result = await service.resolve({});
+      const result = await service.resolve({ tenantId: TENANT });
 
       // No preferred id ⇒ the preferred-tier lookup never runs. The default
       // tier now resolves its governed CONTENT snapshot (F-01/F-02), so the
@@ -390,7 +404,7 @@ describe('PromptResolutionService', () => {
     it('falls through to default when the preferred lookup throws', async () => {
       mockPromptTemplateRepository.findById.mockRejectedValue(new Error('db-down'));
 
-      const result = await service.resolve({ preferredPromptTemplateId: 'preferred-tpl' });
+      const result = await service.resolve({ tenantId: TENANT, preferredPromptTemplateId: 'preferred-tpl' });
 
       expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
       expect(result.resolvedFrom).toBe('default');
@@ -425,13 +439,13 @@ describe('PromptResolutionService', () => {
         createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'dept-prompt' }),
       );
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.resolvedFrom).toBe('department');
     });
 
     it('reports "default" when neither preferred nor department resolve (Tier-2)', async () => {
-      const result = await service.resolve({});
+      const result = await service.resolve({ tenantId: TENANT });
 
       expect(result.resolvedFrom).toBe('default');
     });
@@ -446,7 +460,7 @@ describe('PromptResolutionService', () => {
       // The department template is DRAFT (not yet approved) → must be skipped.
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'DRAFT' }));
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
       expect(result.resolutionTrace.usedDefaults).toContain('promptId');
@@ -456,7 +470,7 @@ describe('PromptResolutionService', () => {
       mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ newPatientPromptId: 'published-dept-tpl' }));
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'PUBLISHED' }));
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
     });
@@ -465,7 +479,7 @@ describe('PromptResolutionService', () => {
       mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ newPatientPromptId: 'approved-dept-tpl' }));
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.promptId).toBe('approved-dept-tpl');
     });
@@ -495,7 +509,7 @@ describe('PromptResolutionService', () => {
     it('regression: with NO governing definition the output is byte-identical to the legacy chain', async () => {
       mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ newPatientPromptId: 'dept-prompt' }));
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.promptId).toBe('dept-prompt');
       expect(result.resolvedFrom).toBe('department');
@@ -509,7 +523,7 @@ describe('PromptResolutionService', () => {
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
       mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 3, content: 'PINNED v3 body' });
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.resolvedFrom).toBe('agent');
       expect(result.promptId).toBe('agent-tpl');
@@ -526,7 +540,7 @@ describe('PromptResolutionService', () => {
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
       mockPromptVersionRepository.findLatestVersion.mockResolvedValue({ versionNumber: 7, content: 'LATEST approved body' });
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.resolvedFrom).toBe('agent');
       expect(result.content).toBe('LATEST approved body');
@@ -542,7 +556,7 @@ describe('PromptResolutionService', () => {
       mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 4, content: 'APPROVED v4 body' });
       mockPromptVersionRepository.findLatestVersion.mockResolvedValue({ versionNumber: 6, content: 'UNAPPROVED latest v6' });
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.resolvedFrom).toBe('agent');
       // The eval-gated approved snapshot wins over the newer unapproved edit.
@@ -560,7 +574,7 @@ describe('PromptResolutionService', () => {
         id === 'agent-tpl' ? { id, status: 'DRAFT' } : { id, status: 'APPROVED' },
       );
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.resolvedFrom).toBe('department');
       expect(result.promptId).toBe('dept-prompt');
@@ -588,7 +602,7 @@ describe('PromptResolutionService', () => {
       }));
       mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 4, content: 'APPROVED v4 body' });
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.resolvedFrom).toBe('department');
       expect(result.promptId).toBe('dept-tpl');
@@ -608,7 +622,7 @@ describe('PromptResolutionService', () => {
         currentVersionNumber: 2,
       }));
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.content).toBe('LEGACY content column');
       expect(result.resolvedVersionNumber).toBe(2);
@@ -802,7 +816,7 @@ describe('PromptResolutionService', () => {
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
       mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 3, content: 'PINNED v3 body' });
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result).toEqual({
         template: SYSTEM_DEFAULTS.template,
@@ -848,7 +862,7 @@ describe('PromptResolutionService', () => {
       // compat guard dead code.
       mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ defaultSummaryTemplate: 'SOAP' }));
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.template).toBe('SOAP');
       expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
@@ -859,7 +873,7 @@ describe('PromptResolutionService', () => {
       mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'draft-tpl' }));
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'DRAFT' }));
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+      const result = await service.resolve({ tenantId: TENANT, departmentId: 'dept-001', promptType: 'new-patient' });
 
       expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
       expect(result.resolvedFrom).toBe('default');

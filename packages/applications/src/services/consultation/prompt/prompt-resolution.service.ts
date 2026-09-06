@@ -792,12 +792,22 @@ export class PromptResolutionService {
       return { promptId: departmentPromptId, tier: 'department', ...(await this.governedSnapshot(departmentPromptId)) };
     }
 
-    // Tier-2 — SYSTEM default. This is reported as `'default'` EVEN WHEN the
+    // Tier-2 — the platform default. This is reported as `'default'` EVEN WHEN the
     // department supplied the summary template: the tier names which template
     // is actually being served, so a consumer that special-cases "no
     // department-specific prompt" (the compat shim) can act on it.
+    //
+    // TASK-890 §3.4 (OD-M) — `SYSTEM_DEFAULTS.promptId` is a POINTER at a platform row, and the
+    // row itself is no longer readable from inside a tenant: a prompt is CONTENT, so every
+    // tenant carries its OWN clone of the platform default, matched on `sourceTemplateId`. A
+    // tenant that has none is not silently served the platform's row — it gets a named,
+    // fail-closed error naming the pointer and the remedy.
+    const defaultPromptId = (await this.tenantCloneOfSystemDefault(
+      department?.tenantId ?? params.tenantId ?? null,
+      SYSTEM_DEFAULTS.promptId,
+    )) as string;
     trace.usedDefaults.push('promptId');
-    return { promptId: SYSTEM_DEFAULTS.promptId, tier: 'default', ...(await this.governedSnapshot(SYSTEM_DEFAULTS.promptId)) };
+    return { promptId: defaultPromptId, tier: 'default', ...(await this.governedSnapshot(defaultPromptId)) };
   }
 
   /**
@@ -922,9 +932,13 @@ export class PromptResolutionService {
     // it to the SYSTEM tenant and PromptTemplate/PromptVersion joined
     // SYSTEM_SHARED_READ_MODELS; before that, any tenant without its own row
     // fell straight through to the 503 below.
-    const systemDefaultId = variant === 'dept-free' ? SYSTEM_DEFAULTS.deptFreePreSummaryPromptId : SYSTEM_DEFAULTS.preSummaryPromptId;
+    // TASK-890 §3.4 (OD-M) — the tenant's own CLONE of the platform pre-summary default. No
+    // clone ⇒ no tier-2, and the chain falls to its existing fail-closed 503 below rather than
+    // reading the platform's row.
+    const systemPointer = variant === 'dept-free' ? SYSTEM_DEFAULTS.deptFreePreSummaryPromptId : SYSTEM_DEFAULTS.preSummaryPromptId;
+    const systemDefaultId = await this.tenantCloneOfSystemDefault(tenantId, systemPointer, { failClosed: false });
 
-    if (await this.isApprovedTemplate(systemDefaultId)) {
+    if (systemDefaultId && (await this.isApprovedTemplate(systemDefaultId))) {
       trace.usedDefaults.push('promptId');
       return {
         promptId: systemDefaultId,
@@ -1004,11 +1018,16 @@ export class PromptResolutionService {
 
     // Tier 2 — the seeded SYSTEM live default (readable cross-tenant since the
     // B-12 fold-in put PromptTemplate/PromptVersion in SYSTEM_SHARED_READ_MODELS).
-    if (await this.isApprovedTemplate(SYSTEM_DEFAULTS.livePromptId)) {
-      const governed = await this.governedSnapshot(SYSTEM_DEFAULTS.livePromptId);
+    // TASK-890 §3.4 (OD-M) — the tenant's own clone of the seeded live default. Absent ⇒ this
+    // tier is simply not there, and tier 3 below fails OPEN to the in-code constants exactly as
+    // it did for an unseeded deployment. That fail-open is deliberate and unchanged: the
+    // constants are byte-identical to the seeded body, so the live loop keeps working.
+    const liveDefaultId = await this.tenantCloneOfSystemDefault(tenantId, SYSTEM_DEFAULTS.livePromptId, { failClosed: false });
+    if (liveDefaultId && (await this.isApprovedTemplate(liveDefaultId))) {
+      const governed = await this.governedSnapshot(liveDefaultId);
       if (governed.content !== undefined) {
         trace.usedDefaults.push('promptId');
-        return { promptId: SYSTEM_DEFAULTS.livePromptId, tier: 'default', ...governed };
+        return { promptId: liveDefaultId, tier: 'default', ...governed };
       }
     }
 
@@ -1095,6 +1114,45 @@ export class PromptResolutionService {
     }
 
     return candidates[0].id ?? null;
+  }
+
+  /**
+   * TASK-890 §3.4 (OD-M) — a `SYSTEM_DEFAULTS.*` POINTER resolved to the TENANT's own clone.
+   *
+   * Before this ticket these ids were read directly, and they resolved only because
+   * `PromptTemplate` and `PromptVersion` were `SYSTEM_SHARED_READ_MODELS` members — a by-id
+   * widening that served the PLATFORM's row to every tenant. A prompt is CONTENT (§1.5), so the
+   * platform library is a reference set: each tenant is provisioned with its own copy, stamped
+   * `sourceTemplateId`, and that copy is what a "system default" means at runtime. The tenant
+   * can then edit its own default, which was never possible while the row was shared.
+   *
+   * `failClosed: true` (the default) raises `PROMPT_DEFAULT_NOT_PROVISIONED` naming the pointer,
+   * the tenant and the remedy — used where the chain has nothing below it. `failClosed: false`
+   * answers `null` for a chain that has its own lower tier (a fail-closed 503 of its own, or a
+   * deliberate fail-open to in-code constants), so this method never converts one chain's
+   * designed behaviour into another's.
+   */
+  private async tenantCloneOfSystemDefault(
+    tenantId: string | null,
+    systemTemplateId: string,
+    options: { failClosed?: boolean } = {},
+  ): Promise<string | null> {
+    const failClosed = options.failClosed ?? true;
+    const clone = tenantId ? await this.promptTemplateRepository.findByTenantAndSourceTemplateId(tenantId, systemTemplateId) : null;
+    if (clone) return clone.id;
+    if (!failClosed) return null;
+    this.logger.error({
+      message: 'PROMPT_DEFAULT_NOT_PROVISIONED — this tenant has no clone of a platform default prompt',
+      tenantId,
+      sourceTemplateId: systemTemplateId,
+    });
+    throw new ServiceUnavailableException({
+      code: 'PROMPT_DEFAULT_NOT_PROVISIONED',
+      message:
+        'This tenant has not been provisioned with the platform default prompt this request falls back to. Re-sync its reference set (POST /admin/tenants/{id}/reference-set/sync).',
+      sourceTemplateId: systemTemplateId,
+      tenantId,
+    });
   }
 
   /**

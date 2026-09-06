@@ -17,10 +17,7 @@
  *     marker, so a multi-visit episode cannot grow the prompt without limit.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  PRIOR_VISIT_SUMMARY_MAX_CHARS,
-  PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER,
-} from '../../harness/prior-visit-summary';
+import { PRIOR_VISIT_SUMMARY_MAX_CHARS, PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER } from '../../harness/prior-visit-summary';
 
 const mockPromptResolutionService = { resolve: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn() };
@@ -91,7 +88,9 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
   });
 
   it('substitutes {{context.prior_visit_summary}} when the template consumes it, without appending a duplicate block', async () => {
-    mockPromptTemplateRepository.findById.mockResolvedValue(createTemplate('Summarize for {{context.conversation_language}}. Prior: {{context.prior_visit_summary}}.'));
+    mockPromptTemplateRepository.findById.mockResolvedValue(
+      createTemplate('Summarize for {{context.conversation_language}}. Prior: {{context.prior_visit_summary}}.'),
+    );
     const service = await buildService();
 
     const { userPrompt } = await assemble(service as never, { priorVisitSummary: 'PRIOR-NOTE-MARKER stable' });

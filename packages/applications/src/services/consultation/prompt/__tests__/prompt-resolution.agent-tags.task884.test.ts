@@ -15,7 +15,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PromptResolutionService, SYSTEM_DEFAULTS } from '../prompt-resolution.service';
 
 const mockDepartmentRepository = { findById: vi.fn() };
-const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn() };
+// TASK-890 §3.4 (OD-M) — a `SYSTEM_DEFAULTS.*` pointer resolves the TENANT's clone of that
+// platform template, matched on `sourceTemplateId`. These fixtures model a PROVISIONED tenant,
+// where the clone stands in for the pointer, so the chain assertions below are unchanged; the
+// unprovisioned case (`PROMPT_DEFAULT_NOT_PROVISIONED`) is pinned in
+// `prompt-resolution.reference-set.task890.test.ts`.
+const provisionedClone = async (_tenantId: string, sourceTemplateId: string) => ({ id: sourceTemplateId });
+const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn(), findByTenantAndSourceTemplateId: vi.fn(provisionedClone) };
 const mockPromptVersionRepository = { findByVersionNumber: vi.fn(), findLatestVersion: vi.fn() };
 const mockWorkflowAssignments = { resolve: vi.fn(async () => null) };
 const mockWorkflowDefinitionRepository = { findPublishedBySlug: vi.fn(async () => null) };
@@ -46,9 +52,19 @@ function approvedTemplate(id: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockDepartmentRepository.findById.mockResolvedValue({ id: DEPT, tenantId: TENANT, defaultSummaryTemplate: null, promptConfig: null, newPatientPromptId: null, revisitPromptId: null });
+  mockDepartmentRepository.findById.mockResolvedValue({
+    id: DEPT,
+    tenantId: TENANT,
+    defaultSummaryTemplate: null,
+    promptConfig: null,
+    newPatientPromptId: null,
+    revisitPromptId: null,
+  });
   mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => approvedTemplate(id));
-  mockPromptVersionRepository.findByVersionNumber.mockImplementation(async (_t: string, _id: string, version: number) => ({ versionNumber: version, content: 'snapshot' }));
+  mockPromptVersionRepository.findByVersionNumber.mockImplementation(async (_t: string, _id: string, version: number) => ({
+    versionNumber: version,
+    content: 'snapshot',
+  }));
   mockWorkflowAssignments.resolve.mockResolvedValue(null);
   mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(null);
   mockAgentAssignments.resolve.mockResolvedValue({ agentSlug: null, source: 'platform-default', selector: [] });
@@ -103,7 +119,12 @@ describe('the tag-selected agent tier', () => {
     mockAgentAssignments.resolve.mockResolvedValue({ agentSlug: 'rheum-notes', source: 'tenant', selector: ['specialty:rheumatology'] });
     mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue({ id: 'a1', versionNumber: 1, instruction: { systemPrompt: 'inline' } });
 
-    const result = await buildService().resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'new-patient', agentSelectorTags: ['specialty:rheumatology'] });
+    const result = await buildService().resolve({
+      tenantId: TENANT,
+      departmentId: DEPT,
+      promptType: 'new-patient',
+      agentSelectorTags: ['specialty:rheumatology'],
+    });
     expect(result.resolvedFrom).toBe('default');
   });
 
@@ -111,19 +132,33 @@ describe('the tag-selected agent tier', () => {
   // resolution falls through to the approved default, never served because an agent named it.
   it('skips a template that is not APPROVED', async () => {
     mockAgentAssignments.resolve.mockResolvedValue({ agentSlug: 'rheum-notes', source: 'tenant', selector: ['specialty:rheumatology'] });
-    mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue({ id: 'a1', versionNumber: 1, instruction: { promptTemplateId: RHEUM_TEMPLATE } });
+    mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue({
+      id: 'a1',
+      versionNumber: 1,
+      instruction: { promptTemplateId: RHEUM_TEMPLATE },
+    });
     mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
       id === RHEUM_TEMPLATE ? { id, status: 'DRAFT', approvedVersionNumber: null, currentVersionNumber: 1, content: 'x' } : approvedTemplate(id),
     );
 
-    const result = await buildService().resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'new-patient', agentSelectorTags: ['specialty:rheumatology'] });
+    const result = await buildService().resolve({
+      tenantId: TENANT,
+      departmentId: DEPT,
+      promptType: 'new-patient',
+      agentSelectorTags: ['specialty:rheumatology'],
+    });
     expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
     expect(result.resolvedFrom).toBe('default');
   });
 
   it('degrades to the ordinary chain when the cascade THROWS — a selector never takes out a generation call', async () => {
     mockAgentAssignments.resolve.mockRejectedValue(new Error('database is on fire'));
-    const result = await buildService().resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'new-patient', agentSelectorTags: ['specialty:rheumatology'] });
+    const result = await buildService().resolve({
+      tenantId: TENANT,
+      departmentId: DEPT,
+      promptType: 'new-patient',
+      agentSelectorTags: ['specialty:rheumatology'],
+    });
     expect(result.resolvedFrom).toBe('default');
   });
 
@@ -133,16 +168,30 @@ describe('the tag-selected agent tier', () => {
       mockPromptTemplateRepository as never,
       mockPromptVersionRepository as never,
     );
-    const result = await unwired.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'new-patient', agentSelectorTags: ['specialty:rheumatology'] });
+    const result = await unwired.resolve({
+      tenantId: TENANT,
+      departmentId: DEPT,
+      promptType: 'new-patient',
+      agentSelectorTags: ['specialty:rheumatology'],
+    });
     expect(result.resolvedFrom).toBe('default');
   });
 
   it('applies to the LIVE and PRE-SUMMARY chains too — the tier sits above all three', async () => {
     mockAgentAssignments.resolve.mockResolvedValue({ agentSlug: 'rheum-notes', source: 'tenant', selector: ['specialty:rheumatology'] });
-    mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue({ id: 'agent-rheum', versionNumber: 1, instruction: { promptTemplateId: RHEUM_TEMPLATE } });
+    mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue({
+      id: 'agent-rheum',
+      versionNumber: 1,
+      instruction: { promptTemplateId: RHEUM_TEMPLATE },
+    });
 
     for (const promptType of ['live', 'pre-summary'] as const) {
-      const result = await buildService().resolve({ tenantId: TENANT, departmentId: DEPT, promptType, agentSelectorTags: ['specialty:rheumatology'] });
+      const result = await buildService().resolve({
+        tenantId: TENANT,
+        departmentId: DEPT,
+        promptType,
+        agentSelectorTags: ['specialty:rheumatology'],
+      });
       expect(result.promptId, promptType).toBe(RHEUM_TEMPLATE);
       expect(result.resolvedFrom, promptType).toBe('agent');
     }

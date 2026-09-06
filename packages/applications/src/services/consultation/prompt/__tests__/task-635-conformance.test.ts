@@ -101,7 +101,13 @@ describe('R-T1 / R-T2 — the prompt-template test route accepts the full test-b
 
 describe("R-C3 (ii) flip — preSummaryVariant: 'dept-free' resolves the seeded SYSTEM fork (D2)", () => {
   const mockDepartmentRepository = { findById: vi.fn() };
-  const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn() };
+  // TASK-890 §3.4 (OD-M) — a `SYSTEM_DEFAULTS.*` pointer resolves the TENANT's clone of that
+  // platform template, matched on `sourceTemplateId`. These fixtures model a PROVISIONED tenant,
+  // where the clone stands in for the pointer, so the chain assertions below are unchanged; the
+  // unprovisioned case (`PROMPT_DEFAULT_NOT_PROVISIONED`) is pinned in
+  // `prompt-resolution.reference-set.task890.test.ts`.
+  const provisionedClone = async (_tenantId: string, sourceTemplateId: string) => ({ id: sourceTemplateId });
+  const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn(), findByTenantAndSourceTemplateId: vi.fn(provisionedClone) };
   const mockPromptVersionRepository = { findByVersionNumber: vi.fn(), findLatestVersion: vi.fn() };
 
   // A stand-in for the D2 fork's actual seeded body — this file asserts the
@@ -147,7 +153,7 @@ describe("R-C3 (ii) flip — preSummaryVariant: 'dept-free' resolves the seeded 
     expect(result.content).not.toContain('{visit_type}');
   });
 
-  it("defaults to the v1 SYSTEM default (…040) when preSummaryVariant is omitted (RF-1 default)", async () => {
+  it('defaults to the v1 SYSTEM default (…040) when preSummaryVariant is omitted (RF-1 default)', async () => {
     const service = makeService();
 
     const result = await service.resolve({ tenantId: 'tenant-no-own-row', promptType: 'pre-summary' });
