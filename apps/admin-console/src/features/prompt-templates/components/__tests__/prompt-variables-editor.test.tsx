@@ -169,9 +169,17 @@ describe('PromptVariablesEditor — edit form', () => {
 });
 
 describe('PromptVariablesEditor — accessibility', () => {
-  it('0 axe violations with a declared variable on screen', async () => {
+  it('0 axe violations in the light theme, with a declared variable on screen', async () => {
     const { container } = renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('0 axe violations in the dark theme, with a declared variable on screen', async () => {
+    document.documentElement.classList.add('dark');
+    const { container } = renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
+    expect(await axe(container)).toHaveNoViolations();
+    document.documentElement.classList.remove('dark');
   });
 });
