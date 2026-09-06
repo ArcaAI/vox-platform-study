@@ -10,10 +10,17 @@ import type { UsageOperation } from './vocabulary';
  * ============================================================================
  * WHY THIS IS SHARED RATHER THAN COPIED
  * ============================================================================
- * Four production paths relay an `apps/text` `/generate` stream to a caller and
+ * TWO production paths relay an `apps/text` `/generate` stream to a caller and
  * must bill what crossed the wire: the playground proxy (which owned this logic
- * first, `text-proxy.controller.ts`), the agent invocation route, the
- * prompt-template test bench and the draft-agent test. The scanning is subtle
+ * first, `text-proxy.controller.ts`) and the agent invocation route.
+ *
+ * The two BENCH paths — the prompt-template test bench and the draft-agent test —
+ * were listed here as consumers and are not: they hand the browser the stream
+ * URL and then bill from a SERVER-SIDE `GET /tasks/{id}` read-back
+ * (`recordPromptTestUsage`, `AgentDraftTestService#record`), which is why the
+ * CRLF bug below and their own metering gap (J3-4) had to be fixed separately.
+ * Corrected here because a comment that overstates its reach is how a fix gets
+ * believed to cover a path it never touched. The scanning is subtle
  * in exactly the ways that fail QUIETLY — a frame split across a chunk
  * boundary, a JSON.parse thrown inside a `data` handler that kills the relay, a
  * carry-over buffer that grows with the length of a generation, a teardown that
@@ -26,9 +33,11 @@ import type { UsageOperation } from './vocabulary';
  *  1. **Forward first, observe from a side copy.** The collector never touches
  *     the bytes going to the client; a caller writes the chunk out and hands
  *     the same buffer here.
- *  2. **Only complete `\n\n`-delimited frames are parsed, and only the ones
- *     that mention `"usage"`.** A token chunk is never JSON-parsed, and frame
- *     content is never logged — it is generated clinical text.
+ *  2. **Only complete blank-line-delimited frames are parsed, and only the ones
+ *     that mention `"usage"`.** `\r\n` is normalised to `\n` on ingest, because
+ *     `apps/text` frames with CRLF and a scan for `\n\n` alone silently meters
+ *     nothing. A token chunk is never JSON-parsed, and frame content is never
+ *     logged — it is generated clinical text.
  *  3. **{@link take} answers once.** Teardown fires from `end`, `error` and the
  *     client's `close`; emission is idempotent at the ledger (the key is
  *     derived from the TEXT task id) but emitting once keeps the outbox from
@@ -76,7 +85,25 @@ export class LlmStreamUsageCollector {
    * handler, where a throw ends the relay the caller is being paid to deliver.
    */
   observe(chunk: Buffer | string): void {
-    this.tail += typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
+    // CRLF → LF ON INGEST, on the CONCATENATED tail (J3-3).
+    //
+    // `apps/text` streams through `sse_starlette`, which frames with `\r\n`:
+    // `id: …\r\nevent: done\r\ndata: {…}\r\n\r\n`. That terminator holds no two
+    // consecutive `\n`, so the boundary scan below matched NOTHING — every frame
+    // of every SSE relay went unparsed, the carry-over grew past the bound and was
+    // discarded, and `take()` answered `null` without a word. The same agent
+    // invocation billed two ledger rows blocking and zero streaming.
+    //
+    // Normalising the WHOLE tail rather than the incoming chunk is deliberate: a
+    // `\r\n` pair can straddle a chunk boundary, and a per-chunk replace would
+    // leave that pair intact forever. Re-normalising already-normalised text is a
+    // no-op, and the tail is bounded below.
+    //
+    // This never touches the bytes the caller forwards — the collector only ever
+    // sees a side copy (rule 1 above), so the client still receives the wire
+    // exactly as `apps/text` wrote it.
+    const text = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
+    this.tail = (this.tail + text).replace(/\r\n/g, '\n');
     let boundary = this.tail.indexOf('\n\n');
     while (boundary !== -1) {
       const frame = this.tail.slice(0, boundary);
