@@ -12,7 +12,14 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { USAGE_ATTRIBUTE_KEYS, validateUsageAttributes } from '../usage-attributes';
+import {
+  GUARDRAIL_DISPOSITIONS,
+  USAGE_ATTRIBUTE_KEYS,
+  USAGE_TRIGGERS,
+  validateUsageAttributes,
+  withUsageAttributes,
+  withUsageTrigger,
+} from '../usage-attributes';
 
 describe('validateUsageAttributes — the allow-list', () => {
   it('accepts the declared keys with enum-ish / id / scalar values', () => {
@@ -28,6 +35,8 @@ describe('validateUsageAttributes — the allow-list', () => {
         cacheTtl: 'ephemeral_5m',
         endpointKind: 'anthropic.messages',
         contextBand: '128k+',
+        trigger: 'AGENT_INVOCATION',
+        guardrail: 'opted_out',
       }),
     ).toEqual([]);
   });
@@ -101,12 +110,95 @@ describe('validateUsageAttributes — the allow-list', () => {
         'contextBand',
         'endpointKind',
         'engine',
+        'guardrail',
         'interrupted',
         'languageMode',
         'pipelineId',
         'serviceTier',
         'streamKind',
+        'trigger',
       ].sort(),
     );
+  });
+});
+
+/**
+ * TASK-890 L11 (OD-E) — `trigger` is the metering-parity dimension: which
+ * PRODUCT ACTIVITY caused this inference. It answers "the tenant's bill jumped
+ * — was that clinicians consulting, or one engineer looping a prompt test?",
+ * which no other column on the row can.
+ */
+describe('trigger — the activity dimension (TASK-890 OD-E)', () => {
+  it('accepts every declared trigger value against the allow-list', () => {
+    for (const trigger of USAGE_TRIGGERS) {
+      expect(validateUsageAttributes({ trigger })).toEqual([]);
+    }
+  });
+
+  it('freezes the vocabulary the four lanes stamp', () => {
+    expect([...USAGE_TRIGGERS].sort()).toEqual(['AGENT_INVOCATION', 'AGENT_TEST', 'CONSULTATION', 'PROMPT_TEST', 'WORKFLOW_RUN'].sort());
+  });
+
+  it('rejects free text in `trigger` — it is a dimension, never a description', () => {
+    expect(validateUsageAttributes({ trigger: 'x y' })).toHaveLength(1);
+    expect(validateUsageAttributes({ trigger: 'x y' })[0]).toContain('trigger');
+  });
+
+  it('rejects a non-string `trigger`', () => {
+    expect(validateUsageAttributes({ trigger: 3 })).toHaveLength(1);
+  });
+});
+
+/** The `guardrail` disposition key L14 stamps (round 3, OD-R). L11 only declares it. */
+describe('guardrail — the screening disposition (TASK-890 OD-R)', () => {
+  it('accepts every declared disposition', () => {
+    for (const disposition of GUARDRAIL_DISPOSITIONS) {
+      expect(validateUsageAttributes({ guardrail: disposition })).toEqual([]);
+    }
+  });
+
+  it('freezes the three-value vocabulary', () => {
+    expect([...GUARDRAIL_DISPOSITIONS].sort()).toEqual(['opted_out', 'platform_off', 'screened'].sort());
+  });
+});
+
+describe('withUsageTrigger — stamping an already-built batch', () => {
+  const batch = {
+    common: { tenantId: 't1', idempotencyKey: 'k', attributesJson: { interrupted: false } },
+    units: [],
+  } as never;
+
+  it('adds the trigger without disturbing the attributes the builder already set', () => {
+    const stamped = withUsageTrigger(batch, 'PROMPT_TEST');
+    expect(stamped.common.attributesJson).toEqual({ interrupted: false, trigger: 'PROMPT_TEST' });
+  });
+
+  it('does not mutate the input batch (a caller may reuse it)', () => {
+    withUsageTrigger(batch, 'PROMPT_TEST');
+    expect((batch as { common: { attributesJson: unknown } }).common.attributesJson).toEqual({ interrupted: false });
+  });
+
+  it('passes a null batch through — "nothing consumed" stays "no rows"', () => {
+    expect(withUsageTrigger(null, 'CONSULTATION')).toBeNull();
+  });
+
+  it('creates the attribute bag when the builder produced none', () => {
+    const bare = { common: { tenantId: 't1', idempotencyKey: 'k' }, units: [] } as never;
+    expect(withUsageTrigger(bare, 'WORKFLOW_RUN').common.attributesJson).toEqual({ trigger: 'WORKFLOW_RUN' });
+  });
+});
+
+describe('withUsageAttributes — the general form L14 stamps `guardrail` through', () => {
+  it('merges without disturbing what the builder set', () => {
+    const batch = { common: { tenantId: 't1', attributesJson: { interrupted: true, trigger: 'CONSULTATION' } }, units: [] } as never;
+    expect(withUsageAttributes(batch, { guardrail: 'opted_out' }).common.attributesJson).toEqual({
+      interrupted: true,
+      trigger: 'CONSULTATION',
+      guardrail: 'opted_out',
+    });
+  });
+
+  it('passes a null batch through', () => {
+    expect(withUsageAttributes(null, { guardrail: 'screened' })).toBeNull();
   });
 });

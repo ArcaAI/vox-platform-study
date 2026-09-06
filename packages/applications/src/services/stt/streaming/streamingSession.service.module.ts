@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '../../baseServices/_meta/config';
+import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { VoiceProfileServiceModule } from '../../user/voiceProfile/voiceProfile.service.module';
 import { StreamingSessionService } from './streamingSession.service';
@@ -17,6 +18,9 @@ import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
  * - ConfigModule: Access to STT_URL and Redis config
  * - UsageLedgerServiceModule: `IUsageLedgerService` for the
  *   `transcribe.stream` emission on session teardown.
+ * - EntitlementsServiceModule: `IEntitlementsService` for the TASK-890
+ *   `monthlySttSessionSeconds` check at session OPEN — the allowance was
+ *   recorded against and never enforced.
  *
  * Providers:
  * - StreamingSessionService: Session lifecycle via STT HTTP API
@@ -30,6 +34,7 @@ import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
     }),
     ConfigModule,
     UsageLedgerServiceModule,
+    EntitlementsServiceModule,
     // TASK-887 — `IVoiceProfileService.listForRuntime` supplies the enrolled profiles the
     // session pushes to apps/stt so diarization can label a matched speaker.
     VoiceProfileServiceModule,

@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
 import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
+import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { UsageLedgerServiceModule } from '../usageLedger';
 import { KnowledgeDocumentService } from './knowledge-document.service';
 import { KnowledgeIngestClient } from './knowledge-ingest.client';
@@ -21,7 +22,9 @@ import { IKnowledgeDocumentService } from './IKnowledgeDocumentService';
  * provides the tenant-scoped KnowledgeDocument/KnowledgeChunk repositories.
  * UsageLedgerServiceModule supplies IUsageLedgerService for the `embed`
  * usage-ledger emission in IngestKnowledgeDocumentProcessor (injected
- * @Optional so unit fixtures can still construct it without one).
+ * @Optional so unit fixtures can still construct it without one), and
+ * EntitlementsServiceModule the TASK-890 `monthlyEmbeddingTokens` check that
+ * gates the same call.
  *
  * `IKnowledgeDocumentService` is provided via `useExisting` (not `useClass`)
  * so the admin controller (apps/api) resolves the SAME instance the BullMQ
@@ -34,6 +37,7 @@ import { IKnowledgeDocumentService } from './IKnowledgeDocumentService';
     HttpModule,
     CoreDatabaseModule,
     UsageLedgerServiceModule,
+    EntitlementsServiceModule,
     BullModule.registerQueue({ name: JobQueue.IngestKnowledgeDocument }),
   ],
   providers: [

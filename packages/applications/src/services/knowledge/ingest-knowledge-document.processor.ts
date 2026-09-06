@@ -15,6 +15,7 @@ import { KnowledgeIngestClient, KnowledgeIngestResponse } from './knowledge-inge
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IUsageLedgerService, UsageIdempotencyKey } from '../usageLedger';
 
 /**
@@ -79,6 +80,10 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
     // existing positional fixtures keep their arity; absent ⇒ no emission
     // (fail-open — metering must never block institutional-RAG ingestion).
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // TASK-890 (§3.13) — `monthlyEmbeddingTokens` was recorded against and never
+    // enforced: a tenant could ingest a corpus of any size and meet the number
+    // afterwards. Optional + trailing like the two above; absent ⇒ ungated.
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super();
   }
@@ -111,6 +116,14 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
       }
       // Defense in depth against a stale payload whose tenant no longer matches.
       assertEqualTenants(document, { tenantId });
+
+      // TASK-890 — the embedding allowance, BEFORE the harness call: the
+      // embedding IS the cost, so refusing afterwards bills the work and then
+      // complains about it. Scoped to the JOB's tenant (a worker runs outside
+      // the request CLS and carries it on the payload). Kill-switch-gated
+      // inside; a block throws, and BullMQ's own retry/DLQ path takes it from
+      // there rather than silently completing an unbilled ingest.
+      await this.entitlements?.assertMeterQuota(tenantId, 'monthlyEmbeddingTokens');
 
       await job.updateProgress(30);
 
