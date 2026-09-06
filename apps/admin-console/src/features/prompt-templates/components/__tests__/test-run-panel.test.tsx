@@ -1,11 +1,12 @@
 /**
  * Test Bench extensions to `TestRunPanel`: provider/model
- * picker (fed by the `text-generations/providers` catalog via the shared
- * `useTextProviders` hook), the "Paste sample" / "Golden case" example-data
- * toggle (XOR payload), the dry-run switch (default ON), and the version
- * selector. Covers the POST :id/test request body the panel actually sends —
- * apps/api's DTO contract for the new fields (`provider`/`model`/`dryRun`/
- * `versionNumber`/`goldenCaseId`) is being added in parallel; this suite only
+ * picker (TASK-890 §3.7 — the tenant catalogue `admin/ai-models/catalogue` via
+ * the shared `useModelCatalogue` hook, BYO connections first then the single
+ * "Hope provider"), the "Paste sample" / "Golden case" example-data toggle
+ * (XOR payload), the dry-run switch (default ON), and the version selector.
+ * Covers the POST :id/test request body the panel actually sends — apps/api's
+ * DTO contract for the new fields (`modelId`/`dryRun`/`versionNumber`/
+ * `goldenCaseId`/`variables`) is being added in parallel; this suite only
  * asserts what the client sends, not server behavior.
  */
 
@@ -34,10 +35,43 @@ function template(overrides: Partial<PromptTemplate> = {}): PromptTemplate {
   };
 }
 
-const PROVIDERS = [
-  { name: 'ollama', models: [{ name: 'llama3', size: '8B' }], is_available: true, is_default: true, default_model: 'llama3' },
-  { name: 'azure', models: [{ name: 'gpt-4o' }], is_available: true, is_default: false, default_model: 'gpt-4o' },
-];
+// TASK-890 §3.7 — the tenant catalogue: BYO connections first, then the ONE "Hope provider".
+const CATALOGUE = {
+  providers: [
+    { id: 'byo:text:openai', group: 'byo', name: 'OpenAI', providerClass: 'cloud-byo', connectionId: 'conn-1', usable: true, reason: null, modelCount: 1 },
+    { id: 'hope', group: 'hope', name: 'Hope provider', providerClass: null, connectionId: null, usable: true, reason: null, modelCount: 1 },
+  ],
+  models: [
+    {
+      id: 'model-openai-gpt4o',
+      slug: 'openai-gpt-4o',
+      name: 'GPT-4o',
+      description: null,
+      taskType: 'TEXT_GENERATION',
+      providerId: 'byo:text:openai',
+      provider: 'openai',
+      providerClass: 'cloud-byo',
+      readiness: 'ready',
+      readinessCheckedAt: null,
+      readinessDetail: null,
+      usable: true,
+    },
+    {
+      id: 'model-lmstudio-medgemma',
+      slug: 'lm-studio-medgemma',
+      name: 'MedGemma 27B',
+      description: null,
+      taskType: 'TEXT_GENERATION',
+      providerId: 'hope',
+      provider: 'lm-studio',
+      providerClass: 'engine-served',
+      readiness: 'ready',
+      readinessCheckedAt: null,
+      readinessDetail: null,
+      usable: true,
+    },
+  ],
+};
 
 const GOLDEN_SETS = { items: [{ id: 'gs-1', name: 'GI consultations golden set' }], total: 1 };
 const GOLDEN_CASES = { items: [{ id: 'gc-1', goldenSetId: 'gs-1', label: 'Case A' }], total: 1 };
@@ -104,8 +138,8 @@ function defaultHandler(tpl: PromptTemplate, call: RecordedCall): Response | und
   if (call.method === 'GET' && path === '/api/hope/admin/departments') {
     return Response.json([]);
   }
-  if (call.method === 'GET' && path === '/api/hope/text-generations/providers') {
-    return Response.json(PROVIDERS);
+  if (call.method === 'GET' && path === '/api/hope/admin/ai-models/catalogue') {
+    return Response.json(CATALOGUE);
   }
   if (call.method === 'GET' && path === '/api/hope/admin/harness/golden-sets') {
     return Response.json(GOLDEN_SETS);
@@ -186,14 +220,14 @@ afterEach(() => {
 });
 
 describe('TestRunPanel', () => {
-  it('populates the provider select from the mocked catalog and omits provider/model on "Tenant default"', async () => {
+  it('populates the provider select from the tenant catalogue (BYO first, then Hope) and omits modelId on "Tenant default"', async () => {
     const calls = stubFetch((call) => defaultHandler(template(), call));
     renderWithProviders(<TestRunPanel template={template()} />);
 
     const providerTrigger = await screen.findByRole('combobox', { name: 'Provider' });
     fireEvent.pointerDown(providerTrigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
-    expect(await screen.findByRole('option', { name: 'ollama (default)' })).toBeDefined();
-    expect(await screen.findByRole('option', { name: 'azure' })).toBeDefined();
+    expect(await screen.findByRole('option', { name: 'OpenAI (BYO)' })).toBeDefined();
+    expect(await screen.findByRole('option', { name: 'Hope provider' })).toBeDefined();
     // Re-pick the already-active "Tenant default" option to close the menu without changing selection.
     fireEvent.click(screen.getByRole('option', { name: 'Tenant default' }));
 
@@ -201,21 +235,37 @@ describe('TestRunPanel', () => {
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');
+    expect(post?.body).not.toHaveProperty('modelId');
     expect(post?.body).not.toHaveProperty('provider');
     expect(post?.body).not.toHaveProperty('model');
   });
 
-  it('sends the chosen provider once one is picked (leaving model at "Tenant default model")', async () => {
+  it('sends nothing until BOTH a provider and a model are chosen (a bare provider pick is not enough)', async () => {
     const calls = stubFetch((call) => defaultHandler(template(), call));
     renderWithProviders(<TestRunPanel template={template()} />);
 
     await screen.findByRole('button', { name: /run test/i });
-    await chooseSelectOption('Provider', 'ollama (default)');
+    await chooseSelectOption('Provider', 'OpenAI (BYO)');
     fireEvent.click(screen.getByRole('button', { name: /run test/i }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');
-    expect((post?.body as { provider?: string }).provider).toBe('ollama');
+    expect(post?.body).not.toHaveProperty('modelId');
+  });
+
+  it('sends the chosen model`s catalogue row id as modelId — never a raw provider/model pair', async () => {
+    const calls = stubFetch((call) => defaultHandler(template(), call));
+    renderWithProviders(<TestRunPanel template={template()} />);
+
+    await screen.findByRole('button', { name: /run test/i });
+    await chooseSelectOption('Provider', 'OpenAI (BYO)');
+    await chooseSelectOption('Model', 'GPT-4o');
+    fireEvent.click(screen.getByRole('button', { name: /run test/i }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
+    const post = calls.find((call) => call.method === 'POST');
+    expect((post?.body as { modelId?: string }).modelId).toBe('model-openai-gpt4o');
+    expect(post?.body).not.toHaveProperty('provider');
     expect(post?.body).not.toHaveProperty('model');
   });
 
