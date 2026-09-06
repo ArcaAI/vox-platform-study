@@ -66,14 +66,10 @@ import type { IProviderConnectionService as IProviderConnectionServicePort } fro
 // TASK-890 L1 §3.7 — the provider CLASS table lives with the connection vocabulary it is derived
 // from. This service is one of three consumers (the tenant catalogue and the BYO declaration are
 // the others); the private `ENGINE_SERVED_PROVIDERS` that used to sit at the top of THIS file is
-// gone, because two copies of "which providers serve their own weights" is two answers.
-import {
-  ENGINE_SERVED_PROVIDERS,
-  MODEL_TASK_TYPE_SERVICE,
-  providerClassOf,
-  type ProviderClass,
-  type ProviderService,
-} from '../ai-provider-connection/constants';
+// gone, because two copies of "which providers serve their own weights" is two answers. It is not
+// imported here either: `providerClassOf` is the only thing that should ever ASK that question,
+// and a second reader of the raw set would be the first step back to a second answer.
+import { MODEL_TASK_TYPE_SERVICE, providerClassOf, type ProviderClass, type ProviderService } from '../ai-provider-connection/constants';
 import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
 import type {
   ContextSchemaReferenceResolution,
