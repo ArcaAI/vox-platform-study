@@ -100,6 +100,12 @@ model AiProviderConnection {
   // binds cannot be hard-deleted. Adding a back-relation is a Prisma
   // requirement, not a new access path — nothing reads this field.
   routingPolicies AiRoutingPolicy[] @relation("AiRoutingPolicyConnection")
+  // TASK-890 §3.1 — the tenant-owned `AiModel` rows this connection DECLARED
+  // (BYO provider + model in one act). A real FK, unlike the by-slug catalogue
+  // convention, for the reason `AiRoutingPolicy.modelId` is one: without it a
+  // connection could be deleted out from under the models that only it can
+  // serve. `onDelete: Restrict` sits on the owning side.
+  models          AiModel[]         @relation("AiModelSourceConnection")
 
   // indexing — one connection per (tenant, service, provider)
   @@unique([tenantId, service, provider], name: "AiProviderConnection_tenant_service_provider_unique")

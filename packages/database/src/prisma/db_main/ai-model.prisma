@@ -95,10 +95,28 @@ model AiModel {
   // "available" when a provider connection exists (TASK-862). The enum also
   // carries BYOK for the usage ledger — a registry row never uses it.
   deploymentKind AiDeploymentKind
-  // Vendor wire id a CLOUD row is invoked with (`saaras:v4`, `gpt-transcribe`,
-  // `MAI-Transcribe-1.5`, an Azure OpenAI deployment name). Null for
-  // self-hosted rows, whose identity is the bucket prefix.
+  // The ROUTED id: what actually goes on the wire for a row an ENGINE or a
+  // VENDOR serves — `saaras:v4`, `gpt-transcribe`, an Azure OpenAI deployment
+  // name, an LM Studio / Ollama / vLLM model id. Required in practice for
+  // `deploymentKind = CLOUD` and for engine-served SELF_HOSTED rows; NULL for a
+  // self-hosted row whose identity IS the bucket prefix (whisper weights, the
+  // VAD/denoise/NER models the platform loads from `hope-models`).
+  //
+  // Not a NOT NULL column: the requirement is conditional on
+  // `deploymentKind`/`provider`, which a column constraint cannot express — the
+  // service enforces it on write. `sourceUri` keeps its LOCATOR meaning (the Hub
+  // repo / `s3://` prefix the inventory job publishes from) and is no longer the
+  // wire id.
   wireModelId    String?
+
+  // TASK-890 §3.1 — BYO PROVENANCE: the tenant's `AiProviderConnection` that
+  // DECLARED this model. NULL on every SYSTEM (platform catalogue) row. Set ⇒
+  // the row is tenant-owned, written ONLY through the connection's model
+  // declaration and never through `/admin/ai-models`. `Restrict` so a connection
+  // cannot vanish out from under the models that name it — the service
+  // soft-deletes them when the declaration shrinks or the connection is deleted.
+  sourceConnectionId String?
+  sourceConnection   AiProviderConnection? @relation("AiModelSourceConnection", fields: [sourceConnectionId], references: [id], onDelete: Restrict)
 
   // Model-card metadata mirrored from the Hub (R-3). `hfRevision` is the Hub
   // commit `sha` the weights were fetched at.
@@ -117,8 +135,9 @@ model AiModel {
   // (whisper.cpp `ggml-*.bin`, llama.cpp `*.gguf`); `manifestDigest` is the
   // sha256 of the published `manifest.json`, which the inventory job verifies.
   //
-  // `localPath` (deprecated below) is now DERIVED from these by the service:
-  // `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. Nobody types it.
+  // The mount path a Python resolver reads is DERIVED from these:
+  // `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. Nobody types it,
+  // and since TASK-890 nothing stores it either.
   bucketPrefix   String?
   primaryObject  String?
   manifestDigest String?
@@ -139,18 +158,14 @@ model AiModel {
   memorySizeMb Int? // Estimated GPU/CPU memory in MB
   computeType  String? // float32, float16, int8
 
-  // ── Deprecated download bookkeeping ─────────────────────────────────────
-  /// @deprecated TASK-860 — removed in R3. Replaced by `availability`.
-  downloadStatus AiModelDownloadStatus @default(NOT_DOWNLOADED)
-  /// @deprecated TASK-860 — removed in R3. Derived from `bucketPrefix` by the
-  /// service; no longer an operator free-text field (the create/update DTOs
-  /// reject it). Python resolvers still read it as the highest-precedence
-  /// override, which is exactly why the service keeps writing the derived value.
-  localPath      String?
-  /// @deprecated TASK-860 — removed in R3. Replaced by `availabilityCheckedAt`.
-  downloadedAt   DateTime?
-  /// @deprecated TASK-860 — removed in R3. Replaced by the manifest's `totalBytes`.
-  fileSizeMb     Int?
+  // TASK-890 §3.11 — the four deprecated download-bookkeeping columns
+  // (`downloadStatus`, `downloadedAt`, `fileSizeMb`, `localPath`) and the
+  // `AiModelDownloadStatus` enum are GONE. `availability` +
+  // `availabilityCheckedAt` are the measured facts; the published size is a
+  // property of one publish RUN and rides `_metadata` (`mergeDownloadMeta`);
+  // and `localPath` is DERIVED from `bucketPrefix` [+ `primaryObject`] by
+  // `derivedLocalPath` at the moment a resolved spec is built, so no row can
+  // carry a stale mount path.
   // SHA256 for verification. When set, single-file artifacts (GGUF/ONNX) are
   // verified after download and on first use of a pre-existing cache entry;
   // a mismatch is a HARD error and the model is never served. On directory
@@ -196,6 +211,7 @@ model AiModel {
   @@index([source], name: "AiModel_source_idx")
   @@index([format], name: "AiModel_format_idx")
   @@index([provider], name: "AiModel_provider_idx")
+  @@index([sourceConnectionId], name: "AiModel_sourceConnectionId_idx")
   @@index([resourceStatus], name: "AiModel_status_idx")
   @@schema("core")
 }

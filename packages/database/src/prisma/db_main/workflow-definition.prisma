@@ -81,6 +81,14 @@ model WorkflowDefinition {
 
   status WorkflowDefinitionStatus @default(DRAFT)
 
+  // TASK-890 §3.4 — REFERENCE-SET provenance, the pair `ConsultationContextSchema`
+  // and `DocumentTemplate` already carry. `sourceTemplateSlug` names the SYSTEM
+  // definition this lineage was CLONED from at tenant provisioning; `templateLocked`
+  // means the tenant has not diverged, so a super-admin re-sync may refresh it. Slug
+  // rather than id, because a clone tracks the SYSTEM LINEAGE, not one version row of it.
+  sourceTemplateSlug String?
+  templateLocked     Boolean @default(false)
+
   // The canvas model, verbatim as authored. NEVER executed directly.
   graph Json @db.JsonB
   // sha256 over canonicalJson(graph) — drives idempotent republish (the
@@ -134,5 +142,6 @@ model WorkflowDefinition {
   @@index([tenantId, slug, status], name: "WorkflowDefinition_tenant_slug_status_idx")
   @@index([tenantId, slug, isActive], name: "WorkflowDefinition_tenant_slug_isActive_idx")
   @@index([parentVersionId], name: "WorkflowDefinition_parentVersionId_idx")
+  @@index([tenantId, sourceTemplateSlug], name: "WorkflowDefinition_tenant_sourceTemplateSlug_idx")
   @@schema("core")
 }
