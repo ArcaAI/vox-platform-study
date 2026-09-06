@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SYSTEM_TENANT_ID } from '@arcaai/database';
 
 import { Repository } from '../../../common';
 import { PromptTemplateEntityMapper } from '../../../mappers';
@@ -28,6 +29,58 @@ export class PromptTemplateRepository extends Repository<PromptTemplateEntity, P
           name,
           resourceStatus: ResourceStatusType.ENABLED,
         },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * TASK-890 §3.4 (OD-M) — ONE SYSTEM reference row by id, on the UNSCOPED base client.
+   *
+   * `PromptTemplate` LEAVES `SYSTEM_SHARED_READ_MODELS` (§1.5: a prompt is CONTENT), so the
+   * by-id widening `PromptResolutionService` relied on to serve `SYSTEM_DEFAULTS.*` is gone.
+   * Provisioning still has to READ the reference row it clones, and it is the only caller that
+   * does — so the two-tenant read lives here, explicitly, exactly as
+   * `WorkflowDefinitionRepository.findCloneSource` does (§2.7 #23).
+   *
+   * Runtime NEVER calls this: a tenant resolves its own clone through
+   * {@link findByTenantAndSourceTemplateId} and gets `PROMPT_DEFAULT_NOT_PROVISIONED` on a miss.
+   */
+  async findSystemReferenceById(id: string, client: unknown): Promise<PromptTemplateEntity | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors WorkflowDefinitionRepository.findCloneSource; the caller-supplied client's delegate shape isn't exposed through DomainModel typings.
+    const model: any = (client as Record<string, any>)[this._modelName];
+    const row: PromptTemplate | null = await model.findFirst({
+      where: { id, tenantId: SYSTEM_TENANT_ID, resourceStatus: ResourceStatusType.ENABLED },
+    });
+    return row ? PromptTemplateEntityMapper.getInstance().toDomainEntity(row) : null;
+  }
+
+  /** The whole SYSTEM reference library, on the UNSCOPED base client — the set provisioning clones. */
+  async findSystemReferences(client: unknown): Promise<PromptTemplateEntity[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see findSystemReferenceById.
+    const model: any = (client as Record<string, any>)[this._modelName];
+    const rows: PromptTemplate[] = await model.findMany({
+      where: { tenantId: SYSTEM_TENANT_ID, resourceStatus: ResourceStatusType.ENABLED },
+      orderBy: [{ name: 'asc' }],
+    });
+    const mapper = PromptTemplateEntityMapper.getInstance();
+    return (rows ?? []).map((row) => mapper.toDomainEntity(row));
+  }
+
+  /**
+   * The TENANT's clone of a SYSTEM reference row, by provenance (`sourceTemplateId`).
+   *
+   * This is what replaces the by-id SYSTEM widening at runtime: a pointer at a platform default
+   * resolves the tenant's OWN copy of it. Scoped client on purpose — the row IS the tenant's.
+   * `null` on a miss (and on any lookup error) so the caller can raise the NAMED
+   * `PROMPT_DEFAULT_NOT_PROVISIONED` rather than leaking a repository exception onto a
+   * generation path.
+   */
+  async findByTenantAndSourceTemplateId(tenantId: string, sourceTemplateId: string): Promise<PromptTemplateEntity | null> {
+    try {
+      return await this.findFirst({
+        filters: { tenantId, sourceTemplateId, resourceStatus: ResourceStatusType.ENABLED },
       });
     } catch {
       return null;
