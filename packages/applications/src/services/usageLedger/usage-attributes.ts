@@ -27,6 +27,42 @@
 type UsageAttributeType = 'string' | 'number' | 'boolean';
 
 /**
+ * `trigger` — WHICH PRODUCT ACTIVITY caused this inference (TASK-890 OD-E).
+ *
+ * Every other column on a ledger row answers "what ran and what did it cost".
+ * None of them answers "why", and without that a tenant whose spend doubled
+ * cannot be told whether its clinicians consulted twice as much or one engineer
+ * left a prompt test looping. It is a closed vocabulary for the same reason
+ * `USAGE_OPERATIONS` is: an unbounded rollup dimension forks silently.
+ *
+ * FIVE VALUES, one per activity that reaches an inference service:
+ *
+ * | value | emitted by |
+ * |--------------------|-------------------------------------------------------|
+ * | `AGENT_INVOCATION` | `POST /agents/:slug/{invocations,speech,transcriptions}` |
+ * | `AGENT_TEST` | the draft-agent test route (§3.8) |
+ * | `PROMPT_TEST` | the prompt-template test bench |
+ * | `WORKFLOW_RUN` | a durable or realtime workflow step |
+ * | `CONSULTATION` | the clinical paths (summary, STT, NER, realtime lane) |
+ */
+export const USAGE_TRIGGERS = ['AGENT_INVOCATION', 'AGENT_TEST', 'PROMPT_TEST', 'WORKFLOW_RUN', 'CONSULTATION'] as const;
+
+export type UsageTrigger = (typeof USAGE_TRIGGERS)[number];
+
+/**
+ * `guardrail` — the SCREENING DISPOSITION of the call this row bills (OD-R).
+ *
+ * `screened` = the guard ran; `opted_out` = the tenant turned it off for this
+ * agent/workflow node; `platform_off` = the platform kill-switch
+ * (`text.externalGuardrail.enabled`) is off, so nobody's opt-out was even
+ * consulted. Distinguishing the last two matters: one is a tenant decision on
+ * the record, the other is a platform state that makes every opt-out moot.
+ */
+export const GUARDRAIL_DISPOSITIONS = ['screened', 'opted_out', 'platform_off'] as const;
+
+export type GuardrailDisposition = (typeof GUARDRAIL_DISPOSITIONS)[number];
+
+/**
  * The declared keys and their types.
  *
  * | key | why it earns a slot |
@@ -41,6 +77,8 @@ type UsageAttributeType = 'string' | 'number' | 'boolean';
  * | `cacheTtl` | Anthropic 5m vs 1h cache write (x1.25 vs x2.00) |
  * | `endpointKind` | which API shape the normalizer branched on |
  * | `contextBand` | the price-book context band this row was rated against |
+ * | `trigger` | WHICH product activity caused the call ({@link USAGE_TRIGGERS}) |
+ * | `guardrail` | the screening disposition ({@link GUARDRAIL_DISPOSITIONS}) |
  */
 export const USAGE_ATTRIBUTE_KEYS = {
   channelCount: 'number',
@@ -53,6 +91,8 @@ export const USAGE_ATTRIBUTE_KEYS = {
   cacheTtl: 'string',
   endpointKind: 'string',
   contextBand: 'string',
+  trigger: 'string',
+  guardrail: 'string',
 } as const satisfies Record<string, UsageAttributeType>;
 
 /** The typed attribute bag emitters build. */
@@ -67,6 +107,10 @@ export interface UsageAttributes {
   cacheTtl?: string | null;
   endpointKind?: string | null;
   contextBand?: string | null;
+  /** Closed vocabulary — see {@link USAGE_TRIGGERS}. */
+  trigger?: UsageTrigger | null;
+  /** Closed vocabulary — see {@link GUARDRAIL_DISPOSITIONS}. */
+  guardrail?: GuardrailDisposition | null;
 }
 
 /**
@@ -127,4 +171,29 @@ export function validateUsageAttributes(attributes: unknown): string[] {
 function describeType(value: unknown): string {
   if (Array.isArray(value)) return 'array';
   return typeof value;
+}
+
+/**
+ * Stamp `trigger` onto a batch a builder already produced.
+ *
+ * The LLM builders (`buildLlmUsageInput` and friends) map an `apps/text` usage
+ * block onto ledger rows; they know nothing about WHY the call happened, and
+ * threading a caller-supplied dimension through every builder signature would
+ * put the same optional parameter on five functions. So the activity is stamped
+ * here, by the caller that knows it, in one place all four lanes share.
+ *
+ * Returns a NEW batch — a caller may legitimately build once and emit twice
+ * (the abort path and the completion path converge on one idempotency key), so
+ * mutating the input would let the second emission inherit the first's dimension.
+ * A `null` batch (nothing was consumed) passes through as `null`.
+ */
+export function withUsageTrigger<T extends { common: { attributesJson?: UsageAttributes | null } }>(
+  batch: T | null,
+  trigger: UsageTrigger,
+): T | null {
+  if (!batch) return null;
+  return {
+    ...batch,
+    common: { ...batch.common, attributesJson: { ...(batch.common.attributesJson ?? {}), trigger } },
+  };
 }
