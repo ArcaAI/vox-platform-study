@@ -16,7 +16,13 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const TENANT_ID = 'tenant-1';
 
 const AiDeploymentKind = { SELF_HOSTED: 'SELF_HOSTED', CLOUD: 'CLOUD' } as const;
-const AiModelAvailability = { UNKNOWN: 'UNKNOWN', AVAILABLE: 'AVAILABLE', MISSING: 'MISSING', PARTIAL: 'PARTIAL', NOT_APPLICABLE: 'NOT_APPLICABLE' } as const;
+const AiModelAvailability = {
+  UNKNOWN: 'UNKNOWN',
+  AVAILABLE: 'AVAILABLE',
+  MISSING: 'MISSING',
+  PARTIAL: 'PARTIAL',
+  NOT_APPLICABLE: 'NOT_APPLICABLE',
+} as const;
 const ModelTaskType = { TEXT_GENERATION: 'TEXT_GENERATION', AUTOMATIC_SPEECH_RECOGNITION: 'AUTOMATIC_SPEECH_RECOGNITION' } as const;
 const ResourceStatusType = { ENABLED: 'ENABLED' } as const;
 const TenantPlan = { STARTER: 'STARTER', ENTERPRISE: 'ENTERPRISE' } as const;
@@ -66,7 +72,13 @@ function row(init: RowInit) {
 }
 
 const ENGINE_ROW = row({ id: 'm-engine', slug: 'gemma-3-lmstudio', tenantId: SYSTEM_TENANT_ID, provider: 'lm-studio' });
-const CLOUD_ROW = row({ id: 'm-cloud', slug: 'azure-gpt-5-mini', tenantId: SYSTEM_TENANT_ID, provider: 'azure', deploymentKind: AiDeploymentKind.CLOUD });
+const CLOUD_ROW = row({
+  id: 'm-cloud',
+  slug: 'azure-gpt-5-mini',
+  tenantId: SYSTEM_TENANT_ID,
+  provider: 'azure',
+  deploymentKind: AiDeploymentKind.CLOUD,
+});
 const SELF_HOST_ROW = row({
   id: 'm-self',
   slug: 'whisper-large-v3',
@@ -194,6 +206,37 @@ describe('TASK-890 AiModelService.getCatalogue', () => {
     expect(byModel.get('m-self')!.unusableReason).toBe('weights-not-available');
   });
 
+  // `NOT_APPLICABLE` is stamped by the bucket inventory on exactly one kind of
+  // self-host row: a library that ships its weights INSIDE the Python package
+  // (`pyrnnoise`, `deepfilternet`), i.e. "there is nothing to fetch". The
+  // readiness sweep already calls those rows `ready` ("served from the package;
+  // no bucket artifact required"), so calling them `weights-not-available` in
+  // the same payload contradicted the platform's own verdict.
+  it('treats a platform-self-host row whose weights ship in the package (NOT_APPLICABLE) as usable', async () => {
+    mockModelRepository.findAll.mockResolvedValue([
+      { ...SELF_HOST_ROW, id: 'm-packaged', slug: 'rnnoise', availability: AiModelAvailability.NOT_APPLICABLE },
+    ] as never);
+
+    const result = await build().getCatalogue();
+    const model = result.models.find((m) => m.id === 'm-packaged')!;
+
+    expect(model.providerClass).toBe('platform-self-host');
+    expect(model.usable).toBe(true);
+    expect(model.unusableReason).toBeNull();
+  });
+
+  it('still refuses a platform-self-host row the inventory has not measured', async () => {
+    mockModelRepository.findAll.mockResolvedValue([
+      { ...SELF_HOST_ROW, id: 'm-unknown', slug: 'unmeasured', availability: AiModelAvailability.UNKNOWN },
+    ] as never);
+
+    const result = await build().getCatalogue();
+    const model = result.models.find((m) => m.id === 'm-unknown')!;
+
+    expect(model.usable).toBe(false);
+    expect(model.unusableReason).toBe('weights-not-available');
+  });
+
   it('marks a cloud-platform row unusable when the tenant VETOED the provider', async () => {
     mockConnections.list.mockResolvedValue([]);
     mockConnections.findRow.mockImplementation(async (service: string, provider: string, tenantId: string) =>
@@ -225,7 +268,9 @@ describe('TASK-890 AiModelService.getCatalogue', () => {
     expect(tenantView.models.map((m) => m.id)).not.toContain('m-none');
     expect(tenantView.unassignedProviderCount).toBeUndefined();
 
-    mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'u-2', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? TENANT_ID : null));
+    mockClsService.get.mockImplementation((key: string) =>
+      key === 'user' ? { id: 'u-2', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? TENANT_ID : null,
+    );
     const adminView = await build().getCatalogue();
     expect(adminView.models.map((m) => m.id)).not.toContain('m-none');
     expect(adminView.unassignedProviderCount).toBe(1);
@@ -295,7 +340,17 @@ describe('TASK-890 AiModelService.getCatalogue', () => {
         'usable',
       ].sort(),
     );
-    for (const forbidden of ['bucketPrefix', 'localPath', 'checksum', 'createdBy', 'updatedBy', 'tenantId', 'sourceConnectionId', 'sourceUri', 'wireModelId']) {
+    for (const forbidden of [
+      'bucketPrefix',
+      'localPath',
+      'checksum',
+      'createdBy',
+      'updatedBy',
+      'tenantId',
+      'sourceConnectionId',
+      'sourceUri',
+      'wireModelId',
+    ]) {
       expect(keys).not.toContain(forbidden);
     }
   });

@@ -633,7 +633,15 @@ export class AiModelService extends BaseService implements IAiModelService {
     // The MEASURED column, never `localPath` (§3.11): the platform's own
     // services load these weights from the bucket, so presence IS usability.
     if (providerClass === 'platform-self-host') {
-      return entity.availability === AiModelAvailability.AVAILABLE ? USABLE : { usable: false, reason: 'weights-not-available' };
+      // `NOT_APPLICABLE` on a self-host row is the inventory saying there is
+      // NOTHING to fetch — the library ships its weights inside the Python
+      // package (`pyrnnoise`, `deepfilternet`). The readiness sweep already
+      // calls those rows `ready`; refusing them here contradicted the platform's
+      // own verdict inside a single payload.
+      const measured = entity.availability;
+      return measured === AiModelAvailability.AVAILABLE || measured === AiModelAvailability.NOT_APPLICABLE
+        ? USABLE
+        : { usable: false, reason: 'weights-not-available' };
     }
 
     // Every other class needs the connection plane. Absent collaborator ⇒ fail
