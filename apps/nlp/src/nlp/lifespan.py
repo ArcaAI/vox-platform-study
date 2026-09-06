@@ -145,9 +145,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # make the first request faster, never slower or wrong.
     app.state.warm_models_task = asyncio.create_task(warm_models(app.state.effective_config_client))
 
+    # Warm the model-cache roots ONCE, off every request path (TASK-890 F6).
+    #
+    # `HF_HOME` here is an external volume, and its FIRST access from a given
+    # process can stay inside the kernel for minutes while a shell `ls` answers
+    # instantly. Paying that cost in a detached boot task means the first
+    # readiness sweep meets a volume that is already awake; when even a 60 s
+    # budget gets no answer, the resolvable endpoints report `warm: false`
+    # instead of the sweep discovering it one abandoned probe thread at a time.
+    # Detached and never awaited: warming can make the first probe faster, never
+    # slower, and it must not delay or fail boot.
+    from hope_runtime_models import warm_cache_roots
+
+    app.state.model_cache_warmup_task = asyncio.create_task(warm_cache_roots(service="nlp"))
+
     logger.info("Medical NLP Service started successfully")
 
     yield
+
+    cache_warmup_task = getattr(app.state, "model_cache_warmup_task", None)
+    if cache_warmup_task is not None and not cache_warmup_task.done():
+        cache_warmup_task.cancel()
 
     warm_task = getattr(app.state, "warm_models_task", None)
     if warm_task is not None and not warm_task.done():

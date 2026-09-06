@@ -21,11 +21,19 @@ properties that keep it that way:
 
 The budget and the off-loop execution are pinned in `TestTheBudget`; the route
 that depends on them is pinned in `test_model_resolvable_route_task890.py`.
+
+TASK-890 F6 amended one clause of `TestTheBudget`. F3 bounded the damage with a
+single probe slot, which held: a wedged read cost one thread. What it also did
+was decline every LATER probe for the life of the process — measured on a clean
+restart 2026-09-07, both stt and nlp reached that state within minutes and never
+left it. The bound is now a thread CAP, so the damage per stall is unchanged
+while the next probe is still attempted.
 """
 
 from __future__ import annotations
 
 import sys
+import threading
 import time
 import types
 from pathlib import Path
@@ -33,9 +41,12 @@ from pathlib import Path
 import pytest
 from hope_runtime_models import (
     ResolvableQuery,
+    ResolvableResult,
     check_resolvable,
     check_resolvable_many,
     clear_resolvable_cache,
+    probe_state,
+    reset_probe_state,
 )
 
 SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
@@ -65,10 +76,17 @@ def stage_snapshot(root: Path, repo_id: str, *, revision: str = "main", sha: str
 
 @pytest.fixture(autouse=True)
 def _fresh_cache():
-    """Each test measures the filesystem, not the previous test's memory."""
+    """Each test measures the filesystem, not the previous test's memory.
+
+    The probe-thread counts are process-wide too (TASK-890 F6), so a test that
+    stranded a worker would otherwise hand the next one a pool already at its
+    cap.
+    """
     clear_resolvable_cache()
+    reset_probe_state()
     yield
     clear_resolvable_cache()
+    reset_probe_state()
 
 
 @pytest.fixture(autouse=True)
@@ -269,26 +287,51 @@ class TestTheBudget:
         assert result.as_dict()["resolvable"] is None
 
     @pytest.mark.asyncio
-    async def test_a_second_probe_does_not_queue_behind_a_stalled_one(self, tmp_path, monkeypatch):
-        """One stalled probe must cost ONE abandoned thread, not one per sweep."""
-        import asyncio
+    async def test_a_stalled_probe_costs_one_thread_and_not_the_next_probe(
+        self, tmp_path, monkeypatch
+    ):
+        """One stalled probe must cost ONE abandoned thread — and only that.
 
+        AMENDED by TASK-890 F6. This test used to assert the opposite half of
+        the trade: that the second probe was DECLINED outright while the first
+        was stalled. Measured on a clean restart 2026-09-07, that is what made
+        the defect permanent — the first wedged read held the only slot for the
+        life of the process and every later probe answered in 2 ms with `an
+        earlier probe on this host has not returned`. The bound is now a thread
+        CAP, so the damage is still one thread per stall, but the next probe is
+        attempted and can still measure.
+        """
         import hope_runtime_models.resolvable as module
 
-        monkeypatch.setattr(module, "_check", _never_returns)
-        query = [ResolvableQuery(id="a", source_uri="org/repo")]
+        gate = threading.Event()
 
-        first = asyncio.ensure_future(
-            check_resolvable_many(query, hf_cache_dir=str(tmp_path), budget_seconds=0.2)
-        )
-        await asyncio.sleep(0.1)
-        started = time.perf_counter()
-        second = await check_resolvable_many(query, hf_cache_dir=str(tmp_path), budget_seconds=5.0)
-        elapsed = time.perf_counter() - started
-        await first
+        def _selective(query, *, hf_cache_dir=None, s3_cache_dir=None):  # noqa: ARG001
+            if (query.id or "").startswith("stuck"):
+                gate.wait(10)
+            return ResolvableResult(query.id, True, "hf_cache", "measured", None)
 
-        assert second[0].state == "timeout"
-        assert elapsed < 1.0, "the second probe waited on the stalled one instead of declining"
+        monkeypatch.setattr(module, "_check", _selective)
+        try:
+            stalled = await check_resolvable_many(
+                [ResolvableQuery(id="stuck", source_uri="org/repo")],
+                hf_cache_dir=str(tmp_path),
+                budget_seconds=0.2,
+            )
+            assert stalled[0].state == "timeout"
+            assert probe_state() == (1, 1), "the abandoned thread must be counted, once"
+
+            measured = await check_resolvable_many(
+                [ResolvableQuery(id="ok", source_uri="org/repo")],
+                hf_cache_dir=str(tmp_path),
+                budget_seconds=5.0,
+            )
+
+            assert measured[0].resolvable is True, "the next probe was declined, not attempted"
+        finally:
+            gate.set()
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline and probe_state()[0] > 0:
+                time.sleep(0.01)
 
     @pytest.mark.asyncio
     async def test_an_empty_batch_costs_nothing(self):

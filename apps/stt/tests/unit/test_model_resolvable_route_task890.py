@@ -30,6 +30,7 @@ touches the network or the host's own cache.
 from __future__ import annotations
 
 import sys
+import threading
 import time
 import types
 from pathlib import Path
@@ -37,7 +38,15 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
-from hope_runtime_models import clear_resolvable_cache
+from hope_runtime_models import (
+    ResolvableResult,
+    clear_resolvable_cache,
+    probe_state,
+    reset_probe_state,
+    reset_warmup_state,
+    warm_cache_roots,
+    warmup_state,
+)
 from httpx import ASGITransport, AsyncClient
 
 from tests.unit.test_hf_snapshot_resolver_task890 import stage_snapshot
@@ -72,10 +81,41 @@ def _no_token(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _fresh_cache():
-    """Each test measures its own tree, not the previous test's memoised verdict."""
+    """Each test measures its own tree, not the previous test's memoised verdict.
+
+    The probe-thread counts and the warm-up verdict are process-wide too
+    (TASK-890 F6), so a test that stranded a worker would otherwise hand the
+    next one a service that is already at its thread cap.
+    """
     clear_resolvable_cache()
+    reset_probe_state()
+    reset_warmup_state()
     yield
     clear_resolvable_cache()
+    reset_probe_state()
+    reset_warmup_state()
+
+
+@pytest.fixture
+def gate():
+    """One event every blocking worker waits on. Released in teardown, always."""
+    event = threading.Event()
+    yield event
+    event.set()
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline and probe_state()[0] > 0:
+        time.sleep(0.01)
+
+
+def _selective(gate: threading.Event):
+    """Blocks only on rows whose id starts with `stuck`; measures everything else."""
+
+    def _check(query, *, hf_cache_dir=None, s3_cache_dir=None):  # noqa: ARG001
+        if (query.id or "").startswith("stuck"):
+            gate.wait(10)
+        return ResolvableResult(query.id, True, "hf_cache", "measured", None)
+
+    return _check
 
 
 @pytest.fixture
@@ -343,3 +383,75 @@ class TestResolvableRouteIsGated:
 
         assert unauthenticated.status_code == 401
         assert authenticated.status_code == 200
+
+
+class TestOneWedgedReadDoesNotDisableReadiness:
+    """TASK-890 F6 — the failure the one-slot guard shipped with.
+
+    F3 bounded the damage of a wedged filesystem read to one abandoned thread by
+    allowing exactly one probe at a time. Measured on a clean restart
+    2026-09-07, that meant the FIRST wedged read held the only slot for the life
+    of the process and every later probe answered in 2 ms with `an earlier probe
+    on this host has not returned` — the service stayed up and permanently
+    unable to answer the one question this route exists for.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_next_request_is_attempted_and_can_still_measure(
+        self, client, gate, monkeypatch
+    ):
+        import hope_runtime_models.resolvable as resolvable_module
+
+        monkeypatch.setattr(resolvable_module, "_check", _selective(gate))
+        monkeypatch.setattr(resolvable_module, "DEFAULT_BUDGET_SECONDS", 0.2)
+
+        stalled = await client.post(ROUTE, json={"models": [{"id": "stuck1", "sourceUri": "o/r"}]})
+        assert stalled.json()["results"][0]["state"] == "timeout"
+
+        monkeypatch.setattr(resolvable_module, "DEFAULT_BUDGET_SECONDS", 5.0)
+        measured = await client.post(ROUTE, json={"models": [{"id": "ok", "sourceUri": "o/r"}]})
+
+        assert measured.json()["results"][0]["resolvable"] is True
+
+    @pytest.mark.asyncio
+    async def test_at_the_thread_cap_the_answer_is_degraded(self, client, gate, monkeypatch):
+        """Only when EVERY thread is wedged does the route stop measuring."""
+        import hope_runtime_models.resolvable as resolvable_module
+
+        monkeypatch.setattr(resolvable_module, "_check", _selective(gate))
+        monkeypatch.setattr(resolvable_module, "DEFAULT_BUDGET_SECONDS", 0.2)
+        for index in range(resolvable_module.MAX_PROBE_THREADS):
+            await client.post(ROUTE, json={"models": [{"id": f"stuck{index}", "sourceUri": "o/r"}]})
+
+        resp = await client.post(ROUTE, json={"models": [{"id": "ok", "sourceUri": "o/r"}]})
+
+        (result,) = resp.json()["results"]
+        assert result["resolvable"] is None
+        assert result["state"] == "degraded"
+        assert "have not returned" in result["detail"]
+
+
+class TestTheWarmUpIsReported:
+    @pytest.mark.asyncio
+    async def test_every_response_carries_the_boot_warm_up_verdict(self, client, monkeypatch):
+        """`pending` / `true` / `false` — the wiring, pinned deterministically.
+
+        The real verdict is process-wide and a lifespan may set it from a
+        detached task, so the value is stubbed here; that the field exists and
+        carries exactly what the process believes is the part this route owns.
+        """
+        import stt.models.resolvable_routes as route_module
+
+        for value in ("pending", True, False):
+            monkeypatch.setattr(route_module, "warmup_state", lambda v=value: v)
+            resp = await client.post(ROUTE, json={"models": []})
+            assert resp.json()["warm"] == value
+
+    @pytest.mark.asyncio
+    async def test_it_is_true_once_the_roots_have_answered(self, client, cache):
+        assert await warm_cache_roots(hf_cache_dir=str(cache), budget_seconds=10.0) is True
+
+        resp = await client.get(ROUTE, params={"id": "m", "source_uri": "a/b"})
+
+        assert resp.json()["warm"] is True
+        assert warmup_state() is True
