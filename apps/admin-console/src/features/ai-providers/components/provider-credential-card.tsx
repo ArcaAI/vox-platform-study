@@ -14,7 +14,8 @@ import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useDeleteProviderConnection, useProviderConnection, usePutProviderConnection, useTestProviderConnection } from '../api/hooks';
-import { CONNECTION_CEILINGS, connectionStateOf, type ConnectionCeiling, type ConnectionState, type ProviderService } from '../api/types';
+import { CONNECTION_CEILINGS, connectionStateOf, declarableService, type ConnectionCeiling, type ConnectionState, type ProviderService } from '../api/types';
+import { ConnectionModelsEditor } from './connection-models-editor';
 import type { ProviderField, ProviderMeta } from './provider-meta';
 
 /** Rule 10: skeleton shaped like the loaded card. */
@@ -296,6 +297,25 @@ export function ProviderCredentialCard({
             : 'Disabled blocks this provider for your tenant entirely — including the platform-provided key. Remove the connection instead to use the platform default.'}
         </p>
       </div>
+
+      {/*
+        TASK-890 §3.7a — provider AND model, in one place. Only once a row
+        exists: the models are declared ON a connection, so there is nothing to
+        hang them off until the credential is saved (the gateway 404s that
+        case, and an editor that could only fail is worse than one that waits).
+        `discoveredModels` comes from the last probe on THIS card, so "derive"
+        reflects the credential the admin just tested.
+      */}
+      {current.version > 0 && declarableService(service) ? (
+        <ConnectionModelsEditor
+          service={service}
+          provider={meta.id}
+          label={meta.label}
+          tenantId={tenantId}
+          models={current.models ?? []}
+          discoveredModels={testMutation.data?.discoveredModels}
+        />
+      ) : null}
 
       <OccConflictAlert
         error={putMutation.error}

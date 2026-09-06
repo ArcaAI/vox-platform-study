@@ -5,6 +5,11 @@ export type ModelType = 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | '
 export type AiModelSource = 'HUGGINGFACE' | 'GITHUB' | 'MLFLOW' | 'LOCAL';
 export type AiModelFormat = 'SAFETENSOR' | 'ONNX' | 'NEMO' | 'PYTORCH' | 'CTRANSLATE2' | 'FASTER_WHISPER' | 'MLX' | 'GGUF' | 'WHISPER_CPP';
 /** @deprecated TASK-860 — removed in R3; read `availability` instead. */
+/**
+ * The publish JOB's status vocabulary. TASK-890 §3.11 dropped the `AiModel`
+ * COLUMN of this name; the job endpoint's frozen contract still reports it, so
+ * the type stays for `ModelDownloadState` / `StartModelDownloadResponse` only.
+ */
 export type AiModelDownloadStatus = 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
 /** Large gateway enum (46 values) — keep open for forward compatibility. */
 export type ModelTaskType = string;
@@ -67,12 +72,18 @@ export interface AiModel {
   architecture?: string | null;
   memorySizeMb?: number | null;
   computeType?: string | null;
-  /** @deprecated TASK-860 — read `availability`. */
-  downloadStatus: AiModelDownloadStatus;
-  /** DERIVED by the gateway from `bucketPrefix` (+ `primaryObject`); never typed. */
+  /**
+   * DERIVED by the gateway from `bucketPrefix` (+ `primaryObject`); never typed
+   * and never sent on a write.
+   *
+   * TASK-890 §3.11 — `downloadStatus`, `downloadedAt` and `fileSizeMb` are GONE
+   * from the schema and from `ModelResponse`. They are not deprecated here, they
+   * are absent: a reader would get `undefined` and quietly decide "not
+   * downloading". The publish JOB's own status endpoint (`ModelDownloadState`
+   * below) is the only remaining source for those facts, and `availability` is
+   * the measured answer to "are the weights there".
+   */
   localPath?: string | null;
-  downloadedAt?: string | null;
-  fileSizeMb?: number | null;
   checksum?: string | null;
   resourceStatus: ResourceStatus;
   version: number;
