@@ -131,14 +131,10 @@ export class TtsAgentResolverService {
       for (const model of fallbackTtsModelsOf(agent)) push(await this.source(agent, model, 'fallback-model', tenantId, overrides));
     }
 
-    if (agent.source !== 'platform-default') {
-      const platform = await this.platformDefaultAgent(tenantId, agent.slug);
-      const model = platform ? primaryTtsModelOf(platform) : undefined;
-      // The explicit fallback agent may BE the platform agent — never listed twice.
-      if (platform && model && !chain.some((entry) => entry.agent.agentVersionId === platform.agentVersionId)) {
-        push(await this.source(platform, model, 'platform-default', tenantId, overrides));
-      }
-    }
+    // TASK-890 OD-M — the terminal SYSTEM-assigned candidate is GONE, for the reason spelled
+    // out on the TEXT resolver: the chain is the agent's own governance, resolved in the
+    // caller's tenant, and the platform default reaches a tenant as its OWN clone rather than as
+    // a read of the SYSTEM tenant's assignment.
 
     let spec: ResolvedTtsSpec;
     try {
@@ -156,22 +152,6 @@ export class TtsAgentResolverService {
       if (!kept.has(provider)) delete overrides[provider];
     }
     return { spec, ...(Object.keys(overrides).length > 0 ? { providerOverrides: overrides } : {}) };
-  }
-
-  /** The SYSTEM tenant's TENANT-scope assignment — the platform default the cascade's last tier reads. */
-  private async platformDefaultAgent(tenantId: string, primarySlug: string): Promise<ResolvedAgent | null> {
-    const assigned = await this.assignments.resolve(SYSTEM_TENANT_ID, AgentTask.TEXT_TO_SPEECH, null);
-    if (!assigned.agentSlug) {
-      this.logger.warn({
-        message: 'No SYSTEM TEXT_TO_SPEECH assignment — the fallback chain ends without a platform default',
-        tenantId,
-        agentSlug: primarySlug,
-      });
-      return null;
-    }
-    // Resolved VISIBLE TO THE CALLER'S tenant (a SYSTEM row is in every tenant's [tenant, SYSTEM]
-    // scope) — never a cross-tenant read.
-    return this.tryResolveAgent(tenantId, assigned.agentSlug, 'platform default agent', primarySlug);
   }
 
   private async tryResolveAgent(tenantId: string, slug: string, role: string, primarySlug: string): Promise<ResolvedAgent | null> {

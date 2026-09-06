@@ -1,31 +1,26 @@
 /**
- * TASK-885 deliverable 5 — a new tenant REFERS to the platform template; it does not receive a
- * COPY of it.
+ * TASK-885 deliverable 5, AMENDED BY TASK-890 OD-J — a new tenant is PROVISIONED with a copy of
+ * the platform template, and `TenantService` is still not the thing that copies it.
  *
- * Owner #4: *SYSTEM is the template every customer tenant refers to and the tenant template for
- * new tenants.* The distinction between "refers to" and "receives a copy of" is the whole point:
- * a copy is a fork that stops tracking the platform template the moment it is taken, and 200
- * tenants with 200 copies is 200 workflows to fix when the platform template changes.
+ * TASK-885 asked whether a new tenant should REFER to the platform template or receive a COPY,
+ * and deferred the answer. **TASK-890 OD-J answered it: a copy, taken at provisioning.** A
+ * workflow definition is CONTENT (§1.5), so SYSTEM holds a reference set rather than a tier, and
+ * the "200 tenants, 200 forks" cost this file used to warn about is paid deliberately — with a
+ * super-admin re-sync (`POST /admin/tenants/:id/reference-set/sync`) as the way to move a fixed
+ * template into the tenants that still carry a pristine copy of it.
  *
- * This file pins BOTH halves of the current answer, including the half that is a gap:
+ * What this file still pins, and why each half survives that reversal:
  *
- * 1. **No copy.** Tenant provisioning writes departments, configs and catalogues, and NO
- *    `WorkflowDefinition`. Pinned as a source gate (the precedent is
- *    `task-724-stt-realtime-untouched.grep-gate.test.ts`) because the assertion is about what
- *    provisioning does NOT do, which no behavioural test over the current code can observe.
- * 2. **No opinion ⇒ the platform default.** A tenant with no `WorkflowAssignment` row resolves
- *    `platform-default`, which is the two-tier "tenant → platform" rule of
- *    `00-project-context.md` §Configuration Principles expressed for workflows.
- *
- * ⚠ WHAT IS NOT CLOSED, and is recorded in the ticket README as a deferred seam: the cascade in
- * `resolve()` walks `department → tenant` and stops. There is no SYSTEM tier, and
- * `ConsultationWorkflowDispatchService` resolves the chosen slug with a tenant-scoped
- * `findPublishedBySlug`, so a tenant with no opinion today dispatches NOTHING rather than
- * running the SYSTEM template. Closing it is two changes — a SYSTEM tier here and a widened
- * lookup in `consultation/workflow-dispatch` (another lane's folder) — and it CHANGES RUNTIME
- * BEHAVIOUR for every unopinionated tenant the moment a SYSTEM assignment row exists, so it
- * needs an owner decision rather than a quiet fix. The test below states today's behaviour
- * exactly, so that change cannot land unnoticed.
+ * 1. **`TenantService` is not the copier.** The copy is `TenantReferenceSetService`'s, which is
+ *    what keeps the graph rewriting, the provenance stamping and the validation with the service
+ *    that owns workflow definitions. A `WorkflowDefinition` write appearing in `tenant.service.ts`
+ *    would mean a SECOND copier had grown there. Pinned as a source gate (the precedent is
+ *    `task-724-stt-realtime-untouched.grep-gate.test.ts`) because it asserts what a file does NOT
+ *    do, which no behavioural test can observe.
+ * 2. **No opinion ⇒ no dispatch.** `resolve()` walks `department → tenant` and stops; there is no
+ *    SYSTEM tier and OD-J confirms there never will be — the platform default reaches a tenant as
+ *    the tenant's own provisioned definition, not as a widened read. The `'platform-default'`
+ *    source value here means "nothing assigned", as its own service documents.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -38,11 +33,15 @@ const TENANT_SERVICE_SOURCE = readFileSync(join(__dirname, '..', '..', 'tenant',
 describe('TASK-885 — a new tenant refers to the SYSTEM template, it does not receive a copy', () => {
   it('tenant provisioning writes NO WorkflowDefinition', () => {
     // The provisioning steps that DO exist, so a future reader can see the gate is not vacuous.
-    for (const step of ['provisionTenantConfigs', 'provisionDefaultDepartment', 'provisionTenantModelCatalog']) {
+    // (`provisionTenantConfigs` and `provisionTenantModelCatalog` were DELETED by TASK-890
+    // OD-P / OD-O — the settings and the catalogue are CONFIG and resolve tenant → SYSTEM at
+    // read time rather than being frozen into a per-tenant copy.)
+    for (const step of ['provisionDefaultDepartment', 'provisionTenantPipelineCatalog', 'referenceSet']) {
       expect(TENANT_SERVICE_SOURCE).toContain(step);
     }
 
-    // The ones that must never appear: any workflow-definition write on the provisioning path.
+    // The ones that must never appear IN THIS FILE: a workflow-definition write belongs to
+    // `TenantReferenceSetService`, which calls `WorkflowDefinitionService.cloneFromSystem`.
     for (const forbidden of ['WorkflowDefinitionFactory', 'workflowDefinitionRepository', 'WorkflowDefinitionRepository']) {
       expect(TENANT_SERVICE_SOURCE, `tenant provisioning must not copy workflows (${forbidden})`).not.toContain(forbidden);
     }

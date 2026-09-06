@@ -454,7 +454,17 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * code below are WHERE the slug-collision check sits (inside the transaction, fused with the
    * version mint) and WHAT is deliberately not carried over from the source row.
    */
-  async clone(sourceId: string, dto: CloneWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
+  async clone(
+    sourceId: string,
+    dto: CloneWorkflowDefinitionRequest,
+    /**
+     * TASK-890 §3.4 — the reference-set provenance stamped on a PROVISIONING copy
+     * (`sourceTemplateSlug` + `templateLocked`), the pair `AsrPipeline`, `DocumentTemplate` and
+     * `ConsultationContextSchema` already carry. Absent for an ordinary console clone, which is
+     * a tenant's own fork and descends from nothing the platform will ever re-sync.
+     */
+    provenance?: { sourceTemplateSlug: string; templateLocked: boolean },
+  ): Promise<WorkflowDefinitionResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new ArgumentInvalidException('Tenant context required');
@@ -520,6 +530,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         graphChecksum: graphChecksum(graph),
         validationReport: report as unknown as JsonValue,
         validatedAt: new Date(),
+        ...(provenance ? { sourceTemplateSlug: provenance.sourceTemplateSlug, templateLocked: provenance.templateLocked } : {}),
         createdBy: this.requestUserId ?? undefined,
       });
 
@@ -545,6 +556,42 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     });
 
     return WorkflowDefinitionDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * TASK-890 §3.4 (OD-H / OD-J) — the REFERENCE-SET copy of one SYSTEM workflow definition.
+   *
+   * A tenant is PROVISIONED with the platform's definitions rather than resolving them through
+   * a SYSTEM tier at runtime: `WorkflowAssignmentService.resolve` already has no SYSTEM tier
+   * (`workflow-assignment.service.ts` walks department → tenant → null), so a tenant that lacks
+   * a definition behaves exactly as it does today — the legacy dispatch path — and a tenant that
+   * has one owns it outright.
+   *
+   * The copy lands as a DRAFT, exactly as `clone` does. A definition that nobody in the tenant
+   * has reviewed must not become the graph that serves its consultations; the tenant admin
+   * publishes it when they mean to, and until then the assignment cascade correctly sees
+   * nothing. MISSING-ONLY by slug.
+   */
+  async cloneFromSystem(slug: string, targetTenantId: string): Promise<{ definitionId: string; created: boolean }> {
+    const templates = await this.workflowDefinitionRepository.findSystemTemplates(this.databaseService.baseClient);
+    const source = templates.find((row) => row.slug === slug);
+    if (!source) {
+      throw new NotFoundException(`No PUBLISHED SYSTEM workflow definition '${slug}' to clone from.`);
+    }
+
+    return runInTenantContext(this.clsService, targetTenantId, async () => {
+      const existing = await this.workflowDefinitionRepository.findMaxVersionNumber(targetTenantId, slug, this.databaseService.baseClient);
+      if (existing > 0) {
+        const rows = await this.workflowDefinitionRepository.findAllVersionsBySlug(targetTenantId, slug).catch(() => []);
+        return { definitionId: rows[0]?.id ?? '', created: false };
+      }
+      const created = await this.clone(
+        source.id,
+        { targetSlug: source.slug, name: source.name, description: source.description ?? null } as CloneWorkflowDefinitionRequest,
+        { sourceTemplateSlug: source.slug, templateLocked: true },
+      );
+      return { definitionId: created.id, created: true };
+    });
   }
 
   // ============================================================

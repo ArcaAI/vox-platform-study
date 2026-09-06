@@ -40,7 +40,10 @@ import { BillingAdjustmentRepository } from '../BillingAdjustmentRepository';
 /** A unit-of-work stub whose delegates are never reached (the guard throws first). */
 const unitOfWork = () => ({ getDatabaseService: () => new Proxy({}, { get: () => ({}) }) }) as never;
 
-const APPEND_ONLY: [string, new (uow: never) => { supportsSoftDelete: boolean; softDelete: (id: string) => Promise<unknown>; restore: (id: string) => Promise<unknown> }][] = [
+const APPEND_ONLY: [
+  string,
+  new (uow: never) => { supportsSoftDelete: boolean; softDelete: (id: string) => Promise<unknown>; restore: (id: string) => Promise<unknown> },
+][] = [
   ['AiUsageEvent', AiUsageEventRepository as never],
   ['AiUsageOutbox', AiUsageOutboxRepository as never],
   ['AiUsageRollupHourly', AiUsageRollupHourlyRepository as never],

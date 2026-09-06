@@ -18,10 +18,14 @@
  * The GOLDEN case is the last one: the legacy single-brace body rendered by the OLD renderer
  * and the converted `{{context.…}}` body rendered by the new one must produce the SAME string.
  *
- * TRANSITION (orchestrator decision, recorded in the lane report): until L13 backfills every
- * tenant with its clone, an ABSENT clone must not fail a live consultation — the code-owned
- * builders still populate `context.*` and the service WARNs.
+ * TRANSITION CLOSED BY L13: an ABSENT clone is now a named, fail-closed
+ * `LEGACY_CONTEXT_SCHEMA_MISSING` rather than a warning — the reference set is provisioned at
+ * tenant creation and backfilled for every existing tenant, so a missing clone is a real
+ * provisioning gap with a named remedy. A lookup that FAILS (an infrastructure blip) still
+ * degrades, because that is a different fault and a clinician must not be told it is a
+ * governance defect.
  */
+import { ServiceUnavailableException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** The legacy body as the seeds carry it TODAY (single brace) — the BEFORE side of the golden pair. */
@@ -167,12 +171,29 @@ describe('PromptAssemblyService renders `context.*` through the shared grammar',
     expect(userPrompt.startsWith('Unknown: []')).toBe(true);
   });
 
-  it('still assembles when the tenant has NO clone of the bridge schema (the L13 transition)', async () => {
-    resolvesTo(CONVERTED_BODY);
-    const { userPrompt } = await (await getService(false)).assemble(params());
+  // TASK-890 L13 — the transition above is over.
+  it('fails CLOSED with LEGACY_CONTEXT_SCHEMA_MISSING when the tenant has NO clone of the bridge schema', async () => {
+    // A body that references a name the value builders do not populate: that is the only path
+    // that needs the declared set at all, and precisely where "declared-but-empty" and
+    // "undeclared" have to be told apart.
+    resolvesTo('Notes: [{{context.not_populated_by_the_builders}}]');
+    const error = await (await getService(false)).assemble(params()).catch((e: unknown) => e);
 
-    expect(userPrompt).toContain('- **Department:** Cardiology');
-    expect(userPrompt).toContain('- Language: English');
+    expect(error).toBeInstanceOf(ServiceUnavailableException);
+    expect((error as ServiceUnavailableException).getResponse()).toMatchObject({
+      code: 'LEGACY_CONTEXT_SCHEMA_MISSING',
+      slug: 'consultation_legacy_v1',
+      tenantId: 'tenant-1',
+    });
+  });
+
+  it('an infrastructure failure on the schema lookup still DEGRADES — a database blip is not a governance defect', async () => {
+    resolvesTo('Notes: [{{context.not_populated_by_the_builders}}]');
+    const service = await getService(false);
+    // AFTER the harness, which sets its own resolved value for the no-clone case.
+    mockSchemaRepository.findByTenantAndSlug.mockRejectedValue(new Error('db down'));
+    const { userPrompt } = await service.assemble(params());
+    expect(userPrompt).toContain('Notes: []');
   });
 
   it('reads the TENANT’s clone — never the SYSTEM row — when it has to classify a missing name', async () => {
