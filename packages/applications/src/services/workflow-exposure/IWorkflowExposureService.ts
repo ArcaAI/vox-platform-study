@@ -1,6 +1,9 @@
 import {
   InvokeWorkflowRequest,
+  ReviewDecisionRequest,
   WorkflowInvokeResponse,
+  WorkflowReviewDecisionResponse,
+  WorkflowReviewResponse,
   WorkflowRunCancelResponse,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
@@ -104,6 +107,28 @@ export interface IWorkflowExposureService {
    * exactly once; only its reversible ciphertext is persisted. Admin plane, tenant-scoped.
    */
   rotateWebhookSecret(slug: string): Promise<WorkflowWebhookSecretResponse>;
+
+  /**
+   * TASK-890 §3.9 — the live state of ONE `core.humanReview` node of a run.
+   *
+   * Run ownership is proved through the SAME lookup {@link getRunStatus} uses, so a foreign
+   * `runId`, or one whose lineage is not `slug`'s, is a `NotFoundException` (404-over-403).
+   *
+   * `exists: false` — the node has not been reached, or the review already settled — is a
+   * NORMAL answer and deliberately distinct from the 404. An unreachable harness is neither:
+   * the failure propagates (503 at the boundary) rather than being flattened into "no review",
+   * because a reviewer UI that renders "nothing to decide" during an outage silently loses work.
+   */
+  getReview(slug: string, runId: string, nodeId: string): Promise<WorkflowReviewResponse>;
+
+  /**
+   * TASK-890 §3.9 — release a `core.humanReview` node with a human decision.
+   *
+   * Same 404 posture as {@link getReview}. `reviewerId` is stamped from CLS and NEVER read from
+   * `dto` — a decision is an attribution, and a body field would let a caller sign someone
+   * else's name to their own approval.
+   */
+  decideReview(slug: string, runId: string, nodeId: string, dto: ReviewDecisionRequest): Promise<WorkflowReviewDecisionResponse>;
 }
 
 /** What the inbound webhook route hands the service — the raw body is what was SIGNED. */

@@ -29,7 +29,10 @@ import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-pa
 import { describeWorkflow, graphOf, type WorkflowSchemaDescription } from './workflow-schema-description';
 import {
   InvokeWorkflowRequest,
+  ReviewDecisionRequest,
   WorkflowInvokeResponse,
+  WorkflowReviewDecisionResponse,
+  WorkflowReviewResponse,
   WorkflowRunCancelResponse,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
@@ -417,6 +420,58 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
         mode: 'async',
       },
     );
+  }
+
+  async getReview(slug: string, runId: string, nodeId: string): Promise<WorkflowReviewResponse> {
+    this.assertExposureEnabled();
+    const tenantId = this.requireTenantId();
+    // Ownership FIRST, and through the same lookup `getRunStatus` uses: a foreign run, or one
+    // whose lineage is not this slug's, must be indistinguishable from a run that never existed
+    // — and must never reach the interpreter, which authenticates as the platform and would
+    // happily answer for anyone's run.
+    await this.resolveOwnedRun(tenantId, slug, runId);
+
+    // Deliberately NOT wrapped in try/catch. `exists: false` is the interpreter's own answer for
+    // "no live child"; a transport failure or a 503 is a different fact and stays one (the
+    // gateway's `ExceptionInterceptor` maps an uncaught downstream error to 503 + Retry-After).
+    const state = await this.harnessGateway.getWorkflowRunReview(runId, nodeId, tenantId);
+
+    return {
+      runId: state.runId ?? runId,
+      nodeId: state.nodeId ?? nodeId,
+      exists: state.exists === true,
+      phase: state.phase ?? null,
+      escalations: state.escalations ?? null,
+      decided: state.decided === true,
+      // `null`, never `'approved'`: the review workflow's whole invariant is that a timeout
+      // never approves, and a default here would reintroduce exactly that.
+      decision: state.decision === 'approved' || state.decision === 'rejected' ? state.decision : null,
+    };
+  }
+
+  async decideReview(slug: string, runId: string, nodeId: string, dto: ReviewDecisionRequest): Promise<WorkflowReviewDecisionResponse> {
+    this.assertExposureEnabled();
+    const tenantId = this.requireTenantId();
+    const run = await this.resolveOwnedRun(tenantId, slug, runId);
+
+    // The acting user, from CLS. `dto` is a class-validator DTO with no `reviewerId` field, so
+    // the global pipe (`forbidNonWhitelisted`) has already refused a body that carried one —
+    // this line is what makes that refusal safe to rely on rather than merely tidy.
+    const reviewerId = this.requestUserId ?? null;
+
+    const result = await this.harnessGateway.decideWorkflowRunReview(
+      runId,
+      nodeId,
+      { decision: dto.decision, reviewerId: reviewerId ?? undefined, comment: dto.comment, editedPayload: dto.editedPayload },
+      tenantId,
+    );
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: run.workflowVersionId,
+      data: { action: 'decideReview', slug, runId, nodeId, decision: dto.decision, reviewerId },
+    });
+
+    return { runId, nodeId, decision: dto.decision, signaled: result?.signaled === true, reviewerId };
   }
 
   async describe(slug: string): Promise<WorkflowSchemaDescription> {
