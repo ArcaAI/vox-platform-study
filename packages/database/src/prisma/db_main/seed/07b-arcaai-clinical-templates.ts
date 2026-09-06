@@ -233,6 +233,17 @@ const PRE_SUMMARY_VARIABLES = [
   'language_name',
 ] as const;
 
+/**
+ * TASK-890 §3.6 (OD-K) — `variables` is now a typed declaration ARRAY
+ * (`{ name, type, required }[]`), not a bare name list. This wraps
+ * `PRE_SUMMARY_VARIABLES` once at module load; `PRE_SUMMARY_VARIABLES` itself
+ * stays a plain name list (it is what `pre-summary-placeholder-guard.test.ts`
+ * cross-checks against its own independently-declared copy).
+ */
+function declareRequiredStringVariables(names: readonly string[]): Array<{ name: string; type: 'string'; required: true }> {
+  return names.map((name) => ({ name, type: 'string' as const, required: true as const }));
+}
+
 const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_NEW_REFERRAL,
@@ -450,7 +461,7 @@ const PRE_SUMMARY_SPEC: ClinicalTemplateSpec = {
   departmentId: null,
   scope: 'TENANT_DEFAULT',
   tags: ['arcaai', 'clinical', 'pre-summary', 'text-v1'],
-  variables: [...PRE_SUMMARY_VARIABLES],
+  variables: declareRequiredStringVariables(PRE_SUMMARY_VARIABLES),
 };
 
 const ALL_SPECS: ClinicalTemplateSpec[] = [...SUMMARY_SPECS, PRE_SUMMARY_SPEC];

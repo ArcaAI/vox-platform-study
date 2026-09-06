@@ -1,5 +1,7 @@
-import { IsString, IsOptional, IsEnum, IsArray, IsIn, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsArray, IsIn, MaxLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PromptVariableDeclarationDto } from './prompt-variable-declaration.dto';
 
 export class CreatePromptTemplateRequest {
   @ApiProperty({ description: 'Template name', example: 'SOAP Summary Prompt' })
@@ -32,9 +34,16 @@ export class CreatePromptTemplateRequest {
   @IsIn(['DRAFT', 'PUBLISHED'])
   status?: 'DRAFT' | 'PUBLISHED';
 
-  @ApiPropertyOptional({ description: 'Template variable definitions (JSON)' })
+  // Typed declarations (TASK-890 §3.6, OD-K) — an ARRAY, never the retired
+  // `{ [name]: { type, required } }` map. `@ValidateNested` + `@Type` reject a
+  // legacy map outright (it fails `@IsArray`), which is the point: there is no
+  // read-side normaliser for it any more.
+  @ApiPropertyOptional({ description: 'Typed prompt-variable declarations', type: [PromptVariableDeclarationDto] })
   @IsOptional()
-  variables?: Record<string, unknown>;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PromptVariableDeclarationDto)
+  variables?: PromptVariableDeclarationDto[];
 
   @ApiPropertyOptional({ description: 'Department ID to assign template to' })
   @IsOptional()

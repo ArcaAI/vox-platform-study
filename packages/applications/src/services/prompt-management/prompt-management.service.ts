@@ -26,6 +26,7 @@ import {
   AiModelRepository,
   GoldenCaseRepository,
   ModelTaskType,
+  AiDeploymentKind,
 } from '@arcaai/domains';
 import { IPromptManagementService, ListPromptTemplatesFilters, PaginatedPromptTemplates } from './IPromptManagementService';
 import {
@@ -61,11 +62,11 @@ import { DepartmentResponse } from '../department/dto';
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
-import {
-  PRE_SUMMARY_TEMPLATE_VARIABLES,
-  buildPreSummaryVariables,
-  substitutePreSummaryVariables,
-} from '../consultation/prompt/pre-summary-variables';
+import { renderTemplate, PromptVariableUnresolvedError, PromptTemplateSyntaxError } from '@arcaai/workflow-contract';
+import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
+import { buildLlmUsageInputFromTokenCounts, toLedgerProvider } from '../consultation/summary/text-usage';
+import { withUsageTrigger } from '../usageLedger/usage-attributes';
+import { PromptVariableDeclarationDto, PromptVariableType, parsePromptVariableDeclarations } from './dto/prompt-variable-declaration.dto';
 
 const SCOPE_TENANT_DEFAULT = 'TENANT_DEFAULT';
 const SCOPE_USER_PERSONAL = 'USER_PERSONAL';
@@ -85,10 +86,6 @@ const FULL_SCORE_WORD_COUNT = 50;
 // TEXT's terminal success state (`TaskStatus.COMPLETED` in
 // `apps/text/src/text/models/task.py`).
 const TEXT_TASK_COMPLETED = 'completed';
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 // Deterministic output-quality rubric helpers. Kept as
 // pure module functions so they are trivially unit-testable in isolation.
@@ -137,18 +134,47 @@ function isValidJson(value: string): boolean {
 }
 
 /**
- * Declared variable names for the coverage dimension. The admin UI persists
- * `variables` as an array of `{ name, type, required, … }`; fall back to a
- * plain `{ name: definition }` object whose keys are the variable names.
+ * Declared variable names for the coverage dimension.
+ *
+ * TASK-890 §3.6 (OD-K): `variables` is now an ARRAY of typed declarations
+ * ONLY — the retired `{ name: definition }` map has NO read-side normaliser.
+ * Delegates to {@link parsePromptVariableDeclarations}, which already treats
+ * any non-array shape as "no declarations".
  */
 function extractDeclaredVariableNames(variables?: Record<string, unknown> | null): string[] {
-  if (!variables) return [];
-  if (Array.isArray(variables)) {
-    return variables
-      .map((v) => (v && typeof v === 'object' ? (v as { name?: unknown }).name : undefined))
-      .filter((name): name is string => typeof name === 'string' && name.length > 0);
+  return parsePromptVariableDeclarations(variables).map((decl) => decl.name);
+}
+
+/** Coerce a caller-supplied or `default` string value to a declaration's `type` (§3.6). */
+function coercePromptVariableValue(type: PromptVariableType, value: unknown): unknown {
+  switch (type) {
+    case 'number': {
+      if (typeof value === 'number') return value;
+      const n = Number(value);
+      return Number.isNaN(n) ? value : n;
+    }
+    case 'boolean': {
+      if (typeof value === 'boolean') return value;
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      return value;
+    }
+    case 'date': {
+      const d = value instanceof Date ? value : new Date(String(value));
+      return Number.isNaN(d.getTime()) ? value : d.toISOString();
+    }
+    case 'json': {
+      if (typeof value !== 'string') return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    }
+    case 'string':
+    default:
+      return typeof value === 'string' ? value : String(value);
   }
-  return Object.keys(variables);
 }
 
 @Injectable()
@@ -204,6 +230,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // run on: testing a template against a model no consultation would ever use tells the author
     // nothing. Optional + trailing so existing positional fixtures keep their arity.
     @Optional() @Inject(TextAgentResolverService) private readonly textAgents?: TextAgentResolverService,
+    // TASK-890 §3.13 (OD-E) — the prompt test-run is a production inference path and must be
+    // metered like every other one. Optional + trailing so existing positional fixtures keep
+    // their arity; absent ⇒ `finalizePromptTemplateTest` persists unmetered (best-effort, never
+    // blocks the write) and `startPromptTemplateTest`'s quota precheck is skipped.
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.textServiceUrl = this.configService?.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -271,7 +302,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       category: dto.category,
       // Persist the publication status (defaults DRAFT).
       status: dto.status ?? 'DRAFT',
-      variables: dto.variables ?? null,
+      variables: (dto.variables as unknown as Record<string, unknown>) ?? null,
       departmentId: dto.departmentId ?? null,
       scope,
       ownerUserId,
@@ -286,7 +317,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       promptTemplateId: saved.id,
       versionNumber: 1,
       content: dto.content,
-      variables: dto.variables ?? null,
+      variables: (dto.variables as unknown as Record<string, unknown>) ?? null,
       changeReason: 'Initial version',
       changedBy: userId ?? null,
     });
@@ -314,7 +345,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       description: dto.description ?? null,
       content: dto.content,
       category: dto.category,
-      variables: dto.variables ?? null,
+      variables: (dto.variables as unknown as Record<string, unknown>) ?? null,
       departmentId: dto.departmentId ?? null,
       scope: SCOPE_USER_PERSONAL,
       ownerUserId: userId,
@@ -329,7 +360,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       promptTemplateId: saved.id,
       versionNumber: 1,
       content: dto.content,
-      variables: dto.variables ?? null,
+      variables: (dto.variables as unknown as Record<string, unknown>) ?? null,
       changeReason: 'Initial personal version',
       changedBy: userId,
     });
@@ -382,7 +413,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       if (dto.name !== undefined) template.name = dto.name;
       if (dto.description !== undefined) template.description = dto.description;
       if (dto.content !== undefined) template.content = dto.content;
-      if (dto.variables !== undefined) template.variables = dto.variables;
+      if (dto.variables !== undefined) template.variables = dto.variables as unknown as Record<string, unknown>;
       if (dto.tags !== undefined) template.tags = dto.tags;
       template.incrementVersion();
     }
@@ -430,7 +461,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
           promptTemplateId: id,
           versionNumber: maxVersionNumber + 1,
           content: dto.content ?? template.content,
-          variables: dto.variables ?? template.variables,
+          variables: (dto.variables as unknown as Record<string, unknown> | undefined) ?? template.variables,
           changeReason: dto.changeReason ?? null,
           changedBy: userId ?? null,
         });
@@ -888,15 +919,19 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *
    * Everything up to (and including) prompt assembly is unchanged: the
    * `sampleInput`/`goldenCaseId` mutual exclusion, the 404-over-403 template
-   * guards, the optional pinned `PromptVersion` snapshot, golden-case
-   * decryption, and `interpolateTemplate`.
+   * guards, and the optional pinned `PromptVersion` snapshot. Prompt assembly
+   * itself now renders through the ONE `{{ path | default() }}` grammar
+   * (`renderTemplate`, `@arcaai/workflow-contract` — TASK-890 §3.2), not the
+   * old `{{var}}`-flat-key brace-trap pass.
    *
    * What changed:
    *  - `dto.dryRun` short-circuits BEFORE any TEXT call — a dry run used to burn
    *    a real 2-minute generation just to discard the write.
-   *  - Otherwise a STREAMING job is submitted (`stream: true`); the caller opens
-   *    the returned `streamUrl` over SSE and then calls
-   *    {@link finalizePromptTemplateTest} to score and persist.
+   *  - Otherwise the tenant's `monthlyLlmTokens` quota is asserted (OD-E — every
+   *    inference activity counts, including a prompt-bench run) and a STREAMING
+   *    job is submitted (`stream: true`); the caller opens the returned
+   *    `streamUrl` over SSE and then calls {@link finalizePromptTemplateTest} to
+   *    score, meter and persist.
    *  - The outgoing body carries the tenant's BYO credentials + runtime profile
    *    via the shared `TextRequestEnrichmentService`, and the request carries
    *    `X-Tenant-Id`, so the run is tenant-funded and attributable.
@@ -905,7 +940,9 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *    from this path entirely.
    *
    * @throws ArgumentInvalidException — both `sampleInput` and `goldenCaseId`
-   *   supplied, or a caller-supplied provider/model pair is partial/unknown.
+   *   supplied, a caller-supplied provider/model pair is partial/unknown, a
+   *   required declared variable was not supplied (and declares no default),
+   *   or the template has a grammar syntax error.
    * @throws NotFoundException — unknown/cross-tenant template, missing
    *   `versionNumber`, or unknown/cross-tenant `goldenCaseId` (404-over-403).
    * @throws BadRequestException — no TEXT_GENERATION agent is assigned (fail-closed).
@@ -940,13 +977,21 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // lifetime — never persisted or logged.
     const sampleInput = dto.goldenCaseId ? await this.loadGoldenCaseSampleInput(dto.goldenCaseId) : dto.sampleInput;
 
-    const prompt = this.interpolateTemplate(content, dto.variables, sampleInput, declaredVariables);
-    const { provider, model } = await this.resolveTestTextTarget({ provider: dto.provider, model: dto.model });
+    const prompt = this.renderTestPrompt(content, dto.variables, sampleInput, declaredVariables, id);
+    const { provider, model } = await this.resolveTestTextTarget({ provider: dto.provider, model: dto.model, modelId: dto.modelId });
 
     // Defect 4 — a dry run generates NOTHING. The author gets the exact prompt
     // that would have been sent; no job, no tokens, no cost.
     if (dto.dryRun) {
       return { mode: 'dry-run', provider, model, assembledPrompt: prompt };
+    }
+
+    // TASK-890 §3.13 (OD-E) — a prompt-bench run is a production inference
+    // activity like any other; it must count against the tenant's quota
+    // BEFORE the upstream call, not just get recorded afterward.
+    const tenantId = this.tenantId;
+    if (tenantId) {
+      await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
     }
 
     const { taskId, streamUrl } = await this.submitTextGenerationJob(prompt, provider, model);
@@ -993,7 +1038,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
       scoredVariables = (version.variables as Record<string, unknown> | null) ?? scoredVariables;
     }
 
-    const output = await this.fetchTextTaskOutput(dto.taskId);
+    const taskOutput = await this.fetchTextTaskOutput(dto.taskId);
+    const output = taskOutput.content;
     const { score, metrics } = this.scoreOutput(output, {
       category: template.category,
       content: scoredContent,
@@ -1016,6 +1062,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
       resourceId: id,
       data: { action: 'test', score },
     });
+
+    // TASK-890 §3.13 (OD-E) — record what this run actually cost, AFTER the
+    // write it never blocks (see `recordPromptTestUsage`'s degradation note).
+    await this.recordPromptTestUsage(taskOutput, dto.taskId);
 
     return {
       id: updated.id,
@@ -1161,42 +1211,53 @@ export class PromptManagementService extends BaseService implements IPromptManag
   // ─── prompt-test internals ─────────────────────────────
 
   /**
-   * Substitute `{{var}}` placeholders in the template content with the
-   * supplied sample values, then append any free-text `sampleInput`. Unmatched
-   * placeholders are left intact so the operator can see what was missing.
+   * Render a template's content against the ONE `{{ path | default() }}`
+   * grammar (`renderTemplate`, `@arcaai/workflow-contract` — TASK-890 §3.2),
+   * then append any free-text `sampleInput` VERBATIM (never re-interpreted —
+   * "values are data", the same rule the deleted single-brace substituter
+   * enforced). Replaces the retired `{{var}}`-flat-key brace-trap pass
+   * (flavour 3, §2.4) and its single-brace v1 fallback outright: a template
+   * still carrying `{single_brace}` tokens renders them LITERALLY now (§3.2
+   * rule "a single brace is literal") rather than silently substituting them.
    *
-   * B2 brace-trap: this pass is `{{var}}`-only. When `declaredVariables`
-   * intersects the 9 v1 pre-summary placeholder names, ALSO run the shared
-   * single-brace substituter (`substitutePreSummaryVariables`) so a v1-style
-   * body (`{current_department}`) interpolates instead of leaking literal
-   * `{braces}` into the TEXT call. Caller-supplied `variables` (matched by the
-   * exact placeholder name) win; any of the 9 not supplied fall back to the
-   * shared v1 defaults (`buildPreSummaryVariables`) so no recognized
-   * single-brace token is ever left unresolved.
+   * `declaredVariables` — the template's/version's typed declarations — are
+   * validated FIRST (required-with-no-default is a 400 before any TEXT call
+   * ever happens) and become the render SCOPE's bare-name roots, overlaid by
+   * the caller-supplied `variables` (caller wins — §3.3 "bare name" row).
+   *
+   * @throws ArgumentInvalidException — a required declared variable was not
+   *   supplied and declares no default, an undeclared `{{path}}` reference in
+   *   the content did not resolve (no `default(...)`), or the content has a
+   *   grammar syntax error.
    */
-  private interpolateTemplate(
+  private renderTestPrompt(
     content: string,
-    variables?: Record<string, unknown>,
-    sampleInput?: string,
-    declaredVariables?: Record<string, unknown> | null,
+    variables: Record<string, unknown> | undefined,
+    sampleInput: string | undefined,
+    declaredVariables: Record<string, unknown> | null | undefined,
+    templateRef: string,
   ): string {
-    let prompt = content;
-    if (variables) {
-      for (const [key, value] of Object.entries(variables)) {
-        prompt = prompt.replace(new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, 'g'), String(value));
-      }
-    }
+    const scope = this.resolveTestVariableScope(parsePromptVariableDeclarations(declaredVariables), variables);
 
-    const declaredNames = extractDeclaredVariableNames(declaredVariables);
-    const singleBraceNames = PRE_SUMMARY_TEMPLATE_VARIABLES.filter((name) => declaredNames.includes(name));
-    if (singleBraceNames.length > 0) {
-      const defaults = buildPreSummaryVariables({});
-      const values: Record<string, string> = {};
-      for (const name of singleBraceNames) {
-        const callerValue = variables?.[name];
-        values[name] = callerValue !== undefined ? String(callerValue) : defaults[name];
+    let prompt: string;
+    try {
+      prompt = renderTemplate(content, scope, { templateRef });
+    } catch (renderProblem) {
+      // Build OUR OWN message from the named error's structured fields (a
+      // dotted path, a numeric offset) — never the renderer's own `.message`
+      // text verbatim; the same discipline the downstream-error boundary
+      // applies to a caught network error, applied here to a caught local one.
+      if (renderProblem instanceof PromptVariableUnresolvedError) {
+        const unresolvedPath = renderProblem.path;
+        throw new ArgumentInvalidException(
+          `Prompt variable \`${unresolvedPath}\` did not resolve for this test run and declares no default(...). Supply it in \`variables\` or add a \`default(...)\` in the template.`,
+        );
       }
-      prompt = substitutePreSummaryVariables(prompt, values);
+      if (renderProblem instanceof PromptTemplateSyntaxError) {
+        const syntaxOffset = renderProblem.offset;
+        throw new ArgumentInvalidException(`Prompt template has a syntax error at offset ${syntaxOffset}.`);
+      }
+      throw renderProblem;
     }
 
     if (sampleInput) {
@@ -1206,14 +1267,49 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
+   * Build the `renderTemplate` scope from the declared variables + the
+   * caller's sample values: required-with-no-default-and-not-supplied fails
+   * closed HERE (before any TEXT call), everything else is coerced to its
+   * declared `type` (declared default applied when the caller supplied
+   * nothing). Undeclared caller-supplied keys pass through unchanged — the
+   * template may reference them ad hoc.
+   */
+  private resolveTestVariableScope(declarations: PromptVariableDeclarationDto[], variables?: Record<string, unknown>): Record<string, unknown> {
+    const scope: Record<string, unknown> = { ...(variables ?? {}) };
+    for (const decl of declarations) {
+      const supplied = scope[decl.name];
+      if (supplied !== undefined && supplied !== null) {
+        scope[decl.name] = coercePromptVariableValue(decl.type, supplied);
+        continue;
+      }
+      if (decl.default !== undefined) {
+        scope[decl.name] = coercePromptVariableValue(decl.type, decl.default);
+        continue;
+      }
+      if (decl.required) {
+        throw new ArgumentInvalidException(`Missing required variable \`${decl.name}\` for this test run.`);
+      }
+      // Optional, no default, not supplied: leave it unset so a reference to
+      // it in the content fails observably at render time (a named
+      // PromptVariableUnresolvedError) rather than silently as "undefined".
+    }
+    return scope;
+  }
+
+  /**
    * Resolve the `{provider, model}` a test run sends to TEXT.
    *
    * Precedence:
-   *  1. Caller-supplied pair (`override.provider` + `override.model`, both
+   *  1. TASK-890 §3.7 — `override.modelId` (a tenant-catalogue `AiModel` row
+   *     id, the console picker). The row's `provider` + `wireModelId` (falling
+   *     back to `sourceUri` for a not-yet-backfilled row) are resolved
+   *     SERVER-SIDE and forwarded to TEXT — the browser never sees the wire
+   *     identifier the catalogue DTO deliberately omits.
+   *  2. Caller-supplied pair (`override.provider` + `override.model`, both
    *     required together) — forwarded VERBATIM (mirrors
    *     `applyTextModelSelection`'s "caller-pinned model wins" semantics),
    *     after validating it against the ENABLED AiModel registry.
-   *  2. TASK-876 — the tenant's ASSIGNED TEXT_GENERATION agent
+   *  3. TASK-876 — the tenant's ASSIGNED TEXT_GENERATION agent
    *     (`department → tenant → SYSTEM`), through the SAME
    *     `TextAgentResolverService` every real generation uses. It used to be the
    *     `text.test` `AiTaskDefault` key, which is a RETIRED selection surface:
@@ -1226,11 +1322,24 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * substituted platform model; a thrown lookup ⇒ logged and RETHROWN, never
    * disguised as "unconfigured".
    *
-   * @throws ArgumentInvalidException — only one of provider/model supplied,
-   *   or the supplied pair does not match an ENABLED registry row.
+   * @throws ArgumentInvalidException — `modelId` combined with `provider`/`model`,
+   *   only one of provider/model supplied, the supplied pair does not match an
+   *   ENABLED registry row, or `modelId` names an unknown/disabled/cross-tenant row
+   *   (404-over-403 — a foreign id reads as "unknown", never leaking existence).
    * @throws BadRequestException — no TEXT_GENERATION agent is assigned at any tier.
    */
-  private async resolveTestTextTarget(override: { provider?: string; model?: string }): Promise<{ provider: string; model: string }> {
+  private async resolveTestTextTarget(override: {
+    provider?: string;
+    model?: string;
+    modelId?: string;
+  }): Promise<{ provider: string; model: string }> {
+    if (override.modelId !== undefined) {
+      if (override.provider !== undefined || override.model !== undefined) {
+        throw new ArgumentInvalidException('modelId is mutually exclusive with provider/model.');
+      }
+      return this.resolveTextTargetFromModelId(override.modelId);
+    }
+
     if (override.provider !== undefined || override.model !== undefined) {
       if (!override.provider || !override.model) {
         throw new ArgumentInvalidException('provider and model must be supplied together.');
@@ -1267,6 +1376,34 @@ export class PromptManagementService extends BaseService implements IPromptManag
       });
       throw error;
     }
+  }
+
+  /**
+   * TASK-890 §3.7 — resolve the wire `{provider, model}` from a tenant
+   * catalogue `AiModel` row id. `AiModel` is shared-read (tenant row OR the
+   * SYSTEM "Hope provider" row resolve transparently through `findById`), so
+   * this serves both a tenant's BYO row and a platform-served one identically.
+   * `wireModelId` is the ROUTED id (§3.1); `sourceUri` is the fallback for a
+   * row the backfill migration has not reached.
+   *
+   * @throws NotFoundException — unknown id (404-over-403: a cross-tenant BYO
+   *   row's id is indistinguishable from an unknown one at this read).
+   * @throws ArgumentInvalidException — the row is disabled, or carries neither
+   *   a `wireModelId` nor a `sourceUri` to route on.
+   */
+  private async resolveTextTargetFromModelId(modelId: string): Promise<{ provider: string; model: string }> {
+    if (!this.aiModelRepository) {
+      throw new BadRequestException('The model catalogue is not configured; supply provider/model explicitly.');
+    }
+    const row = await this.aiModelRepository.findById(modelId);
+    if (!row || row.resourceStatus !== ResourceStatusType.ENABLED) {
+      throw new NotFoundException(`Model ${modelId} not found`);
+    }
+    const wireModel = row.wireModelId || row.sourceUri;
+    if (!row.provider || !wireModel) {
+      throw new ArgumentInvalidException(`Model ${modelId} has no routable provider/model — it cannot serve a test run.`);
+    }
+    return { provider: row.provider, model: wireModel };
   }
 
   /**
@@ -1380,13 +1517,30 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *
    * Server-side on purpose: the client must never be the source of the text
    * that gets persisted as `lastTestOutput`.
+   *
+   * Also carries `provider`/`model`/token counts (TASK-890 §3.13, OD-E) —
+   * `TaskResponse` (`apps/text/src/text/models/responses.py`) has no full
+   * `TextUsageDetail` block on this REST read (no `endpoint_kind`, no `byok`),
+   * only `{provider, model, usage: {prompt_tokens, completion_tokens}}`. That
+   * is exactly the "bare token counts, no real usage detail" shape
+   * `buildLlmUsageInputFromTokenCounts` (`text-usage.ts`) exists for — the
+   * honest builder that never fabricates an `endpointKind` it did not see.
    */
-  private async fetchTextTaskOutput(taskId: string): Promise<string> {
+  private async fetchTextTaskOutput(
+    taskId: string,
+  ): Promise<{ content: string; provider: string | null; model: string | null; promptTokens: number; completionTokens: number }> {
     if (!this.httpService) {
       throw new BadRequestException('TEXT/text-generation client is not configured');
     }
 
-    let data: { status?: string; content?: string | null; error?: string | null };
+    let data: {
+      status?: string;
+      content?: string | null;
+      error?: string | null;
+      provider?: string | null;
+      model?: string | null;
+      usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+    };
     try {
       const response = await this.httpService.axiosRef.get(`${this.textServiceUrl}/api/v1/tasks/${taskId}`, {
         headers: await this.textHeaders(),
@@ -1410,7 +1564,55 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (state !== TEXT_TASK_COMPLETED) {
       throw new BadRequestException(`Generation task ${taskId} is not complete (state: ${state}). Wait for the stream to finish before finalizing.`);
     }
-    return data.content ?? '';
+    return {
+      content: data.content ?? '',
+      provider: data.provider ?? null,
+      model: data.model ?? null,
+      promptTokens: data.usage?.prompt_tokens ?? 0,
+      completionTokens: data.usage?.completion_tokens ?? 0,
+    };
+  }
+
+  /**
+   * Best-effort ledger record for a finalized prompt-bench run (TASK-890
+   * §3.13, OD-E). Mirrors `ContextService#persistSummaryMetaWithUsage`'s
+   * degradation: a metering failure is logged and swallowed, never allowed to
+   * fail the (already-committed) test-result write. `null` when the ledger is
+   * not wired, the tenant is unknown, or the task reported zero tokens (no
+   * counters to bill — no row is more honest than a zero-value one).
+   */
+  private async recordPromptTestUsage(
+    taskOutput: { provider: string | null; model: string | null; promptTokens: number; completionTokens: number },
+    taskId: string,
+  ): Promise<void> {
+    if (!this.usageLedgerService) return;
+    const tenantId = this.tenantId;
+    if (!tenantId) return;
+
+    try {
+      const batch = withUsageTrigger(
+        buildLlmUsageInputFromTokenCounts({
+          tenantId,
+          operation: 'generate.stream',
+          requestId: taskId,
+          provider: taskOutput.provider ? toLedgerProvider(taskOutput.provider) : 'none',
+          model: taskOutput.model,
+          deployment: AiDeploymentKind.CLOUD,
+          occurredAt: new Date(),
+          inputTokens: taskOutput.promptTokens,
+          outputTokens: taskOutput.completionTokens,
+        }),
+        'PROMPT_TEST',
+      );
+      if (!batch) return;
+      await this.usageLedgerService.recordUsage(batch);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Usage metering failed for a prompt-template test-run finalize; the test result was persisted unmetered',
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

@@ -105,4 +105,54 @@ describe('UpdatePromptTemplateRequest', () => {
       expect(ok.isValid).toBe(true);
     });
   });
+
+  // TASK-890 §3.6 (OD-K) — `variables` is now an ARRAY of typed declarations.
+  // The pre-ticket legacy shape (`{ [name]: { type, required } }`) has NO
+  // read-side normaliser and must be REJECTED by the global pipe, not
+  // silently accepted the way it was before this ticket.
+  describe('typed variable declarations (TASK-890 §3.6, OD-K)', () => {
+    it('rejects the retired legacy MAP shape ({ name: { type, required } })', async () => {
+      const legacyMap = await validateDto(UpdatePromptTemplateRequest, {
+        variables: { topic: { type: 'string', required: true } },
+      });
+      expect(legacyMap.isValid).toBe(false);
+
+      const legacyMapOnCreate = await validateDto(CreatePromptTemplateRequest, {
+        name: 'n',
+        content: 'x',
+        category: 'SUMMARY',
+        variables: { topic: { type: 'string', required: true } },
+      });
+      expect(legacyMapOnCreate.isValid).toBe(false);
+    });
+
+    it('accepts a well-formed array of typed declarations', async () => {
+      const result = await validateDto(UpdatePromptTemplateRequest, {
+        variables: [
+          { name: 'topic', type: 'string', required: true },
+          { name: 'age', type: 'number', required: false, default: '0', description: 'Patient age', source: { kind: 'context', path: 'context.patientAge' } },
+        ],
+      });
+      expect(result.isValid).toBe(true);
+    });
+
+    it('rejects a declaration with an invalid name (not a bare identifier)', async () => {
+      const result = await validateDto(UpdatePromptTemplateRequest, {
+        variables: [{ name: '1-bad-name', type: 'string', required: true }],
+      });
+      expect(result.isValid).toBe(false);
+    });
+
+    it('rejects a declaration with an unknown type', async () => {
+      const result = await validateDto(UpdatePromptTemplateRequest, {
+        variables: [{ name: 'topic', type: 'currency', required: true }],
+      });
+      expect(result.isValid).toBe(false);
+    });
+
+    it('accepts an empty declarations array', async () => {
+      const result = await validateDto(UpdatePromptTemplateRequest, { variables: [] });
+      expect(result.isValid).toBe(true);
+    });
+  });
 });
