@@ -80,6 +80,18 @@ export type WorkflowPublishFindingCode = (typeof WORKFLOW_PUBLISH_FINDING_CODES)
  */
 export const PUBLISH_FINDING_RULE_ID = 'WF-PUB';
 
+/**
+ * The OD-C ramp (P-4), as ONE constant. `PROMPT_VARIABLE_UNDECLARED` is a WARNING in the first
+ * release and an ERROR in the next, and the promotion is meant to be a one-line, reviewable diff
+ * rather than a hunt through call sites — so every caller in this monorepo passes THIS, and the
+ * release that decides to enforce it changes this value alone.
+ *
+ * It is a WARNING today because the check is new and the corpus is not: an agent whose prompt
+ * references a context schema no tenant has bound yet (gap 4e) would otherwise become
+ * unpublishable the moment this shipped, which is a migration disguised as a gate.
+ */
+export const TEMPLATE_REFERENCE_SEVERITY_RELEASE_1: WorkflowFindingSeverity = 'WARNING';
+
 // =============================================================================================
 // Context
 // =============================================================================================

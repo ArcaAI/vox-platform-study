@@ -35,12 +35,16 @@ import {
   AGENT_PROTOCOLS,
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
+  TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
   agentConfigProblems,
   agentTagProblems,
   buildPortableBundle,
   canonicalJson,
   portableBundleProblems,
+  templateReferenceProblems,
+  templateSyntaxProblems,
   type AgentConfigView,
+  type DeclaredNamespaces,
   type AgentModelView,
   type AgentProviderCapabilities,
 } from '@arcaai/workflow-contract';
@@ -1038,10 +1042,81 @@ export class AgentService extends BaseService implements IAgentService {
       const outcome = await this.resolvePrompt(asRecord(entity.instruction));
       findings.push(...outcome.findings);
       resolvedPrompt = outcome.resolvedPrompt;
+      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt));
     }
 
     const report: AgentValidationReport = { checkedAt: new Date().toISOString(), blocking: hasBlocking(findings), findings };
     return { report, model, fallbackModels, resolvedPrompt };
+  }
+
+  /**
+   * TASK-890 §3.5 — the resolved prompt is a TEMPLATE, so publish checks it like one.
+   *
+   * Nothing looked at prompt CONTENT before this ticket: an agent could publish with a prompt no
+   * renderer could parse, and the failure surfaced mid-consultation rather than at authoring
+   * time. Two checks, two severities, and the split is the whole point:
+   *
+   * - `PROMPT_TEMPLATE_SYNTAX` is an ERROR. A template that cannot PARSE can never render, on
+   *   any lane, for any caller.
+   * - `PROMPT_VARIABLE_UNDECLARED` rides the OD-C ramp (WARNING in release 1). A reference to a
+   *   variable nobody declared MIGHT still resolve — the invocation can pass it — and no agent
+   *   binds a context schema yet (gap 4e), so enforcing it today would be a migration wearing a
+   *   gate's clothes.
+   *
+   * `declared` is built from what an agent HAS today: `input.*` from its own `inputSchema`, bare
+   * names from `instruction.variables`. `context.*` / `trigger.*` arrive when the agent binds a
+   * context schema (L8 resolves the row and freezes the derived payload schema); until then a
+   * reference to them is legitimately undeclared, which is exactly what the WARNING says.
+   */
+  private promptTemplateFindings(entity: AgentEntity, resolvedPrompt: ResolvedPrompt): AgentFinding[] {
+    const content = resolvedPrompt?.content;
+    if (typeof content !== 'string' || content.length === 0) return [];
+
+    const templateRef =
+      resolvedPrompt?.source === 'template'
+        ? `prompt template ${resolvedPrompt.promptTemplateId} v${resolvedPrompt.promptVersionNumber}`
+        : 'instruction.systemPrompt';
+
+    const syntax = templateSyntaxProblems(content);
+    if (syntax.length > 0) {
+      // A template that does not parse has no meaningful references to cross-check.
+      return syntax.map((problem) => ({
+        severity: 'ERROR' as const,
+        code: 'PROMPT_TEMPLATE_SYNTAX' as const,
+        path: 'instruction',
+        message: `${templateRef}: ${problem}`,
+      }));
+    }
+
+    const instruction = asRecord(entity.instruction) ?? {};
+    const variables = asRecord(instruction.variables) ?? {};
+    const contextPayloadSchema = this.boundContextPayloadSchema(entity);
+    const declared: DeclaredNamespaces = {
+      roots: {
+        ...(contextPayloadSchema === null ? {} : { context: contextPayloadSchema, trigger: contextPayloadSchema }),
+        input: asRecord(entity.inputSchema) ?? null,
+      },
+      variables: Object.keys(variables),
+    };
+
+    return templateReferenceProblems(content, declared).map((problem) => ({
+      severity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+      code: 'PROMPT_VARIABLE_UNDECLARED' as const,
+      path: 'instruction',
+      message: `${templateRef}: ${problem}`,
+    }));
+  }
+
+  /**
+   * The derived payload schema of the agent's bound context schema, or `null` when it binds none.
+   *
+   * `null` TODAY for every agent: the `contextSchemaId` / `contextSchemaVersionNumber` columns and
+   * the resolution that freezes `compiledConfig.contextSchema.payloadSchema` are TASK-890 L2/L8.
+   * Split out as its own method so that lane fills ONE body rather than threading a parameter
+   * through the findings pipeline.
+   */
+  private boundContextPayloadSchema(_entity: AgentEntity): Record<string, unknown> | null {
+    return null;
   }
 
   /** Pure checks: the contract's `agentConfigProblems` + JSON-Schema value checks + authorable I/O schemas. */
