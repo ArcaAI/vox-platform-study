@@ -29,6 +29,7 @@
  */
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json';
+import { guardrailOptOutOf } from './guardrail-optout';
 import { topologicalLevels } from './graph-algorithms';
 import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from './graph-model';
 import { internalErrorFinding } from './report';
@@ -108,6 +109,49 @@ export interface CompiledPolicyBindings {
   documentTemplateRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>;
   contextSchemaVersionId: string | null;
   entitlementKeys: string[];
+  /**
+   * TASK-890 §3.4 — WHICH context-schema version each node that binds one by REFERENCE was
+   * frozen against. Structurally a sibling of `promptTemplateRefs`, and the same kind of
+   * guarantee: the interpreter validates a run payload against the schema the workflow was
+   * PUBLISHED with, never against whatever the tenant has edited since.
+   *
+   * Additive-optional and OMITTED when empty, so every artifact compiled before this field
+   * existed is byte-identical (and its checksum still verifies). Absent means "no node binds
+   * a schema by reference", never "unknown".
+   */
+  contextSchemaRefs?: CompiledContextSchemaRef[];
+  /**
+   * TASK-890 §3.14 — the WORKFLOW-level guardrail opinion, authored on `core.trigger`
+   * (the graph's one mandatory entry node) and folded with the per-node and per-agent
+   * opinions by `resolveGuardrailDecision` at run time, node > workflow > agent > on.
+   *
+   * Tri-state BY ABSENCE: omitted = this workflow expresses no opinion. `{ enabled: true }`
+   * is therefore not the same fact as absence — it is a recorded decision to screen.
+   */
+  guardrail?: { enabled: boolean };
+}
+
+/** TASK-890 §3.4 — one node's frozen context-schema binding. */
+export interface CompiledContextSchemaRef {
+  nodeId: string;
+  schemaId: string;
+  versionNumber: number;
+  versionId: string;
+}
+
+/**
+ * TASK-890 §3.4 — what the CALLER resolved about the trigger's `contextSchema.contextSchemaId`.
+ *
+ * The compiler never reads a database; the service resolves the reference in the caller's
+ * tenant (`ConsultationContextSchemaService.resolveReference`) and hands the DERIVED payload
+ * schema in. An unresolvable reference never reaches here — it is a blocking publish finding
+ * (`CONTEXT_SCHEMA_NOT_FOUND`), so `undefined` here means "nothing to freeze", not "unknown".
+ */
+export interface ResolvedTriggerContextSchema {
+  schemaId: string;
+  versionNumber: number;
+  versionId: string;
+  payloadSchema: Record<string, unknown>;
 }
 
 export interface CompiledCaps {
@@ -153,6 +197,12 @@ export interface CompilerContext {
   ruleSetVersion: number;
   caps: CompiledCaps;
   policyBindings: CompiledPolicyBindings;
+  /**
+   * TASK-890 §3.4 — the trigger's resolved context schema, when it binds one BY REFERENCE.
+   * Absent (or null) leaves the compiled trigger config exactly as authored, INLINE schemas
+   * included: an inline schema is already the definition, so there is nothing to resolve.
+   */
+  triggerContextSchema?: ResolvedTriggerContextSchema | null;
   /** Fixed timestamp for deterministic tests; defaults to `new Date().toISOString()`. */
   compiledAt?: string;
   nodeInfo(type: string): CompilerNodeInfo | undefined;
@@ -172,6 +222,14 @@ const GATE_CLASS = 'gate';
 const NON_BRANCH_OUTPUTS: ReadonlySet<string> = new Set(['out', 'next']);
 /** The loop's body-entry handle. */
 const LOOP_EACH_PORT = 'each';
+/**
+ * The graph's one mandatory entry node. Matched by TYPE rather than by class because both
+ * facts this module freezes onto it — the resolved context schema and the workflow's
+ * guardrail opinion — are properties of the TRIGGER specifically, not of the `entry` or
+ * `boundary` class. Matching a string keeps the compiler registry-free (it imports no
+ * descriptor); `publish-findings.ts` reads the same two configs the same way.
+ */
+const TRIGGER_NODE_TYPE = 'core.trigger';
 
 function clamp(value: number, max: number): number {
   return Math.min(value, max);
@@ -196,7 +254,7 @@ function compileNode(
   ctx: CompilerContext,
   activity: string,
 ): CompiledNode {
-  const config = node.config ?? {};
+  const config = compiledConfigFor(node, ctx);
   const requestedTimeout = typeof config.timeoutSeconds === 'number' ? config.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
   const requestedRetry = typeof config.retry === 'object' && config.retry !== null ? (config.retry as Partial<CompiledRetryPolicy>) : {};
 
@@ -231,6 +289,28 @@ function compileNode(
     // Omitted when empty — see the module docstring (byte-identical legacy artifacts).
     ...(branchGuards.length > 0 ? { branchGuards } : {}),
   };
+}
+
+/**
+ * A node's compiled config: verbatim as authored, except on the trigger, where a
+ * BY-REFERENCE context schema gains the derived payload schema the caller resolved.
+ *
+ * `resolved` sits BESIDE the authored `contextSchemaId` / `versionNumber` rather than
+ * replacing them: the reference is what the author wrote and what a re-publish re-resolves,
+ * while `resolved` is the frozen answer the interpreter validates against without a
+ * database read (invariant 4).
+ */
+function compiledConfigFor(node: WorkflowGraphNode, ctx: CompilerContext): Record<string, unknown> {
+  const config = node.config ?? {};
+  if (node.type !== TRIGGER_NODE_TYPE) return config;
+
+  const resolved = ctx.triggerContextSchema;
+  if (resolved === undefined || resolved === null) return config;
+
+  const authored = config.contextSchema;
+  const contextSchema = typeof authored === 'object' && authored !== null && !Array.isArray(authored) ? (authored as Record<string, unknown>) : {};
+
+  return { ...config, contextSchema: { ...contextSchema, resolved: resolved.payloadSchema } };
 }
 
 function compileGate(node: WorkflowGraphNode, ctx: CompilerContext): CompiledGate {
@@ -373,6 +453,29 @@ export function compile(graph: WorkflowGraph, ctx: CompilerContext): CompileResu
 
     const loops = compiled.loops.slice().sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 
+    // TASK-890 — the two additive `policyBindings` facts, derived from the trigger. Both are
+    // OMITTED when there is nothing to say, so an artifact that binds neither compiles to the
+    // same bytes (and the same checksum) it did before either field existed.
+    const trigger = topLevel.find((node) => node.type === TRIGGER_NODE_TYPE);
+    const contextSchemaRefs: CompiledContextSchemaRef[] =
+      trigger !== undefined && ctx.triggerContextSchema !== undefined && ctx.triggerContextSchema !== null
+        ? [
+            {
+              nodeId: trigger.id,
+              schemaId: ctx.triggerContextSchema.schemaId,
+              versionNumber: ctx.triggerContextSchema.versionNumber,
+              versionId: ctx.triggerContextSchema.versionId,
+            },
+          ]
+        : [];
+    const workflowGuardrail = trigger === undefined ? null : guardrailOptOutOf(trigger.config);
+
+    const policyBindings: CompiledPolicyBindings = {
+      ...ctx.policyBindings,
+      ...(contextSchemaRefs.length > 0 ? { contextSchemaRefs } : {}),
+      ...(workflowGuardrail === null ? {} : { guardrail: { enabled: workflowGuardrail } }),
+    };
+
     const withoutChecksum = {
       formatVersion: 1 as const,
       definitionId: ctx.definitionId,
@@ -386,7 +489,7 @@ export function compile(graph: WorkflowGraph, ctx: CompilerContext): CompileResu
       ruleSetVersion: ctx.ruleSetVersion,
       stages: compiled.stages,
       gates: compiled.gates,
-      policyBindings: ctx.policyBindings,
+      policyBindings,
       caps: ctx.caps,
       // Omitted when empty — see the module docstring (byte-identical legacy artifacts).
       ...(loops.length > 0 ? { loops } : {}),
