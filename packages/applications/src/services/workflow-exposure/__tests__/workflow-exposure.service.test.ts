@@ -134,8 +134,21 @@ describe('WorkflowExposureService', () => {
       const result = await service.list();
 
       expect(mockWorkflowDefinitionRepository.findActivePublishedByTenant).toHaveBeenCalledWith('tenant-1');
+      // TASK-890 §3.9: the summary carries the definition's I/O contract too. This fixture is a
+      // LEGACY (non-`core`) graph, which declares none — so `null` / `[]`, never an invented
+      // open `object` schema.
       expect(result.data).toEqual([
-        { slug: 'discharge_summary', name: 'Discharge Summary', description: null, paletteKey: 'summarization', versionNumber: 1 },
+        {
+          slug: 'discharge_summary',
+          name: 'Discharge Summary',
+          description: null,
+          paletteKey: 'summarization',
+          versionNumber: 1,
+          inputSchema: null,
+          outputSchema: null,
+          protocols: [],
+          triggerKinds: [],
+        },
       ]);
     });
 

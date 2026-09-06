@@ -22,7 +22,9 @@ describe('describeWorkflow', () => {
     expect(description.components.Workflow_triage_Output).toMatchObject({ properties: { summary: { type: 'string' } } });
     expect(description.triggerKinds).toEqual(['api', 'webhook']);
     expect(description.protocols).toEqual(['http-sse', 'socket']);
-    expect(description.modes).toEqual(['async', 'stream']);
+    // TASK-890 §3.9: `socket` is now NAMED as a delivery lane (it was silently dropped while
+    // `describeWorkflow` emitted a `ws/workflows` channel for it). It is still not a `?mode=`.
+    expect(description.modes).toEqual(['async', 'stream', 'socket']);
   });
 
   it('emits an AsyncAPI channel per stream protocol, sharing one envelope schema', () => {
