@@ -1,6 +1,6 @@
 import { AiModelEntity } from '@arcaai/domains';
 import { ModelResponse } from './dto';
-import { MODEL_TASK_TYPE_TO_PIPELINE_TAG, deriveLocalPath } from './constants';
+import { MODEL_TASK_TYPE_TO_PIPELINE_TAG, derivedLocalPath } from './constants';
 
 export class AiModelDtoMapper {
   static toResponse(entity: AiModelEntity): ModelResponse {
@@ -37,12 +37,11 @@ export class AiModelDtoMapper {
       architecture: entity.architecture ?? null,
       memorySizeMb: entity.memorySizeMb,
       computeType: entity.computeType,
-      downloadStatus: entity.downloadStatus,
-      // DERIVED from the bucket identity (TASK-860 D-2); the stored column
-      // only backs rows that predate `bucketPrefix`.
-      localPath: entity.bucketPrefix ? deriveLocalPath(entity.bucketPrefix, entity.primaryObject) : (entity.localPath ?? null),
-      downloadedAt: entity.downloadedAt,
-      fileSizeMb: entity.fileSizeMb,
+      // DERIVED from the bucket identity (TASK-890 §3.11): the stored column is
+      // gone, and with it the fallback that used to read it. The three download
+      // bookkeeping fields left the DTO with their columns — a publish job's
+      // progress is reported by `GET :id/download`, not by the catalogue row.
+      localPath: derivedLocalPath(entity),
       checksum: entity.checksum,
       resourceStatus: entity.resourceStatus,
       version: entity.version,

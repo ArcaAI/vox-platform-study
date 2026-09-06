@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import type { ClsService } from 'nestjs-cls';
 import {
   AgentEntity,
   AgentModelFallbackRepository,
@@ -9,12 +10,15 @@ import {
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import type { AgentCompiledConfig, ResolvedAgent, ResolvedAgentModel, ResolvedAgentModelRole } from '@arcaai/types';
+import type { IActiveUserContext } from '../../interfaces';
 import { AGENT_TASK_SERVICE } from '@arcaai/workflow-contract';
 import { IAgentAssignmentService } from '../agent-assignment/IAgentAssignmentService';
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../agent-assignment/IAgentAssignmentService';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
 import type { IProviderConnectionService as IProviderConnectionServicePort } from '../ai-provider-connection/IProviderConnectionService';
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
+import { derivedLocalPath } from '../ai-model/constants';
+import { runInTenantContext } from '../agentPromotion/tenant-context';
 
 export interface ResolveAgentInput {
   tenantId: string;
@@ -62,6 +66,11 @@ export class AgentResolverService {
     private readonly aiModelRepository: AiModelRepository,
     @Inject(IAgentAssignmentService) private readonly assignments: IAgentAssignmentServicePort,
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnections?: IProviderConnectionServicePort,
+    // TASK-890 H-6 — the fallback chain of a SYSTEM agent is read under the
+    // AGENT's tenant, not the caller's (see `materialiseModels`). `@Optional()`
+    // and trailing so the positional unit fixtures keep their arity; production
+    // DI always supplies it.
+    @Optional() private readonly clsService?: ClsService<IActiveUserContext>,
   ) {}
 
   async resolve(input: ResolveAgentInput): Promise<ResolvedAgent> {
@@ -114,7 +123,14 @@ export class AgentResolverService {
       throw new ConflictException(`Agent '${entity.slug}' binds model '${compiled.model.slug}', which is no longer visible to this tenant.`);
     out.push(toResolvedModel(primary, 'primary'));
 
-    const fallbacks = await this.fallbackRepository.findByAgentId(entity.id);
+    // TASK-890 H-6. `AgentModelFallback` is tenant-scoped and NOT shared-read, so
+    // this read under the CALLER's tenant returns `[]` for a SYSTEM agent — a
+    // silently fallback-less resolve rather than an error. The fix is CONTEXT,
+    // not a widening of the shared-read set: the chain belongs to the agent, so
+    // it is read standing in the agent's own tenant, exactly as the
+    // membership-bounded sync does. The wrap inherits the CLS store (user,
+    // correlation id) and restores the caller's tenant on return.
+    const fallbacks = await this.inAgentTenant(entity.tenantId, () => this.fallbackRepository.findByAgentId(entity.id));
     for (const link of fallbacks.filter((row) => row.enabled).sort((a, b) => a.priority - b.priority)) {
       const model = await this.modelById(link.modelId, tenantId);
       if (model) out.push({ ...toResolvedModel(model, 'fallback'), priority: link.priority });
@@ -131,6 +147,17 @@ export class AgentResolverService {
       }
     }
     return out;
+  }
+
+  /**
+   * Run one read under the AGENT's tenant. Without a CLS service (positional
+   * unit fixtures) the read happens as before — the wrap is the only behaviour
+   * this adds, and it can only ever widen what a SYSTEM agent sees of its OWN
+   * rows.
+   */
+  private inAgentTenant<T>(agentTenantId: string, work: () => Promise<T>): Promise<T> {
+    if (!this.clsService) return work();
+    return runInTenantContext(this.clsService, agentTenantId, work);
   }
 
   /**
@@ -168,7 +195,11 @@ function toResolvedModel(model: AiModelEntity, role: ResolvedAgentModelRole): Re
     slug: model.slug,
     sourceUri: model.sourceUri,
     sourceRevision: model.sourceRevision ?? null,
-    localPath: model.localPath ?? null,
+    // TASK-890 §3.11 — DERIVED from the bucket identity, never the column L2
+    // drops. The wire value is unchanged; only its source is.
+    localPath: derivedLocalPath(model),
+    // TASK-890 §3.1 — the ROUTED vendor id, beside the locator `sourceUri`.
+    wireModelId: model.wireModelId ?? null,
     checksum: model.checksum ?? null,
     format: String(model.format),
     computeType: model.computeType ?? null,

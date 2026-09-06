@@ -5,20 +5,17 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AiModelDownloadProcessor, HOPE_MODELS_BUCKET } from '../ai-model-download.processor';
+import { derivedLocalPath } from '../../constants';
 
+/**
+ * A behavioural `AiModelEntity` double that RECORDS every property it is asked
+ * to write (`writes`), so the test can assert what the processor does NOT touch
+ * as well as what it does — which is the whole point after TASK-890 §3.11
+ * removed the four bookkeeping columns.
+ */
 function createBehavioralModelEntity(overrides: Record<string, unknown> = {}) {
-  let _downloadStatus = (overrides.downloadStatus as string) ?? 'DOWNLOADING';
-  let _sourceUri = (overrides.sourceUri as string) ?? 'google/gemma-4-e2b-it-qat-q4_0-gguf';
-  let _localPath: string | null = null;
-  let _downloadedAt: Date | null = null;
-  let _fileSizeMb: number | null = null;
-  let _checksum: string | null = null;
-  let _metaData = (overrides.metaData as Record<string, unknown> | null) ?? { download: { jobId: 'job-1', startedAt: 't0', finishedAt: null, error: null } };
-  const changes: Record<string, unknown> = {};
-  // TASK-860 registry write-back (`AiModelEntity.recordPublish`).
-  const registry: Record<string, unknown> = { bucketPrefix: null, primaryObject: null, manifestDigest: null, hfRevision: null, availability: 'UNKNOWN', availabilityCheckedAt: null };
-
-  return {
+  const writes: string[] = [];
+  const state: Record<string, unknown> = {
     id: (overrides.id as string) ?? 'model-id-1',
     tenantId: (overrides.tenantId as string) ?? 'tenant-1',
     slug: (overrides.slug as string) ?? 'gemma4-e2b-it-qat',
@@ -26,72 +23,61 @@ function createBehavioralModelEntity(overrides: Record<string, unknown> = {}) {
     computeType: (overrides.computeType as string | null) ?? null,
     format: (overrides.format as string) ?? 'GGUF',
     libraryName: (overrides.libraryName as string) ?? 'llama.cpp',
-    get bucketPrefix() {
-      return registry.bucketPrefix;
+    sourceUri: (overrides.sourceUri as string) ?? 'google/gemma-4-e2b-it-qat-q4_0-gguf',
+    bucketPrefix: null,
+    primaryObject: null,
+    manifestDigest: null,
+    hfRevision: null,
+    checksum: null,
+    updatedBy: null,
+    availability: 'UNKNOWN',
+    availabilityCheckedAt: null,
+    availabilityDetail: null,
+    metaData: (overrides.metaData as Record<string, unknown> | null) ?? { download: { jobId: 'job-1', startedAt: 't0', finishedAt: null, error: null } },
+  };
+
+  const entity = new Proxy(
+    {
+      writes,
+      markAvailability(availability: string, detail: unknown = null, checkedAt: Date = new Date()) {
+        state.availability = availability;
+        state.availabilityDetail = detail;
+        state.availabilityCheckedAt = checkedAt;
+        writes.push('availability');
+      },
+    } as Record<string, unknown>,
+    {
+      get(target, prop: string) {
+        if (prop in target) return target[prop];
+        return state[prop];
+      },
+      set(target, prop: string, value: unknown) {
+        if (prop in target) {
+          target[prop] = value;
+          return true;
+        }
+        state[prop] = value;
+        writes.push(prop);
+        return true;
+      },
     },
-    get primaryObject() {
-      return registry.primaryObject;
-    },
-    get manifestDigest() {
-      return registry.manifestDigest;
-    },
-    get hfRevision() {
-      return registry.hfRevision;
-    },
-    get availability() {
-      return registry.availability;
-    },
-    recordPublish(record: Record<string, unknown>) {
-      registry.bucketPrefix = record.bucketPrefix;
-      registry.primaryObject = record.primaryObject ?? null;
-      registry.manifestDigest = record.manifestDigest;
-      if (record.hfRevision !== undefined) registry.hfRevision = record.hfRevision;
-      registry.availability = 'AVAILABLE';
-      registry.availabilityCheckedAt = new Date();
-      this.markAsDownloaded(record.localPath as string, record.fileSizeMb as number | undefined, record.checksum as string | undefined);
-    },
-    get sourceUri() {
-      return _sourceUri;
-    },
-    set sourceUri(value: string) {
-      _sourceUri = value;
-      changes.sourceUri = value;
-    },
-    get downloadStatus() {
-      return _downloadStatus;
-    },
-    get localPath() {
-      return _localPath;
-    },
-    get downloadedAt() {
-      return _downloadedAt;
-    },
-    get fileSizeMb() {
-      return _fileSizeMb;
-    },
-    get checksum() {
-      return _checksum;
-    },
-    get metaData() {
-      return _metaData;
-    },
-    set metaData(value: Record<string, unknown> | null) {
-      _metaData = value;
-      changes.metaData = value;
-    },
-    markAsDownloaded(localPath: string, fileSizeMb?: number, checksum?: string) {
-      _downloadStatus = 'DOWNLOADED';
-      _localPath = localPath;
-      _downloadedAt = new Date();
-      if (fileSizeMb !== undefined) _fileSizeMb = fileSizeMb;
-      if (checksum) _checksum = checksum;
-    },
-    markAsDownloadFailed() {
-      _downloadStatus = 'DOWNLOAD_FAILED';
-    },
-    get changes() {
-      return changes;
-    },
+  ) as Record<string, unknown> & { writes: string[]; metaData: Record<string, unknown> | null };
+
+  return entity as never as {
+    id: string;
+    tenantId: string;
+    slug: string;
+    version: number;
+    sourceUri: string;
+    bucketPrefix: string | null;
+    primaryObject: string | null;
+    manifestDigest: string | null;
+    hfRevision: string | null;
+    checksum: string | null;
+    availability: string;
+    metaData: Record<string, unknown> | null;
+    writes: string[];
+    markAvailability(availability: string, detail?: unknown, checkedAt?: Date): void;
   };
 }
 
@@ -144,21 +130,25 @@ describe('AiModelDownloadProcessor', () => {
     expect(versionedPrefix).toMatch(/^gemma4-e2b-it-qat\/q4-0-[0-9a-f]{12}\/$/);
     expect(uploadedKeys.every((k) => k.startsWith(versionedPrefix))).toBe(true);
 
-    // Row written back (TASK-860): the bucket identity + AVAILABLE, the legacy
-    // DOWNLOADED bookkeeping, a single-file loader's localPath pointing at the
-    // primary object — and `sourceUri` UNCHANGED (the Hub identity stays; the
-    // bucket location is `bucketPrefix`).
-    expect(model.downloadStatus).toBe('DOWNLOADED');
+    // Row written back: the bucket identity + the MEASURED availability, and
+    // `sourceUri` UNCHANGED (the Hub identity stays; the bucket location is
+    // `bucketPrefix`). TASK-890 §3.11 — the four bookkeeping columns are NOT
+    // written any more; the size rides in the run bookkeeping and the mount path
+    // is DERIVED from `bucketPrefix` + `primaryObject` by every reader.
     expect(model.sourceUri).toBe('google/gemma-4-e2b-it-qat-q4_0-gguf');
     expect(model.bucketPrefix).toBe(versionedPrefix);
     expect(model.primaryObject).toBe('model-q4_0.gguf');
-    expect(model.localPath).toBe(`/mnt/models-bucket/${versionedPrefix}model-q4_0.gguf`);
     expect(model.availability).toBe('AVAILABLE');
+    expect(model.writes).not.toContain('downloadStatus');
+    expect(model.writes).not.toContain('localPath');
+    expect(model.writes).not.toContain('fileSizeMb');
+    expect(model.writes).not.toContain('downloadedAt');
+    expect(derivedLocalPath(model)).toBe(`/mnt/models-bucket/${versionedPrefix}model-q4_0.gguf`);
+    expect((model.metaData?.download as Record<string, unknown>).sizeMb).toBe(1);
     const manifestCall = mockS3Service.putFile.mock.calls.find((call: unknown[]) => (call[1] as string).endsWith('manifest.json'));
     const manifestBytes = manifestCall![2] as Buffer;
     expect(model.manifestDigest).toBe(require('node:crypto').createHash('sha256').update(manifestBytes).digest('hex'));
     expect(model.hfRevision).toBe('deadbeefcafe');
-    expect(model.fileSizeMb).toBeGreaterThanOrEqual(1);
     expect(model.checksum).toBeTruthy();
     const download = model.metaData?.download as Record<string, unknown>;
     expect(download.finishedAt).toBeTruthy();
@@ -185,8 +175,11 @@ describe('AiModelDownloadProcessor', () => {
     const refsCall = mockS3Service.putFile.mock.calls.find((call: unknown[]) => call[1] === 'hf/hub/models--blaze999--Medical-NER/refs/main');
     expect((refsCall![2] as Buffer).toString('utf8')).toBe('deadbeefcafe');
     expect(model.bucketPrefix).toBe(snapshot);
-    // A directory loader: no primary object in the path.
-    expect(model.localPath).toBe(`/mnt/models-bucket/${snapshot}`);
+    // The row still NAMES its primary object; a multi-file loader simply does
+    // not put it in the derived path — that split is `SINGLE_FILE_LIBRARIES`,
+    // which the derivation and this job now share.
+    expect(model.primaryObject).toBe('model.safetensors');
+    expect(derivedLocalPath(model)).toBe(`/mnt/models-bucket/${snapshot}`);
     expect(model.hfRevision).toBe('deadbeefcafe');
   });
 
@@ -239,9 +232,12 @@ describe('AiModelDownloadProcessor', () => {
 
     await expect(processor.process(job())).rejects.toThrow('HuggingFace 404');
 
-    expect(model.downloadStatus).toBe('DOWNLOAD_FAILED');
+    // A FAILED publish records the failure; it does not re-measure the bucket.
+    // Claiming MISSING here would erase the weights a previous run staged.
     const download = model.metaData?.download as Record<string, unknown>;
     expect(download.error).toBe('HuggingFace 404');
+    expect(model.writes).not.toContain('downloadStatus');
+    expect(model.writes).not.toContain('availability');
     expect(download.finishedAt).toBeTruthy();
     expect(mockS3Service.putFile).not.toHaveBeenCalled();
   });

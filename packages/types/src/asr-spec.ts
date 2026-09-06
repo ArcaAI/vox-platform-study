@@ -81,7 +81,11 @@ export interface AsrSpecModel {
   format: string;
   sourceUri: string;
   sourceRevision: string | null;
-  /** Operator/admin override — HIGHEST precedence in `resolve_model_dir`. TODO(TASK-860): derived from `bucketPrefix`. */
+  /**
+   * HIGHEST precedence in `resolve_model_dir`. DERIVED from `AiModel.bucketPrefix`
+   * [+ `primaryObject`] since TASK-890 §3.11 — the stored column is gone; the wire
+   * value and its precedence are unchanged.
+   */
   localPath: string | null;
   checksum: string | null;
   computeType: string | null;

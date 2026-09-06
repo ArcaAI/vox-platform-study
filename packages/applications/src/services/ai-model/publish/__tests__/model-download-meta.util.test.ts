@@ -14,7 +14,7 @@ import { mergeDownloadMeta, readDownloadMeta } from '../model-download-meta.util
 describe('mergeDownloadMeta', () => {
   it('creates a `download` key on an empty/undefined metaData', () => {
     const result = mergeDownloadMeta(undefined, { jobId: 'job-1', startedAt: '2026-09-02T00:00:00.000Z' });
-    expect(result).toEqual({ download: { jobId: 'job-1', startedAt: '2026-09-02T00:00:00.000Z', finishedAt: null, error: null } });
+    expect(result).toEqual({ download: { jobId: 'job-1', startedAt: '2026-09-02T00:00:00.000Z', finishedAt: null, error: null, sizeMb: null } });
   });
 
   it('preserves unrelated keys already on metaData', () => {
@@ -25,14 +25,14 @@ describe('mergeDownloadMeta', () => {
 
   it('merges partial updates onto the existing download bookkeeping rather than replacing it', () => {
     const withStart = mergeDownloadMeta(undefined, { jobId: 'job-1', startedAt: 't0' });
-    const withFinish = mergeDownloadMeta(withStart, { finishedAt: 't1', error: null });
-    expect(withFinish.download).toEqual({ jobId: 'job-1', startedAt: 't0', finishedAt: 't1', error: null });
+    const withFinish = mergeDownloadMeta(withStart, { finishedAt: 't1', error: null, sizeMb: null });
+    expect(withFinish.download).toEqual({ jobId: 'job-1', startedAt: 't0', finishedAt: 't1', error: null, sizeMb: null });
   });
 
   it('records a failure error without losing startedAt', () => {
     const withStart = mergeDownloadMeta(undefined, { jobId: 'job-1', startedAt: 't0' });
-    const withError = mergeDownloadMeta(withStart, { finishedAt: 't1', error: 'HuggingFace 404' });
-    expect(withError.download).toEqual({ jobId: 'job-1', startedAt: 't0', finishedAt: 't1', error: 'HuggingFace 404' });
+    const withError = mergeDownloadMeta(withStart, { finishedAt: 't1', error: 'HuggingFace 404', sizeMb: null });
+    expect(withError.download).toEqual({ jobId: 'job-1', startedAt: 't0', finishedAt: 't1', error: 'HuggingFace 404', sizeMb: null });
   });
 });
 
@@ -49,6 +49,6 @@ describe('readDownloadMeta', () => {
 
   it('round-trips what mergeDownloadMeta wrote', () => {
     const meta = mergeDownloadMeta(undefined, { jobId: 'job-1', startedAt: 't0' });
-    expect(readDownloadMeta(meta)).toEqual({ jobId: 'job-1', startedAt: 't0', finishedAt: null, error: null });
+    expect(readDownloadMeta(meta)).toEqual({ jobId: 'job-1', startedAt: 't0', finishedAt: null, error: null, sizeMb: null });
   });
 });

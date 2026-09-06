@@ -154,3 +154,48 @@ export function deriveLocalPath(bucketPrefix: string, primaryObject?: string | n
   const base = `${HOPE_MODELS_MOUNT}/${prefix}/`;
   return primaryObject ? `${base}${primaryObject.replace(/^\/+/, '')}` : base;
 }
+
+/**
+ * The row shape `derivedLocalPath` needs. Structural on purpose: the entity, a
+ * `ModelResponse` and a plain projection all satisfy it, and none of them has to
+ * import the other.
+ */
+export interface BucketIdentity {
+  bucketPrefix?: string | null;
+  primaryObject?: string | null;
+  /** Decides whether the derived path names the primary OBJECT or its DIRECTORY. */
+  libraryName?: string | null;
+}
+
+/**
+ * Libraries whose loader opens ONE file, so the derived `localPath` names the
+ * primary object rather than the directory holding it.
+ *
+ * Declared HERE rather than in the publish processor (TASK-890 L1) because the
+ * derivation and the publish job must agree by construction: they used to agree
+ * only because the job wrote the value into a column every reader then trusted.
+ * With the column gone, one shared set is what keeps a multi-file loader from
+ * being handed a file path.
+ */
+export const SINGLE_FILE_LIBRARIES: ReadonlySet<string> = new Set(['whisper.cpp', 'llama.cpp', 'onnxruntime', 'parakeet.cpp']);
+
+/**
+ * TASK-890 §3.11 — `localPath` as a DERIVATION, never a column read.
+ *
+ * The three bookkeeping columns (`downloadStatus`, `downloadedAt`, `fileSizeMb`)
+ * and `localPath` itself are dropped by L2. `localPath` survives as a WIRE field
+ * on the resolved specs, because `apps/stt` still reads `local_path` as the
+ * highest-precedence weight location — so the VALUE must not change, only where
+ * it comes from. This function is that "where": the bucket identity, and
+ * nothing else. A row with no `bucketPrefix` derives `null`, which is exactly
+ * what makes the downstream resolvers fall back to `sourceUri` scheme dispatch.
+ *
+ * Deliberately does NOT fall back to a stored `localPath` even when one is
+ * present: a fallback would keep the column alive in behaviour after L2 removes
+ * it in schema, and the two would then disagree silently.
+ */
+export function derivedLocalPath(row: BucketIdentity | null | undefined): string | null {
+  if (!row?.bucketPrefix) return null;
+  const singleFile = row.libraryName ? SINGLE_FILE_LIBRARIES.has(row.libraryName) : false;
+  return deriveLocalPath(row.bucketPrefix, singleFile ? (row.primaryObject ?? null) : null);
+}

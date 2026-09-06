@@ -1,6 +1,7 @@
 import {
   AiModelService,
   buildNerUsageEvent,
+  derivedLocalPath,
   IActiveUserContext,
   IAiRoutingPolicyService,
   ITenantNlpTaskInstructionsService,
@@ -347,7 +348,9 @@ export class AiInferenceController {
     // from the caller, so an override cannot point NLP at an arbitrary path.
     return {
       sourceUri: match.sourceUri,
-      localPath: (match as { localPath?: string | null }).localPath ?? null,
+      // TASK-890 §3.11 — DERIVED from the matched row's bucket identity, never a
+      // stored column and never anything the caller supplied.
+      localPath: derivedLocalPath(match),
       clinicalTaxonomy: readClinicalTaxonomy((match as { metaData?: unknown }).metaData),
     };
   }
@@ -387,8 +390,8 @@ export class AiInferenceController {
         sourceUri,
         provider: resolved.model?.provider ?? null,
         modelSlug: resolved.model?.slug ?? null,
-        // Operator weight override from the registry row.
-        localPath: resolved.model?.localPath ?? null,
+        // TASK-890 §3.11 — DERIVED from the elected row's bucket identity.
+        localPath: derivedLocalPath(resolved.model),
         clinicalTaxonomy: readClinicalTaxonomy(resolved.model?.metaData),
       };
     } catch (err) {
