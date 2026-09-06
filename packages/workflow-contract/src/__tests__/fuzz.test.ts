@@ -9,7 +9,7 @@
  * ≤ 12-node graphs, compared against the fast dominator-based implementation) that the ticket
  * specifies as the primary defense against a wrong `allPathsPassThrough` implementation. That
  * property is exercised only indirectly here, via the targeted `graph-algorithms.test.ts`
- * cases. This is a real gap against the ticket's acceptance criteria —
+ * cases. This is a real gap against the ticket's acceptance criteria — 
  */
 import { describe, expect, it } from 'vitest';
 import { compile } from '../compiler';

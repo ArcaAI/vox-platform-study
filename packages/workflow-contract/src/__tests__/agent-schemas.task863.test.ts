@@ -105,10 +105,7 @@ describe('TASK-863 — TEXT_GENERATION', () => {
     expect(declared[0]).toMatchObject({ severity: 'ERROR', path: 'parameters.generation.presencePenalty' });
     expect(hasBlockingAgentProblems(declared)).toBe(true);
 
-    const unknown = agentConfigProblems(
-      { ...base, parameters: { generation: { presencePenalty: 0.5 } } },
-      { model: MODEL_LLM, capabilities: { label: 'x' } },
-    );
+    const unknown = agentConfigProblems({ ...base, parameters: { generation: { presencePenalty: 0.5 } } }, { model: MODEL_LLM, capabilities: { label: 'x' } });
     expect(unknown).toHaveLength(1);
     expect(unknown[0].severity).toBe('WARNING');
     expect(hasBlockingAgentProblems(unknown)).toBe(false);
@@ -126,10 +123,7 @@ describe('TASK-863 — TEXT_GENERATION', () => {
 
   it('accepts tool bindings as (mcpServerId, toolName) references', () => {
     expect(
-      agentConfigProblems(
-        { ...base, tools: [{ mcpServerId: '018f3a7c-5b84-7d19-9e63-0a2c8d5f7b41', toolName: 'fhir.lookup' }] },
-        { model: MODEL_LLM },
-      ),
+      agentConfigProblems({ ...base, tools: [{ mcpServerId: '018f3a7c-5b84-7d19-9e63-0a2c8d5f7b41', toolName: 'fhir.lookup' }] }, { model: MODEL_LLM }),
     ).toEqual([]);
   });
 });
@@ -183,19 +177,11 @@ describe('TASK-863 — TEXT_TO_SPEECH', () => {
   });
 
   it('refuses ssml unless the bound provider declares it (capability-gated)', () => {
-    const refused = agentConfigProblems(
-      { ...base, parameters: { ...base.parameters, ssml: true } },
-      { model: MODEL_TTS, capabilities: { supportsSsml: false } },
-    );
+    const refused = agentConfigProblems({ ...base, parameters: { ...base.parameters, ssml: true } }, { model: MODEL_TTS, capabilities: { supportsSsml: false } });
     expect(refused.some((p) => p.severity === 'ERROR' && p.path === 'parameters.ssml')).toBe(true);
-    expect(
-      agentConfigProblems({ ...base, parameters: { ...base.parameters, ssml: true } }, { model: MODEL_TTS, capabilities: { supportsSsml: true } }),
-    ).toEqual([]);
+    expect(agentConfigProblems({ ...base, parameters: { ...base.parameters, ssml: true } }, { model: MODEL_TTS, capabilities: { supportsSsml: true } })).toEqual([]);
     // Unknown capability set → warning, same posture as generation hyper-parameters.
-    const unknown = agentConfigProblems(
-      { ...base, parameters: { ...base.parameters, ssml: true } },
-      { model: MODEL_TTS, capabilities: { label: 'kokoro' } },
-    );
+    const unknown = agentConfigProblems({ ...base, parameters: { ...base.parameters, ssml: true } }, { model: MODEL_TTS, capabilities: { label: 'kokoro' } });
     expect(unknown.some((p) => p.severity === 'WARNING' && p.path === 'parameters.ssml')).toBe(true);
   });
 });

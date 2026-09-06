@@ -12,28 +12,22 @@ function graph(nodeIds: string[], edges: Array<[string, string]>): WorkflowGraph
 
 describe('topologicalLevels', () => {
   it('layers a linear chain one node per level', () => {
-    const g = graph(
-      ['a', 'b', 'c'],
-      [
-        ['a', 'b'],
-        ['b', 'c'],
-      ],
-    );
+    const g = graph(['a', 'b', 'c'], [
+      ['a', 'b'],
+      ['b', 'c'],
+    ]);
     const result = topologicalLevels(g);
     expect('levels' in result).toBe(true);
     expect((result as { levels: string[][] }).levels).toEqual([['a'], ['b'], ['c']]);
   });
 
   it('puts independent nodes in the same level', () => {
-    const g = graph(
-      ['start', 'a', 'b', 'end'],
-      [
-        ['start', 'a'],
-        ['start', 'b'],
-        ['a', 'end'],
-        ['b', 'end'],
-      ],
-    );
+    const g = graph(['start', 'a', 'b', 'end'], [
+      ['start', 'a'],
+      ['start', 'b'],
+      ['a', 'end'],
+      ['b', 'end'],
+    ]);
     const result = topologicalLevels(g) as { levels: string[][] };
     expect(result.levels[0]).toEqual(['start']);
     expect(result.levels[1]).toEqual(['a', 'b']);
@@ -41,13 +35,10 @@ describe('topologicalLevels', () => {
   });
 
   it('detects a simple cycle', () => {
-    const g = graph(
+    const g = graph(['a', 'b'], [
       ['a', 'b'],
-      [
-        ['a', 'b'],
-        ['b', 'a'],
-      ],
-    );
+      ['b', 'a'],
+    ]);
     const result = topologicalLevels(g);
     expect('cycle' in result).toBe(true);
     expect((result as { cycle: string[] }).cycle.sort()).toEqual(['a', 'b']);
@@ -76,13 +67,10 @@ describe('topologicalLevels', () => {
 
 describe('reachableFrom', () => {
   it('includes the start node and everything downstream', () => {
-    const g = graph(
-      ['a', 'b', 'c', 'd'],
-      [
-        ['a', 'b'],
-        ['b', 'c'],
-      ],
-    );
+    const g = graph(['a', 'b', 'c', 'd'], [
+      ['a', 'b'],
+      ['b', 'c'],
+    ]);
     expect(reachableFrom(g, 'a')).toEqual(new Set(['a', 'b', 'c']));
   });
 
@@ -94,27 +82,21 @@ describe('reachableFrom', () => {
 
 describe('reachesAny', () => {
   it('finds every node that can reach one of the targets', () => {
-    const g = graph(
-      ['a', 'b', 'c', 'd'],
-      [
-        ['a', 'c'],
-        ['b', 'c'],
-        ['c', 'd'],
-      ],
-    );
+    const g = graph(['a', 'b', 'c', 'd'], [
+      ['a', 'c'],
+      ['b', 'c'],
+      ['c', 'd'],
+    ]);
     expect(reachesAny(g, ['d'])).toEqual(new Set(['a', 'b', 'c', 'd']));
   });
 });
 
 describe('pathExists', () => {
   it('finds a path across intermediate nodes', () => {
-    const g = graph(
-      ['a', 'b', 'c'],
-      [
-        ['a', 'b'],
-        ['b', 'c'],
-      ],
-    );
+    const g = graph(['a', 'b', 'c'], [
+      ['a', 'b'],
+      ['b', 'c'],
+    ]);
     expect(pathExists(g, ['a'], ['c'])).toBe(true);
   });
 
@@ -124,51 +106,39 @@ describe('pathExists', () => {
   });
 
   it('honours the avoiding set', () => {
-    const g = graph(
-      ['a', 'b', 'c'],
-      [
-        ['a', 'b'],
-        ['b', 'c'],
-      ],
-    );
+    const g = graph(['a', 'b', 'c'], [
+      ['a', 'b'],
+      ['b', 'c'],
+    ]);
     expect(pathExists(g, ['a'], ['c'], { avoiding: ['b'] })).toBe(false);
   });
 
   it('finds an alternate route around an avoided node', () => {
-    const g = graph(
-      ['a', 'b', 'c', 'd'],
-      [
-        ['a', 'b'],
-        ['b', 'd'],
-        ['a', 'c'],
-        ['c', 'd'],
-      ],
-    );
+    const g = graph(['a', 'b', 'c', 'd'], [
+      ['a', 'b'],
+      ['b', 'd'],
+      ['a', 'c'],
+      ['c', 'd'],
+    ]);
     expect(pathExists(g, ['a'], ['d'], { avoiding: ['b'] })).toBe(true);
   });
 });
 
 describe('allPathsPassThrough — dominator check, not path enumeration', () => {
   it('is true when the only route is gated', () => {
-    const g = graph(
-      ['start', 'gate', 'end'],
-      [
-        ['start', 'gate'],
-        ['gate', 'end'],
-      ],
-    );
+    const g = graph(['start', 'gate', 'end'], [
+      ['start', 'gate'],
+      ['gate', 'end'],
+    ]);
     expect(allPathsPassThrough(g, ['start'], ['end'], ['gate'])).toBe(true);
   });
 
   it('is false when a bypass route exists', () => {
-    const g = graph(
-      ['start', 'gate', 'end'],
-      [
-        ['start', 'gate'],
-        ['gate', 'end'],
-        ['start', 'end'],
-      ],
-    );
+    const g = graph(['start', 'gate', 'end'], [
+      ['start', 'gate'],
+      ['gate', 'end'],
+      ['start', 'end'],
+    ]);
     expect(allPathsPassThrough(g, ['start'], ['end'], ['gate'])).toBe(false);
   });
 

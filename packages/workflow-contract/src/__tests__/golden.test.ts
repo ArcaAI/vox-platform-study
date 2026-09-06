@@ -45,7 +45,11 @@ const NODE_CLASSES: Record<string, readonly string[]> = {
   'core.end': ['boundary', 'terminal'],
 };
 
-const ALL_RULES: readonly DraftWorkflowRule[] = [...DRAFT_SUMMARIZATION_RULE_SET, ...DRAFT_CONSULTATION_RULE_SET, ...DRAFT_CORE_RULE_SET];
+const ALL_RULES: readonly DraftWorkflowRule[] = [
+  ...DRAFT_SUMMARIZATION_RULE_SET,
+  ...DRAFT_CONSULTATION_RULE_SET,
+  ...DRAFT_CORE_RULE_SET,
+];
 
 /** One context per palette a rule can declare — the shape is kept parallel across palettes for
  *  the same "generic engine" reason `validate.ts`'s merge is additive. */

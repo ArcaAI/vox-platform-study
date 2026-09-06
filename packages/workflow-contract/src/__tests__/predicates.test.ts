@@ -29,27 +29,12 @@ describe('WORKFLOW_RULE_PREDICATE_TYPES', () => {
 
 describe('ACYCLIC', () => {
   it('is clean on a DAG', () => {
-    const g = graph(
-      [
-        ['a', 't'],
-        ['b', 't'],
-      ],
-      [['a', 'b']],
-    );
+    const g = graph([['a', 't'], ['b', 't']], [['a', 'b']]);
     expect(evaluatePredicate('ACYCLIC', g, ctx(), {}, 'WF-S-001')).toEqual([]);
   });
 
   it('reports a cycle as a graph-level ERROR finding', () => {
-    const g = graph(
-      [
-        ['a', 't'],
-        ['b', 't'],
-      ],
-      [
-        ['a', 'b'],
-        ['b', 'a'],
-      ],
-    );
+    const g = graph([['a', 't'], ['b', 't']], [['a', 'b'], ['b', 'a']]);
     const findings = evaluatePredicate('ACYCLIC', g, ctx(), {}, 'WF-S-001');
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ ruleId: 'WF-S-001', severity: 'ERROR', nodeId: null });
@@ -58,13 +43,7 @@ describe('ACYCLIC', () => {
 
 describe('SINGLE_ENTRY', () => {
   it('requires exactly one node of the entry type', () => {
-    const g = graph(
-      [
-        ['s1', 'core.start'],
-        ['s2', 'core.start'],
-      ],
-      [],
-    );
+    const g = graph([['s1', 'core.start'], ['s2', 'core.start']], []);
     const findings = evaluatePredicate('SINGLE_ENTRY', g, ctx(), { entryType: 'core.start' }, 'WF-S-002');
     expect(findings).toHaveLength(1);
   });
@@ -83,14 +62,7 @@ describe('SINGLE_ENTRY', () => {
 
 describe('REACHABLE_FROM_ENTRY', () => {
   it('flags an orphan node', () => {
-    const g = graph(
-      [
-        ['s', 'core.start'],
-        ['a', 'x'],
-        ['orphan', 'x'],
-      ],
-      [['s', 'a']],
-    );
+    const g = graph([['s', 'core.start'], ['a', 'x'], ['orphan', 'x']], [['s', 'a']]);
     const findings = evaluatePredicate('REACHABLE_FROM_ENTRY', g, ctx(), { entryType: 'core.start' }, 'WF-S-003');
     expect(findings).toHaveLength(1);
     expect(findings[0].nodeId).toBe('orphan');
@@ -99,17 +71,7 @@ describe('REACHABLE_FROM_ENTRY', () => {
 
 describe('REACHES_TERMINAL', () => {
   it('flags a dead end', () => {
-    const g = graph(
-      [
-        ['s', 'core.start'],
-        ['t', 'core.end'],
-        ['dead', 'x'],
-      ],
-      [
-        ['s', 't'],
-        ['s', 'dead'],
-      ],
-    );
+    const g = graph([['s', 'core.start'], ['t', 'core.end'], ['dead', 'x']], [['s', 't'], ['s', 'dead']]);
     const findings = evaluatePredicate('REACHES_TERMINAL', g, ctx(), { terminalType: 'core.end' }, 'WF-S-004');
     expect(findings).toHaveLength(1);
     expect(findings[0].nodeId).toBe('dead');
@@ -118,14 +80,7 @@ describe('REACHES_TERMINAL', () => {
 
 describe('BOUND', () => {
   it('flags a graph over the node-count bound', () => {
-    const g = graph(
-      [
-        ['a', 'x'],
-        ['b', 'x'],
-        ['c', 'x'],
-      ],
-      [],
-    );
+    const g = graph([['a', 'x'], ['b', 'x'], ['c', 'x']], []);
     const findings = evaluatePredicate('BOUND', g, ctx(), { maxNodes: 2 }, 'WF-S-005');
     expect(findings).toHaveLength(1);
   });
@@ -133,13 +88,7 @@ describe('BOUND', () => {
 
 describe('FORBIDDEN_NODE_TYPE', () => {
   it('flags every node of the forbidden type', () => {
-    const g = graph(
-      [
-        ['a', 'sign'],
-        ['b', 'ok'],
-      ],
-      [],
-    );
+    const g = graph([['a', 'sign'], ['b', 'ok']], []);
     const findings = evaluatePredicate('FORBIDDEN_NODE_TYPE', g, ctx(), { nodeType: 'sign' }, 'WF-S-006');
     expect(findings).toHaveLength(1);
     expect(findings[0].nodeId).toBe('a');
@@ -147,7 +96,13 @@ describe('FORBIDDEN_NODE_TYPE', () => {
 
   it('matches by node class', () => {
     const g = graph([['a', 'sign.v2']], []);
-    const findings = evaluatePredicate('FORBIDDEN_NODE_TYPE', g, ctx({ 'sign.v2': ['signing'] }), { nodeClass: 'signing' }, 'WF-S-006');
+    const findings = evaluatePredicate(
+      'FORBIDDEN_NODE_TYPE',
+      g,
+      ctx({ 'sign.v2': ['signing'] }),
+      { nodeClass: 'signing' },
+      'WF-S-006',
+    );
     expect(findings).toHaveLength(1);
   });
 });
@@ -164,16 +119,8 @@ describe('REQUIRED_NODE_TYPE', () => {
 describe('REQUIRED_PATH_THROUGH', () => {
   it('flags a bypass around a gate', () => {
     const g = graph(
-      [
-        ['s', 'core.start'],
-        ['gate', 'gate'],
-        ['t', 'core.end'],
-      ],
-      [
-        ['s', 'gate'],
-        ['gate', 't'],
-        ['s', 't'],
-      ],
+      [['s', 'core.start'], ['gate', 'gate'], ['t', 'core.end']],
+      [['s', 'gate'], ['gate', 't'], ['s', 't']],
     );
     const findings = evaluatePredicate(
       'REQUIRED_PATH_THROUGH',
@@ -186,17 +133,7 @@ describe('REQUIRED_PATH_THROUGH', () => {
   });
 
   it('is clean when every path is gated', () => {
-    const g = graph(
-      [
-        ['s', 'core.start'],
-        ['gate', 'gate'],
-        ['t', 'core.end'],
-      ],
-      [
-        ['s', 'gate'],
-        ['gate', 't'],
-      ],
-    );
+    const g = graph([['s', 'core.start'], ['gate', 'gate'], ['t', 'core.end']], [['s', 'gate'], ['gate', 't']]);
     const findings = evaluatePredicate(
       'REQUIRED_PATH_THROUGH',
       g,
@@ -210,13 +147,7 @@ describe('REQUIRED_PATH_THROUGH', () => {
 
 describe('FORBIDDEN_PATH', () => {
   it('flags any route between two classes', () => {
-    const g = graph(
-      [
-        ['phi', 'phi.read'],
-        ['dna', 'style.write'],
-      ],
-      [['phi', 'dna']],
-    );
+    const g = graph([['phi', 'phi.read'], ['dna', 'style.write']], [['phi', 'dna']]);
     const findings = evaluatePredicate(
       'FORBIDDEN_PATH',
       g,
@@ -231,10 +162,7 @@ describe('FORBIDDEN_PATH', () => {
 describe('ORDERED_BEFORE', () => {
   it('flags an inversion — an after-node reaching a before-node', () => {
     const g = graph(
-      [
-        ['gen', 'summarization.generate'],
-        ['gate', 'consent.gate'],
-      ],
+      [['gen', 'summarization.generate'], ['gate', 'consent.gate']],
       [['gen', 'gate']],
     );
     const findings = evaluatePredicate(
@@ -249,10 +177,7 @@ describe('ORDERED_BEFORE', () => {
 
   it('is clean when the gate precedes generation', () => {
     const g = graph(
-      [
-        ['gate', 'consent.gate'],
-        ['gen', 'summarization.generate'],
-      ],
+      [['gate', 'consent.gate'], ['gen', 'summarization.generate']],
       [['gate', 'gen']],
     );
     const findings = evaluatePredicate(

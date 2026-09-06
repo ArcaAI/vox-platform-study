@@ -124,9 +124,7 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
   });
 
   it('is total — a structurally broken graph yields problems, never a throw', () => {
-    expect(() =>
-      workflowEdgePortProblems({ version: 1, nodes: [], edges: [{ id: 'e', from: 'x', fromPort: 'out', to: 'y', toPort: 'in' }] }),
-    ).not.toThrow();
+    expect(() => workflowEdgePortProblems({ version: 1, nodes: [], edges: [{ id: 'e', from: 'x', fromPort: 'out', to: 'y', toPort: 'in' }] })).not.toThrow();
   });
 
   it('reports EVERY bad edge in one pass, not just the first', () => {

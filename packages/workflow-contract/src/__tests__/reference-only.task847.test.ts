@@ -36,20 +36,7 @@ describe('direction 1: no schema can HOLD a resolved value', () => {
   it('declares a forbidden vocabulary covering credentials, endpoints and wire model ids', () => {
     // Stored lower-cased, because the check is case-insensitive: `apiKey`, `ApiKey` and
     // `api_key` are the same smuggling attempt wearing three hats.
-    for (const expected of [
-      'apikey',
-      'api_key',
-      'secret',
-      'password',
-      'token',
-      'endpoint',
-      'baseurl',
-      'host',
-      'provider',
-      'model',
-      'deploymentname',
-      'sourceuri',
-    ]) {
+    for (const expected of ['apikey', 'api_key', 'secret', 'password', 'token', 'endpoint', 'baseurl', 'host', 'provider', 'model', 'deploymentname', 'sourceuri']) {
       expect([...FORBIDDEN_CONFIG_KEYS], `${expected} must be forbidden`).toContain(expected);
     }
   });
@@ -93,11 +80,7 @@ function everyAgenticNodeGraph(agentConfigOverride?: Record<string, unknown>): W
       },
     },
     { id: 'guard_node', type: 'agentic.guardrail', config: { guardrailType: 'content_safety', onFail: 'mark' } },
-    {
-      id: 'loop_node',
-      type: 'agentic.loop',
-      config: { bounds: { maxIterations: 5, maxDurationSeconds: 300, maxTotalTokens: 100000 }, orchestratorNodeId: 'agent_node' },
-    },
+    { id: 'loop_node', type: 'agentic.loop', config: { bounds: { maxIterations: 5, maxDurationSeconds: 300, maxTotalTokens: 100000 }, orchestratorNodeId: 'agent_node' } },
     { id: 'stt_node', type: 'agentic.stt', config: { pipelineRef: { pipelineId: PIPELINE_ID } } },
     { id: 'tts_node', type: 'agentic.tts', config: { providerConfigRef: { taskKey: 'tts.synthesize' }, voiceRef: 'clinical-en-1' } },
     { id: 'out_node', type: 'agentic.output', config: { ioSchema: { type: 'object' } } },
@@ -151,16 +134,7 @@ describe('direction 2: nothing resolved reaches the COMPILED graph', () => {
     expect(config.formatVersion).toBe(1);
     // Every one of the eight reached a stage with a real activity name stamped on it.
     const compiledTypes = config.stages.flatMap((stage) => stage.nodes.map((node) => node.type)).sort();
-    for (const key of [
-      'agentic.input',
-      'agentic.output',
-      'agentic.agent',
-      'agentic.guardrail',
-      'agentic.data',
-      'agentic.loop',
-      'agentic.stt',
-      'agentic.tts',
-    ]) {
+    for (const key of ['agentic.input', 'agentic.output', 'agentic.agent', 'agentic.guardrail', 'agentic.data', 'agentic.loop', 'agentic.stt', 'agentic.tts']) {
       expect(compiledTypes, `${key} must reach the compiled IR`).toContain(key);
     }
   });
@@ -197,9 +171,7 @@ describe('direction 2: nothing resolved reaches the COMPILED graph', () => {
   it('does NOT flag a uuid reference — that is the whole supported pattern', () => {
     expect(
       compiledGraphLeakProblems({
-        stages: [
-          { nodes: [{ id: 'n', type: 'agentic.agent', config: { providerConfigRef: { routingPolicyId: '018f3a7c-5b84-7d19-9e63-0a2c8d5f7b41' } } }] },
-        ],
+        stages: [{ nodes: [{ id: 'n', type: 'agentic.agent', config: { providerConfigRef: { routingPolicyId: '018f3a7c-5b84-7d19-9e63-0a2c8d5f7b41' } } }] }],
       }),
     ).toEqual([]);
   });

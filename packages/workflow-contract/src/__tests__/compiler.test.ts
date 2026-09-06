@@ -63,9 +63,7 @@ describe('compile', () => {
   it('clamps timeout and retry to caps', () => {
     const g = graph();
     g.nodes[2]!.config = { onError: 'fail', timeoutSeconds: 99999, retry: { maximumAttempts: 999 } };
-    const result = compile(g, baseCtx()) as {
-      config: { stages: Array<{ nodes: Array<{ nodeId: string; timeoutSeconds: number; retry: { maximumAttempts: number } }> }> };
-    };
+    const result = compile(g, baseCtx()) as { config: { stages: Array<{ nodes: Array<{ nodeId: string; timeoutSeconds: number; retry: { maximumAttempts: number } }> }> } };
     const node = result.config.stages.flatMap((s) => s.nodes).find((n) => n.nodeId === 'n_a1')!;
     expect(node.timeoutSeconds).toBeLessThanOrEqual(600);
     expect(node.retry.maximumAttempts).toBeLessThanOrEqual(5);

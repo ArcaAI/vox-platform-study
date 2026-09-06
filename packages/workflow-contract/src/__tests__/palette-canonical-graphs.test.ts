@@ -131,10 +131,7 @@ describe('the retired stt palette: its canonical graph is refused by compile()',
     const findings = 'findings' in result ? result.findings : [];
     expect(findings.map((finding) => finding.ruleId)).toEqual(['WF-C-002', 'WF-C-002', 'WF-C-002']);
     expect(findings.map((finding) => finding.nodeId).sort()).toEqual(
-      STT.nodes
-        .filter((node) => node.type.startsWith('stt.'))
-        .map((node) => node.id)
-        .sort(),
+      STT.nodes.filter((node) => node.type.startsWith('stt.')).map((node) => node.id).sort(),
     );
     expect(nodeInfo('core.start')).toBeDefined();
     expect(nodeInfo('core.end')).toBeDefined();
@@ -154,13 +151,8 @@ describe('boundary markers are exempt from a palette entry/terminal rule; work n
   });
   const consentGateId = CONSULTATION.nodes.find((node) => node.type === 'consultation.consentGate')!.id;
   const hitlGateId = CONSULTATION.nodes.find((node) => node.type === 'consultation.hitlGate')!.id;
-  const errorRules = (graph: WorkflowGraph) => [
-    ...new Set(
-      report(graph, 'consultation')
-        .findings.filter((f) => f.severity === 'ERROR')
-        .map((f) => f.ruleId),
-    ),
-  ];
+  const errorRules = (graph: WorkflowGraph) =>
+    [...new Set(report(graph, 'consultation').findings.filter((f) => f.severity === 'ERROR').map((f) => f.ruleId))];
 
   it('core.start preceding the consent gate does NOT trip WF-CONS-002', () => {
     // This is the whole point: `core.start` is by construction not reachable FROM the consent
@@ -169,7 +161,12 @@ describe('boundary markers are exempt from a palette entry/terminal rule; work n
   });
 
   it('a WORK node preceding the consent gate still trips WF-CONS-002', () => {
-    const sneaked = withNode(CONSULTATION, { id: 'sneak', type: 'consultation.sensors', config: { ...BASE_CONFIG } }, 'sneak', consentGateId);
+    const sneaked = withNode(
+      CONSULTATION,
+      { id: 'sneak', type: 'consultation.sensors', config: { ...BASE_CONFIG } },
+      'sneak',
+      consentGateId,
+    );
     expect(errorRules(sneaked)).toContain('WF-CONS-002');
   });
 

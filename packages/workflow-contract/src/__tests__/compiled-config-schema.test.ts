@@ -93,7 +93,7 @@ describe('compiled config vs the normative schema', () => {
    * this file is the TypeScript half of the three-sided contract: the normative schema, this
    * compiler, and the two pydantic models must gain the field together or the interpreter
    * rejects every compiled config (`extra="forbid"` on both models).
-   */
+ */
   it('carries documentTemplateRefs, and the normative schema requires it', () => {
     const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'));
     expect(schema.$defs.policyBindings.required).toContain('documentTemplateRefs');

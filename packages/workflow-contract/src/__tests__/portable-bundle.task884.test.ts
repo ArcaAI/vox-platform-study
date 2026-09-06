@@ -44,14 +44,7 @@ describe('TASK-884 portable bundle envelope', () => {
 
   it('names every structural problem by path', () => {
     const problems = portableBundleProblems({ kind: 'agent', schemaVersion: 0, exportedAt: 'never', source: {}, payload: [] });
-    expect(problems.map((p) => p.path).sort()).toEqual([
-      'exportedAt',
-      'payload',
-      'schemaVersion',
-      'source.slug',
-      'source.tenantKind',
-      'source.version',
-    ]);
+    expect(problems.map((p) => p.path).sort()).toEqual(['exportedAt', 'payload', 'schemaVersion', 'source.slug', 'source.tenantKind', 'source.version']);
   });
 
   it('refuses a non-object', () => {
@@ -60,12 +53,7 @@ describe('TASK-884 portable bundle envelope', () => {
   });
 
   it('builds an envelope stamped with the current version and the caller clock', () => {
-    const bundle = buildPortableBundle(
-      'agent',
-      { tenantKind: 'tenant', slug: 'clinic-notes', version: 2 },
-      { any: 'payload' },
-      new Date('2026-01-02T03:04:05Z'),
-    );
+    const bundle = buildPortableBundle('agent', { tenantKind: 'tenant', slug: 'clinic-notes', version: 2 }, { any: 'payload' }, new Date('2026-01-02T03:04:05Z'));
     expect(bundle.schemaVersion).toBe(PORTABLE_BUNDLE_SCHEMA_VERSION);
     expect(bundle.exportedAt).toBe('2026-01-02T03:04:05.000Z');
     expect(portableBundleProblems(bundle, { kind: 'agent' })).toEqual([]);
