@@ -166,7 +166,7 @@ export class AdminTenantResource extends AdminResource {
   /**
    * Re-provision a tenant from the platform's SYSTEM reference set
    *
-   * Copies the platform reference set — context schemas, prompt templates, agents (with their TENANT assignments) and workflow definitions — into one tenant. `missing-only` (the default) adds what the tenant lacks and touches nothing it already has; `refresh-locked` additionally fast-forwards rows still marked `templateLocked` and NEVER touches a row the tenant has edited. Idempotent: a second run reports zero added. Per-row failures are reported in `warnings` rather than aborting the run.
+   * Copies the platform reference set — context schemas, prompt templates, agents (with their TENANT assignments) and workflow definitions — into one tenant. `missing-only` (the default) adds what the tenant lacks and touches nothing it already has; `refresh-locked` is accepted but NOT IMPLEMENTED yet — it behaves as `missing-only` and the response says so in `warnings`. Idempotent: a second run reports zero added. Per-row failures are reported in `warnings` rather than aborting the run.
    *
    * `POST /api/v1/admin/tenants/{id}/reference-set/sync` — `TenantReferenceSetController.sync`.
    */

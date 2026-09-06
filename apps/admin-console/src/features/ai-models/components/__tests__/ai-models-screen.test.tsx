@@ -356,6 +356,28 @@ describe('AiModelsScreen — platform-default election', () => {
   });
 });
 
+describe('AiModelsScreen — the unassigned-provider badge (TASK-890 §3.7, Risk 6)', () => {
+  it('shows the super-admin count of rows naming no servable provider', async () => {
+    stubFetch((url) => {
+      if (url.includes('/admin/ai-models/catalogue')) return Response.json({ providers: [], models: [], unassignedProviderCount: 3 });
+      return Response.json(envelope([MODEL]));
+    });
+    renderWithProviders(<AiModelsScreen />);
+    await screen.findByText('ArcaAI Whisper ML-EN (GGUF)');
+    expect(await screen.findByText('3 with no provider')).toBeDefined();
+  });
+
+  it('renders NO badge when the catalogue omits the field (a tenant admin) or reports none', async () => {
+    stubFetch((url) => {
+      if (url.includes('/admin/ai-models/catalogue')) return Response.json({ providers: [], models: [] });
+      return Response.json(envelope([MODEL]));
+    });
+    renderWithProviders(<AiModelsScreen />);
+    await screen.findByText('ArcaAI Whisper ML-EN (GGUF)');
+    expect(screen.queryByText(/with no provider/)).toBeNull();
+  });
+});
+
 describe('AiModelsScreen accessibility', () => {
   it('has no axe violations with the loaded grid rendered', async () => {
     stubFetch(() => Response.json(envelope([MODEL, CLOUD_MODEL])));

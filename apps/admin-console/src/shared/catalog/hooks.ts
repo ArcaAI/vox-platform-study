@@ -154,6 +154,13 @@ export interface CatalogueModel {
 export interface ModelCatalogue {
   providers: CatalogueProvider[];
   models: CatalogueModel[];
+  /**
+   * SUPER ADMIN ONLY — catalogue rows naming no provider this platform can
+   * serve. Absent for a tenant admin (the gateway omits the key), which is why
+   * it is optional here rather than defaulted to 0: "absent" and "none" are not
+   * the same answer.
+   */
+  unassignedProviderCount?: number;
 }
 
 export interface ModelCatalogueParams {

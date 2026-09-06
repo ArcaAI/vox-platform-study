@@ -134,12 +134,12 @@ export class AdminAgentResource extends AdminResource {
   }
 
   /**
-   * List the caller tenant’s agent versions (optionally the SYSTEM templates too)
+   * List the caller tenant’s agent versions
    *
    * `GET /api/v1/admin/agents` — `AgentAdminController.fetchAll`.
    */
   agentAdminFetchAll(
-    options: AdminRequestOptions & { query?: { includeTemplates?: boolean; task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' } } = {},
+    options: AdminRequestOptions & { query?: { task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' } } = {},
   ): Promise<AgentResponse[]> {
     return this.request<AgentResponse[]>({
       method: 'GET',

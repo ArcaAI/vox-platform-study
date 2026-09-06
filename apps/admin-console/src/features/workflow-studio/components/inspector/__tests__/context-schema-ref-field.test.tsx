@@ -48,6 +48,26 @@ describe('ContextSchemaRefField', () => {
     expect((screen.getByRole('radio', { name: /reference/i }) as HTMLInputElement).getAttribute('data-state')).toBe('checked');
   });
 
+  /**
+   * Wave-3 close — a FAILED version read must not be indistinguishable from "this schema has no
+   * other versions". Both render only "Follow latest"; only one of them means the author can
+   * safely leave the pin alone.
+   */
+  it('says the version list failed rather than rendering as though there were nothing to pin', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes('/versions')) return new Response('boom', { status: 500 });
+        return Response.json([
+          { id: 'schema-1', slug: 'consultation-legacy-v1', name: 'Consultation (legacy v1)', status: 'PUBLISHED', pinnedVersionNumber: 1, isDefault: true },
+        ]);
+      }),
+    );
+    renderWithProviders(<ContextSchemaRefField idPrefix="n1" config={{ contextSchema: { contextSchemaId: 'schema-1' } }} onConfigChange={vi.fn()} />);
+    expect(await screen.findByText(/version list could not be loaded/i)).toBeDefined();
+  });
+
   it('lists the tenant`s own schemas and writes contextSchemaId on selection', async () => {
     stubFetch();
     const onConfigChange = vi.fn();

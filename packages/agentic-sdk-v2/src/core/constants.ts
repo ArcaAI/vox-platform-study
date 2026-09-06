@@ -243,21 +243,22 @@ export const PERSONALIZATION_ENDPOINTS = {
 } as const;
 
 /**
- * Department endpoints (SDK-207 WS-3).
+ * Department endpoints — NONE. The group is gone (TASK-890 OD-F/OD-K, wave-3
+ * close).
  *
- * TASK-890 (OD-F/OD-K): `@arcaai/vox` carries no management surface, so the
- * admin CRUD surface this group used to expose (`LIST`/`GET`/`CREATE`/
- * `UPDATE`/`DELETE`/`ROOTS`/`CHILDREN`/`BY_CODE`/`USERS`, all
- * `/admin/departments*`, `manage:Department`) was removed along with its
- * sole consumer, the admin `useDepartments` hook. `PROMPT_CONFIG` survives:
- * it is read by `AgenticProvider`'s own config cascade (tier 2, DEF-C5) for
- * the CALLER's own department — a business-plane read, even though the
- * backend still serves it from `DepartmentController`
- * (`@Controller('admin/departments')`).
+ * L9 removed the admin CRUD surface (`LIST`/`GET`/`CREATE`/`UPDATE`/`DELETE`/
+ * `ROOTS`/`CHILDREN`/`BY_CODE`/`USERS`) with its sole consumer, the admin
+ * `useDepartments` hook, and kept `PROMPT_CONFIG` as a documented exception
+ * for `AgenticProvider`'s config cascade (tier 2, DEF-C5). The wave-3 close
+ * measured that exception against the gateway and it does not exist: the
+ * gateway serves `PATCH admin/departments/:id/prompt-config` and NO GET (see
+ * `apps/api/openapi.json`), so both provider reads have always resolved a 404
+ * that the surrounding `try/catch` logged at warn — the department tier has
+ * never applied. Removing the constant and both call sites changes no
+ * behaviour and stops the code claiming a tier it cannot resolve; a
+ * self-scoped READ route (`GET users/me/department/prompt-config`) plus the
+ * tier-2 read is the follow-up (§8).
  */
-export const DEPARTMENT_ENDPOINTS = {
-  PROMPT_CONFIG: (id: string) => `/admin/departments/${encodeURIComponent(id)}/prompt-config`,
-} as const;
 
 /**
  * Health check endpoints (SDK-207 WS-4)

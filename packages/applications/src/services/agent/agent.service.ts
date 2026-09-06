@@ -212,14 +212,12 @@ export class AgentService extends BaseService implements IAgentService {
   /**
    * The caller tenant's OWN agents.
    *
-   * TASK-890 L13 (OD-M) — `includeTemplates` is ACCEPTED AND IGNORED. It used to append the
-   * SYSTEM library to a tenant's list, which is the shared-read posture §1.5 retires: an agent
-   * is CONTENT, so a tenant sees the copies it was PROVISIONED with, each carrying
-   * `sourceTenantId = SYSTEM` for the console's "from platform" badge. The parameter survives
-   * one release so the console's `includeTemplates: 'true'` keeps working as a no-op while L5
-   * removes it; nothing reads the SYSTEM library on a tenant-facing path any more.
+   * TASK-890 L13 (OD-M) — there is no `includeTemplates`. It used to append the SYSTEM library to
+   * a tenant's list, which is the shared-read posture §1.5 retires: an agent is CONTENT, so a
+   * tenant sees the copies it was PROVISIONED with, each carrying `sourceTenantId = SYSTEM` for
+   * the console's "from platform" badge. Nothing reads the SYSTEM library on a tenant-facing path.
    */
-  async list(task?: AgentTask, _includeTemplates = false): Promise<AgentResponse[]> {
+  async list(task?: AgentTask): Promise<AgentResponse[]> {
     const tenantId = this.requireTenant();
     const rows = await this.agentRepository.findAllForTenant(tenantId, task);
     this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { task: task ?? null, count: rows.length } });
@@ -1276,10 +1274,12 @@ export class AgentService extends BaseService implements IAgentService {
    * A customer tenant they do not manage is **404**: the tenant id space is not theirs to probe,
    * so "you may not" and "there is no such tenant" must be one answer.
    *
-   * SYSTEM is the exception, and deliberately so — its existence is not a secret (every tenant
-   * READS its templates through the shared-read cascade), so hiding it behind a 404 would
-   * conceal nothing and mislead the caller about why the push failed. It is a **403** naming the
-   * real rule: only a platform administrator manages the platform tier.
+   * SYSTEM is the exception, and deliberately so — its existence is not a secret (it is the
+   * platform REFERENCE SET every tenant is provisioned from, and the clone/branch pickers name
+   * it out loud), so hiding it behind a 404 would conceal nothing and mislead the caller about
+   * why the push failed. It is a **403** naming the real rule: only a platform administrator
+   * manages the platform tier. (Before TASK-890 L13 step v this sentence said "every tenant
+   * READS its templates through the shared-read cascade" — that cascade is gone for content.)
    */
   private async assertManagesAgentsIn(userId: string, targetTenantId: string): Promise<void> {
     if (!this.policyEngine) {

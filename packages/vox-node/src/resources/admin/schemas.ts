@@ -4941,7 +4941,7 @@ export interface SyncDirectoryUsersResponse {
 export interface SyncReferenceSetRequest {
   /** Restrict the run to these kinds. Omit for the whole reference set. */
   kinds?: Array<'contextSchemas' | 'promptTemplates' | 'agents' | 'agentAssignments' | 'workflowDefinitions'>;
-  /** `missing-only` (default) adds what the tenant lacks and touches nothing it has. `refresh-locked` additionally re-copies rows still marked `templateLocked` (pristine clones) and NEVER touches a row the tenant has edited. */
+  /** `missing-only` (default) adds what the tenant lacks and touches nothing it has. `refresh-locked` is accepted but NOT IMPLEMENTED yet: it currently behaves as `missing-only` and the response says so in `warnings`. Its intent is to additionally re-copy rows still marked `templateLocked` (pristine clones) while never touching a row the tenant has edited. */
   mode?: 'missing-only' | 'refresh-locked';
 }
 

@@ -12,6 +12,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { IconExternalLink } from '@tabler/icons-react';
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldContent, FieldDescription, FieldLabel, Switch } from '@arcaai/ui';
+import { agentVoxNodeSnippet } from '@/shared/docs/sdk-snippets';
 import type { Agent, AgentTask } from '../api';
 
 interface EndpointDescriptor {
@@ -26,12 +27,6 @@ const ENDPOINTS: Record<AgentTask, EndpointDescriptor> = {
   TEXT_TO_SPEECH: { method: 'POST', path: '/agents/{slug}/speech' },
 };
 
-function voxNodeSnippet(agent: Agent): string {
-  const header = `import { HopeClient } from '@arcaai/vox-node';\n\nconst hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL, apiKey: process.env.HOPE_API_KEY });\n\n`;
-  if (agent.task === 'TEXT_GENERATION') return `${header}const { output } = await hope.agents.invoke('${agent.slug}', { text: '…' });`;
-  if (agent.task === 'TEXT_TO_SPEECH') return `${header}const speech = await hope.agents.synthesize('${agent.slug}', { text: '…' });`;
-  return `${header}const job = await hope.agents.transcribe('${agent.slug}', { file });`;
-}
 
 export interface AgentPublishDialogProps {
   open: boolean;
@@ -66,7 +61,7 @@ export function AgentPublishDialog({ open, onOpenChange, onConfirm, confirming, 
             </div>
             <div>
               <h4 className="text-sm font-medium">@arcaai/vox-node</h4>
-              <pre className="bg-muted overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">{voxNodeSnippet(published)}</pre>
+              <pre className="bg-muted overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">{agentVoxNodeSnippet(published.slug, published.task)}</pre>
             </div>
             <Link href="/api-keys" className="inline-flex items-center gap-1 text-sm underline underline-offset-2">
               Mint an API key <IconExternalLink aria-hidden className="size-3" />

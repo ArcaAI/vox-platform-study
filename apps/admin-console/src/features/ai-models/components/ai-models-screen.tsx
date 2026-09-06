@@ -7,6 +7,7 @@ import { type ColumnDef, type SortRule } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
+import { useModelCatalogue } from '@/shared/catalog';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
@@ -103,6 +104,12 @@ export function AiModelsScreen() {
   const deleteMutation = useDeleteModel();
   const inventoryMutation = useRunModelInventory();
   const lastInventory = useLastInventoryReport();
+  // TASK-890 §3.7 Risk 6 — a catalogue row naming no provider this platform can
+  // serve is HIDDEN from every picker. Counted here (a super-admin-only field on
+  // the catalogue payload) so the person who can assign a provider can see that
+  // the rows exist at all; `undefined` means the field was not served, which is
+  // not the same answer as zero, so neither renders a badge.
+  const unassignedProviderCount = useModelCatalogue().data?.unassignedProviderCount ?? 0;
 
   const openCreate = (seed?: ModelFormSeed) => {
     setEditingId(null);
@@ -287,7 +294,18 @@ export function AiModelsScreen() {
         header={
           <PageHeader
             title="AI Model Registry"
-            meta={data ? <span>{formatNumber(totalCount)} models in the platform catalogue</span> : null}
+            meta={
+              data ? (
+                <span className="flex flex-wrap items-center gap-2">
+                  <span>{formatNumber(totalCount)} models in the platform catalogue</span>
+                  {unassignedProviderCount > 0 ? (
+                    <Badge variant="outline" title="These rows name no provider this platform can serve, so no picker lists them. Set a provider on each row to make it selectable.">
+                      {formatNumber(unassignedProviderCount)} with no provider
+                    </Badge>
+                  ) : null}
+                </span>
+              ) : null
+            }
             actions={
               <>
                 <Button variant="outline" onClick={() => setDiscoveryOpen(true)}>

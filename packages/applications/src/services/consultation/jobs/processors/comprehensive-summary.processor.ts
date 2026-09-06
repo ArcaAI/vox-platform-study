@@ -233,6 +233,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         if (!request.template) {
           const resolved = await this.promptResolutionService.resolve({
             departmentId: consultation.departmentId ?? undefined,
+            // TASK-890 (OD-M) — the tenant is stated, never derived. A BullMQ job runs outside a
+            // request scope, and the summary chain's platform-default tier now resolves the
+            // TENANT'S OWN clone: with no tenant and a consultation carrying no department, the
+            // chain would fail closed with `PROMPT_DEFAULT_NOT_PROVISIONED` even though this call
+            // only wants the template NAME. The pre-summary processor states it for the same reason.
+            tenantId: consultation.tenantId,
             explicitTemplate: request.template,
             // Thread the doctor's preferred prompt id into resolution.
             preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
@@ -408,6 +414,11 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
+      // TASK-890 (OD-M) — stated, not derived: a BullMQ job has no request CLS to fall back on,
+      // and the summary chain's platform-default tier resolves the TENANT'S OWN clone, so a
+      // consultation with no department would fail closed with `PROMPT_DEFAULT_NOT_PROVISIONED`.
+      // `tenantId` is the one `process` already fail-closed validated, threaded in above.
+      tenantId,
       // Tenant-configured visit type ; `parentConsultationId`
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
