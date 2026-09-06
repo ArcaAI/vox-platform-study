@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from harness.temporal.interpreter.nodes import core
 from harness.temporal.interpreter.templating import (
     PromptTemplateSyntaxError,
     PromptVariableUnresolved,
@@ -58,6 +59,8 @@ def _load() -> dict:
 _FIXTURE = _load()
 _CASES = _FIXTURE["cases"]
 _REFERENCE_CASES = _FIXTURE["references"]
+# J3-5 — the SCOPE half of the same parity (see `_ENVELOPE_CASES` block at the end of this file).
+_ENVELOPE_CASES = _FIXTURE["contextEnvelopes"]
 
 
 def test_fixture_is_not_vacuous() -> None:
@@ -68,6 +71,7 @@ def test_fixture_is_not_vacuous() -> None:
     assert sum(1 for case in _CASES if "expected" in case) >= 10
     assert sum(1 for case in _CASES if "error" in case) >= 6
     assert len(_REFERENCE_CASES) > 0
+    assert len(_ENVELOPE_CASES) > 0
 
 
 def test_every_case_declares_exactly_one_outcome() -> None:
@@ -114,3 +118,24 @@ def test_unresolved_error_names_the_path_and_the_template_ref() -> None:
         render_template("{{context.absent}}", {"context": {}}, template_ref="tpl-1")
     assert excinfo.value.path == "context.absent"
     assert excinfo.value.template_ref == "tpl-1"
+
+
+@pytest.mark.parametrize("case", _ENVELOPE_CASES, ids=[case["name"] for case in _ENVELOPE_CASES])
+def test_single_kind_context_envelope_matches_the_fixture(case: dict) -> None:
+    """J3-5 — the SCOPE rule, pinned across the two languages like the grammar above it.
+
+    ``payloadSchemaFromDefinition`` keys a payload under each declared KIND, so the seeded bridge
+    schema — one kind keyed ``context`` — yields ``{"context": {"safe_age", …}}`` while every
+    seeded template reads ``{{context.safe_age}}`` and the render scope aliases ``context`` to
+    the envelope. The reference resolved to nothing, and the only spelling that could work is one
+    the seed does not ship.
+
+    Both renderers must unwrap identically: an agent that renders one way on
+    ``POST /agents/:slug/invocations`` and another inside a Temporal run is exactly the failure
+    the ONE-scope rule of §3.3 exists to prevent. The TypeScript half is
+    ``unwrapSingleKindContextPayload``.
+    """
+    assert (
+        core._unwrap_single_kind_context(case["payloadSchema"], case["payload"])
+        == case["expectedContext"]
+    )

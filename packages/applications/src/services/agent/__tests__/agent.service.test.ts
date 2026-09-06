@@ -677,6 +677,89 @@ describe('publish — the bound context schema (§3.4)', () => {
     });
   });
 
+  /**
+   * J3-5 — the SEEDED pairing, at the publish gate.
+   *
+   * The bridge schema declares one kind keyed `context`, so the derived envelope is
+   * `{ context: { safe_age, … } }` and a template reading `{{context.safe_age}}` was reported
+   * UNDECLARED at publish — while the only spelling the gate would have accepted,
+   * `{{context.context.safe_age}}`, is the one that cannot render. The gate and the renderer must
+   * agree about what a reference means, and they now do: under the single-kind rule both read
+   * the kind's own fields.
+   */
+  const LEGACY_PAYLOAD = {
+    type: 'object',
+    additionalProperties: false,
+    properties: { context: { type: 'object', properties: { safe_age: { type: 'string' } } } },
+  };
+
+  it('resolves `context.<field>` against the SOLE kind`s fields, so the seeded template is declared', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ contextSchemaId: 'schema-legacy', instruction: { systemPrompt: 'Age {{context.safe_age}}' } }),
+    );
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockContextSchemas.resolveReference.mockResolvedValue({
+      outcome: 'resolved',
+      schemaId: 'schema-legacy',
+      versionNumber: 1,
+      versionId: 'schema-legacy-v1',
+      payloadSchema: LEGACY_PAYLOAD,
+    });
+
+    const published = await makeService().publish('agent-1', {});
+    const report = published.validationReport as unknown as { findings: Array<{ code: string; message: string }> };
+    // Reported UNDECLARED before this rule, because the gate checked the envelope — where the
+    // only declared name is `context` and `safe_age` lives one level down.
+    expect(report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED')).toEqual([]);
+  });
+
+  it('still refuses an absent field when the sole kind CLOSES itself — unwrapping is not a bypass', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ contextSchemaId: 'schema-legacy', instruction: { systemPrompt: '{{context.safe_age}} / {{context.absent}}' } }),
+    );
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockContextSchemas.resolveReference.mockResolvedValue({
+      outcome: 'resolved',
+      schemaId: 'schema-legacy',
+      versionNumber: 1,
+      versionId: 'schema-legacy-v1',
+      payloadSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          context: { type: 'object', additionalProperties: false, properties: { safe_age: { type: 'string' } } },
+        },
+      },
+    });
+
+    const published = await makeService().publish('agent-1', {});
+    const report = published.validationReport as unknown as { findings: Array<{ code: string; message: string }> };
+    const undeclared = report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
+    expect(undeclared).toHaveLength(1);
+    expect(undeclared[0]?.message).toContain('context.absent');
+    // The seeded bridge kind does NOT close itself (`fields: { type: 'object', properties }` with
+    // no `additionalProperties: false`), so against it an unknown `context.*` name is reported by
+    // NOBODY — an open schema cannot say a field does not exist. That is a property of the seeded
+    // declaration, not of this rule, and closing it is a seed decision.
+  });
+
+  it('FREEZES the envelope unchanged — the unwrap is a read rule, not a new artifact', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ contextSchemaId: 'schema-legacy' }));
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockContextSchemas.resolveReference.mockResolvedValue({
+      outcome: 'resolved',
+      schemaId: 'schema-legacy',
+      versionNumber: 1,
+      versionId: 'schema-legacy-v1',
+      payloadSchema: LEGACY_PAYLOAD,
+    });
+
+    const published = await makeService().publish('agent-1', {});
+    // Already-published agents carry the envelope in their frozen config; a read-side rule fixes
+    // them without a republish, and a checksummed artifact does not change shape under our feet.
+    expect(published.compiledConfig).toMatchObject({ contextSchema: { payloadSchema: LEGACY_PAYLOAD } });
+  });
+
   it('lets the frozen schema DECLARE `context.*`, so a reference into it is no longer undeclared', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(
       agent({ contextSchemaId: 'schema-1', instruction: { systemPrompt: 'Visit: {{context.visit}} / {{context.absent}}' } }),

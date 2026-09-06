@@ -43,6 +43,10 @@ from harness.services.text_client import TextServiceError
 from harness.temporal.activities import _api_client, _nlp_client, _phi_redactor, _text_client
 from harness.temporal.claim_check import open_store, should_offload, store_blob
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
+from harness.temporal.interpreter.guardrail_optout import (
+    guardrail_opt_out_of,
+    resolve_guardrail_decision,
+)
 from harness.temporal.interpreter.models import (
     EvaluateExpressionInput,
     EvaluateExpressionResult,
@@ -71,10 +75,6 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     wire_provider,
 )
 from harness.temporal.interpreter.nodes.agentic import interpreter_agentic_data
-from harness.temporal.interpreter.guardrail_optout import (
-    guardrail_opt_out_of,
-    resolve_guardrail_decision,
-)
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 from harness.temporal.models import HarnessPolicy
 
@@ -409,12 +409,70 @@ def _generation_params(resolved: ResolvedAgent, config: dict[str, Any]) -> dict[
     return merged
 
 
-def _prompt_scope(variables: dict[str, Any], run_context: dict[str, Any]) -> dict[str, Any]:
+#: The ``context.*`` / ``trigger.*`` namespace ROOT of the §3.3 render scope. Mirrors
+#: ``CONTEXT_NAMESPACE_ROOT`` in
+#: ``packages/applications/src/services/consultation-context-schema/context-schema-definition.ts``.
+CONTEXT_NAMESPACE_ROOT = "context"
+
+
+def _sole_context_kind(payload_schema: Any) -> dict[str, Any] | None:
+    """The kind's own schema when the ENVELOPE adds nothing, else ``None`` (J3-5).
+
+    ``payloadSchemaFromDefinition`` keys a declaration's payload under each declared kind, which
+    is right whenever there are several — ``{"audio": …, "patient": …}`` is genuinely an envelope
+    and the key is the only thing saying which kind a value belongs to. It is wrong for exactly
+    one case, and that case is the one the platform SEEDS: ``consultation_legacy_v1`` declares a
+    single kind keyed ``context``, so the envelope is ``{"context": {"safe_age", …}}`` while
+    every seeded template reads ``{{context.safe_age}}``.
+
+    Hand-written mirror of ``soleContextKindSchema``; the rule is narrow on purpose so the two
+    implementations have almost nothing to disagree about.
+    """
+    if not isinstance(payload_schema, dict):
+        return None
+    properties = payload_schema.get("properties")
+    if not isinstance(properties, dict) or list(properties) != [CONTEXT_NAMESPACE_ROOT]:
+        return None
+    kind = properties[CONTEXT_NAMESPACE_ROOT]
+    return kind if isinstance(kind, dict) else None
+
+
+def _unwrap_single_kind_context(payload_schema: Any, payload: Any) -> Any:
+    """The object a ``context.*`` reference resolves against. Mirrors
+    ``unwrapSingleKindContextPayload``.
+
+    Both call shapes converge here: a standalone invocation supplies the flat kind object and a
+    workflow run's validated trigger is the envelope. The envelope is recognised only when it is
+    UNAMBIGUOUS — an object whose sole key is ``context`` and whose value is itself an object —
+    so a flat payload that merely carries a ``context`` field alongside others is left alone
+    rather than guessed at.
+    """
+    if _sole_context_kind(payload_schema) is None or not isinstance(payload, dict):
+        return payload
+    if list(payload) != [CONTEXT_NAMESPACE_ROOT]:
+        return payload
+    inner = payload[CONTEXT_NAMESPACE_ROOT]
+    return inner if isinstance(inner, dict) else payload
+
+
+def _bound_context_payload_schema(resolved: ResolvedAgent) -> Any:
+    """The agent's FROZEN context payload schema, or ``None``. No database read (invariant 4)."""
+    compiled = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
+    schema = compiled.get("contextSchema")
+    return schema.get("payloadSchema") if isinstance(schema, dict) else None
+
+
+def _prompt_scope(
+    variables: dict[str, Any],
+    run_context: dict[str, Any],
+    context_payload_schema: Any = None,
+) -> dict[str, Any]:
     """The render scope of §3.3, built once so both call shapes agree.
 
     Roots: the run env's ``trigger`` / ``vars`` / ``nodes``, the bare names bound by the agent's
     ``instruction.variables`` (overlaid by the node's ``overrides.promptVariables``), and
-    ``context`` as an ALIAS of ``trigger``.
+    ``context`` as an ALIAS of ``trigger`` — unwrapped through ``_unwrap_single_kind_context``
+    when the agent's frozen schema declares a single kind keyed ``context`` (J3-5).
 
     The alias is what makes ONE prompt portable between a workflow run — where the validated
     payload arrives as ``trigger`` — and a standalone ``POST /agents/:slug/invocations``, where
@@ -437,7 +495,11 @@ def _prompt_scope(variables: dict[str, Any], run_context: dict[str, Any]) -> dic
     scope: dict[str, Any] = dict(run_context)
     trigger = run_context.get("trigger")
     if isinstance(trigger, dict):
-        scope["context"] = trigger
+        # J3-5 — the alias is the CONTEXT VIEW of the payload, which under the single-kind rule
+        # is the kind itself rather than the envelope wrapping it. ``trigger`` stays the run
+        # payload verbatim: on a workflow lane that root IS what ``core.trigger`` validated, and
+        # the two roots being different views is the honest answer.
+        scope["context"] = _unwrap_single_kind_context(context_payload_schema, trigger)
     resolved = {
         name: _resolve_binding(binding, scope, f"instruction.variables.{name}")
         for name, binding in variables.items()
@@ -507,7 +569,9 @@ def _system_prompt(
     if isinstance(overrides, dict) and isinstance(overrides.get("promptVariables"), dict):
         variables.update(overrides["promptVariables"])
     return render_template(
-        template, _prompt_scope(variables, context), template_ref=f"agent:{resolved.slug}"
+        template,
+        _prompt_scope(variables, context, _bound_context_payload_schema(resolved)),
+        template_ref=f"agent:{resolved.slug}",
     )
 
 

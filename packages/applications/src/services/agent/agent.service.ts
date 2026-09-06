@@ -71,6 +71,7 @@ import type { IProviderConnectionService as IProviderConnectionServicePort } fro
 // and a second reader of the raw set would be the first step back to a second answer.
 import { MODEL_TASK_TYPE_SERVICE, providerClassOf, type ProviderClass, type ProviderService } from '../ai-provider-connection/constants';
 import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
+import { soleContextKindSchema, unwrapSingleKindContextPayload } from '../consultation-context-schema/context-schema-definition';
 import type {
   ContextSchemaReferenceResolution,
   IConsultationContextSchemaService as IConsultationContextSchemaServicePort,
@@ -642,7 +643,9 @@ export class AgentService extends BaseService implements IAgentService {
     // lane. When the bench had its own scope it was the only site that resolved `{ path }`
     // bindings, so it rendered a value the three runtimes did not.
     return buildAgentPromptScope({
-      trigger: context,
+      // J3-5 — the object `{{context.*}}` resolves against, which under the single-kind rule is
+      // the kind itself rather than the envelope wrapping it.
+      trigger: this.contextRenderScope(context, contextSchema),
       input: dto.input ?? {},
       variables: { ...asRecord(asRecord(entity.instruction)?.variables), ...(dto.variables ?? {}) },
       templateRef: `agent:${entity.slug}`,
@@ -659,7 +662,13 @@ export class AgentService extends BaseService implements IAgentService {
    */
   private assertContextConforms(context: Record<string, unknown>, contextSchema: AgentCompiledContextSchema | null): void {
     if (!contextSchema) return;
-    const problems = jsonSchemaValueProblems(contextSchema.payloadSchema, context, 'context');
+    // J3-5 — the SAME rule the invocation route applies (`AgentInvocationService.contextProblems`).
+    // The bench is only worth anything if what it accepts is what production accepts.
+    const soleKind = soleContextKindSchema(contextSchema.payloadSchema);
+    const problems =
+      soleKind === null
+        ? jsonSchemaValueProblems(contextSchema.payloadSchema, context, 'context')
+        : jsonSchemaValueProblems(soleKind, this.contextRenderScope(context, contextSchema), 'context');
     if (problems.length === 0) return;
     throw new BadRequestException({
       message: `The supplied context does not satisfy the schema this agent binds (version ${contextSchema.versionNumber}).`,
@@ -1675,9 +1684,16 @@ export class AgentService extends BaseService implements IAgentService {
     const instruction = asRecord(entity.instruction) ?? {};
     const variables = asRecord(instruction.variables) ?? {};
     const contextPayloadSchema = this.boundContextPayloadSchema(contextSchema);
+    // J3-5 — `context.*` resolves against what a RENDER will actually see. Under the single-kind
+    // rule (one kind whose key IS the namespace root) the render scope binds the kind's own
+    // object, so the gate must check the kind's fields; checking the envelope reported the
+    // seeded `{{context.safe_age}}` as undeclared and would have accepted only the one spelling
+    // that cannot render. `trigger` keeps the envelope: on a workflow lane that root IS the
+    // validated run payload, and the two roots being different is the honest answer.
+    const contextRootSchema = contextPayloadSchema === null ? null : (soleContextKindSchema(contextPayloadSchema) ?? contextPayloadSchema);
     const declared: DeclaredNamespaces = {
       roots: {
-        ...(contextPayloadSchema === null ? {} : { context: contextPayloadSchema, trigger: contextPayloadSchema }),
+        ...(contextPayloadSchema === null ? {} : { context: contextRootSchema, trigger: contextPayloadSchema }),
         input: asRecord(entity.inputSchema) ?? null,
       },
       variables: Object.keys(variables),
@@ -1702,6 +1718,20 @@ export class AgentService extends BaseService implements IAgentService {
    */
   private boundContextPayloadSchema(contextSchema: AgentCompiledContextSchema | null): Record<string, unknown> | null {
     return contextSchema?.payloadSchema ?? null;
+  }
+
+  /**
+   * The object a `{{context.*}}` reference resolves against, given the supplied payload (J3-5).
+   *
+   * Mirrors `AgentInvocationService.contextScopeFor` and the durable lane's `_prompt_scope`: one
+   * unwrap covers both call shapes, so a prompt an author tests here renders identically on the
+   * invocation route, the realtime lane and the Temporal lane.
+   */
+  private contextRenderScope(context: Record<string, unknown>, contextSchema: AgentCompiledContextSchema | null): Record<string, unknown> {
+    const payloadSchema = this.boundContextPayloadSchema(contextSchema);
+    if (payloadSchema === null) return context;
+    const unwrapped = unwrapSingleKindContextPayload(payloadSchema, context);
+    return unwrapped !== null && typeof unwrapped === 'object' && !Array.isArray(unwrapped) ? (unwrapped as Record<string, unknown>) : context;
   }
 
   /** Pure checks: the contract's `agentConfigProblems` + JSON-Schema value checks + authorable I/O schemas. */

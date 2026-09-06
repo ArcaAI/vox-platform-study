@@ -10,6 +10,7 @@ import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
 import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
+import { soleContextKindSchema, unwrapSingleKindContextPayload } from '../consultation-context-schema/context-schema-definition';
 import { buildAgentPromptScope } from './agent-prompt-scope';
 
 export interface AgentTextInvocationResult {
@@ -74,7 +75,28 @@ export class AgentInvocationService {
   contextProblems(resolved: ResolvedAgent, context: unknown): string[] {
     const payloadSchema = boundContextPayloadSchema(resolved);
     if (payloadSchema === null) return [];
-    return jsonSchemaValueProblems(payloadSchema, context ?? {});
+    // J3-5 — a schema declaring ONE kind keyed `context` has no envelope worth carrying, so the
+    // agent path validates the kind's own schema against the flat payload (either shape reaches
+    // the same object). Every other schema is checked against the envelope, verbatim.
+    const soleKind = soleContextKindSchema(payloadSchema);
+    if (soleKind === null) return jsonSchemaValueProblems(payloadSchema, context ?? {});
+    return jsonSchemaValueProblems(soleKind, unwrapSingleKindContextPayload(payloadSchema, context ?? {}) ?? {});
+  }
+
+  /**
+   * The object `{{context.*}}` resolves against for THIS agent (J3-5).
+   *
+   * Under the single-kind rule both call shapes converge: an invocation caller sends the flat
+   * kind object and a workflow trigger arrives as the envelope, and one unwrap answers both — so
+   * the same prompt renders identically here, on the draft bench, and on the durable lane's
+   * `_prompt_scope` mirror.
+   */
+  private contextScopeFor(resolved: ResolvedAgent, context: unknown): Record<string, unknown> | undefined {
+    const payloadSchema = boundContextPayloadSchema(resolved);
+    const resolvedContext = payloadSchema === null ? context : unwrapSingleKindContextPayload(payloadSchema, context);
+    return resolvedContext !== null && typeof resolvedContext === 'object' && !Array.isArray(resolvedContext)
+      ? (resolvedContext as Record<string, unknown>)
+      : undefined;
   }
 
   async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'blocking'): Promise<AgentTextInvocationResult>;
@@ -119,7 +141,7 @@ export class AgentInvocationService {
       const scope = buildAgentPromptScope({
         variables,
         input,
-        trigger: input.context as Record<string, unknown> | undefined,
+        trigger: this.contextScopeFor(resolved, input.context),
         templateRef: `agent:${resolved.slug}`,
       });
       return compiled.resolvedPrompt ? renderTemplate(compiled.resolvedPrompt.content, scope, { templateRef: `agent:${resolved.slug}` }) : undefined;

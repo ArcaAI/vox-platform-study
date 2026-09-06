@@ -399,6 +399,64 @@ export function payloadSchemaFromDefinition(definition: unknown): Record<string,
   };
 }
 
+/**
+ * The `context.*` / `trigger.*` namespace ROOT of the §3.3 render scope.
+ *
+ * Named once so the unwrap rule below, the Python mirror (`_prompt_scope` in
+ * `apps/harness/.../interpreter/nodes/core.py`) and the seed's `LEGACY_CONTEXT_KIND_KEY` cannot
+ * drift on the spelling.
+ */
+export const CONTEXT_NAMESPACE_ROOT = 'context';
+
+/**
+ * J3-5 — the payload schema of a declaration whose ENVELOPE adds nothing, or `null`.
+ *
+ * {@link payloadSchemaFromDefinition} keys the payload under each declared kind, which is right
+ * whenever a schema declares several: `{ audio: …, patient: … }` is genuinely an envelope and
+ * the key is the only thing saying which kind a value belongs to.
+ *
+ * It is wrong for EXACTLY ONE case, and that case is the one the platform seeds. The bridge
+ * schema `consultation_legacy_v1` declares a single kind keyed `context`, so the envelope is
+ * `{ context: { safe_age, … } }` while every seeded template reads `{{context.safe_age}}` and
+ * the render scope aliases `context` to the envelope — the reference resolves to nothing and the
+ * only spelling that could work is `{{context.context.safe_age}}`. The seed ships that pairing,
+ * so the seeded combination could not run on an agent at all.
+ *
+ * The rule is therefore as narrow as the problem: ONE kind, and its key is the namespace root.
+ * Then the kind IS the context and the wrapper carries no information. Anything else — several
+ * kinds, or one kind under a different name — is returned as `null` and stays verbatim.
+ */
+export function soleContextKindSchema(payloadSchema: unknown): Record<string, unknown> | null {
+  if (!isPlainObject(payloadSchema)) return null;
+  const properties = payloadSchema.properties;
+  if (!isPlainObject(properties)) return null;
+  const keys = Object.keys(properties);
+  if (keys.length !== 1 || keys[0] !== CONTEXT_NAMESPACE_ROOT) return null;
+  const kindSchema = properties[CONTEXT_NAMESPACE_ROOT];
+  return isPlainObject(kindSchema) ? kindSchema : null;
+}
+
+/**
+ * The object a `context.*` reference resolves against, given a supplied payload.
+ *
+ * Under the {@link soleContextKindSchema} rule both call shapes converge here: an invocation
+ * caller sends the FLAT kind object, and a workflow run's validated trigger is the ENVELOPE —
+ * one unwrap answers both, so the same agent prompt renders identically on the invocation route,
+ * the draft bench, the realtime lane and the durable lane.
+ *
+ * The envelope is recognised only when it is UNAMBIGUOUS: an object whose sole key is
+ * `context` and whose value is itself an object. A flat payload that merely happens to carry a
+ * `context` field alongside others is left alone rather than guessed at.
+ */
+export function unwrapSingleKindContextPayload(payloadSchema: unknown, payload: unknown): unknown {
+  if (soleContextKindSchema(payloadSchema) === null) return payload;
+  if (!isPlainObject(payload)) return payload;
+  const keys = Object.keys(payload);
+  if (keys.length !== 1 || keys[0] !== CONTEXT_NAMESPACE_ROOT) return payload;
+  const inner = payload[CONTEXT_NAMESPACE_ROOT];
+  return isPlainObject(inner) ? inner : payload;
+}
+
 /** The declared kind with this key, or undefined. */
 export function findKind(definition: unknown, kindKey: string): ContextKindDeclaration | undefined {
   if (!isPlainObject(definition) || !Array.isArray(definition.kinds)) return undefined;

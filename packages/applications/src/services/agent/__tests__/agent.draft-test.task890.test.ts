@@ -218,6 +218,32 @@ describe('testDraft — the gates', () => {
     });
   });
 
+  /**
+   * J3-5 — the bench must accept and render the SEEDED pairing, or an author cannot test the
+   * prompts the platform ships. One kind keyed `context` is not an envelope: the bench validates
+   * and renders against the kind itself, exactly as the invocation route does, because the whole
+   * value of the bench is that what renders here is what production sends.
+   */
+  it('accepts a FLAT context payload against a schema whose sole kind is `context`, and renders it', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ contextSchemaId: 'schema-legacy', instruction: { systemPrompt: 'Age {{context.safe_age}}.' } }),
+    );
+    mockContextSchemas.resolveReference.mockResolvedValue({
+      outcome: 'resolved',
+      schemaId: 'schema-legacy',
+      versionNumber: 1,
+      versionId: 'schema-legacy-v1',
+      payloadSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { context: { type: 'object', properties: { safe_age: { type: 'string' } } } },
+      },
+    });
+
+    const ack = await makeService().testDraft('agent-1', { context: { safe_age: '41' } });
+    expect(ack.assembledSystemPrompt).toBe('Age 41.');
+  });
+
   it('a non-TEXT_GENERATION draft answers dry-run only', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ task: AgentTask.TEXT_TO_SPEECH, instruction: null, parameters: null }));
     mockAiModelRepository.findById.mockResolvedValue({ ...LLM_MODEL, taskType: 'TEXT_TO_SPEECH', provider: 'built-in', availability: 'AVAILABLE' });
