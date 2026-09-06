@@ -101,11 +101,13 @@ class TestProfileApplication:
 
 
 class TestLocalPathScope:
-    def test_local_path_defaults_to_none(self) -> None:
-        """`local_path` must exist and default to None, keeping
-        "no DB opinion ⇒ env fallback" intact.
+    def test_local_path_is_gone(self) -> None:
+        """`local_path` must NOT exist: TASK-890 dropped `AiModel."localPath"`.
+
+        Guardrail forwarded it to nobody, and the column it came from no longer
+        exists — re-adding the field is how the reader starts selecting a
+        dropped column again.
         """
         cfg = GuardrailTenantConfig()
-        assert hasattr(cfg, "local_path")
-        assert cfg.local_path is None
+        assert not hasattr(cfg, "local_path")
         assert cfg.checksum is None

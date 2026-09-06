@@ -58,8 +58,8 @@ effective-config client the other services use. The ``temperature`` /
 ``maxTokens`` / ``timeoutS`` tuning is read off the winning row's ``configJson``
 in the SAME query, so it costs no extra round-trip or TTL window. Those tuning
 fields fail safe (absent ⇒ the judge policy's own defaults); the fail-closed
-posture above still governs provider/model selection. ``local_path`` / model
-sources stay out of scope for this resolver.
+posture above still governs provider/model selection. Model WEIGHT paths stay
+out of scope for this resolver.
 
 This choice was re-examined against preferring gateway-resolved injection
 over per-service DB reads, and CONFIRMED, on two
@@ -199,7 +199,6 @@ KEY_MAX_TOKENS = "max-tokens"
 KEY_TIMEOUT_S = "timeout-s"
 # Weight-source keys carried alongside the model identity.
 _SLUG_TASK_KEY_PREFIX = "slug::"
-KEY_LOCAL_PATH = "local-path"
 KEY_CHECKSUM = "checksum"
 KEY_SOURCE = "source"
 KEY_SOURCE_REVISION = "source-revision"
@@ -313,9 +312,9 @@ class AiModelRead(_Base):
     source_uri: Mapped[str | None] = mapped_column("sourceUri", String)
     meta_data: Mapped[dict[str, Any] | None] = mapped_column("_metadata", JSONB)
     resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
-    # Weight-source columns. Without these the registry row's
-    # `localPath` was dead for guardrail: MiniCheck's path came 100 % from env.
-    local_path: Mapped[str | None] = mapped_column("localPath", String)
+    # Weight-source columns. `localPath` is NOT among them: TASK-890 dropped
+    # the column (it is DERIVED from the bucket identity now), and guardrail
+    # forwarded it to nobody anyway. Naming it here 500s every resolve.
     checksum: Mapped[str | None] = mapped_column(String)
     source: Mapped[str | None] = mapped_column(String)
     source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
@@ -370,10 +369,8 @@ class GuardrailTenantConfig:
     temperature: float | None = None
     max_tokens: int | None = None
     timeout_s: int | None = None
-    # Weight source. `local_path` is the operator override
-    # with highest precedence; None on every field means "no DB opinion", so the
+    # Weight source. None on every field means "no DB opinion", so the
     # caller's env fallback keeps behaviour byte-identical to the env-only path.
-    local_path: str | None = None
     checksum: str | None = None
     source: str | None = None
     source_revision: str | None = None
@@ -514,7 +511,6 @@ class TenantConfigResolver:
             temperature=_as_float(keys.get(KEY_TEMPERATURE)),
             max_tokens=_as_int(keys.get(KEY_MAX_TOKENS)),
             timeout_s=_as_int(keys.get(KEY_TIMEOUT_S)),
-            local_path=_clean(keys.get(KEY_LOCAL_PATH)),
             checksum=_clean(keys.get(KEY_CHECKSUM)),
             source=_clean(keys.get(KEY_SOURCE)),
             source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
@@ -522,7 +518,8 @@ class TenantConfigResolver:
 
     # `resolve_model_source` / `resolve_model_source_by_slug` are GONE
     # Phase 6): weight STAGING moved to `apps/nlp` with the weights. Guardrail
-    # forwards the registry's `localPath` verbatim and never materialises a file.
+    # neither materialises a weight file nor names a path — since TASK-890 the
+    # path is derived from the bucket identity by whoever loads the weights.
 
     async def resolve_availability(self, tenant_id: str | None) -> Any:
         """Resolve which screening policies apply to ``tenant_id`` (TASK-886).
@@ -695,7 +692,6 @@ class TenantConfigResolver:
                     AiModelRead.source_uri,
                     AiModelRead.meta_data,
                     # Weight source travels with the identity.
-                    AiModelRead.local_path,
                     AiModelRead.checksum,
                     AiModelRead.source,
                     AiModelRead.source_revision,
@@ -755,7 +751,6 @@ class TenantConfigResolver:
         # Weight-source columns. Absent values are simply not
         # set, so the caller's env fallback still applies.
         for key, value in (
-            (KEY_LOCAL_PATH, getattr(row, "local_path", None)),
             (KEY_CHECKSUM, getattr(row, "checksum", None)),
             (KEY_SOURCE, getattr(row, "source", None)),
             (KEY_SOURCE_REVISION, getattr(row, "source_revision", None)),
@@ -825,7 +820,6 @@ class TenantConfigResolver:
                     AiModelRead.tenant_id.label("model_tenant_id"),
                     AiModelRead.provider,
                     AiModelRead.source_uri,
-                    AiModelRead.local_path,
                     AiModelRead.checksum,
                     AiModelRead.source,
                     AiModelRead.source_revision,
@@ -850,7 +844,6 @@ class TenantConfigResolver:
         for key, value in (
             (KEY_MODEL, row.source_uri),
             (KEY_PROVIDER, row.provider),
-            (KEY_LOCAL_PATH, row.local_path),
             (KEY_CHECKSUM, row.checksum),
             (KEY_SOURCE, row.source),
             (KEY_SOURCE_REVISION, row.source_revision),
