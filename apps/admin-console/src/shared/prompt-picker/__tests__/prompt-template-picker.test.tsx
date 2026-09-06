@@ -56,13 +56,19 @@ afterEach(() => {
 
 describe('PromptTemplatePicker — the picker', () => {
   it('shows a Skeleton while the list loads, never a spinner', () => {
-    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    );
     const { container } = renderPicker(null);
     expect(container.querySelector('[data-slot="skeleton"]')).toBeTruthy();
   });
 
   it('falls back to an id box when the list is unavailable, keeping the value editable', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 500 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('boom', { status: 500 })),
+    );
     const onChange = vi.fn();
     renderPicker('', onChange);
     const box = await screen.findByLabelText(/prompt template id/i);
@@ -79,6 +85,46 @@ describe('PromptTemplatePicker — the picker', () => {
     const listbox = await openSelect('Prompt template');
     fireEvent.click(within(listbox).getByRole('option', { name: /Cardiology Note/ }));
     expect(onChange).toHaveBeenCalledWith('tpl-2');
+  });
+
+  /**
+   * TASK-890 J2 — the department axis is moving from `PromptTemplate.departmentId`
+   * onto `dept:<slug>` TAGS, so an agent author has to be able to find "the
+   * cardiology prompt" in a tenant library of 45. The list read already returns
+   * `tags`; this narrows the options client-side (the picker loads the whole
+   * library in one page, so the filter is exact, not a page-local guess).
+   */
+  it('narrows the template options by tag, leaving the selected value resolvable', async () => {
+    stubList([
+      template({ id: 'tpl-1', name: 'SOAP Summary', tags: ['pre-summary', 'text-v1'] }),
+      template({ id: 'tpl-2', name: 'Cardiology Note', tags: ['dept:cardiology'] }),
+    ]);
+    renderPicker('tpl-1');
+
+    const tagList = await openSelect('Filter by tag');
+    fireEvent.click(within(tagList).getByRole('option', { name: 'dept:cardiology' }));
+
+    const listbox = await openSelect('Prompt template');
+    expect(within(listbox).queryByRole('option', { name: /SOAP Summary/ })).toBeNull();
+    expect(within(listbox).getByRole('option', { name: /Cardiology Note/ })).toBeTruthy();
+    // The already-selected template stays resolvable even though it is filtered out.
+    expect(screen.getByTestId('prompt-template-quick-view')).toBeTruthy();
+  });
+
+  it('offers no tag filter when the library carries no tags', async () => {
+    stubList([template({ tags: [] })]);
+    renderPicker(null);
+
+    await screen.findByLabelText('Prompt template');
+    expect(screen.queryByLabelText('Filter by tag')).toBeNull();
+  });
+
+  it('shows the selected template’s tags in the quick view', async () => {
+    stubList([template({ tags: ['pre-summary', 'dept:cardiology'] })]);
+    renderPicker('tpl-1');
+
+    const quickView = within(await screen.findByTestId('prompt-template-quick-view'));
+    expect(quickView.getByText('dept:cardiology')).toBeTruthy();
   });
 
   it('renders the quick view once a template is selected: status, approval pin, variable chips, preview, and the deep link', async () => {
