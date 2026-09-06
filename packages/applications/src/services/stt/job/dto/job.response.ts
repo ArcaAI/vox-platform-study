@@ -11,7 +11,11 @@ export class TranscriptionJobResponse {
   jobType: TranscriptionJobType;
 
   /** @deprecated TASK-861 — removed in R4. `null` on agent-keyed jobs; read `agentVersionId`. */
-  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861): the AsrPipeline that ran the job; null on agent-keyed jobs', nullable: true, deprecated: true })
+  @ApiPropertyOptional({
+    description: 'DEPRECATED (TASK-861): the AsrPipeline that ran the job; null on agent-keyed jobs',
+    nullable: true,
+    deprecated: true,
+  })
   pipelineId: string | null;
 
   /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`. */

@@ -15,7 +15,14 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { createTestDataRegistry, loginSeededUsers, cleanupTestData, SEEDED_USERS, type TestDataRegistry } from '../../../../tests/helpers';
+import {
+  createTestDataRegistry,
+  loginSeededUsers,
+  cleanupTestData,
+  generateUniqueName,
+  SEEDED_USERS,
+  type TestDataRegistry,
+} from '../../../../tests/helpers';
 
 test.describe('RBAC Controllers', () => {
   let superAdminToken: string;
@@ -224,7 +231,7 @@ test.describe('RBAC Controllers', () => {
           return;
         }
 
-        const roleName = `test-role-${Date.now()}`;
+        const roleName = generateUniqueName('test-role');
         const response = await request.post('/api/v1/admin/rbac/roles', {
           headers: { Authorization: `Bearer ${superAdminToken}` },
           data: {
@@ -277,7 +284,7 @@ test.describe('RBAC Controllers', () => {
         // A test that owns its fixture states its own preconditions.
         const created = await request.post('/api/v1/admin/rbac/roles', {
           headers: { Authorization: `Bearer ${superAdminToken}` },
-          data: { name: `test-role-update-${Date.now()}`, description: 'E2E update subject' },
+          data: { name: generateUniqueName('test-role-update'), description: 'E2E update subject' },
         });
         expect(created.status(), 'a super admin holds manage:Role (system-full-access) — a 403 here is the finding').toBe(201);
         const roleId = (await created.json()).id as string;
@@ -415,7 +422,7 @@ test.describe('RBAC Controllers', () => {
           return;
         }
 
-        const cloneName = `${systemRole.name}-clone-${Date.now()}`;
+        const cloneName = generateUniqueName(`${systemRole.name}-clone`);
         const response = await request.post(`/api/v1/admin/rbac/roles/${systemRole.id}/clone`, {
           headers: { Authorization: `Bearer ${adminToken}` },
           data: { name: cloneName },
@@ -484,7 +491,7 @@ test.describe('RBAC Controllers', () => {
           return;
         }
 
-        const policyName = `test-policy-${Date.now()}`;
+        const policyName = generateUniqueName('test-policy');
         const response = await request.post('/api/v1/admin/rbac/policies', {
           headers: { Authorization: `Bearer ${superAdminToken}` },
           data: {
@@ -937,7 +944,7 @@ test.describe('RBAC Controllers', () => {
       const roleResponse = await request.post('/api/v1/admin/rbac/roles', {
         headers: { Authorization: `Bearer ${superAdminToken}` },
         data: {
-          name: `assignment-test-role-${Date.now()}`,
+          name: generateUniqueName('assignment-test-role'),
           description: 'Role for assignment test',
         },
       });
@@ -954,7 +961,7 @@ test.describe('RBAC Controllers', () => {
       const policyResponse = await request.post('/api/v1/admin/rbac/policies', {
         headers: { Authorization: `Bearer ${superAdminToken}` },
         data: {
-          name: `assignment-test-policy-${Date.now()}`,
+          name: generateUniqueName('assignment-test-policy'),
           description: 'Policy for assignment test',
           scope: 'TENANT',
           rules: [{ action: 'read', subject: 'TestAssignment' }],

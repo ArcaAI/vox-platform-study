@@ -82,6 +82,8 @@ export {
   loginUser,
   loginSeededUsers,
   generateUniqueUsername,
+  generateUniqueName,
+  generateUniqueSuffix,
   createTestUser as createTestUserE2E,
   deleteTestUser,
   createTestRole,

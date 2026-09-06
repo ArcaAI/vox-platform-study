@@ -273,6 +273,52 @@ export function generateUniqueUsername(prefix = 'test'): string {
 }
 
 /**
+ * Generate a resource name that cannot collide across parallel Playwright workers.
+ *
+ * WHY `Date.now()` ALONE IS NOT ENOUGH — this is a measured failure, not a
+ * precaution. Playwright runs `beforeAll` once per WORKER, so a describe whose
+ * tests get split across workers mints one name per worker inside the same few
+ * milliseconds. `Role.name` and `Policy.name` both carry GLOBAL `@@unique`
+ * constraints (`packages/database/src/prisma/db_main/rbac.prisma`), so two
+ * workers drawing the same millisecond is a P2002 that the gateway answers 409 —
+ * and the create is inside `beforeAll`, so Playwright reports it against the
+ * first test of the group, which is nowhere near the real cause. Observed
+ * 2026-09-06: three workers entered one `beforeAll` within 20ms, two drew the
+ * same millisecond, and `Role_name_key` rejected the third.
+ *
+ * The random tail is what makes the name safe; it is the same suffix
+ * `createTestRole`, `createTestPolicy` and `generateUniqueUsername` already use
+ * below. This just makes it callable from a spec that builds its own name.
+ *
+ * Use it for ANY name written to a uniquely-constrained column. A name a test
+ * only sends expecting a 4xx (a validation or authorization negative) never
+ * reaches the index and does not need it.
+ */
+export function generateUniqueName(prefix: string): string {
+  return `${prefix}-${generateUniqueSuffix()}`;
+}
+
+/**
+ * The collision-proof tail on its own, for a spec that mints SEVERAL names from
+ * ONE shared token.
+ *
+ * Some specs need every name in a group to share a run id, because a name minted
+ * in one test is looked up by a later test in the same serial group
+ * (`policy-break-glass` creates `t409-c-role-b-<token>` in C1 and deletes it in
+ * E1). Those specs cannot call {@link generateUniqueName} per site — each call
+ * would produce a different name and the later lookup would 404. They hold one
+ * module-scope `const UNIQUE = generateUniqueSuffix()` instead, which is
+ * evaluated once per worker and keeps every reference inside that worker
+ * consistent while still being unique ACROSS workers.
+ *
+ * `separator` exists because name charsets differ: role/policy names use `-`,
+ * usernames use `_` (matching `generateUniqueUsername`).
+ */
+export function generateUniqueSuffix(separator = '-'): string {
+  return `${Date.now()}${separator}${Math.random().toString(36).substring(2, 8)}`;
+}
+
+/**
  * Create a test user via API.
  *
  * Network failures rethrow (wrapped); non-2xx responses log a structured

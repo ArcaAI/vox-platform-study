@@ -5,7 +5,8 @@
  * following the conventions of `seed.test.ts` (this dir). Locks the owner's
  * catalogue (README §3.6):
  *
- *   1. `DEFAULT_AI_MODELS` is EXACTLY the 35 catalogue slugs — ids/slugs
+ *   1. `DEFAULT_AI_MODELS` is EXACTLY the 33 catalogue slugs of the owner
+ *      catalogue — ids/slugs
  *      unique, every row SYSTEM-owned, every row carrying a `libraryName` /
  *      `servedBy` / `deploymentKind` from the closed vocabularies, cloud rows
  *      NOT_APPLICABLE with a wire id, and the `metaData` payloads worth
@@ -79,8 +80,6 @@ const CATALOGUE_SLUGS = [
   // text-generation
   'granite-guardian-4.1-8b',
   'lms-gemma-4-e2b-it-qat',
-  'lms-gemma-4-e4b-it-qat',
-  'lms-gemma-4-medical-icd10',
   'lms-gemma-4-e4b',
   'azure-gpt-5.4-mini',
 ] as const;
@@ -118,10 +117,10 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // 1. Catalogue shape
 // =============================================================================
 
-describe('the platform model catalogue (35 SYSTEM rows)', () => {
-  it('is exactly the 35 slugs of README §3.6', () => {
+describe('the platform model catalogue (33 SYSTEM rows)', () => {
+  it('is exactly the 33 slugs of the owner catalogue', () => {
     expect([...catalog.map((m) => m.slug)].sort()).toEqual([...CATALOGUE_SLUGS].sort());
-    expect(catalog).toHaveLength(35);
+    expect(catalog).toHaveLength(33);
   });
 
   it('has unique ids and unique slugs', () => {
@@ -158,7 +157,7 @@ describe('the platform model catalogue (35 SYSTEM rows)', () => {
 
   it('keeps sourceUri = the engine-host wire id on every LM Studio row and records the Hub artifact in metaData.hubArtifact', () => {
     const lmStudio = catalog.filter((m) => m.servedBy === 'lmstudio');
-    expect(lmStudio).toHaveLength(5);
+    expect(lmStudio).toHaveLength(3);
     lmStudio.forEach((m) => {
       expect(m.provider).toBe('lm-studio');
       expect(m.libraryName).toBe('llama.cpp');
@@ -199,9 +198,9 @@ describe('the platform model catalogue (35 SYSTEM rows)', () => {
     expect(bySlug('indic-parler-tts')?.gated).toBe(true);
   });
 
-  it('seeds the unvalidated community ICD-10 fine-tune DISABLED (D-5) and no other row in a non-default status', () => {
+  it('seeds every row in the default status — the ICD-10 fine-tune that was the sole DISABLED row is retired', () => {
     const nonDefault = catalog.filter((m) => m.resourceStatus !== undefined).map((m) => `${m.slug}:${m.resourceStatus}`);
-    expect(nonDefault).toEqual(['lms-gemma-4-medical-icd10:DISABLED']);
+    expect(nonDefault).toEqual([]);
   });
 
   it('never seeds the publisher-owned bucket identity (bucketPrefix / primaryObject / localPath)', () => {
@@ -277,11 +276,15 @@ describe('platform defaults per task (isPlatformDefaultFor)', () => {
 // 3. Retirement ledger + pipeline-reference guard
 // =============================================================================
 
+/** The owner's 33-row catalogue revision — retired on top of the TASK-860 ledger. */
+const CATALOGUE_33_RETIRED_SLUGS = ['whisper-large-v3-turbo-q8_0', 'lms-gemma-4-e4b-it-qat', 'lms-gemma-4-medical-icd10'] as const;
+
 describe('RETIRED_AI_MODEL_SLUGS ledger (TASK-860 extension)', () => {
   it('contains the 11 TASK-860 retirements on top of the 53 earlier entries (64)', () => {
     TASK_860_RETIRED_SLUGS.forEach((slug) => expect(RETIRED_AI_MODEL_SLUGS, slug).toContain(slug));
-    expect(RETIRED_AI_MODEL_SLUGS).toHaveLength(64);
-    expect(new Set(RETIRED_AI_MODEL_SLUGS).size).toBe(64);
+    CATALOGUE_33_RETIRED_SLUGS.forEach((slug) => expect(RETIRED_AI_MODEL_SLUGS, slug).toContain(slug));
+    expect(RETIRED_AI_MODEL_SLUGS).toHaveLength(67);
+    expect(new Set(RETIRED_AI_MODEL_SLUGS).size).toBe(67);
   });
 
   it('is disjoint from the live catalogue', () => {
@@ -338,7 +341,7 @@ describe('seedAiModels upsert', () => {
     await seedAiModels(client as never);
 
     expect(creates).toHaveLength(0);
-    expect(updates).toHaveLength(35);
+    expect(updates).toHaveLength(33);
     const kokoro = updates.find((u) => u.where.id === 'existing-kokoro')!;
     expect(kokoro.data.libraryName).toBe('kokoro');
     expect(kokoro.data.servedBy).toBe('tts');
@@ -371,7 +374,7 @@ describe('seedAiModels upsert', () => {
       },
     };
     await seedAiModels(client as never);
-    expect(creates).toHaveLength(35);
+    expect(creates).toHaveLength(33);
     expect(client.aiModel.update).not.toHaveBeenCalled();
     creates.forEach(({ data }) => expect(data.tenantId).toBe(SYSTEM_TENANT_ID));
   });

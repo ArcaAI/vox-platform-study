@@ -32,18 +32,6 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 // paths carry the global `/api/v1` prefix + `@Controller('internal/harness')`.
 const INTERNAL_HARNESS_BASE = '/api/v1/internal/harness/consultations/e2e-consult-1';
 
-async function loginDoctor(request: any): Promise<string> {
-  const response = await request.post('/api/v1/auth/login', {
-    data: {
-      username: SEEDED_USERS.doctor.username,
-      password: SEEDED_USERS.doctor.password,
-      tenantKey: '__GLOBAL__',
-    },
-  });
-  expect(response.status(), 'doctor login failed').toBe(200);
-  return (await response.json()).token as string;
-}
-
 test.describe('inbound harness endpoints are service-token guarded', () => {
   test('POST entities without X-Service-Token is rejected with 401', async ({ request }) => {
     const response = await request.post(`${INTERNAL_HARNESS_BASE}/entities`, {

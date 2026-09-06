@@ -162,7 +162,10 @@ test.describe('shared-component contracts (D7 cursor pagination)', () => {
       cursor = page.nextCursor;
     }
 
-    expect(reachedEnd, `the seeded audit window (<= ${SEEDED_AUDIT_WINDOW_END}) exceeded ${MAX_PAGES * LIMIT} rows — did a test start back-dating rows?`).toBe(true);
+    expect(
+      reachedEnd,
+      `the seeded audit window (<= ${SEEDED_AUDIT_WINDOW_END}) exceeded ${MAX_PAGES * LIMIT} rows — did a test start back-dating rows?`,
+    ).toBe(true);
   });
 
   // --- Negative / robustness -------------------------------------------------

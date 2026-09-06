@@ -52,7 +52,7 @@ class ExternalTextClient:
         self.base_url = settings.base_url.rstrip("/")
         # Owner decision D-D (2026-08-17): the caller resolves the ONE shared
         # `INTERNAL_ACCESS_TOKEN` and passes it here. The legacy per-pair
-        # `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` fallback is gone 
+        # `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` fallback is gone
         # the migration it covered is complete, and a second accepted credential
         # is a second thing to rotate. `None` ⇒ no header, which is the
         # dev / hermetic-CI bypass the middleware already recognises.

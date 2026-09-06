@@ -766,7 +766,7 @@ describe('TextProxyController', () => {
             ]
           : [
               registryRow({
-                slug: 'lms-gemma-4-e4b-it-qat',
+                slug: 'lms-gemma-4-e4b',
                 provider: 'lm-studio',
                 sourceUri: 'gemma-4-e4b-it-qat',
                 taskType: ModelTaskType.SUMMARIZATION,
@@ -786,7 +786,7 @@ describe('TextProxyController', () => {
           name: 'lm-studio',
           models: [
             { name: 'gemma-4-e2b-it-qat', slug: 'lms-gemma-4-e2b-it-qat', size: '3.0 GB' },
-            { name: 'gemma-4-e4b-it-qat', slug: 'lms-gemma-4-e4b-it-qat', size: '' },
+            { name: 'gemma-4-e4b-it-qat', slug: 'lms-gemma-4-e4b', size: '' },
           ],
           is_available: true,
           is_default: true,

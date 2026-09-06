@@ -13,7 +13,13 @@
  * `apps/api/src/openapi` because the gateway does not depend on `@arcaai/workflow-contract`
  * directly — this package does.
  */
-import { declaredIoSchemas, declaredOutputProtocols, declaredTriggerKinds, type CoreOutputProtocol, type WorkflowGraph } from '@arcaai/workflow-contract';
+import {
+  declaredIoSchemas,
+  declaredOutputProtocols,
+  declaredTriggerKinds,
+  type CoreOutputProtocol,
+  type WorkflowGraph,
+} from '@arcaai/workflow-contract';
 
 export interface WorkflowSchemaDescription {
   slug: string;
@@ -51,7 +57,15 @@ const RUN_EVENT_ENVELOPE_SCHEMA = Object.freeze({
     tenantId: { type: 'string', format: 'uuid' },
     type: {
       type: 'string',
-      enum: ['workflow.run.progress', 'workflow.run.completed', 'workflow.node.started', 'workflow.node.completed', 'workflow.node.failed', 'workflow.loop.iteration', 'workflow.token.delta'],
+      enum: [
+        'workflow.run.progress',
+        'workflow.run.completed',
+        'workflow.node.started',
+        'workflow.node.completed',
+        'workflow.node.failed',
+        'workflow.loop.iteration',
+        'workflow.token.delta',
+      ],
     },
     occurredAt: { type: 'string', format: 'date-time' },
     correlationId: { type: 'string', description: 'The run id.' },
@@ -97,7 +111,8 @@ export function describeWorkflow(slug: string, versionNumber: number, graph: Pic
   if (protocols.includes('socket')) {
     channels[`ws/workflows`] = {
       address: `/ws/workflows?slug=${slug}&runId={runId}&ticket={ticket}`,
-      description: 'WebSocket. The same frames as the SSE channel, one JSON text message `{ event, id?, data }` each; authenticate with a single-use stream ticket scoped `workflow_run:<runId>`.',
+      description:
+        'WebSocket. The same frames as the SSE channel, one JSON text message `{ event, id?, data }` each; authenticate with a single-use stream ticket scoped `workflow_run:<runId>`.',
       bindings: { ws: { method: 'GET' } },
       messages: { runEvent: { $ref: '#/components/messages/runEvent' } },
     };
@@ -109,7 +124,12 @@ export function describeWorkflow(slug: string, versionNumber: number, graph: Pic
     channels,
     components: {
       messages: {
-        runEvent: { name: 'runEvent', title: 'Workflow run event', contentType: 'application/json', payload: { $ref: '#/components/schemas/RunEventEnvelope' } },
+        runEvent: {
+          name: 'runEvent',
+          title: 'Workflow run event',
+          contentType: 'application/json',
+          payload: { $ref: '#/components/schemas/RunEventEnvelope' },
+        },
       },
       schemas: { RunEventEnvelope: RUN_EVENT_ENVELOPE_SCHEMA, [outputName]: components[outputName] },
     },

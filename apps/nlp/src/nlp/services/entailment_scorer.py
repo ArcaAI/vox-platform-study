@@ -59,7 +59,7 @@ class NliModelUnavailableError(RuntimeError):
 
 logger = get_logger(__name__)
 
-# THE ADAPTER STAYS IN CODE. THE CALIBRATION DOES NOT. 
+# THE ADAPTER STAYS IN CODE. THE CALIBRATION DOES NOT.
 #
 # Two things used to sit here as module constants, and they are NOT the same kind
 # of thing — a judgment worth stating rather than sweeping both into config:

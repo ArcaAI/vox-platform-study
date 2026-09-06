@@ -230,8 +230,7 @@ export function useRoles(): UseRolesReturn {
       if (!removeRoleWarnedRef.current) {
         removeRoleWarnedRef.current = true;
         console.warn(
-          '[useRoles] `removeRole` is deprecated; use `removeUserRoleAssignment`. ' +
-            'Note: the second argument is `assignmentId`, not `roleId`. ',
+          '[useRoles] `removeRole` is deprecated; use `removeUserRoleAssignment`. ' + 'Note: the second argument is `assignmentId`, not `roleId`. ',
         );
       }
       return removeUserRoleAssignment(userId, assignmentId);

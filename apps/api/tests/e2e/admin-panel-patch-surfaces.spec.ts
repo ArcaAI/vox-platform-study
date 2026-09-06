@@ -15,6 +15,7 @@ import {
   loginSeededUsers,
   loginUser,
   cleanupTestData,
+  generateUniqueName,
   DEFAULT_TENANT_KEY,
   SEEDED_USERS,
   type TestDataRegistry,
@@ -49,7 +50,7 @@ test.describe('Admin Panel Gaps', () => {
       const res = await request.post('/api/v1/admin/rbac/roles', {
         headers: { Authorization: `Bearer ${superAdminToken}` },
         data: {
-          name: `task219-role-${Date.now()}`,
+          name: generateUniqueName('task219-role'),
           description: 'Test role for  PATCH',
         },
       });
@@ -60,7 +61,7 @@ test.describe('Admin Panel Gaps', () => {
     });
 
     test('should update role name via PATCH', async ({ request }) => {
-      const newName = `task219-role-renamed-${Date.now()}`;
+      const newName = generateUniqueName('task219-role-renamed');
       const res = await request.patch(`/api/v1/admin/rbac/roles/${testRoleId}`, {
         headers: { Authorization: `Bearer ${superAdminToken}` },
         data: { name: newName },
@@ -120,7 +121,7 @@ test.describe('Admin Panel Gaps', () => {
       const res = await request.post('/api/v1/admin/rbac/policies', {
         headers: { Authorization: `Bearer ${superAdminToken}` },
         data: {
-          name: `task219-policy-${Date.now()}`,
+          name: generateUniqueName('task219-policy'),
           description: 'Test policy for  PATCH',
           scope: 'TENANT',
           rules: [{ action: 'read', subject: 'TestResource' }],
@@ -171,7 +172,9 @@ test.describe('Admin Panel Gaps', () => {
   // ==========================================================================
 
   test.describe('A7: PATCH /storage/buckets/{name}', () => {
-    const bucketName = `task219-bucket-${Date.now()}`;
+    // `TenantBucket.name` is globally unique too, and this const is evaluated
+    // once per WORKER — same collision shape as the role above.
+    const bucketName = generateUniqueName('task219-bucket');
     // The storage management routes are tenant-owned (@TenantOwnedResource,
     // no super-admin bypass): a super_admin WITHOUT a tenant
     // context 404s on PATCH/DELETE because there is no tenant to match. Use a

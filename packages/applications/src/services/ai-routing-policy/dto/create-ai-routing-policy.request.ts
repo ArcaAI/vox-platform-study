@@ -131,8 +131,7 @@ export class CreateAiRoutingPolicyRequest {
   strategy?: AiRoutingStrategy;
 
   @ApiPropertyOptional({
-    description:
-      'Explicit-provider semantics. Defaults to STRICT — a request naming a provider that is down errors rather than substituting.',
+    description: 'Explicit-provider semantics. Defaults to STRICT — a request naming a provider that is down errors rather than substituting.',
     enum: AiExplicitProviderMode,
   })
   @IsOptional()

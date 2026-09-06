@@ -43,7 +43,8 @@ export class CreateJobRequest {
   agentSlug?: string;
 
   @ApiPropertyOptional({
-    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
+    description:
+      'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
   })
   @IsString()
   @IsOptional()
@@ -51,7 +52,8 @@ export class CreateJobRequest {
   agentVersionId?: string;
 
   @ApiPropertyOptional({
-    description: 'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
+    description:
+      'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
   })
   @IsObject()
   @IsOptional()
@@ -115,7 +117,8 @@ export class CreateBatchJobRequest {
   pipelineId?: string;
 
   @ApiPropertyOptional({
-    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
+    description:
+      'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
   })
   @IsString()
   @IsOptional()
@@ -123,7 +126,8 @@ export class CreateBatchJobRequest {
   agentVersionId?: string;
 
   @ApiPropertyOptional({
-    description: 'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
+    description:
+      'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
   })
   @IsObject()
   @IsOptional()
@@ -183,7 +187,8 @@ export class CreateStreamingJobRequest {
   pipelineId?: string;
 
   @ApiPropertyOptional({
-    description: 'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
+    description:
+      'TASK-861 — the ASR Agent VERSION id that will run the job (rows are versions). Required, with `resolvedSpec`, when `pipelineId` is omitted.',
   })
   @IsString()
   @IsOptional()
@@ -191,7 +196,8 @@ export class CreateStreamingJobRequest {
   agentVersionId?: string;
 
   @ApiPropertyOptional({
-    description: 'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
+    description:
+      'TASK-861 — the gateway-resolved `ResolvedAsrSpec` snapshot for this job. Set by the gateway, never by a client; persisted so the job is reproducible from its own row.',
   })
   @IsObject()
   @IsOptional()

@@ -414,11 +414,15 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // The secret row names the tenant; from here the run is the tenant's, exactly as an API
     // invoke is. The signature just proved possession of that tenant's key.
     this.clsService.set('tenantId', row!.tenantId);
-    return this.invoke(row!.workflowSlug, { input: body as Record<string, unknown> }, {
-      idempotencyKey: input.idempotencyKey,
-      trigger: 'webhook',
-      mode: 'async',
-    });
+    return this.invoke(
+      row!.workflowSlug,
+      { input: body as Record<string, unknown> },
+      {
+        idempotencyKey: input.idempotencyKey,
+        trigger: 'webhook',
+        mode: 'async',
+      },
+    );
   }
 
   async describe(slug: string): Promise<WorkflowSchemaDescription> {

@@ -2047,9 +2047,9 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
     // TASK-860: the owner's catalogue keeps four Gemma 4 rows on LM Studio
     // (E2B QAT, E4B QAT, the DISABLED medical ICD-10 fine-tune, the bf16 E4B
     // judge alternate); the 12B QAT and MedGemma rows are retired.
-    it('should include exactly 4 LM Studio models', () => {
+    it('should include exactly 2 LM Studio models', () => {
       const lmsModels = llmModels.filter((m) => m.tags.includes('lm-studio'));
-      expect(lmsModels.length).toBe(4);
+      expect(lmsModels.length).toBe(2);
     });
 
     it('should include no Bedrock model (retired by TASK-860)', () => {
@@ -2067,8 +2067,8 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
       expect(llmModels.filter((m) => m.tags.includes('llama-cpp')).length).toBe(0);
     });
 
-    it('should be exactly 5 text-generation rows (4 LM Studio + Azure OpenAI)', () => {
-      expect(llmModels.length).toBe(5);
+    it('should be exactly 3 text-generation rows (2 LM Studio + Azure OpenAI)', () => {
+      expect(llmModels.length).toBe(3);
     });
   });
 
@@ -2107,9 +2107,9 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
   describe('LM Studio Models', () => {
     const EXPECTED_LMS = [
       ['lms-gemma-4-e2b-it-qat', 'gemma-4-e2b-it-qat'],
-      ['lms-gemma-4-e4b-it-qat', 'gemma-4-e4b-it-qat'],
-      ['lms-gemma-4-medical-icd10', 'gemma-4-medical-icd10'],
-      ['lms-gemma-4-e4b', 'google/gemma-4-e4b'],
+      // The E4B row serves the QAT q4_0 GGUF; the slug lost its `-it-qat`
+      // suffix in the owner's 33-row catalogue revision, the wire id did not.
+      ['lms-gemma-4-e4b', 'gemma-4-e4b-it-qat'],
     ] as const;
 
     it.each(EXPECTED_LMS)('should include LM Studio model %s (sourceUri %s)', (slug, sourceUri) => {

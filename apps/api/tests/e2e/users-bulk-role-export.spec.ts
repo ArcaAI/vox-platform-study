@@ -22,7 +22,7 @@
 import zlib from 'node:zlib';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import ExcelJS from 'exceljs';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, generateUniqueSuffix } from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -42,7 +42,11 @@ let saGlobalToken: string; // super_admin bound to __GLOBAL__ — cross-tier adm
 let tenantAdminToken: string; // TENANT_ADMIN in __GLOBAL__ — has manage:UserRoleAssignment, NOT super
 let doctorToken: string; // plain clinician — the RBAC negative
 
-const UNIQUE = Date.now();
+// Underscore-joined to match this file's `t398role_a_<UNIQUE>` shape (and
+// `generateUniqueUsername`). `User.username` is GLOBALLY unique and this const is
+// module scope — evaluated once per WORKER — so a bare `Date.now()` collides
+// whenever two workers draw the same millisecond. See `generateUniqueSuffix`.
+const UNIQUE = generateUniqueSuffix('_');
 
 function asArray<T>(raw: unknown): T[] {
   if (Array.isArray(raw)) return raw as T[];

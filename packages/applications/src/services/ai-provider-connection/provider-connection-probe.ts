@@ -60,7 +60,12 @@ export class ProviderConnectionProbe {
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
-  async test(service: ProviderService, provider: string, tenantId: string, dto: TestProviderConnectionRequest): Promise<TestProviderConnectionResponse> {
+  async test(
+    service: ProviderService,
+    provider: string,
+    tenantId: string,
+    dto: TestProviderConnectionRequest,
+  ): Promise<TestProviderConnectionResponse> {
     this.connections.assertResolvable(service, provider, tenantId);
 
     const target = await this.resolveTarget(service, provider, tenantId, dto);
@@ -70,9 +75,18 @@ export class ProviderConnectionProbe {
 
   // ───────────────────────────── target resolution ─────────────────────────────
 
-  private async resolveTarget(service: ProviderService, provider: string, tenantId: string, dto: TestProviderConnectionRequest): Promise<ProbeTarget> {
+  private async resolveTarget(
+    service: ProviderService,
+    provider: string,
+    tenantId: string,
+    dto: TestProviderConnectionRequest,
+  ): Promise<ProbeTarget> {
     const needsStored =
-      dto.apiKey === undefined || dto.baseUrl === undefined || dto.region === undefined || dto.apiVersion === undefined || dto.deploymentName === undefined;
+      dto.apiKey === undefined ||
+      dto.baseUrl === undefined ||
+      dto.region === undefined ||
+      dto.apiVersion === undefined ||
+      dto.deploymentName === undefined;
 
     let row: AiProviderConnectionEntity | null = null;
     let tier: TestProviderConnectionResponse['source'] = 'request';
@@ -135,7 +149,13 @@ export class ProviderConnectionProbe {
         return this.probeAzureSpeech(t, tenantId);
       case 'stt:sarvam':
       case 'tts:sarvam':
-        return this.probeReachability(t, 'https://api.sarvam.ai', tenantId, { 'api-subscription-key': t.apiKey ?? '' }, 'Sarvam has no auth-only probe; the key is verified on first request');
+        return this.probeReachability(
+          t,
+          'https://api.sarvam.ai',
+          tenantId,
+          { 'api-subscription-key': t.apiKey ?? '' },
+          'Sarvam has no auth-only probe; the key is verified on first request',
+        );
       case 'vector:qdrant':
         return this.probeQdrant(t, tenantId);
       case 'model-registry:huggingface':
@@ -143,7 +163,11 @@ export class ProviderConnectionProbe {
       case 'llm:bedrock':
       case 'llm:vertex':
         // Ambient-credential providers: nothing to probe from a static key.
-        return { ok: true, message: `${provider} uses ambient cloud credentials; nothing to probe — verified on first request`, probe: 'reachability' };
+        return {
+          ok: true,
+          message: `${provider} uses ambient cloud credentials; nothing to probe — verified on first request`,
+          probe: 'reachability',
+        };
       default:
         return this.probeReachability(t, null, tenantId, {}, `${provider} exposes no auth-only probe; the key is verified on first request`);
     }
@@ -155,7 +179,10 @@ export class ProviderConnectionProbe {
     const base = this.assertProbeUrl(t.baseUrl ?? defaultBase, 'baseUrl', tenantId);
     const target = new URL(`${base.origin}${base.pathname.replace(/\/$/, '')}${path}`);
     try {
-      const response = await fetch(target, { headers: { Authorization: `Bearer ${t.apiKey}` }, signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS) });
+      const response = await fetch(target, {
+        headers: { Authorization: `Bearer ${t.apiKey}` },
+        signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
+      });
       if (response.ok) return { ok: true, message: `Connected — ${keyLabel} accepted`, probe: 'auth' };
       if (response.status === 401 || response.status === 403) return { ok: false, message: `Rejected — invalid ${keyLabel}`, probe: 'auth' };
       return { ok: false, message: `Provider responded ${response.status}`, probe: 'auth' };
@@ -224,14 +251,21 @@ export class ProviderConnectionProbe {
           signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
         });
         if (response.ok) return { ok: true, message: 'Connected — subscription key accepted', probe: 'auth' };
-        if (response.status === 401 || response.status === 403) return { ok: false, message: 'Rejected — invalid subscription key or region', probe: 'auth' };
+        if (response.status === 401 || response.status === 403)
+          return { ok: false, message: 'Rejected — invalid subscription key or region', probe: 'auth' };
         return { ok: false, message: `Provider responded ${response.status}`, probe: 'auth' };
       } catch (error) {
         return { ok: false, message: `Could not reach provider: ${this.errorMessage(error)}`, probe: 'auth' };
       }
     }
     if (t.baseUrl) {
-      return this.probeReachability(t, null, tenantId, {}, 'Endpoint reachable — Azure Foundry has no auth-only probe; the key is verified on first request');
+      return this.probeReachability(
+        t,
+        null,
+        tenantId,
+        {},
+        'Endpoint reachable — Azure Foundry has no auth-only probe; the key is verified on first request',
+      );
     }
     throw new BadRequestException('Provide a region (classic Azure Speech) or a baseUrl (Azure Foundry) to test');
   }
@@ -241,7 +275,10 @@ export class ProviderConnectionProbe {
     const base = this.assertProbeUrl(t.baseUrl, 'baseUrl', tenantId);
     const target = new URL(`${base.origin}${base.pathname.replace(/\/$/, '')}/collections`);
     try {
-      const response = await fetch(target, { headers: t.apiKey ? { 'api-key': t.apiKey } : {}, signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS) });
+      const response = await fetch(target, {
+        headers: t.apiKey ? { 'api-key': t.apiKey } : {},
+        signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
+      });
       if (response.ok) return { ok: true, message: t.apiKey ? 'Connected — key accepted' : 'Connected (no key)', probe: 'auth' };
       if (response.status === 401 || response.status === 403) return { ok: false, message: 'Rejected — invalid key', probe: 'auth' };
       return { ok: false, message: `Provider responded ${response.status}`, probe: 'auth' };
