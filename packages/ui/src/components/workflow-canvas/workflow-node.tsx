@@ -157,12 +157,15 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
 
       {ports ? (
         <div className="mt-2 grid grid-cols-2 gap-x-3" data-slot="workflow-node-ports">
-          <div className="-ml-3 flex flex-col gap-1" aria-label="Inputs">
+          {/* `role="group"`: an `aria-label` on a bare div is prohibited (axe `aria-prohibited-attr`),
+              so the label was being dropped by assistive tech — the port column had no name at all.
+              Surfaced by TASK-890's core.trigger inspector scan; the label text is unchanged. */}
+          <div className="-ml-3 flex flex-col gap-1" role="group" aria-label="Inputs">
             {ports.inputs.map((port) => (
               <PortHandle key={port.id} port={port} direction="input" />
             ))}
           </div>
-          <div className="-mr-3 flex flex-col gap-1" aria-label="Outputs">
+          <div className="-mr-3 flex flex-col gap-1" role="group" aria-label="Outputs">
             {ports.outputs.map((port) => (
               <PortHandle key={port.id} port={port} direction="output" />
             ))}
