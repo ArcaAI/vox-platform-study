@@ -48,6 +48,14 @@ export const AGENT_TASK_MODEL_TASK_TYPE: Readonly<Record<AgentTask, string>> = O
   TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
 });
 
+/**
+ * TASK-890 §3.3 — a dotted run-scope path, the SAME shape the template grammar's `path` accepts
+ * (`ident ( "." ident )*`). Kept as a string literal so it can sit in a JSON Schema `pattern`
+ * and be read by `agentConfigProblems` from one place — a binding whose path the renderer could
+ * never parse is a defect at authoring time, not a surprise at render time.
+ */
+export const PROMPT_VARIABLE_PATH_PATTERN = '^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$';
+
 export type AgentProtocol = 'http' | 'http-sse' | 'socket';
 
 /** The invocation protocols each task publishes (TASK-863 §3.5). */
@@ -115,7 +123,23 @@ const GUARD_POLICY_LIST = Object.freeze({
 const GUARDS_PROPERTY: NodeConfigSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
-  properties: Object.freeze({ input: GUARD_POLICY_LIST, output: GUARD_POLICY_LIST }),
+  properties: Object.freeze({
+    // TASK-890 §3.14 (OD-R clause 3) — the AGENT-level guardrail default, the bottom of the
+    // node > workflow > agent > `true` precedence `resolveGuardrailDecision` implements.
+    // ABSENT MEANS ON: guardrail is platform-managed and screening is the floor a tenant opts
+    // OUT of, per agent, never a switch it has to remember to turn on. A `false` here is
+    // recorded three ways — a publish WARNING (`GUARDRAIL_OPTED_OUT`), the per-call usage
+    // attribute `guardrail: 'opted_out'`, and the TEXT response's own `reason` — so the
+    // omission is attributable rather than merely permitted.
+    enabled: Object.freeze({
+      type: 'boolean',
+      default: true,
+      description:
+        'Whether platform guardrail screens this agent`s input and output. Absent = on. A `core.agent` node or the workflow`s trigger may override it; nothing can turn a platform kill-switch back on.',
+    }),
+    input: GUARD_POLICY_LIST,
+    output: GUARD_POLICY_LIST,
+  }),
   description: 'Guardrail policy keys applied to this agent`s input / output. References, never thresholds or model ids.',
 });
 
@@ -440,6 +464,42 @@ const EVAL_GATE_PROPERTY: NodeConfigSchema = Object.freeze({
   properties: Object.freeze({ goldenSetId: ROW_ID_PROPERTY, enabled: Object.freeze({ type: 'boolean' }) }),
 });
 
+/**
+ * TASK-890 §3.1 / §3.3 (OD-K) — `instruction.variables` is a map of BINDINGS, not of strings.
+ *
+ * `{ value: "…" }` is a literal; `{ path: "context.patientAge" }` is resolved from the run scope
+ * BEFORE the bare-name overlay, which is what makes `{{age}}` and `{{context.patientAge}}` the
+ * same value in one template (§3.3). The retired flat-string form is REFUSED rather than read as
+ * a literal: a flat string cannot express the path half, so accepting it would silently pin a
+ * variable that the author meant to bind to the consultation's context.
+ *
+ * `agentConfigProblems` repeats this rule with a named message, because a tenant hitting it is
+ * mid-migration and "matches none of the `anyOf` branches" does not tell them what to write.
+ */
+const PROMPT_VARIABLE_BINDINGS_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: Object.freeze({
+    anyOf: Object.freeze([
+      Object.freeze({
+        type: 'object',
+        additionalProperties: false,
+        required: Object.freeze(['value']),
+        properties: Object.freeze({ value: Object.freeze({ type: 'string', maxLength: 4000 }) }),
+      }),
+      Object.freeze({
+        type: 'object',
+        additionalProperties: false,
+        required: Object.freeze(['path']),
+        properties: Object.freeze({
+          path: Object.freeze({ type: 'string', minLength: 1, maxLength: 256, pattern: PROMPT_VARIABLE_PATH_PATTERN }),
+        }),
+      }),
+    ]),
+    description: 'Exactly one of `value` (a literal) or `path` (a dotted run-scope path). Never a bare string.',
+  }),
+  description: 'Bindings for the instruction template`s variables, by name.',
+});
+
 /** Exactly one of `promptTemplateId` or `systemPrompt` — enforced by `agentConfigProblems`. */
 const TEXT_GENERATION_INSTRUCTION: NodeConfigSchema = Object.freeze({
   type: 'object',
@@ -447,7 +507,7 @@ const TEXT_GENERATION_INSTRUCTION: NodeConfigSchema = Object.freeze({
   properties: Object.freeze({
     promptTemplateId: ROW_ID_PROPERTY,
     promptVersionNumber: Object.freeze({ type: 'integer', minimum: 1 }),
-    variables: Object.freeze({ type: 'object', additionalProperties: Object.freeze({ type: 'string', maxLength: 4000 }) }),
+    variables: PROMPT_VARIABLE_BINDINGS_PROPERTY,
     systemPrompt: Object.freeze({ type: 'string', minLength: 1, maxLength: 50000 }),
     evalGate: EVAL_GATE_PROPERTY,
   }),
@@ -594,6 +654,14 @@ export interface AgentConfigView {
   readonly inputSchema?: Readonly<Record<string, unknown>> | null;
   readonly outputSchema?: Readonly<Record<string, unknown>> | null;
   readonly tools?: readonly unknown[] | null;
+  /**
+   * TASK-890 §3.4 — the `ConsultationContextSchema` row this agent binds, by REFERENCE. The
+   * contract has no database, so it checks only that the reference is WHOLE; resolving the row
+   * (and refusing a SYSTEM or foreign id with `CONTEXT_SCHEMA_NOT_FOUND`) is the service's job,
+   * and freezing the derived payload schema into `compiledConfig` is publish's.
+   */
+  readonly contextSchemaId?: string | null;
+  readonly contextSchemaVersionNumber?: number | null;
 }
 
 /** The slice of a registry row the checks need. */
@@ -651,6 +719,52 @@ function modelTaskProblem(task: AgentTask, model: AgentModelView, path: string):
   };
 }
 
+/**
+ * TASK-890 (OD-K) — `instruction.variables` entries are BINDINGS. The schema says the same thing
+ * with `anyOf`; this says it in words, because a tenant hitting the rule is migrating off the
+ * retired flat-string form and needs to be told what to write, not which branch failed.
+ */
+function variableBindingProblems(instruction: Record<string, unknown>, out: AgentConfigProblem[]): void {
+  const variables = instruction.variables;
+  if (variables === undefined) return;
+  if (!isPlainObject(variables)) {
+    out.push({ severity: 'ERROR', path: 'instruction.variables', message: '`instruction.variables` is a map of variable name -> binding.' });
+    return;
+  }
+  const pathPattern = new RegExp(PROMPT_VARIABLE_PATH_PATTERN);
+  for (const [name, binding] of Object.entries(variables)) {
+    const at = `instruction.variables.${name}`;
+    if (!isPlainObject(binding)) {
+      out.push({
+        severity: 'ERROR',
+        path: at,
+        message: `\`${at}\` is ${typeof binding === 'string' ? 'a bare string' : 'not an object'}; a binding is \`{ "value": "…" }\` (a literal) or \`{ "path": "context.field" }\` (resolved from the run scope).`,
+      });
+      continue;
+    }
+    const hasValue = binding.value !== undefined;
+    const hasPath = binding.path !== undefined;
+    if (hasValue === hasPath) {
+      out.push({
+        severity: 'ERROR',
+        path: at,
+        message: `\`${at}\` must declare exactly one of \`value\` (a literal) or \`path\` (a dotted run-scope path).`,
+      });
+      continue;
+    }
+    if (hasPath && (typeof binding.path !== 'string' || !pathPattern.test(binding.path))) {
+      out.push({
+        severity: 'ERROR',
+        path: at,
+        message: `\`${at}.path\` must be a dotted identifier path the template grammar can resolve (e.g. \`context.patientAge\`).`,
+      });
+    }
+    if (hasValue && typeof binding.value !== 'string') {
+      out.push({ severity: 'ERROR', path: at, message: `\`${at}.value\` must be a string.` });
+    }
+  }
+}
+
 function textGenerationInstructionProblems(instruction: Record<string, unknown>, out: AgentConfigProblem[]): void {
   const hasTemplate = typeof instruction.promptTemplateId === 'string' && instruction.promptTemplateId.length > 0;
   const hasSystemPrompt = typeof instruction.systemPrompt === 'string' && instruction.systemPrompt.length > 0;
@@ -673,6 +787,7 @@ function textGenerationInstructionProblems(instruction: Record<string, unknown>,
   if (!hasTemplate && (instruction.promptVersionNumber !== undefined || instruction.variables !== undefined)) {
     out.push({ severity: 'ERROR', path: 'instruction', message: '`promptVersionNumber` / `variables` only apply to a template-bound instruction.' });
   }
+  variableBindingProblems(instruction, out);
 }
 
 /**
@@ -709,6 +824,17 @@ export function agentConfigProblems(view: AgentConfigView, context: AgentConfigC
     const problem = modelTaskProblem(task, model, `fallbacks[${index}]`);
     if (problem) problems.push(problem);
   });
+
+  // TASK-890 §3.4 — half a context-schema reference is not a reference. The ROW is resolved by
+  // the service (it needs the tenant); what the contract owns is that the pair is whole, so a
+  // pinned version can never outlive the id that gives it meaning.
+  if ((view.contextSchemaVersionNumber ?? null) !== null && (typeof view.contextSchemaId !== 'string' || view.contextSchemaId.length === 0)) {
+    problems.push({
+      severity: 'ERROR',
+      path: 'contextSchemaVersionNumber',
+      message: '`contextSchemaVersionNumber` pins a version of `contextSchemaId`; set both or neither.',
+    });
+  }
 
   // Instruction shape per task.
   const instruction = isPlainObject(view.instruction) ? view.instruction : undefined;

@@ -215,6 +215,7 @@ export {
   AGENT_TASK_SERVICE,
   AGENT_TOOLS_SCHEMA,
   ASR_ENDPOINTING_MODEL_SLUG_PATH,
+  PROMPT_VARIABLE_PATH_PATTERN,
   agentConfigProblems,
   agentTagProblems,
   agentTagsSatisfy,
