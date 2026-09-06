@@ -23,6 +23,14 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   // Version snapshot pinned at last approval; null = never approved under this
   // scheme. Set by prompt-management approveTemplate; read by resolution.
   approvedVersionNumber?: number | null;
+  /**
+   * TASK-890 §3.4 — REFERENCE-SET provenance. `sourceTemplateId` names the SYSTEM row this
+   * one was CLONED from when the tenant was provisioned; `templateLocked` means the tenant
+   * has not diverged, so a super-admin re-sync may refresh it. An edited (unlocked) clone
+   * is never overwritten.
+   */
+  sourceTemplateId?: string | null;
+  templateLocked?: boolean | null;
   departmentId?: string | null;
   scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL' | null;
   ownerUserId?: string | null;
@@ -54,6 +62,8 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
   private _currentVersionNumber?: IPromptTemplateEntity['currentVersionNumber'];
   private _approvedVersionNumber?: IPromptTemplateEntity['approvedVersionNumber'];
   private _departmentId?: IPromptTemplateEntity['departmentId'];
+  private _sourceTemplateId?: IPromptTemplateEntity['sourceTemplateId'];
+  private _templateLocked?: IPromptTemplateEntity['templateLocked'];
   private _scope?: IPromptTemplateEntity['scope'];
   private _ownerUserId?: IPromptTemplateEntity['ownerUserId'];
   private _lastTestScore?: IPromptTemplateEntity['lastTestScore'];
@@ -77,6 +87,8 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this._currentVersionNumber = init.currentVersionNumber;
     this._approvedVersionNumber = init.approvedVersionNumber ?? null;
     this._departmentId = init.departmentId;
+    this._sourceTemplateId = init.sourceTemplateId ?? null;
+    this._templateLocked = init.templateLocked ?? false;
     this._scope = init.scope ?? 'TENANT_DEFAULT';
     this._ownerUserId = init.ownerUserId ?? null;
     this._lastTestScore = init.lastTestScore;
@@ -160,6 +172,22 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
 
   set departmentId(value: IPromptTemplateEntity['departmentId']) {
     this.setProperty('departmentId', value);
+  }
+
+  get sourceTemplateId(): IPromptTemplateEntity['sourceTemplateId'] {
+    return this._sourceTemplateId;
+  }
+
+  set sourceTemplateId(value: IPromptTemplateEntity['sourceTemplateId']) {
+    this.setProperty('sourceTemplateId', value);
+  }
+
+  get templateLocked(): IPromptTemplateEntity['templateLocked'] {
+    return this._templateLocked;
+  }
+
+  set templateLocked(value: IPromptTemplateEntity['templateLocked']) {
+    this.setProperty('templateLocked', value);
   }
 
   get scope(): IPromptTemplateEntity['scope'] {

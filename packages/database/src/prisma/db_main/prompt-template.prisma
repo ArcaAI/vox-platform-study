@@ -74,6 +74,18 @@ model PromptTemplate {
   departmentId String?
   Department   Department? @relation(fields: [departmentId], references: [id])
 
+  // TASK-890 §3.4 — REFERENCE-SET provenance, the pair `ConsultationContextSchema`
+  // and `DocumentTemplate` already carry. `sourceTemplateId` names the SYSTEM row this
+  // one was CLONED from when the tenant was provisioned; `templateLocked` means the
+  // tenant has not diverged, so a super-admin re-sync may refresh it. An edited
+  // (unlocked) clone is never overwritten.
+  //
+  // The provenance key is the SYSTEM row's `id`, not a slug: `PromptTemplate` has no
+  // slug column (its identity is `@@unique([tenantId, name])`), and the ids are what
+  // `PromptResolutionService`'s `SYSTEM_DEFAULTS.*` already names.
+  sourceTemplateId String?
+  templateLocked   Boolean @default(false)
+
   // Scope discriminator: tenant default vs department default vs user-personal overlay
   scope       PromptTemplateScope @default(TENANT_DEFAULT)
   ownerUserId String?
@@ -103,6 +115,7 @@ model PromptTemplate {
   @@index([category], name: "PromptTemplate_category_idx")
   @@index([tenantId, scope], name: "PromptTemplate_tenantId_scope_idx")
   @@index([ownerUserId], name: "PromptTemplate_ownerUserId_idx")
+  @@index([tenantId, sourceTemplateId], name: "PromptTemplate_tenant_sourceTemplateId_idx")
   @@schema("core")
 }
 

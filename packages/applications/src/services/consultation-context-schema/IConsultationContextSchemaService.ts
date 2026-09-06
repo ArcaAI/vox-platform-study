@@ -75,6 +75,32 @@ export interface ValidatedContextPayload {
  * 2. **Cross-tenant ids answer 404, not 403.** Every by-id path goes through
  *    the same owned-or-throw helper.
  */
+/**
+ * TASK-890 §3.4 — what a context-schema REFERENCE resolved to.
+ *
+ * A discriminated result rather than a throw, because the CALLER decides what an
+ * unresolvable reference means: for the workflow publish gate it is a finding whose CODE
+ * has to distinguish "no such schema in this tenant" from "that version does not exist"
+ * (`CONTEXT_SCHEMA_NOT_FOUND` / `CONTEXT_SCHEMA_VERSION_NOT_FOUND`); for the console it is
+ * an empty variable picker. Throwing would collapse both into one 404 the gate could not
+ * name.
+ *
+ * The discriminant is a STRING, not an `ok: boolean`: this package compiles without
+ * `strictNullChecks`, and TypeScript does not narrow a union on a boolean-literal discriminant
+ * in that mode — every consumer would have to cast. A string discriminant narrows either way.
+ */
+export type ContextSchemaReferenceResolution =
+  | {
+      outcome: 'resolved';
+      schemaId: string;
+      versionNumber: number;
+      /** The immutable version row — what gets frozen into a compiled artifact. */
+      versionId: string;
+      /** The DERIVED payload schema (`payloadSchemaFromDefinition`) — the `context.*` namespace. */
+      payloadSchema: Record<string, unknown>;
+    }
+  | { outcome: 'failed'; failure: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
+
 export const IConsultationContextSchemaService = Symbol('IConsultationContextSchemaService');
 
 export interface IConsultationContextSchemaService {
@@ -125,4 +151,24 @@ export interface IConsultationContextSchemaService {
    *   payload that does not conform to the pinned declaration
    */
   validateContextPayload(input: ValidateContextPayloadInput): Promise<ValidatedContextPayload>;
+
+  /**
+   * TASK-890 §3.4 — resolve a context-schema REFERENCE (an `Agent.contextSchemaId` pin, a
+   * `core.trigger`'s `contextSchema.contextSchemaId`) inside the CALLER's tenant.
+   *
+   * TENANT-only: a SYSTEM id resolves to nothing, exactly like another tenant's, because a
+   * schema is CLONED into a tenant and never shared from SYSTEM (OD-H). `versionNumber`
+   * defaults to the schema's own pin.
+   */
+  resolveReference(schemaId: string, versionNumber?: number | null): Promise<ContextSchemaReferenceResolution>;
+
+  /**
+   * TASK-890 §3.4 — copy one SYSTEM reference schema into a tenant, PUBLISHED and pinned,
+   * stamped `sourceTemplateSlug` + `templateLocked: true`.
+   *
+   * Missing-only: a tenant that already carries the slug is returned unchanged. Refuses
+   * (404) when SYSTEM has no such schema or the source carries no pinned version — an
+   * unservable clone is worse than a named failure at provisioning time.
+   */
+  cloneFromSystem(slug: string, tenantId: string): Promise<ConsultationContextSchemaResponse>;
 }

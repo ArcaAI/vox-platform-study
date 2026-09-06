@@ -143,7 +143,15 @@ describe('the platform model catalogue (33 SYSTEM rows)', () => {
   it('models every CLOUD row as NOT_APPLICABLE for availability with a vendor wire id, and no self-hosted row as CLOUD', () => {
     const cloud = catalog.filter((m) => m.deploymentKind === 'CLOUD');
     expect(cloud.map((m) => m.slug).sort()).toEqual(
-      ['azure-speech-stt', 'mai-transcribe-1.5', 'sarvam-saaras-v4', 'openai-gpt4o-transcribe', 'azure-neural-voices', 'sarvam-bulbul', 'azure-gpt-5.4-mini'].sort(),
+      [
+        'azure-speech-stt',
+        'mai-transcribe-1.5',
+        'sarvam-saaras-v4',
+        'openai-gpt4o-transcribe',
+        'azure-neural-voices',
+        'sarvam-bulbul',
+        'azure-gpt-5.4-mini',
+      ].sort(),
     );
     cloud.forEach((m) => {
       expect(m.availability, m.slug).toBe('NOT_APPLICABLE');
@@ -203,11 +211,13 @@ describe('the platform model catalogue (33 SYSTEM rows)', () => {
     expect(nonDefault).toEqual([]);
   });
 
-  it('never seeds the publisher-owned bucket identity (bucketPrefix / primaryObject / localPath)', () => {
+  it('never seeds the publisher-owned bucket identity (bucketPrefix / primaryObject)', () => {
     catalog.forEach((m) => {
       expect((m as { bucketPrefix?: unknown }).bucketPrefix, m.slug).toBeUndefined();
       expect(m.primaryObject, m.slug).toBeUndefined();
-      expect(m.localPath, m.slug).toBeUndefined();
+      // TASK-890 — `localPath` is no longer a column at all; the mount path is derived
+      // from the bucket identity above at the moment a resolved spec is built.
+      expect((m as { localPath?: unknown }).localPath, m.slug).toBeUndefined();
     });
   });
 

@@ -12,12 +12,18 @@ import {
   ConsultationContextSchemaVersionFactory,
   ConsultationContextSchemaVersionRepository,
   ResourceType,
+  SYSTEM_TENANT_ID,
   SysEventType,
 } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { IConsultationContextSchemaService, ValidateContextPayloadInput, ValidatedContextPayload } from './IConsultationContextSchemaService';
+import {
+  ContextSchemaReferenceResolution,
+  IConsultationContextSchemaService,
+  ValidateContextPayloadInput,
+  ValidatedContextPayload,
+} from './IConsultationContextSchemaService';
 import {
   ConsultationContextSchemaBundleResponse,
   ConsultationContextSchemaResponse,
@@ -33,8 +39,10 @@ import {
   computeDefinitionChecksum,
   contextSchemaDefinitionProblems,
   findKind,
+  payloadSchemaFromDefinition,
   type ContextPrimitive,
 } from './context-schema-definition';
+import { runInTenantContext } from '../agentPromotion/tenant-context';
 import { classifyDefinitionChange, type DefinitionChangeClassification } from './definition-diff';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 
@@ -337,6 +345,95 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
       definition: (version.definition ?? {}) as Record<string, unknown>,
       etag: bundleEtag(schema.id, version.id, version.versionNumber, version.definition),
     };
+  }
+
+  // ============================================================
+  // TASK-890 §3.4 — the schema as a REFERENCE, and as a reference SET
+  // ============================================================
+
+  async resolveReference(schemaId: string, versionNumber?: number | null): Promise<ContextSchemaReferenceResolution> {
+    const tenantId = this.requireTenantId();
+
+    const entity = await this.schemaRepository.findById(schemaId).catch(() => null);
+    // 404-over-403, and it holds for the SYSTEM row too: a context schema is CLONED into a
+    // tenant (OD-H), never shared from SYSTEM, so a SYSTEM id is as invisible here as
+    // another customer's. Reporting it as "found but forbidden" would both leak existence
+    // and suggest a binding the runtime would never be able to honour.
+    if (!entity || entity.tenantId !== tenantId) {
+      return { outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' };
+    }
+
+    // No explicit pin ⇒ the schema's own. An UNPINNED schema is not servable, so it is a
+    // missing VERSION rather than a missing schema: the reference itself was resolvable.
+    const wanted = versionNumber ?? entity.pinnedVersionNumber ?? null;
+    if (wanted === null) {
+      return { outcome: 'failed', failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
+    }
+
+    const version = await this.versionRepository.findBySchemaAndVersionNumber(entity.id, wanted).catch(() => null);
+    if (!version) {
+      return { outcome: 'failed', failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
+    }
+
+    return {
+      outcome: 'resolved',
+      schemaId: entity.id,
+      versionNumber: version.versionNumber,
+      versionId: version.id,
+      payloadSchema: payloadSchemaFromDefinition(version.definition),
+    };
+  }
+
+  async cloneFromSystem(slug: string, tenantId: string): Promise<ConsultationContextSchemaResponse> {
+    // The SOURCE is read under SYSTEM's own tenant context, not the caller's: this model is
+    // deliberately absent from `SYSTEM_SHARED_READ_MODELS`, so there is no read widening to
+    // lean on and none is wanted — naming the tenant each step means is the `syncToTenants`
+    // discipline, and it keeps the copy auditable in both directions.
+    const source = await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, async () => {
+      const row = await this.schemaRepository.findByTenantAndSlug(SYSTEM_TENANT_ID, slug);
+      if (!row) return null;
+      if (row.pinnedVersionNumber == null) return { row, version: null };
+      const version = await this.versionRepository.findBySchemaAndVersionNumber(row.id, row.pinnedVersionNumber);
+      return { row, version };
+    });
+
+    if (!source) {
+      throw new NotFoundException(`No SYSTEM context schema '${slug}' to clone from.`);
+    }
+    if (!source.version) {
+      // An unservable source would produce an unservable clone — a tenant row that discovery
+      // silently skips. Refusing names the platform defect at provisioning time instead.
+      throw new NotFoundException(`SYSTEM context schema '${slug}' has no pinned version to clone.`);
+    }
+
+    return runInTenantContext(this.clsService, tenantId, async () => {
+      // Missing-only, by SLUG: a tenant that already carries this schema — whether from an
+      // earlier provision or because it authored its own — keeps exactly what it has. A
+      // re-sync that OVERWRITES a pristine clone is a separate, explicit action (L13).
+      const existing = await this.schemaRepository.findByTenantAndSlug(tenantId, slug);
+      if (existing) {
+        return ConsultationContextSchemaDtoMapper.toResponse(existing);
+      }
+
+      const created = await this.create({
+        slug: source.row.slug,
+        name: source.row.name,
+        description: source.row.description ?? undefined,
+        scope: source.row.scope,
+        // DEPARTMENT scope cannot be carried across tenants — the department ids differ —
+        // so only a TENANT-scoped reference schema is clonable, which is what the reference
+        // set holds. `create` refuses the incoherent combination itself.
+        departmentId: undefined,
+        isDefault: source.row.isDefault,
+        sourceTemplateSlug: slug,
+        templateLocked: true,
+      });
+
+      // `publish` mints version 1 of the clone from the SOURCE's pinned definition and moves
+      // the pin onto it, so the clone is servable the moment provisioning finishes. Its
+      // lineage restarts at 1 on purpose: the tenant's version history is its own.
+      return this.publish(created.id, { definition: (source.version?.definition ?? {}) as Record<string, unknown> });
+    });
   }
 
   // ============================================================

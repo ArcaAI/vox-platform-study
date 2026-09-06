@@ -26,6 +26,14 @@ export interface IWorkflowDefinitionEntity extends IBaseTenantEntity {
   versionNumber: number;
   parentVersionId?: string | null;
   status: Enums.WorkflowDefinitionStatus;
+  /**
+   * TASK-890 §3.4 — REFERENCE-SET provenance. `sourceTemplateSlug` names the SYSTEM row this
+   * one was CLONED from when the tenant was provisioned; `templateLocked` means the tenant
+   * has not diverged, so a super-admin re-sync may refresh it. An edited (unlocked) clone
+   * is never overwritten.
+   */
+  sourceTemplateSlug?: string | null;
+  templateLocked?: boolean | null;
   graph: JsonValue;
   graphChecksum: string;
   compiledConfig?: JsonValue | null;
@@ -48,6 +56,8 @@ export class WorkflowDefinitionEntity extends BaseTenantEntity {
   private _versionNumber: IWorkflowDefinitionEntity['versionNumber'];
   private _parentVersionId?: IWorkflowDefinitionEntity['parentVersionId'];
   private _status: IWorkflowDefinitionEntity['status'];
+  private _sourceTemplateSlug?: IWorkflowDefinitionEntity['sourceTemplateSlug'];
+  private _templateLocked?: IWorkflowDefinitionEntity['templateLocked'];
   private _graph: IWorkflowDefinitionEntity['graph'];
   private _graphChecksum: IWorkflowDefinitionEntity['graphChecksum'];
   private _compiledConfig?: IWorkflowDefinitionEntity['compiledConfig'];
@@ -70,6 +80,8 @@ export class WorkflowDefinitionEntity extends BaseTenantEntity {
     this._versionNumber = init.versionNumber;
     this._parentVersionId = init.parentVersionId;
     this._status = init.status;
+    this._sourceTemplateSlug = init.sourceTemplateSlug ?? null;
+    this._templateLocked = init.templateLocked ?? false;
     this._graph = init.graph;
     this._graphChecksum = init.graphChecksum;
     this._compiledConfig = init.compiledConfig;
@@ -138,6 +150,22 @@ export class WorkflowDefinitionEntity extends BaseTenantEntity {
 
   set status(value: IWorkflowDefinitionEntity['status']) {
     this.setProperty('status', value);
+  }
+
+  get sourceTemplateSlug(): IWorkflowDefinitionEntity['sourceTemplateSlug'] {
+    return this._sourceTemplateSlug;
+  }
+
+  set sourceTemplateSlug(value: IWorkflowDefinitionEntity['sourceTemplateSlug']) {
+    this.setProperty('sourceTemplateSlug', value);
+  }
+
+  get templateLocked(): IWorkflowDefinitionEntity['templateLocked'] {
+    return this._templateLocked;
+  }
+
+  set templateLocked(value: IWorkflowDefinitionEntity['templateLocked']) {
+    this.setProperty('templateLocked', value);
   }
 
   get graph(): IWorkflowDefinitionEntity['graph'] {

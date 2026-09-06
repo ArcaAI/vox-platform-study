@@ -93,7 +93,7 @@ describe('compiled config vs the normative schema', () => {
    * this file is the TypeScript half of the three-sided contract: the normative schema, this
    * compiler, and the two pydantic models must gain the field together or the interpreter
    * rejects every compiled config (`extra="forbid"` on both models).
- */
+   */
   it('carries documentTemplateRefs, and the normative schema requires it', () => {
     const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'));
     expect(schema.$defs.policyBindings.required).toContain('documentTemplateRefs');
@@ -107,5 +107,48 @@ describe('compiled config vs the normative schema', () => {
     const result = compile(graph, ctx) as { config: CompiledWorkflowConfig };
     const { documentTemplateRefs: _dropped, ...withoutRefs } = result.config.policyBindings;
     expect(validate({ ...result.config, policyBindings: withoutRefs })).toBe(false);
+  });
+
+  /**
+   * TASK-890 §3.4 / §3.14 — the two ADDITIVE policy bindings. Unlike `documentTemplateRefs`
+   * above they are OPTIONAL, and that asymmetry is the point: a graph that binds no context
+   * schema and states no guardrail opinion must compile to the bytes it always did, so every
+   * artifact published before this ticket still verifies its own checksum.
+   */
+  it('admits the additive contextSchemaRefs and guardrail bindings, and still admits an artifact carrying neither', () => {
+    const validate = loadValidator();
+    const result = compile(graph, ctx) as { config: CompiledWorkflowConfig };
+
+    // Neither field: exactly what `compile` emits for this graph today.
+    expect(result.config.policyBindings).not.toHaveProperty('contextSchemaRefs');
+    expect(result.config.policyBindings).not.toHaveProperty('guardrail');
+    expect(validate(result.config)).toBe(true);
+
+    const withBoth = {
+      ...result.config,
+      policyBindings: {
+        ...result.config.policyBindings,
+        contextSchemaRefs: [{ nodeId: 'n_trigger', schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2' }],
+        guardrail: { enabled: false },
+      },
+    };
+    expect(validate(withBoth)).toBe(true);
+  });
+
+  it('rejects a malformed additive binding rather than passing it through to the interpreter', () => {
+    const validate = loadValidator();
+    const result = compile(graph, ctx) as { config: CompiledWorkflowConfig };
+
+    const missingVersionId = {
+      ...result.config,
+      policyBindings: { ...result.config.policyBindings, contextSchemaRefs: [{ nodeId: 'n_trigger', schemaId: 'schema-1', versionNumber: 2 }] },
+    };
+    expect(validate(missingVersionId)).toBe(false);
+
+    const unknownGuardrailKey = {
+      ...result.config,
+      policyBindings: { ...result.config.policyBindings, guardrail: { enabled: false, reason: 'because' } },
+    };
+    expect(validate(unknownGuardrailKey)).toBe(false);
   });
 });

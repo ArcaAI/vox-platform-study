@@ -350,6 +350,48 @@
           "items": {
             "type": "string"
           }
+        },
+        "contextSchemaRefs": {
+          "type": "array",
+          "description": "TASK-890 \u00a73.4 \u2014 WHICH context-schema version each node that binds one by REFERENCE was frozen against. A sibling of promptTemplateRefs with the same guarantee: the interpreter validates a run payload against the schema the workflow was PUBLISHED with, never against whatever the tenant has edited since. Additive-optional: absent means no node binds a schema by reference, never 'unknown', so an artifact compiled before the field existed still admits.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nodeId",
+              "schemaId",
+              "versionNumber",
+              "versionId"
+            ],
+            "properties": {
+              "nodeId": {
+                "type": "string"
+              },
+              "schemaId": {
+                "type": "string"
+              },
+              "versionNumber": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "versionId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "guardrail": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
+          "description": "TASK-890 \u00a73.14 \u2014 the WORKFLOW-level guardrail opinion, authored on core.trigger and folded with the per-node and per-agent opinions at run time (node > workflow > agent > on). Tri-state BY ABSENCE: omitted means this workflow expresses no opinion, so { enabled: true } is a recorded decision to screen rather than a synonym for absence.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },

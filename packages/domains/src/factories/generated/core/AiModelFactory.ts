@@ -23,6 +23,8 @@ export interface CreateAiModelProps extends BaseEntityFactoryCreateProps {
   servedBy: IAiModelEntity['servedBy'];
   deploymentKind: IAiModelEntity['deploymentKind'];
   wireModelId?: IAiModelEntity['wireModelId'];
+  /** BYO provenance — set ONLY by the connection's model declaration, never by an admin edit. */
+  sourceConnectionId?: IAiModelEntity['sourceConnectionId'];
   license?: IAiModelEntity['license'];
   gated?: IAiModelEntity['gated'];
   baseModel?: IAiModelEntity['baseModel'];
@@ -79,6 +81,7 @@ export class AiModelFactory {
       servedBy: props.servedBy,
       deploymentKind: props.deploymentKind,
       wireModelId: props.wireModelId ?? null,
+      sourceConnectionId: props.sourceConnectionId ?? null,
       license: props.license ?? null,
       gated: props.gated ?? false,
       baseModel: props.baseModel ?? null,
@@ -89,16 +92,13 @@ export class AiModelFactory {
       manifestDigest: null,
       // A cloud row has nothing to inventory; everything else starts UNKNOWN
       // until the inventory job measures it.
-      availability: props.deploymentKind === Enums.AiDeploymentKind.CLOUD ? Enums.AiModelAvailability.NOT_APPLICABLE : Enums.AiModelAvailability.UNKNOWN,
+      availability:
+        props.deploymentKind === Enums.AiDeploymentKind.CLOUD ? Enums.AiModelAvailability.NOT_APPLICABLE : Enums.AiModelAvailability.UNKNOWN,
       availabilityCheckedAt: null,
       availabilityDetail: null,
       isPlatformDefaultFor: props.isPlatformDefaultFor ?? [],
       memorySizeMb: props.memorySizeMb ?? null,
       computeType: props.computeType ?? null,
-      downloadStatus: Enums.AiModelDownloadStatus.NOT_DOWNLOADED,
-      localPath: null,
-      downloadedAt: null,
-      fileSizeMb: null,
       checksum: null,
       tenantId: props.tenantId,
       tags: props.tags ?? [],

@@ -10,6 +10,7 @@ import {
   AgentModelFallbackRepository,
   AgentRepository,
   AgentTask,
+  AiModelAvailability,
   AiModelEntity,
   AiModelRepository,
   CoreDatabaseService,
@@ -1161,8 +1162,14 @@ export class AgentService extends BaseService implements IAgentService {
   /**
    * Availability, fail-closed (R-7): ENABLED; a cloud provider needs an enabled
    * `AiProviderConnection(service, provider)` at tenant or SYSTEM; an engine-served provider
-   * needs nothing more; bucket-staged weights need `localPath` (or a DOWNLOADED status).
-   * TODO(TASK-860): switch to the measured `AiModel.availability`.
+   * needs nothing more; bucket-staged weights need MEASURED presence in the bucket.
+   *
+   * TASK-890 L2 — the last reader of the dropped `localPath` / `downloadStatus` columns. The
+   * check now reads `availability`, the fact the inventory job and the publish processor
+   * measure, with the SAME verdict as the pair it replaces: a row nobody has confirmed
+   * weights for (UNKNOWN, as every freshly seeded self-hosted row is) is still refused, and
+   * a row that needs no weights at all (NOT_APPLICABLE) still passes. L8 owns the wider
+   * rewrite of this branch onto `providerClassOf` + readiness (§3.11).
    */
   private async availabilityFindings(model: AiModelEntity, task: AgentTask, tenantId: string, path: string): Promise<AgentFinding[]> {
     if (model.resourceStatus !== ResourceStatusType.ENABLED) {
@@ -1186,15 +1193,14 @@ export class AgentService extends BaseService implements IAgentService {
       return [];
     }
     if (provider && ENGINE_SERVED_PROVIDERS.has(provider)) return [];
-    const staged = typeof model.localPath === 'string' && model.localPath.length > 0;
-    const downloaded = String((model as unknown as { downloadStatus?: unknown }).downloadStatus ?? '') === 'DOWNLOADED';
-    if (!staged && !downloaded) {
+    const staged = model.availability === AiModelAvailability.AVAILABLE || model.availability === AiModelAvailability.NOT_APPLICABLE;
+    if (!staged) {
       return [
         {
           severity: 'ERROR',
           code: 'MODEL_UNAVAILABLE',
           path,
-          message: `Model \`${model.slug}\` has no staged weights (no localPath and not DOWNLOADED); publish is refused until the weights are available.`,
+          message: `Model \`${model.slug}\` has no staged weights (availability is ${model.availability}); publish is refused until the weights are available.`,
         },
       ];
     }

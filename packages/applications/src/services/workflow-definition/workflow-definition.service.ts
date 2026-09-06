@@ -40,6 +40,7 @@ import type {
   CompiledWorkflowConfig,
   CompilerContext,
   PortableBundleTenantKind,
+  ResolvedTriggerContextSchema,
   ProviderGenerationCapabilities,
   WorkflowFinding,
   WorkflowGraph,
@@ -190,6 +191,28 @@ const NON_DERIVABLE_POLICY_BINDINGS = {
  */
 const DOCUMENT_TEMPLATE_ID_KEY = 'documentTemplateId';
 const DOCUMENT_VERSION_NUMBER_KEY = 'documentVersionNumber';
+
+/**
+ * TASK-890 §3.4 — the graph's one mandatory entry node, where a workflow's context-schema
+ * REFERENCE is authored. Named here for the reason the two keys above are: this file reads raw
+ * node config, and a re-typed string literal is how two sides of a contract drift apart.
+ */
+const TRIGGER_NODE_TYPE = 'core.trigger';
+
+/**
+ * What `resolveTriggerContextSchema` answers. `undefined` (the whole value) means "nothing to
+ * resolve" and is NOT the same as `{ failure }`, which means "a reference was authored and it
+ * does not resolve in this tenant" — the first skips the publish check, the second IS the check.
+ */
+type TriggerContextSchemaResolution =
+  | undefined
+  | { resolved: ResolvedTriggerContextSchema; failure?: undefined }
+  | { resolved?: undefined; failure: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
+
+/** A plain object, or `undefined`. Local to the context-schema reference read below. */
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
 
 /**
  * the STT palette's own key, as authored on `WorkflowDefinition.paletteKey`. Not an
@@ -349,10 +372,17 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     this.assertKnownPaletteKey(dto.paletteKey);
 
     const graph = this.parseGraphOrThrow(dto.graph);
-    const report = await this.validateGraph(graph, dto.paletteKey, tenantId);
-    if (reportIsShapeBroken(report)) {
-      throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
+    const baseReport = await this.validateGraph(graph, dto.paletteKey, tenantId);
+    if (reportIsShapeBroken(baseReport)) {
+      throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: baseReport.findings });
     }
+
+    // TASK-890 — the publish gate runs here too, RECORDED and never refusing. Before this,
+    // `create` reported the catalogue's verdict alone, so a graph the very next `validate()`
+    // refused with ERRORs was stored with `ok: true` — a green draft the console could not act
+    // on. A draft is still WRITTEN: authoring feedback belongs on the report, not in a 400.
+    const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
+    const report = this.mergePublishGate(baseReport, this.graphPublishFindings(graph, triggerContextSchema));
 
     if (dto.parentVersionId) {
       const parent = await this.workflowDefinitionRepository.findById(dto.parentVersionId).catch(() => null);
@@ -1178,14 +1208,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // TASK-890 — the publish gate's findings are RECORDED here, never enforced: `validate()` is
     // authoring feedback, and refusing a draft for a problem publish will refuse anyway would
     // just move the same wall earlier in the author's day.
-    const publishGate = this.graphPublishFindings(graph);
-    const report: WorkflowValidationReport =
-      publishGate.length === 0
-        ? baseReport
-        : { ...baseReport, ok: baseReport.ok && !hasBlockingFindings(publishGate), findings: [...baseReport.findings, ...publishGate] };
+    const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
+    const publishGate = this.graphPublishFindings(graph, triggerContextSchema);
+    const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
     // Same bindings publish() will stamp — a validate() that compiled against different
     // policyBindings would greenlight an artifact the publish() then produces differently.
-    const compileResult = compile(graph, this.buildCompilerContext(entity, graph, await this.resolveContextSchemaVersionId()));
+    const compileResult = compile(graph, this.buildCompilerContext(entity, graph, await this.resolveContextSchemaVersionId(), triggerContextSchema));
     // TASK-890 — a blocking PUBLISH finding also keeps the row a DRAFT. VALIDATED means
     // "publishable", and promoting a graph that `publish()` would then 400 on hands the console a
     // status it cannot act on. `validate()` still never THROWS — recording without refusing is
@@ -1247,11 +1275,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // nothing — the same discipline as the capability gate below it. WARNINGs
     // (`GUARDRAIL_OPTED_OUT`, and `PROMPT_VARIABLE_UNDECLARED` during the OD-C ramp) are recorded
     // and never block: an opt-out is a decision to record, not a defect to refuse.
-    const publishGate = this.graphPublishFindings(graph);
-    const report: WorkflowValidationReport =
-      publishGate.length === 0
-        ? baseReport
-        : { ...baseReport, ok: baseReport.ok && !hasBlockingFindings(publishGate), findings: [...baseReport.findings, ...publishGate] };
+    const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
+    const publishGate = this.graphPublishFindings(graph, triggerContextSchema);
+    const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
     if (hasBlockingFindings(publishGate)) {
       throw new BadRequestException({
         message: 'The workflow graph does not pass the publish gate.',
@@ -1277,7 +1303,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     // D-7 — resolve the tenant's context-schema pin BEFORE compiling, so the published artifact
     // records WHICH schema version it was built against instead of a hardcoded null.
-    const compiled = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId());
+    const compiled = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId(), triggerContextSchema);
 
     // an `stt`-palette publish() ALSO compiles the graph into an
     // `AsrPipeline`/`AsrPipelineVersion` row ( central design decision). Runs BEFORE
@@ -1340,8 +1366,14 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     assertEqualTenants(entity, { tenantId: this.tenantId });
 
     const graph = entity.graph as unknown as WorkflowGraph;
-    // The sandbox must preview exactly what publish() would stamp, bindings included.
-    const compiledConfig = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId());
+    // The sandbox must preview exactly what publish() would stamp, bindings included — the
+    // frozen trigger context schema among them.
+    const compiledConfig = this.compileGraphOrThrow(
+      entity,
+      graph,
+      await this.resolveContextSchemaVersionId(),
+      await this.resolveTriggerContextSchema(graph),
+    );
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id, data: { action: 'sandboxCompile' } });
 
@@ -1764,10 +1796,17 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * schema — and TASK-890 L2/L8 supply them. Absent, the contract SKIPS those checks rather than
    * guessing, which is why an unresolved slot is safe and a WRONG one would not be.
    */
-  private graphPublishFindings(graph: WorkflowGraph): WorkflowFinding[] {
+  private graphPublishFindings(graph: WorkflowGraph, triggerContextSchema?: TriggerContextSchemaResolution): WorkflowFinding[] {
     return publishFindings(graph, {
       schemaValueProblems: jsonSchemaValueProblems,
       templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+      // `undefined` = not resolved, and the contract SKIPS the check. `null` = resolved to
+      // nothing, which is the finding. The two are deliberately different values.
+      ...(triggerContextSchema === undefined
+        ? {}
+        : triggerContextSchema.failure !== undefined
+          ? { triggerContextSchema: null, triggerContextSchemaFailure: triggerContextSchema.failure }
+          : { triggerContextSchema: triggerContextSchema.resolved?.payloadSchema ?? null }),
     });
   }
 
@@ -1893,6 +1932,61 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
+   * TASK-890 §3.4 — resolve the trigger's context-schema REFERENCE, once per lifecycle call.
+   *
+   * Returns THREE distinguishable states, because the publish gate and the compiler need
+   * different halves of the answer and conflating them is exactly how a dangling reference
+   * would reach a run:
+   *
+   *  - `undefined` — nothing to resolve (no trigger, no reference, or no schema service wired).
+   *    The gate SKIPS the check rather than guessing, which is why an unresolved slot is safe;
+   *  - `{ resolved }` — the derived payload schema, frozen into the artifact by the compiler;
+   *  - `{ failure }` — the reference did not resolve IN THIS TENANT. A blocking finding, named:
+   *    a schema is CLONED into a tenant and never shared from SYSTEM (OD-H), so a SYSTEM or
+   *    foreign id is simply invisible here, and "the version does not exist" is a different
+   *    remedy from "the schema does not exist".
+   */
+  private async resolveTriggerContextSchema(graph: WorkflowGraph): Promise<TriggerContextSchemaResolution> {
+    if (!this.contextSchemaService) return undefined;
+
+    const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+    const trigger = nodes.find((node) => node.type === TRIGGER_NODE_TYPE);
+    const contextSchema = asRecord(trigger?.config)?.contextSchema;
+    const reference = asRecord(contextSchema);
+    const schemaId = typeof reference?.contextSchemaId === 'string' ? reference.contextSchemaId : '';
+    // An INLINE schema is already the definition — there is nothing to look up, and the
+    // compiler leaves it exactly as authored.
+    if (schemaId.length === 0) return undefined;
+
+    const versionNumber = typeof reference?.versionNumber === 'number' ? reference.versionNumber : undefined;
+    const resolution = await this.contextSchemaService.resolveReference(schemaId, versionNumber);
+    if (resolution.outcome === 'failed') return { failure: resolution.failure };
+
+    return {
+      resolved: {
+        schemaId: resolution.schemaId,
+        versionNumber: resolution.versionNumber,
+        versionId: resolution.versionId,
+        payloadSchema: resolution.payloadSchema,
+      },
+    };
+  }
+
+  /**
+   * Fold the publish gate's findings into a rule-catalogue report.
+   *
+   * ONE helper, used by `create()`, `validate()` and `publishEntity()`, because they used to
+   * disagree: `create` recorded only the catalogue's verdict, so a graph the very next
+   * `validate()` refused was stored with `ok: true` — a green draft the console could not act
+   * on. Recording is not refusing: whether a blocking finding also THROWS is the caller's
+   * decision, and only `publishEntity` makes it.
+   */
+  private mergePublishGate(baseReport: WorkflowValidationReport, publishGate: WorkflowFinding[]): WorkflowValidationReport {
+    if (publishGate.length === 0) return baseReport;
+    return { ...baseReport, ok: baseReport.ok && !hasBlockingFindings(publishGate), findings: [...baseReport.findings, ...publishGate] };
+  }
+
+  /**
    * D-7 — `policyBindings` describing THIS graph rather than a frozen empty constant.
    *
    * `promptTemplateRefs` reuses DD-11's `collectPromptBindings`, which reads the binding off ANY
@@ -1916,6 +2010,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     entity: Pick<WorkflowDefinitionEntity, 'id' | 'slug' | 'versionNumber' | 'tenantId' | 'paletteKey'>,
     graph: WorkflowGraph,
     contextSchemaVersionId: string | null,
+    triggerContextSchema?: TriggerContextSchemaResolution,
   ): CompilerContext {
     const promptTemplateRefs = collectPromptBindings(graph)
       .filter((binding) => binding.pinnedVersionNumber !== null)
@@ -1961,6 +2056,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       ruleSetVersion: RULE_SET_VERSION,
       caps: DEFAULT_CAPS,
       policyBindings: { ...NON_DERIVABLE_POLICY_BINDINGS, promptTemplateRefs, documentTemplateRefs, contextSchemaVersionId, entitlementKeys },
+      // Only a RESOLVED reference is frozen. An unresolvable one never reaches compile: it is
+      // a blocking publish finding first.
+      ...(triggerContextSchema?.resolved ? { triggerContextSchema: triggerContextSchema.resolved } : {}),
       nodeInfo: registryNodeInfo,
     };
   }
@@ -1971,8 +2069,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     entity: Pick<WorkflowDefinitionEntity, 'id' | 'slug' | 'versionNumber' | 'tenantId' | 'paletteKey'>,
     graph: WorkflowGraph,
     contextSchemaVersionId: string | null,
+    triggerContextSchema?: TriggerContextSchemaResolution,
   ): CompiledWorkflowConfig {
-    const result = compile(graph, this.buildCompilerContext(entity, graph, contextSchemaVersionId));
+    const result = compile(graph, this.buildCompilerContext(entity, graph, contextSchemaVersionId, triggerContextSchema));
     if ('findings' in result) {
       throw new BadRequestException({ message: 'The workflow graph could not be compiled.', findings: result.findings satisfies WorkflowFinding[] });
     }

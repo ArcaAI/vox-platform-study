@@ -24,6 +24,7 @@ export class AiModel extends BaseTenantDataModel {
   public servedBy: string;
   public deploymentKind: Enums.AiDeploymentKind;
   public wireModelId: string | null;
+  public sourceConnectionId: string | null;
   public license: string | null;
   public gated: boolean;
   public baseModel: string | null;
@@ -38,15 +39,13 @@ export class AiModel extends BaseTenantDataModel {
   public isPlatformDefaultFor: Enums.AiTaskKind[];
   public memorySizeMb: number | null;
   public computeType: string | null;
-  public downloadStatus: Enums.AiModelDownloadStatus;
-  public localPath: string | null;
-  public downloadedAt: Date | null;
-  public fileSizeMb: number | null;
   public checksum: string | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
   public tags: string[];
+  @VirtualDbProperty()
+  public sourceConnection: Models.AiProviderConnection | undefined;
   @VirtualDbProperty()
   public routingPolicies: Models.AiRoutingPolicy[] | undefined;
   @VirtualDbProperty()
@@ -72,6 +71,7 @@ export class AiModel extends BaseTenantDataModel {
     this.servedBy = data.servedBy;
     this.deploymentKind = data.deploymentKind;
     this.wireModelId = data.wireModelId;
+    this.sourceConnectionId = data.sourceConnectionId;
     this.license = data.license;
     this.gated = data.gated;
     this.baseModel = data.baseModel;
@@ -86,15 +86,12 @@ export class AiModel extends BaseTenantDataModel {
     this.isPlatformDefaultFor = data.isPlatformDefaultFor;
     this.memorySizeMb = data.memorySizeMb;
     this.computeType = data.computeType;
-    this.downloadStatus = data.downloadStatus;
-    this.localPath = data.localPath;
-    this.downloadedAt = data.downloadedAt;
-    this.fileSizeMb = data.fileSizeMb;
     this.checksum = data.checksum;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
     this.tags = data.tags ?? [];
+    this.sourceConnection = data.sourceConnection;
     this.routingPolicies = data.routingPolicies;
     this.agents = data.agents;
     this.agentFallbacks = data.agentFallbacks;

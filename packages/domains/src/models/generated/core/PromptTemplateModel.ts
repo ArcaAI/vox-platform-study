@@ -26,6 +26,8 @@ export class PromptTemplate extends BaseTenantDataModel {
   public currentVersionNumber: number;
   public approvedVersionNumber: number | null;
   public departmentId: string | null;
+  public sourceTemplateId: string | null;
+  public templateLocked: boolean;
   public scope: Enums.PromptTemplateScope;
   public ownerUserId: string | null;
   public resourceStatus: Enums.ResourceStatusType;
@@ -54,6 +56,8 @@ export class PromptTemplate extends BaseTenantDataModel {
     this.currentVersionNumber = data.currentVersionNumber;
     this.approvedVersionNumber = data.approvedVersionNumber;
     this.departmentId = data.departmentId;
+    this.sourceTemplateId = data.sourceTemplateId;
+    this.templateLocked = data.templateLocked;
     this.scope = data.scope;
     this.ownerUserId = data.ownerUserId;
     this.resourceStatus = data.resourceStatus;

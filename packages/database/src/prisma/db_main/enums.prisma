@@ -390,17 +390,6 @@ enum AiModelFormat {
   @@schema("core")
 }
 
-/// @deprecated TASK-860 — removed in R3. `AiModel.downloadStatus` is superseded by
-/// `AiModel.availability` (measured by the inventory job, not declared by an admin).
-enum AiModelDownloadStatus {
-  NOT_DOWNLOADED
-  DOWNLOADING
-  DOWNLOADED
-  DOWNLOAD_FAILED
-
-  @@schema("core")
-}
-
 // Measured presence of a registry row's weights in the shared `hope-models`
 // bucket (TASK-860 R-2). Written by the inventory job and the publish
 // processor only — an admin edit never sets it, because availability is a
