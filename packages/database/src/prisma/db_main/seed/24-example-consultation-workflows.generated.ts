@@ -14,7 +14,7 @@
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-example-consultation-workflow-seed.ts
  */
 
-export const REGISTRY_CHECKSUM: string = "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2" as const;
+export const REGISTRY_CHECKSUM: string = "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d" as const;
 
 export const GRAMMAR_FIX_GRAPH_CHECKSUM: string = "587578c368221b4212cbf8c580065ac41a1fa47029f3d8152544dbe8cbfdcb6b" as const;
 
@@ -23,7 +23,7 @@ export const GRAMMAR_FIX_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "evaluatedAt": "2026-09-03T00:00:00.000Z"
 } as const;
 
@@ -36,7 +36,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -448,7 +448,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "193040fe781361702fe3055116a1a9f89d2fab773a3cd2064e43e09557af448e"
+  "checksum": "31193d1c559723da9bec3f017cc2d1fd72deeec1ccde6a3bbc9805fe8d03f4be"
 } as const;
 
 export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
@@ -460,7 +460,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -872,7 +872,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "e3eced907500213bf2ad6f663d9cc9fc247cfb0074075a490bbeacb2d00f0922"
+  "checksum": "ab9bcdc717b48b4df2e20f3aadadbbf90242f13248ae53707b5806ea52af0f38"
 } as const;
 
 export const MEDICAL_NER_GRAPH_CHECKSUM: string = "fa5ea9f83c81f059af24ea7ccfbb4ba3601531baab2ac7c85051b3f60cd5655b" as const;
@@ -882,7 +882,7 @@ export const MEDICAL_NER_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "evaluatedAt": "2026-09-03T00:00:00.000Z"
 } as const;
 
@@ -895,7 +895,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -1276,7 +1276,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "ae4989f2e511a7227545c31eb5b4cfead25da11e8bcbfac45daa34a52ccc63b0"
+  "checksum": "493be06ea5023f89200670508f6669a9a9cc6bbfc327cf3892e1f3c5b2fce7d1"
 } as const;
 
 export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
@@ -1288,7 +1288,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -1669,7 +1669,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "bca96692ec01dc4fdcf575bf5ff1088b78cd7f1367db052e61624fdea3f4be4d"
+  "checksum": "f67cbfa607ce42948b149eda2cb9eafa83d45190b5b1fae39adab529ce0aa340"
 } as const;
 
 export const NER_GRAMMAR_FIX_GRAPH_CHECKSUM: string = "bbcccd033d624c5053636c3dd872ead001e056004de1a64edada3732d9fbcfc3" as const;
@@ -1679,7 +1679,7 @@ export const NER_GRAMMAR_FIX_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "evaluatedAt": "2026-09-03T00:00:00.000Z"
 } as const;
 
@@ -1692,7 +1692,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -2103,7 +2103,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "835efa26464029c328a9266701512269cafa3aca0a4f9f15847335419a8c66c5"
+  "checksum": "f2b1348491c8171de8e68854f26cfb3fb275965932dbc6929cab809a50c49d8a"
 } as const;
 
 export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
@@ -2115,7 +2115,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "2d20261492f65653b4f21c1fb51c04c546218defd2c16a0bc972b716a269f1c2",
+  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -2526,5 +2526,5 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "0ba76024b5be79f200d4d5ccea0150ca9923bb08c03b05aa1924029639563a47"
+  "checksum": "cfb26cc95f6bdd18395bc12918bc92b230eb974af950d3503054ce3593babfff"
 } as const;

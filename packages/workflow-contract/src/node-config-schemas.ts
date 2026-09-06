@@ -2165,7 +2165,8 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
 // read by the two RUNTIMES rather than by `compileNode` (which passes `config` through
 // wholesale), it was already honoured by one of them, and it was undeclared — so it was stripped
 // by the validator and undrawn by the inspector, exactly as `timeoutSeconds`/`retry` were. It is
-// the first folded key with an EXCLUSION SET of its own; see `MANDATORY_NODE_TYPES` below.
+// the first folded key with an EXCLUSION SET of its own; see `GRAPH_BOUNDARY_NODE_TYPES` below
+// (TASK-890 D-1 narrowed that set from `MANDATORY_NODE_TYPES` to the two graph boundaries).
 
 /** The per-node retry ceiling `compileNode` clamps against `caps.maxAttempts`. Mirrors
  *  `CompiledRetryPolicy` exactly; a key the compiler does not read is not offered. */
@@ -2199,7 +2200,7 @@ const NODE_ENABLED_PROPERTY: NodeConfigSchema = Object.freeze({
   type: 'boolean',
   default: true,
   description:
-    'Turn this node off without deleting it from the graph. Absent is ENABLED. A disabled node is SKIPPED observably by both runtimes — never a silent no-op — and mandatory nodes do not offer it.',
+    'Turn this node off without deleting it from the graph. Absent is ENABLED. A disabled node is SKIPPED observably by both runtimes — never a silent no-op. A mandatory node may be disabled but never REMOVED (TASK-890 D-1): publish records a `GUARDRAIL_OPTED_OUT` warning and every run records `guardrail: "opted_out"`. The two graph boundaries (`core.trigger`, `core.output`) do not offer it — a graph with no entry or no exit cannot run at all.',
 });
 
 /** The palette-agnostic runtime knobs folded onto every node type: the two keys `compileNode`
@@ -2229,28 +2230,47 @@ const NODE_RUNTIME_PROPERTIES: Readonly<Record<string, NodeConfigSchema>> = Obje
 const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set(['consultation.hitlGate']);
 
 /**
- * the node types that get every runtime knob EXCEPT `enabled`.
+ * The node types the rule catalogue requires to be PRESENT on every path from `core.start` to a
+ * terminal (`REQUIRED_PATH_THROUGH` with `throughClass: 'mandatory'` — *"nothing routes around a
+ * gate"*).
  *
- * A node type carrying the registry class `mandatory` is one `rule-catalogue.ts` requires on
- * every path from `core.start` to a terminal (`REQUIRED_PATH_THROUGH` with
- * `throughClass: 'mandatory'` — *"nothing routes around a gate"*). `enabled: false` on such a
- * node IS that routing-around, achieved a different way: the node stays in the graph so the
- * structural rule still passes, while the runtime skips it. On `consultation.consentGate` that
- * is a consent gate a tenant admin can switch off, which is a compliance defect in a healthcare
- * product, not a feature; on `consultation.phiHop` it is a redaction hop that stops redacting.
+ * ## What `mandatory` means, after TASK-890 D-1 (owner decision, 2026-09-06)
  *
- * So the discriminator is the class the rule catalogue ALREADY uses to mean "must run", not a
- * list of node names — a node type that gains the class gains the withholding for free, and one
- * that loses it loses the withholding visibly. It is duplicated here as a literal set ONLY
- * because `node-registry.ts` imports THIS module (reading `classesOf()` here would close an
- * import cycle); `__tests__/node-enabled-toggle.task852.test.ts` asserts the two sets are the
- * same one, so the projection cannot drift from the registry it mirrors.
+ * It means the node must BE THERE. It no longer means it must EXECUTE.
  *
- * `consultation.hitlGate` is in both this set and `RUNTIME_PROPERTY_EXCLUSIONS` above, for two
- * independent reasons — it is mandatory AND it is the one `gate`-classed type whose config the
- * compiler, not an activity, consumes.
+ * This set used to gate the `enabled` fold below, so the seven clinical guard types offered no
+ * disable toggle at all, and the argument recorded here was that a switchable
+ * `consultation.consentGate` is a compliance defect rather than a feature. The owner decided
+ * otherwise: guardrail screening is platform-managed and a tenant may opt OUT of it per agent,
+ * per workflow and per node (OD-R), and that opt-out extends to the mandatory clinical guards
+ * (D-1). The safety property is not the absence of a switch — it is that using the switch is
+ * IMPOSSIBLE TO DO QUIETLY. Three compensating controls carry it:
+ *
+ *   1. publish emits `GUARDRAIL_OPTED_OUT` (a WARNING, never blocking) naming every disabled
+ *      mandatory node by id and type, so it shows in the Studio rail, in the agent findings and
+ *      on `validationReport` afterwards (`publish-findings.ts`);
+ *   2. every run of such a graph records `attributesJson.guardrail: 'opted_out'` on the usage row
+ *      and a `SKIPPED(disabled_by_config)` step result carrying the node id, so "this
+ *      consultation ran without its consent gate" is a query, not an inference from graph JSON;
+ *   3. PRESENCE is untouched — publish still REFUSES a graph in which the node was deleted. The
+ *      opt-out is a switch, never a deletion.
+ *
+ * `GRAPH_BOUNDARY_NODE_TYPES` below is what still withholds the toggle, for a structural reason
+ * rather than a clinical one. And `consultation.hitlGate` — the human sign-off — gains nothing
+ * from D-1: it is the one `gate`-classed type and sits in `RUNTIME_PROPERTY_EXCLUSIONS` above,
+ * which returns its schema BEFORE the runtime fold is reached (TASK-859 invariant 5, *"the system
+ * never signs"*: D-1 is about which nodes may be SKIPPED, never about who DECIDES).
+ *
+ * ## Why the set is a literal here
+ *
+ * The discriminator is still the class the rule catalogue uses, not a list of node names — this
+ * set is duplicated here ONLY because `node-registry.ts` imports THIS module (reading
+ * `classesOf()` here would close an import cycle). `__tests__/node-enabled-toggle.task852.test.ts`
+ * asserts the two sets are the same one, so the projection cannot drift from the registry it
+ * mirrors. It is EXPORTED because `publish-findings.ts` reads it to decide which disabled node
+ * earns the `GUARDRAIL_OPTED_OUT` warning above.
  */
-const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
+export const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
   // summarization palette
   'input.context_binding',
   'generate.text',
@@ -2273,10 +2293,21 @@ const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
   'core.output',
 ]);
 
+/**
+ * The two node types that still withhold `enabled` (TASK-890 D-1).
+ *
+ * `core.trigger` and `core.output` are in `MANDATORY_NODE_TYPES` for a STRUCTURAL reason, not a
+ * clinical one: a disabled entry is a graph that cannot start and a disabled exit is a graph that
+ * cannot deliver. That is an unrunnable graph rather than a guardrail opinion, so withholding the
+ * key here costs a tenant nothing and saves the contract from inventing new runtime semantics for
+ * a boundary that is off. A subset of `MANDATORY_NODE_TYPES` by construction — asserted.
+ */
+export const GRAPH_BOUNDARY_NODE_TYPES: ReadonlySet<string> = new Set(['core.trigger', 'core.output']);
+
 function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfigSchema {
   if (RUNTIME_PROPERTY_EXCLUSIONS.has(key)) return schema;
   const declared = (schema.properties ?? {}) as Record<string, NodeConfigSchema>;
-  const offered = Object.entries(NODE_RUNTIME_PROPERTIES).filter(([name]) => !(name === 'enabled' && MANDATORY_NODE_TYPES.has(key)));
+  const offered = Object.entries(NODE_RUNTIME_PROPERTIES).filter(([name]) => !(name === 'enabled' && GRAPH_BOUNDARY_NODE_TYPES.has(key)));
   const additions = offered.filter(([name]) => declared[name] === undefined);
   if (additions.length === 0) return schema;
   return Object.freeze({ ...schema, properties: Object.freeze({ ...declared, ...Object.fromEntries(additions) }) });
