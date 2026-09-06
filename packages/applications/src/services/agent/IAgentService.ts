@@ -65,6 +65,17 @@ export interface IAgentService {
   /** Read the finished run back SERVER-SIDE by task id and record it (`trigger: AGENT_TEST`). */
   finalizeDraftTest(id: string, dto: FinalizeAgentTestRequest): Promise<AgentTestResultResponse>;
 
+  /**
+   * TASK-890 §3.5 — what `publishFindings` needs to know about the agents a graph's `core.agent`
+   * nodes reference, by slug: their declared variable names and their bound context payload
+   * schema. The workflow publish gate is a PURE function in a package with no database, so these
+   * per-agent facts are resolved HERE and handed in. An unknown slug is simply absent from the
+   * map — the gate already emits `AGENT_REF_MISSING` for it.
+   */
+  publishAgentViews(
+    slugs: readonly string[],
+  ): Promise<Record<string, { declaredVariables: string[]; contextPayloadSchema: Record<string, unknown> | null }>>;
+
   /** Business plane: the published, active agents visible to the tenant (one per slug), optionally by task. */
   listPublished(task?: AgentTask): Promise<AgentSummaryResponse[]>;
   getPublishedBySlug(slug: string): Promise<AgentSummaryResponse>;
