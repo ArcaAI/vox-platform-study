@@ -20,6 +20,25 @@ export type PromptTemplateCategory = 'SYSTEM' | 'SUMMARY' | 'DNA_ANALYSIS' | 'CU
 export type PromptTemplateStatus = 'DRAFT' | 'PUBLISHED' | 'APPROVED';
 export type PromptTemplateScope = 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
 
+/** The five typed shapes a declared prompt variable may take (TASK-890 §3.6). */
+export type PromptVariableType = 'string' | 'number' | 'boolean' | 'date' | 'json';
+
+/**
+ * A typed prompt-variable declaration (TASK-890 §3.6, OD-K) — what
+ * `PromptTemplate.variables` / `PromptVersion.variables` store as an ARRAY.
+ * Replaces the pre-TASK-890 `{ [name]: { type, required } }` map: there is no
+ * read-side normaliser for that shape any more.
+ */
+export interface PromptVariableDeclaration {
+  name: string;
+  type: PromptVariableType;
+  required: boolean;
+  /** Default value (as a string; coerced to `type` at render time). */
+  default?: string;
+  description?: string;
+  source?: { kind: 'context' | 'static'; path?: string };
+}
+
 /**
  * GET /admin/prompt-templates rows (PromptTemplateResponse). `version` is the
  * OCC row token (echo as If-Match), DISTINCT from `currentVersionNumber` —
@@ -34,6 +53,10 @@ export interface PromptTemplate {
   scope?: PromptTemplateScope;
   status: PromptTemplateStatus;
   variables?: Record<string, unknown>;
+  /** Server-truncated (400 chars) preview of `content` — the list/picker projection (TASK-890 §3.6). */
+  contentPreview?: string;
+  /** Typed variable declarations, parsed from `variables`. Always an array (empty when none declared). */
+  declaredVariables?: PromptVariableDeclaration[];
   currentVersionNumber: number;
   /**
    * The `PromptVersion` snapshot pinned at the last approval; `null`/absent =
@@ -79,7 +102,8 @@ export interface CreateTemplateRequest {
   content: string;
   category: PromptTemplateCategory;
   status?: PromptTemplateStatus;
-  variables?: Record<string, unknown>;
+  /** TASK-890 §3.6 — an ARRAY of typed declarations; the retired map shape 400s. */
+  variables?: PromptVariableDeclaration[];
   departmentId?: string;
   tags?: string[];
   scope?: PromptTemplateScope;
@@ -92,7 +116,8 @@ export interface UpdateTemplateRequest {
   description?: string;
   content?: string;
   status?: PromptTemplateStatus;
-  variables?: Record<string, unknown>;
+  /** TASK-890 §3.6 — an ARRAY of typed declarations; the retired map shape 400s. */
+  variables?: PromptVariableDeclaration[];
   tags?: string[];
   /** Stored in the PromptVersion history row. */
   changeReason?: string;

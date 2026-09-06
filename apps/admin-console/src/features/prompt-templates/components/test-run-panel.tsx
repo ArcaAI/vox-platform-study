@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { IconBuildingCommunity, IconCheck, IconPlayerPlay, IconSelector } from '@tabler/icons-react';
+import { IconBuildingCommunity, IconCheck, IconPlayerPlay, IconPlus, IconSelector, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { cn } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
+import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@arcaai/ui/components/shadcn/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
@@ -18,7 +19,7 @@ import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@arcaai/ui/components/shadcn/toggle-group';
 import { GatewayError } from '@/shared/api';
-import { useTextProviders } from '@/shared/catalog';
+import { useModelCatalogue } from '@/shared/catalog';
 import { formatDateTime, formatNumber, formatPercent, formatRelativeTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { useTaskStream } from '@/shared/streams';
@@ -279,6 +280,18 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
   const versionsQuery = useVersions(template.id);
   const [assignOpen, setAssignOpen] = useState(false);
 
+  // TASK-890 §3.6 — one input per declared variable, pre-filled with its
+  // `default` when present. A free-form key/value fallback covers everything
+  // the template references that was never declared (or, for a template with
+  // no declarations at all, every variable it needs).
+  const declaredVariables = template.declaredVariables ?? [];
+  const [declaredValues, setDeclaredValues] = useState<Record<string, string>>({});
+  const [freeFormVariables, setFreeFormVariables] = useState<{ key: string; value: string }[]>([]);
+  const runVariables: Record<string, string> = {
+    ...Object.fromEntries(declaredVariables.map((declaration) => [declaration.name, declaredValues[declaration.name] ?? declaration.default ?? '']).filter(([, value]) => value !== '')),
+    ...Object.fromEntries(freeFormVariables.filter((row) => row.key.trim()).map((row) => [row.key.trim(), row.value])),
+  };
+
   // Example data: "Paste sample" (free text) XOR "Golden case" (picked from a
   // golden set). Switching source clears the OTHER input so the payload can
   // never carry both fields at once.
@@ -300,13 +313,18 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
     }
   }
 
-  // Provider/model: nothing selected ("Tenant default") omits both fields so
-  // the HarnessPolicy cascade resolves them server-side.
-  const providersQuery = useTextProviders();
-  const providers = providersQuery.data ?? [];
+  // Provider/model: nothing selected ("Tenant default") omits `modelId` so the
+  // tenant's ASSIGNED TEXT_GENERATION agent resolves server-side (TASK-876).
+  // TASK-890 §3.7 — the tenant catalogue (BYO connections first, then the
+  // single "Hope provider"), not the playground's `text-generations/providers`
+  // list; `modelChoice` is a catalogue `AiModel` row id, resolved to its wire
+  // provider/model SERVER-SIDE (the console never sees the routing identifier).
+  const catalogueQuery = useModelCatalogue({ taskType: 'TEXT_GENERATION' });
+  const providers = catalogueQuery.data?.providers ?? [];
+  const models = catalogueQuery.data?.models ?? [];
   const [providerChoice, setProviderChoice] = useState(TENANT_DEFAULT);
   const [modelChoice, setModelChoice] = useState(TENANT_DEFAULT);
-  const activeProvider = providers.find((provider) => provider.name === providerChoice) ?? null;
+  const modelsForProvider = models.filter((model) => model.providerId === providerChoice);
 
   const [dryRun, setDryRun] = useState(true);
   const [versionChoice, setVersionChoice] = useState(DRAFT_VERSION);
@@ -370,8 +388,7 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
 
   function handleRun() {
     if (missingGoldenCase || running) return;
-    const provider = providerChoice !== TENANT_DEFAULT ? providerChoice : undefined;
-    const model = provider && modelChoice !== TENANT_DEFAULT ? modelChoice : undefined;
+    const modelId = providerChoice !== TENANT_DEFAULT && modelChoice !== TENANT_DEFAULT ? modelChoice : undefined;
     const versionNumber = versionChoice !== DRAFT_VERSION ? Number(versionChoice) : undefined;
     runVersionRef.current = versionNumber;
     setAck(null);
@@ -384,9 +401,9 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
         body: {
           ...(exampleSource === 'sample' ? { sampleInput: sampleInput || undefined } : { goldenCaseId }),
           dryRun,
-          ...(provider ? { provider } : {}),
-          ...(model ? { model } : {}),
+          ...(modelId ? { modelId } : {}),
           ...(versionNumber !== undefined ? { versionNumber } : {}),
+          ...(Object.keys(runVariables).length > 0 ? { variables: runVariables } : {}),
         },
       },
       {
@@ -429,15 +446,15 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
               }}
             >
               <SelectTrigger id="test-run-provider" className="w-full">
-                <SelectValue placeholder={providersQuery.isPending ? 'Loading providers\u2026' : undefined} />
+                <SelectValue placeholder={catalogueQuery.isPending ? 'Loading providers\u2026' : undefined} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={TENANT_DEFAULT}>Tenant default</SelectItem>
                 {providers.map((provider) => (
-                  <SelectItem key={provider.name} value={provider.name} disabled={!provider.is_available}>
+                  <SelectItem key={provider.id} value={provider.id} disabled={!provider.usable}>
                     {provider.name}
-                    {provider.is_default ? ' (default)' : ''}
-                    {provider.is_available ? '' : ' (unavailable)'}
+                    {provider.group === 'byo' ? ' (BYO)' : ''}
+                    {provider.usable ? '' : ` (${provider.reason ?? 'unavailable'})`}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -452,11 +469,10 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={TENANT_DEFAULT}>Tenant default model</SelectItem>
-                  {(activeProvider?.models ?? []).map((model) => (
-                    <SelectItem key={model.name} value={model.name}>
+                  {modelsForProvider.map((model) => (
+                    <SelectItem key={model.id} value={model.id} disabled={!model.usable}>
                       {model.name}
-                      {activeProvider?.is_default && model.name === activeProvider.default_model ? ' (default)' : ''}
-                      {model.size ? ` \u00b7 ${model.size}` : ''}
+                      {model.readiness !== 'ready' ? ` \u00b7 ${model.readiness.replace(/_/g, ' ')}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -480,6 +496,80 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex flex-col gap-3">
+          <span className="text-sm font-medium">Variables</span>
+          {declaredVariables.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {declaredVariables.map((declaration) => (
+                <div key={declaration.name} className="flex flex-col gap-1.5">
+                  <Label htmlFor={`test-run-var-${declaration.name}`}>
+                    {declaration.name}
+                    {declaration.required ? (
+                      <span aria-hidden className="text-destructive">
+                        {' '}
+                        *
+                      </span>
+                    ) : null}
+                  </Label>
+                  <Input
+                    id={`test-run-var-${declaration.name}`}
+                    value={declaredValues[declaration.name] ?? declaration.default ?? ''}
+                    onChange={(event) => setDeclaredValues((prev) => ({ ...prev, [declaration.name]: event.target.value }))}
+                    placeholder={declaration.description ?? declaration.type}
+                    autoComplete="off"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-xs">No declared variables — add any this template references below.</p>
+          )}
+          <div className="flex flex-col gap-2">
+            {freeFormVariables.map((row, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  aria-label="Variable name"
+                  value={row.key}
+                  onChange={(event) =>
+                    setFreeFormVariables((prev) => prev.map((entry, i) => (i === index ? { ...entry, key: event.target.value } : entry)))
+                  }
+                  placeholder="name"
+                  className="font-mono text-xs"
+                  autoComplete="off"
+                />
+                <Input
+                  aria-label="Variable value"
+                  value={row.value}
+                  onChange={(event) =>
+                    setFreeFormVariables((prev) => prev.map((entry, i) => (i === index ? { ...entry, value: event.target.value } : entry)))
+                  }
+                  placeholder="value"
+                  className="font-mono text-xs"
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Remove variable"
+                  onClick={() => setFreeFormVariables((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  <IconTrash aria-hidden />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => setFreeFormVariables((prev) => [...prev, { key: '', value: '' }])}
+            >
+              <IconPlus aria-hidden />
+              Add variable
+            </Button>
+          </div>
         </div>
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium">Example data</span>
@@ -548,6 +638,10 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
           </div>
           <Switch id="test-run-dry-run" checked={dryRun} onCheckedChange={setDryRun} />
         </div>
+        {/* TASK-890 §3.13 (OD-E) — a non-dry run counts against the tenant's LLM quota, same as any other generation. */}
+        <p className="text-muted-foreground text-xs">
+          {dryRun ? 'Dry run — no tokens are billed.' : "This run counts against the tenant's monthly LLM token quota."}
+        </p>
         <Button size="sm" className="self-start" disabled={!etag || running || missingGoldenCase} onClick={handleRun}>
           {running ? <Spinner /> : <IconPlayerPlay aria-hidden />}
           Run test

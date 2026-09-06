@@ -111,6 +111,103 @@ export function useRoleCatalog() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// TASK-890 §3.7 — the tenant model catalogue (BYO connections + the Hope
+// provider). Replaces the prompt-test panel's dependency on the playground
+// `text-generations/providers` list with the real picker-shaped catalogue.
+// `useTextProviders` above stays for the playground, which owns its own copy.
+// ---------------------------------------------------------------------------
+
+export type CatalogueProviderGroup = 'byo' | 'hope';
+export type CatalogueProviderClass = 'cloud-byo' | 'cloud-platform' | 'engine-served' | 'platform-self-host';
+export type CatalogueModelReadiness = 'ready' | 'loadable' | 'engine_down' | 'weights_missing' | 'credential_missing' | 'unknown';
+
+/** `GET admin/ai-models/catalogue` provider row — mirrors `CatalogueProviderResponse`. */
+export interface CatalogueProvider {
+  id: string;
+  group: CatalogueProviderGroup;
+  name: string;
+  providerClass: CatalogueProviderClass | null;
+  connectionId: string | null;
+  usable: boolean;
+  reason: string | null;
+  modelCount: number;
+}
+
+/** `GET admin/ai-models/catalogue` model row — mirrors `CatalogueModelResponse`. */
+export interface CatalogueModel {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  taskType: string;
+  providerId: string;
+  provider: string | null;
+  providerClass: CatalogueProviderClass;
+  readiness: CatalogueModelReadiness;
+  readinessCheckedAt: string | null;
+  readinessDetail: string | null;
+  usable: boolean;
+  unusableReason?: string | null;
+}
+
+export interface ModelCatalogue {
+  providers: CatalogueProvider[];
+  models: CatalogueModel[];
+}
+
+export interface ModelCatalogueParams {
+  taskType?: string;
+  providerGroup?: CatalogueProviderGroup;
+  usableOnly?: boolean;
+  [key: string]: string | number | boolean | undefined | null;
+}
+
+/** The tenant catalogue (BYO first, then the single "Hope provider" entry) for a provider>model picker. Read-only — writes stay on `/ai-providers`. */
+export function useModelCatalogue(params?: ModelCatalogueParams) {
+  return useQuery({
+    queryKey: ['catalog', 'model-catalogue', params ?? {}],
+    queryFn: () => getJson<ModelCatalogue>('admin/ai-models/catalogue', params),
+    staleTime: CATALOG_STALE_MS,
+    retry: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TASK-890 §3.4 — the caller tenant's consultation-context schemas, for the
+// context-schema reference picker (an agent's `contextSchemaId`, a
+// `core.trigger` node's reference binding).
+// ---------------------------------------------------------------------------
+
+/** `GET admin/consultation-context-schemas` row (a slim `ConsultationContextSchemaResponse` projection). */
+export interface CatalogContextSchema {
+  id: string;
+  slug: string;
+  name: string;
+  status: string;
+  pinnedVersionNumber: number | null;
+  isDefault: boolean;
+}
+
+export function useContextSchemaCatalog() {
+  return useQuery({
+    queryKey: ['catalog', 'context-schemas'],
+    queryFn: () => getJson<CatalogContextSchema[]>('admin/consultation-context-schemas'),
+    staleTime: CATALOG_STALE_MS,
+    retry: false,
+  });
+}
+
+/** Select-ready options — only schemas with a PUBLISHED pin are bindable (an unpublished schema resolves nothing). */
+export function useContextSchemaOptions(): { options: CatalogOption[]; isLoading: boolean; isError: boolean } {
+  const { data, isLoading, isError } = useContextSchemaCatalog();
+  const options = useMemo(
+    () => (data ?? []).filter((schema) => schema.pinnedVersionNumber !== null).map((schema) => ({ value: schema.id, label: schema.name })),
+    [data],
+  );
+  return { options, isLoading, isError };
+}
+
 export function useDepartmentCatalog() {
   return useQuery({
     queryKey: ['catalog', 'departments'],
