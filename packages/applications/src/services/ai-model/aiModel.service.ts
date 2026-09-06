@@ -41,6 +41,7 @@ import { modelReadinessFrom } from '../ai-readiness/inference-readiness.types';
 
 type ReadinessSnapshotReader = Pick<InferenceReadinessContract, 'getSnapshot'>;
 import {
+  ENGINE_SERVED_PROVIDERS,
   MODEL_TASK_TYPE_SERVICE,
   PROVIDER_GROUP_HOPE,
   isCloudByoProvider,
@@ -249,6 +250,7 @@ export class AiModelService extends BaseService implements IAiModelService {
     if (dto.deploymentKind === AiDeploymentKind.CLOUD && !dto.wireModelId?.trim()) {
       throw new BadRequestException('A CLOUD model requires a wireModelId');
     }
+    this.assertEngineServedWireId(dto.provider, dto.deploymentKind, dto.wireModelId);
 
     // Slug uniqueness is a SYSTEM-catalogue invariant now, not a per-tenant one.
     const existing = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, dto.slug, tx);
@@ -357,6 +359,8 @@ export class AiModelService extends BaseService implements IAiModelService {
     // resolvers — the same behaviour, with nothing to keep in step.
     if (dto.bucketPrefix !== undefined) existing.bucketPrefix = dto.bucketPrefix || null;
     if (dto.primaryObject !== undefined) existing.primaryObject = dto.primaryObject || null;
+
+    this.assertEngineServedWireId(existing.provider, existing.deploymentKind, existing.wireModelId);
 
     existing.updatedBy = userId ?? null;
     existing.validate();
@@ -743,6 +747,29 @@ export class AiModelService extends BaseService implements IAiModelService {
    * The registry is a SUPER_ADMIN plane. A 403 (privilege), not a 404 — the
    * caller can already read the row it is trying to write.
    */
+  /**
+   * TASK-890 §3.1 — the ENGINE-SERVED half of the conditional `wireModelId` rule.
+   *
+   * `wireModelId` is the ROUTED id since routing was re-pointed off the locator
+   * `sourceUri`, so a row that cannot produce one cannot be invoked. The ENTITY
+   * enforces the CLOUD half (`AiModelEntity.validate`); it deliberately does not
+   * restate WHICH providers are engine-served, because that is a provider-plane
+   * fact (`ENGINE_SERVED_PROVIDERS`) and a DB-agnostic entity holding a second
+   * copy of it is how the two drift apart. So the service enforces this half.
+   *
+   * `built-in` and the bucket-loaded self-host providers are NOT covered: their
+   * weights are loaded from a path and nothing goes on a wire for them.
+   */
+  private assertEngineServedWireId(provider: string | null | undefined, deploymentKind: AiDeploymentKind, wireModelId: string | null | undefined): void {
+    if (deploymentKind === AiDeploymentKind.CLOUD) return; // the entity owns that half
+    if (!provider || !ENGINE_SERVED_PROVIDERS.has(provider)) return;
+    if (!wireModelId?.trim()) {
+      throw new BadRequestException(
+        `Provider '${provider}' serves its own model store, so the row needs a wireModelId — the id the engine answers to on the wire.`,
+      );
+    }
+  }
+
   private assertPlatformAdmin(): void {
     if (!isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException('The model registry is managed by platform administrators only.');
