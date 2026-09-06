@@ -599,6 +599,16 @@ export class AgentService extends BaseService implements IAgentService {
         code: 'DRY_RUN_ONLY',
       });
     }
+    if (assembledUserPrompt.length === 0) {
+      // Refused rather than sent: an empty prompt spends the tenant's own `monthlyLlmTokens`
+      // allowance on a generation that answers nothing, and the author would read the resulting
+      // noise as a defect in their agent. A DRY run with no `input.text` is fine — it still shows
+      // the assembled system prompt and the resolved target.
+      throw new BadRequestException({
+        message: 'A live agent test needs something to run on: supply `input.text`. (A dry run does not.)',
+        code: 'TEST_INPUT_REQUIRED',
+      });
+    }
     if (!this.draftTest) {
       throw new BadRequestException('A non-dry agent test cannot run: the test transport is not wired in this composition.');
     }

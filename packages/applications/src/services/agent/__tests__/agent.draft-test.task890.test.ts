@@ -223,9 +223,17 @@ describe('testDraft — the gates', () => {
 });
 
 describe('testDraft — a non-dry run', () => {
+  it('refuses a live run with nothing to run on, rather than spending quota on an empty prompt', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    await expect(makeService().testDraft('agent-1', { dryRun: false, context: { clinic: 'Ward B' } })).rejects.toMatchObject({
+      response: { code: 'TEST_INPUT_REQUIRED' },
+    });
+    expect(mockDraftTest.submit).not.toHaveBeenCalled();
+  });
+
   it('submits through the transport, carrying the agent`s guardrail decision', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ parameters: { guards: { enabled: false } } }));
-    const ack = await makeService().testDraft('agent-1', { dryRun: false, context: { clinic: 'Ward B' } });
+    const ack = await makeService().testDraft('agent-1', { dryRun: false, context: { clinic: 'Ward B' }, input: { text: 'Summarise this.' } });
 
     expect(ack).toMatchObject({ mode: 'stream', taskId: 'task-1', streamUrl: 'text/tasks/task-1/stream' });
     expect(mockDraftTest.submit).toHaveBeenCalledWith(
