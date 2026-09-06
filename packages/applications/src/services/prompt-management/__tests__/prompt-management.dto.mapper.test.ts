@@ -63,6 +63,25 @@ describe('PromptManagementDtoMapper', () => {
       expect(cloned.templateLocked).toBe(true);
     });
 
+    // TASK-890 J2-6 — the OD-3 split gate keys on the OWNING tenant (SYSTEM
+    // rows stay super-admin-only, tenant rows devolve to
+    // `manage:PromptTemplate`), so a console that cannot see `tenantId` cannot
+    // tell the two branches apart and hides approval from every tenant admin.
+    it('should surface the owning tenant', () => {
+      const row = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-sys',
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        name: 'Library',
+        content: 'x',
+        category: 'SYSTEM',
+        currentVersionNumber: 1,
+        createdAt: new Date('2026-02-18T10:00:00Z'),
+        updatedAt: new Date('2026-02-18T10:00:00Z'),
+      } as never);
+
+      expect(row.tenantId).toBe('00000000-0000-0000-0000-000000000000');
+    });
+
     it('should report a hand-written template as unlocked with no source', () => {
       const own = PromptManagementDtoMapper.toTemplateResponse({
         id: 'tpl-own',

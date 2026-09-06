@@ -32,12 +32,14 @@ import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/n
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
+import { can, usePermissions, useSession } from '@/shared/auth';
 import { formatDateTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useAgentEvalRuns, useApproveTemplate, useEvalGoldenSets, useRunGoldenSetEval, useTemplate, useTemplates } from '../api';
 import type { PromptTemplate, PromptTemplateStatus } from '../api';
+import type { PermissionRule } from '@/shared/auth';
 import { ApprovalPin, TemplateStatusBadge, statusVariant } from './approval-pin';
 import { VersionsPanel } from './versions-panel';
 
@@ -259,11 +261,31 @@ function EvalPanel({ template: _template }: { template: PromptTemplate }) {
   );
 }
 
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * The console half of the server's OD-3 SPLIT gate (`assertCanApprove`): the
+ * branch depends on the ROW, not on the caller alone. A SYSTEM/library template
+ * is SUPER_ADMIN-only; every tenant-owned row devolves to
+ * `manage:PromptTemplate`, which a tenant admin holds for its own tenant.
+ *
+ * `tenantId` is optional on the wire (older gateways omit it) — treat an absent
+ * value as tenant-owned and let the server decide, rather than disabling a
+ * button the caller may well be allowed to press.
+ */
+function canApproveRow(template: PromptTemplate, elevated: boolean, rules: readonly PermissionRule[] | undefined): boolean {
+  if (template.tenantId === SYSTEM_TENANT_ID) return elevated;
+  return elevated || can(rules, 'manage', 'PromptTemplate');
+}
+
 /** The approve write itself — OCC via If-Match folded from the detail ETag. */
 function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: string | null }) {
   const uid = useId();
   const approve = useApproveTemplate();
   const [reason, setReason] = useState('');
+  const session = useSession();
+  const permissions = usePermissions();
+  const allowed = canApproveRow(template, session.data?.isElevated ?? false, permissions.data);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -296,6 +318,11 @@ function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: stri
           A tenant-owned template needs <span className="font-mono">manage:PromptTemplate</span> for its tenant; SYSTEM/library templates stay
           SUPER_ADMIN-only. Either way the gate is server-side.
         </p>
+        {allowed ? null : (
+          <p className="text-destructive text-xs">
+            This is a SYSTEM/library template — only a super administrator can approve it.
+          </p>
+        )}
       </div>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
@@ -312,7 +339,7 @@ function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: stri
         </div>
         <OccConflictAlert error={approve.error} onReload={() => approve.reset()} />
         <div className="flex justify-end">
-          <Button type="submit" disabled={!etag || approve.isPending}>
+          <Button type="submit" disabled={!allowed || !etag || approve.isPending}>
             {approve.isPending ? <Spinner /> : <IconCircleCheck aria-hidden />}
             Approve for clinical use
           </Button>
@@ -364,8 +391,9 @@ function TemplateGovernanceDetail({ id }: { id: string }) {
 }
 
 /**
- * The tab body. Rendered only for elevated sessions (the caller owns that
- * check) — the server is still the authority on who may approve.
+ * The tab body. Rendered for anyone holding `manage:PromptTemplate` (the caller
+ * owns that check); the per-ROW split gate lives in `ApprovePanel`, and the
+ * server is still the authority on who may approve.
  */
 export function GovernanceTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
