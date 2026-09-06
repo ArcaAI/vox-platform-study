@@ -192,7 +192,6 @@ def _screener_app_state() -> Any:
     cfg = SimpleNamespace(
         provider="lm-studio",
         model="some-selected-model",
-        local_path=None,
         timeout_s=None,
         entailment=None,
         policy=None,

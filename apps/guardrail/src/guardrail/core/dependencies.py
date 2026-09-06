@@ -363,7 +363,6 @@ def _nlp_client(
         http_client=app_state.http_client,
         tenant_id=tenant_id,
         model_id=cfg.model,
-        model_path=cfg.local_path,
         labels=labels,
         threshold=threshold,
         # The selected NLI build's calibration, forwarded so `apps/nlp` can bind

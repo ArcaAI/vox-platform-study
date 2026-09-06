@@ -44,7 +44,6 @@ def _cfg(**kw: Any) -> Any:
     base: dict[str, Any] = {
         "provider": _CLOUD_PROVIDER,
         "model": "some-selected-model",
-        "local_path": None,
         "timeout_s": None,
         "entailment": None,
         "policy": None,
