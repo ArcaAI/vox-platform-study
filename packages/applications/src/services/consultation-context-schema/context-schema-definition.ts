@@ -332,6 +332,58 @@ function constraintProblems(constraints: unknown, at: string): string[] {
   return problems;
 }
 
+/**
+ * TASK-890 §3.4 — the DERIVED payload schema of a context declaration: what a run's
+ * `context.*` / `trigger.*` namespace actually looks like.
+ *
+ * One implementation, three consumers, deliberately: the workflow publish gate (a
+ * `{{context.x}}` that no bound schema declares is a finding), the agent pin (the same
+ * schema is FROZEN into `compiledConfig` so the runtime validates a request's `context`
+ * without re-reading Postgres), and the console's variable chips. Two derivations would
+ * eventually disagree about what a prompt may reference, which is the failure this
+ * function exists to make impossible.
+ *
+ * The mapping:
+ *
+ *  - one property per declared KIND, keyed by its `key`;
+ *  - a `STRUCTURED` kind contributes its own `fields` schema verbatim — it is already an
+ *    authorable JSON Schema, validated at publish;
+ *  - every other primitive contributes `{ type: 'object' }`, an open reference STUB: the
+ *    platform decides that substrate's shape (a media reference, a transcript), so the
+ *    schema declares that the name EXISTS without pretending to know its fields;
+ *  - `required: true` kinds are listed in `required`, and the key is omitted entirely when
+ *    no kind declares itself required (an empty `required: []` is noise in a checksummed,
+ *    frozen artifact);
+ *  - `outputs` are IGNORED — an output is produced BY the run, never supplied to it.
+ *
+ * `additionalProperties: false`: the declared kinds are the whole vocabulary, so a payload
+ * carrying an undeclared one is a caller error rather than something to pass through
+ * silently.
+ *
+ * Total: a definition this cannot read yields the empty object schema rather than throwing.
+ * A caller that has no schema at all passes `null` to its own consumers instead — "unbound"
+ * and "bound to a schema that declares nothing" are different facts and stay different here.
+ */
+export function payloadSchemaFromDefinition(definition: unknown): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+
+  if (isPlainObject(definition) && Array.isArray(definition.kinds)) {
+    for (const kind of definition.kinds) {
+      if (!isPlainObject(kind) || typeof kind.key !== 'string' || kind.key.length === 0) continue;
+      properties[kind.key] = kind.primitive === 'STRUCTURED' && isPlainObject(kind.fields) ? kind.fields : { type: 'object' };
+      if (kind.required === true) required.push(kind.key);
+    }
+  }
+
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+  };
+}
+
 /** The declared kind with this key, or undefined. */
 export function findKind(definition: unknown, kindKey: string): ContextKindDeclaration | undefined {
   if (!isPlainObject(definition) || !Array.isArray(definition.kinds)) return undefined;
