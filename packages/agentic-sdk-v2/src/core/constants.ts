@@ -1248,6 +1248,22 @@ export const WORKFLOW_ENDPOINTS = {
   /** Run a published workflow against THIS consultation. The id is in the URL, never the body. */
   CONSULTATION_RUNS: (consultationId: string, slug: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/workflows/${encodeURIComponent(slug)}/runs`,
+  /**
+   * TASK-890 — the published definition's generated contract: input/output schemas, trigger
+   * kinds, output protocols, admitted delivery lanes, and an AsyncAPI fragment for its run
+   * events. Scope `workflow:definition:read`, NOT a run scope: reading what a graph declares
+   * is not implied by permission to start it.
+   */
+  SCHEMA: (slug: string) => `/workflows/${encodeURIComponent(slug)}/schema`,
+  /**
+   * TASK-890 — the live state of ONE `core.humanReview` node of a run. A graph may carry
+   * several, so a review is addressed by `(runId, nodeId)` rather than by the run.
+   */
+  RUN_REVIEW: (slug: string, runId: string, nodeId: string) =>
+    `/workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}/reviews/${encodeURIComponent(nodeId)}`,
+  /** TASK-890 — release a Human-review node with a decision. `reviewerId` is never sent; the gateway stamps it. */
+  RUN_REVIEW_DECIDE: (slug: string, runId: string, nodeId: string) =>
+    `/workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}/reviews/${encodeURIComponent(nodeId)}/decide`,
 } as const;
 
 /**
@@ -1270,4 +1286,16 @@ export const AGENT_ENDPOINTS = {
   LIST: (task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH') => (task ? `/agents?task=${encodeURIComponent(task)}` : '/agents'),
   /** One published agent: summary + input/output schema + protocols. */
   GET: (slug: string) => `/agents/${encodeURIComponent(slug)}`,
+  /**
+   * TASK-890 (OD-F) — invoke a `TEXT_GENERATION` agent. `?mode=blocking` answers JSON;
+   * `?mode=stream` answers `text/event-stream` with the TEXT service's frames relayed verbatim.
+   *
+   * Scope `agent:invocation:write`, which is mintable on its own — so a browser integration
+   * holding nothing but an API key can call this and nothing else.
+   */
+  INVOKE: (slug: string, mode: 'blocking' | 'stream' = 'blocking') => `/agents/${encodeURIComponent(slug)}/invocations?mode=${mode}`,
+  /** TASK-890 — synthesize speech with a `TEXT_TO_SPEECH` agent; streamed audio, the existing speech-proxy contract. */
+  SPEECH: (slug: string) => `/agents/${encodeURIComponent(slug)}/speech`,
+  /** TASK-890 — submit a BATCH transcription to a `SPEECH_TO_TEXT` agent. Realtime capture stays `audio.start({ agentSlug })`. */
+  TRANSCRIBE: (slug: string) => `/agents/${encodeURIComponent(slug)}/transcriptions`,
 } as const;

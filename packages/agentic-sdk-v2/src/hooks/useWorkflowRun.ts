@@ -34,7 +34,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { WORKFLOW_ENDPOINTS, workflowRunStreamScope } from '../core/constants';
 import { SSEClient, type SSEApiClient } from '../core/SSEClient';
-import type { WorkflowRunEvent, WorkflowRunEventPayload, WorkflowRunHandle, WorkflowRunStatus, WorkflowSummary } from '../types/workflowRun';
+import type {
+  WorkflowRunEvent,
+  WorkflowRunEventPayload,
+  WorkflowRunHandle,
+  WorkflowRunStatus,
+  WorkflowSchemaDescription,
+  WorkflowSummary,
+} from '../types/workflowRun';
 import { isTerminalRunStatus } from '../types/workflowRun';
 
 /**
@@ -118,6 +125,16 @@ export interface UseWorkflowRunReturn {
   workflows: WorkflowSummary[] | null;
   /** Re-read the catalogue. Resolves to `null` rather than rejecting. */
   refreshWorkflows: (consultationId?: string) => Promise<WorkflowSummary[] | null>;
+  /**
+   * One definition's generated contract (TASK-890) — input/output component schemas, trigger
+   * kinds, protocols, admitted delivery lanes, AsyncAPI fragment.
+   *
+   * {@link workflows} already carries `inputSchema` / `outputSchema` / `protocols` /
+   * `triggerKinds` per entry, so reach for this when you want the OpenAPI/AsyncAPI
+   * PROJECTIONS — a portal page, a generated client — not to decide what to send. Resolves to
+   * `null` rather than rejecting: a contract panel must not break the screen it sits on.
+   */
+  schema: (slug: string) => Promise<WorkflowSchemaDescription | null>;
   /** The handle of the most recently started run. */
   handle: WorkflowRunHandle | null;
   /** Latest known status of that run, updated live from the stream. */
@@ -213,6 +230,21 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
     if (skipInitialLoad) return;
     void refreshWorkflows(consultationId);
   }, [refreshWorkflows, consultationId, skipInitialLoad]);
+
+  const schema = useCallback(
+    async (slug: string): Promise<WorkflowSchemaDescription | null> => {
+      try {
+        return await execute<WorkflowSchemaDescription | null>('getWorkflowSchema', async (client) => {
+          const description = await client.get<WorkflowSchemaDescription>(WORKFLOW_ENDPOINTS.SCHEMA(slug));
+          return description !== null && typeof description === 'object' ? description : null;
+        });
+      } catch {
+        // Fail-open: `execute` has recorded the reason on `error`.
+        return null;
+      }
+    },
+    [execute],
+  );
 
   const fetchStatus = useCallback(
     async (slug: string, runId: string): Promise<WorkflowRunStatus> =>
@@ -337,6 +369,7 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
   return {
     workflows,
     refreshWorkflows,
+    schema,
     handle,
     status,
     events,
