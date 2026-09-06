@@ -11,13 +11,7 @@ import {
   WorkflowWebhookSecretRepository,
 } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { declaredOutputProtocols, declaredTriggerKinds, isCoreGraph, type WorkflowGraph } from '@arcaai/workflow-contract';
-
-/** A graph column read as the contract's shape — a null/garbled column reads as an empty graph. */
-function graphOf(value: unknown): Pick<WorkflowGraph, 'nodes'> {
-  const nodes = (value as { nodes?: unknown } | null)?.nodes;
-  return { nodes: Array.isArray(nodes) ? (nodes as WorkflowGraph['nodes']) : [] };
-}
+import { declaredOutputProtocols, declaredTriggerKinds, isCoreGraph } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IConfigService } from '../baseServices/_meta/config';
@@ -32,7 +26,7 @@ import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { deterministicRunId } from './deterministic-run-id';
 import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-palette-policy';
-import { describeWorkflow, type WorkflowSchemaDescription } from './workflow-schema-description';
+import { describeWorkflow, graphOf, type WorkflowSchemaDescription } from './workflow-schema-description';
 import {
   InvokeWorkflowRequest,
   WorkflowInvokeResponse,
