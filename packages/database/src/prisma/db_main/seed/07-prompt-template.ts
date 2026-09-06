@@ -22,6 +22,33 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SYSTEM_TENANT_ID } from 
 const resolvePromptStatus = (category: string): PromptTemplateStatus => (category === 'DNA_ANALYSIS' ? 'DRAFT' : 'APPROVED') as PromptTemplateStatus;
 
 /**
+ * Publication state a seeded row is written with — status AND the version the
+ * approval pins.
+ *
+ * An APPROVED row MUST pin a version. `PromptResolutionService` serves the
+ * `PromptVersion` snapshot at `approvedVersionNumber`, never the mutable
+ * `content` column, so `APPROVED` + `approvedVersionNumber: null` is a row
+ * clinical resolution SKIPS while the console reads "Approved · not approved".
+ * Sixteen seeded rows shipped that way (TASK-890 black-box J2-7) — including
+ * "ArcaAI SOAP Summary", the ARCAAI tenant's department-agnostic summary
+ * FALLBACK, so the fallback could not serve.
+ *
+ * The pin defaults to the row's current version (every seeded template has a
+ * `PromptVersion` row at that number); a literal that names its own pin — e.g.
+ * a row deliberately serving an older snapshot — keeps it.
+ */
+export const resolvePromptPublication = (template: {
+  category: string;
+  currentVersionNumber?: number;
+  approvedVersionNumber?: number | null;
+}): { status: PromptTemplateStatus; approvedVersionNumber: number | null } => {
+  const status = resolvePromptStatus(template.category);
+  const declared = template.approvedVersionNumber ?? null;
+  if (status !== 'APPROVED') return { status, approvedVersionNumber: declared };
+  return { status, approvedVersionNumber: declared ?? template.currentVersionNumber ?? 1 };
+};
+
+/**
  * TASK-890 §3.6 (OD-K) — `PromptTemplate.variables` / `PromptVersion.variables`
  * now store a typed declaration ARRAY (`{ name, type, required }[]`), not the
  * pre-ticket `{ [name]: { type, required } }` map every literal below still
@@ -1769,8 +1796,9 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
     const data = {
       ...rest,
       category: rest.category as PromptTemplateCategory,
-      // Publish clinician-facing templates (keep DNA DRAFT).
-      status: resolvePromptStatus(rest.category),
+      // Publish clinician-facing templates (keep DNA DRAFT) and PIN the
+      // approved version — an APPROVED row with no pin resolves to nothing.
+      ...resolvePromptPublication(rest),
       ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
     };
     await client.promptTemplate.upsert({
@@ -1817,9 +1845,9 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
     const data = {
       ...rest,
       category: rest.category as PromptTemplateCategory,
-      // Publish clinician-facing templates (keep DNA DRAFT)
-      // so every customer tenant has >= 1 PUBLISHED template to resolve.
-      status: resolvePromptStatus(rest.category),
+      // Publish clinician-facing templates (keep DNA DRAFT) so every customer
+      // tenant has >= 1 resolvable template — pinned, or it resolves to nothing.
+      ...resolvePromptPublication(rest),
       ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
     };
     await client.promptTemplate.upsert({
