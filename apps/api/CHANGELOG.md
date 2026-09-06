@@ -11,6 +11,114 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### BREAKING — TASK-890 (OD-K): prompt `variables` is a typed ARRAY, not a map
+
+`PromptTemplate.variables` / `PromptVersion.variables` were a free-form map
+(`{ [name]: { type, required } }`). They now carry an ARRAY of typed declarations on
+`POST /admin/prompt-templates`, `PATCH /admin/prompt-templates/{id}`,
+`POST /admin/prompt-templates/{id}/test` (and their tenant-plane `/prompt-templates` twins) and
+every response that returns a template or a version:
+
+```jsonc
+"variables": [
+  { "name": "patientAge", "type": "number", "required": true,
+    "description": "…", "default": "0",
+    "source": { "kind": "context", "path": "context.patientAge" } }
+]
+```
+
+`type ∈ string | number | boolean | date | json`; `name` must match
+`[A-Za-z_][A-Za-z0-9_]*` (`PromptVariableDeclarationDto`).
+
+**There is no read-side normaliser for the old map** (OD-K — removed outright, not deprecated):
+`parsePromptVariableDeclarations` treats any non-array as "no declarations" rather than
+reinterpreting it, and the global validation pipe rejects the map shape on write. The seeds were
+converted in the same change. A client that posted the map form must send the array form.
+
+### BREAKING — TASK-890 (OD-M): content is cloned per tenant; SYSTEM is no longer read at run time
+
+`Agent`, `AgentModelFallback`, `AgentAssignment`, `PromptTemplate`, `WorkflowDefinition` and
+`ConsultationContextSchema` are **CONTENT**. A tenant is provisioned with its own copies of the
+platform reference set at creation; the runtime no longer widens a content read to the SYSTEM
+tenant. (Configuration is unaffected — `AiModel`, `AiProviderConnection`, `AiRoutingPolicy`,
+`HarnessPolicy`, `Role` still cascade tenant → SYSTEM.)
+
+What changes on the wire — an unprovisioned tenant used to fall through to the platform row and
+now gets a NAMED, fail-closed error instead of a silent platform answer:
+
+| Code | Status | Raised when |
+|---|---|---|
+| `AGENT_NOT_ASSIGNED` | **503** | no agent is assigned for the task in this tenant (`AgentResolverService`) — deliberately not a 404: the agent is not missing, the tenant's opinion about which agent serves the task is |
+| `PROMPT_DEFAULT_NOT_PROVISIONED` | **503** | the tenant has no clone of the platform default prompt a chain falls back to (`PromptResolutionService`) |
+| `LEGACY_CONTEXT_SCHEMA_MISSING` | **503** | the tenant has no pinned clone of the platform legacy context schema (`PromptAssemblyService`) |
+
+Each body names the tenant, the pointer and the remedy, which is the same for all three:
+**`POST /admin/tenants/{id}/reference-set/sync`** (`manage:Tenant`), also run automatically at
+tenant creation.
+
+`includeTemplates` on **`GET /admin/agents`** is **removed, not deprecated**. It used to append
+the SYSTEM library to a tenant's list; a tenant now sees the copies it was provisioned with, each
+carrying `sourceTenantId = SYSTEM`. Nest ignores an undeclared query key, so a caller still
+sending `includeTemplates=true` gets exactly what it got while the parameter was
+accepted-and-ignored.
+
+### Added — TASK-890 (agent, prompt and context journeys)
+
+**Model catalogue and inventory**
+
+- `GET /admin/ai-models/catalogue` — the tenant-facing, picker-shaped read of the platform
+  registry (two groups, per-row usability). New ability **`read:AiModel`**, granted to the seeded
+  tenant-admin roles; `svc:admin:ai-model:read` reaches it as well as `:manage`. The 13
+  `/admin/ai-models*` WRITE routes still 403 a tenant admin.
+- `POST /admin/ai-models/inventory` — the platform-admin bucket inventory sweep
+  (`manage:all`).
+- `PUT /admin/providers/{service}/{provider}/models` — a tenant DECLARES the models its own BYO
+  connection serves; they are materialised as tenant-owned `AiModel` rows carrying
+  `sourceConnectionId`, and a declaration that shadows a platform slug is refused.
+
+**Agents**
+
+- `POST /admin/agents/{id}/test` and `POST /admin/agents/{id}/test/finalize` — run a DRAFT agent
+  on the bench before publishing it (`manage:Agent`). The prompt bench's own finalize leg,
+  `POST /admin/prompt-templates/{id}/test/finalize`, is `If-Match`-guarded; the agent one is not.
+- `POST /agents/{slug}/invocations` — the production invocation, blocking or SSE
+  (`agent:invocation:write`), alongside the existing `…/speech` and `…/transcriptions`.
+- A publish is refused when what it freezes is not runnable: `AGENT_REF_MISSING`,
+  `CONTEXT_SCHEMA_NOT_FOUND`, `MODEL_UNAVAILABLE`, under one `publishFindings` contract.
+
+**Workflows**
+
+- `GET /workflows/{slug}/schema` — the run-input shape, without reading the graph.
+- `GET /workflows/{slug}/runs/{runId}/reviews/{nodeId}` and
+  `POST …/reviews/{nodeId}/decide` — the human-review proxy (`read`/`update:WorkflowRun`).
+
+**Readiness**
+
+- `GET /admin/ai-services/readiness` and `POST /admin/ai-services/readiness/refresh` — the stored
+  readiness snapshot for every serving engine and cloud provider, with `readinessCheckedAt`, plus
+  an on-demand re-probe (`manage:all`). Readiness is ADVISORY at publish and fail-closed at run
+  time.
+
+**Guardrail opt-out (OD-R)**
+
+Guardrail stays platform-managed; a tenant may now turn a screening gate OFF for one agent, one
+workflow, or one node. It rides the existing wire as `guardrail_policy.enabled` on every
+gateway → `apps/text` post, folded `node > workflow > agent > ON`. The platform kill switch
+(`text.externalGuardrail.enabled`) remains the floor — a tenant can only turn a gate off, never
+on over it — and there is still no `fail_open`. Every opted-out node is named in a
+`GUARDRAIL_OPTED_OUT` publish WARNING, and every affected call records
+`attributesJson.guardrail: 'opted_out'` with the disabled node ids.
+
+**Metering parity (OD-E)**
+
+Every inference path is now quota-prechecked and metered, including the ones that were free:
+agent invocations, the realtime `core.agent` lane, the draft-agent bench and the prompt test
+bench. `AiUsageEvent` rows carry a new closed `trigger` dimension —
+`AGENT_INVOCATION | AGENT_TEST | PROMPT_TEST | WORKFLOW_RUN | CONSULTATION` — so a spend increase
+can be attributed to an activity rather than guessed at. Every seeded allowance is `null`
+(unlimited), so the prechecks are no-ops until a platform admin sets a ceiling; a breach is the
+existing 409/429 contract.
+
 ### BREAKING — TASK-757 (the admin plane is JWT only)
 
 `/api/v1/admin/*` no longer accepts API keys. 65 controllers / 386 handlers now answer **403**
