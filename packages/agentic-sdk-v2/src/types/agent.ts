@@ -39,3 +39,41 @@ export interface SelectableAgent {
 
 /** An ASR (`SPEECH_TO_TEXT`) Agent — what `audio.start({ agentSlug })` selects. */
 export type SelectableAsrAgent = SelectableAgent & { task: 'SPEECH_TO_TEXT' };
+
+// =============================================================================
+// Invocation (TASK-890, OD-F) — the browser calls a published agent
+// =============================================================================
+
+/**
+ * The body of `POST /agents/{slug}/invocations`.
+ *
+ * Open by design: the gateway validates it against the AGENT'S OWN `inputSchema` (TIER 3),
+ * whose default is `{ text, variables? }` but which a tenant may author freely. Narrowing it
+ * here would mean this SDK deciding what a tenant's agent accepts.
+ */
+export interface AgentInvocationInput {
+  text?: string;
+  variables?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+/** The `?mode=blocking` 200 body of an agent invocation. */
+export interface AgentInvocationResult {
+  agentSlug: string;
+  /** The exact published version that answered — pin it in a log; the slug alone is a lineage. */
+  agentVersionId: string;
+  output: { text: string };
+  /** The provider that served it, or `null` when the resolver could not attribute one. */
+  provider: string | null;
+  model: string | null;
+  usage: { promptTokens: number | null; completionTokens: number | null } | null;
+}
+
+/**
+ * One decoded `?mode=stream` frame.
+ *
+ * Deliberately opaque: the gateway relays the TEXT service's frames VERBATIM, so their shape
+ * belongs to `apps/text` and not to this contract. Read the fields you know and ignore the
+ * rest rather than having this type go stale behind a provider change.
+ */
+export type AgentInvocationFrame = Record<string, unknown>;

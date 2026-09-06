@@ -27,6 +27,106 @@ export interface WorkflowSummary {
   paletteKey: string;
   /** The ACTIVE published version currently resolved for this slug. */
   versionNumber: number;
+  /**
+   * JSON Schema of the run `input` (TASK-890), from the definition's Trigger.
+   *
+   * `null` for a definition that declares none — a legacy palette, or a `core` graph whose
+   * Trigger carries no inline context schema. That is deliberately NOT an open `object`
+   * schema: "we do not know" and "anything goes" are different facts, and generating a client
+   * from the second when the first is true produces code that compiles and then 400s.
+   */
+  inputSchema: Record<string, unknown> | null;
+  /** JSON Schema of what the run delivers, from the definition's Output. `null` when undeclared. */
+  outputSchema: Record<string, unknown> | null;
+  /**
+   * Output protocols the definition publishes. `http` admits `runAndWait`, `http-sse` admits
+   * `runAndStream` / `streamRun`; `[]` (a legacy graph) is unrestricted.
+   */
+  protocols: string[];
+  /** Trigger kinds the definition accepts (`api`, `webhook`, …). `[]` for a legacy graph, treated as `api`. */
+  triggerKinds: string[];
+}
+
+/**
+ * `GET /api/v1/workflows/{slug}/schema` — the generated contract for one published definition.
+ *
+ * Everything {@link WorkflowSummary} carries, plus the machine-readable projections a portal
+ * or a code generator wants: OpenAPI `components.schemas` entries and an AsyncAPI 3 fragment
+ * for the run event stream.
+ *
+ * Why this is not in the committed `openapi.json`: a workflow's schema is TENANT data, and
+ * that artifact is emitted offline with no database. The static document describes the generic
+ * route family; this describes YOUR definition.
+ */
+export interface WorkflowSchemaDescription {
+  slug: string;
+  versionNumber: number;
+  triggerKinds: string[];
+  protocols: string[];
+  /**
+   * The delivery lanes this definition admits: the `?mode=` values the run route accepts
+   * (`async` | `blocking` | `stream`), plus `socket` when the Output publishes it. `socket` is
+   * a LANE, not a `?mode=` value — the AsyncAPI fragment describes it.
+   */
+  modes: string[];
+  /** OpenAPI 3.1 `components.schemas` entries, keyed `Workflow_<slug>_Input` / `_Output`. */
+  components: Record<string, Record<string, unknown>>;
+  /** An AsyncAPI 3 fragment for the SSE / WebSocket frames of a run. */
+  asyncapi: Record<string, unknown>;
+}
+
+/**
+ * Live state of ONE `core.humanReview` node of a run —
+ * `GET /api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}`.
+ *
+ * `exists: false` is a NORMAL answer: the node has not been reached yet, or the review already
+ * settled and its durable child is gone. It is not an error and not a 404 — a 404 means the
+ * RUN is not yours. Keep the two apart in your UI, or "someone else's run" will render as
+ * "nothing to approve".
+ */
+export interface WorkflowReview {
+  runId: string;
+  /** The graph node id of the review node — a graph may carry several, each addressed separately. */
+  nodeId: string;
+  exists: boolean;
+  /** `WAITING` | `ESCALATED` | `DECIDED` | `TIMED_OUT`; `null` when no child exists. */
+  phase: string | null;
+  /** How many times the wait has escalated; `null` when no child exists. */
+  escalations: number | null;
+  decided: boolean;
+  /**
+   * `null` until a human decides. **A timeout never becomes `approved`** — the durable
+   * workflow has no default and no fallback, and neither does this field.
+   */
+  decision: 'approved' | 'rejected' | null;
+}
+
+/**
+ * Body of `POST …/reviews/{nodeId}/decide`.
+ *
+ * There is deliberately no `reviewerId`: the gateway stamps the acting user from your session,
+ * and its request DTO forbids undeclared properties, so sending one is a 400. That is what
+ * stops a caller signing somebody else's name to an approval.
+ */
+export interface WorkflowReviewDecision {
+  decision: 'approved' | 'rejected';
+  /** Free-text rationale recorded with the decision. */
+  comment?: string;
+  /**
+   * A corrected payload to hand back to the graph in place of what was reviewed. Honoured only
+   * when the node was authored with `allowEdit`; the workflow drops it otherwise.
+   */
+  editedPayload?: Record<string, unknown>;
+}
+
+/** Response of `POST …/reviews/{nodeId}/decide` — the signal was SENT; the graph resumes on its own clock. */
+export interface WorkflowReviewDecisionResult {
+  runId: string;
+  nodeId: string;
+  decision: 'approved' | 'rejected';
+  signaled: boolean;
+  /** The acting user the gateway resolved from your session. */
+  reviewerId: string | null;
 }
 
 /** `202 Accepted` body — the handle to a run that is now executing durably. */

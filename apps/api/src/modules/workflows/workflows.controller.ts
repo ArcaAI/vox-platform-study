@@ -1,6 +1,9 @@
 import {
   InvokeWorkflowRequest,
   IWorkflowExposureService,
+  ReviewDecisionRequest,
+  WorkflowReviewDecisionResponse,
+  WorkflowReviewResponse,
   WorkflowInvokeResponse,
   WorkflowRunCancelResponse,
   WorkflowRunResponseMode,
@@ -177,6 +180,73 @@ export class WorkflowsController {
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
   async cancelRun(@Param('slug') slug: string, @Param('runId') runId: string): Promise<WorkflowRunCancelResponse> {
     return this.workflowExposureService.cancelRun(slug, runId);
+  }
+
+  /**
+   * TASK-890 §3.9 — the HUMAN-REVIEW pair.
+   *
+   * A `core.humanReview` node parks a run on a person. Since TASK-864 the durable wait and its
+   * two routes have existed on the INTERPRETER, reachable only with the internal service token,
+   * so a tenant with a review in its graph had no way to release it except an operator
+   * signalling Temporal by hand. These two routes are that proxy, and nothing more: the
+   * decision is forwarded, the ownership check is the same one every other run route makes, and
+   * the reviewer's identity is taken from the session — never from the wire.
+   */
+  @Get(':slug/runs/:runId/reviews/:nodeId')
+  @CanRead('WorkflowRun')
+  @RequiredScopes('workflow:run:read')
+  @ApiOperation({
+    summary:
+      'The live state of one Human-review node of a run: whether it is waiting, how many times it has escalated, and the decision if one was made.',
+    description:
+      'A graph may carry several review nodes, so a review is addressed by `(runId, nodeId)`. ' +
+      '`exists: false` is a NORMAL 200 — the node has not been reached yet, or the review already settled and its durable child is gone. ' +
+      'It is deliberately different from a 404, which means the RUN is not yours: a reviewer UI must be able to tell "nothing to decide here" ' +
+      'from "you are looking at someone else\u2019s run". `decision` is `null` until a human sets it — a timeout never reads as an approval.',
+  })
+  @ApiParam({ name: 'slug' })
+  @ApiParam({ name: 'runId' })
+  @ApiParam({ name: 'nodeId', description: 'The graph node id of the `core.humanReview` node.' })
+  @ApiResponse({ status: 200, type: WorkflowReviewResponse })
+  @ApiResponse({ status: 403, description: 'Scope violation.' })
+  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  @ApiResponse({ status: 503, description: 'The interpreter could not be reached. Never reported as "no review".' })
+  async getReview(@Param('slug') slug: string, @Param('runId') runId: string, @Param('nodeId') nodeId: string): Promise<WorkflowReviewResponse> {
+    return this.workflowExposureService.getReview(slug, runId, nodeId);
+  }
+
+  @Post(':slug/runs/:runId/reviews/:nodeId/decide')
+  @HttpCode(HttpStatus.OK)
+  @CanUpdate('WorkflowRun')
+  @RequiredScopes('workflow:run:write')
+  @ApiOperation({
+    summary: 'Release a Human-review node with a decision — the graph resumes down the `approved` or `rejected` handle.',
+    description:
+      'Body `{ decision: "approved" | "rejected", comment?, editedPayload? }`. ' +
+      '**`reviewerId` is not accepted** — the acting user is resolved from the session and stamped server-side, so a caller cannot attribute ' +
+      'an approval to somebody else; sending the field is a 400 (the global pipe forbids undeclared properties). ' +
+      '`editedPayload` is honoured only when the node was authored with `allowEdit`; the workflow drops it otherwise. ' +
+      'A review is decided ONCE: a second decision on the same node is ignored by the durable child, so this route is safe to retry. ' +
+      'Returns when the signal was SENT — the graph resumes on its own clock.',
+  })
+  @ApiParam({ name: 'slug' })
+  @ApiParam({ name: 'runId' })
+  @ApiParam({ name: 'nodeId', description: 'The graph node id of the `core.humanReview` node.' })
+  @ApiResponse({ status: 200, type: WorkflowReviewDecisionResponse })
+  @ApiResponse({ status: 400, description: 'A decision outside `approved` / `rejected`, or an undeclared body field such as `reviewerId`.' })
+  @ApiResponse({ status: 403, description: 'Scope violation.' })
+  @ApiResponse({
+    status: 404,
+    description: "Cross-tenant run id, a runId that does not belong to slug's lineage, or no review child under that nodeId.",
+  })
+  @ApiResponse({ status: 503, description: 'The interpreter could not be reached; no decision was recorded.' })
+  async decideReview(
+    @Param('slug') slug: string,
+    @Param('runId') runId: string,
+    @Param('nodeId') nodeId: string,
+    @Body() dto: ReviewDecisionRequest,
+  ): Promise<WorkflowReviewDecisionResponse> {
+    return this.workflowExposureService.decideReview(slug, runId, nodeId, dto);
   }
 
   @Get(':slug/runs/:runId/stream')

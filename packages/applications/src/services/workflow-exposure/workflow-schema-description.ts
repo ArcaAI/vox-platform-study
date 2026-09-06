@@ -21,13 +21,35 @@ import {
   type WorkflowGraph,
 } from '@arcaai/workflow-contract';
 
+/**
+ * A `graph` column read as the contract's shape — a null/garbled column reads as an EMPTY
+ * graph, never a throw. Every reader of the column goes through this one coercion so the
+ * catalogue, `describe`, and the invoke gate cannot disagree about what an unreadable graph
+ * means.
+ */
+export function graphOf(value: unknown): Pick<WorkflowGraph, 'nodes'> {
+  const nodes = (value as { nodes?: unknown } | null)?.nodes;
+  return { nodes: Array.isArray(nodes) ? (nodes as WorkflowGraph['nodes']) : [] };
+}
+
+/**
+ * A delivery lane a published definition admits. The first three are the `?mode=` values
+ * `POST /workflows/{slug}/runs` accepts; `socket` is NOT a `?mode=` — it names the WebSocket
+ * lane the AsyncAPI fragment describes (`ws/workflows`), which the description previously
+ * emitted a channel for while never listing it here.
+ */
+export type WorkflowDeliveryMode = 'async' | 'blocking' | 'stream' | 'socket';
+
 export interface WorkflowSchemaDescription {
   slug: string;
   versionNumber: number;
   triggerKinds: string[];
   protocols: CoreOutputProtocol[];
-  /** Which `?mode=` values `POST /workflows/{slug}/runs` accepts for this definition. */
-  modes: Array<'async' | 'blocking' | 'stream'>;
+  /**
+   * The delivery lanes this definition admits: the `?mode=` values
+   * `POST /workflows/{slug}/runs` accepts, plus `socket` when the Output publishes it.
+   */
+  modes: WorkflowDeliveryMode[];
   /** OpenAPI 3.1 `components.schemas` entries keyed `Workflow_<slug>_Input` / `_Output`. */
   components: Record<string, Record<string, unknown>>;
   /** An AsyncAPI 3 fragment for the SSE / WebSocket frames of a run. */
@@ -39,11 +61,22 @@ export function componentName(slug: string, side: 'Input' | 'Output'): string {
   return `Workflow_${slug.replace(/[^A-Za-z0-9_]/g, '_')}_${side}`;
 }
 
-/** The `?mode=` values the declared protocols admit — `async` always; `http` → blocking; `http-sse` → stream. */
-export function modesFor(protocols: readonly CoreOutputProtocol[]): Array<'async' | 'blocking' | 'stream'> {
-  const modes: Array<'async' | 'blocking' | 'stream'> = ['async'];
+/**
+ * The delivery lanes the declared protocols admit — `async` always; `http` → blocking;
+ * `http-sse` → stream; `socket` → socket.
+ *
+ * The first three answer "what may I pass as `?mode=`", and a legacy graph (no `core.output`,
+ * so no declared protocols) is unrestricted across them, exactly as `modeRefusal` treats it.
+ * `socket` is different on both counts: it is a lane, not a `?mode=` value, and it is named
+ * ONLY when the Output declares it — which is precisely the condition under which
+ * {@link describeWorkflow} emits the `ws/workflows` channel. Deriving both from the same test
+ * is what stops a description advertising a channel it does not list (TASK-890 §3.9).
+ */
+export function modesFor(protocols: readonly CoreOutputProtocol[]): WorkflowDeliveryMode[] {
+  const modes: WorkflowDeliveryMode[] = ['async'];
   if (protocols.length === 0 || protocols.includes('http')) modes.push('blocking');
   if (protocols.length === 0 || protocols.includes('http-sse')) modes.push('stream');
+  if (protocols.includes('socket')) modes.push('socket');
   return modes;
 }
 
