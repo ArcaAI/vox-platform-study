@@ -27,6 +27,7 @@ export {
   SummarizationResource,
   TenantsResource,
   WORKFLOW_PLANE_ROUTES,
+  WorkflowReviewsResource,
   WorkflowsResource,
 } from './resources';
 export type {
@@ -61,6 +62,17 @@ export { RESERVED_RUN_IDENTITY_KEYS, reservedRunIdentityKeysIn } from './core/ru
  * Deno and edge runtimes.
  */
 export { WEBHOOK_SIGNATURE_HEADER, verifyWebhookSignature } from './core/webhook-signature';
+
+/**
+ * The OUTBOUND half of the webhook pair (TASK-890): sign an inbound workflow
+ * trigger for `POST /hooks/workflows/{hookId}`.
+ *
+ * A different header and a different signed string from the delivery
+ * signature above — the trigger folds the `X-Hope-Timestamp` value into the
+ * HMAC, which is what makes the gateway's 300-second replay window mean
+ * something. Same zero-dependency core.
+ */
+export { WEBHOOK_TRIGGER_SIGNATURE_HEADER, WEBHOOK_TRIGGER_TIMESTAMP_HEADER, signWebhookTrigger } from './core/webhook-signature';
 
 /**
  * The service-account credential shape. Exported HERE, not
@@ -143,6 +155,10 @@ export type {
   TokenUsage,
   UpdateSummaryRequest,
   StartWorkflowRunRequest,
+  WorkflowReview,
+  WorkflowReviewDecision,
+  WorkflowReviewDecisionResult,
+  WorkflowSchemaDescription,
   WorkflowClaimCheckRef,
   WorkflowRunCancelResult,
   WorkflowRunEvent,
