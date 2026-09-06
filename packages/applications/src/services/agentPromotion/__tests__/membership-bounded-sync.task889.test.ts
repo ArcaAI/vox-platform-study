@@ -339,10 +339,11 @@ describe('the sync data path is membership-bounded, not elevated (TASK-889)', ()
       expect(result.targets.map((target) => target.tenantId)).toEqual([TARGET_ONE, TARGET_TWO]);
       // TWO scoped reads, both in the SOURCE step, and the fallback chain read ONCE rather than
       // once per target — which is what makes it safe for the target steps to name their own
-      // tenant. `Agent` is a shared-read catalogue, so its read widens to [source, SYSTEM]:
-      // that is the extension's correct answer for a model whose SYSTEM tier every tenant sees.
+      // tenant. BOTH are pinned to the SOURCE: TASK-890 step v removed `Agent` from
+      // `SYSTEM_SHARED_READ_MODELS`, so a sync reads exactly the tenant it names — which is what
+      // "membership-bounded" claimed all along and is now literally true of every read here.
       expect(scoped.log.map((entry) => entry.model)).toEqual(['Agent', 'AgentModelFallback']);
-      expect(scoped.log[0]!.tenantId).toEqual({ in: [SOURCE, SYSTEM_TENANT_ID] });
+      expect(scoped.log[0]!.tenantId).toBe(SOURCE);
       expect(scoped.log[1]!.tenantId).toBe(SOURCE);
       expect(cls.get('tenantId')).toBe(SOURCE);
     });
