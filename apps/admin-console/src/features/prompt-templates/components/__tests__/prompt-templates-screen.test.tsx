@@ -26,6 +26,7 @@ vi.mock('sonner', () => ({
 function template(overrides: Partial<PromptTemplate> = {}): PromptTemplate {
   return {
     id: 'pt-1',
+    tenantId: 'tnt-1',
     name: 'Cardiology Notes',
     description: 'SOAP output for cardiology consults',
     content: 'You are a clinical scribe.',
@@ -61,6 +62,14 @@ const PRE_SUMMARY = template({
   approvedVersionNumber: 3,
   createdAt: '2026-04-01T10:00:00.000Z',
   version: 5,
+});
+
+/** A SYSTEM/library row — only a super admin may approve it (OD-3 split gate). */
+const SYSTEM_ROW = template({
+  id: 'pt-sys',
+  name: 'Platform Library Prompt',
+  tenantId: '00000000-0000-0000-0000-000000000000',
+  category: 'SYSTEM',
 });
 
 /** A row CLONED from the SYSTEM reference set at provisioning, and locked by the platform. */
@@ -227,6 +236,14 @@ function defaultHandler(call: RecordedCall): Response | undefined {
   return undefined;
 }
 
+/** CASL rules the console mirrors for menu/tab visibility (`POST /users/me/permission-checks`). */
+let permissionRules: Array<{ action: string; subject: string }> = [{ action: 'manage', subject: 'all' }];
+
+function permissionsResponse(call: RecordedCall): Response | undefined {
+  if (pathOf(call) !== '/api/hope/users/me/permission-checks') return undefined;
+  return Response.json({ userId: 'u-1', tenantId: 'tnt-1', permissions: permissionRules });
+}
+
 /** Best-effort per-user grid-layout persistence (`users/me/settings`) — no saved layout in tests. */
 function settingsResponse(call: RecordedCall): Response | undefined {
   if (!call.url.includes('/users/me/settings')) return undefined;
@@ -234,7 +251,7 @@ function settingsResponse(call: RecordedCall): Response | undefined {
 }
 
 function stubTemplates(custom: FetchHandler = () => undefined): RecordedCall[] {
-  return stubFetch((call) => settingsResponse(call) ?? custom(call) ?? defaultHandler(call));
+  return stubFetch((call) => settingsResponse(call) ?? permissionsResponse(call) ?? custom(call) ?? defaultHandler(call));
 }
 
 const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;
@@ -261,8 +278,21 @@ async function openRow(name: string) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  permissionRules = [{ action: 'manage', subject: 'all' }];
   cleanup();
 });
+
+/** A tenant admin: not elevated, but holding `manage:PromptTemplate` for its own tenant. */
+function tenantAdminHandler(call: RecordedCall): Response | undefined {
+  if (pathOf(call) !== '/api/auth/session') return undefined;
+  const base = session();
+  return Response.json({
+    ...base,
+    user: { ...base.user, roles: ['TENANT_ADMIN'] },
+    isElevated: false,
+    effectiveIsElevated: false,
+  });
+}
 
 describe('PromptTemplatesScreen', () => {
   it('asks an elevated session without a working tenant to pick one (no data queries fired)', async () => {
@@ -648,29 +678,69 @@ describe('PromptTemplatesScreen', () => {
   });
 
   /**
-   * The Governance tab is elevated-only in the CONSOLE; approve authority
-   * stays server-side (SYSTEM/library rows are SUPER_ADMIN-only, tenant-owned
-   * rows need `manage:PromptTemplate`) regardless of what is rendered.
+   * TASK-890 J2-6 — the console mirrors the server's OD-3 SPLIT gate: a
+   * TENANT-OWNED template needs `manage:PromptTemplate` (which every tenant
+   * admin holds), while the SYSTEM/library rows stay SUPER_ADMIN-only. Gating
+   * the whole tab on elevation hid approval from the tenant admins the server
+   * explicitly allows — verified against the live gateway, where
+   * `POST :id/approve` as arcaai_admin returns 200 and pins the version.
    */
   describe('Governance tab', () => {
-    it('is hidden for a non-elevated session', async () => {
-      stubTemplates((call) => {
-        if (pathOf(call) === '/api/auth/session') {
-          const base = session();
-          return Response.json({
-            ...base,
-            user: { ...base.user, roles: ['TENANT_ADMIN'] },
-            isElevated: false,
-            effectiveIsElevated: false,
-          });
-        }
-        return undefined;
-      });
+    it('is hidden for a session without manage:PromptTemplate', async () => {
+      permissionRules = [{ action: 'read', subject: 'PromptTemplate' }];
+      stubTemplates(tenantAdminHandler);
       renderWithProviders(<PromptTemplatesScreen />);
 
       await screen.findByRole('tab', { name: 'Fallbacks' });
       expect(screen.getByRole('tab', { name: 'Templates' })).toBeDefined();
       expect(screen.queryByRole('tab', { name: 'Governance' })).toBeNull();
+    });
+
+    it('is visible to a TENANT admin holding manage:PromptTemplate', async () => {
+      permissionRules = [{ action: 'manage', subject: 'PromptTemplate' }];
+      stubTemplates(tenantAdminHandler);
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=governance' });
+
+      expect(await screen.findByRole('tab', { name: 'Governance' })).toBeDefined();
+      expect(await screen.findByRole('heading', { name: /prompt governance/i })).toBeDefined();
+    });
+
+    it('lets that tenant admin approve a TENANT-OWNED template', async () => {
+      permissionRules = [{ action: 'manage', subject: 'PromptTemplate' }];
+      const calls = stubTemplates((call) => {
+        if (call.method === 'POST' && pathOf(call).endsWith('/approve')) {
+          return Response.json({ ...TEMPLATES[0], status: 'APPROVED', version: TEMPLATES[0].version + 1 });
+        }
+        return tenantAdminHandler(call);
+      });
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=governance' });
+
+      await screen.findByRole('tab', { name: 'Governance' });
+      fireEvent.click(await screen.findByText(TEMPLATES[0].name));
+      fireEvent.click(await screen.findByRole('button', { name: 'Approve for clinical use' }, { timeout: 3000 }));
+
+      await waitFor(() => expect(calls.some((call) => call.method === 'POST' && pathOf(call).endsWith('/approve'))).toBe(true));
+    });
+
+    it('refuses SYSTEM/library approval for that same tenant admin (super-admin only)', async () => {
+      permissionRules = [{ action: 'manage', subject: 'PromptTemplate' }];
+      stubTemplates((call) => {
+        const path = pathOf(call);
+        if (call.method === 'GET' && path === '/api/hope/admin/prompt-templates') {
+          return Response.json({ data: [SYSTEM_ROW], count: 1, limit: 10, page: 1 });
+        }
+        if (call.method === 'GET' && path === `/api/hope/admin/prompt-templates/${SYSTEM_ROW.id}`) {
+          return Response.json(SYSTEM_ROW, { headers: { etag: `"${SYSTEM_ROW.version}"` } });
+        }
+        return tenantAdminHandler(call);
+      });
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=governance' });
+
+      await screen.findByRole('tab', { name: 'Governance' });
+      fireEvent.click(await screen.findByText(SYSTEM_ROW.name));
+      const approve = await screen.findByRole('button', { name: 'Approve for clinical use' }, { timeout: 3000 });
+      expect(approve.hasAttribute('disabled')).toBe(true);
+      expect(screen.getByText(/only a super administrator/i)).toBeDefined();
     });
 
     it('is visible for an elevated session and opens on the redirect target ?tab=governance', async () => {

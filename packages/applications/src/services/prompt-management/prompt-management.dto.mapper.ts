@@ -11,6 +11,8 @@ export class PromptManagementDtoMapper {
     const content = entity.content ?? '';
     return {
       id: entity.id,
+      // The owning tenant — the SYSTEM/tenant split the approval gate keys on.
+      tenantId: entity.tenantId ?? undefined,
       name: entity.name ?? '',
       description: entity.description ?? undefined,
       content,

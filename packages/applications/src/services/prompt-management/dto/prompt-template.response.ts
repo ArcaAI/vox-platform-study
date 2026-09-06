@@ -6,6 +6,15 @@ export class PromptTemplateResponse {
   @ApiProperty({ description: 'Template ID' })
   id: string;
 
+  /**
+   * The OWNING tenant. Load-bearing for the console: the approval gate is a
+   * SPLIT gate (`assertCanApprove`) — a SYSTEM/library row is SUPER_ADMIN-only
+   * while a tenant-owned row devolves to `manage:PromptTemplate` — and a client
+   * that cannot tell the two apart has to hide approval from every tenant admin.
+   */
+  @ApiPropertyOptional({ description: 'Owning tenant id. The SYSTEM tenant marks a platform/library template.' })
+  tenantId?: string;
+
   @ApiProperty({ description: 'Template name' })
   name: string;
 

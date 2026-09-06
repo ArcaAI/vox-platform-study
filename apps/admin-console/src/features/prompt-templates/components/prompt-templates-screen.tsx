@@ -19,7 +19,8 @@
  *   Templates — the grid + detail slide-over (create / edit / versions /
  *                 diff / test run). Moved verbatim from `/agents`.
  *   Governance — version history, field-level diff and clinical approval.
- *                 Elevated-only in the console; the server is the authority.
+ *                 Shown to anyone holding `manage:PromptTemplate` (the server's
+ *                 split gate: SYSTEM rows stay super-admin-only).
  *
  * Tenant-scoped: a super admin must pick a working tenant before any query
  * mounts (`WorkingTenantGate`); tenant admins pass straight through.
@@ -31,7 +32,7 @@ import { parseAsString, useQueryState } from 'nuqs';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
-import { useSession } from '@/shared/auth';
+import { can, useSession, usePermissions } from '@/shared/auth';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
@@ -57,6 +58,12 @@ function PromptTemplatesScreenBody() {
   const [selectedParam] = useQueryState('template', parseAsString.withDefault(''));
   const session = useSession();
   const isElevated = session.data?.isElevated ?? false;
+  // TASK-890 J2-6 — the server's approval gate is a SPLIT gate: SYSTEM/library
+  // rows are SUPER_ADMIN-only, tenant-owned rows need `manage:PromptTemplate`,
+  // which every tenant admin holds. Gating the tab on ELEVATION alone hid the
+  // only approve UI from the admins the server allows.
+  const permissions = usePermissions();
+  const canGovern = isElevated || can(permissions.data, 'manage', 'PromptTemplate');
   const [creating, setCreating] = useState(false);
   const [gridState, setGridState] = useState({ count: 0, loaded: false, refreshing: false });
 
@@ -64,7 +71,7 @@ function PromptTemplatesScreenBody() {
   // can show it, otherwise the drawer opens over the Fallbacks map.
   const requested = tabParam ?? (selectedParam ? 'templates' : null);
   const tab: PromptTemplatesScreenTab =
-    isElevated && requested === 'governance' ? 'governance' : requested === 'templates' ? 'templates' : 'fallbacks';
+    canGovern && requested === 'governance' ? 'governance' : requested === 'templates' ? 'templates' : 'fallbacks';
 
   const handleGridState = useCallback((next: { count: number; loaded: boolean; refreshing: boolean }) => {
     setGridState((previous) =>
@@ -84,8 +91,8 @@ function PromptTemplatesScreenBody() {
           <TabsList variant="line">
             <TabsTrigger value="fallbacks">Fallbacks</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
-            {/* Elevated-only in the console; the 403 is server-side regardless. */}
-            {isElevated ? <TabsTrigger value="governance">Governance</TabsTrigger> : null}
+            {/* Ability-gated (not elevation-gated); the 403 is server-side regardless. */}
+            {canGovern ? <TabsTrigger value="governance">Governance</TabsTrigger> : null}
           </TabsList>
         }
         header={
@@ -129,7 +136,7 @@ function PromptTemplatesScreenBody() {
         <TabsContent value="templates" className="flex min-h-0 flex-1 flex-col">
           <TemplatesTab creating={creating} onCreatingChange={setCreating} onCountChange={handleGridState} />
         </TabsContent>
-        {isElevated ? (
+        {canGovern ? (
           <TabsContent value="governance" className="flex min-h-0 flex-1 flex-col">
             <GovernanceTab />
           </TabsContent>

@@ -46,6 +46,12 @@ export interface PromptVariableDeclaration {
  */
 export interface PromptTemplate {
   id: string;
+  /**
+   * Owning tenant. `SYSTEM_TENANT_ID` marks a platform/library row, which only
+   * a super admin may approve (the server's OD-3 split gate); every other row
+   * is the tenant's own and needs `manage:PromptTemplate`.
+   */
+  tenantId?: string;
   name: string;
   description?: string;
   content: string;
