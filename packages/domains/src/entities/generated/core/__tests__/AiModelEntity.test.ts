@@ -9,7 +9,6 @@ import { AiModelEntity, IAiModelEntity } from '../AiModelEntity';
 import {
   AiModelSource,
   AiModelFormat,
-  AiModelDownloadStatus,
   AiModelAvailability,
   AiDeploymentKind,
   AiTaskKind,
@@ -43,10 +42,6 @@ function createTestEntity(overrides: Partial<IAiModelEntity> = {}): AiModelEntit
     isPlatformDefaultFor: [],
     memorySizeMb: 3000,
     computeType: 'float16',
-    downloadStatus: AiModelDownloadStatus.NOT_DOWNLOADED,
-    localPath: null,
-    downloadedAt: null,
-    fileSizeMb: null,
     checksum: null,
     createdBy: 'user-123',
     updatedBy: null,
@@ -74,35 +69,6 @@ describe('AiModelEntity', () => {
       expect(entity.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
       expect(entity.source).toBe(AiModelSource.HUGGINGFACE);
       expect(entity.format).toBe(AiModelFormat.SAFETENSOR);
-      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.NOT_DOWNLOADED);
-    });
-  });
-
-  describe('download status helpers', () => {
-    it('isDownloaded should return true only for DOWNLOADED status', () => {
-      const entity = createTestEntity({ downloadStatus: AiModelDownloadStatus.DOWNLOADED });
-      expect(entity.isDownloaded).toBe(true);
-      expect(entity.isDownloading).toBe(false);
-      expect(entity.isDownloadFailed).toBe(false);
-      expect(entity.isNotDownloaded).toBe(false);
-    });
-
-    it('isDownloading should return true only for DOWNLOADING status', () => {
-      const entity = createTestEntity({ downloadStatus: AiModelDownloadStatus.DOWNLOADING });
-      expect(entity.isDownloading).toBe(true);
-      expect(entity.isDownloaded).toBe(false);
-    });
-
-    it('isDownloadFailed should return true only for DOWNLOAD_FAILED status', () => {
-      const entity = createTestEntity({ downloadStatus: AiModelDownloadStatus.DOWNLOAD_FAILED });
-      expect(entity.isDownloadFailed).toBe(true);
-      expect(entity.isDownloaded).toBe(false);
-    });
-
-    it('isNotDownloaded should return true only for NOT_DOWNLOADED status', () => {
-      const entity = createTestEntity({ downloadStatus: AiModelDownloadStatus.NOT_DOWNLOADED });
-      expect(entity.isNotDownloaded).toBe(true);
-      expect(entity.isDownloaded).toBe(false);
     });
   });
 
@@ -148,85 +114,6 @@ describe('AiModelEntity', () => {
       const entity = createTestEntity({ source: AiModelSource.MLFLOW });
       expect(entity.isMLFlow).toBe(true);
       expect(entity.isHuggingFace).toBe(false);
-    });
-  });
-
-  describe('markAsDownloading', () => {
-    it('should set download status to DOWNLOADING', () => {
-      const entity = createTestEntity({ downloadStatus: AiModelDownloadStatus.NOT_DOWNLOADED });
-
-      entity.markAsDownloading('user-456');
-
-      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.DOWNLOADING);
-      expect(entity.hasChanges).toBe(true);
-      expect(entity.changes).toHaveProperty('downloadStatus', AiModelDownloadStatus.DOWNLOADING);
-      expect(entity.changes).toHaveProperty('updatedBy', 'user-456');
-    });
-
-    it('should work without userId', () => {
-      const entity = createTestEntity();
-
-      entity.markAsDownloading();
-
-      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.DOWNLOADING);
-    });
-  });
-
-  describe('markAsDownloaded', () => {
-    it('should set download status to DOWNLOADED with all details', () => {
-      const entity = createTestEntity({ downloadStatus: AiModelDownloadStatus.DOWNLOADING });
-
-      entity.markAsDownloaded('/models/whisper-large-v3', 3000, 'sha256-abc123', 'user-456');
-
-      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.DOWNLOADED);
-      expect(entity.localPath).toBe('/models/whisper-large-v3');
-      expect(entity.fileSizeMb).toBe(3000);
-      expect(entity.checksum).toBe('sha256-abc123');
-      expect(entity.downloadedAt).not.toBeNull();
-      expect(entity.changes).toHaveProperty('updatedBy', 'user-456');
-    });
-
-    it('should work with only required parameters', () => {
-      const entity = createTestEntity({ downloadStatus: AiModelDownloadStatus.DOWNLOADING });
-
-      entity.markAsDownloaded('/models/whisper-large-v3');
-
-      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.DOWNLOADED);
-      expect(entity.localPath).toBe('/models/whisper-large-v3');
-      expect(entity.downloadedAt).not.toBeNull();
-    });
-  });
-
-  describe('markAsDownloadFailed', () => {
-    it('should set download status to DOWNLOAD_FAILED', () => {
-      const entity = createTestEntity({ downloadStatus: AiModelDownloadStatus.DOWNLOADING });
-
-      entity.markAsDownloadFailed('user-456');
-
-      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.DOWNLOAD_FAILED);
-      expect(entity.hasChanges).toBe(true);
-      expect(entity.changes).toHaveProperty('updatedBy', 'user-456');
-    });
-  });
-
-  describe('resetDownloadStatus', () => {
-    it('should reset all download-related fields', () => {
-      const entity = createTestEntity({
-        downloadStatus: AiModelDownloadStatus.DOWNLOADED,
-        localPath: '/models/whisper',
-        downloadedAt: new Date(),
-        fileSizeMb: 3000,
-        checksum: 'sha256-abc',
-      });
-
-      entity.resetDownloadStatus('user-456');
-
-      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.NOT_DOWNLOADED);
-      expect(entity.localPath).toBeNull();
-      expect(entity.downloadedAt).toBeNull();
-      expect(entity.fileSizeMb).toBeNull();
-      expect(entity.checksum).toBeNull();
-      expect(entity.changes).toHaveProperty('updatedBy', 'user-456');
     });
   });
 
@@ -332,53 +219,6 @@ describe('AiModelEntity', () => {
     });
   });
 
-  describe('model download lifecycle', () => {
-    it('should handle complete download lifecycle', () => {
-      const entity = createTestEntity({
-        downloadStatus: AiModelDownloadStatus.NOT_DOWNLOADED,
-      });
-
-      expect(entity.isNotDownloaded).toBe(true);
-
-      // Start download
-      entity.markAsDownloading('user-123');
-      expect(entity.isDownloading).toBe(true);
-
-      // Complete download
-      entity.markAsDownloaded('/models/whisper', 3000, 'sha256-xyz');
-      expect(entity.isDownloaded).toBe(true);
-      expect(entity.localPath).toBe('/models/whisper');
-
-      // Reset for re-download
-      entity.resetDownloadStatus();
-      expect(entity.isNotDownloaded).toBe(true);
-      expect(entity.localPath).toBeNull();
-    });
-
-    it('should handle failed download with retry', () => {
-      const entity = createTestEntity({
-        downloadStatus: AiModelDownloadStatus.NOT_DOWNLOADED,
-      });
-
-      // Start download
-      entity.markAsDownloading();
-      expect(entity.isDownloading).toBe(true);
-
-      // Download fails
-      entity.markAsDownloadFailed();
-      expect(entity.isDownloadFailed).toBe(true);
-
-      // Reset and retry
-      entity.resetDownloadStatus();
-      expect(entity.isNotDownloaded).toBe(true);
-
-      // Try again
-      entity.markAsDownloading();
-      entity.markAsDownloaded('/models/whisper', 3000);
-      expect(entity.isDownloaded).toBe(true);
-    });
-  });
-
   describe('tags support', () => {
     it('should have tags array', () => {
       const entity = createTestEntity({ tags: ['whisper', 'asr', 'openai'] });
@@ -448,15 +288,13 @@ describe('AiModelEntity', () => {
       expect(entity.changes).toHaveProperty('availabilityCheckedAt', checkedAt);
     });
 
-    it('recordPublish writes the bucket identity, derived localPath, AVAILABLE and the legacy DOWNLOADED bookkeeping', () => {
+    it('recordPublish writes the bucket IDENTITY and the MEASURED availability, and nothing else (TASK-890 §3.11)', () => {
       const entity = createTestEntity();
 
       entity.recordPublish({
         bucketPrefix: 'medical-ner/0123456789ab/',
         primaryObject: 'model.safetensors',
         manifestDigest: 'cafe',
-        localPath: '/mnt/models-bucket/medical-ner/0123456789ab/',
-        fileSizeMb: 512,
         checksum: 'sha',
         hfRevision: 'rev1',
         userId: 'user-9',
@@ -465,15 +303,13 @@ describe('AiModelEntity', () => {
       expect(entity.bucketPrefix).toBe('medical-ner/0123456789ab/');
       expect(entity.primaryObject).toBe('model.safetensors');
       expect(entity.manifestDigest).toBe('cafe');
-      expect(entity.localPath).toBe('/mnt/models-bucket/medical-ner/0123456789ab/');
       expect(entity.hfRevision).toBe('rev1');
       expect(entity.availability).toBe(AiModelAvailability.AVAILABLE);
       expect(entity.availabilityCheckedAt).toBeInstanceOf(Date);
-      // Legacy bookkeeping stays in step until R3 removes it.
-      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.DOWNLOADED);
-      expect(entity.fileSizeMb).toBe(512);
       expect(entity.checksum).toBe('sha');
       expect(entity.changes).toHaveProperty('updatedBy', 'user-9');
+      // The mount path is DERIVED from the identity above; no column carries it any more.
+      expect(entity.changes).not.toHaveProperty('localPath');
     });
 
     it('setPlatformDefaultFor replaces the task list through change tracking', () => {

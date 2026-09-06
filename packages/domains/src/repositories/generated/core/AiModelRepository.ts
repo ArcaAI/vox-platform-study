@@ -6,7 +6,7 @@ import { AiModelEntityMapper } from '../../../mappers';
 import { AiModelEntity } from '../../../entities';
 import { AiModel } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
-import { ResourceStatusType, ModelTaskType, AiModelDownloadStatus, AiModelSource, AiModelFormat, AiTaskKind } from '../../../enums';
+import { ResourceStatusType, ModelTaskType, AiModelSource, AiModelFormat, AiTaskKind } from '../../../enums';
 
 @Injectable()
 export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
@@ -179,20 +179,6 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
   }
 
   /**
-   * Find all downloaded models
-   */
-  async findDownloadedModels(tenantId: string): Promise<AiModelEntity[]> {
-    return this.findAll({
-      filters: {
-        tenantId,
-        downloadStatus: AiModelDownloadStatus.DOWNLOADED,
-        resourceStatus: ResourceStatusType.ENABLED,
-      },
-      sort: [{ name: 'asc' }],
-    });
-  }
-
-  /**
    * Find all ASR models
    */
   async findAsrModels(tenantId: string): Promise<AiModelEntity[]> {
@@ -231,19 +217,6 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
         resourceStatus: ResourceStatusType.ENABLED,
       },
       sort: [{ name: 'asc' }],
-    });
-  }
-
-  /**
-   * Find models currently downloading
-   */
-  async findDownloadingModels(tenantId: string): Promise<AiModelEntity[]> {
-    return this.findAll({
-      filters: {
-        tenantId,
-        downloadStatus: AiModelDownloadStatus.DOWNLOADING,
-        resourceStatus: ResourceStatusType.ENABLED,
-      },
     });
   }
 

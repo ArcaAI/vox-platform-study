@@ -33,6 +33,14 @@ export interface IAgentEntity extends IBaseTenantEntity {
   status: Enums.WorkflowDefinitionStatus;
   isActive: boolean;
   modelId: string;
+  /**
+   * TASK-890 §3.4 — the consultation-context schema this agent's prompt is written
+   * against, held as a REFERENCE into the TENANT's own schema row. The pinned
+   * version's derived payload schema is frozen into `compiledConfig.contextSchema`
+   * at publish; nothing resolves it again at run time.
+   */
+  contextSchemaId?: string | null;
+  contextSchemaVersionNumber?: number | null;
   instruction?: JsonValue | null;
   parameters?: JsonValue | null;
   inputSchema?: JsonValue | null;
@@ -69,6 +77,8 @@ export class AgentEntity extends BaseTenantEntity {
   private _status: IAgentEntity['status'];
   private _isActive: IAgentEntity['isActive'];
   private _modelId: IAgentEntity['modelId'];
+  private _contextSchemaId: IAgentEntity['contextSchemaId'];
+  private _contextSchemaVersionNumber: IAgentEntity['contextSchemaVersionNumber'];
   private _instruction?: IAgentEntity['instruction'];
   private _parameters?: IAgentEntity['parameters'];
   private _inputSchema?: IAgentEntity['inputSchema'];
@@ -97,6 +107,8 @@ export class AgentEntity extends BaseTenantEntity {
     this._status = init.status;
     this._isActive = init.isActive;
     this._modelId = init.modelId;
+    this._contextSchemaId = init.contextSchemaId;
+    this._contextSchemaVersionNumber = init.contextSchemaVersionNumber;
     this._instruction = init.instruction;
     this._parameters = init.parameters;
     this._inputSchema = init.inputSchema;
@@ -213,6 +225,22 @@ export class AgentEntity extends BaseTenantEntity {
 
   set modelId(value: IAgentEntity['modelId']) {
     this.setProperty('modelId', value);
+  }
+
+  get contextSchemaId(): IAgentEntity['contextSchemaId'] {
+    return this._contextSchemaId;
+  }
+
+  set contextSchemaId(value: IAgentEntity['contextSchemaId']) {
+    this.setProperty('contextSchemaId', value);
+  }
+
+  get contextSchemaVersionNumber(): IAgentEntity['contextSchemaVersionNumber'] {
+    return this._contextSchemaVersionNumber;
+  }
+
+  set contextSchemaVersionNumber(value: IAgentEntity['contextSchemaVersionNumber']) {
+    this.setProperty('contextSchemaVersionNumber', value);
   }
 
   get instruction(): IAgentEntity['instruction'] {

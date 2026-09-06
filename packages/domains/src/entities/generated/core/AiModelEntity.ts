@@ -28,8 +28,17 @@ export interface IAiModelEntity extends IBaseTaggedEntity {
   /** Workload that executes the row (`stt` | `nlp` | `tts` | `lmstudio` | `text` | …). */
   servedBy: string;
   deploymentKind: Enums.AiDeploymentKind;
-  /** Vendor wire id for CLOUD rows (and the engine-host id for LM Studio rows). */
+  /**
+   * TASK-890 §3.1 — the ROUTED id: what actually goes on the wire for a row an
+   * engine or a vendor serves. Null for a self-hosted row whose identity IS its
+   * bucket prefix. `sourceUri` is the LOCATOR, never the wire id.
+   */
   wireModelId?: string | null;
+  /**
+   * TASK-890 §3.1 — BYO provenance: the tenant `AiProviderConnection` that declared
+   * this model. Null on every SYSTEM catalogue row.
+   */
+  sourceConnectionId?: string | null;
   license?: string | null;
   gated: boolean;
   baseModel?: string | null;
@@ -50,14 +59,6 @@ export interface IAiModelEntity extends IBaseTaggedEntity {
   isPlatformDefaultFor: Enums.AiTaskKind[];
   memorySizeMb?: number | null;
   computeType?: string | null;
-  /** @deprecated TASK-860 — removed in R3. Replaced by `availability`. */
-  downloadStatus: Enums.AiModelDownloadStatus;
-  /** @deprecated TASK-860 — removed in R3. DERIVED from `bucketPrefix` by the service; never typed by an operator. */
-  localPath?: string | null;
-  /** @deprecated TASK-860 — removed in R3. Replaced by `availabilityCheckedAt`. */
-  downloadedAt?: Date | null;
-  /** @deprecated TASK-860 — removed in R3. Replaced by the manifest's `totalBytes`. */
-  fileSizeMb?: number | null;
   checksum?: string | null;
 }
 
@@ -66,9 +67,6 @@ export interface AiModelPublishRecord {
   bucketPrefix: string;
   primaryObject?: string | null;
   manifestDigest: string;
-  /** Derived by the caller: `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. */
-  localPath: string;
-  fileSizeMb?: number;
   checksum?: string;
   hfRevision?: string | null;
   userId?: string;
@@ -97,6 +95,7 @@ export class AiModelEntity extends BaseTaggedEntity {
   private _servedBy: IAiModelEntity['servedBy'];
   private _deploymentKind: IAiModelEntity['deploymentKind'];
   private _wireModelId?: IAiModelEntity['wireModelId'];
+  private _sourceConnectionId?: IAiModelEntity['sourceConnectionId'];
   private _license?: IAiModelEntity['license'];
   private _gated: IAiModelEntity['gated'];
   private _baseModel?: IAiModelEntity['baseModel'];
@@ -111,10 +110,6 @@ export class AiModelEntity extends BaseTaggedEntity {
   private _isPlatformDefaultFor: IAiModelEntity['isPlatformDefaultFor'];
   private _memorySizeMb?: IAiModelEntity['memorySizeMb'];
   private _computeType?: IAiModelEntity['computeType'];
-  private _downloadStatus: IAiModelEntity['downloadStatus'];
-  private _localPath?: IAiModelEntity['localPath'];
-  private _downloadedAt?: IAiModelEntity['downloadedAt'];
-  private _fileSizeMb?: IAiModelEntity['fileSizeMb'];
   private _checksum?: IAiModelEntity['checksum'];
 
   constructor(init: IAiModelEntity) {
@@ -136,6 +131,7 @@ export class AiModelEntity extends BaseTaggedEntity {
     this._servedBy = init.servedBy;
     this._deploymentKind = init.deploymentKind;
     this._wireModelId = init.wireModelId;
+    this._sourceConnectionId = init.sourceConnectionId;
     this._license = init.license;
     this._gated = init.gated ?? false;
     this._baseModel = init.baseModel;
@@ -150,10 +146,6 @@ export class AiModelEntity extends BaseTaggedEntity {
     this._isPlatformDefaultFor = init.isPlatformDefaultFor ?? [];
     this._memorySizeMb = init.memorySizeMb;
     this._computeType = init.computeType;
-    this._downloadStatus = init.downloadStatus;
-    this._localPath = init.localPath;
-    this._downloadedAt = init.downloadedAt;
-    this._fileSizeMb = init.fileSizeMb;
     this._checksum = init.checksum;
   }
 
@@ -294,6 +286,14 @@ export class AiModelEntity extends BaseTaggedEntity {
     this.setProperty('wireModelId', value);
   }
 
+  get sourceConnectionId(): IAiModelEntity['sourceConnectionId'] {
+    return this._sourceConnectionId;
+  }
+
+  set sourceConnectionId(value: IAiModelEntity['sourceConnectionId']) {
+    this.setProperty('sourceConnectionId', value);
+  }
+
   get license(): IAiModelEntity['license'] {
     return this._license;
   }
@@ -406,38 +406,6 @@ export class AiModelEntity extends BaseTaggedEntity {
     this.setProperty('computeType', value);
   }
 
-  get downloadStatus(): IAiModelEntity['downloadStatus'] {
-    return this._downloadStatus;
-  }
-
-  set downloadStatus(value: IAiModelEntity['downloadStatus']) {
-    this.setProperty('downloadStatus', value);
-  }
-
-  get localPath(): IAiModelEntity['localPath'] {
-    return this._localPath;
-  }
-
-  set localPath(value: IAiModelEntity['localPath']) {
-    this.setProperty('localPath', value);
-  }
-
-  get downloadedAt(): IAiModelEntity['downloadedAt'] {
-    return this._downloadedAt;
-  }
-
-  set downloadedAt(value: IAiModelEntity['downloadedAt']) {
-    this.setProperty('downloadedAt', value);
-  }
-
-  get fileSizeMb(): IAiModelEntity['fileSizeMb'] {
-    return this._fileSizeMb;
-  }
-
-  set fileSizeMb(value: IAiModelEntity['fileSizeMb']) {
-    this.setProperty('fileSizeMb', value);
-  }
-
   get checksum(): IAiModelEntity['checksum'] {
     return this._checksum;
   }
@@ -449,34 +417,6 @@ export class AiModelEntity extends BaseTaggedEntity {
   // ============================================
   // Custom Domain Methods
   // ============================================
-
-  /**
-   * Check if the model has been downloaded
-   */
-  get isDownloaded(): boolean {
-    return this._downloadStatus === Enums.AiModelDownloadStatus.DOWNLOADED;
-  }
-
-  /**
-   * Check if the model is currently downloading
-   */
-  get isDownloading(): boolean {
-    return this._downloadStatus === Enums.AiModelDownloadStatus.DOWNLOADING;
-  }
-
-  /**
-   * Check if the model download failed
-   */
-  get isDownloadFailed(): boolean {
-    return this._downloadStatus === Enums.AiModelDownloadStatus.DOWNLOAD_FAILED;
-  }
-
-  /**
-   * Check if the model has not been downloaded yet
-   */
-  get isNotDownloaded(): boolean {
-    return this._downloadStatus === Enums.AiModelDownloadStatus.NOT_DOWNLOADED;
-  }
 
   /**
    * Check if this is an ASR (Automatic Speech Recognition) model
@@ -520,58 +460,6 @@ export class AiModelEntity extends BaseTaggedEntity {
     return this._source === Enums.AiModelSource.MLFLOW;
   }
 
-  /**
-   * Mark model as currently downloading
-   */
-  public markAsDownloading(userId?: string): void {
-    this.setProperty('downloadStatus', Enums.AiModelDownloadStatus.DOWNLOADING);
-    if (userId) {
-      this.setProperty('updatedBy', userId);
-    }
-  }
-
-  /**
-   * Mark model as successfully downloaded
-   */
-  public markAsDownloaded(localPath: string, fileSizeMb?: number, checksum?: string, userId?: string): void {
-    this.setProperty('downloadStatus', Enums.AiModelDownloadStatus.DOWNLOADED);
-    this.setProperty('localPath', localPath);
-    this.setProperty('downloadedAt', new Date());
-    if (fileSizeMb !== undefined) {
-      this.setProperty('fileSizeMb', fileSizeMb);
-    }
-    if (checksum) {
-      this.setProperty('checksum', checksum);
-    }
-    if (userId) {
-      this.setProperty('updatedBy', userId);
-    }
-  }
-
-  /**
-   * Mark model download as failed
-   */
-  public markAsDownloadFailed(userId?: string): void {
-    this.setProperty('downloadStatus', Enums.AiModelDownloadStatus.DOWNLOAD_FAILED);
-    if (userId) {
-      this.setProperty('updatedBy', userId);
-    }
-  }
-
-  /**
-   * Reset download status to not downloaded
-   */
-  public resetDownloadStatus(userId?: string): void {
-    this.setProperty('downloadStatus', Enums.AiModelDownloadStatus.NOT_DOWNLOADED);
-    this.setProperty('localPath', null);
-    this.setProperty('downloadedAt', null);
-    this.setProperty('fileSizeMb', null);
-    this.setProperty('checksum', null);
-    if (userId) {
-      this.setProperty('updatedBy', userId);
-    }
-  }
-
   // ============================================
   // TASK-860 — registry semantics
   // ============================================
@@ -596,9 +484,13 @@ export class AiModelEntity extends BaseTaggedEntity {
   }
 
   /**
-   * The publish processor's write-back: bucket identity + the derived
-   * `localPath` + AVAILABLE, plus the legacy DOWNLOADED bookkeeping kept in
-   * step until R3 removes it (Python resolvers still read `localPath`).
+   * The publish processor's write-back: the bucket IDENTITY plus the MEASURED
+   * availability, and nothing else.
+   *
+   * TASK-890 §3.11 — the download bookkeeping this used to keep in step is gone:
+   * the mount path is DERIVED from the identity written here (so no row can carry
+   * a stale one), and the published SIZE is a fact about one publish RUN rather
+   * than about the row, so it rides that run's bookkeeping in `_metadata`.
    */
   public recordPublish(record: AiModelPublishRecord): void {
     this.setProperty('bucketPrefix', record.bucketPrefix);
@@ -607,8 +499,13 @@ export class AiModelEntity extends BaseTaggedEntity {
     if (record.hfRevision !== undefined) {
       this.setProperty('hfRevision', record.hfRevision);
     }
+    if (record.checksum) {
+      this.setProperty('checksum', record.checksum);
+    }
+    if (record.userId) {
+      this.setProperty('updatedBy', record.userId);
+    }
     this.markAvailability(Enums.AiModelAvailability.AVAILABLE, null);
-    this.markAsDownloaded(record.localPath, record.fileSizeMb, record.checksum, record.userId);
   }
 
   /** Replace the platform-default election (de-duplicated, order preserved). */
@@ -636,6 +533,11 @@ export class AiModelEntity extends BaseTaggedEntity {
     if (!this._servedBy || this._servedBy.trim().length === 0) {
       throw new BusinessException('Model servedBy is required');
     }
+    // TASK-890 §3.1 — `wireModelId` is the ROUTED id, so a CLOUD row that has none
+    // cannot be invoked at all and is refused here. The same requirement holds for an
+    // ENGINE-SERVED self-hosted row, but WHICH providers are engine-served is a
+    // provider-plane fact (`ENGINE_SERVED_PROVIDERS`) that this DB-agnostic entity must
+    // not restate as a second source of truth — the service enforces that half on write.
     if (this.isCloud && (!this._wireModelId || this._wireModelId.trim().length === 0)) {
       throw new BusinessException('A CLOUD model requires a wireModelId');
     }
