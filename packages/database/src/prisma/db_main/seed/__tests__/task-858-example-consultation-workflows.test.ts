@@ -56,7 +56,7 @@ const SUBSET_SRC = path.resolve(HERE, '../../../../../../json-schema-subset/src/
 const { jsonSchemaValueProblems }: any = await import(/* @vite-ignore */ SUBSET_SRC);
 const workflowPublishProblems = (graph: any): string[] =>
   contract
-    .publishFindings(graph, { schemaValueProblems: jsonSchemaValueProblems, templateReferenceSeverity: 'WARNING' })
+    .publishFindings(graph, { schemaValueProblems: jsonSchemaValueProblems, templateReferenceSeverity: contract.TEMPLATE_REFERENCE_SEVERITY_RELEASE_1 })
     .filter((finding: any) => finding.severity === 'ERROR')
     .map((finding: any) => finding.message);
 

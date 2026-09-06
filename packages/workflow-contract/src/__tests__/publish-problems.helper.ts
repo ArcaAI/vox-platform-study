@@ -14,13 +14,13 @@
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import type { WorkflowGraph } from '../graph-model';
 import type { WorkflowNodeDescriptor } from '../node-registry';
-import { publishFindings } from '../publish-findings';
+import { TEMPLATE_REFERENCE_SEVERITY_RELEASE_1, publishFindings } from '../publish-findings';
 
 export function publishProblems(graph: WorkflowGraph, options?: { registry?: Readonly<Record<string, WorkflowNodeDescriptor>> }): string[] {
   return publishFindings(graph, {
     registry: options?.registry,
     schemaValueProblems: jsonSchemaValueProblems,
-    templateReferenceSeverity: 'WARNING',
+    templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
   })
     .filter((finding) => finding.severity === 'ERROR')
     .map((finding) => finding.message);

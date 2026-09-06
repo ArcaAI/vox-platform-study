@@ -42,10 +42,7 @@ describe(' step 3 — hyper-parameter capability gating', () => {
 
   it('accepts a parameter the capability set declares', () => {
     expect(
-      hyperparameterCapabilityProblems(
-        { presencePenalty: 0.5, frequencyPenalty: -0.2 },
-        { supportedGenerationParams: ['presencePenalty', 'frequencyPenalty'] },
-      ),
+      hyperparameterCapabilityProblems({ presencePenalty: 0.5, frequencyPenalty: -0.2 }, { supportedGenerationParams: ['presencePenalty', 'frequencyPenalty'] }),
     ).toEqual([]);
   });
 
@@ -66,9 +63,7 @@ describe(' step 3 — hyper-parameter capability gating', () => {
 
 describe('exactly one provider-configuration selection source', () => {
   it('accepts a pinned routing policy', () => {
-    expect(
-      agenticNodeConfigProblems({ id: 'a', type: 'agentic.agent', config: { providerConfigRef: { routingPolicyId: ROUTING_POLICY_ID } } }),
-    ).toEqual([]);
+    expect(agenticNodeConfigProblems({ id: 'a', type: 'agentic.agent', config: { providerConfigRef: { routingPolicyId: ROUTING_POLICY_ID } } })).toEqual([]);
   });
 
   it('accepts a task key', () => {
@@ -93,9 +88,7 @@ describe('exactly one provider-configuration selection source', () => {
 
   it('applies the same rule to the TTS node`s binding and the STT node`s pipeline ref', () => {
     expect(agenticNodeConfigProblems({ id: 't', type: 'agentic.tts', config: { providerConfigRef: {} } })).toHaveLength(1);
-    expect(
-      agenticNodeConfigProblems({ id: 's', type: 'agentic.stt', config: { pipelineRef: { pipelineId: ROUTING_POLICY_ID, pipelineSlug: 'x' } } }),
-    ).toHaveLength(1);
+    expect(agenticNodeConfigProblems({ id: 's', type: 'agentic.stt', config: { pipelineRef: { pipelineId: ROUTING_POLICY_ID, pipelineSlug: 'x' } } })).toHaveLength(1);
   });
 });
 
@@ -126,10 +119,7 @@ describe(' step 6 — loop bounds', () => {
   });
 
   it('REFUSES a loop whose orchestrator is itself — a loop cannot orchestrate itself', () => {
-    const problems = agenticNodeConfigProblems(
-      { id: 'l', type: 'agentic.loop', config: { bounds: BOUNDS, orchestratorNodeId: 'l' } },
-      { nodeIds: ['l'] },
-    );
+    const problems = agenticNodeConfigProblems({ id: 'l', type: 'agentic.loop', config: { bounds: BOUNDS, orchestratorNodeId: 'l' } }, { nodeIds: ['l'] });
     expect(problems).toHaveLength(1);
   });
 });
@@ -174,7 +164,11 @@ describe('the per-node checks are WIRED into the publish gate', () => {
   function graphWith(node: Record<string, unknown>) {
     return {
       version: 1,
-      nodes: [{ id: 'start', type: 'core.start', config: {} }, node, { id: 'end', type: 'core.end', config: {} }],
+      nodes: [
+        { id: 'start', type: 'core.start', config: {} },
+        node,
+        { id: 'end', type: 'core.end', config: {} },
+      ],
       edges: [
         { id: 'e0', from: 'start', to: (node as { id: string }).id, fromPort: 'next', toPort: 'after' },
         { id: 'e1', from: (node as { id: string }).id, to: 'end', fromPort: 'next', toPort: 'after' },
@@ -184,11 +178,7 @@ describe('the per-node checks are WIRED into the publish gate', () => {
 
   it('REFUSES a loop with no cost ceiling at publish', () => {
     const problems = publishProblems(
-      graphWith({
-        id: 'loop_node',
-        type: 'agentic.loop',
-        config: { bounds: { maxIterations: 50, maxDurationSeconds: 300 }, orchestratorNodeId: 'start' },
-      }),
+      graphWith({ id: 'loop_node', type: 'agentic.loop', config: { bounds: { maxIterations: 50, maxDurationSeconds: 300 }, orchestratorNodeId: 'start' } }),
     );
     expect(problems.some((problem) => problem.includes('maxTotalTokens'))).toBe(true);
   });
@@ -200,11 +190,7 @@ describe('the per-node checks are WIRED into the publish gate', () => {
 
   it('REFUSES a guard reference naming a node that is not in the graph', () => {
     const problems = publishProblems(
-      graphWith({
-        id: 'agent_node',
-        type: 'agentic.agent',
-        config: { providerConfigRef: { taskKey: 'text.finalize' }, guards: { output: ['ghost'] } },
-      }),
+      graphWith({ id: 'agent_node', type: 'agentic.agent', config: { providerConfigRef: { taskKey: 'text.finalize' }, guards: { output: ['ghost'] } } }),
     );
     expect(problems.some((problem) => problem.includes('ghost'))).toBe(true);
   });

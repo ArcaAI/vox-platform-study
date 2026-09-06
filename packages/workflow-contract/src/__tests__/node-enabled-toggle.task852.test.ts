@@ -126,7 +126,9 @@ describe('the toggle survives the round trip that used to strip it', () => {
     // back. An undeclared key has no field, so it is dropped — which is the half of the bug
     // that no validator would ever have caught.
     const declared = Object.keys(propertiesOf(key));
-    const roundTripped = Object.fromEntries(Object.entries({ ...BASE_CONFIG[key], enabled: false }).filter(([name]) => declared.includes(name)));
+    const roundTripped = Object.fromEntries(
+      Object.entries({ ...BASE_CONFIG[key], enabled: false }).filter(([name]) => declared.includes(name)),
+    );
 
     expect(roundTripped.enabled).toBe(false);
   });

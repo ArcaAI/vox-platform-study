@@ -138,10 +138,7 @@ describe(`${GROUNDEDNESS} — grounding as a set of TENANT-AUTHORED policies`, (
   });
 
   it('declares tenant-authored POLICIES, each one a bound prompt template over a named input', () => {
-    const properties = NODE_CONFIG_SCHEMAS[GROUNDEDNESS].properties as Record<
-      string,
-      { items?: { properties?: Record<string, unknown>; required?: string[] } }
-    >;
+    const properties = NODE_CONFIG_SCHEMAS[GROUNDEDNESS].properties as Record<string, { items?: { properties?: Record<string, unknown>; required?: string[] } }>;
     const policies = properties.policies;
     expect(policies).toBeDefined();
     expect(Object.keys(policies.items?.properties ?? {}).sort()).toEqual(['appliesTo', 'enabled', 'key', 'promptTemplateId', 'promptVersionNumber']);
@@ -154,10 +151,7 @@ describe(`${GROUNDEDNESS} — grounding as a set of TENANT-AUTHORED policies`, (
     // Not an invented clinical taxonomy: this set IS the node's own evaluation inputs, so it can
     // never drift from what the node can actually be handed.
     expect([...GROUNDING_POLICY_TARGETS]).toEqual(['transcript', 'summary', 'findings']);
-    const properties = NODE_CONFIG_SCHEMAS[GROUNDEDNESS].properties as Record<
-      string,
-      { items?: { properties?: Record<string, { enum?: readonly string[] }> } }
-    >;
+    const properties = NODE_CONFIG_SCHEMAS[GROUNDEDNESS].properties as Record<string, { items?: { properties?: Record<string, { enum?: readonly string[] }> } }>;
     expect(properties.policies.items?.properties?.appliesTo?.enum).toEqual([...GROUNDING_POLICY_TARGETS]);
   });
 

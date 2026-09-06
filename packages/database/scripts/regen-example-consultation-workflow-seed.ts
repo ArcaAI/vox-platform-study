@@ -43,7 +43,8 @@ import {
 import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID } from '../src/prisma/db_main/seed/00-constants';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-console */
-const { canonicalJson, compile, nodeInfo, publishFindings, registryChecksum, validate, workflowNodeClassLookup } = contract as any;
+const { canonicalJson, compile, nodeInfo, publishFindings, registryChecksum, TEMPLATE_REFERENCE_SEVERITY_RELEASE_1, validate, workflowNodeClassLookup } =
+  contract as any;
 const { jsonSchemaValueProblems } = jsonSchemaSubset as any;
 
 /** MUST mirror `WorkflowDefinitionService`'s own constants — this is what a real publish stamps. */
@@ -134,7 +135,7 @@ function main(): void {
     // ramp) never blocked a publish and must not fail a regen.
     const publishProblems = publishFindings(variant.graph, {
       schemaValueProblems: jsonSchemaValueProblems,
-      templateReferenceSeverity: 'WARNING',
+      templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
     })
       .filter((finding: any) => finding.severity === 'ERROR')
       .map((finding: any) => `${finding.code}: ${finding.message}`);

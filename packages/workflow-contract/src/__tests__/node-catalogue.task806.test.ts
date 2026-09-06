@@ -16,7 +16,7 @@ import { TERMINOLOGY_PURPOSE_SCOPES } from '../node-config-schemas';
 const REGISTRY = WORKFLOW_NODE_REGISTRY;
 
 /**
- * DD-9's target catalogue, verbatim, plus DD-6's pre-summarization entry and the
+* DD-9's target catalogue, verbatim, plus DD-6's pre-summarization entry and the
  * DNA-redaction node turns from a resolver flag into a node.
  */
 const AGENT_CATALOGUE = [

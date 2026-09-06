@@ -161,14 +161,7 @@ describe('workflowGraphProblems', () => {
 
 describe('WORKFLOW_DEFINITION_SLUG_PATTERN ', () => {
   it('accepts every seeded slug shape — hyphenated lineage keys', () => {
-    for (const slug of [
-      'platform-default-summarization',
-      'arcaai-consultation-soap',
-      'arcaai-consultation-ner-grammar-fix',
-      'wf-stt-arcaai-realtime-transcription-medical-en',
-      'discharge_summary_copy',
-      'ab',
-    ]) {
+    for (const slug of ['platform-default-summarization', 'arcaai-consultation-soap', 'arcaai-consultation-ner-grammar-fix', 'wf-stt-arcaai-realtime-transcription-medical-en', 'discharge_summary_copy', 'ab']) {
       expect(WORKFLOW_DEFINITION_SLUG_PATTERN.test(slug), slug).toBe(true);
     }
   });
@@ -178,3 +171,4 @@ describe('WORKFLOW_DEFINITION_SLUG_PATTERN ', () => {
     }
   });
 });
+
