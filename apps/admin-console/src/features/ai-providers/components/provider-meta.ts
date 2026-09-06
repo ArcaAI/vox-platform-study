@@ -68,7 +68,20 @@ const STT_PROVIDERS: readonly ProviderMeta[] = [
     label: 'Azure Speech',
     fields: [
       { name: 'region', label: 'Region', placeholder: 'eastus' },
-      { name: 'baseUrl', label: 'Endpoint (Azure Foundry resource)', placeholder: 'https://<resource>.cognitiveservices.azure.com' },
+      { name: 'baseUrl', label: 'Custom endpoint (optional)', placeholder: 'https://<region>.api.cognitive.microsoft.com' },
+      { name: 'model', label: 'Model (optional)', placeholder: 'mai-transcribe-1.5', store: 'extra' },
+    ],
+  },
+  {
+    // SEPARATE from `azure-speech` on purpose (TASK-880): a Foundry resource IS
+    // an Azure Speech resource, but the two have different data-residency
+    // postures, and one credential gating both meant a tenant could not enable
+    // Speech without also enabling a PREVIEW service for its PHI. The gateway
+    // has always accepted this row; it had no card until now.
+    id: 'azure-foundry',
+    label: 'Azure AI Foundry',
+    fields: [
+      { name: 'baseUrl', label: 'Endpoint (Foundry resource)', placeholder: 'https://<resource>.cognitiveservices.azure.com' },
       { name: 'model', label: 'Model (optional)', placeholder: 'mai-transcribe-1.5', store: 'extra' },
     ],
   },
