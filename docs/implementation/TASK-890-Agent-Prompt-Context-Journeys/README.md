@@ -1545,7 +1545,7 @@ there.
 ### Wave 2b — CLOSED 2026-09-06 (L3, L4, L8, L10, L14)
 
 Closed by the `opus` wave-close pass of §4.9, run in the PRIMARY checkout on the MERGED tree with
-no worktree. Base `1cc9b915a` (wave-2a close); merged head `9316e8117`; close head `<CLOSE_SHA>`.
+no worktree. Base `1cc9b915a` (wave-2a close); merged head `9316e8117`; close head `faa8730c1`.
 151 files, +12.8k/-0.8k across the five lane merges.
 
 | Lane | Branch | Merge commit | Files | What landed |
