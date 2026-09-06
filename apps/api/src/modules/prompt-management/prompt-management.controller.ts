@@ -23,6 +23,21 @@ import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiQuery, Ap
 import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto';
 
+/**
+ * `?tags=a,b` (or a repeated `?tags=a&tags=b`) -> `['a','b']`.
+ *
+ * An empty selection is `undefined` ("no filter"), never `[]`: a cleared chip
+ * in the console must not read as "match a row with no tags".
+ */
+function parseTagsQuery(raw: string | string[] | undefined): string[] | undefined {
+  if (raw === undefined) return undefined;
+  const tags = (Array.isArray(raw) ? raw : [raw])
+    .flatMap((value) => String(value).split(','))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return tags.length > 0 ? tags : undefined;
+}
+
 @ApiBearerAuth()
 @ApiTags('admin-prompt-templates')
 // Prompt-template management is an admin capability; mounting it under the
@@ -75,6 +90,12 @@ export class PromptManagementController {
     description: 'Filter by prompt scope',
   })
   @ApiQuery({ name: 'ownerUserId', required: false, type: String, description: 'Filter USER_PERSONAL prompts by owner user id' })
+  @ApiQuery({
+    name: 'tags',
+    required: false,
+    type: String,
+    description: 'Narrow to templates carrying EVERY tag (`hasEvery`). Comma-separated, or repeat the parameter.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async list(
@@ -87,6 +108,7 @@ export class PromptManagementController {
       includeDisabled?: string;
       scope?: string;
       ownerUserId?: string;
+      tags?: string | string[];
       page?: number;
       limit?: number;
     },
@@ -102,6 +124,7 @@ export class PromptManagementController {
       includeDisabled: queryParams.includeDisabled === 'true',
       scope: queryParams.scope,
       ownerUserId: queryParams.ownerUserId,
+      tags: parseTagsQuery(queryParams.tags),
       page: Number(queryParams.page) || 1,
       limit: Number(queryParams.limit) || 50,
     });
