@@ -8,7 +8,16 @@
 import { describe, expect, it } from 'vitest';
 import { AiModelEntityMapper } from '../generated/core/AiModelEntityMapper';
 import { AiModelEntity } from '../../entities';
-import { AiDeploymentKind, AiModelAvailability, AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, ResourceStatusType } from '../../enums';
+import {
+  AiDeploymentKind,
+  AiModelAvailability,
+  AiModelFormat,
+  AiModelSource,
+  ModelCategory,
+  ModelTaskType,
+  ModelType,
+  ResourceStatusType,
+} from '../../enums';
 
 function entity(): AiModelEntity {
   return new AiModelEntity({

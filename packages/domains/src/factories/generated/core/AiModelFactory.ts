@@ -92,7 +92,8 @@ export class AiModelFactory {
       manifestDigest: null,
       // A cloud row has nothing to inventory; everything else starts UNKNOWN
       // until the inventory job measures it.
-      availability: props.deploymentKind === Enums.AiDeploymentKind.CLOUD ? Enums.AiModelAvailability.NOT_APPLICABLE : Enums.AiModelAvailability.UNKNOWN,
+      availability:
+        props.deploymentKind === Enums.AiDeploymentKind.CLOUD ? Enums.AiModelAvailability.NOT_APPLICABLE : Enums.AiModelAvailability.UNKNOWN,
       availabilityCheckedAt: null,
       availabilityDetail: null,
       isPlatformDefaultFor: props.isPlatformDefaultFor ?? [],

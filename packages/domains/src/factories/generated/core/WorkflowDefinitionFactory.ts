@@ -45,7 +45,7 @@ export class WorkflowDefinitionFactory {
    * /719's validate/publish flows advance it). `isActive`/`needsReview`
    * default to `false`; every other server-owned column (`compiledConfig`,
    * `publishedAt`, ...) defaults to null/unset until the publish step sets it.
- */
+   */
   static CreateDefinition(props: CreateWorkflowDefinitionProps): WorkflowDefinitionEntity {
     const id = generateId();
     const now = props.createdAt || new Date();

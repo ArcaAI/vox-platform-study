@@ -342,7 +342,9 @@ export class AgentEntity extends BaseTenantEntity {
   public override validate(): void {
     super.validate();
     if (!this._slug || !AGENT_SLUG_PATTERN.test(this._slug)) {
-      throw new BusinessException('Agent slug must be 2-80 lowercase alphanumeric/hyphen/underscore characters, not starting or ending with a separator.');
+      throw new BusinessException(
+        'Agent slug must be 2-80 lowercase alphanumeric/hyphen/underscore characters, not starting or ending with a separator.',
+      );
     }
     if (!this._name || this._name.trim().length === 0) {
       throw new BusinessException('Agent name is required.');

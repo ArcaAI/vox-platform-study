@@ -1368,7 +1368,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const graph = entity.graph as unknown as WorkflowGraph;
     // The sandbox must preview exactly what publish() would stamp, bindings included — the
     // frozen trigger context schema among them.
-    const compiledConfig = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId(), await this.resolveTriggerContextSchema(graph));
+    const compiledConfig = this.compileGraphOrThrow(
+      entity,
+      graph,
+      await this.resolveContextSchemaVersionId(),
+      await this.resolveTriggerContextSchema(graph),
+    );
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id, data: { action: 'sandboxCompile' } });
 

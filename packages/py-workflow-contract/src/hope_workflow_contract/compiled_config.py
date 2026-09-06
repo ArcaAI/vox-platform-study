@@ -203,6 +203,34 @@ class CompiledDocumentTemplateRef(_CompiledModel):
     version_number: int = Field(ge=1)
 
 
+class CompiledContextSchemaRef(_CompiledModel):
+    """TASK-890 §3.4 — WHICH context-schema version one node was frozen against.
+
+    A sibling of :class:`CompiledPromptTemplateRef` with a third guarantee: that one pins
+    what the model is TOLD, ``CompiledDocumentTemplateRef`` pins the SHAPE it is decoded
+    into, and this one pins the CONTEXT it may reference. The derived payload schema itself
+    rides on the compiled ``core.trigger`` node's ``config.contextSchema.resolved``; this
+    ref is the IDENTITY of the pin, so a run can be explained without duplicating a large
+    schema into the artifact twice.
+    """
+
+    node_id: str
+    schema_id: str
+    version_number: int = Field(ge=1)
+    version_id: str
+
+
+class CompiledGuardrailDecision(_CompiledModel):
+    """TASK-890 §3.14 — the WORKFLOW-level guardrail opinion, authored on ``core.trigger``.
+
+    Folded with the per-node and per-agent opinions at run time: node > workflow > agent >
+    on. Tri-state BY ABSENCE — an absent binding means this workflow said nothing, which is
+    a different fact from ``{"enabled": true}``, a recorded decision to screen.
+    """
+
+    enabled: bool
+
+
 class CompiledPolicyBindings(_CompiledModel):
     #: GUARDRAIL_PROFILE_KEYS — placement, not permission; the actual clinical-safety
     #: enforcement runs at a boundary this field only SELECTS.
@@ -214,6 +242,13 @@ class CompiledPolicyBindings(_CompiledModel):
     document_template_refs: list[CompiledDocumentTemplateRef]
     context_schema_version_id: str | None
     entitlement_keys: list[str]
+    #: TASK-890 §3.4, additive-optional — omitted by the emitter when no node binds a
+    #: context schema by reference, so every artifact compiled before the field existed
+    #: still admits. Absence means "binds no context", never "unknown".
+    context_schema_refs: list[CompiledContextSchemaRef] | None = None
+    #: TASK-890 §3.14, additive-optional and genuinely tri-state: ``None`` is "no workflow
+    #: opinion", so it must NOT default to a boolean.
+    guardrail: CompiledGuardrailDecision | None = None
 
 
 class CompiledCaps(_CompiledModel):

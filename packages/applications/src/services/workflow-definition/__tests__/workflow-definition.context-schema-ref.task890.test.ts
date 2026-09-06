@@ -177,9 +177,7 @@ describe('publish — a resolvable reference is FROZEN into the artifact', () =>
     };
     const trigger = compiled.stages.flatMap((stage) => stage.nodes).find((node) => node.nodeId === 't1');
     expect(trigger?.config).toMatchObject({ contextSchema: { contextSchemaId: SCHEMA_ID, versionNumber: 2, resolved: PAYLOAD_SCHEMA } });
-    expect(compiled.policyBindings.contextSchemaRefs).toEqual([
-      { nodeId: 't1', schemaId: SCHEMA_ID, versionNumber: 2, versionId: VERSION_ID },
-    ]);
+    expect(compiled.policyBindings.contextSchemaRefs).toEqual([{ nodeId: 't1', schemaId: SCHEMA_ID, versionNumber: 2, versionId: VERSION_ID }]);
   });
 });
 
