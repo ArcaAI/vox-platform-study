@@ -134,8 +134,8 @@ export function useModelDownloadStatus(id: string, options: { enabled: boolean }
 /**
  * Starts a download. Does NOT invalidate the registry list itself — the
  * caller (`useModelDownload`) invalidates once the poll reaches a terminal
- * state, so the grid's `downloadStatus`/`localPath`/`fileSizeMb` refresh with
- * the finished row instead of the mid-flight one.
+ * state, so the grid's `availability` / `localPath` refresh with the finished
+ * row instead of the mid-flight one.
  */
 export function useStartModelDownload() {
   return useMutation({ mutationFn: (id: string) => startModelDownload(id) });
