@@ -117,7 +117,15 @@ export const DNA_OUTPUT_SCHEMA = {
       additionalProperties: { type: 'number', minimum: 0, maximum: 1 },
     },
   },
-  required: ['sentenceStructure', 'verbosity', 'listVsNarrative', 'sectionOrderPreference', 'abbreviationFrequency', 'toneFormality', 'confidenceScores'],
+  required: [
+    'sentenceStructure',
+    'verbosity',
+    'listVsNarrative',
+    'sectionOrderPreference',
+    'abbreviationFrequency',
+    'toneFormality',
+    'confidenceScores',
+  ],
 };
 
 /** DNA prompt hyperparameters + output schema, persisted under `metaData.promptConfig`. */
@@ -857,16 +865,34 @@ When no department-specific template matches the current encounter's department,
   // used to carry. Those bodies still exist, unchanged, on the
   // tenant they belong to: 07b-arcaai-clinical-templates.ts. What is authored
   // here is written to the standard clinical-documentation section conventions
-  // and names no organisation, house format, or specialty roster, because
-  // 07a-agent-golden-library.ts promotes whatever is here onto the SYSTEM tenant
-  // and every newly-provisioned tenant is given a clone of it.
+  // and names no organisation, house format, or specialty roster, because every
+  // newly-provisioned tenant is given a clone of it.
+  //
+  // ⚠ TENANCY (TASK-890 J7-1). The eight NEW-ENCOUNTER bodies — the ones
+  // `GOLDEN_TEMPLATE_SOURCE_BY_CODE` names, one per care setting — are authored
+  // on the **SYSTEM tenant** and carry `departmentId: null`. They used to be
+  // authored on Global and PROMOTED onto SYSTEM as byte copies under fresh ids
+  // by `07a-agent-golden-library.ts`. That left the same name in two tenants,
+  // and phase 26 (`26-tenant-reference-set.ts`) skips a source whose
+  // `(tenantId, name)` the target already owns — so Global kept 8 UNSTAMPED
+  // originals and received only 9 of SYSTEM's 17 templates, breaking the owner's
+  // rule that Global has the same as SYSTEM. A template is authored in exactly
+  // one tenant; every other tenant, Global included, gets a stamped clone.
+  //
+  // The FOLLOW-UP / revisit bodies below stay Global-authored: they are fixture
+  // content for the Global playground, not part of the platform reference set,
+  // and they collide with no SYSTEM name.
+  //
+  // `departmentId` is `null` on the eight because a SYSTEM row may not point at
+  // a CUSTOMER tenant's department row — which is exactly why 07a had to
+  // re-anchor them to a golden SYSTEM department when it copied them.
   //
   // All are APPROVED at version 1 so a fresh tenant resolves them for clinical
   // generation on day 1 without an admin approval step.
   // ---------------------------------------------------------------------------
   {
     id: TEMPLATE_IDS.GENERIC_OUTPATIENT_NEW,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'Outpatient - New Consultation',
     description: 'Generic first-visit outpatient note in SOAP order',
     content: `You are a clinical documentation assistant. Produce a structured outpatient consultation note from the encounter transcript supplied below.
@@ -895,7 +921,8 @@ Transcript:
     variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
-    departmentId: DEPT.OPD,
+    // SYSTEM-owned: a platform row may not name a CUSTOMER tenant's department.
+    departmentId: null,
     tags: ['generic', 'platform-default', 'opd'],
   },
   {
@@ -934,7 +961,7 @@ Transcript:
   },
   {
     id: TEMPLATE_IDS.GENERIC_INPATIENT_ADMISSION,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'Inpatient - Admission Note',
     description: 'Generic admission note for a newly admitted patient',
     content: `You are a clinical documentation assistant. Produce a structured admission note from the encounter transcript supplied below.
@@ -963,7 +990,8 @@ Transcript:
     variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
-    departmentId: DEPT.IPD,
+    // SYSTEM-owned: a platform row may not name a CUSTOMER tenant's department.
+    departmentId: null,
     tags: ['generic', 'platform-default', 'ipd'],
   },
   {
@@ -1001,7 +1029,7 @@ Transcript:
   },
   {
     id: TEMPLATE_IDS.GENERIC_EMERGENCY_ENCOUNTER,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'Emergency - Encounter Note',
     description: 'Generic emergency encounter note ending in an explicit disposition',
     content: `You are a clinical documentation assistant. Produce a structured emergency encounter note from the encounter transcript supplied below.
@@ -1030,12 +1058,13 @@ Transcript:
     variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
-    departmentId: DEPT.ER,
+    // SYSTEM-owned: a platform row may not name a CUSTOMER tenant's department.
+    departmentId: null,
     tags: ['generic', 'platform-default', 'er'],
   },
   {
     id: TEMPLATE_IDS.GENERIC_PERIOP_ASSESSMENT,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'Perioperative - Pre-Procedure Assessment',
     description: 'Generic pre-procedure assessment and risk note',
     content: `You are a clinical documentation assistant. Produce a structured pre-procedure assessment note from the encounter transcript supplied below.
@@ -1064,7 +1093,8 @@ Transcript:
     variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
-    departmentId: DEPT.PERI,
+    // SYSTEM-owned: a platform row may not name a CUSTOMER tenant's department.
+    departmentId: null,
     tags: ['generic', 'platform-default', 'peri'],
   },
   {
@@ -1102,7 +1132,7 @@ Transcript:
   },
   {
     id: TEMPLATE_IDS.GENERIC_IMAGING_REPORT,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'Imaging - Diagnostic Report',
     description: 'Generic imaging report answering a stated clinical question',
     content: `You are a clinical documentation assistant. Produce a structured diagnostic imaging report from the encounter transcript supplied below.
@@ -1129,12 +1159,13 @@ Transcript:
     variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
-    departmentId: DEPT.RAD,
+    // SYSTEM-owned: a platform row may not name a CUSTOMER tenant's department.
+    departmentId: null,
     tags: ['generic', 'platform-default', 'rad'],
   },
   {
     id: TEMPLATE_IDS.GENERIC_LAB_REPORT,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'Laboratory - Interpretive Report',
     description: 'Generic interpretive laboratory report',
     content: `You are a clinical documentation assistant. Produce a structured interpretive laboratory report from the encounter transcript supplied below.
@@ -1161,12 +1192,13 @@ Transcript:
     variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
-    departmentId: DEPT.LAB,
+    // SYSTEM-owned: a platform row may not name a CUSTOMER tenant's department.
+    departmentId: null,
     tags: ['generic', 'platform-default', 'lab'],
   },
   {
     id: TEMPLATE_IDS.GENERIC_BEHAVIORAL_ASSESSMENT,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'Behavioral Health - Initial Assessment',
     description: 'Generic initial behavioral health assessment with explicit risk section',
     content: `You are a clinical documentation assistant. Produce a structured behavioral health assessment note from the encounter transcript supplied below.
@@ -1195,7 +1227,8 @@ Transcript:
     variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
-    departmentId: DEPT.BEH,
+    // SYSTEM-owned: a platform row may not name a CUSTOMER tenant's department.
+    departmentId: null,
     tags: ['generic', 'platform-default', 'beh'],
   },
   {
@@ -1234,7 +1267,7 @@ Transcript:
   },
   {
     id: TEMPLATE_IDS.GENERIC_PEDIATRIC_NEW,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'Pediatrics - New Consultation',
     description: 'Generic paediatric first-visit note including growth and immunisation review',
     content: `You are a clinical documentation assistant. Produce a structured paediatric consultation note from the encounter transcript supplied below.
@@ -1264,7 +1297,8 @@ Transcript:
     variables: declareDescribedVariables({ transcript: 'Encounter transcript' }),
     currentVersionNumber: 1,
     approvedVersionNumber: 1,
-    departmentId: DEPT.PEDS,
+    // SYSTEM-owned: a platform row may not name a CUSTOMER tenant's department.
+    departmentId: null,
     tags: ['generic', 'platform-default', 'peds'],
   },
   {
@@ -1319,7 +1353,7 @@ Transcript:
     approvedVersionNumber: 1,
     name: 'Important Findings Extraction (platform default)',
     description:
-      "Platform-default instruction for the `agent.important_findings` node. A tenant admin overrides it by binding their own template on the node — this row is what a tenant with no opinion inherits.",
+      'Platform-default instruction for the `agent.important_findings` node. A tenant admin overrides it by binding their own template on the node — this row is what a tenant with no opinion inherits.',
     // Note what this body does NOT do: it names no severity levels, no red-flag terms and no
     // clinical categories. It tells the model to use the reader's OWN judgement of relevance and
     // to label in its own words, because the labels are the tenant's to define — a shipped
@@ -1378,7 +1412,7 @@ Transcript:
     approvedVersionNumber: 1,
     name: 'Live Transcript Corrections (platform default)',
     description:
-      "Platform-default instruction for the `agent.grammar` node — the LIVE grammar/spelling pass over the raw partial transcript. A tenant admin overrides it by binding their own template on the node.",
+      'Platform-default instruction for the `agent.grammar` node — the LIVE grammar/spelling pass over the raw partial transcript. A tenant admin overrides it by binding their own template on the node.',
     // Two things this body is careful about, both patient-safety rather than style.
     //
     // The three CATEGORIES are named because they are a closed WIRE VOCABULARY, not a clinical
@@ -1722,7 +1756,8 @@ export const EXTRA_PROMPT_VERSIONS = [
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
     }),
-    changeReason: 'PHI containment: constrained output to a closed-vocabulary JSON schema (metaData.promptConfig) and added an explicit no-patient-content instruction',
+    changeReason:
+      'PHI containment: constrained output to a closed-vocabulary JSON schema (metaData.promptConfig) and added an explicit no-patient-content instruction',
     changedBy: SYSTEM_USER_ID,
   },
 ];

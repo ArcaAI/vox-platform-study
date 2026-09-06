@@ -96,14 +96,18 @@ describe('Agent Golden Library seed', () => {
       });
     });
 
-    it('every golden template content-matches its fixture source verbatim', () => {
+    // TASK-890 J7-1: there is nothing to content-match any more. The golden set
+    // used to be a byte COPY of the Global-tenant fixture rows under fresh ids,
+    // so "does the copy still match its source" was a real question. Those eight
+    // bodies are now authored on SYSTEM in `07-prompt-template.ts` and this
+    // export is a VIEW over them — identity, not a copy — which is exactly what
+    // this asserts instead.
+    it('IS the seeded SYSTEM rows rather than a second copy of them', () => {
       const sourceIds = new Set(Object.values(GOLDEN_TEMPLATE_SOURCE_BY_CODE));
       expect(sourceIds.size).toBe(GOLDEN_PROMPT_TEMPLATES.length);
       GOLDEN_PROMPT_TEMPLATES.forEach((tpl) => {
-        const source = fixtureTemplateById.get(tpl.sourceFixtureTemplateId);
-        expect(source).toBeDefined();
-        expect(tpl.content).toBe(source?.content);
-        expect(tpl.name).toBe(source?.name);
+        expect(sourceIds.has(tpl.id), `${tpl.name} is not one of the mapped source templates`).toBe(true);
+        expect(fixtureTemplateById.get(tpl.id), `${tpl.name} is not a seeded template`).toBe(tpl);
       });
     });
 

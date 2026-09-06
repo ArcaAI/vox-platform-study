@@ -41,6 +41,7 @@ import { ALL_SETTINGS, PLATFORM_SETTINGS } from '../prisma/db_main/seed/11-globa
 import { seedHarnessPolicy } from '../prisma/db_main/seed/13-harness-policy';
 import { TENANT_FRONTEND_CONFIGS } from '../prisma/db_main/seed/05-tenant';
 import { DEFAULT_PROMPT_TEMPLATES, DEFAULT_PROMPT_VERSIONS } from '../prisma/db_main/seed/07-prompt-template';
+import { GOLDEN_TEMPLATE_SOURCE_BY_CODE } from '../prisma/db_main/seed/07a-agent-golden-library';
 import {
   DEFAULT_DNA_REPORTS,
   DEFAULT_DNA_VERSIONS,
@@ -955,9 +956,17 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     // snapshot, deliberately left single-brace, B-10) from the nine
     // single-brace placeholders to the ONE `{{context.*}}` grammar.
     const braceFor = (name: string) => (versionNumber === 3 ? `{{context.${name}}}` : `{${name}}`);
-    ['current_department', 'visit_type', 'safe_age', 'safe_dob', 'safe_gender', 'safe_vitals', 'formatted_test_results', 'formatted_previous_visits', 'language_name'].forEach((name) =>
-      expect(preSummary!.content).toContain(braceFor(name)),
-    );
+    [
+      'current_department',
+      'visit_type',
+      'safe_age',
+      'safe_dob',
+      'safe_gender',
+      'safe_vitals',
+      'formatted_test_results',
+      'formatted_previous_visits',
+      'language_name',
+    ].forEach((name) => expect(preSummary!.content).toContain(braceFor(name)));
 
     // The pre-summary reads typed EMR text, not ASR output — the RULE 6
     // terminology-repair licence must NOT leak into it.
@@ -1107,9 +1116,31 @@ describe('Department Prompt Configuration', () => {
     const DEPTS_WITH_REVISIT = ['OPD', 'IPD', 'PERI', 'BEH', 'PEDS'];
     const DEPTS_WITHOUT_REVISIT = ['ER', 'RAD', 'LAB'];
 
-    it('should have a non-null newPatientPromptId on every care setting', () => {
+    // TASK-890 J7-1 inverted this one. It used to assert a NON-null
+    // `newPatientPromptId` on every care setting, back when each setting's
+    // new-encounter body was authored on the Global tenant next to the
+    // department that named it. Those eight bodies are now authored on SYSTEM —
+    // one home per template, so Global receives them as stamped reference-set
+    // clones like any other tenant — and a GLOBAL department may not point at a
+    // SYSTEM template: the column is a plain string with no FK, so the row would
+    // seed fine and then resolve to nothing under the tenant-scoped read.
+    //
+    // The coverage invariant the old test was really protecting is asserted
+    // below instead, where it now lives: SYSTEM carries a new-encounter body for
+    // every care setting.
+    it('should leave newPatientPromptId null on every care setting — the body is SYSTEM-authored and arrives as a clone', () => {
       DEFAULT_DEPARTMENTS.forEach((dept) => {
-        expect(dept.newPatientPromptId, `${dept.code} has no new-encounter prompt`).not.toBeNull();
+        expect(dept.newPatientPromptId, `${dept.code} points at a template it does not own`).toBeNull();
+      });
+    });
+
+    it('should still cover every care setting with a SYSTEM new-encounter body', () => {
+      DEFAULT_DEPARTMENTS.forEach((dept) => {
+        const sourceId = GOLDEN_TEMPLATE_SOURCE_BY_CODE[dept.code];
+        expect(sourceId, `${dept.code} has no platform new-encounter body`).toBeDefined();
+        const template = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === sourceId);
+        expect(template, `${dept.code} names a template the seed does not define`).toBeDefined();
+        expect(template?.tenantId).toBe(SYSTEM_TENANT_ID);
       });
     });
 
