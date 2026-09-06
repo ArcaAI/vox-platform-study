@@ -196,15 +196,14 @@ describe('TenantService — locked-field runtime plumbing (Agent D)', () => {
     );
   });
 
-  describe('provisionTenantConfigs — preserves locked from source rows', () => {
-    it('clones a locked=true row from __GLOBAL__ as a locked=true row on the new tenant', async () => {
+  describe('the retired GlobalSetting clone (TASK-890 OD-P)', () => {
+    it('no longer carries `locked` forward, because it no longer clones anything', async () => {
       const newTenant = createMockTenantEntity({ id: 'new-tenant-id', key: 'NEW_TENANT' });
       const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
 
       mockTenantRepository.create.mockResolvedValue(newTenant);
       mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
-
-      const sources = [
+      mockGlobalSettingRepository.findAll.mockResolvedValue([
         buildSetting({
           tenantId: 'global-id',
           name: 'Default STT Model',
@@ -216,37 +215,15 @@ describe('TenantService — locked-field runtime plumbing (Agent D)', () => {
           dataType: ValueType.String,
           locked: true,
         }),
-        buildSetting({
-          tenantId: 'global-id',
-          name: 'Feature Toggle',
-          key: 'feature.x',
-          value: 'true',
-          defaultValue: 'false',
-          namespace: 'com.flw.feature-flags',
-          description: 'Toggle X',
-          dataType: ValueType.Boolean,
-          locked: false,
-        }),
-      ];
-      mockGlobalSettingRepository.findAll.mockResolvedValue(sources);
-      mockGlobalSettingRepository.create.mockImplementation(async (entity: GlobalSettingEntity) => entity);
+      ]);
 
       await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
 
-      expect(mockGlobalSettingRepository.create).toHaveBeenCalledTimes(2);
-
-      const firstClone = mockGlobalSettingRepository.create.mock.calls[0][0] as GlobalSettingEntity;
-      expect(firstClone).toBeInstanceOf(GlobalSettingEntity);
-      expect(firstClone.tenantId).toBe('new-tenant-id');
-      expect(firstClone.key).toBe('default-stt-model');
-      expect(firstClone.locked).toBe(true);
-      expect(firstClone.value).toBe('whisper-base');
-
-      const secondClone = mockGlobalSettingRepository.create.mock.calls[1][0] as GlobalSettingEntity;
-      expect(secondClone).toBeInstanceOf(GlobalSettingEntity);
-      expect(secondClone.tenantId).toBe('new-tenant-id');
-      expect(secondClone.key).toBe('feature.x');
-      expect(secondClone.locked).toBe(false);
+      // The `locked` flag mattered because a clone existed to carry it. `provisionTenantConfigs`
+      // is deleted (OD-P): a locked SYSTEM row is now enforced where it lives, on the SYSTEM
+      // tier, by `GlobalSettingService.assertPlatformTierWrite` (L1) — not by stamping a locked
+      // copy into every tenant. The guard on the tenant's OWN rows, tested below, is unchanged.
+      expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
     });
   });
 

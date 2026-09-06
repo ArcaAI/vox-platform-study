@@ -808,11 +808,7 @@ export class AgentService extends BaseService implements IAgentService {
    * the tenant's own clone of the bound SYSTEM template and passes it, because after step v the
    * SYSTEM row is not readable from inside the tenant and a copied id would dangle.
    */
-  async cloneFromSystem(
-    slug: string,
-    targetTenantId: string,
-    binding?: { promptTemplateId: string; promptVersionNumber: number | null },
-  ): Promise<{ agentId: string; created: boolean; warnings: string[] }> {
+  async cloneFromSystem(slug: string, targetTenantId: string): Promise<{ agentId: string; created: boolean; warnings: string[] }> {
     const source = await this.agentRepository.findSystemReferenceBySlug(slug, this.databaseService.baseClient);
     if (!source) {
       throw new NotFoundException(`No PUBLISHED SYSTEM agent '${slug}' to clone from.`);
@@ -825,7 +821,7 @@ export class AgentService extends BaseService implements IAgentService {
         return { agentId: live.id, created: false, warnings: [] };
       }
 
-      const instruction = this.referenceInstruction(source, binding);
+      const instruction = await this.referenceInstruction(source, targetTenantId);
       const { saved, warnings } = await this.copyInto(source, targetTenantId, {
         slug: source.slug,
         name: source.name,
@@ -856,19 +852,30 @@ export class AgentService extends BaseService implements IAgentService {
     });
   }
 
-  /** The instruction a reference copy stores: the source's, with the prompt binding re-pointed at the tenant's clone. */
-  private referenceInstruction(
-    source: AgentEntity,
-    binding?: { promptTemplateId: string; promptVersionNumber: number | null },
-  ): Record<string, unknown> | null | undefined {
+  /**
+   * The instruction a reference copy stores: the source's, with the prompt binding RE-POINTED at
+   * the target tenant's own clone of that SYSTEM template (matched on `sourceTemplateId`).
+   *
+   * `undefined` ⇒ nothing to rewrite, so `writeCopy` copies the source's instruction verbatim:
+   * the agent binds no template at all, or the tenant has no clone of the one it binds — in
+   * which case the copy carries the SYSTEM id and `publish()` says so in its findings rather
+   * than this method silently unbinding an instruction.
+   */
+  private async referenceInstruction(source: AgentEntity, targetTenantId: string): Promise<Record<string, unknown> | undefined> {
     const declared = asRecord(source.instruction);
-    if (!binding) return undefined;
-    const next: Record<string, unknown> = { ...(declared ?? {}) };
-    next[PROMPT_TEMPLATE_ID_KEY] = binding.promptTemplateId;
+    const boundId = declared?.[PROMPT_TEMPLATE_ID_KEY];
+    if (typeof boundId !== 'string' || boundId.length === 0 || !this.promptTemplateRepository) return undefined;
+
+    const clone = await this.promptTemplateRepository.findByTenantAndSourceTemplateId(targetTenantId, boundId);
+    if (!clone) return undefined;
+
+    const next: Record<string, unknown> = { ...declared };
+    next[PROMPT_TEMPLATE_ID_KEY] = clone.id;
     // The clone's version lineage restarts at 1, so the SOURCE's pin numbers a version that does
     // not exist in the target. Carrying it would pin the agent to a missing snapshot.
-    if (binding.promptVersionNumber === null) delete next[PROMPT_VERSION_NUMBER_KEY];
-    else next[PROMPT_VERSION_NUMBER_KEY] = binding.promptVersionNumber;
+    const approved = clone.approvedVersionNumber ?? null;
+    if (approved === null) delete next[PROMPT_VERSION_NUMBER_KEY];
+    else next[PROMPT_VERSION_NUMBER_KEY] = approved;
     return next;
   }
 
