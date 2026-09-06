@@ -134,6 +134,7 @@ class TextClient:
         response_format: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        guardrail_policy: dict[str, Any] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -172,6 +173,15 @@ class TextClient:
             body["response_format"] = response_format
         if context is not None:
             body["context"] = context
+        # TASK-890 §3.14 (OD-R) — the tenant's guardrail decision for THIS call, already
+        # folded by the caller (`guardrail_optout.resolve_guardrail_decision`: node > workflow
+        # > agent > on). Passed through verbatim and only when the caller supplies it: an
+        # absent key means "no opinion", under which TEXT's platform posture governs. This
+        # client neither folds the precedence nor invents an opinion — and a pushed `True`
+        # cannot revive a platform kill switch, because TEXT keeps `platform.enabled` as the
+        # floor (`core/guardrail_posture.resolve_posture`).
+        if guardrail_policy is not None:
+            body["guardrail_policy"] = guardrail_policy
 
         # Text holds no endpoint or credential of its own (/736):
         # every adapter, LM Studio included, reads ``provider_overrides[provider]`` and

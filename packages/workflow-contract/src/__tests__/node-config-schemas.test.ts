@@ -210,7 +210,14 @@ describe('consultation.* config schemas (D-9)', () => {
     // `gate`-classed, though, so the compiler routes it through `compileNode`, which DOES read
     // `timeoutSeconds`/`retry` off every node — see the ADDENDUM at the foot of
     // `node-config-schemas.ts` (lane A, item 5).
-    expect(Object.keys(NODE_CONFIG_SCHEMAS['consultation.consentGate'].properties as object).sort()).toEqual(['retry', 'timeoutSeconds']);
+    //
+    // `enabled` joined the list with TASK-890 D-1: the owner decided the guardrail opt-out
+    // extends to the mandatory clinical guards, so the fold now withholds the toggle from the two
+    // GRAPH BOUNDARIES alone. Disabling this node is recorded three ways (a publish
+    // `GUARDRAIL_OPTED_OUT` warning, the per-call `guardrail: 'opted_out'` ledger attribute and a
+    // `SKIPPED(disabled_by_config)` step); PRESENCE is unchanged — publish still refuses a graph
+    // that removed it. `node-enabled-toggle.task852.test.ts` owns that contract in full.
+    expect(Object.keys(NODE_CONFIG_SCHEMAS['consultation.consentGate'].properties as object).sort()).toEqual(['enabled', 'retry', 'timeoutSeconds']);
   });
 
   /**

@@ -276,10 +276,15 @@ describe(' item 6 — the read-out reports REAL state, including when there is n
     // Nothing in the seeded graph authors `enabled: false`, so every node is live.
     expect(caps.nodes.every((n) => n.enabled)).toBe(true);
 
-    // `captureBinding` is registry-class `mandatory`: items 3-4 deliberately withheld `enabled`
-    // from its config schema. A read-out that showed it as togglable would advertise a switch the
-    // publish-time validator rejects.
-    expect(byType['consultation.captureBinding'].togglable).toBe(false);
+    // `togglable` is DERIVED from the node's config schema, which is why this line changed with
+    // TASK-890 D-1 rather than being re-decided here: items 3-4 withheld `enabled` from every
+    // registry-class `mandatory` type, and the owner then decided the guardrail opt-out extends
+    // to those nodes (§3.14a). `consultation.captureBinding` therefore OFFERS the toggle now, and
+    // the read-out reporting it is correct — it advertises exactly what the publish-time
+    // validator accepts, which is the property this assertion has always been about. The two
+    // GRAPH BOUNDARIES (`core.trigger`, `core.output`) are what still withhold it, and neither
+    // appears in a realtime lane's node list.
+    expect(byType['consultation.captureBinding'].togglable).toBe(true);
     expect(byType['consultation.realtimeSummary'].togglable).toBe(true);
     expect(byType['agent.important_findings'].togglable).toBe(true);
     expect(byType['agent.grammar'].togglable).toBe(true);

@@ -49,9 +49,20 @@
 //
 // The other four posture fields (`enabled`, `timeoutS`, `maxRetries`,
 // `retryBackoffMs`) are platform capacity/switch decisions and stay
-// platform-only. And there is no `failOpen` key at either scope: a key that
-// could be set to make an errored guardrail allow a prompt is not a
+// platform-only AS SETTINGS. And there is no `failOpen` key at either scope: a
+// key that could be set to make an errored guardrail allow a prompt is not a
 // configuration surface, it is a way to ship unmoderated PHI.
+//
+// `enabled` needs one clarification since TASK-890 OD-R (2026-09-06), because
+// "platform-only" is now true of the SETTING and not of the decision. A tenant
+// may opt OUT of platform guardrail screening per agent, per workflow and per
+// node — but it does so on the AGENT / WORKFLOW artifact, not through a setting
+// row, and the gateway folds that opinion (`resolveGuardrailDecision`: node >
+// workflow > agent > on) onto each request as `guardrail_policy.enabled`. So
+// there is deliberately no `text.guardrailPolicy.enabled` key here: a
+// tenant-wide "guardrail off" row would be a fourth tier of the same fact, and
+// the platform switch below stays the FLOOR either way — a pushed `true` can
+// never revive it (`apps/text/core/guardrail_posture.resolve_posture`).
 
 import { SettingDescriptor } from '../registry.types';
 

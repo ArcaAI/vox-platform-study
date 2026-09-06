@@ -1,5 +1,5 @@
 /**
- * item 3 — the per-node `enabled` toggle is DECLARED, so it is reachable.
+ * TASK-852 item 3 — the per-node `enabled` toggle is DECLARED, so it is reachable.
  *
  * The realtime consultation executor has always honoured a per-node kill switch
  * (`enabled: node.config?.enabled !== false`, `realtime-lane.ts`), but `enabled` was not a
@@ -10,24 +10,25 @@
  * silently removed — the exact failure this module's own docstring describes for the prompt
  * and document bindings.
  *
- * ## The MANDATORY exclusion is derived, not a hand-kept name list
+ * ## What TASK-890 D-1 changed (owner decision, 2026-09-06)
  *
- * A node type carrying the registry class `mandatory` is one the rule catalogue REQUIRES on
- * every path from `core.start` to a terminal (`rule-catalogue.ts`'s `REQUIRED_PATH_THROUGH`
- * rule with `throughClass: 'mandatory'` — "nothing routes around a gate"). `enabled: false`
- * on such a node is that same routing-around by another means: the graph still contains the
- * node, so the structural rule still passes, while the runtime skips it. For
- * `consultation.consentGate` that is a consent gate an admin can switch off — a compliance
- * defect in a healthcare product, not a feature.
+ * The withholding used to key off the registry class `mandatory`, so the seven clinical guard
+ * nodes offered no toggle at all. The owner decided the opposite: a tenant MAY opt out of
+ * platform guardrail screening per agent / workflow / node, and the compensating controls are a
+ * publish WARNING (`GUARDRAIL_OPTED_OUT`), a per-call ledger attribute (`guardrail: 'opted_out'`)
+ * and an observable `SKIPPED(disabled_by_config)` step — not the absence of a switch. So the
+ * fold now withholds `enabled` from the two GRAPH BOUNDARIES alone (`core.trigger`,
+ * `core.output`), whose disablement is an unrunnable graph rather than a guardrail opinion.
  *
- * So the exclusion is not "these six node names"; it is "the class the rule catalogue already
- * uses to mean must-run", and this file asserts the two sets are the same one. A future
- * mandatory node type gets the exclusion for free; one that loses the class loses it here too,
- * visibly.
+ * `MANDATORY_NODE_TYPES` itself is UNCHANGED and still mirrored against the registry below: it is
+ * what the mandatory-PRESENCE rules and the `GUARDRAIL_OPTED_OUT` finding both read, and D-1
+ * relaxes EXECUTION, never presence. `consultation.hitlGate` — the human sign-off — still offers
+ * no runtime knob at all, because it is the one `gate`-classed type and sits in
+ * `RUNTIME_PROPERTY_EXCLUSIONS` (TASK-859 invariant 5: the system never signs).
  */
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { describe, expect, it } from 'vitest';
-import { NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from '../node-config-schemas';
+import { GRAPH_BOUNDARY_NODE_TYPES, MANDATORY_NODE_TYPES, NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from '../node-config-schemas';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 
 const propertiesOf = (key: string): Record<string, NodeConfigSchema | undefined> =>
@@ -44,7 +45,12 @@ const MANDATORY_KEYS = Object.values(WORKFLOW_NODE_REGISTRY)
   .filter((key) => Object.hasOwn(NODE_CONFIG_SCHEMAS, key))
   .sort();
 
-const TOGGLEABLE_KEYS = SCHEMA_KEYS.filter((key) => !MANDATORY_KEYS.includes(key));
+/** The one type whose schema the COMPILER (not an activity) consumes — it offers no runtime knob. */
+const RUNTIME_EXCLUDED_KEYS = ['consultation.hitlGate'];
+
+const BOUNDARY_KEYS = [...GRAPH_BOUNDARY_NODE_TYPES].sort();
+
+const TOGGLEABLE_KEYS = SCHEMA_KEYS.filter((key) => !BOUNDARY_KEYS.includes(key) && !RUNTIME_EXCLUDED_KEYS.includes(key));
 
 /** Minimal configs that satisfy each schema's `required` set, so an assertion below can only
  *  ever fail on `enabled` and never on an unrelated missing field. */
@@ -57,6 +63,10 @@ const BASE_CONFIG: Record<string, Record<string, unknown>> = {
   'consultation.sensors': { onError: 'degrade' },
   'agent.important_findings': { onError: 'degrade' },
   'prompt.template_ref': { promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41' },
+  'core.trigger': { kinds: ['api'] },
+  'core.output': {},
+  'guardrail.check': { guardrailType: 'groundedness', failOn: 'unsafe_or_unknown', onFail: 'mark' },
+  'consultation.finalizeAssurance': { onError: 'fail' },
 };
 
 const TOGGLEABLE_SAMPLE = [
@@ -67,9 +77,10 @@ const TOGGLEABLE_SAMPLE = [
   'prompt.template_ref',
 ] as const;
 
-const MANDATORY_SAMPLE = ['consultation.consentGate', 'consultation.phiHop', 'consultation.hitlGate'] as const;
+/** D-1: the clinical guard nodes that now OFFER the toggle. */
+const MANDATORY_GUARD_SAMPLE = ['guardrail.check', 'consultation.consentGate', 'consultation.phiHop', 'consultation.finalizeAssurance'] as const;
 
-describe('every non-mandatory node type declares the `enabled` toggle', () => {
+describe('every node type except the two graph boundaries declares the `enabled` toggle', () => {
   it.each(TOGGLEABLE_KEYS)('%s declares `enabled` as a boolean defaulting to on', (key) => {
     const enabled = propertiesOf(key).enabled;
 
@@ -87,14 +98,38 @@ describe('every non-mandatory node type declares the `enabled` toggle', () => {
       expect(propertiesOf(key).enabled).not.toHaveProperty('properties');
     }
   });
+
+  it.each(MANDATORY_GUARD_SAMPLE)('%s (a MANDATORY clinical guard) offers the toggle after D-1', (key) => {
+    expect(declaresEnabled(key)).toBe(true);
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).toEqual([]);
+  });
 });
 
-describe('a mandatory node type has no disable toggle at all', () => {
-  it('withholds `enabled` from exactly the registry`s mandatory-class node types', () => {
-    expect(SCHEMA_KEYS.filter((key) => !declaresEnabled(key))).toEqual(MANDATORY_KEYS);
+describe('the two graph boundaries — and the human gate — still have no disable toggle', () => {
+  it('withholds `enabled` from exactly `core.trigger`, `core.output` and the runtime-excluded gate', () => {
+    expect(SCHEMA_KEYS.filter((key) => !declaresEnabled(key))).toEqual([...BOUNDARY_KEYS, ...RUNTIME_EXCLUDED_KEYS].sort());
   });
 
-  it('covers the six consultation nodes a disable toggle must never reach', () => {
+  it.each(BOUNDARY_KEYS)('%s REJECTS a config that tries to switch it off', (key) => {
+    // `additionalProperties: false` is what makes the withholding enforceable rather than
+    // merely undrawn: a hand-edited graph carrying the key fails validation at authoring time.
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).not.toEqual([]);
+  });
+
+  it('`consultation.hitlGate` still offers NO runtime knob at all (invariant 5 — the system never signs)', () => {
+    const properties = propertiesOf('consultation.hitlGate');
+    expect(Object.hasOwn(properties, 'enabled')).toBe(false);
+    expect(Object.hasOwn(properties, 'retry')).toBe(false);
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS['consultation.hitlGate'], { enabled: false })).not.toEqual([]);
+  });
+});
+
+describe('the mandatory class still mirrors the registry — D-1 relaxed EXECUTION, not PRESENCE', () => {
+  it('`MANDATORY_NODE_TYPES` is exactly the registry`s mandatory-class node types', () => {
+    expect([...MANDATORY_NODE_TYPES].sort()).toEqual(MANDATORY_KEYS);
+  });
+
+  it('covers the six consultation nodes the presence rules exist for', () => {
     // A literal restatement of the requirement, so the derivation above cannot quietly stop
     // covering the cases it exists for.
     expect(MANDATORY_KEYS).toEqual(
@@ -109,10 +144,9 @@ describe('a mandatory node type has no disable toggle at all', () => {
     );
   });
 
-  it.each(MANDATORY_SAMPLE)('%s REJECTS a config that tries to switch it off', (key) => {
-    // `additionalProperties: false` is what makes the withholding enforceable rather than
-    // merely undrawn: a hand-edited graph carrying the key fails validation at authoring time.
-    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).not.toEqual([]);
+  it('the graph boundaries are a SUBSET of the mandatory set — a boundary is mandatory for a structural reason', () => {
+    for (const key of GRAPH_BOUNDARY_NODE_TYPES) expect(MANDATORY_NODE_TYPES.has(key)).toBe(true);
+    expect(BOUNDARY_KEYS).toEqual(['core.output', 'core.trigger']);
   });
 });
 
@@ -126,9 +160,7 @@ describe('the toggle survives the round trip that used to strip it', () => {
     // back. An undeclared key has no field, so it is dropped — which is the half of the bug
     // that no validator would ever have caught.
     const declared = Object.keys(propertiesOf(key));
-    const roundTripped = Object.fromEntries(
-      Object.entries({ ...BASE_CONFIG[key], enabled: false }).filter(([name]) => declared.includes(name)),
-    );
+    const roundTripped = Object.fromEntries(Object.entries({ ...BASE_CONFIG[key], enabled: false }).filter(([name]) => declared.includes(name)));
 
     expect(roundTripped.enabled).toBe(false);
   });

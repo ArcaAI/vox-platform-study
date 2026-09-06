@@ -21,9 +21,10 @@ import {
   buildLlmUsageInputFromTokenCounts,
   classifyLlmDeployment,
   toLedgerProvider,
+  withUsageAttributes,
   withUsageTrigger,
 } from '@arcaai/applications';
-import type { AgentTextInvocationResult, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
+import type { AgentTextInvocationResult, GuardrailDisposition, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
@@ -189,6 +190,12 @@ export class AgentController {
     // `summary.service.ts` uses. Kill-switch-gated inside; → 429 when over.
     await this.entitlementsService?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
 
+    // TASK-890 §3.14 (OD-R) — how this call was screened, resolved ONCE here and stamped on
+    // whichever row the call ends up producing (the stream path emits from three handlers).
+    // Read before the generation rather than after it so an abort still records the disposition
+    // that was in force when the tokens were spent.
+    const guardrail = await this.invocation.guardrailDisposition(resolved.guardrail);
+
     if (mode === 'stream') {
       const { stream } = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'stream');
       res.setHeader('Content-Type', 'text/event-stream');
@@ -209,7 +216,7 @@ export class AgentController {
       stream.on('end', () => {
         clearInterval(heartbeat);
         res.end();
-        this.emitInvocationUsage(collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER }), slug);
+        this.emitInvocationUsage(collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER }), slug, guardrail);
       });
       stream.on('error', (err: Error) => {
         clearInterval(heartbeat);
@@ -219,6 +226,7 @@ export class AgentController {
         this.emitInvocationUsage(
           collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, interrupted: true }),
           slug,
+          guardrail,
         );
       });
       res.on('close', () => {
@@ -227,13 +235,14 @@ export class AgentController {
         this.emitInvocationUsage(
           collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, interrupted: true }),
           slug,
+          guardrail,
         );
       });
       return;
     }
 
     const result = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking');
-    this.emitInvocationUsage(this.buildBlockingUsage(tenantId, resolved, result), slug);
+    this.emitInvocationUsage(this.buildBlockingUsage(tenantId, resolved, result), slug, guardrail);
     const payload: AgentTextInvocationResponse = {
       agentSlug: resolved.slug,
       agentVersionId: resolved.agentVersionId,
@@ -476,9 +485,14 @@ export class AgentController {
    * already has its bytes: a metering failure must degrade to "not metered",
    * never to a broken response.
    */
-  private emitInvocationUsage(batch: UsageEventBatchInput | null, agentSlug: string): void {
+  private emitInvocationUsage(batch: UsageEventBatchInput | null, agentSlug: string, guardrail?: GuardrailDisposition): void {
     if (!batch || !this.usageLedger) return;
-    void this.usageLedger.recordUsage(batch).catch((err: unknown) =>
+    // `guardrail` is stamped on GENERATION rows only. The speech path passes none, and that is
+    // the honest answer rather than an omission: a TTS call never reaches the guardrail gate, so
+    // the dimension does not apply — which the allow-list models as an absent key, never as a
+    // fabricated `screened`.
+    const stamped = guardrail ? (withUsageAttributes(batch, { guardrail }) ?? batch) : batch;
+    void this.usageLedger.recordUsage(stamped).catch((err: unknown) =>
       this.logger.warn({
         message: 'Agent invocation usage emission failed',
         agentSlug,

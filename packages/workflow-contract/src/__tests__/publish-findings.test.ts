@@ -271,8 +271,46 @@ describe('publishFindings — GUARDRAIL_OPTED_OUT (§3.14)', () => {
     expect(codesOf(graph)).not.toContain('GUARDRAIL_OPTED_OUT');
   });
 
-  it('never fires for a MANDATORY guard node in release 1 — those withhold `enabled` entirely (D-1 is L14`s)', () => {
+  it('WARNS on a DISABLED mandatory guard node, naming its type and the classes that made it mandatory (D-1)', () => {
     const graph = coreGraph([{ id: 'g1', type: 'guardrail.check', config: { enabled: false } }]);
+    const findings = publishFindings(graph, ctx()).filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
+    expect(findings).toHaveLength(1);
+    // NEVER blocking: the opt-out is a decision on the record, not a refusal (§3.14a #6).
+    expect(findings[0]?.severity).toBe('WARNING');
+    expect(findings[0]?.nodeId).toBe('g1');
+    expect(findings[0]?.message).toContain('guardrail.check');
+    expect(findings[0]?.message).toContain('mandatory');
+  });
+
+  it('WARNS on a disabled `consultation.consentGate` — the case D-1 was decided about', () => {
+    const graph = coreGraph([{ id: 'cg', type: 'consultation.consentGate', config: { enabled: false } }]);
+    const findings = publishFindings(graph, ctx()).filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
+    expect(findings.map((f) => f.nodeId)).toEqual(['cg']);
+    expect(findings.every((f) => f.severity === 'WARNING')).toBe(true);
+  });
+
+  it('says nothing about a mandatory node that is present and ENABLED (absent means on)', () => {
+    const graph = coreGraph([
+      { id: 'g1', type: 'guardrail.check', config: {} },
+      { id: 'g2', type: 'consultation.phiHop', config: { enabled: true, mode: 'full', onError: 'fail' } },
+    ]);
     expect(codesOf(graph)).not.toContain('GUARDRAIL_OPTED_OUT');
+  });
+
+  it('says nothing about a disabled OPTIONAL node — that is the ordinary kill switch, not a guardrail opt-out', () => {
+    const graph = coreGraph([{ id: 'r1', type: 'consultation.realtimeSummary', config: { enabled: false, onError: 'degrade' } }]);
+    expect(codesOf(graph)).not.toContain('GUARDRAIL_OPTED_OUT');
+  });
+
+  it('names EVERY disabled mandatory node, not just the first', () => {
+    const graph = coreGraph([
+      { id: 'g1', type: 'guardrail.check', config: { enabled: false } },
+      { id: 'cg', type: 'consultation.consentGate', config: { enabled: false } },
+    ]);
+    const ids = publishFindings(graph, ctx())
+      .filter((f) => f.code === 'GUARDRAIL_OPTED_OUT')
+      .map((f) => f.nodeId)
+      .sort();
+    expect(ids).toEqual(['cg', 'g1']);
   });
 });
