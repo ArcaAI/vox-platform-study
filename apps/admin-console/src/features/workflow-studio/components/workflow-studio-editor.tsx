@@ -40,6 +40,7 @@ import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/cl
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
 import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
 import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
+import { readContextSchemaBinding } from '../lib/context-schema-ref';
 import { readPaletteDragType } from '../lib/palette-drag';
 import { actionKeyOf, effectiveNodePorts } from '../lib/core-ports';
 import { nodeDisplayName } from '../lib/node-identity';
@@ -182,6 +183,18 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     const trigger = nodes.find((candidate) => candidate.type === 'core.trigger');
     const enabled = (trigger?.config?.guardrail as { enabled?: unknown } | undefined)?.enabled;
     return typeof enabled === 'boolean' ? enabled : null;
+  }, [nodes]);
+  /**
+   * TASK-890 black-box J4-F5 — what the trigger binds, so a `core.agent`'s prompt-variable chips
+   * can offer this workflow's real `{{trigger.<kindKey>.<field>}}` paths. Read with the same
+   * two-key helper `ContextSchemaRefField` writes with, so the editor cannot disagree with the
+   * inspector about what is bound.
+   */
+  const triggerContextBinding = useMemo(() => {
+    const trigger = nodes.find((candidate) => candidate.type === 'core.trigger');
+    if (!trigger) return undefined;
+    const binding = readContextSchemaBinding(trigger.config);
+    return { schemaId: binding.schemaId, versionNumber: binding.versionNumber, inline: binding.inline };
   }, [nodes]);
 
   const hydratedRef = useRef<string | null>(null);
@@ -657,6 +670,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             actionOptions={selectedNode?.type === ACTION_NODE_TYPE ? actionOptions : undefined}
             actionSchema={selectedActionSchema}
             workflowGuardrailEnabled={triggerGuardrailEnabled}
+            triggerContextBinding={triggerContextBinding}
           />
           <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
           {/*

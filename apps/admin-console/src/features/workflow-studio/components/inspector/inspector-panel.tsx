@@ -33,8 +33,10 @@
 import { CodeEditor, Empty, EmptyDescription, EmptyMedia, EmptyTitle, Field, FieldDescription, FieldLabel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton } from '@arcaai/ui';
 import { IconLayoutBoard } from '@tabler/icons-react';
 import { useState } from 'react';
+import { usePromptTemplateQuickView } from '@/shared/prompt-picker';
 import { toFieldDescriptors, type FieldDescriptor } from '../../lib/schema-form';
-import { useAgentOptions } from '../../api/hooks';
+import { triggerVariablePaths } from '../../lib/trigger-variable-paths';
+import { useAgentOptions, useContextSchemaVersions } from '../../api/hooks';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
 import { AgentPickerField, DEFAULT_AGENT_TASK } from './agent-picker-field';
@@ -88,6 +90,12 @@ export interface InspectorPanelProps {
    * when the graph has no opinion yet — the node then inherits the agent's own default.
    */
   workflowGuardrailEnabled?: boolean | null;
+  /**
+   * TASK-890 black-box J4-F5 — what the workflow's `core.trigger` binds, so a `core.agent`'s
+   * prompt-variable chips can offer this workflow's REAL `{{trigger.<kindKey>.<field>}}` paths
+   * instead of a bare root. Absent/unbound ⇒ the field shows the kind-key hint instead.
+   */
+  triggerContextBinding?: { schemaId: string | null; versionNumber: number | null; inline: Record<string, unknown> | null };
 }
 
 function errorsForPath(problems: WorkflowFinding[], path: string): string[] {
@@ -209,6 +217,7 @@ export function InspectorPanel({
   actionOptions,
   actionSchema,
   workflowGuardrailEnabled,
+  triggerContextBinding,
 }: InspectorPanelProps) {
   // Hooks run unconditionally, ahead of every early return (rules of hooks) — `enabled` gates
   // the actual network read to `core.agent` nodes only. `useAgentOptions` is the SAME query
@@ -216,6 +225,19 @@ export function InspectorPanel({
   const isCoreAgentNode = node?.type === 'core.agent';
   const agentSlugValue = node && typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : '';
   const agentOptions = useAgentOptions(DEFAULT_AGENT_TASK, isCoreAgentNode);
+  // TASK-890 J4-F5 — the version rows carry the definition itself, so the trigger's kind paths
+  // come from the SAME read `ContextSchemaRefField` already performs (a cache hit, not a second
+  // fetch). Disabled for every node type but `core.agent`, which is the only consumer.
+  const referencedAgentForNode = isCoreAgentNode
+    ? (agentOptions.data ?? []).find((agent) => agent.slug === (typeof getAtPath(node?.config ?? {}, AGENT_SLUG_PATH) === 'string' ? getAtPath(node?.config ?? {}, AGENT_SLUG_PATH) : ''))
+    : undefined;
+  const contextSchemaVersions = useContextSchemaVersions(isCoreAgentNode ? (triggerContextBinding?.schemaId ?? null) : null);
+  // TASK-890 J4-F6 — the agent's bound template, read only when the agent declares no variables
+  // of its own. `usePromptTemplateQuickView` is the shared picker's own cached read.
+  const agentDeclaresVariables = Object.keys(referencedAgentForNode?.instruction?.variables ?? {}).length > 0;
+  const boundTemplate = usePromptTemplateQuickView(
+    isCoreAgentNode && !agentDeclaresVariables ? (referencedAgentForNode?.instruction?.promptTemplateId ?? null) : null,
+  );
 
   if (!node) {
     return (
@@ -279,6 +301,15 @@ export function InspectorPanel({
   const referencedAgent = isCoreAgent ? (agentOptions.data ?? []).find((agent) => agent.slug === agentSlugValue) : undefined;
   const declaredVariableNames = referencedAgent?.instruction?.variables ? Object.keys(referencedAgent.instruction.variables) : [];
   const agentGuardrailEnabled = referencedAgent?.parameters?.guards?.enabled ?? null;
+  // TASK-890 J4-F6 — the fallback list, used by the field ONLY when the agent declares none.
+  const templateVariableNames = (boundTemplate.data?.declaredVariables ?? []).map((declaration) => declaration.name);
+  // TASK-890 J4-F5 — the pinned version when the trigger pins one, else the schema's own latest
+  // (the version list is newest-first); an inline schema is read directly.
+  const boundVersion =
+    triggerContextBinding?.versionNumber != null
+      ? (contextSchemaVersions.data ?? []).find((row) => row.versionNumber === triggerContextBinding.versionNumber)
+      : (contextSchemaVersions.data ?? [])[0];
+  const triggerPaths = triggerVariablePaths({ definition: boundVersion?.definition, inline: triggerContextBinding?.inline });
 
   // TASK-890 §3.10 — `overrides.promptVariables` is nested inside `overrides`, so the top-level
   // `withheld` Set cannot reach it; `fieldOverrides` intercepts it wherever `FieldRenderer`
@@ -291,6 +322,8 @@ export function InspectorPanel({
             config={node.config}
             onConfigChange={onConfigChange}
             declaredVariableNames={declaredVariableNames}
+            templateVariableNames={templateVariableNames}
+            triggerPaths={triggerPaths}
             references={references}
             errors={fieldErrors}
             disabled={readOnly}

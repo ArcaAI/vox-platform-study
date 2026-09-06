@@ -206,4 +206,77 @@ describe('InspectorPanel — TASK-890 core.agent', () => {
     renderWithProviders(<InspectorPanel node={agentNode()} configSchema={NODE_CONFIG_SCHEMAS['core.agent']} problems={[]} onConfigChange={vi.fn()} />);
     expect(await screen.findByText('Generation')).toBeTruthy();
   });
+
+  /**
+   * TASK-890 black-box J4-F6 — the seeded platform agents carry an EMPTY `instruction.variables`
+   * while their bound prompt template declares several, so the field rendered zero rows for an
+   * agent whose prompt plainly has variables. The template's own declaration is the fallback,
+   * read through the SAME shared picker projection the agents form uses (no new route).
+   */
+  it('falls back to the bound prompt template`s declared variables when the agent declares none', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('admin/agents')) {
+          return Response.json([
+            { slug: 'discharge', name: 'Discharge summary', task: 'TEXT_GENERATION', instruction: { promptTemplateId: 'tpl-1', variables: {} } },
+          ]);
+        }
+        if (url.includes('admin/prompt-templates/tpl-1')) {
+          return Response.json({
+            id: 'tpl-1',
+            name: 'Discharge summary',
+            status: 'APPROVED',
+            category: 'SUMMARY',
+            currentVersionNumber: 2,
+            declaredVariables: [{ name: 'chief_complaint', type: 'string', required: true }],
+          });
+        }
+        return Response.json([]);
+      }),
+    );
+
+    renderWithProviders(<InspectorPanel node={agentNode()} configSchema={NODE_CONFIG_SCHEMAS['core.agent']} problems={[]} onConfigChange={vi.fn()} />);
+
+    expect(await screen.findByLabelText('chief_complaint')).toBeTruthy();
+    expect(await screen.findByText(/from the bound prompt template/i)).toBeTruthy();
+  });
+
+  /**
+   * TASK-890 black-box J4-F5 — the chips are the workflow's REAL trigger paths when its trigger
+   * binds a context schema; the version rows already carry the definition, so this reuses the
+   * read the reference picker performs rather than adding a route.
+   */
+  it('offers the bound context schema`s kind paths as prompt-variable chips', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('admin/agents')) {
+          return Response.json([
+            { slug: 'discharge', name: 'Discharge summary', task: 'TEXT_GENERATION', instruction: { variables: { topic: { value: '' } } } },
+          ]);
+        }
+        if (url.includes('/versions')) {
+          return Response.json([
+            { versionNumber: 2, definition: { schemaVersion: '1.0', kinds: [{ key: 'consultation_note', label: 'Note', primitive: 'TEXT' }] } },
+          ]);
+        }
+        return Response.json([]);
+      }),
+    );
+
+    renderWithProviders(
+      <InspectorPanel
+        node={agentNode()}
+        configSchema={NODE_CONFIG_SCHEMAS['core.agent']}
+        problems={[]}
+        onConfigChange={vi.fn()}
+        triggerContextBinding={{ schemaId: 's-1', versionNumber: null, inline: null }}
+      />,
+    );
+
+    expect(await screen.findByRole('button', { name: 'trigger.consultation_note' })).toBeTruthy();
+  });
 });

@@ -10,7 +10,11 @@
  * renders one row per DECLARED name instead.
  *
  * "Declared" comes from `Agent.instruction.variables`' KEYS (`AgentOption.instruction.variables`
- * — OD-K's binding map, `{ name: { value } | { path } }`), never invented here. A prior override
+ * — OD-K's binding map, `{ name: { value } | { path } }`), never invented here. TASK-890
+ * (black-box J4-F6): when the agent declares NONE — which every seeded platform agent does, while
+ * the prompt template it binds declares several — the TEMPLATE's `declaredVariables` are offered
+ * instead, labelled as coming from the template so the origin of a name is never ambiguous.
+ * The agent's own declarations always win when it has any. A prior override
  * for a name the CURRENT agent does not declare (a stale value from before the agent was
  * switched, or one authored against an undeclared name on purpose — the runtime interpolation is
  * generic, so it still works) is never silently dropped: it renders under "Other overrides" with
@@ -29,6 +33,14 @@ const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
  *  inserts but fenced for template interpolation rather than bare CEL. */
 const NAMESPACE_ROOT_CHIPS = ['trigger', 'context', 'vars', 'nodes'] as const;
 
+/**
+ * TASK-890 black-box J4-F5 — what a trigger reference actually looks like. The payload is keyed
+ * by the context schema's KIND KEY, so the middle segment is not optional and not guessable;
+ * shown whenever the workflow's trigger binds no schema this field can read paths from.
+ */
+const TRIGGER_PATH_HINT =
+  'A trigger reference names the context kind first: {{trigger.<kindKey>.<field>}}. Bind a context schema on the trigger node to list this workflow\u2019s kinds here.';
+
 function readVariables(config: Record<string, unknown>): Record<string, string> {
   const value = getAtPath(config, PROMPT_VARIABLES_PATH);
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
@@ -46,6 +58,12 @@ export interface PromptVariablesFieldProps {
   onConfigChange: (config: Record<string, unknown>) => void;
   /** The referenced agent's declared variable NAMES (`instruction.variables`' keys). Empty when no agent is chosen yet. */
   declaredVariableNames?: readonly string[];
+  /** TASK-890 J4-F6 — the bound prompt template's `declaredVariables[].name`, used ONLY when the
+   *  agent itself declares none (the seeded platform agents' state). */
+  templateVariableNames?: readonly string[];
+  /** TASK-890 J4-F5 — the concrete `trigger.<kindKey>[.<field>]` paths this workflow's trigger
+   *  offers (`lib/trigger-variable-paths.ts`). Empty ⇒ the root chip plus the hint. */
+  triggerPaths?: readonly string[];
   /** Run-context references the graph offers (`trigger`, `vars.<key>`, `nodes.<id>`) — the same list the CEL editor uses. */
   references?: readonly string[];
   errors?: string[];
@@ -95,15 +113,31 @@ function VariableRow({
   );
 }
 
-export function PromptVariablesField({ idPrefix, config, onConfigChange, declaredVariableNames = [], references = [], errors, disabled }: PromptVariablesFieldProps) {
+export function PromptVariablesField({
+  idPrefix,
+  config,
+  onConfigChange,
+  declaredVariableNames = [],
+  templateVariableNames = [],
+  triggerPaths = [],
+  references = [],
+  errors,
+  disabled,
+}: PromptVariablesFieldProps) {
   const uid = useId();
   const [newName, setNewName] = useState('');
   const variables = readVariables(config);
-  const declared = new Set(declaredVariableNames);
+  // The agent's own declarations win; the template's are a fallback, never a merge — a merged
+  // list would claim the agent binds names it does not.
+  const fromTemplate = declaredVariableNames.length === 0 && templateVariableNames.length > 0;
+  const effectiveNames = fromTemplate ? templateVariableNames : declaredVariableNames;
+  const declared = new Set(effectiveNames);
   const otherNames = Object.keys(variables).filter((name) => !declared.has(name));
 
   const chips = [
-    ...NAMESPACE_ROOT_CHIPS.map((root) => ({ label: root, token: `{{${root}.}}` })),
+    // With the workflow's real trigger paths known, the bare `trigger.` skeleton is noise.
+    ...NAMESPACE_ROOT_CHIPS.filter((root) => root !== 'trigger' || triggerPaths.length === 0).map((root) => ({ label: root, token: `{{${root}.}}` })),
+    ...triggerPaths.map((path) => ({ label: path, token: `{{${path}}}` })),
     ...references.map((reference) => ({ label: reference, token: `{{${reference}}}` })),
   ];
 
@@ -132,8 +166,12 @@ export function PromptVariablesField({ idPrefix, config, onConfigChange, declare
       <FieldDescription>
         Override the agent&apos;s bound value for a variable it declares. Leave a row blank to use the agent&apos;s own value.
       </FieldDescription>
+      {fromTemplate ? (
+        <FieldDescription>This agent declares no variables of its own — the rows below come from the bound prompt template.</FieldDescription>
+      ) : null}
+      {triggerPaths.length === 0 ? <FieldDescription>{TRIGGER_PATH_HINT}</FieldDescription> : null}
 
-      {declaredVariableNames.map((name) => (
+      {effectiveNames.map((name) => (
         <VariableRow
           key={name}
           id={`${idPrefix}-${uid}-${name}`}
