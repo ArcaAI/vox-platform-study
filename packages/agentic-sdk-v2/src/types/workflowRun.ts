@@ -23,6 +23,84 @@ export interface WorkflowSummary {
   paletteKey: string;
   /** The ACTIVE published version currently resolved for this slug. */
   versionNumber: number;
+  /**
+   * JSON Schema of the run `input` (TASK-890), from the definition's Trigger. `null` when the
+   * definition declares none — deliberately NOT an open `object` schema, because "we do not
+   * know" and "anything goes" are different facts and a form built from the second when the
+   * first is true renders fields the run will refuse.
+   */
+  inputSchema: Record<string, unknown> | null;
+  /** JSON Schema of what the run delivers, from the definition's Output. `null` when undeclared. */
+  outputSchema: Record<string, unknown> | null;
+  /** Output protocols the definition publishes (`http`, `http-sse`, `socket`). `[]` for a legacy graph (unrestricted). */
+  protocols: string[];
+  /** Trigger kinds the definition accepts (`api`, `webhook`, …). `[]` for a legacy graph, treated as `api`. */
+  triggerKinds: string[];
+}
+
+/**
+ * `GET /workflows/:slug/schema` — the generated contract of one published definition.
+ *
+ * Everything {@link WorkflowSummary} carries, plus the machine-readable projections a portal
+ * or a form generator wants: OpenAPI `components.schemas` entries and an AsyncAPI 3 fragment
+ * for the run event stream. The catalogue already answers the four facts above, so reach for
+ * this when you want the PROJECTIONS, not to decide what to send.
+ */
+export interface WorkflowSchemaDescription {
+  slug: string;
+  versionNumber: number;
+  triggerKinds: string[];
+  protocols: string[];
+  /**
+   * The delivery lanes this definition admits: the `?mode=` values the run route accepts
+   * (`async` | `blocking` | `stream`), plus `socket` when the Output publishes it — a LANE,
+   * not a `?mode=` value.
+   */
+  modes: string[];
+  components: Record<string, Record<string, unknown>>;
+  asyncapi: Record<string, unknown>;
+}
+
+/**
+ * Live state of ONE `core.humanReview` node of a run (TASK-890).
+ *
+ * `exists: false` is a NORMAL answer — the node has not been reached, or the review already
+ * settled and its durable child is gone. It is NOT the same as a failed read, which the hook
+ * reports as `null` + an `error`. Collapsing the two renders "nothing to approve" during an
+ * outage, which is how queued clinical work goes missing.
+ */
+export interface WorkflowReview {
+  runId: string;
+  /** The graph node id of the review node — a graph may carry several, each addressed separately. */
+  nodeId: string;
+  exists: boolean;
+  /** `WAITING` | `ESCALATED` | `DECIDED` | `TIMED_OUT`; `null` when no child exists. */
+  phase: string | null;
+  escalations: number | null;
+  decided: boolean;
+  /** `null` until a human decides. **A timeout never becomes `approved`.** */
+  decision: 'approved' | 'rejected' | null;
+}
+
+/**
+ * The decision to send. There is deliberately no `reviewerId`: the gateway stamps the acting
+ * user from your session, and its DTO forbids undeclared properties, so sending one is a 400.
+ */
+export interface WorkflowReviewDecision {
+  decision: 'approved' | 'rejected';
+  comment?: string;
+  /** Honoured only when the review node was authored with `allowEdit`; the workflow drops it otherwise. */
+  editedPayload?: Record<string, unknown>;
+}
+
+/** Response of the decide call — the signal was SENT; the graph resumes on its own clock. */
+export interface WorkflowReviewDecisionResult {
+  runId: string;
+  nodeId: string;
+  decision: 'approved' | 'rejected';
+  signaled: boolean;
+  /** The acting user the gateway resolved from your session. */
+  reviewerId: string | null;
 }
 
 /** The `202 Accepted` handle to a run that is now executing durably. */

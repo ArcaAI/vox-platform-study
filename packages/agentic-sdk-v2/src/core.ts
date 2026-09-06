@@ -65,6 +65,10 @@ export {
   // workflow invocation (run / watch / cancel). No audio or ML, so
   // it belongs in /core: an admin or dashboard surface runs workflows too.
   useWorkflowRun,
+  // TASK-890: the workflow human-review surface, and invoking a published agent. Both are
+  // plain reads/writes with no audio or ML, so they belong in /core alongside useWorkflowRun.
+  useWorkflowReview,
+  useAgentInvocation,
   useConsultationEvents,
   useDepartments,
   useDnaDashboard,
@@ -297,6 +301,9 @@ export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultation
 // TASK-865: published-Agent selection types (business plane).
 export type { AgentTask, SelectableAgent, SelectableAsrAgent } from './types';
 export type { UseSelectableAsrAgentsReturn } from './hooks';
+// TASK-890 (OD-F) — invoking a published agent from the browser.
+export type { AgentInvocationFrame, AgentInvocationInput, AgentInvocationResult } from './types';
+export type { UseAgentInvocationReturn, UseWorkflowReviewReturn } from './hooks';
 
 export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats, LiveSummaryVitals } from './types';
 export type { LiveAssistEvent, LiveAssistSuggestion, LiveAssistProposal, LiveAssistCorrections } from './types';
@@ -356,7 +363,12 @@ export type {
   WorkflowRunEventType,
   WorkflowRunHandle,
   WorkflowRunStatus,
+  WorkflowSchemaDescription,
   WorkflowSummary,
+  // TASK-890 — the human-review surface of a run.
+  WorkflowReview,
+  WorkflowReviewDecision,
+  WorkflowReviewDecisionResult,
 } from './types';
 
 export { TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';

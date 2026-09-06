@@ -115,6 +115,13 @@ export {
   type UseWorkflowRunReturn,
 } from './useWorkflowRun';
 
+// TASK-890: release a `core.humanReview` node — the durable wait a run parks on.
+export { useWorkflowReview, type UseWorkflowReviewReturn } from './useWorkflowReview';
+
+// TASK-890 (OD-F): invoke a PUBLISHED agent from the browser (blocking JSON or SSE).
+// Business plane only — authoring/publishing agents is `@arcaai/vox-node`'s `hope.admin.*`.
+export { useAgentInvocation, type UseAgentInvocationReturn } from './useAgentInvocation';
+
 // Consultation-loop workflow event SSE stream
 export { useConsultationEvents, type UseConsultationEventsReturn, type ConsultationEventsStreamStatus } from './useConsultationEvents';
 

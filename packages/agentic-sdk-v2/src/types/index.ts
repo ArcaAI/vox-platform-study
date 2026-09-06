@@ -130,6 +130,8 @@ export {
 // consultation workflow DISCOVERY (which engine governs a consultation).
 export type { ConsultationWorkflow, SelectableConsultationWorkflow } from './consultationWorkflow';
 export type { AgentTask, SelectableAgent, SelectableAsrAgent } from './agent';
+// TASK-890 (OD-F) — invoking a published agent from the browser.
+export type { AgentInvocationFrame, AgentInvocationInput, AgentInvocationResult } from './agent';
 
 // workflow INVOCATION (running one), as distinct from the discovery
 // types above (which one governs a consultation).
@@ -140,7 +142,12 @@ export type {
   WorkflowRunEventType,
   WorkflowRunHandle,
   WorkflowRunStatus,
+  WorkflowSchemaDescription,
   WorkflowSummary,
+  // TASK-890 — the human-review surface of a run.
+  WorkflowReview,
+  WorkflowReviewDecision,
+  WorkflowReviewDecisionResult,
 } from './workflowRun';
 export { TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './workflowRun';
 
