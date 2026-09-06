@@ -8058,6 +8058,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "TenantReferenceSetController",
+      "handler": "sync",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/{id}/reference-set/sync",
+      "routePath": "/admin/tenants/:id/reference-set/sync",
+      "svcScopes": [
+        "svc:admin:tenant:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Tenant"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "TenantController",
       "handler": "restore",
       "method": "POST",

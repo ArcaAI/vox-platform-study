@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 407 component schemas the generated surface transitively
+ * Only the 409 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -4305,6 +4305,17 @@ export interface RedisHealthInfoResponse {
   version: string;
 }
 
+export interface ReferenceSetSummaryResponse {
+  /** Per kind: rows added, rows left alone, rows whose copy failed. */
+  kinds: Record<string, Record<string, unknown>>;
+  /** The mode the run used. */
+  mode: 'missing-only' | 'refresh-locked';
+  /** The tenant the run acted on. */
+  tenantId: string;
+  /** One line per failure — a report a human can act on. */
+  warnings: string[];
+}
+
 export interface RegisterDiscoveredModelRequest {
   /** Free-text description for the registry row. */
   description?: string;
@@ -4925,6 +4936,13 @@ export interface SyncAgentRequest {
 export interface SyncDirectoryUsersResponse {
   /** BullMQ job id for this directory sync run */
   jobId: string;
+}
+
+export interface SyncReferenceSetRequest {
+  /** Restrict the run to these kinds. Omit for the whole reference set. */
+  kinds?: Array<'contextSchemas' | 'promptTemplates' | 'agents' | 'agentAssignments' | 'workflowDefinitions'>;
+  /** `missing-only` (default) adds what the tenant lacks and touches nothing it has. `refresh-locked` additionally re-copies rows still marked `templateLocked` (pristine clones) and NEVER touches a row the tenant has edited. */
+  mode?: 'missing-only' | 'refresh-locked';
 }
 
 export interface SyncWorkflowDefinitionRequest {
