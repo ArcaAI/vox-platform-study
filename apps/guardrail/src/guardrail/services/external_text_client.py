@@ -49,6 +49,36 @@ logger = get_logger(__name__)
 
 JUDGE_PATH = "/api/v1/generate/internal/judge"
 
+#: The verdict shape `_parse_verdict` reads back, pinned on the wire as a JSON
+#: schema rather than requested in prose.
+#:
+#: This is a WIRE CONTRACT, not configuration: it is the exact set of keys this
+#: module then parses, so it moves only when `_parse_verdict` moves. It is sent
+#: as `response_format.type = "json_schema"` because that is the only structured
+#: form BOTH hops accept — `apps/text` validates the literal
+#: (`models/requests.ResponseFormat`, which has no `json_object` member) and LM
+#: Studio, the engine behind the default judge model, refuses the OpenAI
+#: `json_object` wire form that `text` maps its own `"json"` literal onto
+#: (`providers/openai_compat._apply_response_format`; the same engine behaviour
+#: is recorded in `apps/harness/eval/README.md`).
+#:
+#: `title` is load-bearing: `text` names the schema from it.
+JUDGE_VERDICT_SCHEMA: dict[str, Any] = {
+    "title": "guardrail_medical_context_verdict",
+    "type": "object",
+    "properties": {
+        "is_medical": {"type": "boolean"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "context_type": {"type": "string"},
+        "reasoning": {"type": "string"},
+    },
+    # Every key `_parse_verdict` reads is required: an optional field lets the
+    # engine emit a shape the parser can only call undetermined, which fails the
+    # safety gate closed for a reason that is not a safety reason.
+    "required": ["is_medical", "confidence", "context_type", "reasoning"],
+    "additionalProperties": False,
+}
+
 # There is deliberately NO criteria constant here and NO keyword taxonomy.
 #
 # The criteria text DECIDES a clinical verdict, so it is configuration with a
@@ -184,7 +214,14 @@ class TextJudgeClient:
             "model": self.model,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "response_format": {"type": "json_object"},
+            # `json_schema`, not `json_object`: see JUDGE_VERDICT_SCHEMA — the
+            # literal `text` accepts AND the wire form the engine accepts are the
+            # same shape only here.
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": JUDGE_VERDICT_SCHEMA,
+                "strict": True,
+            },
         }
         if self.provider_overrides:
             body["provider_overrides"] = self.provider_overrides
