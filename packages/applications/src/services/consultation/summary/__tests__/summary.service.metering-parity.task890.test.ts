@@ -186,9 +186,11 @@ describe('SummaryService.extractEntities — the NLP allowance is checked before
 
   it('aborts BEFORE the NLP call when the allowance is exhausted', async () => {
     const entitlements = {
-      assertMeterQuota: vi.fn().mockRejectedValue(
-        new QuotaExceededException('over allowance', { capability: 'monthlyNlpTextUnits', limit: 10, used: 10, requested: 1, tenantId: TENANT }),
-      ),
+      assertMeterQuota: vi
+        .fn()
+        .mockRejectedValue(
+          new QuotaExceededException('over allowance', { capability: 'monthlyNlpTextUnits', limit: 10, used: 10, requested: 1, tenantId: TENANT }),
+        ),
     };
     const { service, httpService } = makeNerService(entitlements);
     await expect(service.extractEntities('ctx-1')).rejects.toBeInstanceOf(QuotaExceededException);
