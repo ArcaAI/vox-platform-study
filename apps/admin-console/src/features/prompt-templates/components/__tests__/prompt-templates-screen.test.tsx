@@ -560,6 +560,19 @@ describe('PromptTemplatesScreen', () => {
   });
 
   /**
+   * TASK-890 J2-9 — `?create=1` is the link the shared prompt picker's empty
+   * state emits ("create one"), and the same deep link `/agents` already
+   * honours. It landed on the Fallbacks tab with no drawer at all.
+   */
+  it('opens the create drawer on the ?create=1 deep link', async () => {
+    stubTemplates();
+    renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?create=1' });
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('New prompt template')).toBeDefined();
+  });
+
+  /**
    * TASK-890 J2-5 — reference-set provenance. Every tenant's prompt library is
    * CLONED from the SYSTEM reference set, and 17/17 ARCAAI rows are stamped and
    * locked; without the badge a platform clone is indistinguishable from a

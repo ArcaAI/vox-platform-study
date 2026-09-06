@@ -26,7 +26,7 @@
  * mounts (`WorkingTenantGate`); tenant admins pass straight through.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { IconPlus } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -64,14 +64,27 @@ function PromptTemplatesScreenBody() {
   // only approve UI from the admins the server allows.
   const permissions = usePermissions();
   const canGovern = isElevated || can(permissions.data, 'manage', 'PromptTemplate');
-  const [creating, setCreating] = useState(false);
+  // `?create=1` opens the create drawer directly — the link the shared prompt
+  // picker's empty state emits, and the same deep link `/agents` honours. Read
+  // once as the lazy initial state (the deep link is a fresh navigation); the
+  // effect only clears the param and pins the tab that owns the drawer, so a
+  // refresh or Back does not re-open it.
+  const [createParam, setCreateParam] = useQueryState('create', parseAsString.withDefault(''));
+  const [creating, setCreating] = useState(() => createParam === '1');
   const [gridState, setGridState] = useState({ count: 0, loaded: false, refreshing: false });
 
-  // A deep link to a specific template (`?template=`) must land on the tab that
-  // can show it, otherwise the drawer opens over the Fallbacks map.
-  const requested = tabParam ?? (selectedParam ? 'templates' : null);
+  // A deep link to a specific template (`?template=`) — or to the create drawer
+  // — must land on the tab that owns it, otherwise it opens over the Fallbacks
+  // map, or not at all.
+  const requested = tabParam ?? (selectedParam || creating ? 'templates' : null);
   const tab: PromptTemplatesScreenTab =
     canGovern && requested === 'governance' ? 'governance' : requested === 'templates' ? 'templates' : 'fallbacks';
+
+  useEffect(() => {
+    if (createParam !== '1') return;
+    void setCreateParam(null);
+    void setTabParam('templates');
+  }, [createParam, setCreateParam, setTabParam]);
 
   const handleGridState = useCallback((next: { count: number; loaded: boolean; refreshing: boolean }) => {
     setGridState((previous) =>
