@@ -168,7 +168,7 @@ export class AdminPromptTemplateResource extends AdminResource {
   /**
    * Creating a PromptTestAckResponse by id
    *
-   * Assembles the prompt, resolves the `text.test` provider/model and submits a STREAMING generation job to TEXT, returning an ack in well under a second. Open the returned `streamUrl` over SSE for tokens, then call `POST :id/test/finalize` with the `taskId` to score and persist. `dryRun: true` returns the assembled prompt and generates NOTHING. This route no longer writes, so it carries NO `If-Match` requirement.
+   * Renders the prompt through the ONE `{{ path | default() }}` grammar (a missing required declared variable is a 400 before any TEXT call), resolves the model — a catalogue `modelId` (TASK-890 §3.7), an explicit `provider`+`model` pair, or (omitting both) the tenant's ASSIGNED TEXT_GENERATION agent — asserts the `monthlyLlmTokens` quota, and submits a STREAMING generation job to TEXT, returning an ack in well under a second. Open the returned `streamUrl` over SSE for tokens, then call `POST :id/test/finalize` with the `taskId` to score, meter and persist. `dryRun: true` skips the quota check and generates NOTHING — it returns the assembled prompt only. This route itself no longer writes, so it carries NO `If-Match` requirement.
    *
    * `POST /api/v1/admin/prompt-templates/{id}/test` — `PromptManagementController.testTemplate`.
    */
@@ -185,7 +185,7 @@ export class AdminPromptTemplateResource extends AdminResource {
   /**
    * Creating a PromptTestResultResponse by id
    *
-   * Fetches the finished generation from TEXT SERVER-SIDE by `taskId` (the generated text is never accepted from the request body), scores it, and persists `lastTestScore/lastTestOutput/lastTestAt`. This is the optimistic-concurrency write of the test flow: the `If-Match` header is REQUIRED and folds over any body-supplied `expectedVersion`. Version drift → 412.
+   * Fetches the finished generation from TEXT SERVER-SIDE by `taskId` (the generated text is never accepted from the request body), scores it, records the run's LLM usage (`trigger: PROMPT_TEST`, best-effort — a metering failure never fails this write), and persists `lastTestScore/lastTestOutput/lastTestAt`. This is the optimistic-concurrency write of the test flow: the `If-Match` header is REQUIRED and folds over any body-supplied `expectedVersion`. Version drift → 412.
    *
    * `POST /api/v1/admin/prompt-templates/{id}/test/finalize` — `PromptManagementController.finalizeTestTemplate`.
    *

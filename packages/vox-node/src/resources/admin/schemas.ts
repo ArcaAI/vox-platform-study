@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 395 component schemas the generated surface transitively
+ * Only the 407 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -116,6 +116,10 @@ export interface AgentResponse {
   /** Server-stamped at publish; null until then. */
   compiledConfig?: Record<string, unknown> | null;
   compiledConfigChecksum?: string | null;
+  /** TASK-890 §3.4 — the tenant context schema this agent pins; its derived payload schema is frozen into `compiledConfig.contextSchema` at publish. */
+  contextSchemaId?: string | null;
+  /** The pinned schema VERSION; null ⇒ follow the schema’s own pin. */
+  contextSchemaVersionNumber?: number | null;
   /** ISO timestamp */
   createdAt: string;
   createdBy?: string | null;
@@ -172,6 +176,49 @@ export interface AgentSyncTargetResponse {
   versionNumber: number;
   /** What could not be carried across (a stripped eval gate, a re-resolved template). */
   warnings?: string[];
+}
+
+export interface AgentTestAckResponse {
+  /** The rendered system prompt, or null when the agent has none. */
+  assembledSystemPrompt?: string | null;
+  /** The rendered user prompt — exactly the bytes that would go to TEXT. */
+  assembledUserPrompt: string;
+  /** Non-blocking findings from compiling the draft in memory. */
+  findings: AgentFindingResponse[];
+  mode: 'dry-run' | 'stream';
+  resolved: AgentTestTargetResponse;
+  /** Stream mode only — the GATEWAY-relative SSE path (never a service-relative one). */
+  streamUrl?: string;
+  /** Stream mode only — the TEXT generation id, and the handle `POST :id/test/finalize` takes. */
+  taskId?: string;
+}
+
+export interface AgentTestResultResponse {
+  /** The provider-native model id that served it. */
+  model: string;
+  /** The accumulated generation. */
+  output: string;
+  /** The provider that served it, as TEXT reports it. */
+  provider: string;
+  /** Token counts, when TEXT reported them. */
+  usage?: AgentTestUsageResponse;
+}
+
+export interface AgentTestTargetResponse {
+  /** DERIVED, never stamped: `platform` when the credential that would serve this call comes from the SYSTEM tier, `tenant` when it is the caller’s own. This is the tier the run is billed against. */
+  fundingTier: 'platform' | 'tenant';
+  /** The provider-native model id that goes on the wire (`AiModel.sourceUri`). */
+  model: string;
+  /** The provider as apps/text registers it (`azure` → `azure-openai`). */
+  provider: string;
+  /** `row` — the agent’s own bound model. `override` — a `{provider, model}` pair the caller supplied on this request. */
+  source: 'row' | 'override';
+}
+
+export interface AgentTestUsageResponse {
+  completionTokens: number;
+  promptTokens: number;
+  totalTokens: number;
 }
 
 export interface AgentTrajectorySessionResponse {
@@ -271,6 +318,8 @@ export interface AiProviderConnectionResponse {
   keyVersion: number | null;
   /** Ceiling — simultaneous in-flight requests. Null = no opinion. */
   maxConcurrent: number | null;
+  /** Models DECLARED on this connection (TASK-890 §3.7a). Present on the single-row read and on the declaration response; absent from the list read, which does not join the registry. A SYSTEM row never carries any: platform models are declared in `/admin/ai-models`. */
+  models?: ConnectionModelResponse[];
   /** Capability-scoped serving provider identifier. */
   provider: string;
   /** Region identifier (bedrock). */
@@ -820,6 +869,69 @@ export interface ComputeDraftRequest {
   tenantId: string;
 }
 
+export interface ConnectionModelResponse {
+  /** Capability flags for authoring forms. */
+  capabilities: Record<string, unknown>;
+  /** Registry row id — what an agent binds as `modelId`. */
+  id: string;
+  /** Display name shown in pickers. */
+  name: string;
+  /** Server-generated routing key, stable for the life of the row. */
+  slug: string;
+  /** What this model does. */
+  taskType:
+    | 'IMAGE_TEXT_TO_TEXT'
+    | 'VISUAL_QUESTION_ANSWERING'
+    | 'DOCUMENT_QUESTION_ANSWERING'
+    | 'VIDEO_TEXT_TO_TEXT'
+    | 'ANY_TO_ANY'
+    | 'DEPTH_ESTIMATION'
+    | 'IMAGE_CLASSIFICATION'
+    | 'OBJECT_DETECTION'
+    | 'IMAGE_SEGMENTATION'
+    | 'TEXT_TO_IMAGE'
+    | 'IMAGE_TO_TEXT'
+    | 'IMAGE_TO_IMAGE'
+    | 'IMAGE_TO_VIDEO'
+    | 'UNCONDITIONAL_IMAGE_GENERATION'
+    | 'VIDEO_CLASSIFICATION'
+    | 'TEXT_TO_VIDEO'
+    | 'ZERO_SHOT_IMAGE_CLASSIFICATION'
+    | 'MASK_GENERATION'
+    | 'ZERO_SHOT_OBJECT_DETECTION'
+    | 'TEXT_TO_3D'
+    | 'IMAGE_TO_3D'
+    | 'IMAGE_FEATURE_EXTRACTION'
+    | 'KEYPOINT_DETECTION'
+    | 'TEXT_CLASSIFICATION'
+    | 'TOKEN_CLASSIFICATION'
+    | 'TABLE_QUESTION_ANSWERING'
+    | 'QUESTION_ANSWERING'
+    | 'ZERO_SHOT_CLASSIFICATION'
+    | 'TRANSLATION'
+    | 'SUMMARIZATION'
+    | 'FEATURE_EXTRACTION'
+    | 'TEXT_GENERATION'
+    | 'TEXT2TEXT_GENERATION'
+    | 'FILL_MASK'
+    | 'SENTENCE_SIMILARITY'
+    | 'GUARDRAIL'
+    | 'TEXT_TO_SPEECH'
+    | 'TEXT_TO_AUDIO'
+    | 'AUTOMATIC_SPEECH_RECOGNITION'
+    | 'AUDIO_TO_AUDIO'
+    | 'AUDIO_CLASSIFICATION'
+    | 'VOICE_ACTIVITY_DETECTION'
+    | 'SPEAKER_DIARIZATION'
+    | 'SPEAKER_EMBEDDING'
+    | 'TABULAR_CLASSIFICATION'
+    | 'TABULAR_REGRESSION'
+    | 'TIME_SERIES_FORECASTING'
+    | 'UNKNOWN';
+  /** The provider-native id that goes on the wire. */
+  wireModelId: string;
+}
+
 export interface ConsultationAggregateBucket {
   /** Bucket end (ISO-8601, inclusive). */
   end: string;
@@ -1060,6 +1172,10 @@ export interface CostPerEncounterResponse {
 }
 
 export interface CreateAgentRequest {
+  /** TASK-890 §3.4 — pin one of THIS tenant’s consultation context schemas. Its derived payload schema is FROZEN into `compiledConfig.contextSchema` at publish, so `{{context.*}}` resolves against the declaration that was in force then and the runtime never re-reads the row. A SYSTEM or foreign id is not resolvable: a schema is cloned into a tenant, never shared from the platform tier. */
+  contextSchemaId?: string | null;
+  /** Pin a specific published version of that schema. Omitted ⇒ the schema’s own pinned version. */
+  contextSchemaVersionNumber?: number | null;
   /** Free-text description. */
   description?: string;
   /** Ordered fallback model ids of the same task (priority = array position). */
@@ -1455,8 +1571,8 @@ export interface CreatePromptTemplateRequest {
   status?: 'DRAFT' | 'PUBLISHED';
   /** Tags for search/filtering */
   tags?: string[];
-  /** Template variable definitions (JSON) */
-  variables?: Record<string, unknown>;
+  /** Typed prompt-variable declarations */
+  variables?: PromptVariableDeclarationDto[];
 }
 
 export interface CreateRateLimitRuleRequest {
@@ -1705,6 +1821,79 @@ export interface CursorPaginatedAuditLogResponse {
   limit: number;
   /** Opaque cursor for the next page; null when `hasMore` is false. */
   nextCursor: string | null;
+}
+
+export interface DeclareConnectionModelsRequest {
+  /** Every model this connection serves. An empty array withdraws them all. */
+  models: DeclaredConnectionModelDto[];
+}
+
+export interface DeclaredConnectionModelDto {
+  /** Capability flags for authoring forms. */
+  capabilities?: DeclaredModelCapabilitiesDto;
+  /** Display name shown in pickers. */
+  name: string;
+  /** Override the SERVER-GENERATED slug. Supply this ONLY to accept the `suggestedSlug` a `BYO_SLUG_SHADOWS_PLATFORM` conflict offered; otherwise leave it out and let the server name the row. */
+  slug?: string;
+  /** What this model does. Must be a task the connection service governs. */
+  taskType:
+    | 'IMAGE_TEXT_TO_TEXT'
+    | 'VISUAL_QUESTION_ANSWERING'
+    | 'DOCUMENT_QUESTION_ANSWERING'
+    | 'VIDEO_TEXT_TO_TEXT'
+    | 'ANY_TO_ANY'
+    | 'DEPTH_ESTIMATION'
+    | 'IMAGE_CLASSIFICATION'
+    | 'OBJECT_DETECTION'
+    | 'IMAGE_SEGMENTATION'
+    | 'TEXT_TO_IMAGE'
+    | 'IMAGE_TO_TEXT'
+    | 'IMAGE_TO_IMAGE'
+    | 'IMAGE_TO_VIDEO'
+    | 'UNCONDITIONAL_IMAGE_GENERATION'
+    | 'VIDEO_CLASSIFICATION'
+    | 'TEXT_TO_VIDEO'
+    | 'ZERO_SHOT_IMAGE_CLASSIFICATION'
+    | 'MASK_GENERATION'
+    | 'ZERO_SHOT_OBJECT_DETECTION'
+    | 'TEXT_TO_3D'
+    | 'IMAGE_TO_3D'
+    | 'IMAGE_FEATURE_EXTRACTION'
+    | 'KEYPOINT_DETECTION'
+    | 'TEXT_CLASSIFICATION'
+    | 'TOKEN_CLASSIFICATION'
+    | 'TABLE_QUESTION_ANSWERING'
+    | 'QUESTION_ANSWERING'
+    | 'ZERO_SHOT_CLASSIFICATION'
+    | 'TRANSLATION'
+    | 'SUMMARIZATION'
+    | 'FEATURE_EXTRACTION'
+    | 'TEXT_GENERATION'
+    | 'TEXT2TEXT_GENERATION'
+    | 'FILL_MASK'
+    | 'SENTENCE_SIMILARITY'
+    | 'GUARDRAIL'
+    | 'TEXT_TO_SPEECH'
+    | 'TEXT_TO_AUDIO'
+    | 'AUTOMATIC_SPEECH_RECOGNITION'
+    | 'AUDIO_TO_AUDIO'
+    | 'AUDIO_CLASSIFICATION'
+    | 'VOICE_ACTIVITY_DETECTION'
+    | 'SPEAKER_DIARIZATION'
+    | 'SPEAKER_EMBEDDING'
+    | 'TABULAR_CLASSIFICATION'
+    | 'TABULAR_REGRESSION'
+    | 'TIME_SERIES_FORECASTING'
+    | 'UNKNOWN';
+  /** The provider-native model id that goes ON THE WIRE — an Azure DEPLOYMENT name, an OpenAI/Anthropic model id. It is also the row locator: for a vendor model the two are the same string. */
+  wireModelId: string;
+}
+
+export interface DeclaredModelCapabilitiesDto {
+  /** Generation parameters this deployment honours. Only what `apps/text` can actually deliver reaches a provider. */
+  supportedGenerationParams?: string[];
+  /** Whether the deployment accepts SSML (speech models). */
+  supportsSsml?: boolean;
 }
 
 export interface DeleteTenantBucketObjectResponse {
@@ -2148,6 +2337,11 @@ export interface EvalScoreResponse {
 export interface ExemplarCurationRequest {
   /** The curator verdict: APPROVED (may be shown to the model), REJECTED (never), or PENDING (back to the queue). */
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
+}
+
+export interface FinalizeAgentTestRequest {
+  /** The `taskId` the stream acknowledgement returned. */
+  taskId: string;
 }
 
 export interface FinalizePromptTestRequest {
@@ -3727,10 +3921,14 @@ export interface PromptTemplateResponse {
   category: string;
   /** Prompt content text */
   content: string;
+  /** Server-truncated (400 chars) preview of `content`, for list/picker surfaces */
+  contentPreview?: string;
   /** Creation timestamp */
   createdAt: string;
   /** Current version number */
   currentVersionNumber: number;
+  /** Typed prompt-variable declarations */
+  declaredVariables: PromptVariableDeclarationDto[];
   /** Department ID */
   departmentId?: string;
   /** Template description */
@@ -3753,7 +3951,7 @@ export interface PromptTemplateResponse {
   tags?: string[];
   /** Last update timestamp */
   updatedAt: string;
-  /** Template variable definitions */
+  /** Template variable definitions (raw, as stored) */
   variables?: Record<string, unknown>;
   /** Row version for optimistic concurrency control (NOT the PromptVersion counter). Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH. */
   version: number;
@@ -3843,6 +4041,28 @@ export interface PromptUsageStatsResponse {
   lastUsedAt?: string | null;
   /** Total number of usages */
   totalUsages: number;
+}
+
+export interface PromptVariableDeclarationDto {
+  /** Default value (as a string; coerced to `type` at render time) used when the caller supplies none */
+  default?: string;
+  /** Human-readable description shown in the console variables editor */
+  description?: string;
+  /** Variable name — a bare identifier referenced in the template as `{{name}}` */
+  name: string;
+  /** Whether a test run / invocation must supply a value when no default is declared */
+  required: boolean;
+  /** Where this variable is expected to be sourced from (informational) */
+  source?: PromptVariableSourceDto;
+  /** The value shape this variable carries */
+  type: 'string' | 'number' | 'boolean' | 'date' | 'json';
+}
+
+export interface PromptVariableSourceDto {
+  /** Where this variable is sourced from */
+  kind: 'context' | 'static';
+  /** Dotted path into the consultation-context scope, when kind=context */
+  path?: string;
 }
 
 export interface PromptVersionDiffResponse {
@@ -5004,6 +5224,21 @@ export interface TenantUsageResponse {
   transcriptionMinutes: number;
 }
 
+export interface TestAgentRequest {
+  /** Consultation context — validated against the agent’s bound context schema when it pins one; reachable as `context.*` and `trigger.*`. */
+  context?: Record<string, unknown>;
+  /** Default TRUE. A dry run assembles and returns the prompts and the resolved target and generates NOTHING — no job, no tokens, no quota. Pass `false` to actually run it. */
+  dryRun?: boolean;
+  /** The invocation body — validated against the agent’s `inputSchema`; reachable as `input.*`. */
+  input?: Record<string, unknown>;
+  /** Override the resolved provider-native model id. Must be supplied together with `provider`. */
+  model?: string;
+  /** Override the resolved provider. Must be supplied together with `model`. */
+  provider?: string;
+  /** Bare-name variable overrides. Overlays the agent’s own `instruction.variables` bindings — the caller wins, as it does at invocation. */
+  variables?: Record<string, unknown>;
+}
+
 export interface TestConnectionResponse {
   /** Failure reason when ok=false */
   error?: string;
@@ -5022,6 +5257,8 @@ export interface TestPromptTemplateRequest {
   goldenCaseId?: string;
   /** Caller-selected LLM model, forwarded to TEXT verbatim (must be paired with `provider`). */
   model?: string;
+  /** TASK-890 §3.7 — a tenant-catalogue `AiModel` row id (the console picker). The server resolves the ACTUAL wire `{provider, model}` from this row — its routing identifier is never exposed to the browser (the catalogue DTO deliberately omits it). Mutually exclusive with `provider`/`model`; either selector wins over the resolved agent. */
+  modelId?: string;
   /** Caller-selected LLM provider, forwarded to TEXT verbatim (must be paired with `model`). Omit both to resolve the assigned TEXT_GENERATION agent (tenant → department → SYSTEM). */
   provider?: string;
   /** Optional extra sample input appended to the prompt. Mutually exclusive with `goldenCaseId`. */
@@ -5046,6 +5283,8 @@ export interface TestProviderConnectionRequest {
 }
 
 export interface TestProviderConnectionResponse {
+  /** Model / deployment ids the vendor listed during this probe (TASK-890 §3.7) — the input for "derive models from provider" in the models editor. ABSENT (never `[]`) when the vendor exposes no listing, the probe failed, or the response could not be parsed: an empty array would promise a list that was never obtained. */
+  discoveredModels?: string[];
   /** Human-readable probe result */
   message: string;
   /** Whether the probe succeeded */
@@ -5182,6 +5421,10 @@ export interface UnregisteredBucketPrefix {
 }
 
 export interface UpdateAgentRequest {
+  /** TASK-890 §3.4 — pin (or, with `null`, unpin) one of THIS tenant’s consultation context schemas. Frozen into `compiledConfig.contextSchema` at publish. */
+  contextSchemaId?: string | null;
+  /** Pin a specific published version of that schema; `null` ⇒ follow the schema’s own pin. */
+  contextSchemaVersionNumber?: number | null;
   description?: string;
   /** Optimistic-concurrency version; the `If-Match` header overrides it when both are present. */
   expectedVersion?: number;
@@ -5710,8 +5953,8 @@ export interface UpdatePromptTemplateRequest {
   status?: 'DRAFT' | 'PUBLISHED';
   /** Tags for search/filtering */
   tags?: string[];
-  /** Template variable definitions (JSON) */
-  variables?: Record<string, unknown>;
+  /** Typed prompt-variable declarations */
+  variables?: PromptVariableDeclarationDto[];
 }
 
 export interface UpdateRateLimitRuleRequest {

@@ -16,12 +16,16 @@ import type {
   AgentBundleResponse,
   AgentResponse,
   AgentSyncResponse,
+  AgentTestAckResponse,
+  AgentTestResultResponse,
   CloneAgentRequest,
   CreateAgentRequest,
+  FinalizeAgentTestRequest,
   ImportAgentRequest,
   NewAgentVersionRequest,
   PublishAgentRequest,
   SyncAgentRequest,
+  TestAgentRequest,
   UpdateAgentRequest,
   UpsertAgentAssignmentRequest,
 } from './schemas';
@@ -34,7 +38,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers AgentAdminController, AgentAssignmentAdminController
- * (19 routes). Several controllers sharing one scope share one
+ * (21 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -234,6 +238,40 @@ export class AdminAgentResource extends AdminResource {
     return this.request<AgentResponse>({
       method: 'POST',
       path: `admin/agents/${encodePathSegment(String(id))}/publish`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Assemble (and optionally run) a DRAFT agent without publishing it
+   *
+   * Compiles the DRAFT in memory through the SAME checks `publish` runs — nothing is persisted — renders its prompt over the runtime variable scope (`context.*` / `trigger.*`, `input.*`, and the bare names from `instruction.variables` overlaid by this request’s `variables`), and reports the resolved `{provider, model, fundingTier}`. `dryRun` DEFAULTS TO TRUE: a dry run generates nothing, costs nothing and meters nothing. With `dryRun: false` the run is charged to the tenant’s own `monthlyLlmTokens` quota (checked BEFORE anything is sent) and answers a `taskId` + gateway-relative `streamUrl`.
+   *
+   * `POST /api/v1/admin/agents/{id}/test` — `AgentAdminController.test`.
+   */
+  test(id: string, body: TestAgentRequest, options: AdminRequestOptions = {}): Promise<AgentTestAckResponse> {
+    return this.request<AgentTestAckResponse>({
+      method: 'POST',
+      path: `admin/agents/${encodePathSegment(String(id))}/test`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read a finished draft-test generation back from TEXT and record its usage
+   *
+   * The output is read SERVER-SIDE by `taskId` and never accepted from the request body. Records `generate.stream` against the tenant with `trigger: AGENT_TEST`. Nothing is written to the agent row — a draft test is an authoring aid, not a version fact.
+   *
+   * `POST /api/v1/admin/agents/{id}/test/finalize` — `AgentAdminController.finalizeTest`.
+   */
+  finalizeTest(id: string, body: FinalizeAgentTestRequest, options: AdminRequestOptions = {}): Promise<AgentTestResultResponse> {
+    return this.request<AgentTestResultResponse>({
+      method: 'POST',
+      path: `admin/agents/${encodePathSegment(String(id))}/test/finalize`,
       body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
