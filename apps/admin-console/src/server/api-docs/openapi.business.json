@@ -15582,6 +15582,43 @@
         ],
         "type": "object"
       },
+      "ReferenceSetSummaryResponse": {
+        "properties": {
+          "kinds": {
+            "additionalProperties": {
+              "type": "object"
+            },
+            "description": "Per kind: rows added, rows left alone, rows whose copy failed.",
+            "type": "object"
+          },
+          "mode": {
+            "description": "The mode the run used.",
+            "enum": [
+              "missing-only",
+              "refresh-locked"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "The tenant the run acted on.",
+            "type": "string"
+          },
+          "warnings": {
+            "description": "One line per failure — a report a human can act on.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tenantId",
+          "mode",
+          "kinds",
+          "warnings"
+        ],
+        "type": "object"
+      },
       "RefreshTokenRequest": {
         "properties": {
           "refreshToken": {
@@ -18480,6 +18517,34 @@
         "required": [
           "jobId"
         ],
+        "type": "object"
+      },
+      "SyncReferenceSetRequest": {
+        "properties": {
+          "kinds": {
+            "description": "Restrict the run to these kinds. Omit for the whole reference set.",
+            "items": {
+              "enum": [
+                "contextSchemas",
+                "promptTemplates",
+                "agents",
+                "agentAssignments",
+                "workflowDefinitions"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "default": "missing-only",
+            "description": "`missing-only` (default) adds what the tenant lacks and touches nothing it has. `refresh-locked` additionally re-copies rows still marked `templateLocked` (pristine clones) and NEVER touches a row the tenant has edited.",
+            "enum": [
+              "missing-only",
+              "refresh-locked"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "SyncSummaryRequest": {

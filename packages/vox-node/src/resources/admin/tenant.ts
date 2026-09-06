@@ -16,7 +16,9 @@ import type {
   PaginatedResponse,
   PaginatedTenantConfigResponse,
   ProvisionTenantRequest,
+  ReferenceSetSummaryResponse,
   SetTenantTagsRequest,
+  SyncReferenceSetRequest,
   TenantConfigResponse,
   TenantProvisionResponse,
   TenantResponse,
@@ -35,8 +37,8 @@ import type {
  * them and nothing else here. Those methods name their own accepted scopes in a 403;
  * the scope above is the one that reaches EVERY route.
  *
- * Backed by controllers TenantController, TenantPipelineResyncController, TenantProvisionController
- * (17 routes). Several controllers sharing one scope share one
+ * Backed by controllers TenantController, TenantPipelineResyncController, TenantProvisionController, TenantReferenceSetController
+ * (18 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -156,6 +158,23 @@ export class AdminTenantResource extends AdminResource {
     return this.request<unknown>({
       method: 'POST',
       path: `admin/tenants/${encodePathSegment(String(id))}/pipelines/resync`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Re-provision a tenant from the platform's SYSTEM reference set
+   *
+   * Copies the platform reference set — context schemas, prompt templates, agents (with their TENANT assignments) and workflow definitions — into one tenant. `missing-only` (the default) adds what the tenant lacks and touches nothing it already has; `refresh-locked` additionally fast-forwards rows still marked `templateLocked` and NEVER touches a row the tenant has edited. Idempotent: a second run reports zero added. Per-row failures are reported in `warnings` rather than aborting the run.
+   *
+   * `POST /api/v1/admin/tenants/{id}/reference-set/sync` — `TenantReferenceSetController.sync`.
+   */
+  sync(id: string, body: SyncReferenceSetRequest, options: AdminRequestOptions = {}): Promise<ReferenceSetSummaryResponse> {
+    return this.request<ReferenceSetSummaryResponse>({
+      method: 'POST',
+      path: `admin/tenants/${encodePathSegment(String(id))}/reference-set/sync`,
+      body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
