@@ -21,7 +21,10 @@ export function ProblemRow({ finding, onActivate }: ProblemRowProps) {
         </Badge>
         <span className="min-w-0 flex-1">
           <span className="block">{finding.message}</span>
-          <span className="text-muted-foreground font-mono text-xs">{finding.ruleId}</span>
+          <span className="text-muted-foreground flex flex-wrap items-baseline gap-x-1 font-mono text-xs">
+            {finding.code ? <span>{finding.code}</span> : null}
+            <span>{finding.ruleId}</span>
+          </span>
         </span>
       </button>
     </li>
