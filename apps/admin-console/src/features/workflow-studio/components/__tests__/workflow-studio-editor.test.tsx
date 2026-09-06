@@ -9,6 +9,7 @@
  * `WorkflowStudioEditor` takes `definition`/`etag`/`registryNodes` as plain props (no query of
  * its own), so it is testable directly without a `WorkingTenantGate`/session stub.
  */
+import type { ReactNode } from 'react';
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
@@ -25,6 +26,30 @@ vi.mock('next/navigation', () => ({
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
+
+/**
+ * TASK-890/BB4 — a seam onto the canvas's `onNodesChange`. React Flow cannot be pointer-dragged
+ * in jsdom (it needs a measured viewport), so the drag path is exercised by calling the very
+ * callback the real canvas calls on drag stop. Everything else in `@arcaai/ui/components/
+ * workflow-canvas` stays real.
+ */
+let capturedOnNodesChange: ((next: { id: string; position: { x: number; y: number } }[]) => void) | null = null;
+vi.mock('@arcaai/ui/components/workflow-canvas', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@arcaai/ui/components/workflow-canvas')>();
+  return {
+    ...actual,
+    WorkflowCanvas: (props: {
+      nodes?: readonly unknown[];
+      emptyState?: ReactNode;
+      onNodesChange?: (next: { id: string; position: { x: number; y: number } }[]) => void;
+    }) => {
+      capturedOnNodesChange = props.onNodesChange ?? null;
+      // Keep the one observable behaviour the other cases in this file assert: an empty graph
+      // renders the canvas's own empty state.
+      return <div data-testid="canvas-stub">{(props.nodes?.length ?? 0) === 0 ? props.emptyState : null}</div>;
+    },
+  };
+});
 
 function definition(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
@@ -190,5 +215,56 @@ describe('WorkflowStudioEditor — unsaved-changes guard (Task 15 remainder)', (
       window.dispatchEvent(event);
     });
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * TASK-890/BB4 — a canvas node DRAG must reach the server.
+ *
+ * `moveNode` deliberately does not set `dirty` (see `create-graph-store.ts`: layout is display
+ * bookkeeping, not graph shape), and the graph autosave effect early-returns while `!dirty`. So
+ * the canvas's `onNodesChange` — the drag path — silently dropped every layout move: the node
+ * moved in the DOM, the footer still read "All changes saved", and a reload restored the old
+ * position. `handleAutoLayout` was the only mover that survived a reload, because it schedules
+ * the patch itself. This asserts the drag path does the same, which is what the comment above
+ * `handleAutoLayout` ("persisted through the same autosave path as a drag would be") claims.
+ */
+describe('WorkflowStudioEditor — a canvas node drag persists (TASK-890/BB4)', () => {
+  it('schedules the debounced graph PATCH when the canvas reports a moved node', async () => {
+    vi.useFakeTimers();
+    const calls = installFetchMock();
+    const withNode = definition({
+      graph: { version: 1, nodes: [{ id: 'n1', type: 'core.note', config: {}, position: { x: 0, y: 0 } }], edges: [] },
+    });
+    renderWithProviders(
+      <WorkflowStudioEditor
+        definition={withNode}
+        etag='"1"'
+        registryNodes={[
+          {
+            type: 'core.note',
+            implemented: true,
+            classes: ['annotation'],
+            paletteKey: 'core',
+            deprecated: false,
+            entitlementKey: null,
+            inputs: [],
+            outputs: [],
+          } as never,
+        ]}
+      />,
+      {},
+    );
+
+    act(() => {
+      capturedOnNodesChange?.([{ id: 'n1', position: { x: 400, y: 250 } }]);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    const patch = calls.find((call) => call.method === 'PATCH');
+    expect(patch).toBeTruthy();
+    expect((patch?.body as { graph: { nodes: { position: unknown }[] } }).graph.nodes[0].position).toEqual({ x: 400, y: 250 });
   });
 });
