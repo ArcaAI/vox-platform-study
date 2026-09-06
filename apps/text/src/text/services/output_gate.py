@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from text.core.guardrail_posture import platform_moderation_enabled
+from text.core.guardrail_posture import platform_moderation_enabled, tenant_opted_out
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
 from text.services.external_guardrail import (
     GUARDRAIL_UNAVAILABLE_REASON,
@@ -168,7 +168,8 @@ async def gate_completion(
     * client wired ⇒ screen; ``allowed`` missing or false ⇒ raise (outage
       reason ⇒ retryable, anything else ⇒ content rejection);
     * client absent AND the platform posture enforces ⇒ raise, retryable — a
-      misconfiguration must not ship an unscreened response;
+      misconfiguration must not ship an unscreened response, UNLESS this call opted
+      out (TASK-890 OD-R), which has no screening to misconfigure;
     * client absent AND posture off ⇒ ``None``, the dev/CI bypass.
 
     An EMPTY completion is not sent: there is nothing to screen, and guardrail
@@ -199,6 +200,9 @@ async def gate_completion(
                 guardrail_usage=guardrail_usage,
             )
         return guardrail_usage
-    if platform_moderation_enabled(app_state):
+    # The unwired-client branch, mirroring the input gate one for one — including the
+    # TASK-890 OD-R exception: a call the tenant opted out of has no screening to be
+    # misconfigured for, so it is not a fail-closed case. Every other call still is.
+    if platform_moderation_enabled(app_state) and not tenant_opted_out(tenant_policy):
         raise OutputRejectedError(reason=GUARDRAIL_UNAVAILABLE_REASON, retryable=True)
     return None

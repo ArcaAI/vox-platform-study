@@ -18,6 +18,23 @@ logger = get_logger(__name__)
 # (distinct from a 422 content rejection). This path NEVER yields ``allowed: True``.
 GUARDRAIL_UNAVAILABLE_REASON = "external_guardrail_unavailable"
 
+# The two ways a gate can be skipped, kept as DISTINCT strings on purpose
+# (TASK-890 OD-R). `external_guardrail_disabled` is the PLATFORM kill switch
+# (`text.externalGuardrail.enabled`) — a platform state in which no tenant's
+# opt-out was even consulted. `tenant_opted_out` is a TENANT decision for this
+# call, folded gateway-side (node > workflow > agent) and pushed as
+# `guardrail_policy.enabled: false`. The usage ledger records them as
+# `platform_off` and `opted_out` respectively, and collapsing them here would
+# make "this tenant chose to run unscreened" indistinguishable from "nobody has
+# turned the platform gate on yet".
+GUARDRAIL_DISABLED_REASON = "external_guardrail_disabled"
+GUARDRAIL_TENANT_OPTED_OUT_REASON = "tenant_opted_out"
+
+
+def _skip_reason(posture: GuardrailPosture) -> str:
+    """Which of the two skip reasons this resolved posture represents."""
+    return GUARDRAIL_TENANT_OPTED_OUT_REASON if posture.opted_out else GUARDRAIL_DISABLED_REASON
+
 
 class ExternalGuardrailClient:
     """Calls the Guardrail service for medical-content validation.
@@ -26,8 +43,12 @@ class ExternalGuardrailClient:
     absorbed by a bounded retry (``max_retries`` / ``retry_backoff_ms``); once the
     budget is exhausted the client returns a deterministic NOT-allowed verdict — an
     errored guardrail can NEVER return ``allowed: True`` (there is no fail-open
-    branch). The only allow-without-check path is the intentional ``enabled=False``
-    dev/CI bypass, preserved exactly (mirrors the empty-token bypass).
+    branch). The only allow-without-check paths are the two DECLARED ones, and both
+    say which they are: the platform switch being off
+    (``external_guardrail_disabled`` — the dev/CI bypass, preserved exactly, and it
+    mirrors the empty-token bypass) and a tenant opting this call out
+    (``tenant_opted_out``, TASK-890 OD-R). Neither is an error path, and neither can
+    be reached by a guardrail that answered.
     """
 
     def __init__(
@@ -76,7 +97,7 @@ class ExternalGuardrailClient:
                 "allowed": True,
                 "is_medical": True,
                 "confidence": 1.0,
-                "reason": "external_guardrail_disabled",
+                "reason": _skip_reason(posture),
             }
 
         text = prompt if not system_prompt else f"{system_prompt}\n\n{prompt}"
@@ -143,7 +164,7 @@ class ExternalGuardrailClient:
         """
         posture = resolve_posture(self._platform_posture(), tenant_policy)
         if not posture.enabled:
-            return {"allowed": True, "reason": "external_guardrail_disabled"}
+            return {"allowed": True, "reason": _skip_reason(posture)}
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
             decision = payload.get("decision")

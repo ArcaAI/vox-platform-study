@@ -51,7 +51,7 @@ from text.core.exceptions import (
 from text.core.exceptions import (
     QueueFullError as DomainQueueFullError,
 )
-from text.core.guardrail_posture import platform_moderation_enabled
+from text.core.guardrail_posture import platform_moderation_enabled, tenant_opted_out
 from text.core.logging import get_logger
 from text.core.metrics import (
     ACTIVE_GENERATIONS,
@@ -204,10 +204,20 @@ async def _apply_guardrail_gate(
                 detail=f"Content rejected by guardrail: {reason}",
             )
         return guardrail_usage
-    if _platform_moderation_enabled(app_state):
+    if _platform_moderation_enabled(app_state) and not tenant_opted_out(
+        request_body.guardrail_policy
+    ):
         # Enforce posture on but the guardrail client is unwired — fail CLOSED rather
         # than silently skip moderation (a misconfiguration must not ship unmoderated
         # PHI). Retryable (503) once the client is provisioned.
+        #
+        # A call the tenant OPTED OUT of (TASK-890 OD-R) is the one exception, and it is
+        # not a weakening: there is no screening to be misconfigured for a call that
+        # asked for none, and 503-ing it would make the opt-out depend on whether a
+        # client this request never needed happened to be wired. The wired path reaches
+        # the same answer through `validate`'s own short-circuit; this branch keeps the
+        # two consistent. The decision is still recorded — `guardrail: 'opted_out'` on
+        # the usage row, gateway-side.
         raise HTTPException(
             status_code=503,
             detail="Content rejected by guardrail: external_guardrail_unavailable",
