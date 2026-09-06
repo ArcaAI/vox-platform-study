@@ -213,10 +213,22 @@ test.describe('workflow studio editor', () => {
     test.skip((await mandatoryItem.count()) === 0, 'No mandatory-classed node type in the live registry');
     await mandatoryItem.click();
 
-    await expect(page.getByRole('button', { name: /^Delete / })).toHaveCount(0);
+    // TASK-890 black-box J4-F8: the canvas's per-node control is "Remove <name>", NEVER
+    // "Delete …" (`packages/ui` `workflow-node.tsx`), so the original `/^Delete /` assertion here
+    // matched nothing in EITHER outcome and could not have failed. Assert the control the canvas
+    // actually renders — and prove the locator is live by finding it on a NON-mandatory node
+    // first, so a future rename cannot quietly make this vacuous again.
+    await expect(page.locator('[data-slot="workflow-node"][data-mandatory="true"]')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /^Remove / })).toHaveCount(0);
+    await paletteNav.getByRole('button').filter({ hasText: 'Core.start' }).first().click();
+    await expect(page.getByRole('button', { name: /^Remove / })).toHaveCount(1);
+
     await page.getByRole('radio', { name: 'List view' }).click();
     await expect(page.getByText('Mandatory — cannot be deleted.').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Delete / })).toHaveCount(0);
+    // The list editor's own control IS "Delete <name>" — present for the added node, absent for
+    // the mandatory one.
+    await expect(page.getByRole('button', { name: /^Delete Core\.start/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /^Delete Input\.context Binding/ })).toHaveCount(0);
   });
 
   test('clicking a validation problem moves DOM focus to its node, in canvas AND list view', async ({ page }) => {
