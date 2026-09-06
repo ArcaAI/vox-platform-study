@@ -55,7 +55,13 @@ function model(over: Partial<ResolvedAgentModel> = {}): ResolvedAgentModel {
   } as ResolvedAgentModel;
 }
 
-const OVERRIDE = { provider: 'azure', api_key: 'secret', funding: 'tenant' as const, base_url: 'https://acme.openai.azure.com', deployment_name: 'the-connection-deployment' };
+const OVERRIDE = {
+  provider: 'azure',
+  api_key: 'secret',
+  funding: 'tenant' as const,
+  base_url: 'https://acme.openai.azure.com',
+  deployment_name: 'the-connection-deployment',
+};
 
 describe('toTextCandidate — the routed id', () => {
   it('sends `wireModelId`, not the locator `sourceUri`', () => {

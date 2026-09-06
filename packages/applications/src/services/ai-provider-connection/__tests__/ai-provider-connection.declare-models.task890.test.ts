@@ -151,7 +151,9 @@ describe('declareModels — materialising tenant-owned rows', () => {
   it('400s a task type the service does not govern, and writes nothing', async () => {
     const { svc, models } = makeService();
     const error = await svc
-      .declareModels('llm', 'azure', { models: [{ wireModelId: 'whisper-1', name: 'W', taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION }] } as any)
+      .declareModels('llm', 'azure', {
+        models: [{ wireModelId: 'whisper-1', name: 'W', taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION }],
+      } as any)
       .catch((e: unknown) => e);
     expect((error as Error).message).toContain('AUTOMATIC_SPEECH_RECOGNITION');
     expect(models.create).not.toHaveBeenCalled();
@@ -224,10 +226,7 @@ describe('the single-model extra stays in step (speech planes only)', () => {
     const { svc, repo } = makeService({ connection: connectionRow({ service: 'stt', provider: 'azure-speech' }) });
 
     await svc.declareModels('stt', 'azure-speech', {
-      models: [
-        STT_ONE.models[0],
-        { wireModelId: 'whisper-1', name: 'Whisper', taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION },
-      ],
+      models: [STT_ONE.models[0], { wireModelId: 'whisper-1', name: 'Whisper', taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION }],
     } as any);
 
     const saved = repo.updateWithVersion.mock.calls.at(-1)?.[1] as any;

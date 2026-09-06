@@ -164,7 +164,10 @@ test.describe('TASK-890 — declaring a BYO connection’s models', () => {
     const accepted = await request.put(`${PROVIDERS}/llm/azure/models`, {
       headers: auth(bearer),
       data: {
-        models: [DECLARED, { wireModelId: 'gpt-5.4-mini', name: 'Our own GPT-5.4 mini', taskType: 'TEXT_GENERATION', slug: 'byo-azure-gpt-5.4-mini' }],
+        models: [
+          DECLARED,
+          { wireModelId: 'gpt-5.4-mini', name: 'Our own GPT-5.4 mini', taskType: 'TEXT_GENERATION', slug: 'byo-azure-gpt-5.4-mini' },
+        ],
       },
     });
     expect(accepted.status(), await accepted.text()).toBe(200);

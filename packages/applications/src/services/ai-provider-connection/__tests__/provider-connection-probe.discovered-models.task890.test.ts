@@ -42,7 +42,10 @@ describe('discoveredModels', () => {
   });
 
   it('OpenAI: /models ids become the discovered set', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: 'gpt-4.1' }, { id: 'o4-mini' }] }) })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: 'gpt-4.1' }, { id: 'o4-mini' }] }) })),
+    );
     const probe = new ProviderConnectionProbe(connections() as any, secrets as any);
 
     const res = await probe.test('llm', 'openai', TENANT, { apiKey: 'sk', baseUrl: 'https://api.openai.com/v1' });
@@ -51,7 +54,10 @@ describe('discoveredModels', () => {
   });
 
   it('Anthropic: /v1/models ids become the discovered set', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: 'claude-4-sonnet' }] }) })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: 'claude-4-sonnet' }] }) })),
+    );
     const probe = new ProviderConnectionProbe(connections() as any, secrets as any);
 
     const res = await probe.test('llm', 'anthropic', TENANT, { apiKey: 'sk', baseUrl: 'https://api.anthropic.com' });
@@ -60,7 +66,10 @@ describe('discoveredModels', () => {
   });
 
   it('is ABSENT when the vendor returned no parsable list — never an empty promise of a list', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: 'yes' }) })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: 'yes' }) })),
+    );
     const probe = new ProviderConnectionProbe(connections() as any, secrets as any);
 
     const res = await probe.test('llm', 'openai', TENANT, { apiKey: 'sk', baseUrl: 'https://api.openai.com/v1' });
@@ -70,7 +79,10 @@ describe('discoveredModels', () => {
   });
 
   it('is ABSENT on a rejected key — a failed probe discovered nothing', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 401 })),
+    );
     const probe = new ProviderConnectionProbe(connections() as any, secrets as any);
 
     const res = await probe.test('llm', 'anthropic', TENANT, { apiKey: 'bad', baseUrl: 'https://api.anthropic.com' });

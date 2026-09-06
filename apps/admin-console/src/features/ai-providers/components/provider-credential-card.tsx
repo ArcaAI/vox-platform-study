@@ -14,7 +14,14 @@ import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useDeleteProviderConnection, useProviderConnection, usePutProviderConnection, useTestProviderConnection } from '../api/hooks';
-import { CONNECTION_CEILINGS, connectionStateOf, declarableService, type ConnectionCeiling, type ConnectionState, type ProviderService } from '../api/types';
+import {
+  CONNECTION_CEILINGS,
+  connectionStateOf,
+  declarableService,
+  type ConnectionCeiling,
+  type ConnectionState,
+  type ProviderService,
+} from '../api/types';
 import { ConnectionModelsEditor } from './connection-models-editor';
 import type { ProviderField, ProviderMeta } from './provider-meta';
 
@@ -351,7 +358,12 @@ export function ProviderCredentialCard({
               </Button>
             </>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => setConfirmingRemove(true)} aria-label={`Remove the ${meta.label} connection (use platform default)`}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmingRemove(true)}
+              aria-label={`Remove the ${meta.label} connection (use platform default)`}
+            >
               <IconPlugConnectedX aria-hidden />
               Use platform default
             </Button>
