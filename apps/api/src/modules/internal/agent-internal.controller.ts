@@ -69,6 +69,12 @@ export class AgentInternalController {
     }
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
+      // TASK-890 §3.4 (OD-M) — `AGENT_NOT_ASSIGNED` needs NO mapping here, deliberately.
+      // `AgentResolverService` raises it as a `ServiceUnavailableException` whose body already
+      // carries `{ code, task, tenantId, departmentId }`, so Nest answers 503 with the named
+      // payload and the harness step degrades on a reason it can print. Catching it here to
+      // re-wrap it would only give the same fact two shapes — and the interceptor passes an
+      // `HttpException` through untouched.
       const resolved = await this.resolver.resolve({
         tenantId,
         task: task as AgentTask | undefined,
