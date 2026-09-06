@@ -192,6 +192,8 @@ export type {
   CompiledLoop,
   CompiledLoopBody,
   CompiledPolicyBindings,
+  CompiledContextSchemaRef,
+  ResolvedTriggerContextSchema,
   CompiledCaps,
   CompiledRetryPolicy,
   CompiledInputBinding,

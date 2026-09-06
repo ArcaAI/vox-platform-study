@@ -198,7 +198,7 @@ describe('ConsultationContextSchemaService.resolveReference', () => {
     mockVersionRepository.findBySchemaAndVersionNumber.mockResolvedValue(versionRow(1));
 
     await expect(service.resolveReference('schema-1', 1)).resolves.toEqual({
-      ok: true,
+      outcome: 'resolved',
       schemaId: 'schema-1',
       versionNumber: 1,
       versionId: 'version-1',
@@ -213,38 +213,38 @@ describe('ConsultationContextSchemaService.resolveReference', () => {
     const resolved = await service.resolveReference('schema-1');
 
     expect(mockVersionRepository.findBySchemaAndVersionNumber).toHaveBeenCalledWith('schema-1', 2);
-    expect(resolved).toMatchObject({ ok: true, versionNumber: 2 });
+    expect(resolved).toMatchObject({ outcome: 'resolved', versionNumber: 2 });
   });
 
   it('is a NOT_FOUND failure for a SYSTEM row — a schema is CLONED into a tenant, never shared', async () => {
     mockSchemaRepository.findById.mockResolvedValue(schemaRow({ tenantId: SYSTEM_TENANT }));
 
-    await expect(service.resolveReference('schema-1', 1)).resolves.toEqual({ ok: false, failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
+    await expect(service.resolveReference('schema-1', 1)).resolves.toEqual({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
   });
 
   it('is a NOT_FOUND failure for another tenant’s row (404-over-403, no existence oracle)', async () => {
     mockSchemaRepository.findById.mockResolvedValue(schemaRow({ tenantId: 'tenant-2' }));
 
-    await expect(service.resolveReference('schema-1', 1)).resolves.toEqual({ ok: false, failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
+    await expect(service.resolveReference('schema-1', 1)).resolves.toEqual({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
   });
 
   it('is a NOT_FOUND failure when the row does not exist at all', async () => {
     mockSchemaRepository.findById.mockRejectedValue(new NotFoundException('nope'));
 
-    await expect(service.resolveReference('schema-1', 1)).resolves.toEqual({ ok: false, failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
+    await expect(service.resolveReference('schema-1', 1)).resolves.toEqual({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
   });
 
   it('distinguishes a missing VERSION from a missing schema', async () => {
     mockSchemaRepository.findById.mockResolvedValue(schemaRow());
     mockVersionRepository.findBySchemaAndVersionNumber.mockResolvedValue(null);
 
-    await expect(service.resolveReference('schema-1', 9)).resolves.toEqual({ ok: false, failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' });
+    await expect(service.resolveReference('schema-1', 9)).resolves.toEqual({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' });
   });
 
   it('treats an unpinned schema with no explicit version as a missing VERSION', async () => {
     mockSchemaRepository.findById.mockResolvedValue(schemaRow({ pinnedVersionNumber: null }));
 
-    await expect(service.resolveReference('schema-1')).resolves.toEqual({ ok: false, failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' });
+    await expect(service.resolveReference('schema-1')).resolves.toEqual({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' });
     expect(mockVersionRepository.findBySchemaAndVersionNumber).not.toHaveBeenCalled();
   });
 });
