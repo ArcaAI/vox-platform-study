@@ -42,7 +42,6 @@ const LLM_MODEL = {
   slug: 'lms-gemma-4-e2b-it-qat',
   taskType: 'TEXT_GENERATION',
   provider: 'lm-studio',
-  localPath: null,
   resourceStatus: ResourceStatusType.ENABLED,
   metaData: null,
 };
@@ -52,12 +51,14 @@ const ASR_MODEL = {
   slug: 'nemotron-3.5-asr-streaming-0.6b',
   taskType: 'AUTOMATIC_SPEECH_RECOGNITION',
   provider: 'built-in',
-  localPath: null,
-  downloadStatus: 'NOT_DOWNLOADED',
+  // TASK-890 — the publish gate reads the MEASURED availability now that the
+  // download bookkeeping columns are gone. UNKNOWN is what a freshly seeded
+  // self-hosted row carries until the inventory job confirms its weights.
+  availability: 'UNKNOWN',
   resourceStatus: ResourceStatusType.ENABLED,
   metaData: null,
 };
-const STAGED_ASR = { ...ASR_MODEL, id: 'model-asr-staged', slug: 'arcaai-whisper-large-ml-en-gguf', localPath: '/mnt/models/whisper' };
+const STAGED_ASR = { ...ASR_MODEL, id: 'model-asr-staged', slug: 'arcaai-whisper-large-ml-en-gguf', availability: 'AVAILABLE' };
 const AZURE_LLM = { ...LLM_MODEL, id: 'model-azure', slug: 'azure-gpt-5.4-mini', provider: 'azure' };
 
 function agent(overrides: Record<string, unknown> = {}) {
@@ -205,7 +206,7 @@ describe('publish — fails closed', () => {
     expect(persisted.validationReport.blocking).toBe(true);
   });
 
-  it('publishes a built-in ASR model whose weights ARE staged (localPath set)', async () => {
+  it('publishes a built-in ASR model whose weights ARE staged (availability AVAILABLE)', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(
       agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr-staged', instruction: null, parameters: { decoding: { languageMode: 'ml-en' } } }),
     );
