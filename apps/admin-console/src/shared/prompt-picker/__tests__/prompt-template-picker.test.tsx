@@ -78,13 +78,62 @@ describe('PromptTemplatePicker — the picker', () => {
   });
 
   it('lists the tenant’s templates and reports the chosen id', async () => {
-    stubList([template(), template({ id: 'tpl-2', name: 'Cardiology Note', status: 'DRAFT', approvedVersionNumber: null })]);
+    stubList([template(), template({ id: 'tpl-2', name: 'Cardiology Note' })]);
     const onChange = vi.fn();
     renderPicker(null, onChange);
 
     const listbox = await openSelect('Prompt template');
     fireEvent.click(within(listbox).getByRole('option', { name: /Cardiology Note/ }));
     expect(onChange).toHaveBeenCalledWith('tpl-2');
+  });
+
+  /**
+   * J3-6 — the field says "Approved prompt template" and the agent publish gate REFUSES a
+   * template that is not APPROVED (`TEMPLATE_NOT_APPROVED`), so offering drafts here invites the
+   * author to pick something that cannot be published and only tells them three steps later.
+   *
+   * A draft is not hidden, it is opted into: a template being drafted right now is a legitimate
+   * thing to bind while both are in flight, and the quick view already says "not approved".
+   */
+  it('offers only APPROVED templates by default — a draft cannot be published on an agent', async () => {
+    stubList([template(), template({ id: 'tpl-2', name: 'Cardiology Note', status: 'DRAFT', approvedVersionNumber: null })]);
+    renderPicker(null);
+
+    const listbox = await openSelect('Prompt template');
+    expect(within(listbox).getByRole('option', { name: /SOAP Summary/ })).toBeTruthy();
+    expect(within(listbox).queryByRole('option', { name: /Cardiology Note/ })).toBeNull();
+  });
+
+  it('includes drafts when the author asks for them', async () => {
+    stubList([template(), template({ id: 'tpl-2', name: 'Cardiology Note', status: 'DRAFT', approvedVersionNumber: null })]);
+    const onChange = vi.fn();
+    renderPicker(null, onChange);
+
+    fireEvent.click(await screen.findByLabelText(/include drafts/i));
+    const listbox = await openSelect('Prompt template');
+    fireEvent.click(within(listbox).getByRole('option', { name: /Cardiology Note/ }));
+    expect(onChange).toHaveBeenCalledWith('tpl-2');
+  });
+
+  it('never orphans an already-bound DRAFT — the current selection is always listed', async () => {
+    stubList([template(), template({ id: 'tpl-2', name: 'Cardiology Note', status: 'DRAFT', approvedVersionNumber: null })]);
+    renderPicker('tpl-2');
+
+    // The quick view resolves (the bound row is found in the full list, not the narrowed one)…
+    expect(await screen.findByText('Cardiology Note')).toBeTruthy();
+    // …and the option is present, so re-opening the select does not silently clear the binding.
+    const listbox = await openSelect('Prompt template');
+    expect(within(listbox).getByRole('option', { name: /Cardiology Note/ })).toBeTruthy();
+  });
+
+  it('keeps a row whose status it cannot read — unknown is not a verdict', async () => {
+    // A server that grows or renames a status must not empty the picker.
+    stubList([{ ...template({ id: 'tpl-3', name: 'Unlabelled' }), status: undefined as never }]);
+    renderPicker(null);
+
+    const listbox = await openSelect('Prompt template');
+    expect(within(listbox).getByRole('option', { name: /Unlabelled/ })).toBeTruthy();
+    expect(screen.queryByLabelText(/include drafts/i)).toBeNull();
   });
 
   /**

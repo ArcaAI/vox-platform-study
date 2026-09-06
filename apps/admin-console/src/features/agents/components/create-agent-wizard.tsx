@@ -11,9 +11,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { useContextSchemaOptions } from '@/shared/catalog';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { usePromptTemplateQuickView } from '@/shared/prompt-picker';
-import { AGENT_TASKS, AGENT_TASK_LABEL, useCreateAgent, usePublishAgent, type Agent, type AgentProblemBody, type AgentPromptVariableBinding, type AgentTask, type CreateAgentRequest } from '../api';
+import {
+  AGENT_TASKS,
+  AGENT_TASK_LABEL,
+  useCreateAgent,
+  usePublishAgent,
+  type Agent,
+  type AgentProblemBody,
+  type AgentPromptVariableBinding,
+  type AgentTask,
+  type CreateAgentRequest,
+} from '../api';
 import { InstructionBindingForm, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
 import { ModelPicker, useTaskModelCatalogue } from './model-picker';
@@ -125,7 +136,15 @@ function problemToast(error: unknown, fallback: string): void {
 }
 
 /** The create wizard: Task → Model → Instruction → Parameters → Schemas → Review & publish. */
-export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (agent: Agent) => void }) {
+export function CreateAgentWizard({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (agent: Agent) => void;
+}) {
   const [step, setStep] = useState<Step>('Task');
   const [state, setState] = useState<WizardState>(INITIAL);
   const create = useCreateAgent();
@@ -135,16 +154,25 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
   // about what they are about to publish. `enabled` is the id itself, so nothing is fetched
   // until one is chosen (and the picker has usually warmed this query already).
   const boundTemplate = usePromptTemplateQuickView(state.instructionMode === 'template' ? (state.binding.promptTemplateId ?? null) : null);
+  // Same reasoning for the context schema: the Review step is the last thing an author reads
+  // before publishing, and a UUID there says nothing about what they are agreeing to. The
+  // catalogue is already loaded for the Instruction step's picker, so this costs no extra read.
+  const contextSchemas = useContextSchemaOptions();
 
   const stepIndex = STEPS.indexOf(step);
   const patch = (next: Partial<WizardState>) => setState((current) => ({ ...current, ...next }));
 
-  const fallbackCandidates = useMemo(() => catalogue.models.filter((model) => model.id !== state.modelId && !state.fallbackModelIds.includes(model.id)), [catalogue.models, state.modelId, state.fallbackModelIds]);
+  const fallbackCandidates = useMemo(
+    () => catalogue.models.filter((model) => model.id !== state.modelId && !state.fallbackModelIds.includes(model.id)),
+    [catalogue.models, state.modelId, state.fallbackModelIds],
+  );
 
   const canAdvance: Record<Step, boolean> = {
     Task: state.name.trim().length > 0 && /^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$/.test(state.slug),
     Model: state.modelId.length > 0,
-    Instruction: state.task !== 'TEXT_GENERATION' || (state.instructionMode === 'template' ? !!state.binding.promptTemplateId : state.systemPrompt.trim().length > 0),
+    Instruction:
+      state.task !== 'TEXT_GENERATION' ||
+      (state.instructionMode === 'template' ? !!state.binding.promptTemplateId : state.systemPrompt.trim().length > 0),
     Parameters: true,
     Schemas: true,
     Review: true,
@@ -190,7 +218,11 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
       meta={
         <ol className="flex flex-wrap items-center gap-2 text-xs" aria-label="Steps">
           {STEPS.map((name, index) => (
-            <li key={name} aria-current={name === step ? 'step' : undefined} className={name === step ? 'font-medium' : index < stepIndex ? '' : 'text-muted-foreground'}>
+            <li
+              key={name}
+              aria-current={name === step ? 'step' : undefined}
+              className={name === step ? 'font-medium' : index < stepIndex ? '' : 'text-muted-foreground'}
+            >
               {index + 1}. {name}
             </li>
           ))}
@@ -228,7 +260,17 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
             </legend>
             <RadioGroup
               value={state.task}
-              onValueChange={(task) => patch({ task: task as AgentTask, modelId: '', fallbackModelIds: [], binding: NO_INSTRUCTION, parameters: {}, inputSchema: null, outputSchema: null })}
+              onValueChange={(task) =>
+                patch({
+                  task: task as AgentTask,
+                  modelId: '',
+                  fallbackModelIds: [],
+                  binding: NO_INSTRUCTION,
+                  parameters: {},
+                  inputSchema: null,
+                  outputSchema: null,
+                })
+              }
             >
               {AGENT_TASKS.map((task) => (
                 <div key={task} className="flex items-center gap-2">
@@ -242,14 +284,28 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
             <Label htmlFor="agent-name">
               Name <span aria-hidden>*</span>
             </Label>
-            <Input id="agent-name" value={state.name} required onChange={(event) => patch({ name: event.target.value, ...(state.slugTouched ? {} : { slug: slugify(event.target.value) }) })} />
+            <Input
+              id="agent-name"
+              value={state.name}
+              required
+              onChange={(event) => patch({ name: event.target.value, ...(state.slugTouched ? {} : { slug: slugify(event.target.value) }) })}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-slug">
               Slug <span aria-hidden>*</span>
             </Label>
-            <Input id="agent-slug" value={state.slug} required className="font-mono" pattern="^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$" onChange={(event) => patch({ slug: event.target.value, slugTouched: true })} />
-            <p className="text-muted-foreground text-xs">Lineage key: 2–80 lowercase alphanumerics, `-` or `_`. Every version of this agent shares it.</p>
+            <Input
+              id="agent-slug"
+              value={state.slug}
+              required
+              className="font-mono"
+              pattern="^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$"
+              onChange={(event) => patch({ slug: event.target.value, slugTouched: true })}
+            />
+            <p className="text-muted-foreground text-xs">
+              Lineage key: 2–80 lowercase alphanumerics, `-` or `_`. Every version of this agent shares it.
+            </p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-description">Description</Label>
@@ -260,11 +316,22 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
 
       {step === 'Model' ? (
         <div className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">Pick a provider, then a model of this task. Publish fails closed when the model is unusable.</p>
-          <ModelPicker task={state.task} value={state.modelId} onChange={(modelId) => patch({ modelId, fallbackModelIds: state.fallbackModelIds.filter((id) => id !== modelId) })} />
+          <p className="text-muted-foreground text-sm">
+            Pick a provider, then a model of this task. Publish fails closed when the model is unusable.
+          </p>
+          <ModelPicker
+            task={state.task}
+            value={state.modelId}
+            onChange={(modelId) => patch({ modelId, fallbackModelIds: state.fallbackModelIds.filter((id) => id !== modelId) })}
+          />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="agent-fallbacks">Fallback models (in order)</Label>
-            <Select value="" onValueChange={(modelId) => patch({ fallbackModelIds: state.fallbackModelIds.includes(modelId) ? state.fallbackModelIds : [...state.fallbackModelIds, modelId] })}>
+            <Select
+              value=""
+              onValueChange={(modelId) =>
+                patch({ fallbackModelIds: state.fallbackModelIds.includes(modelId) ? state.fallbackModelIds : [...state.fallbackModelIds, modelId] })
+              }
+            >
               <SelectTrigger id="agent-fallbacks">
                 <SelectValue placeholder="Add a fallback" />
               </SelectTrigger>
@@ -282,7 +349,13 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
                   const model = catalogue.models.find((candidate) => candidate.id === id);
                   return (
                     <li key={id}>
-                      <Button type="button" size="sm" variant="outline" aria-label={`Remove fallback ${model?.name ?? id}`} onClick={() => patch({ fallbackModelIds: state.fallbackModelIds.filter((other) => other !== id) })}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        aria-label={`Remove fallback ${model?.name ?? id}`}
+                        onClick={() => patch({ fallbackModelIds: state.fallbackModelIds.filter((other) => other !== id) })}
+                      >
                         {index + 1}. {model?.name ?? id} ×
                       </Button>
                     </li>
@@ -298,7 +371,11 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
         <div className="flex flex-col gap-4">
           {state.task === 'TEXT_GENERATION' ? (
             <>
-              <RadioGroup value={state.instructionMode} onValueChange={(mode) => patch({ instructionMode: mode as WizardState['instructionMode'] })} aria-label="Instruction source">
+              <RadioGroup
+                value={state.instructionMode}
+                onValueChange={(mode) => patch({ instructionMode: mode as WizardState['instructionMode'] })}
+                aria-label="Instruction source"
+              >
                 <div className="flex items-center gap-2">
                   <RadioGroupItem id="instr-template" value="template" />
                   <Label htmlFor="instr-template">Approved prompt template (versioned, governed)</Label>
@@ -315,7 +392,13 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
                   <Label htmlFor="agent-system-prompt">
                     System prompt <span aria-hidden>*</span>
                   </Label>
-                  <Textarea id="agent-system-prompt" rows={8} value={state.systemPrompt} maxLength={50000} onChange={(event) => patch({ systemPrompt: event.target.value })} />
+                  <Textarea
+                    id="agent-system-prompt"
+                    rows={8}
+                    value={state.systemPrompt}
+                    maxLength={50000}
+                    onChange={(event) => patch({ systemPrompt: event.target.value })}
+                  />
                 </div>
               )}
             </>
@@ -323,15 +406,28 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
             <>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="agent-initial-prompt">Initial prompt</Label>
-                <Textarea id="agent-initial-prompt" rows={3} maxLength={1000} value={state.initialPrompt} onChange={(event) => patch({ initialPrompt: event.target.value })} />
+                <Textarea
+                  id="agent-initial-prompt"
+                  rows={3}
+                  maxLength={1000}
+                  value={state.initialPrompt}
+                  onChange={(event) => patch({ initialPrompt: event.target.value })}
+                />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="agent-hotwords">Hotwords</Label>
-                <Input id="agent-hotwords" placeholder="comma-separated" value={state.hotwords} onChange={(event) => patch({ hotwords: event.target.value })} />
+                <Input
+                  id="agent-hotwords"
+                  placeholder="comma-separated"
+                  value={state.hotwords}
+                  onChange={(event) => patch({ hotwords: event.target.value })}
+                />
               </div>
             </>
           ) : (
-            <p className="text-muted-foreground text-sm">A text-to-speech agent carries no instruction — the voice is a parameter on the next step.</p>
+            <p className="text-muted-foreground text-sm">
+              A text-to-speech agent carries no instruction — the voice is a parameter on the next step.
+            </p>
           )}
         </div>
       ) : null}
@@ -341,8 +437,18 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
       {step === 'Schemas' ? (
         <div className="flex flex-col gap-4">
           <p className="text-muted-foreground text-sm">Leave a schema empty to use the task default shown as placeholder.</p>
-          <JsonField label="Input schema" value={state.inputSchema} onChange={(inputSchema) => patch({ inputSchema })} placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].inputSchema, null, 2)} />
-          <JsonField label="Output schema" value={state.outputSchema} onChange={(outputSchema) => patch({ outputSchema })} placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].outputSchema, null, 2)} />
+          <JsonField
+            label="Input schema"
+            value={state.inputSchema}
+            onChange={(inputSchema) => patch({ inputSchema })}
+            placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].inputSchema, null, 2)}
+          />
+          <JsonField
+            label="Output schema"
+            value={state.outputSchema}
+            onChange={(outputSchema) => patch({ outputSchema })}
+            placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].outputSchema, null, 2)}
+          />
         </div>
       ) : null}
 
@@ -357,7 +463,9 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
           <dt className="text-muted-foreground">Model</dt>
           <dd className="font-mono">{catalogue.models.find((model) => model.id === state.modelId)?.slug ?? state.modelId}</dd>
           <dt className="text-muted-foreground">Fallbacks</dt>
-          <dd className="font-mono">{state.fallbackModelIds.map((id) => catalogue.models.find((model) => model.id === id)?.slug ?? id).join(', ') || '—'}</dd>
+          <dd className="font-mono">
+            {state.fallbackModelIds.map((id) => catalogue.models.find((model) => model.id === id)?.slug ?? id).join(', ') || '—'}
+          </dd>
           <dt className="text-muted-foreground">Instruction</dt>
           <dd>
             {state.task === 'TEXT_GENERATION'
@@ -371,7 +479,11 @@ export function CreateAgentWizard({ open, onOpenChange, onCreated }: { open: boo
                 : 'None'}
           </dd>
           <dt className="text-muted-foreground">Context schema</dt>
-          <dd className="font-mono">{state.task === 'TEXT_GENERATION' ? (state.binding.contextSchemaId ?? '—') : '—'}</dd>
+          <dd>
+            {state.task === 'TEXT_GENERATION' && state.binding.contextSchemaId
+              ? (contextSchemas.options.find((option) => option.value === state.binding.contextSchemaId)?.label ?? state.binding.contextSchemaId)
+              : '—'}
+          </dd>
           <dt className="text-muted-foreground">Parameters</dt>
           <dd className="font-mono text-xs">{Object.keys(state.parameters).length ? JSON.stringify(state.parameters) : 'defaults'}</dd>
           <dt className="text-muted-foreground">Schemas</dt>

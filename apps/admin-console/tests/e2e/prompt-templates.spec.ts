@@ -166,7 +166,6 @@ test.describe('prompt templates — selection and filters', () => {
     await waitForSettled(page);
 
     const dataRows = page.getByRole('grid', { name: 'Prompt templates' }).locator('[data-slot="data-grid-row"]');
-    const emptyState = page.getByText('No prompt templates yet');
     await expect(dataRows.first()).toBeVisible();
     const firstRow = dataRows.first();
     const templateName = (await firstRow.textContent()) ?? '';
