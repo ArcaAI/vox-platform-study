@@ -61,6 +61,19 @@ interface ContextSchemaClonePort {
 const EMPTY: ReferenceSetKindOutcome = { added: 0, skipped: 0, failed: 0 };
 
 /**
+ * A DELIBERATE refusal (4xx) rather than a failure.
+ *
+ * The clone paths answer 400/409 for a source that CANNOT be copied — a platform workflow
+ * template pinning platform-owned catalogue rows is the live case. Recording that as a failure
+ * would make a healthy provisioning run report an error for something that can never succeed,
+ * which is how a summary stops being read.
+ */
+function isRefusal(error: unknown): boolean {
+  const status = (error as { getStatus?: () => number })?.getStatus?.();
+  return typeof status === 'number' && status >= 400 && status < 500;
+}
+
+/**
  * TASK-890 §3.4 — clone the SYSTEM REFERENCE SET into a tenant.
  *
  * ## Why a service and not five call sites
@@ -373,8 +386,20 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
         if (result.created) outcome.added += 1;
         else outcome.skipped += 1;
       } catch (error) {
-        outcome.failed += 1;
-        this.warn(summary, `workflowDefinitions: '${source.slug}' was not provisioned`, { tenantId, slug: source.slug }, error);
+        // A platform template that pins PLATFORM-owned catalogue rows REFUSES to be cloned, by
+        // design (`assertNoUnresolvableCatalogBindings`): the copy would carry references the
+        // tenant cannot resolve. That is the clone path answering correctly, so it is a SKIP
+        // with a stated reason — counting it as a FAILURE would make every provisioning report
+        // look broken over a template that can never be copied. Anything else is a real failure.
+        const refused = isRefusal(error);
+        if (refused) outcome.skipped += 1;
+        else outcome.failed += 1;
+        this.warn(
+          summary,
+          `workflowDefinitions: '${source.slug}' was ${refused ? 'not clonable and was skipped' : 'not provisioned'}`,
+          { tenantId, slug: source.slug },
+          error,
+        );
       }
     }
   }

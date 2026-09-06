@@ -817,8 +817,37 @@ export class AgentService extends BaseService implements IAgentService {
     return runInTenantContext(this.clsService, targetTenantId, async () => {
       const existing = await this.agentRepository.findAllVersionsBySlug(targetTenantId, slug);
       if (existing.length > 0) {
-        const live = existing.find((row) => row.isActive && row.status === WorkflowDefinitionStatus.PUBLISHED) ?? existing[0];
-        return { agentId: live.id, created: false, warnings: [] };
+        const live = existing.find((row) => row.isActive && row.status === WorkflowDefinitionStatus.PUBLISHED);
+        if (live) return { agentId: live.id, created: false, warnings: [] };
+
+        // The lineage exists but NOTHING in it serves. That is a provisioning RESIDUE, not a
+        // tenant decision: a copy that never reached PUBLISHED leaves the tenant's assignment
+        // pointing at a slug `findPublishedActiveBySlug` cannot answer, which after step v is
+        // `AGENT_NOT_ASSIGNED` on every call for that task. Re-align a PRISTINE copy — version 1,
+        // descended from the SYSTEM source, never re-versioned by the tenant — with its source.
+        //
+        // Deliberately narrow. A tenant that has authored its own version, or deactivated a
+        // later one, has expressed something; only an untouched v1 residue is repaired here.
+        const pristine = existing.find(
+          (row) => row.versionNumber === 1 && row.sourceTenantId === SYSTEM_TENANT_ID && row.sourceAgentId === source.id,
+        );
+        if (!pristine) {
+          return { agentId: existing[0].id, created: false, warnings: [] };
+        }
+        pristine.status = source.status;
+        pristine.isActive = source.isActive;
+        pristine.compiledConfig = source.compiledConfig;
+        pristine.compiledConfigChecksum = source.compiledConfigChecksum;
+        pristine.validationReport = source.validationReport;
+        pristine.validatedAt = source.validatedAt ?? null;
+        pristine.publishedAt = pristine.publishedAt ?? new Date();
+        pristine.updatedBy = this.requestUserId ?? undefined;
+        const repaired = await this.agentRepository.update(pristine.id, pristine);
+        return {
+          agentId: repaired.id,
+          created: false,
+          warnings: [`the pristine copy of '${slug}' was not serving (status ${existing[0].status}); it was re-aligned with the platform source`],
+        };
       }
 
       const instruction = await this.referenceInstruction(source, targetTenantId);
@@ -830,10 +859,33 @@ export class AgentService extends BaseService implements IAgentService {
         ...(instruction !== undefined ? { instruction } : {}),
       });
 
-      // Publishing recompiles under the TARGET tenant — its models, its connections, its prompt
-      // clone — so the artifact the runtime reads was validated where it will run, never
-      // inherited from SYSTEM's compile.
-      await this.publish(saved.id, { activate: true } as PublishAgentRequest);
+      // The copy lands ALREADY PUBLISHED, carrying the SOURCE's compiled artifact — it does not
+      // re-run `publish()`.
+      //
+      // Re-publishing looked more correct and is not. The publish gate asks "is this agent
+      // runnable HERE?", and measured on the test stack it answers NO for the ASR and TTS
+      // platform agents — `MODEL_UNAVAILABLE`, because their weights are not staged in that
+      // environment. That is a fact about the ENVIRONMENT, not about the tenant, and the SYSTEM
+      // agent it is a copy of is published regardless; refusing the copy would leave every
+      // tenant without an ASR or TTS assignment (the gate below refuses to name a slug that does
+      // not resolve) and therefore `AGENT_NOT_ASSIGNED` on its first transcription — a
+      // fail-closed hole opened by the very step that exists to prevent one.
+      //
+      // Copying the artifact is sound for the same reason the seed phase copies it: a compiled
+      // config is a FROZEN snapshot (invariant 4), its models are SYSTEM `AiModel` rows that
+      // stay shared-read (OD-O), and its resolved prompt carries CONTENT rather than a
+      // reference. So the copy is servable wherever the original was, and an unrunnable model
+      // still fails at inference with its own named error — exactly as it does today for the
+      // SYSTEM row this replaces.
+      saved.status = source.status;
+      saved.isActive = source.isActive;
+      saved.compiledConfig = source.compiledConfig;
+      saved.compiledConfigChecksum = source.compiledConfigChecksum;
+      saved.validationReport = source.validationReport;
+      saved.validatedAt = source.validatedAt ?? null;
+      saved.publishedAt = new Date();
+      saved.updatedBy = this.requestUserId ?? undefined;
+      const published = await this.agentRepository.update(saved.id, saved);
 
       this.broadcastSysEvent(SysEventType.ResourceCreated, {
         resourceId: saved.id,
@@ -842,6 +894,7 @@ export class AgentService extends BaseService implements IAgentService {
           action: 'reference-set-clone',
           slug: saved.slug,
           versionNumber: saved.versionNumber,
+          status: published.status,
           sourceTenantId: source.tenantId,
           sourceAgentId: source.id,
           targetTenantId,
