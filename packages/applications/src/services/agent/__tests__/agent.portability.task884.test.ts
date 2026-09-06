@@ -54,7 +54,12 @@ const aiModelRepository = {
 const databaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
 const assignments = { resolve: vi.fn(async () => ({ agentSlug: null, source: 'unassigned', selector: [] })) };
 const providerConnections = { resolveConnection: vi.fn(), resolveTenantCloudOverrides: vi.fn() };
-const promptTemplateRepository = { findById: vi.fn(async () => null), findByName: vi.fn(async () => null) };
+const promptTemplateRepository = {
+  findById: vi.fn(async () => null),
+  findByName: vi.fn(async () => null),
+  findSystemReferenceById: vi.fn(async () => null),
+  findByTenantAndSourceTemplateId: vi.fn(async () => null),
+};
 const promptVersionRepository = { findByVersionNumber: vi.fn() };
 const policyEngine = { buildAbility: vi.fn() };
 const mcpServerRepository = { findEnabledById: vi.fn(async () => null) };
@@ -548,5 +553,123 @@ describe('syncToTenants', () => {
     await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [PARTNER] })).rejects.toMatchObject({
       response: { code: 'MCP_SERVER_NOT_PORTABLE' },
     });
+  });
+});
+
+// ===========================================================================================
+// TASK-890 §3.4 — the REFERENCE-SET copy (`cloneFromSystem`)
+// ===========================================================================================
+
+describe('cloneFromSystem', () => {
+  const systemSource = () =>
+    agent({
+      id: 'sys-1',
+      tenantId: SYSTEM_TENANT_ID,
+      slug: 'platform-transcription',
+      task: AgentTask.SPEECH_TO_TEXT,
+      versionNumber: 2,
+      status: WorkflowDefinitionStatus.PUBLISHED,
+      isActive: true,
+      compiledConfig: { frozen: 'artifact' },
+      compiledConfigChecksum: 'sha256:frozen',
+      instruction: { promptTemplateId: 'sys-template', promptVersionNumber: 4 },
+    });
+
+  it('lands the copy ALREADY PUBLISHED with the source`s compiled artifact — it never re-runs the publish gate', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    // The bound template is SYSTEM-owned, which is what makes the agent portable at all — read
+    // through the explicit reference read now that `PromptTemplate` is not shared-read.
+    promptTemplateRepository.findSystemReferenceById.mockResolvedValue({ id: 'sys-template', tenantId: SYSTEM_TENANT_ID } as never);
+
+    const result = await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    expect(result.created).toBe(true);
+    // The gate asks "is this runnable HERE?", and answers MODEL_UNAVAILABLE in any environment
+    // whose ASR weights are not staged — an environment fact that would leave the tenant with no
+    // ASR assignment at all. The artifact is frozen, so the copy is servable wherever the
+    // original was.
+    const persisted = agentRepository.update.mock.calls.at(-1)![1] as Record<string, unknown>;
+    expect(persisted['status']).toBe(WorkflowDefinitionStatus.PUBLISHED);
+    expect(persisted['isActive']).toBe(true);
+    expect(persisted['compiledConfig']).toEqual({ frozen: 'artifact' });
+    expect(persisted['compiledConfigChecksum']).toBe('sha256:frozen');
+    expect(persisted['tenantId']).toBe(PARTNER);
+    expect(persisted['sourceTenantId']).toBe(SYSTEM_TENANT_ID);
+  });
+
+  it('re-points the prompt binding at the TARGET tenant`s clone, at THAT clone`s approved version', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    promptTemplateRepository.findSystemReferenceById.mockResolvedValue({ id: 'sys-template', tenantId: SYSTEM_TENANT_ID } as never);
+    promptTemplateRepository.findByTenantAndSourceTemplateId.mockResolvedValue({ id: 'tenant-template', approvedVersionNumber: 1 } as never);
+
+    await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    const written = agentRepository.create.mock.calls.at(-1)![0] as Record<string, unknown>;
+    // The SYSTEM id would dangle after the flip, and the SOURCE's pin numbers a version the
+    // clone's restarted lineage does not have.
+    expect(written['instruction']).toEqual({ promptTemplateId: 'tenant-template', promptVersionNumber: 1 });
+  });
+
+  it('is MISSING-ONLY: a tenant that already has a SERVING copy of the slug keeps exactly what it has', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({ id: 'own-1', tenantId: PARTNER, slug: 'platform-transcription', status: WorkflowDefinitionStatus.PUBLISHED, isActive: true }),
+    ] as never);
+
+    const result = await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    expect(result).toEqual({ agentId: 'own-1', created: false, warnings: [] });
+    expect(agentRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('REPAIRS a pristine copy that is not serving — a residue leaves the tenant`s assignment pointing at nothing', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({
+        id: 'residue-1',
+        tenantId: PARTNER,
+        slug: 'platform-transcription',
+        versionNumber: 1,
+        status: WorkflowDefinitionStatus.DRAFT,
+        isActive: false,
+        sourceTenantId: SYSTEM_TENANT_ID,
+        sourceAgentId: 'sys-1',
+        compiledConfig: null,
+      }),
+    ] as never);
+
+    const result = await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    expect(result.created).toBe(false);
+    expect(result.warnings.join(' ')).toContain('re-aligned with the platform source');
+    const persisted = agentRepository.update.mock.calls.at(-1)![1] as Record<string, unknown>;
+    expect(persisted['status']).toBe(WorkflowDefinitionStatus.PUBLISHED);
+    expect(persisted['compiledConfig']).toEqual({ frozen: 'artifact' });
+  });
+
+  it('leaves a copy the TENANT has re-versioned alone — only an untouched v1 residue is repaired', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({
+        id: 'tenant-authored',
+        tenantId: PARTNER,
+        slug: 'platform-transcription',
+        versionNumber: 2,
+        status: WorkflowDefinitionStatus.DRAFT,
+        isActive: false,
+        sourceTenantId: SYSTEM_TENANT_ID,
+        sourceAgentId: 'sys-1',
+      }),
+    ] as never);
+
+    const result = await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    expect(result).toEqual({ agentId: 'tenant-authored', created: false, warnings: [] });
+    expect(agentRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('404s when the slug names no PUBLISHED SYSTEM agent', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(null);
+    await expect(makeService().cloneFromSystem('nope', PARTNER)).rejects.toBeInstanceOf(NotFoundException);
   });
 });
