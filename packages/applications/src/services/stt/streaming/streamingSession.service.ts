@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
@@ -71,6 +72,11 @@ export class StreamingSessionService implements IStreamingSessionService {
     // embedding model. Optional and trailing like the three above: without it a session
     // still opens and diarizes, with generic `Speaker N` labels.
     @Optional() @Inject(IVoiceProfileService) private readonly voiceProfileService?: IVoiceProfileService,
+    // TASK-890 (§3.13) — `monthlySttSessionSeconds` was recorded at teardown and
+    // checked NOWHERE, so a tenant past its live-transcription allowance kept
+    // opening sessions and met the overrun on its invoice. Optional + trailing
+    // like the four above; absent ⇒ ungated, exactly as before.
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
     this.logger.log({
@@ -174,6 +180,13 @@ export class StreamingSessionService implements IStreamingSessionService {
    * @returns Session status, or null if at capacity (503)
    */
   async createSession(dto: CreateStreamingSessionRequest): Promise<StreamingSessionStatus | null> {
+    // TASK-890 — the allowance is checked at OPEN, the one moment where
+    // refusing costs nothing: refusing at teardown would bill the work and
+    // then complain about it. Scoped to the SESSION's tenant (this method is
+    // also reached from tenant-less background paths, which carry the tenant
+    // on the DTO rather than in CLS). Kill-switch-gated inside; → 429 over cap.
+    await this.entitlements?.assertMeterQuota(dto.tenantId, 'monthlySttSessionSeconds');
+
     const voiceProfiles = await this.resolveVoiceProfiles(dto);
     try {
       const { data } = await firstValueFrom(
