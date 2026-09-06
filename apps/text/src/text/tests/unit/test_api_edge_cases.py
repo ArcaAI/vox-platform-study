@@ -363,7 +363,15 @@ class TestStreamingGenerationBackground:
         await _run_streaming_generation(tm, provider, "t-1", req)
 
         tm.update_task.assert_any_call("t-1", status=TaskStatus.RUNNING)
-        tm.update_task.assert_any_call("t-1", status=TaskStatus.COMPLETED)
+        # TASK-890 — the terminal update also persists WHAT was generated and WHAT it cost, so a
+        # gateway bench can finalize by reading the task back (`GET /tasks/{id}`) instead of
+        # trusting the browser to hand the text back.
+        tm.update_task.assert_any_call(
+            "t-1",
+            status=TaskStatus.COMPLETED,
+            content="hello",
+            usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        )
         # deltas are coalesced into `append_batch`; the terminal frame
         # keeps its own `append_chunk` write (once per generation, and it is the
         # frame the gateway meters from).

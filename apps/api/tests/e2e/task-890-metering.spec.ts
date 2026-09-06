@@ -248,16 +248,16 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
  * The prompt test bench. Asserted in this file so the two triggers are shown to
  * be DISTINGUISHABLE in one place — the whole point of the dimension.
  *
- * `fixme` until L4 lands (wave 2b): §3.13 assigns the `PROMPT_TEST` emitter to
- * L4, which owns `prompt-management.service.ts` and records it in
- * `finalizePromptTemplateTest`. Wave 1 ships the DIMENSION (`USAGE_TRIGGERS`,
- * `withUsageTrigger`) and the `AGENT_INVOCATION` producer only, so the route
- * this drives answers 2xx and writes no row — the wait would time out and the
- * red would say nothing but "the wave that owns it has not run yet". Delete the
- * `fixme` with L4's emitter; the body needs no other change.
+ * L4 landed the emitter in wave 2b: `startPromptTemplateTest` prechecks
+ * `monthlyLlmTokens` and `finalizePromptTemplateTest` records `generate.stream`
+ * with `trigger: 'PROMPT_TEST'`. The bench is a TWO-CALL shape (the browser
+ * streams the tokens itself and the gateway reads the finished text back
+ * SERVER-SIDE by task id), so the row is written by FINALIZE — driving `:id/test`
+ * alone writes nothing, which is what the earlier `fixme` body would have waited
+ * on forever.
  */
 test.describe('TASK-890 — the prompt test-run is a different activity', () => {
-  test.fixme('a non-dry prompt test-run writes a row carrying trigger PROMPT_TEST', async ({ request }) => {
+  test('a non-dry prompt test-run writes a row carrying trigger PROMPT_TEST', async ({ request }) => {
     const since = new Date();
     const templates = await request.get('/api/v1/admin/prompt-templates?limit=1', { headers: bearer(adminToken) });
     test.skip(templates.status() !== 200, `prompt-template listing unavailable (${templates.status()})`);
@@ -268,8 +268,19 @@ test.describe('TASK-890 — the prompt test-run is a different activity', () => 
       headers: bearer(adminToken),
       data: { variables: {} },
     });
-    test.skip(run.status() >= 500, `prompt test-run unavailable (${run.status()})`);
+    test.skip(run.status() >= 500, `prompt test-run unavailable — TEXT is not reachable from this stack (${run.status()})`);
     expect(run.status()).toBeLessThan(300);
+    const ack = (await run.json()) as { mode?: string; taskId?: string };
+    test.skip(ack.mode !== 'stream' || !ack.taskId, `the bench answered a dry run (${ack.mode})`);
+
+    // The stream is the browser's; the gateway reads the finished text back by task id. Give the
+    // generation a moment to reach a terminal state before finalizing.
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const finalized = await request.post(`/api/v1/admin/prompt-templates/${template!.id}/test/finalize`, {
+      headers: bearer(adminToken),
+      data: { taskId: ack.taskId },
+    });
+    test.skip(finalized.status() >= 400, `the generation did not reach a terminal state in time (${finalized.status()})`);
 
     const row = await waitForOutbox(since, 'generate.stream');
     expect(row.trigger).toBe('PROMPT_TEST');

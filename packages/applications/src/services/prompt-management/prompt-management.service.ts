@@ -1481,6 +1481,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (this.textRequestEnrichment) {
       await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string });
       await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
+      // TASK-890 §3.14 — a prompt bench run is ALWAYS screened. There is no node and no agent
+      // here, so there is no opinion to inherit: `resolveGuardrailDecision` would answer its
+      // `default` (ON) for every input, and stating it explicitly is what lets TEXT tell
+      // "screened by a decision" from "no opinion" and lets the ledger record `screened`.
+      // A tenant cannot opt a bench run out; the only thing that can turn this off is the
+      // PLATFORM kill switch, which stays the floor inside `apps/text`.
+      this.textRequestEnrichment.applyGuardrailDecision(body, { enabled: true });
     }
 
     let taskId: string;

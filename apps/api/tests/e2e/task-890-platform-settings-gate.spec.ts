@@ -37,6 +37,11 @@ async function superAdminToken(request: APIRequestContext): Promise<string> {
   return login!.token;
 }
 
+// SERIAL: two cases in this file touch the SAME seeded SYSTEM row — one asserts a tenant admin's
+// PATCH leaves its `version` untouched, and one asserts a super admin's PATCH BUMPS it. Run in
+// parallel they race, and the failure reads as "the 403 did not hold" when it did.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('TASK-890 — platform settings are super-admin-only to write', () => {
   test('a tenant admin cannot PATCH a SYSTEM row: 403, and the row is unchanged', async ({ request }) => {
     const superToken = await superAdminToken(request);

@@ -150,7 +150,9 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
           name: `t511 approve ${unique}`,
           content: 'Summarize the visit for {{patient}}.',
           category: 'CUSTOM',
-          variables: ['patient'],
+          // TASK-890 §3.6 (L4) — `variables` is a TYPED DECLARATION ARRAY now; the legacy
+          // string list and the legacy map are both refused by the global pipe.
+          variables: [{ name: 'patient', type: 'string', required: true }],
           status: 'DRAFT',
         },
       });
@@ -179,7 +181,9 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
           name: `t511 tenant-approve ${unique}`,
           content: 'Summarize the visit for {{patient}}.',
           category: 'CUSTOM',
-          variables: ['patient'],
+          // TASK-890 §3.6 (L4) — `variables` is a TYPED DECLARATION ARRAY now; the legacy
+          // string list and the legacy map are both refused by the global pipe.
+          variables: [{ name: 'patient', type: 'string', required: true }],
           status: 'DRAFT',
         },
       });

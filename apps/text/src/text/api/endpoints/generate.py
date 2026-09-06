@@ -749,8 +749,18 @@ async def generate(
         # frozen "stop" the pre-AD-1 endpoint always reported.
         finish_reason = stats.stop_reason_raw or stats.stop_reason or "stop"
 
+        # TASK-890 — the blocking path records the same two fields the streaming terminal does,
+        # so `GET /tasks/{id}` answers identically whichever way the generation ran.
         await task_manager.update_task(
-            task.task_id, status=TaskStatus.COMPLETED, total_tokens=total_tokens
+            task.task_id,
+            status=TaskStatus.COMPLETED,
+            total_tokens=total_tokens,
+            content=content,
+            usage={
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+            },
         )
 
         GENERATION_TOTAL.labels(

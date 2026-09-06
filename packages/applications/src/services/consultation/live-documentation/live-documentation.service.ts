@@ -41,12 +41,18 @@ import { TextAgentResolverService } from '../../agent/text-agent-resolver.servic
 import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../agent/text-generation-spec';
 // TASK-890 §3.2/§3.3 — the ONE prompt grammar and the ONE scope. The realtime and durable lanes
 // render the SAME `core.agent` node, so they must render it the same way.
-import { PromptTemplateSyntaxError, PromptVariableUnresolvedError, renderTemplate } from '@arcaai/workflow-contract';
+import {
+  guardrailOptOutOf,
+  PromptTemplateSyntaxError,
+  PromptVariableUnresolvedError,
+  renderTemplate,
+  resolveGuardrailDecision,
+} from '@arcaai/workflow-contract';
 import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
-import { withUsageTrigger } from '../../usageLedger/usage-attributes';
+import { withUsageAttributes, withUsageTrigger } from '../../usageLedger/usage-attributes';
 import { buildLlmUsageInput, parseTextUsageDetail } from '../summary/text-usage';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
@@ -210,7 +216,11 @@ class LivePromptUnresolvedError extends Error {
  */
 function renderLivePrompt(content: string, variables: Record<string, unknown>, agentSlug: string): string {
   try {
-    return renderTemplate(content, buildAgentPromptScope({ variables }), { templateRef: `agent:${agentSlug}` });
+    // Scope construction is INSIDE the try: a `{ path }` binding is resolved through the same
+    // grammar, so an unresolvable binding raises here and must degrade the node with the path
+    // named rather than escape as an unhandled error.
+    const scope = buildAgentPromptScope({ variables, templateRef: `agent:${agentSlug}` });
+    return renderTemplate(content, scope, { templateRef: `agent:${agentSlug}` });
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
       throw new LivePromptUnresolvedError(`core.agent: prompt_variable_unresolved: ${error.path} (agent '${agentSlug}')`);
@@ -2376,9 +2386,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // slug — the throw degrades the node with a named reason and nothing is generated on
         // the tenant default in its place. A legacy summary node carries no ref and keeps the
         // assigned-agent path inside `callText`.
-        const textAgent = input.agentRef
-          ? { spec: await this.resolveRealtimeAgent(input.agentRef, session.tenantId), overrides: nodeOverrides(input.config) }
-          : undefined;
+        const textAgent = await this.resolveRealtimeTextAgent(input, session.tenantId, effectiveLane);
         const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
           generate: async (corrective) => {
             const startedAt = Date.now();
@@ -3320,6 +3328,38 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * TASK-890 §3.14 — resolve a realtime `core.agent` node's agent AND fold its guardrail decision.
+   *
+   * The fold happens HERE, once per call, because this is the only place all three opinions are
+   * in scope: the node's own `config.guardrail` (authored on the graph), the WORKFLOW default the
+   * compiler froze onto `policyBindings.guardrail` (carried by the lane), and the agent's own
+   * `compiledConfig.guardrail` the resolver normalised. Precedence is the shared
+   * `resolveGuardrailDecision` — node > workflow > agent > ON — so this lane and the durable lane
+   * (`guardrail_optout.resolve_guardrail_decision`) answer identically for the same node.
+   *
+   * A legacy summary node carries no `agentRef` and keeps the assigned-agent path inside
+   * `callText`, which expresses no opinion and lets TEXT's platform posture govern — unchanged.
+   */
+  private async resolveRealtimeTextAgent(
+    input: { agentRef?: { slug: string; versionNumber?: number }; config?: Readonly<Record<string, unknown>> },
+    tenantId: string,
+    lane: RealtimeLane,
+  ): Promise<{ spec: ResolvedTextGenerationSpec; overrides: NodeOverrides; guardrail: { enabled: boolean } } | undefined> {
+    if (!input.agentRef) return undefined;
+    const spec = await this.resolveRealtimeAgent(input.agentRef, tenantId);
+    const guardrail = resolveGuardrailDecision({
+      node: guardrailOptOutOf(input.config),
+      workflow: lane.guardrail,
+      // Optional-chained on purpose: `ResolvedAgent.guardrail` is non-optional by type, but a
+      // resolver answer built before this ticket (or a fixture) can carry none, and a MISSING
+      // opinion must read as INHERIT (`null`) — which the fold then resolves to ON. On a safety
+      // gate, "unreadable" must never resolve to an opt-out.
+      agent: spec.agent?.guardrail?.enabled ?? null,
+    });
+    return { spec, overrides: nodeOverrides(input.config), guardrail: { enabled: guardrail.enabled } };
+  }
+
   private async callText(
     promptText: string,
     tenantId: string,
@@ -3332,7 +3372,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-876 — a `core.agent` node's RESOLVED agent (primary + ordered fallback chain) and the
     // node's own `overrides`. Trailing and optional, so every legacy-flush caller keeps its
     // arity and generates on the tenant's ASSIGNED agent instead.
-    textAgent?: { spec: ResolvedTextGenerationSpec; overrides: NodeOverrides },
+    textAgent?: { spec: ResolvedTextGenerationSpec; overrides: NodeOverrides; guardrail?: { enabled: boolean } },
     // TASK-890 §3.13 — attribution for the usage row this call now records. Trailing and
     // optional so every positional fixture keeps its arity.
     consultationId?: string | null,
@@ -3345,7 +3385,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       let lastError: unknown;
       for (const candidate of candidates) {
         try {
-          return await this.callTextCandidate(promptText, tenantId, candidate, textAgent.overrides, compiled, signal, corrective, consultationId);
+          return await this.callTextCandidate(
+            promptText,
+            tenantId,
+            candidate,
+            textAgent.overrides,
+            compiled,
+            signal,
+            corrective,
+            consultationId,
+            textAgent.guardrail,
+          );
         } catch (error) {
           lastError = error;
           // TASK-890 §3.2 — a prompt that does not render is not a provider outage either: every
@@ -3432,6 +3482,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     signal?: AbortSignal,
     corrective?: string,
     consultationId?: string | null,
+    // TASK-890 §3.14 — the FOLDED guardrail decision for this node (node > workflow > agent > on),
+    // computed once by `resolveRealtimeTextAgent`. Every candidate of one node carries the same
+    // decision: switching engines on an outage must never change whether the call is screened.
+    guardrail?: { enabled: boolean },
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     const includeResponseFormat = candidate.provider.toLowerCase() !== 'ollama';
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
@@ -3456,7 +3510,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
       ...(candidate.providerOverride ? { provider_overrides: { [candidate.provider]: overrideEntry } } : {}),
     };
-    const result = await this.postTextGenerate(payload, tenantId, signal, consultationId);
+    // The decision goes on the wire EXPLICITLY in both directions, so TEXT can tell "screened by
+    // this tenant's opinion" from "no opinion, platform posture governs".
+    if (guardrail) this.textRequestEnrichment?.applyGuardrailDecision(payload, guardrail);
+    const result = await this.postTextGenerate(payload, tenantId, signal, consultationId, guardrail);
     return {
       text: result.text,
       stats: result.stats
@@ -3493,7 +3550,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * metered" is recoverable from the provider's own usage API, a failed flush is not. TEXT
    * reporting no `usage_detail` records NOTHING rather than a row saying nothing happened.
    */
-  private recordLlmUsage(tenantId: string, data: unknown, consultationId?: string | null): void {
+  private recordLlmUsage(tenantId: string, data: unknown, consultationId?: string | null, guardrail?: { enabled: boolean }): void {
     if (!this.usageLedger) return;
     const usage = parseTextUsageDetail((data as { usage_detail?: unknown } | null)?.usage_detail);
     if (!usage) return;
@@ -3502,7 +3559,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       'CONSULTATION',
     );
     if (!batch) return;
-    void this.usageLedger.recordUsage(batch).catch((error: unknown) => {
+    const ledger = this.usageLedger;
+    // TASK-890 §3.14 record (a) — a `core.agent` node stamps the DISPOSITION beside the trigger,
+    // so "this consultation ran without its guard" is a query, not an inference from graph JSON.
+    // The disposition read is async (it consults the PLATFORM kill switch, which outranks the
+    // node's opinion), so it is folded inside the same fire-and-forget chain the row already
+    // used. A legacy flush passes no decision and stamps no key, exactly as before.
+    const record = async (): Promise<void> => {
+      const stamped =
+        guardrail && this.textRequestEnrichment
+          ? withUsageAttributes(batch, { guardrail: await this.textRequestEnrichment.guardrailDisposition(guardrail) })
+          : batch;
+      if (!stamped) return;
+      await ledger.recordUsage(stamped);
+    };
+    void record().catch((error: unknown) => {
       this.logger.warn({
         message: 'Live TEXT generation was not metered (the note was still produced)',
         tenantId,
@@ -3518,6 +3589,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     tenantId: string,
     signal?: AbortSignal,
     consultationId?: string | null,
+    guardrail?: { enabled: boolean },
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null }> {
     // fold in the caller tenant's resolved provider credential
     // (`provider_overrides`) through the ONE shared implementation. Not
@@ -3555,7 +3627,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
-    this.recordLlmUsage(tenantId, response.data, consultationId);
+    this.recordLlmUsage(tenantId, response.data, consultationId, guardrail);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
   }
 

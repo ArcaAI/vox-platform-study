@@ -77,6 +77,14 @@ export interface RealtimeLane {
   readonly definitionSlug: string | null;
   readonly definitionVersionNumber: number | null;
   readonly stages: readonly RealtimeStage[];
+  /**
+   * TASK-890 §3.14 — the WORKFLOW-level guardrail opinion, from the compiled graph's
+   * `policyBindings.guardrail` (authored on `core.trigger`). `null` = the workflow says
+   * nothing, which is INHERIT, not "off": `resolveGuardrailDecision` then falls through to the
+   * agent's own decision and finally to ON. The durable lane reads the same compiled fact, so
+   * one node cannot be screened on one lane and skipped on the other.
+   */
+  readonly guardrail: boolean | null;
 }
 
 /** Node ids of the platform-default lane — stable, because trajectories cite them. */
@@ -116,6 +124,8 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
   source: 'platform-default',
   definitionSlug: null,
   definitionVersionNumber: null,
+  // The platform lane has no author, so it expresses no workflow-level guardrail opinion.
+  guardrail: null,
   stages: Object.freeze([
     Object.freeze({
       stageIndex: 0,
@@ -225,5 +235,6 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
     definitionSlug: compiled.slug ?? null,
     definitionVersionNumber: compiled.versionNumber ?? null,
     stages,
+    guardrail: compiled.policyBindings?.guardrail?.enabled ?? null,
   };
 }

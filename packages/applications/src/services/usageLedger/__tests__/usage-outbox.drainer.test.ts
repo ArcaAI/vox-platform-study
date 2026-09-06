@@ -23,7 +23,7 @@ const TENANT = '50000000-0000-0000-0000-000000000000';
 const TX = { __tx: true };
 
 const mockOutboxRepository = { findClaimable: vi.fn(), update: vi.fn() };
-const mockEventRepository = { create: vi.fn() };
+const mockEventRepository = { create: vi.fn(), findByIdempotencyKey: vi.fn(async () => null), update: vi.fn() };
 const mockHourlyRepository = { accumulate: vi.fn() };
 const mockDailyRepository = { accumulate: vi.fn() };
 const mockPriceBook = { resolveCostPrice: vi.fn() };
@@ -492,5 +492,76 @@ describe('UsageOutboxDrainer — worker CLS context', () => {
     expect(mockCls.run).toHaveBeenCalledTimes(2);
     const tenants = mockCls.set.mock.calls.filter(([key]) => key === 'tenantId').map(([, value]) => value);
     expect(tenants).toEqual([TENANT, otherTenant]);
+  });
+});
+
+/**
+ * TASK-890 §3.13 (wave-2b close) — an ATTRIBUTE the winning row lacks, added to it.
+ *
+ * Two emitters legitimately observe ONE streamed generation: the gateway's SSE relay (which sees
+ * the terminal frame and therefore almost always writes first) and the bench that opened it
+ * (`finalizePromptTemplateTest` / the draft-agent test finalize, which read the same usage back
+ * by task id). They share `UsageIdempotencyKey.llmRequest(taskId)` ON PURPOSE — the generation is
+ * billed once — but the loser's row was DISCARDED whole, and with it the only emitter that knew
+ * `trigger: 'PROMPT_TEST'` / `'AGENT_TEST'`. Every streamed bench run lost the dimension,
+ * silently, whichever way the race went.
+ */
+describe('UsageOutboxDrainer — attribute back-fill on an idempotency conflict', () => {
+  let drainer: UsageOutboxDrainer;
+  const conflict = { code: 'P2002', meta: { target: ['idempotencyKey'] } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUnitOfWork.runInTransaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
+    mockEventRepository.create.mockRejectedValue(conflict);
+    mockPriceBook.resolveCostPrice.mockResolvedValue(null);
+    drainer = buildDrainer();
+  });
+
+  it('adds a key the stored row does not carry, and touches nothing else', async () => {
+    const stored = { id: 'evt-1', attributesJson: { trigger: undefined } as Record<string, unknown> | null };
+    stored.attributesJson = null;
+    mockEventRepository.findByIdempotencyKey.mockResolvedValue(stored);
+    mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent({ attributesJson: { trigger: 'PROMPT_TEST' } })])]);
+
+    const report = await drainer.drainBatch();
+
+    expect(mockEventRepository.update).toHaveBeenCalledWith('evt-1', stored);
+    expect(stored.attributesJson).toEqual({ trigger: 'PROMPT_TEST' });
+    // The units were already banked by the insert that won: no second event, no rollup delta.
+    expect(report).toMatchObject({ inserted: 0, skipped: 1 });
+    expect(mockHourlyRepository.accumulate).not.toHaveBeenCalled();
+  });
+
+  it('never OVERWRITES a key the winner already answered — the outcome cannot depend on who raced first', async () => {
+    const stored = { id: 'evt-1', attributesJson: { trigger: 'CONSULTATION', guardrail: 'screened' } as Record<string, unknown> };
+    mockEventRepository.findByIdempotencyKey.mockResolvedValue(stored);
+    mockOutboxRepository.findClaimable.mockResolvedValue([
+      outboxRow([serializedEvent({ attributesJson: { trigger: 'PROMPT_TEST', contextBand: 'small' } })]),
+    ]);
+
+    await drainer.drainBatch();
+
+    expect(stored.attributesJson).toEqual({ trigger: 'CONSULTATION', guardrail: 'screened', contextBand: 'small' });
+  });
+
+  it('writes nothing when the conflicting event carries no attributes at all', async () => {
+    mockEventRepository.findByIdempotencyKey.mockResolvedValue({ id: 'evt-1', attributesJson: { trigger: 'CONSULTATION' } });
+    mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent()])]);
+
+    await drainer.drainBatch();
+
+    expect(mockEventRepository.findByIdempotencyKey).not.toHaveBeenCalled();
+    expect(mockEventRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('is BEST-EFFORT: a failed back-fill never makes the drainer retry a row whose units are banked', async () => {
+    mockEventRepository.findByIdempotencyKey.mockRejectedValue(new Error('read failed'));
+    mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent({ attributesJson: { trigger: 'AGENT_TEST' } })])]);
+
+    const report = await drainer.drainBatch();
+
+    expect(report).toMatchObject({ inserted: 0, skipped: 1, failed: 0 });
+    expect(mockOutboxRepository.update).toHaveBeenCalled();
   });
 });

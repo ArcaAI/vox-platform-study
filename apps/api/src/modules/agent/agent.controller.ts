@@ -56,6 +56,12 @@ import { classifyTtsProvider } from '../speech/tts-provider-classification';
 export interface AgentInvocationBody {
   text?: string;
   variables?: Record<string, string>;
+  /**
+   * TASK-890 §3.3/§3.4 — the run CONTEXT, validated against the agent's BOUND context schema and
+   * NOT against `inputSchema`. They are different declarations of different things: `inputSchema`
+   * says what this agent is called WITH, the context schema says what it is called ABOUT.
+   */
+  context?: Record<string, unknown>;
   [key: string]: unknown;
 }
 export interface AgentSpeechBody {
@@ -179,7 +185,14 @@ export class AgentController {
   async invoke(@Param('slug') slug: string, @Body() body: AgentInvocationBody, @Res() res: Response, @Query('mode') mode?: string): Promise<void> {
     const tenantId = this.requireTenant();
     const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug });
-    const problems = this.invocation.inputProblems(resolved, body ?? {});
+    // `context` is checked against the agent's FROZEN context schema inside `invokeText`, not
+    // against `inputSchema` — so it is withheld from this check. Without that, the two
+    // declarations collide: every default `inputSchema` is `additionalProperties: false` and
+    // declares only `{ text, variables }`, so an agent that PINS a context schema could never be
+    // invoked with a context at all, and §3.4's enforcement path was unreachable through the
+    // route that is supposed to reach it.
+    const { context: _context, ...invocationInput } = body ?? {};
+    const problems = this.invocation.inputProblems(resolved, invocationInput);
     if (problems.length > 0) throw new BadRequestException({ message: 'The invocation body does not match the agent’s inputSchema.', problems });
 
     // TASK-890 (BLOCKER #7) — the LLM-token allowance, BEFORE the expensive

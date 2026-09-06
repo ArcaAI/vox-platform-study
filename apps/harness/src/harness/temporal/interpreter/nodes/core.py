@@ -71,6 +71,10 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     wire_provider,
 )
 from harness.temporal.interpreter.nodes.agentic import interpreter_agentic_data
+from harness.temporal.interpreter.guardrail_optout import (
+    guardrail_opt_out_of,
+    resolve_guardrail_decision,
+)
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 from harness.temporal.models import HarnessPolicy
 
@@ -421,14 +425,45 @@ def _prompt_scope(variables: dict[str, Any], run_context: dict[str, Any]) -> dic
 
     ``variables`` also stays reachable under its own key: the pre-890 scope exposed it that way
     and a seeded instruction may reference ``{{variables.x}}``.
+
+    Each ``variables`` entry is a BINDING — ``{"value": …}`` is a literal, ``{"path": …}`` is a
+    reference resolved against the roots — or a plain value (which is what an
+    ``overrides.promptVariables`` entry supplies). Resolution happens BEFORE the bare names are
+    assigned, so ``{{age}}`` and ``{{context.patientAge}}`` are the same value (§3.3) and a
+    binding never sees another bare name. Mirrors ``buildAgentPromptScope``
+    (``packages/applications/src/services/agent/agent-prompt-scope.ts``): the durable lane, the
+    realtime lane, the invocation route and the draft bench must render one agent one way.
     """
     scope: dict[str, Any] = dict(run_context)
     trigger = run_context.get("trigger")
     if isinstance(trigger, dict):
         scope["context"] = trigger
-    scope.update(variables)
-    scope["variables"] = variables
+    resolved = {
+        name: _resolve_binding(binding, scope, f"instruction.variables.{name}")
+        for name, binding in variables.items()
+    }
+    scope.update(resolved)
+    scope["variables"] = resolved
     return scope
+
+
+def _resolve_binding(binding: Any, scope: dict[str, Any], template_ref: str) -> Any:
+    """One ``instruction.variables`` entry, resolved against the roots.
+
+    ``{"value": <str>}`` is a literal and ``{"path": <str>}`` a reference; anything else — a
+    plain string an override supplied, a number, a shape nobody declared — is the value itself.
+    A ``{"path"}`` that resolves to nothing raises ``PromptVariableUnresolved`` NAMING THE PATH,
+    which the activity turns into a DEGRADED step: a binding that silently vanished is how a
+    prompt loses a variable with nobody noticing.
+    """
+    if not isinstance(binding, dict):
+        return binding
+    if isinstance(binding.get("value"), str):
+        return binding["value"]
+    path = binding.get("path")
+    if isinstance(path, str):
+        return render_template("{{" + path + "}}", scope, template_ref=template_ref)
+    return binding
 
 
 def _system_prompt(
@@ -558,6 +593,24 @@ async def _run_text_generation(
         for candidate in chain_candidates(fallback)
     )
 
+    # TASK-890 §3.14 (OD-R) — fold the guardrail opt-out ONCE, before the walk: every candidate
+    # of one node carries the same decision, because switching engines on a provider outage must
+    # never change whether the call is screened.
+    #
+    # Two of the three levels are in scope here. The NODE's own `config.guardrail` is authored on
+    # the graph and travels with the activity input; the AGENT's is the gateway-resolved
+    # `compiledConfig.guardrail` (absent on any artifact published before this ticket, which
+    # `resolve_guardrail_decision` reads as silence and therefore as ON). The WORKFLOW default
+    # (`policyBindings.guardrail`) is NOT yet threaded into `NodeActivityInput` by `workflow.py`,
+    # so a workflow-level opt-out is honoured on the realtime lane and inherited-as-ON here — a
+    # lane divergence recorded as a follow-up rather than papered over with a second read.
+    compiled_config = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
+    agent_guardrail = compiled_config.get("guardrail")
+    guardrail_decision = resolve_guardrail_decision(
+        node=guardrail_opt_out_of(config),
+        agent=agent_guardrail.get("enabled") if isinstance(agent_guardrail, dict) else None,
+    )
+
     # The whole walk runs inside ONE activity budget: a switch started too late times the
     # activity out mid-call and Temporal re-runs it FROM THE PRIMARY, re-billing a generation
     # that already completed. Never start a candidate whose call cannot finish in what is left.
@@ -642,6 +695,7 @@ async def _run_text_generation(
                 max_tokens=generation.get("maxTokens"),
                 top_p=generation.get("topP"),
                 response_format=wire_format,
+                guardrail_policy={"enabled": guardrail_decision.enabled},
             )
         except TextServiceError as exc:
             # A provider outage: switch to the next resolved candidate (a DIFFERENT engine —
@@ -657,6 +711,12 @@ async def _run_text_generation(
             "agent": {"slug": candidate.slug, "versionNumber": candidate.version_number},
             "selectionSource": selection_source,
             "fundingTier": candidate.funding_tier,
+            # §3.14 record (c): the step result says whether this generation was screened and
+            # WHICH level decided, so a trajectory answers the question without re-deriving it.
+            "guardrail": {
+                "enabled": guardrail_decision.enabled,
+                "source": guardrail_decision.source,
+            },
         }
         if wire_format is not None:
             try:

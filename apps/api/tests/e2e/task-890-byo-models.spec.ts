@@ -31,6 +31,9 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
+/** The seeded "Global" customer tenant the stranger admin belongs to (`seed/00-constants.ts`). */
+const STRANGER_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+
 const ARCAAI_TENANT_KEY = 'ARCAAI';
 const ARCAAI_ADMIN_USERNAME = 'arcaai_admin';
 const SEED_PASSWORD = 'password123';
@@ -79,11 +82,22 @@ async function ensureConnection(request: APIRequestContext, bearer: string): Pro
       enabled: true,
       baseUrl: 'https://task890-e2e.openai.azure.com',
       apiVersion: '2024-10-21',
+      // REQUIRED for an enabled `llm`/`azure` row (`assertRequirementsSatisfied`): the connection
+      // still names the account's default deployment. What §3.7a changed is what goes ON THE WIRE
+      // for a TENANT-declared model — `overrideForModel` drops `deployment_name` there so the
+      // request's own model reaches Azure — not whether the connection has to declare one.
+      deploymentName: 'task890-e2e-default',
       ...(row.hasKey ? {} : { apiKey: 'task890-e2e-not-a-real-key' }),
     },
   });
   expect(saved.status(), await saved.text()).toBe(200);
 }
+
+// SERIAL: every case in this file DECLARES on the same `llm/azure` connection, and a declaration
+// is a full REPLACEMENT of that connection's model list. Under `fullyParallel: true` they clobber
+// each other and the failure reads as "the declared model is not in the catalogue" when the real
+// answer is "a sibling withdrew it half a second ago".
+test.describe.configure({ mode: 'serial' });
 
 test.describe('TASK-890 — declaring a BYO connection’s models', () => {
   test('a tenant admin declares a model; it round-trips onto the connection and into that tenant’s catalogue', async ({ request }) => {
@@ -133,31 +147,56 @@ test.describe('TASK-890 — declaring a BYO connection’s models', () => {
     expect(catalogue.models.some((m) => m.slug === 'azure-task890-e2e-second')).toBe(false);
   });
 
-  test('a generated slug that would shadow a platform model is REFUSED, and nothing is written (P-29)', async ({ request }) => {
+  /**
+   * P-29's guard is asserted at the SERVICE level (`ai-provider-connection.service.ts:191` — the
+   * shadow check runs over EVERY entry before any write, unit-pinned in
+   * `__tests__/ai-provider-connection.declare-models.task890.test.ts`). What this e2e can add is
+   * the DECLARATION path's naming rule, because the seeded catalogue cannot actually produce a
+   * collision from an `llm/azure` connection:
+   *
+   *   `byoModelSlug('azure', 'gpt-5.4-mini')` slugifies the wire id to `azure-gpt-5-4-mini`,
+   *   while the seeded platform row is `azure-gpt-5.4-mini` — WITH the dots. The generator and
+   *   the seed use different alphabets, so the two names cannot meet. (Same story for LM Studio:
+   *   the platform slug prefix is `lms-` and the provider id is `lm-studio`.)
+   *
+   * That is not a hole — a BYO slug that can never equal a platform slug is precisely "no
+   * shadowing" — but it does mean an e2e asserting a 409 here was asserting a premise the data
+   * does not support. Recorded in §9; what is pinned below is the behaviour that IS reachable.
+   */
+  test('a declaration is named by the platform, and the generated name cannot collide with the seeded one', async ({ request }) => {
     const bearer = await token(request, ARCAAI_ADMIN_USERNAME, ARCAAI_TENANT_KEY);
     await ensureConnection(request, bearer);
 
-    // `azure-gpt-5.4-mini` is a seeded SYSTEM row; the generated slug for the
-    // wire id `gpt-5.4-mini` on the `azure` provider is exactly its name.
-    const shadow = await request.put(`${PROVIDERS}/llm/azure/models`, {
+    const declared = await request.put(`${PROVIDERS}/llm/azure/models`, {
       headers: auth(bearer),
-      data: { models: [{ wireModelId: 'gpt-5.4-mini', name: 'Shadowing the platform', taskType: 'TEXT_GENERATION' }] },
+      data: { models: [{ wireModelId: 'gpt-5.4-mini', name: 'Our own GPT-5.4 mini', taskType: 'TEXT_GENERATION' }] },
     });
-    expect(shadow.status()).toBe(409);
-    const body = await shadow.json();
-    expect(body.code ?? body.message?.code).toBe('BYO_SLUG_SHADOWS_PLATFORM');
-    expect(body.slug ?? body.message?.slug).toBe('azure-gpt-5.4-mini');
-    expect(body.suggestedSlug ?? body.message?.suggestedSlug).toBe('byo-azure-gpt-5.4-mini');
-    expect(body.systemModelId ?? body.message?.systemModelId).toBeTruthy();
+    expect(declared.status(), await declared.text()).toBe(200);
+    const slugs = (await declared.json()).models.map((m: { slug: string }) => m.slug);
+    // Slugified, so it is a DIFFERENT name from the seeded platform row.
+    expect(slugs).toContain('azure-gpt-5-4-mini');
+    expect(slugs).not.toContain('azure-gpt-5.4-mini');
 
-    // The refusal is total: the earlier declaration is untouched, and no row
-    // was created under the shadowing name.
+    // And the platform row is untouched — the tenant's declaration lives beside it, not over it.
     const catalogue = (await (await request.get(CATALOGUE, { headers: auth(bearer) })).json()) as CatalogueBody;
-    const shadowed = catalogue.models.filter((m) => m.slug === 'azure-gpt-5.4-mini');
-    expect(shadowed.every((m) => m.providerClass !== 'cloud-byo')).toBe(true);
+    expect(catalogue.models.filter((m) => m.slug === 'azure-gpt-5.4-mini').every((m) => m.providerClass !== 'cloud-byo')).toBe(true);
+
+    await request.put(`${PROVIDERS}/llm/azure/models`, { headers: auth(bearer), data: { models: [DECLARED] } });
   });
 
-  test('the suggested `byo-` name is accepted, so the tenant can keep both models', async ({ request }) => {
+  test('a slug the platform would not generate is REFUSED — a tenant cannot invent a name', async ({ request }) => {
+    const bearer = await token(request, ARCAAI_ADMIN_USERNAME, ARCAAI_TENANT_KEY);
+    await ensureConnection(request, bearer);
+
+    const invented = await request.put(`${PROVIDERS}/llm/azure/models`, {
+      headers: auth(bearer),
+      data: { models: [{ wireModelId: 'gpt-5.4-mini', name: 'Invented', taskType: 'TEXT_GENERATION', slug: 'azure-gpt-5.4-mini' }] },
+    });
+    expect(invented.status(), await invented.text()).toBe(400);
+    expect(await invented.text()).toContain('is not a name this platform generates');
+  });
+
+  test('the `byo-` suggestion IS accepted, so the escape hatch a shadow refusal offers works', async ({ request }) => {
     const bearer = await token(request, ARCAAI_ADMIN_USERNAME, ARCAAI_TENANT_KEY);
     await ensureConnection(request, bearer);
 
@@ -166,12 +205,12 @@ test.describe('TASK-890 — declaring a BYO connection’s models', () => {
       data: {
         models: [
           DECLARED,
-          { wireModelId: 'gpt-5.4-mini', name: 'Our own GPT-5.4 mini', taskType: 'TEXT_GENERATION', slug: 'byo-azure-gpt-5.4-mini' },
+          { wireModelId: 'gpt-5.4-mini', name: 'Our own GPT-5.4 mini', taskType: 'TEXT_GENERATION', slug: 'byo-azure-gpt-5-4-mini' },
         ],
       },
     });
     expect(accepted.status(), await accepted.text()).toBe(200);
-    expect((await accepted.json()).models.map((m: { slug: string }) => m.slug)).toContain('byo-azure-gpt-5.4-mini');
+    expect((await accepted.json()).models.map((m: { slug: string }) => m.slug)).toContain('byo-azure-gpt-5-4-mini');
 
     // Restore the baseline list for the isolation test below.
     await request.put(`${PROVIDERS}/llm/azure/models`, { headers: auth(bearer), data: { models: [DECLARED] } });
@@ -188,9 +227,19 @@ test.describe('TASK-890 — declaring a BYO connection’s models', () => {
     expect(catalogue.models.some((m) => m.id === modelId)).toBe(false);
     expect(catalogue.providers.some((p) => p.id === 'byo:llm:azure' && p.modelCount > 0)).toBe(false);
 
+    // A tenant admin cannot reach `GET /admin/ai-models/:id` at all — the registry is
+    // super-admin-only since L1 (OD-B) — so the honest cross-tenant proof from a TENANT admin is
+    // the catalogue absence above. The 404-over-403 posture is asserted from the tier that CAN
+    // read the route: a super admin acting in the stranger's working tenant.
+    const byIdAsTenantAdmin = await request.get(`${REGISTRY}/${modelId}`, { headers: auth(stranger) });
+    expect([403, 404], `registry by-id from a tenant admin (${byIdAsTenantAdmin.status()})`).toContain(byIdAsTenantAdmin.status());
+
+    const platform = await superAdminToken(request);
+    const byIdCrossTenant = await request.get(`${REGISTRY}/${modelId}`, {
+      headers: { ...auth(platform), 'X-Tenant-Id': STRANGER_TENANT_ID },
+    });
     // 404-over-403: a foreign row is ABSENT, never forbidden.
-    const byId = await request.get(`${REGISTRY}/${modelId}`, { headers: auth(stranger) });
-    expect(byId.status()).toBe(404);
+    expect(byIdCrossTenant.status(), await byIdCrossTenant.text()).toBe(404);
   });
 
   test('the platform registry is unchanged — a tenant declaration never enters /admin/ai-models (REQ-5)', async ({ request }) => {

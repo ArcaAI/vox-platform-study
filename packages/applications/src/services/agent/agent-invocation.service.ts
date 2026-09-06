@@ -93,7 +93,15 @@ export class AgentInvocationService {
     // reason. A context the agent's frozen schema does not admit never reaches a model.
     const contextProblems = this.contextProblems(resolved, input.context ?? {});
     if (contextProblems.length > 0) {
-      throw new BadRequestException(`\`context\` does not match the schema bound to agent '${resolved.slug}': ${contextProblems.join('; ')}`);
+      // The SAME named refusal the draft bench raises (`AgentService.assertContextConforms`), so a
+      // caller that fixed a violation on the bench recognises it if it recurs in production.
+      throw new BadRequestException({
+        message: `The supplied context does not satisfy the schema agent '${resolved.slug}' binds (version ${
+          resolved.compiledConfig.contextSchema?.versionNumber ?? 'unknown'
+        }).`,
+        code: 'CONTEXT_SCHEMA_VIOLATION',
+        findings: contextProblems,
+      });
     }
 
     const compiled = resolved.compiledConfig;
@@ -104,8 +112,18 @@ export class AgentInvocationService {
     // TASK-890 §3.3 — the SAME scope the workflow lanes build: `input.*` (this body), `context.*`
     // (the request's context object, already validated against the agent's frozen schema by the
     // controller through `contextProblems`) and the bare bound names, caller's winning.
-    const scope = buildAgentPromptScope({ variables, input, trigger: input.context as Record<string, unknown> | undefined });
-    const systemPrompt = compiled.resolvedPrompt ? this.render(compiled.resolvedPrompt.content, scope, resolved.slug) : undefined;
+    // Scope construction is inside the same failure mapping as the render: a `{ path }` binding
+    // is resolved through the same grammar, so an unresolvable binding is the caller's 400
+    // naming the path, not a 500.
+    const systemPrompt = this.renderScoped(resolved.slug, () => {
+      const scope = buildAgentPromptScope({
+        variables,
+        input,
+        trigger: input.context as Record<string, unknown> | undefined,
+        templateRef: `agent:${resolved.slug}`,
+      });
+      return compiled.resolvedPrompt ? renderTemplate(compiled.resolvedPrompt.content, scope, { templateRef: `agent:${resolved.slug}` }) : undefined;
+    });
 
     const body: Record<string, unknown> = {
       prompt: String(input.text ?? ''),
@@ -131,7 +149,10 @@ export class AgentInvocationService {
     // Stated EXPLICITLY in both directions so TEXT can tell "screened because a decision said so"
     // from "no opinion", and safe to send unconditionally because it can only ever subtract —
     // `apps/text` keeps the platform switch as the floor.
-    this.textRequestEnrichment.applyGuardrailDecision(body, resolved.guardrail);
+    // `?? { enabled: true }` is the fail-SAFE read, not a default with an opinion: `guardrail` is
+    // non-optional on `ResolvedAgent` and the resolver normalises it, but an answer built before
+    // this ticket carries none — and on a safety gate an absent value must read as SCREENED.
+    this.textRequestEnrichment.applyGuardrailDecision(body, resolved.guardrail ?? { enabled: true });
 
     const headers = internalServiceHeaders({
       serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),
@@ -185,9 +206,9 @@ export class AgentInvocationService {
    * way nothing is sent upstream — a half-substituted prompt, or one carrying a literal
    * `{{…}}`, is the failure mode this grammar exists to end.
    */
-  private render(content: string, scope: Record<string, unknown>, agentSlug: string): string {
+  private renderScoped(agentSlug: string, work: () => string | undefined): string | undefined {
     try {
-      return renderTemplate(content, scope, { templateRef: `agent:${agentSlug}` });
+      return work();
     } catch (error) {
       if (error instanceof PromptVariableUnresolvedError) {
         throw new BadRequestException(
@@ -195,7 +216,16 @@ export class AgentInvocationService {
         );
       }
       if (error instanceof PromptTemplateSyntaxError) {
-        throw new BadRequestException(`Agent '${agentSlug}' instruction is not a valid template: ${error.message}`);
+        // The parser's own message rides as a FIELD, never interpolated into a composed body:
+        // `downstream-error-leak-sweep.test.ts` sweeps every call site in these two packages for
+        // that shape because it is how a `host:port` reached a client once already. The structured
+        // form is also what the draft bench raises (`AgentService.render`), so a caller sees one
+        // code for one failure on both surfaces.
+        throw new BadRequestException({
+          message: `Agent '${agentSlug}' instruction is not a valid template.`,
+          code: 'PROMPT_TEMPLATE_SYNTAX',
+          detail: error.message,
+        });
       }
       throw error;
     }
@@ -270,8 +300,7 @@ export class AgentInvocationService {
  * "no vocabulary declared", never "invalid".
  */
 function boundContextPayloadSchema(resolved: ResolvedAgent): Record<string, unknown> | null {
-  const contextSchema = asRecord((resolved.compiledConfig as unknown as Record<string, unknown>).contextSchema);
-  const payloadSchema = contextSchema.payloadSchema;
+  const payloadSchema = resolved.compiledConfig.contextSchema?.payloadSchema;
   return payloadSchema !== null && typeof payloadSchema === 'object' && !Array.isArray(payloadSchema)
     ? (payloadSchema as Record<string, unknown>)
     : null;

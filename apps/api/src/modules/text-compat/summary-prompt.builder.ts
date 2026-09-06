@@ -1,4 +1,4 @@
-import { buildPreSummaryVariables, substitutePreSummaryVariables } from '@arcaai/applications';
+import { buildPreSummaryVariables, renderGovernedTemplate, substitutePreSummaryVariables, usesTemplateGrammar } from '@arcaai/applications';
 import { humanizeField, selectDeptTemplate } from './dept-templates';
 import type { PreSummaryRequest } from './dto/pre-summary.request';
 import type { PreviousVisitRecordDto, SessionDataDto, TestResultDto } from './dto/session-data.dto';
@@ -327,20 +327,40 @@ export const V1_PRE_SUMMARY_TEMPLATE: string =
  * template bodies.
  */
 export function renderPreSummaryTemplate(template: string, req: PreSummaryRequest): string {
-  return substitutePreSummaryVariables(
-    template,
-    buildPreSummaryVariables({
-      currentDepartment: req.current_department,
-      visitType: req.visit_type,
-      age: req.age,
-      dob: req.dob,
-      gender: req.gender,
-      vitals: req.formatted_vitals,
-      testResults: req.formatted_test_results,
-      previousVisits: req.formatted_previous_visits,
-      language: req.language,
-    }),
-  );
+  const variables = buildPreSummaryVariables({
+    currentDepartment: req.current_department,
+    visitType: req.visit_type,
+    age: req.age,
+    dob: req.dob,
+    gender: req.gender,
+    vitals: req.formatted_vitals,
+    testResults: req.formatted_test_results,
+    previousVisits: req.formatted_previous_visits,
+    language: req.language,
+  });
+
+  // TASK-890 §3.2 — a body written in the ONE grammar is rendered by it.
+  //
+  // A tenant's governed pre-summary instruction is the SAME seeded row the native plane
+  // assembles, and those rows now carry `{{context.x}}`. Left on the single-brace substituter,
+  // this plane shipped the literal `{{context.current_department}}` to the model while the
+  // native plane rendered the value — the same template, two answers, on the compat plane that
+  // exists precisely to keep one behaviour.
+  //
+  // `V1_PRE_SUMMARY_TEMPLATE` is untouched by this branch: it is byte-pinned single-brace v1
+  // content and carries no `{{…}}`, so it takes the substituter below exactly as before. The
+  // discriminator is the CONTENT, not the caller, so a tenant that converts its row moves planes
+  // with it and one that does not is unaffected.
+  //
+  // Missing-value policy is the clinical one (`renderGovernedTemplate`): unresolved references
+  // render EMPTY rather than raising, because refusing to produce a pre-summary over a variable
+  // this encounter has no value for is a worse outcome than an empty slot; a body that does not
+  // PARSE is used verbatim rather than costing the caller its summary.
+  if (usesTemplateGrammar(template)) {
+    return renderGovernedTemplate(template, { ...variables, context: { ...variables } }, { templateRef: 'v1-compat:pre-summary' });
+  }
+
+  return substitutePreSummaryVariables(template, variables);
 }
 
 /**

@@ -228,8 +228,53 @@ export class UsageOutboxDrainer {
       });
       return true;
     } catch (error) {
-      if (isIdempotencyKeyConflict(error)) return false;
+      if (isIdempotencyKeyConflict(error)) {
+        await this.backfillAttributes(event);
+        return false;
+      }
       throw error;
+    }
+  }
+
+  /**
+   * TASK-890 — an attribute the WINNING row does not carry, added to it. Nothing else.
+   *
+   * Two emitters legitimately observe ONE streamed generation: the gateway's SSE relay (which
+   * sees the terminal frame and therefore almost always writes first) and the bench that opened
+   * it (`finalizePromptTemplateTest` / the draft-agent test finalize, which read the same usage
+   * back by task id). They share `UsageIdempotencyKey.llmRequest(taskId)` ON PURPOSE, so the
+   * generation is billed exactly once — but the loser's row was DISCARDED whole, and with it the
+   * only emitter that knew `trigger: 'PROMPT_TEST'` / `'AGENT_TEST'`. The dimension was lost for
+   * every streamed bench run, silently, whichever way the race went.
+   *
+   * The fix is deliberately the narrowest one that cannot double-bill:
+   *
+   *   - it runs ONLY on an idempotency conflict, i.e. the units are already recorded;
+   *   - it never touches quantity, price, cost or the rollups — `costDelta` was applied by the
+   *     insert that won and is not re-applied here;
+   *   - it only ADDS keys the stored row lacks. An emitter never overwrites another's answer, so
+   *     the outcome does not depend on which one raced first — which is the property that makes
+   *     it correct rather than merely better;
+   *   - it is best-effort: an attribute back-fill must never make the drainer retry a row whose
+   *     units are already banked.
+   */
+  private async backfillAttributes(event: SerializedUsageEvent): Promise<void> {
+    const incoming = event.attributesJson;
+    if (!incoming || Object.keys(incoming).length === 0) return;
+    try {
+      const existing = await this.eventRepository.findByIdempotencyKey(event.tenantId, event.idempotencyKey);
+      if (!existing) return;
+      const stored = (existing.attributesJson ?? {}) as Record<string, unknown>;
+      const missing = Object.entries(incoming).filter(([key, value]) => value !== undefined && stored[key] === undefined);
+      if (missing.length === 0) return;
+      existing.attributesJson = { ...stored, ...Object.fromEntries(missing) } as unknown as JsonObject;
+      await this.eventRepository.update(existing.id, existing);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Usage attribute back-fill failed on an idempotency conflict; the event itself stays recorded',
+        idempotencyKey: event.idempotencyKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

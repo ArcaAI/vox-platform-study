@@ -66,6 +66,10 @@ const LLM_MODEL = {
   slug: 'lms-gemma-4-e2b-it-qat',
   taskType: 'TEXT_GENERATION',
   provider: 'lm-studio',
+  // TASK-890 §3.1 — routing sends `wireModelId`, so a `cloud-*` / `engine-served` row that
+  // declares none is refused at publish (`MODEL_UNAVAILABLE`) instead of resolving no candidate
+  // at run time. Every engine/cloud fixture in this file therefore carries one.
+  wireModelId: 'gemma-4-e2b-it-qat',
   resourceStatus: ResourceStatusType.ENABLED,
   metaData: null,
 };
@@ -484,6 +488,36 @@ describe('publish — availability via the provider class table (§3.7)', () => 
     mockProviderConnections.findRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: null });
     await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_UNAVAILABLE' } });
     expect(mockProviderConnections.findRow).toHaveBeenCalledWith('llm', 'openai', TENANT);
+  });
+
+  // TASK-890 §3.1 (L10 → L8, wired at the wave-2b close) — routing was re-pointed off the
+  // locator `sourceUri` onto `wireModelId`, and `toTextCandidate` DROPS a candidate that
+  // declares none. Without this gate such a row publishes cleanly and then resolves no candidate
+  // at run time, with an error that names neither the row nor the missing column.
+  it('refuses a cloud row that declares no wireModelId — routing would have nothing to send', async () => {
+    const byo = { ...LLM_MODEL, id: 'model-byo', tenantId: TENANT, slug: 'byo-openai-gpt', provider: 'openai', wireModelId: null };
+    mockAiModelRepository.findById.mockResolvedValue(byo);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-byo' }));
+    mockProviderConnections.findRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: 'k' });
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({
+      response: {
+        code: 'MODEL_UNAVAILABLE',
+        findings: expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining('wire model id') })]),
+      },
+    });
+  });
+
+  // A self-hosted row is EXEMPT: `wireModelId` is conditionally NOT NULL for CLOUD only, and the
+  // seeded self-hosted catalogue legitimately leaves it null for rows a HOPE service loads by
+  // path. Refusing them here would refuse publishes that work.
+  it('does NOT refuse a platform self-hosted row for a missing wireModelId', async () => {
+    mockAiModelRepository.findById.mockResolvedValue({ ...STAGED_ASR, wireModelId: null });
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: STAGED_ASR.id, instruction: null, parameters: { decoding: { languageMode: 'ml-en' } } }),
+    );
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    const published = await makeService().publish('agent-1', {});
+    expect(published.status).toBe('PUBLISHED');
   });
 
   it('publishes a tenant BYO row whose own connection is enabled AND keyed', async () => {

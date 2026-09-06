@@ -129,6 +129,16 @@ export interface AgentCompiledConfig {
    * direction, and nothing here can turn screening on that the PLATFORM turned off.
    */
   guardrail?: { enabled: boolean };
+  /**
+   * TASK-890 §3.4 — the context schema this agent PINS, frozen at publish.
+   *
+   * The runtime NEVER re-reads the schema row: `payloadSchema` is
+   * `payloadSchemaFromDefinition(version.definition)` as it stood when the agent was published,
+   * so an invocation is validated against the contract the author saw. ADDITIVE-OPTIONAL — an
+   * agent that pins nothing carries no key, and every artifact published before this ticket
+   * carries none either.
+   */
+  contextSchema?: { schemaId: string; versionNumber: number; versionId: string; payloadSchema: Record<string, unknown> } | null;
 }
 
 export interface ResolvedAgent {

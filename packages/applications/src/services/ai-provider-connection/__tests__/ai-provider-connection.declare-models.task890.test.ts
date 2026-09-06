@@ -42,7 +42,7 @@ function connectionRow(overrides: { tenantId?: string; provider?: string; servic
   return row;
 }
 
-function makeService(opts: { connection?: unknown; systemSlugs?: string[]; existing?: any[] } = {}) {
+function makeService(opts: { connection?: unknown; systemSlugs?: string[]; existing?: any[]; withdrawn?: any } = {}) {
   const repo = {
     findByTenantServiceProvider: vi.fn().mockResolvedValue(opts.connection === undefined ? connectionRow() : opts.connection),
     findByTenantIdAndService: vi.fn().mockResolvedValue([]),
@@ -55,6 +55,11 @@ function makeService(opts: { connection?: unknown; systemSlugs?: string[]; exist
       tenantId === SYSTEM_TENANT_ID && (opts.systemSlugs ?? []).includes(slug) ? ({ id: `sys-${slug}`, slug, tenantId } as any) : null,
     ),
     findBySourceConnection: vi.fn(async () => opts.existing ?? []),
+    // TASK-890 (wave-2b close) — a WITHDRAWN row (soft-deleted by an earlier declaration) is
+    // REVIVED rather than re-created, so the create path asks for one first. `null` here is
+    // "nothing was ever declared under this name", which is what these cases assume.
+    findBySlugIncludingDeleted: vi.fn(async () => opts.withdrawn ?? null),
+    restore: vi.fn(async (_id: string) => undefined),
     create: vi.fn(async (e: any) => e),
     update: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(async () => undefined),
@@ -237,5 +242,48 @@ describe('the single-model extra stays in step (speech planes only)', () => {
     const { svc, repo } = makeService();
     await svc.declareModels('llm', 'azure', { models: [AZURE_TWO.models[0]] } as any);
     expect(repo.updateWithVersion).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * TASK-890 (wave-2b close) — withdrawing a model SOFT-DELETES its row, and `(tenantId, slug)` is
+ * unique across every `resourceStatus`. Before this, declaring the same model again read only
+ * ENABLED rows, took the create path, and raced its own tombstone into a raw
+ * `PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION` — "Unique constraint violation", with no name and no
+ * remedy, for the ordinary act of putting a model back.
+ */
+describe('declareModels revives a WITHDRAWN row instead of re-creating it', () => {
+  const declaration = { wireModelId: 'gpt-5.4-mini', name: 'Our GPT', taskType: 'TEXT_GENERATION' };
+
+  it('restores the soft-deleted row of the SAME connection and re-applies the declaration', async () => {
+    const connection = connectionRow();
+    const withdrawn = {
+      id: 'model-withdrawn',
+      slug: 'azure-gpt-5-4-mini',
+      sourceConnectionId: connection.id,
+      name: 'Stale name',
+      wireModelId: 'gpt-5.4-mini',
+      sourceUri: 'gpt-5.4-mini',
+      taskType: 'TEXT_GENERATION',
+      metaData: null,
+      hasChanges: true,
+      validate: vi.fn(),
+    };
+    const { svc, models } = makeService({ withdrawn, connection });
+
+    await svc.declareModels('llm', 'azure', { models: [declaration] } as never);
+
+    expect(models.restore).toHaveBeenCalledWith('model-withdrawn', expect.anything(), undefined);
+    expect(models.create).not.toHaveBeenCalled();
+    expect(withdrawn.name).toBe('Our GPT');
+  });
+
+  it('refuses with a NAMED conflict when another connection of the same tenant owns the name', async () => {
+    const withdrawn = { id: 'model-elsewhere', slug: 'azure-gpt-5-4-mini', sourceConnectionId: 'conn-OTHER', validate: vi.fn() };
+    const { svc } = makeService({ withdrawn });
+
+    await expect(svc.declareModels('llm', 'azure', { models: [declaration] } as never)).rejects.toMatchObject({
+      response: { code: 'BYO_SLUG_IN_USE', suggestedSlug: 'byo-azure-gpt-5-4-mini' },
+    });
   });
 });

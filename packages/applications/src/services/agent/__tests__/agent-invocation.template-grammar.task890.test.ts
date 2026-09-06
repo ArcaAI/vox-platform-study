@@ -33,6 +33,13 @@ const configService = { get: vi.fn().mockReturnValue('http://text.test') } as ne
 const enrichment = {
   applyTextRuntimeProfile: vi.fn().mockResolvedValue(undefined),
   applyTenantProviderOverrides: vi.fn().mockResolvedValue(undefined),
+  // TASK-890 §3.14 — every `/api/v1/generate` post from this service states the agent's guardrail
+  // decision. Added at the wave-2b close: the merge kept L3's render hunk and L14's guardrail hunk
+  // in the same method, and this fixture (L3's) predated the call.
+  applyGuardrailDecision: vi.fn((body: Record<string, unknown>, decision: { enabled: boolean } | undefined) => {
+    body.guardrail_policy = { enabled: decision?.enabled ?? true };
+    return body;
+  }),
 } as never;
 
 function service(): AgentInvocationService {
