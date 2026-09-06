@@ -748,7 +748,7 @@ inventing a new blocking finding and new runtime semantics for a boundary that i
 | Must NOT touch | files outside the lane's ownership column; `pnpm install`; `db:push` / `db:migrate` / `test:db:reset` / `db:seed` against the dev or test DB (the shadow-DB recipe in L2 is the only sanctioned DB command); Docker; merges; `git stash`; the five API artifacts (`route-manifest.json`, `openapi.json`, the portal, `vox-node/src/resources/admin/**`) — orchestrator-only; `.claude/rules/*` (the §8 amendments are the orchestrator's, in the primary checkout) |
 | TDD | failing test first; RED output pasted; test placement per rule 01 (`__tests__/*.test.ts` colocated; `tests/contracts/` for cross-language fixtures; Python beside the existing suites) |
 | Boot smoke | a lane that adds or changes a controller (L1, L7, L8, L10, L11, L12, L13, L14) proves the gateway BOOTS: `pnpm api:build` then `NODE_ENV=test node apps/api/dist/main` until `GET /api/v1/health` answers, and pastes the line (TASK-870 rule; the boot audits `auditAdminRoutePermissions`, `auditAdminControllersDeclareNoApiKeyScopes`, `auditServiceAccountSurface` run only at startup) |
-| Python provenance | Python lanes (L0, L2, L3, L10, L14) run `pnpm harness:test` / `pnpm text:test` from the worktree and paste the `assert_source_tree` guard line (`apps/harness/src/harness/tests/conftest.py`; `apps/text` has the `pythonpath` half only — rule 14 §4) |
+| Python provenance | Python lanes (L0, L2, L3, L10, L14) run `pnpm harness:test` / `pnpm text:test` from the worktree and paste the `assert_source_tree` guard line (`apps/harness/src/harness/tests/conftest.py`; `apps/text` has the `pythonpath` half only — rule 14 §4). **`packages/py-workflow-contract` has NEITHER half** (no `pythonpath` entry, no conftest guard), so from a worktree its pytest must be run as `PYTHONPATH=<tree>/packages/py-workflow-contract/src <conda> python -m pytest` or it silently tests the PRIMARY checkout's copy; from the primary checkout it needs nothing. Its conda invocation is `/Users/taphuynh/miniconda3/bin/conda run -n arcaenv …` — the shell function `conda` is not callable from the agent's non-interactive zsh |
 | Return contract | the final message is DATA for the orchestrator: branch, files changed, each gate's command + pasted output, RED evidence per test, deviations from this README, open questions, and the list of requests handed to another lane |
 | Fan-out cap | at most FIVE concurrent lanes per wave (rule 14 §2 "cap the fan-out at what you can actually review"); the wave table in §4.2 respects it |
 
@@ -981,6 +981,7 @@ Dependencies: L2 needs L0's `PublishContext` slots and L1's "no reader remains" 
 |---|---|---|
 | `packages/workflow-contract/src/port-validation.ts`, `core-contract.ts`, `agent-schemas.ts`, `report.ts` | L0 | L2 (context check), L3 (binding form), L4 (declarations) all want them — L0 lands every shape in wave 1 |
 | `packages/workflow-contract/src/compiler.ts`, `schemas/compiled-config.schema.json`, harness `compiled_config.py` | L2 | the frozen snapshot has a two-language parity gate; one lane edits both sides |
+| `packages/py-workflow-contract/src/hope_workflow_contract/{compiled_config.py,__init__.py}` + `tests/test_parity.py` | L2 (wave 2a) → L14 (wave 2b, only if the guardrail SHAPE changes) | **the FOURTH side of the compiled-config contract**, missed by the round-3 cut of this table: `test_parity.py` asserts field-set / required / `additionalProperties` parity against the normative `compiled-config.schema.json`, so a field added to the schema and the harness mirror alone fails HERE, not in the harness suite. L2 landed both additive fields on all four sides in wave 2a (`contextSchemaRefs`, `policyBindings.guardrail`); a later lane that changes either shape owns all four |
 | `packages/applications/src/services/workflow-definition/workflow-definition.service.ts` | L0 (wave 1) → L2 (2a) → L13 (3) | serialised by the waves |
 | `packages/applications/src/services/agent/agent.service.ts` | L0 (wave 1, hook only) → L8 (2b, incl. the compile stamp + the H-6 clone fix) → L13 (3, `cloneFromSystem`, `list` without `includeTemplates`, `resolveVisibleSource` on the reference read) | serialised; L1's constants are consumed in wave 2b |
 | `packages/applications/src/services/agent/agent-invocation.service.ts` | L3 | L11 meters at the CONTROLLER, never inside this file |
@@ -1400,7 +1401,143 @@ was re-verified by this pass before being deferred.
    and `__SYSTEM__`, which Q3 then ignores outright — the write succeeds and changes nothing. Worth
    a 409/422 on a reserved tenant rather than a silent no-op.
 
-### Waves 2a / 2b / 3 — not started
+### Wave 2a — CLOSED 2026-09-06 (L2)
+
+Closed by the `opus` wave-close pass of §4.9, run in the PRIMARY checkout on the MERGED tree with
+no worktree. Base `200990662` (wave-1 close); merge commit `e02ac10c2`; lane head `55a72238e`.
+50 files, +2324/-508. Wave 2a ran ALONE by design (§4.2) — L2 owns the migration.
+
+| Lane | Branch | Merge commit | Files | What landed |
+|---|---|---|---|---|
+| L2 | `task-890-l2` | `e02ac10c2` | 50 | the five schema deltas + one migration; the hand-authored domain trio; the frozen context-schema snapshot on all FOUR sides of the compiled contract; `policyBindings.guardrail`; `payloadSchemaFromDefinition` / `resolveReference` / `cloneFromSystem`; the publish gate's context-schema resolution and the create/validate seam; the `consultation_legacy_v1` bridge seed |
+
+**The migration.** `packages/database/src/prisma/db_main/migrations/20260906101622_task_890_context_schema_byo_model_provenance/`
+— one data step (`wireModelId` ← `sourceUri` for the five engine-served providers) before any DDL,
+then `Agent.contextSchemaId` / `contextSchemaVersionNumber`, `AiModel.sourceConnectionId` (+ the
+`Restrict` FK to `AiProviderConnection`), the provenance pair on `PromptTemplate` /
+`WorkflowDefinition`, the four dropped download columns and `DROP TYPE AiModelDownloadStatus`, four
+indexes. **Two empty-diff proofs:** L2 proved `npx prisma migrate diff --from-config-datasource
+--to-schema src/prisma/db_main --script` prints `-- This is an empty migration.` on the shadow DB
+(`hope_shadow_890`), and the orchestrator re-proved it on BOTH real databases after applying it.
+Re-verified by this pass: `gen:model:check` no drift (181 files), `gen:entity:check` no drift (103)
++ coverage OK (101 artifacts cover every persisted column of 105 models), `gen:factory:check` the
+same. Every `*EntityMapper` still carries `FIELDS_NOT_WRITABLE = ['version']` (no mapper SOURCE file
+is in the diff — the new columns ride the auto-mappers by name).
+
+**Gates re-run on the merged tree** (this pass, not the lane's pasted output):
+
+| Command | Result |
+|---|---|
+| `pnpm lint` | `Tasks: 39 successful, 39 total` — `✖ 65 problems (0 errors, 65 warnings)`, all pre-existing `eslint-comments/require-description` |
+| `pnpm typecheck:all` | **RED on the merged tree**, then green after the fix below: `compiler-context-schema.task890.test.ts(79,10): error TS2352` |
+| `pnpm test:unit` | `Test Files 1415 passed \| 2 skipped (1417)` · `Tests 24159 passed \| 4 skipped \| 9 todo (24172)` |
+| `pnpm harness:test` | `6 failed, 2145 passed` — exactly the six pre-existing `task-355-optimistic-delivery` replay tests (2 in `test_gating_consolidation_replay.py`, 4 in `test_replay_compat.py`), unchanged in name and count from the wave-1 close |
+| `packages/py-workflow-contract` pytest | `69 passed` on the merged tree; `75 passed` after this pass added the two missing parity pairs |
+| `pnpm --filter @arcaai/admin-console build` / `lint` / `test` | `EXIT=0` · `eslint src --max-warnings 0` clean · `Test Files 261 passed (261)` · `Tests 2300 passed (2300)` |
+| `pnpm sdk-node:test` | `Tasks: 3 successful, 3 total` |
+| `pnpm --filter @arcaai/vox test` | `Test Files 284 passed (284)` · `Tests 4407 passed (4407)` |
+
+**Boot smoke** (`pnpm api:build`, then `pnpm test:up:api` alone):
+
+```
+{"status":"healthy","service":"api","version":"0.0.0-dev-2-2.e02ac10c","uptime_seconds":7.2,
+ "timestamp":"2026-09-06T11:15:12.345Z","checks":{"process":{"status":"healthy","duration_ms":0}}}
+```
+
+**E2E** (live gateway on 8968, `RESET_DB=false`): `task-890` **32 passed / 6 skipped**; the authz
+conformance matrix `task-776-route-authz-matrix` **7 passed**; and the FULL suite re-run because the
+schema and the DTOs changed — **1144 passed / 44 skipped / 0 failed (3.2m)**. Identical to the
+wave-1 close: no regression, and no pre-existing red to report.
+
+**Data proofs.**
+
+| Proof | Command | Result |
+|---|---|---|
+| #1 (re-run on the new compiler output) | `npx dotenv -e .env.dev -- tsx packages/database/scripts/audit-publish-findings.ts` | `Graphs with at least one ERROR: 0 seeded, 0 of 9 rows.` — `VERDICT: the new gate is a NO-OP on this corpus` |
+| `Agent` rows pinning a context schema | SQL, both DBs | **0** on dev and test — expected: the column ships in 2a, L8 writes it in 2b |
+| `AiModel` rows with NULL `wireModelId` among CLOUD / engine-served providers | SQL, both DBs | **0** on dev and test. The seed corpus needed no backfill either — all 33 seed rows that are CLOUD or engine-served already carry `wireModelId`, so a `db push --force-reset` + `db:seed` reproduces the post-migration state |
+| the bridge row | SQL, both DBs | **1 each**: `consultation_legacy_v1` \| `00000000-…` \| `PUBLISHED` \| `isDefault = f` \| `pinnedVersionNumber = 1` \| `ENABLED` |
+| #4 (§4.4) | `SELECT count(*) FROM core."PromptVersion" WHERE content ~ '\{[A-Za-z_][A-Za-z0-9_-]*\}' AND content !~ '\{\{'` | **5** — the expected pre-state; L4 converts the seed templates in wave 2b. L2 introduced none |
+
+**Review of the merged diff** (three lenses — correctness of the four-sided snapshot and the publish
+seam; tenancy; the §1.2 / §1.5 invariants).
+
+*Correctness.* The snapshot agrees on all four sides and both new members are additive-optional and
+OMITTED when empty, so `example-compiled-config.json` is unchanged and every pre-existing artifact
+still verifies its checksum. `additionalProperties: false` holds on `$defs.policyBindings` (both new
+keys are optional, the `required` list untouched) and `extra="forbid"` holds on both new pydantic
+models in both mirrors. `guardrailOptOutOf` returns the ENABLED boolean, so
+`policyBindings.guardrail = { enabled }` carries no inversion. `PublishContext.triggerContextSchema`
++ `CONTEXT_SCHEMA_NOT_FOUND` genuinely fire from `WorkflowDefinitionService`: the
+`IConsultationContextSchemaService` dependency is `@Optional()` but `ConsultationContextSchemaServiceModule`
+IS imported by `WorkflowDefinitionServiceModule`, so production resolves it, and `publish-findings.ts`
+distinguishes `undefined` (skip) from `null` (emit) as the three-state `resolveTriggerContextSchema`
+intends. `create()`, `validate()` and `publishEntity()` now share `mergePublishGate`, closing the
+wave-1 carry-over ("create reports `ok: true` on a graph validate then refuses") with two tests
+pinning it. Entity/factory deltas cover every new column (coverage check above, re-read by hand).
+
+*Tenancy.* `ConsultationContextSchema` / `…Version` are still ABSENT from `SYSTEM_SHARED_READ_MODELS`
+(13 members; `tenant-scope.ts` is byte-unchanged in this wave, as §4.3 requires — it is L13's file).
+`resolveReference` is tenant-only and answers `CONTEXT_SCHEMA_NOT_FOUND` for a SYSTEM id exactly as
+for a foreign one (no existence oracle), with the missing-VERSION case named separately.
+`cloneFromSystem` reads the source under `runInTenantContext(SYSTEM_TENANT_ID)`, writes only under
+the target, is missing-only by slug, stamps `sourceTemplateSlug` + `templateLocked: true`, and 404s
+when SYSTEM lacks the row or the row has no pinned version.
+
+*Invariants.* No hardcoded configuration: the bridge's kind list is seed DATA
+(`07g-…:LEGACY_CONTEXT_VARIABLE_NAMES`), not a code default, and the only new code constants are the
+node-type string `core.trigger` and the slug, both named once and mirrored by an asserting seed test.
+Funding is untouched (nothing in the diff writes a funding tier). `LEGACY_CONTEXT_SCHEMA_SLUG` and
+`payloadSchemaFromDefinition` are reachable from the `@arcaai/applications` root barrel, as the
+carry-over promises L3 / L13.
+
+**Defects found by this pass, and fixed here.**
+
+| # | Defect | Fix |
+|---|---|---|
+| 1 | `pnpm typecheck:all` was RED on the merged tree — `compiler-context-schema.task890.test.ts:79` casts `CompiledWorkflowConfig` to a local `Record<string, unknown>`-bearing view, which `tsc` refuses (TS2352, no index signature). Vitest transpiles without type-checking, so L2's own `workflow-contract test` gate could not see it, and `typecheck:all` is not in L2's §4.1 gate list | two-step cast (`as unknown as`) with the reason recorded in place. `pnpm typecheck:all` now `EXIT=0` |
+| 2 | `CompiledContextSchemaRef` and `CompiledGuardrailDecision` were added to `packages/py-workflow-contract`'s `compiled_config.py` but NOT to its package barrel, unlike every sibling (`CompiledPromptTemplateRef`, `CompiledDocumentTemplateRef`). A wave-2b consumer importing them from `hope_workflow_contract` would have failed at import | both added to the import block and `__all__` |
+| 3 | `tests/test_parity.py`'s `PAIRS` table — whose own docstring says "every object in the normative schema appears exactly once" — did not carry the two new inline object nodes, so the field-set / required / `additionalProperties` gate never saw them: the fourth twin could have drifted silently | `CONTEXT_SCHEMA_REF_SCHEMA` and `GUARDRAIL_DECISION_SCHEMA` lifted from the normative schema beside the two existing ref schemas, and both added to `PAIRS`. 69 → **75 passed**, green on the first run — the parity was in fact correct; it was merely unguarded |
+
+**Deviations from §4.1 / §4.3, accepted.** L2 edited `agent.service.ts` + its test (L8's file per §4.3)
+because dropping the four columns left `availabilityFindings` as their last typed reader; it now reads
+`model.availability` (AVAILABLE / NOT_APPLICABLE pass, UNKNOWN refuses) and L8's §3.11 rewrite onto
+`providerClassOf` + readiness supersedes it. L2 also landed the FOURTH parity side
+(`packages/py-workflow-contract`), which §4.3 never assigned — that table now carries the row (§4.3).
+No `SET NOT NULL` on `wireModelId` (the requirement is conditional on `deploymentKind`/`provider`;
+the entity enforces the CLOUD half, L10 owns the engine-served half). The bridge slug is
+`consultation_legacy_v1` with UNDERSCORES (a schema slug is validated against
+`^[a-z0-9_]{2,48}$`, so the hyphenated form in §3.4 could not be authored through the API) and the
+row is `isDefault: false` (cloning a compatibility vocabulary as the tenant's default would demote
+whatever default the tenant already has). `contextSchemaRefs` and `policyBindings.guardrail` are
+omitted rather than emitted empty, which is what keeps legacy artifacts byte-identical.
+`ContextSchemaReferenceResolution` uses a STRING discriminant (`outcome`) rather than `ok: boolean`,
+because this package compiles without `strictNullChecks` and TS does not narrow on a boolean literal
+there.
+
+**Carry-over handed to wave 2b** (verbatim from the lane report, re-verified by this pass):
+
+| For | Request |
+|---|---|
+| L8 | L2 edited `agent.service.ts:1189` `availabilityFindings` (the last typed reader of `localPath`) → reads `model.availability`; fixtures in `agent.service.test.ts` moved to `availability`. L8's §3.11 rewrite onto `providerClassOf` + readiness supersedes it |
+| L3 / L13 | import `LEGACY_CONTEXT_SCHEMA_SLUG` (= `consultation_legacy_v1`, underscores) from `@arcaai/applications` (`consultation-context-schema/context-schema-definition.ts`). The bridge row is `isDefault: false`. `PromptAssemblyService` resolves the tenant clone by `sourceTemplateSlug` |
+| L3 | `payloadSchemaFromDefinition` derives `{ properties: { <kindKey>: … } }` and the bridge's kind key is `context` — decide the render-scope binding so `{{context.conversation_language}}` resolves (bind root `context` to `payload.context`) |
+| L14 | `policyBindings.guardrail: { enabled }` is compiled from the trigger's `config.guardrail`; the compiled `core.agent` keeps `config.guardrail` verbatim; `CompiledGuardrailDecision` exists in BOTH pydantic mirrors (harness + `py-workflow-contract`) and both are now exported and parity-gated |
+| L13 | `cloneFromSystem(slug, tenantId)` is missing-only, reads under `runInTenantContext(SYSTEM)`, writes under the target, stamps `sourceTemplateSlug` + `templateLocked: true`, 404s if SYSTEM lacks the row. `PromptTemplate.sourceTemplateId` / `WorkflowDefinition.sourceTemplateSlug` + `templateLocked` exist on entity, factory and model |
+| L10 | the `wireModelId` conditional NOT NULL is enforced in the ENTITY for CLOUD; the engine-served half is L10's. An optional Postgres CHECK is an open question |
+| L8 (open) | `payloadSchemaFromDefinition` emits `required: [...]`, so frozen-schema validation would REJECT an invocation missing a required kind — advisory vs enforcing is an owner call |
+
+**Open for the owner.**
+
+1. Should the conditional `wireModelId` rule also be a Postgres CHECK constraint? It is enforced in
+   `AiModelEntity.validate()` for CLOUD today, and L10 adds the engine-served half — but nothing
+   stops a direct SQL write or a seed from leaving an unroutable row. (Raised by L2.)
+2. Is `payloadSchemaFromDefinition`'s `required: [...]` advisory or enforcing? As written, the frozen
+   payload schema will REFUSE an invocation that omits a kind the schema marks required — which is
+   correct as validation and a behaviour change for any caller that omits one today. (Raised by L2;
+   L8 needs the answer before it freezes the agent-side snapshot.)
+
+### Waves 2b / 3 — not started
 
 Not started; every owner decision is in (OD-A..OD-R plus D-1 and D-2 — §6 carries no open item), and execution follows §4.9: one team of agents, one worktree per lane, wave-by-wave merges into `dev-2.2`, each wave closed by an `opus` verification / review / bug-fix pass over the MERGED tree in the primary checkout. D-1 and D-2 both land inside L14's existing wave-2b slot and move no estimate (§4.8). D-2's two preconditions are recorded here before its seed row merges: proof #8's live value per environment (dev, test, k3s `hope-v2-dev`), and the confirmation that every stack the e2e suite runs against has a reachable guardrail client — including whatever change that required in `tests/docker-compose.test.yml` / `pnpm setup:test`. Evidence per lane (gate commands with pasted output, boot-smoke lines, the §4.4 proof results incl. #8–#12, the empty-migration-diff line, the L1 "no reader remains" grep, the L9 "no `/admin/` reference" grep, the L13 step-v `tenant-scope.ts` grep, the post-D-2 latency/cost delta) is recorded here as each wave lands.
 
@@ -1413,3 +1550,4 @@ Not started; every owner decision is in (OD-A..OD-R plus D-1 and D-2 — §6 car
 | 2026-09-06 (round 3) | The owner answered OD-M..OD-R verbatim and asked for "a best practical practice fast-win solution". Two discovery lanes (G: guardrail management + every existing opt-out surface; H: every runtime SYSTEM read of content, the two flip failure modes, the `findCloneSource` reference-read pattern, TASK-884 H-6 in BOTH readers, the settings write lanes, BYO slug shadowing) and a five-point re-verification (§2.7 #18–#25) changed the plan in six places: (1) OD-M — the owner rule "content is cloned, config cascades" is written down (§1.5) with exact entity lists; the runtime SYSTEM fallback for content is REMOVED in five ordered steps inside L13 (§3.4: provision + backfill → verify H-6 fixed → rewrite every SYSTEM-reading path incl. the two resolvers' terminal candidate and `PromptResolutionService` → rewrite the pinned tests → the flip), the flip being the LAST merge of the day-1 path; `PromptTemplate` provenance keys on the SYSTEM row's id (no slug exists). (2) OD-R — guardrail management is already platform-only and never cloned (documented, not built); the opt-out is one boolean on three existing JSON shapes with node > workflow > agent precedence, a parity-checked pure function, `guardrail_policy.enabled` on every TEXT post, `resolve_posture` honouring it with the platform switch as the floor, and a recorded `attributesJson.guardrail` (§3.14, new lane L14 in wave 2b, P-27); two discussion items opened (§6.3). (3) OD-P — the legacy `GlobalSettingService` CRUD gains the SYSTEM-tier super-admin guard its two siblings already carry (§3.15, L1, P-28). (4) OD-O / OD-Q — decided; `AiModel` stays shared-read; the BYO slug-shadowing guard added to L10 (P-29). (5) OD-N — TASK-901 confirmed. (6) The TASK-884 H-6 fallback bug is a real defect in both the runtime resolver and the clone path and is fixed by CLS context (L1, L8), not by widening. Five new proofs (#8–#12), three new e2e specs, four new risks (20–23), six new decisions (P-26–P-31), the §4.6 re-cut, a new §4.8 fast-win path (≈ 28.5 engineer-days, ≈ 16 elapsed days, critical path L0/L1 → L2 → L3 → L13), and the rule-amendment row (§8). Fourteen lanes. Status stays `Pending`. |
 | 2026-09-06 (round 3, owner close-out) | The owner answered the two §6.3 discussion items verbatim — **D-1: "does the opt-out extend to the seven mandatory clinical guard nodes? YES"**; **D-2: "seed the external-guardrail switch on? YES"** — and directed the execution shape: one team of agents in parallel worktrees, merged into `dev-2.2` wave by wave, with an `opus` gated verification / review / bug-fix pass before each wave closes. Applied: (1) §3.14's boundary row rewritten and §3.14a added — the opt-out covers `MANDATORY_NODE_TYPES` through ONE filter change (`node-config-schemas.ts:2252`, gated on a new two-member `GRAPH_BOUNDARY_NODE_TYPES` instead), with mandatory PRESENCE, the `requires: ['guard.groundedness']` attachment check and both runtimes UNCHANGED (verified: no predicate and no `requires` check reads `config.enabled`), the two in-code "compliance defect" statements (`:2211-2214`, `:2172-2176`) rewritten to record the decision, a `GUARDRAIL_OPTED_OUT` WARNING naming every disabled mandatory node, and `guardrail: 'opted_out'` + the node ids on the run and the ledger; `consultation.hitlGate` and the two graph boundaries deliberately gain nothing, so TASK-859 invariant 5 is untouched. (2) §3.14b added — `text.externalGuardrail.enabled` seeded ON as one create-only SYSTEM row in `seed/11-global-setting.ts` (L14, wave 2b), gated by proof #8 and by an orchestrator-run stack precondition (a reachable guardrail client on every e2e stack, the isolated test stack included). (3) §4.9 added — the execution protocol (worktree per lane, disjoint file sets per §4.3, identical brief preambles for prompt-cache hygiene, follow-ups to the SAME agent, and the `opus` wave-close agent that re-runs the gates on the merged tree and whose "not closed" verdict blocks the next wave). (4) L14, §4.3 (three ownership rows), proof #8, the opt-out e2e spec, §4.6, §4.8, P-27, Risks 21 / 22 and §9 updated accordingly; P-32 and P-33 added. Status: `Pending` → `In Progress` on execution start; §6 has no open item. |
 | 2026-09-06 (wave 1 close) | **Wave 1 CLOSED** — L0, L1, L7, L11 and L12 merged into `dev-2.2` (`808edbd60`, `3392eadf2`, `be2a896d2`, `b1ab9f0b2`, `cc5a13343`), then verified, reviewed and bug-fixed on the MERGED tree by the `opus` wave-close pass of §4.9 (head `f63f021d7`). One integration fix (L1 and L12 had each declared a readiness vocabulary and symbol — four TS2308 ambiguous re-exports and a package that did not build; now one port, one symbol, one type set, owned by `services/ai-readiness`, with `AiModelServiceModule` actually resolving it) and six defects fixed: the platform-tier guard bypass through `PATCH admin/tenants/configs/__SYSTEM__` (32 unlocked SYSTEM rows were writable by a tenant admin), raw engine `probe_error` strings reaching tenant admins through `readinessDetail`, a 201-vs-200 contract drift on the readiness refresh, and three e2e assertions that could not pass as written (the 429 case ran against a `RESERVED_UNGATED` tenant; the `PROMPT_TEST` case asserts L4's wave-2b emitter; the workflow-lifecycle fixture named ports no node declares). Gates on the merged tree: lint 0 errors, typecheck clean, unit 24118 passed, console 2300 passed, vox 4407 passed, vox-node 420 passed, five artifacts regenerated with all three `:check`s green, boot smoke healthy, **full e2e 1144 passed / 44 skipped / 0 failed**. Data proofs #1–#3 recorded in §9 (all three clean; the publish gate is a no-op on the current corpus and no stored content carries a dotted reference). Harness's 6 replay failures are pre-existing by construction — all four harness files in the diff are NEW and nothing imports them yet. Registry 209 → 214. Eight items handed to their owning lanes and two owner questions opened in §9. Status: `In Progress`. |
+| 2026-09-06 (wave 2a close) | **Wave 2a CLOSED** — L2 (the only lane of the wave, by design) merged into `dev-2.2` (`e02ac10c2`), then verified, reviewed and bug-fixed on the MERGED tree by the `opus` wave-close pass of §4.9. What landed: the five schema deltas and the one migration `20260906101622_task_890_context_schema_byo_model_provenance` (the `wireModelId` data step first, then the context-schema pin, `AiModel.sourceConnectionId` + its `Restrict` FK, the provenance pair on `PromptTemplate` / `WorkflowDefinition`, the four dropped download columns and `DROP TYPE AiModelDownloadStatus`), the hand-authored domain trio, the frozen context-schema snapshot and `policyBindings.guardrail` on ALL FOUR sides of the compiled contract (`compiler.ts`, `compiled-config.schema.json`, harness `compiled_config.py`, `packages/py-workflow-contract`), `payloadSchemaFromDefinition` / `resolveReference` / `cloneFromSystem`, the publish gate's context-schema resolution with `CONTEXT_SCHEMA_NOT_FOUND` / `…_VERSION_NOT_FOUND`, the create/validate seam reconciled through one `mergePublishGate`, and the SYSTEM `consultation_legacy_v1` bridge seed. Three defects found and fixed by the close pass: `pnpm typecheck:all` was RED on the merged tree (a TS2352 cast in L2's new compiler test that vitest transpiles past and `typecheck:all` is not in L2's gate list); the two new pydantic models were missing from `py-workflow-contract`'s barrel; and its `PAIRS` parity table did not carry the two new schema nodes, leaving the fourth twin unguarded (69 → 75 tests, green first run). Gates on the merged tree: lint 0 errors, typecheck clean after the fix, unit 24159 passed, console 2300 passed, vox 4407 passed, sdk-node green, harness 2145 passed with exactly the six pre-existing `task-355` replay failures, py-workflow-contract 75 passed, boot smoke healthy, e2e `task-890` 32 passed / 6 skipped, authz matrix 7 passed, **full e2e 1144 passed / 44 skipped / 0 failed**. Data proofs: #1 a no-op on the corpus; 0 agents pinning a schema and 0 CLOUD/engine-served `AiModel` rows without `wireModelId` on both DBs; the bridge row present once per DB (`isDefault = false`, SYSTEM, PUBLISHED, pinned 1); proof #4 = 5 single-brace rows, the expected pre-state until L4. §4.3 gains the missing `packages/py-workflow-contract` ownership row and §4.0's Python-provenance row now names its `PYTHONPATH` requirement. Seven carry-over items handed to L3/L8/L10/L13/L14 and two owner questions opened in §9. Status: `In Progress`. |

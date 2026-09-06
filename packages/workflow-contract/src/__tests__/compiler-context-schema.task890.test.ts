@@ -76,7 +76,10 @@ type Compiled = {
 function compiledOrThrow(g: WorkflowGraph, ctx: CompilerContext): Compiled['config'] {
   const result = compile(g, ctx);
   if ('findings' in result) throw new Error(`compile refused: ${JSON.stringify(result.findings)}`);
-  return result.config as Compiled['config'];
+  // Two-step cast: `CompiledWorkflowConfig` has no index signature, so it does not overlap
+  // `Record<string, unknown>` structurally — the local view is a READ shape for the assertions
+  // below, not a claim about the emitted type.
+  return result.config as unknown as Compiled['config'];
 }
 
 function triggerNode(config: Compiled['config']): { nodeId: string; config: Record<string, unknown> } {
