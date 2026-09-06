@@ -67,7 +67,13 @@ import type { IProviderConnectionService as IProviderConnectionServicePort } fro
 // from. This service is one of three consumers (the tenant catalogue and the BYO declaration are
 // the others); the private `ENGINE_SERVED_PROVIDERS` that used to sit at the top of THIS file is
 // gone, because two copies of "which providers serve their own weights" is two answers.
-import { ENGINE_SERVED_PROVIDERS, MODEL_TASK_TYPE_SERVICE, providerClassOf, type ProviderClass, type ProviderService } from '../ai-provider-connection/constants';
+import {
+  ENGINE_SERVED_PROVIDERS,
+  MODEL_TASK_TYPE_SERVICE,
+  providerClassOf,
+  type ProviderClass,
+  type ProviderService,
+} from '../ai-provider-connection/constants';
 import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
 import type {
   ContextSchemaReferenceResolution,
@@ -566,7 +572,14 @@ export class AgentService extends BaseService implements IAgentService {
     // The same refusal publish makes, with the same shape the console already renders. Nothing
     // is persisted: a test must not move a draft's status or overwrite its stored report.
     this.throwIfBlocking(report.findings, 'The agent cannot be tested.');
-    const compiled = this.compile(entity, model as AiModelEntity, fallbackModels, await this.fallbackRepository.findByAgentId(entity.id), resolvedPrompt, contextSchema);
+    const compiled = this.compile(
+      entity,
+      model as AiModelEntity,
+      fallbackModels,
+      await this.fallbackRepository.findByAgentId(entity.id),
+      resolvedPrompt,
+      contextSchema,
+    );
 
     const scope = this.testScope(entity, dto, contextSchema);
     const assembledSystemPrompt = compiled.resolvedPrompt ? this.render(compiled.resolvedPrompt.content, scope, 'instruction') : null;
@@ -1414,7 +1427,8 @@ export class AgentService extends BaseService implements IAgentService {
         severity: 'WARNING',
         code: 'GUARDRAIL_OPTED_OUT',
         path: 'parameters.guards.enabled',
-        message: 'This agent opts OUT of platform guardrail screening: its input and output are not screened, and every call records `guardrail: opted_out`.',
+        message:
+          'This agent opts OUT of platform guardrail screening: its input and output are not screened, and every call records `guardrail: opted_out`.',
       },
     ];
   }
@@ -1622,9 +1636,7 @@ export class AgentService extends BaseService implements IAgentService {
 
     if (providerClass === 'platform-self-host') {
       const staged = model.availability === AiModelAvailability.AVAILABLE || model.availability === AiModelAvailability.NOT_APPLICABLE;
-      return staged
-        ? null
-        : `it has no staged weights (availability is ${model.availability}); publish is refused until the weights are available.`;
+      return staged ? null : `it has no staged weights (availability is ${model.availability}); publish is refused until the weights are available.`;
     }
 
     // Every remaining class needs the connection plane. An absent collaborator FAILS CLOSED with

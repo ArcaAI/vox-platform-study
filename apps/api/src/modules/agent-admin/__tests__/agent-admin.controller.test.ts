@@ -84,7 +84,10 @@ describe('AgentAdminController — delegation', () => {
 describe('AgentAssignmentAdminController', () => {
   it('reuses the Agent subject + svc scope and folds If-Match on PATCH/DELETE', async () => {
     expect(Reflect.getMetadata('path', AgentAssignmentAdminController)).toBe('admin/agent-assignments');
-    const permissions = new Reflector().getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [AgentAssignmentAdminController.prototype.create, AgentAssignmentAdminController]);
+    const permissions = new Reflector().getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [
+      AgentAssignmentAdminController.prototype.create,
+      AgentAssignmentAdminController,
+    ]);
     expect(permissions).toEqual([{ action: 'manage', subject: 'Agent' }]);
     const service = { list: vi.fn(async () => []), getById: vi.fn(), upsert: vi.fn(async () => ({})), remove: vi.fn(async () => ({})) };
     const controller = new AgentAssignmentAdminController(service as never);
