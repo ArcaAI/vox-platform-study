@@ -84,7 +84,8 @@ test.describe.serial('#14 — server-side prompt version diff', () => {
         name: `t389 diff ${UNIQUE}`,
         content: 'Summarize the encounter for {{patient}}.\nUse a formal tone.',
         category: 'CUSTOM',
-        variables: ['patient'],
+        // TASK-890 §3.6 (L4) — typed declarations, not a bare string list.
+        variables: [{ name: 'patient', type: 'string', required: true }],
         status: 'PUBLISHED',
       },
     });

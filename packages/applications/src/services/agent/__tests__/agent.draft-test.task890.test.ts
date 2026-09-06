@@ -40,6 +40,9 @@ const LLM_MODEL = {
   taskType: 'TEXT_GENERATION',
   provider: 'lm-studio',
   sourceUri: 'gemma-4-e2b-it-qat',
+  // TASK-890 §3.1 — routing sends `wireModelId`; the publish gate refuses an engine/cloud row
+  // that declares none, and the bench compiles through the SAME gate.
+  wireModelId: 'gemma-4-e2b-it-qat',
   resourceStatus: ResourceStatusType.ENABLED,
   metaData: null,
 };

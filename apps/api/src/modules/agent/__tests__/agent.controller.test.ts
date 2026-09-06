@@ -71,8 +71,8 @@ function make(overrides: Record<string, unknown> = {}) {
     buildSpeechRequest: vi.fn(),
     resolveAsrPipelineId: vi.fn(async () => 'pipe-1'),
     // TASK-890 §3.14 — the ledger's screening disposition for this call.
-    guardrailDisposition: vi.fn(
-      async (decision: { enabled: boolean }): Promise<'screened' | 'opted_out' | 'platform_off'> => (decision.enabled ? 'screened' : 'opted_out'),
+    guardrailDisposition: vi.fn(async (decision: { enabled: boolean }): Promise<'screened' | 'opted_out' | 'platform_off'> =>
+      decision.enabled ? 'screened' : 'opted_out',
     ),
   };
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'u1' } : undefined)) };
@@ -161,6 +161,24 @@ describe('AgentController — invocations', () => {
     invocation.inputProblems.mockReturnValue(['/text: required property is missing']);
     await expect(controller.invoke('clinic-summarizer', {}, fakeRes() as never, undefined)).rejects.toBeInstanceOf(BadRequestException);
     expect(invocation.invokeText).not.toHaveBeenCalled();
+  });
+
+  // TASK-890 §3.3/§3.4 — `context` is checked against the agent's FROZEN context schema, not
+  // against `inputSchema`. Every default `inputSchema` is `additionalProperties: false` and
+  // declares only `{ text, variables }`, so validating the whole body against it made an agent
+  // that PINS a context schema impossible to invoke with a context — the enforcement path was
+  // unreachable through the route meant to reach it.
+  it('withholds `context` from the inputSchema check, and still forwards it to the service', async () => {
+    const { controller, invocation } = make();
+    await controller.invoke('clinic-summarizer', { text: 'hi', context: { visit: { clinic: 'Ward 7' } } }, fakeRes() as never, undefined);
+
+    expect(invocation.inputProblems).toHaveBeenCalledWith(expect.anything(), { text: 'hi' });
+    expect(invocation.invokeText).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      { text: 'hi', context: { visit: { clinic: 'Ward 7' } } },
+      'blocking',
+    );
   });
 
   it('stream: relays the TEXT SSE frames with the streaming headers', async () => {

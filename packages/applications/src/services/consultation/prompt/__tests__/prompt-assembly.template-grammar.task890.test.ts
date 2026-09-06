@@ -191,6 +191,39 @@ describe('PromptAssemblyService renders `context.*` through the shared grammar',
   });
 });
 
+/**
+ * TASK-890 (wave-2b close) — `{{transcript}}` is a BOUND name, like its four siblings.
+ *
+ * Thirteen seeded bodies end with `Transcript:\n{{transcript}}` and nothing bound the name, so
+ * the placeholder rendered EMPTY and the transcript then arrived in the appended, delimiter-
+ * wrapped block instead — under a heading the author had already written, in a place the author
+ * did not choose. `ner_entities` / `clinician_notes` / `attachments` / `doctor_highlights` have
+ * always worked the other way: bound, and the append SUPPRESSED when the template consumed them.
+ */
+describe('the transcript is a bound variable, and consuming it suppresses the duplicate append', () => {
+  it('renders the transcript where the author put it', async () => {
+    resolvesTo('Notes.\n\nTranscript:\n{{transcript}}');
+    const { userPrompt } = await (await getService()).assemble(params());
+
+    expect(userPrompt.startsWith('Notes.\n\nTranscript:\ncase notes')).toBe(true);
+  });
+
+  it('appends the transcript exactly ONCE — the include-guard sees the rendered copy', async () => {
+    resolvesTo('Transcript:\n{{transcript}}');
+    const { userPrompt } = await (await getService()).assemble(params());
+
+    expect(userPrompt.split('case notes')).toHaveLength(2);
+  });
+
+  it('still APPENDS the wrapped block for a body that does not mention it', async () => {
+    resolvesTo('Language: {{context.conversation_language}}');
+    const { userPrompt } = await (await getService()).assemble(params());
+
+    expect(userPrompt).toContain('case notes');
+    expect(userPrompt).toContain('TRANSCRIPT');
+  });
+});
+
 describe('the golden pair: converted content assembles byte-identically to the legacy body', () => {
   /** The pre-890 renderer, reproduced here so the BEFORE side survives its deletion. */
   function legacySubstitute(template: string, variables: Record<string, string>): string {

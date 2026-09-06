@@ -91,19 +91,29 @@ const entity = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-function makeService(): WorkflowDefinitionService {
+function makeService(agentService?: {
+  publishAgentViews: (slugs: readonly string[]) => Promise<Record<string, unknown>>;
+}): WorkflowDefinitionService {
   return new WorkflowDefinitionService(
     mockRepository as never,
     mockEventEmitter as never,
     mockClsService as never,
     mockDatabaseService as never,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
+    undefined, // entitlements
+    undefined, // sttPipelineCompiler
+    undefined, // workflowValidator
+    undefined, // promptTemplateRepository
+    undefined, // promptVersionRepository
+    undefined, // contextSchemaService
+    undefined, // routingPolicyService
+    undefined, // agentRepository
+    undefined, // aiModelRepository
+    undefined, // documentTemplateRepository
+    undefined, // mcpServerRepository
+    undefined, // agentPromotionService
+    undefined, // evalPromotionGate
+    undefined, // policyEngine
+    agentService as never,
   );
 }
 
@@ -155,5 +165,78 @@ describe('a WARNING finding never blocks', () => {
     const optOut = written.validationReport.findings.filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
     expect(optOut.length).toBeGreaterThan(0);
     expect(optOut.every((f) => f.severity === 'WARNING')).toBe(true);
+  });
+});
+
+/**
+ * TASK-890 §3.5 (L8 → the wave-2b close) — the `agents` slot of `PublishContext`, WIRED.
+ *
+ * L8 exposed `AgentService.publishAgentViews(slugs)` — the per-agent facts the gate checks a
+ * `core.agent` node's prompt references and generation overrides against — but nothing at the
+ * graph call site resolved it, so the gate silently skipped those checks on every workflow
+ * publish. It is the same failure mode the gate itself was written to end: a complete check with
+ * no caller.
+ */
+describe('the graph publish gate resolves the referenced agents', () => {
+  const PROMPT_GRAPH = coreGraph({}, { agentRef: { slug: 'summarizer' } });
+
+  beforeEach(() => mockRepository.findById.mockResolvedValue(entity({ graph: PROMPT_GRAPH })));
+
+  it('asks the agent service for exactly the slugs the graph names', async () => {
+    const publishAgentViews = vi.fn(async () => ({}));
+    await makeService({ publishAgentViews }).publish('def-1', { activate: false });
+
+    expect(publishAgentViews).toHaveBeenCalledWith(['summarizer']);
+  });
+
+  it('WARNS on a `core.agent` override referencing a variable the agent does not declare', async () => {
+    const graph = coreGraph({}, { agentRef: { slug: 'summarizer' }, overrides: { promptVariables: { tone: '{{context.absent}}' } } });
+    mockRepository.findById.mockResolvedValue(entity({ graph }));
+    // The agent's BOUND context schema is what makes `context.absent` undeclared rather than
+    // merely unknown: an unresolved slot admits any sub-path, which is why wiring the slot is
+    // the whole of this fix.
+    const publishAgentViews = vi.fn(async () => ({
+      summarizer: {
+        declaredVariables: ['tone'],
+        contextPayloadSchema: { type: 'object', additionalProperties: false, properties: { language: { type: 'string' } } },
+      },
+    }));
+
+    const published = await makeService({ publishAgentViews }).publish('def-1', { activate: false });
+
+    expect(published.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
+    const written = mockRepository.update.mock.calls[0]?.[1] as { validationReport: { findings: Array<{ code?: string; severity: string }> } };
+    const undeclared = written.validationReport.findings.filter((f) => f.code === 'PROMPT_VARIABLE_UNDECLARED');
+    expect(undeclared.length).toBeGreaterThan(0);
+    expect(undeclared.every((f) => f.severity === 'WARNING')).toBe(true);
+  });
+
+  it('says nothing when the agent DOES declare it', async () => {
+    const graph = coreGraph({}, { agentRef: { slug: 'summarizer' }, overrides: { promptVariables: { tone: '{{context.language}}' } } });
+    mockRepository.findById.mockResolvedValue(entity({ graph }));
+    const publishAgentViews = vi.fn(async () => ({
+      summarizer: {
+        declaredVariables: ['tone'],
+        contextPayloadSchema: { type: 'object', additionalProperties: false, properties: { language: { type: 'string' } } },
+      },
+    }));
+
+    await makeService({ publishAgentViews }).publish('def-1', { activate: false });
+
+    const written = mockRepository.update.mock.calls[0]?.[1] as { validationReport: { findings: Array<{ code?: string }> } };
+    expect(written.validationReport.findings.some((f) => f.code === 'PROMPT_VARIABLE_UNDECLARED')).toBe(false);
+  });
+
+  // Best-effort by contract: the publish-gate checks this slot feeds are the ones that stop
+  // running, never the publish itself. A refusal caused by the gate's own dependency would be a
+  // worse failure than the one it prevents.
+  it('degrades to "not checked" when the resolution throws, and still publishes', async () => {
+    const publishAgentViews = vi.fn(async () => {
+      throw new Error('agent plane unavailable');
+    });
+
+    const published = await makeService({ publishAgentViews }).publish('def-1', { activate: false });
+
+    expect(published.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
   });
 });

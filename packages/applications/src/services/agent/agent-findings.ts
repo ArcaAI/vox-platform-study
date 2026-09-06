@@ -17,6 +17,14 @@ export type AgentFindingCode =
   // TASK-890 §3.5 — the codes an agent shares with the workflow publish gate
   // (`WORKFLOW_PUBLISH_FINDING_CODES`). ONE vocabulary across both surfaces, so a console renders
   // the same fix for the same problem whether it was found on a graph node or on an agent.
+  //
+  // The sharing is a SUBSET, and deliberately so (wave-2b close): these four are facts about a
+  // TEMPLATE or a CONTEXT SCHEMA, which both gates can see. The model family above
+  // (`MODEL_NOT_FOUND` / `MODEL_TASK_MISMATCH` / `MODEL_DISABLED` / `MODEL_UNAVAILABLE` /
+  // `MODEL_NOT_READY` / `CAPABILITY` / `TEMPLATE_*`) stays agent-only because the workflow gate
+  // is a PURE function in a package with no database: it resolves no model row and no readiness
+  // snapshot, so it could never emit one. Adding them to the workflow list would declare a
+  // vocabulary nothing in that gate can produce.
   | 'PROMPT_TEMPLATE_SYNTAX'
   | 'PROMPT_VARIABLE_UNDECLARED'
   | 'CONTEXT_SCHEMA_NOT_FOUND'

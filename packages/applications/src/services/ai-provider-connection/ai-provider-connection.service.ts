@@ -225,6 +225,32 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         }
         continue;
       }
+      // A model this connection declared BEFORE and then withdrew is REVIVED, not re-created.
+      // Withdrawal is a soft delete and `(tenantId, slug)` is unique across every status, so
+      // creating here raced the tombstone and answered a raw `P2002` — "Unique constraint
+      // violation", with no name and no remedy — for the ordinary act of putting a model back.
+      const withdrawn = await this.aiModelRepository.findBySlugIncludingDeleted(scopedTenantId, entry.slug, tx ?? this.databaseService.baseClient);
+      if (withdrawn) {
+        if (withdrawn.sourceConnectionId !== connection.id) {
+          // A different connection of the same tenant owns that name. Named, not raw: the
+          // remedy is to withdraw it there or declare this one under the `byo-` suggestion.
+          throw new ConflictException({
+            code: 'BYO_SLUG_IN_USE',
+            message:
+              `This tenant already has a model named '${entry.slug}' declared on another provider connection. ` +
+              `Withdraw it there, or re-send this entry with slug '${entry.suggestedSlug}'.`,
+            slug: entry.slug,
+            suggestedSlug: entry.suggestedSlug,
+          });
+        }
+        await this.aiModelRepository.restore(withdrawn.id, userId, tx);
+        this.applyDeclaration(withdrawn, entry.declaration, userId);
+        withdrawn.validate();
+        kept.push(withdrawn.hasChanges ? await this.aiModelRepository.update(withdrawn.id, withdrawn, tx) : withdrawn);
+        updated += 1;
+        continue;
+      }
+
       const model = AiModelFactory.CreateAiModel(
         buildByoModelProps({
           service: service as ByoDeclarableService,

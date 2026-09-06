@@ -198,3 +198,151 @@ class TestCoreAgentDegradesOnAnUnresolvedVariable:
         assert "trigger.absent" in (result.reason or "")
         # Nothing was generated on a half-substituted prompt.
         assert calls == []
+
+
+class TestCoreAgentBindingForm:
+    """§3.3 — `instruction.variables` is a map of BINDINGS, and all four renderers resolve it.
+
+    Wave-2b close: three of the four (this lane, the realtime lane, the invocation route) passed
+    the raw map through, so a `{ "value": "formal" }` binding rendered `{"value":"formal"}` while
+    the draft bench — the only site that resolved bindings — rendered `formal`. An author who
+    tests a prompt on the bench must not get different bytes in production.
+    """
+
+    def test_a_value_binding_renders_its_literal(self) -> None:
+        prompt = core._system_prompt(
+            _resolved("Tone: {{tone}}", {"tone": {"value": "formal"}}), {}, _run_context()
+        )
+
+        assert prompt == "Tone: formal"
+
+    def test_a_path_binding_resolves_from_the_roots(self) -> None:
+        prompt = core._system_prompt(
+            _resolved("Age {{age}} / {{context.patientAge}}", {"age": {"path": "context.patientAge"}}),
+            {},
+            _run_context(),
+        )
+
+        assert prompt == "Age 41 / 41"
+
+    def test_a_node_override_is_a_plain_value_and_still_wins(self) -> None:
+        prompt = core._system_prompt(
+            _resolved("Tone: {{tone}}", {"tone": {"value": "formal"}}),
+            {"overrides": {"promptVariables": {"tone": "terse"}}},
+            _run_context(),
+        )
+
+        assert prompt == "Tone: terse"
+
+    def test_the_resolved_map_is_what_variables_star_exposes(self) -> None:
+        prompt = core._system_prompt(
+            _resolved("{{variables.tone}}", {"tone": {"value": "formal"}}), {}, _run_context()
+        )
+
+        assert prompt == "formal"
+
+    def test_an_unresolvable_path_binding_raises_naming_the_path(self) -> None:
+        with pytest.raises(PromptVariableUnresolved) as excinfo:
+            core._system_prompt(
+                _resolved("{{age}}", {"age": {"path": "context.absent"}}), {}, _run_context()
+            )
+
+        assert excinfo.value.path == "context.absent"
+
+
+class TestCoreAgentGuardrailDecision:
+    """§3.14 (OD-R) — the durable producer folds the opt-out and pushes it to TEXT.
+
+    Two of the three levels are in scope on this lane. The workflow default
+    (`policyBindings.guardrail`) is not: `workflow.py` does not thread it into
+    `NodeActivityInput`, so a workflow-level opt-out is honoured on the realtime lane and
+    inherited-as-ON here. That divergence is RECORDED (README §8/§9), not papered over with a
+    second read — which is why these cases pin node > agent > ON and nothing else.
+    """
+
+    @pytest.fixture
+    def captured(self, monkeypatch: pytest.MonkeyPatch):
+        async def _noop(*_args: Any, **_kwargs: Any) -> None:
+            return None
+
+        monkeypatch.setattr(core, "record_and_flush", _noop)
+        monkeypatch.setattr(core, "_phi_redactor", lambda: None)
+
+        def _install(wire: dict[str, Any]) -> list[dict[str, Any]]:
+            calls: list[dict[str, Any]] = []
+
+            class _Api:
+                async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
+                    return wire
+
+                async def get_policy(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+                    return {"phiEnabled": False, "phiFailClosed": True}
+
+            class _Result:
+                content = "the note"
+                provider = "openai"
+                model = "gpt-x"
+                usage = {}
+
+            class _Text:
+                async def generate(self, **kwargs: Any) -> Any:
+                    calls.append(kwargs)
+                    return _Result()
+
+            monkeypatch.setattr(core, "_api_client", lambda _settings: _Api())
+            monkeypatch.setattr(core, "_text_client", lambda _settings: _Text())
+            return calls
+
+        return _install
+
+    async def _run(self, captured, node_config: dict[str, Any], agent_guardrail: Any = None):
+        wire = _resolved("Write the note.").model_dump(by_alias=True)
+        if agent_guardrail is not None:
+            wire["compiledConfig"]["guardrail"] = {"enabled": agent_guardrail}
+        calls = captured(wire)
+        result = await core.interpreter_core_agent(
+            NodeActivityInput(
+                node_id="agent1",
+                node_type="core.agent",
+                tenant_id=_TENANT,
+                run_id=_RUN,
+                config={"agentRef": {"slug": "discharge-writer"}, **node_config},
+                bound_inputs={"in": "the transcript"},
+                run_context=_run_context(),
+            )
+        )
+        return result, calls
+
+    @pytest.mark.asyncio
+    async def test_screens_by_default_and_says_so_explicitly(self, captured) -> None:
+        result, calls = await self._run(captured, {})
+
+        assert calls[0]["guardrail_policy"] == {"enabled": True}
+        assert result.output["guardrail"] == {"enabled": True, "source": "default"}
+
+    @pytest.mark.asyncio
+    async def test_honours_the_node_opt_out(self, captured) -> None:
+        result, calls = await self._run(captured, {"guardrail": {"enabled": False}})
+
+        assert calls[0]["guardrail_policy"] == {"enabled": False}
+        assert result.output["guardrail"] == {"enabled": False, "source": "node"}
+
+    @pytest.mark.asyncio
+    async def test_falls_through_to_the_agent_opinion(self, captured) -> None:
+        result, calls = await self._run(captured, {}, agent_guardrail=False)
+
+        assert calls[0]["guardrail_policy"] == {"enabled": False}
+        assert result.output["guardrail"] == {"enabled": False, "source": "agent"}
+
+    @pytest.mark.asyncio
+    async def test_the_node_overrides_the_agent_in_the_on_direction(self, captured) -> None:
+        _result, calls = await self._run(captured, {"guardrail": {"enabled": True}}, agent_guardrail=False)
+
+        assert calls[0]["guardrail_policy"] == {"enabled": True}
+
+    @pytest.mark.asyncio
+    async def test_a_malformed_agent_opinion_reads_as_screened(self, captured) -> None:
+        """On a safety gate, "unparseable" must never resolve to an opt-out."""
+        _result, calls = await self._run(captured, {}, agent_guardrail="false")
+
+        assert calls[0]["guardrail_policy"] == {"enabled": True}

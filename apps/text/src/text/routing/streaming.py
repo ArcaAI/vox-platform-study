@@ -392,7 +392,21 @@ async def run_generation_producer(
         await emit_terminal(StreamChunk(type="done", data=done_data))
 
         terminal_status = TaskStatus.CANCELLED if stopped_reason else TaskStatus.COMPLETED
-        await task_manager.update_task(generation_id, status=terminal_status)
+        # TASK-890 — persist WHAT was generated and WHAT it cost, not only that it finished.
+        # `GET /tasks/{id}` is how a gateway bench finalizes (it never trusts the browser to hand
+        # the text back), and until this line it answered `content: null` / `usage: null` for
+        # every completed generation, so a prompt-bench run scored an empty string and metered
+        # nothing. The bytes are the ones already in the task's chunk stream, under the same TTL.
+        await task_manager.update_task(
+            generation_id,
+            status=terminal_status,
+            content="".join(content_parts),
+            usage={
+                "prompt_tokens": total_input_tokens,
+                "completion_tokens": total_output_tokens,
+                "total_tokens": total_input_tokens + total_output_tokens,
+            },
+        )
         GENERATION_TOTAL.labels(
             provider=resolved_provider,
             model=resolved_model,

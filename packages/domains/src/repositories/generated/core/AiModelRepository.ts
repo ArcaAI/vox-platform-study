@@ -55,6 +55,23 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
    * admin acting on another tenant through the base-client lane, where the
    * extension does not run — the same `tx` routing rule as `findBySlug`.
    */
+  /**
+   * A tenant's row under this slug, WHATEVER its `resourceStatus` — including a soft-deleted one.
+   *
+   * TASK-890 — `declareModels` withdraws a model by SOFT-DELETING it, and `(tenantId, slug)` is
+   * unique across every status, so a tenant that removed a model and then declared it again hit a
+   * raw `P2002` from the create path. The withdrawal is meant to be reversible: this is the read
+   * that lets the declaration REVIVE the original row instead of racing its own tombstone.
+   *
+   * Deliberately unfiltered on `resourceStatus`, which is exactly why it takes the base/tx client
+   * lane like `findBySlug` — the soft-delete extension would filter out the only row it is for.
+   */
+  async findBySlugIncludingDeleted(tenantId: string, slug: string, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity | null> {
+    const delegate = tx ? (tx as Record<string, any>).aiModel : this.db;
+    const model = await delegate.findFirst({ where: { tenantId, slug } });
+    return model ? AiModelEntityMapper.getInstance().toDomainEntity(model) : null;
+  }
+
   async findBySourceConnection(sourceConnectionId: string, tenantId: string, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity[]> {
     const where = {
       tenantId,

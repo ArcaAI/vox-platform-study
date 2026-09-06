@@ -96,8 +96,7 @@ describe('buildSummaryPrompt', () => {
   // conflict, not just state the target language (R3).
   it('overrides a conflicting "conversation language" clause in the governed instruction with an explicit English directive (R3)', () => {
     const { system } = buildSummaryPrompt(baseSession(), {
-      governedInstruction:
-        'strictly follows these headings (content in conversation language, headings in English)',
+      governedInstruction: 'strictly follows these headings (content in conversation language, headings in English)',
     });
     expect(system).toContain('content in conversation language, headings in English');
     expect(system).toContain('Write ALL summary content in English');
@@ -240,9 +239,7 @@ describe('buildSummaryPrompt — bilingual transcript (Sarvam translation + orig
     const session = {
       session_id: 'sess-en',
       created_at: '2026-08-10T07:12:26Z',
-      conversation_segments: [
-        { speaker: 'patient', text: 'Chest tightness.', original_text: 'Chest tightness.', timestamp: '2026-08-10T07:12:30Z' },
-      ],
+      conversation_segments: [{ speaker: 'patient', text: 'Chest tightness.', original_text: 'Chest tightness.', timestamp: '2026-08-10T07:12:30Z' }],
     } as SessionDataDto;
     const { user } = buildSummaryPrompt(session);
     expect(user).not.toContain('(original');
@@ -365,6 +362,50 @@ describe('buildPreSummaryPrompt (v1 1:1)', () => {
   it('uses the governed tenant template as the body when one resolves', () => {
     const { user } = buildPreSummaryPrompt(req(), { governedInstruction: 'Highlight {current_department} risk stratification.' });
     expect(user).toBe('Highlight Cardiology risk stratification.');
+  });
+
+  /**
+   * TASK-890 §3.2 (wave-2b close) — the v1-compat seam.
+   *
+   * A tenant's governed pre-summary instruction is the SAME seeded row the native plane
+   * assembles, and those rows now carry `{{context.x}}`. Left on the single-brace substituter,
+   * this plane shipped the LITERAL `{{context.current_department}}` to the model while the
+   * native plane rendered the value — the same template, two answers, on the compat plane that
+   * exists to keep one behaviour.
+   *
+   * The discriminator is the CONTENT, not the caller: `V1_PRE_SUMMARY_TEMPLATE` is byte-pinned
+   * single-brace v1 content and keeps the v1 substituter, unchanged.
+   */
+  describe('a governed body written in the ONE grammar renders through it', () => {
+    it('renders `{{context.x}}`, both under `context.*` and bare', () => {
+      const { user } = buildPreSummaryPrompt(req(), {
+        governedInstruction: 'Dept={{context.current_department}} Lang={{language_name}}',
+      });
+
+      expect(user).toBe('Dept=Cardiology Lang=English');
+    });
+
+    it('binds an unresolved reference EMPTY rather than refusing the pre-summary', () => {
+      const { user } = buildPreSummaryPrompt(req(), { governedInstruction: 'X=[{{context.not_a_v1_variable}}]' });
+
+      expect(user).toBe('X=[]');
+    });
+
+    it('honours `default("…")` over the empty binding', () => {
+      const { user } = buildPreSummaryPrompt(req(), { governedInstruction: '{{context.absent | default("none")}}' });
+
+      expect(user).toBe('none');
+    });
+
+    it('uses a body that does not PARSE verbatim rather than costing the caller its summary', () => {
+      const { user } = buildPreSummaryPrompt(req(), { governedInstruction: 'broken {{ unterminated' });
+
+      expect(user).toBe('broken {{ unterminated');
+    });
+
+    it('leaves the byte-pinned v1 body on the single-brace substituter', () => {
+      expect(renderPreSummaryTemplate('Dept={current_department}', req())).toBe('Dept=Cardiology');
+    });
   });
 
   // DNA writing style folded into the pre-summary system prompt.

@@ -1929,6 +1929,12 @@ describe('PromptManagementService', () => {
           b.provider_overrides = { 'lm-studio': { api_key: 'k', funding: 'tenant' } };
           return b;
         }),
+        // TASK-890 §3.14 — a bench run is ALWAYS screened: it has no node and no agent, so there
+        // is no opinion to inherit and the decision is stated explicitly on every post.
+        applyGuardrailDecision: vi.fn((b: Record<string, unknown>, decision: { enabled: boolean }) => {
+          b.guardrail_policy = { ...(b.guardrail_policy as object), enabled: decision.enabled };
+          return b;
+        }),
       };
       const { svc, httpMock } = buildTextService(wordsOfLength(60), { textRequestEnrichment });
 
@@ -1936,6 +1942,8 @@ describe('PromptManagementService', () => {
 
       expect(textRequestEnrichment.applyTextRuntimeProfile).toHaveBeenCalledTimes(1);
       expect(textRequestEnrichment.applyTenantProviderOverrides).toHaveBeenCalledTimes(1);
+      expect(textRequestEnrichment.applyGuardrailDecision).toHaveBeenCalledWith(expect.anything(), { enabled: true });
+      expect((httpMock.axiosRef.post.mock.calls[0][1] as { guardrail_policy?: unknown }).guardrail_policy).toEqual({ enabled: true });
       const [, payload, config] = httpMock.axiosRef.post.mock.calls[0];
       expect((payload as { temperature?: number }).temperature).toBe(0.3);
       expect((payload as { provider_overrides?: unknown }).provider_overrides).toBeDefined();
@@ -2372,7 +2380,9 @@ describe('PromptManagementService', () => {
         it('falls back to sourceUri when wireModelId is not yet backfilled', async () => {
           const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
           mockTemplateRepo.findById.mockResolvedValue(existing);
-          const findById = vi.fn().mockResolvedValue({ provider: 'lm-studio', wireModelId: null, sourceUri: 'medgemma-27b', resourceStatus: 'ENABLED' });
+          const findById = vi
+            .fn()
+            .mockResolvedValue({ provider: 'lm-studio', wireModelId: null, sourceUri: 'medgemma-27b', resourceStatus: 'ENABLED' });
           const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiModelRepository: { findById } });
 
           await svc.startPromptTemplateTest('tpl-1', { modelId: 'model-1' } as never);
@@ -2405,9 +2415,9 @@ describe('PromptManagementService', () => {
           mockTemplateRepo.findById.mockResolvedValue(existing);
           const { svc } = buildTextService(wordsOfLength(60));
 
-          await expect(
-            svc.startPromptTemplateTest('tpl-1', { modelId: 'model-1', provider: 'lm-studio', model: 'x' } as never),
-          ).rejects.toThrow(ArgumentInvalidException);
+          await expect(svc.startPromptTemplateTest('tpl-1', { modelId: 'model-1', provider: 'lm-studio', model: 'x' } as never)).rejects.toThrow(
+            ArgumentInvalidException,
+          );
         });
       });
 
@@ -3002,7 +3012,9 @@ describe('PromptManagementService', () => {
       const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 3 });
       mockTemplateRepo.findById.mockResolvedValue(tpl);
       // The publish edit already wrote v2 with exactly this content.
-      mockVersionRepo.findLatestVersion.mockResolvedValue(createMockVersionEntity({ versionNumber: 2, content: tpl.content, variables: tpl.variables ?? null }));
+      mockVersionRepo.findLatestVersion.mockResolvedValue(
+        createMockVersionEntity({ versionNumber: 2, content: tpl.content, variables: tpl.variables ?? null }),
+      );
       mockTemplateRepo.updateWithVersion.mockResolvedValue(tpl);
 
       await service.approveTemplate('tpl-t', { expectedVersion: 3 } as never);

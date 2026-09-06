@@ -38,12 +38,20 @@ test.describe('TASK-890 §3.4 — the agent`s context-schema pin at publish', ()
     expect(admin, 'tenant-admin login').not.toBeNull();
     adminJwt = admin!.token;
 
-    const models = await request.get('/api/v1/admin/ai-models?taskType=TEXT_GENERATION', { headers: { Authorization: `Bearer ${adminJwt}` } });
-    expect(models.status()).toBe(200);
-    const body = await models.json();
-    const rows: Array<{ id: string }> = body.data ?? body.items ?? body;
-    expect(rows.length, 'the seeded TEXT_GENERATION registry is not empty').toBeGreaterThan(0);
-    modelId = rows[0].id;
+    // The tenant CATALOGUE, not the platform registry. `GET /admin/ai-models` is
+    // super-admin-only since L1 (OD-B: the registry is read-only and SYSTEM-only for a tenant),
+    // so a tenant admin reading it is a 403 — which is the behaviour, not the bug. `/catalogue`
+    // is the surface a tenant admin binds an agent from, so it is the honest fixture here too.
+    const models = await request.get('/api/v1/admin/ai-models/catalogue?taskType=TEXT_GENERATION', {
+      headers: { Authorization: `Bearer ${adminJwt}` },
+    });
+    expect(models.status(), await models.text()).toBe(200);
+    const rows: Array<{ id: string }> = (await models.json()).models ?? [];
+    expect(rows.length, 'the seeded TEXT_GENERATION catalogue is not empty').toBeGreaterThan(0);
+    // A USABLE row — the catalogue lists unusable models WITH their reason rather than hiding
+    // them (§3.7), so `rows[0]` can be a cloud row this environment has no connection for.
+    const usable = rows.find((row) => (row as { usable?: boolean }).usable !== false) ?? rows[0];
+    modelId = usable.id;
 
     // The head row carries only metadata; the DECLARATION arrives at publish, which is what mints
     // the immutable version the agent's pin will freeze.
@@ -60,12 +68,21 @@ test.describe('TASK-890 §3.4 — the agent`s context-schema pin at publish', ()
     const published = await request.post(`${ADMIN_SCHEMAS}/${schemaId}/publish`, {
       headers: { Authorization: `Bearer ${adminJwt}` },
       data: {
+        // The FULL kind contract (`schemaVersion`, `phiClass`, `cardinality`, `lifecycle`,
+        // `producedBy`), as `07g-consultation-legacy-context-schema.ts` declares it. A partial
+        // kind is refused at publish with each missing field named — which is the contract
+        // working, not a fixture this test can shorten.
         definition: {
+          schemaVersion: '1.0',
           kinds: [
             {
               key: 'visit',
               label: 'Visit',
               primitive: 'STRUCTURED',
+              phiClass: 'NON_PHI',
+              cardinality: 'ONE',
+              lifecycle: 'ANY',
+              producedBy: ['SYSTEM'],
               required: true,
               fields: { type: 'object', additionalProperties: false, required: ['clinic'], properties: { clinic: { type: 'string' } } },
             },
@@ -73,7 +90,9 @@ test.describe('TASK-890 §3.4 — the agent`s context-schema pin at publish', ()
         },
       },
     });
-    expect(published.status(), `publish the fixture schema (${await published.text()})`).toBe(200);
+    // The publish route answers 201 (a new immutable version row is CREATED); 200 is accepted for
+    // an environment that answers the older status.
+    expect([200, 201], `publish the fixture schema (${await published.text()})`).toContain(published.status());
   });
 
   test.afterAll(async ({ request }) => {
@@ -148,14 +167,13 @@ test.describe('TASK-890 §3.4 — the agent`s context-schema pin at publish', ()
   });
 
   /**
-   * FIXME — the ENFORCEMENT point is `AgentInvocationService`, which lane L3 owns in this wave
-   * (§4.3). L8 froze the schema into `compiledConfig.contextSchema` and made the same rule real
-   * on the draft-test bench (`CONTEXT_SCHEMA_VIOLATION`); the invocation half is the one-line
-   * `jsonSchemaValueProblems(compiled.contextSchema.payloadSchema, body.context)` handed to L3.
-   * Un-`fixme` this the moment that lands — it is written against the intended contract, not a
-   * placeholder.
+   * The ENFORCEMENT point is `AgentInvocationService.contextProblems`, wired at the wave-2b
+   * close: the frozen `compiledConfig.contextSchema.payloadSchema` is checked against
+   * `body.context` before anything reaches TEXT, and the refusal carries the SAME named code the
+   * draft bench raises (`CONTEXT_SCHEMA_VIOLATION`) so a caller who fixed it on the bench
+   * recognises it if it recurs in production.
    */
-  test.fixme('an invocation that omits a REQUIRED context kind is refused, and the refusal names it', async ({ request }) => {
+  test('an invocation that omits a REQUIRED context kind is refused, and the refusal names it', async ({ request }) => {
     const id = await createDraft(request, { contextSchemaId: schemaId });
     const published = await request.post(`${ADMIN_AGENTS}/${id}/publish`, { headers: { Authorization: `Bearer ${adminJwt}` }, data: {} });
     test.skip(published.status() !== 200, `publish did not succeed in this environment (${published.status()})`);
@@ -163,11 +181,19 @@ test.describe('TASK-890 §3.4 — the agent`s context-schema pin at publish', ()
 
     const res = await request.post(`/api/v1/agents/${slug}/invocations`, {
       headers: { Authorization: `Bearer ${adminJwt}` },
-      data: { input: { text: 'hello' }, context: {} },
+      // `text` is the default `inputSchema`'s own required field; `context` is a SIBLING of it,
+      // checked against the agent's frozen context schema rather than against `inputSchema`.
+      data: { text: 'hello', context: {} },
     });
     // 400 with the kind named. NOT a 200 with an empty `context.*`: an agent that declared what
     // it needs and did not get it produced nothing trustworthy (TASK-859 invariant 3, fail closed).
-    expect([400, 422], `invocation refusal (${res.status()}: ${await res.text()})`).toContain(res.status());
-    expect(JSON.stringify(await res.json())).toContain('visit');
+    const text = await res.text();
+    // A sibling spec (`task-890-metering`) holds the tenant's `monthlyLlmTokens` allowance at 0
+    // while its own enforcement case runs, and Playwright runs FILES in parallel — so a 429 here
+    // means the quota precheck fired before the context check could, not that the context check
+    // is missing. Named, and skipped rather than red.
+    test.skip(res.status() === 429, 'a sibling spec is holding the LLM allowance at 0 (task-890-metering enforcement case)');
+    expect([400, 422], `invocation refusal (${res.status()}: ${text})`).toContain(res.status());
+    expect(text).toContain('visit');
   });
 });

@@ -39,7 +39,13 @@ const candidate = (over: Partial<ResolvedTextCandidate> = {}): ResolvedTextCandi
 const platformCandidate = (): ResolvedTextCandidate =>
   candidate({
     kind: 'platform-default',
-    agent: { slug: 'platform-summarization', versionId: 'p1', versionNumber: 1, tenantId: '00000000-0000-0000-0000-000000000000', source: 'platform-default' },
+    agent: {
+      slug: 'platform-summarization',
+      versionId: 'p1',
+      versionNumber: 1,
+      tenantId: '00000000-0000-0000-0000-000000000000',
+      source: 'platform-default',
+    },
     modelSlug: 'lms-gemma-4-e2b-it-qat',
     provider: 'lm-studio',
     model: 'gemma-4-e2b-it-qat',
@@ -82,7 +88,9 @@ function httpMock(generate: (call: number) => unknown) {
   const post = vi.fn().mockImplementation((url: string) => {
     if (url.includes('/generate')) {
       const answer = generate(n++);
-      return answer instanceof Error ? Promise.reject(answer) : Promise.resolve({ data: { summary: answer, stats: { provider: 'echo', model: 'echo' } } });
+      return answer instanceof Error
+        ? Promise.reject(answer)
+        : Promise.resolve({ data: { summary: answer, stats: { provider: 'echo', model: 'echo' } } });
     }
     return Promise.resolve({ data: {} });
   });
@@ -121,7 +129,12 @@ const snapshot = (): FrozenLiveAgentSnapshot => ({
 const textAgents = { resolve: vi.fn() };
 const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
 
-function buildService(opts: { generate: (call: number) => unknown; nodeConfig?: Record<string, unknown>; lane?: unknown; textRequestEnrichment?: unknown }) {
+function buildService(opts: {
+  generate: (call: number) => unknown;
+  nodeConfig?: Record<string, unknown>;
+  lane?: unknown;
+  textRequestEnrichment?: unknown;
+}) {
   const { post, http } = httpMock(opts.generate);
   const env: Record<string, unknown> = { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_TEXT_MAX_TOKENS: '1500' };
   const configService = { get: vi.fn().mockImplementation((k: string) => env[k]) };
@@ -136,7 +149,9 @@ function buildService(opts: { generate: (call: number) => unknown; nodeConfig?: 
   };
   const definitions = {
     findPublishedBySlug: vi.fn(async (tenantId: string, slug: string) =>
-      tenantId === TENANT && slug === SLUG ? { slug, paletteKey: 'consultation', compiledConfig: opts.lane ?? coreAgentLane(opts.nodeConfig ?? {}) } : null,
+      tenantId === TENANT && slug === SLUG
+        ? { slug, paletteKey: 'consultation', compiledConfig: opts.lane ?? coreAgentLane(opts.nodeConfig ?? {}) }
+        : null,
     ),
   };
   const service = new LiveDocumentationService(
@@ -189,7 +204,10 @@ beforeEach(() => {
 
 describe('core.agent on the realtime lane resolves its agentRef and generates through it', () => {
   it('resolves the explicit slug + pin through the text-agent resolver and calls TEXT with the agent’s model, prompt and parameters', async () => {
-    const { service, post } = buildService({ generate: () => NOTE, nodeConfig: { overrides: { promptVariables: { tone: 'terse' }, generation: { temperature: 0.4 } } } });
+    const { service, post } = buildService({
+      generate: () => NOTE,
+      nodeConfig: { overrides: { promptVariables: { tone: 'terse' }, generation: { temperature: 0.4 } } },
+    });
     const { payload, calls } = await runOneFlush(service, post);
 
     expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, agentSlug: 'clinic-summarizer', versionNumber: 3 });
@@ -206,7 +224,12 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     // The legacy per-flush tenant resolve did NOT run — the agent selected.
     expect(harnessPolicyService.resolveTextSelection).not.toHaveBeenCalled();
     expect(payload?.textFailed).toBeFalsy();
-    expect(payload?.metadata?.stats).toMatchObject({ task_key: 'text.live', selection_source: 'agent', agent_slug: 'clinic-summarizer', funding_tier: 'tenant' });
+    expect(payload?.metadata?.stats).toMatchObject({
+      task_key: 'text.live',
+      selection_source: 'agent',
+      agent_slug: 'clinic-summarizer',
+      funding_tier: 'tenant',
+    });
   });
 
   it('switches to the resolved fallback on primary failure when autoSwitch is ON, and says so on the stats', async () => {
@@ -217,7 +240,11 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     expect(calls[0]).toMatchObject({ provider: 'vllm', model: 'medgemma-27b' });
     expect(calls[1]).toMatchObject({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', system_prompt: 'PLATFORM PROMPT.' });
     expect(payload?.textFailed).toBeFalsy();
-    expect(payload?.metadata?.stats).toMatchObject({ selection_source: 'agent-fallback', agent_slug: 'platform-summarization', funding_tier: 'platform' });
+    expect(payload?.metadata?.stats).toMatchObject({
+      selection_source: 'agent-fallback',
+      agent_slug: 'platform-summarization',
+      funding_tier: 'platform',
+    });
   });
 
   // TASK-876 — the resolved candidate's OWN credential is authoritative for the request it
@@ -225,7 +252,10 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
   // tenant, so a call served by the SYSTEM platform default is forwarded with the TENANT's key
   // and metered `funding: 'tenant'` — contradicting `funding_tier: 'platform'` on the stats.
   it('forwards the candidate`s own provider_overrides, and the shared enrichment does not overwrite them', async () => {
-    const platformWithKey = { ...platformCandidate(), providerOverride: { provider: 'lm-studio', api_key: 'platform-key', funding: 'platform' as const } };
+    const platformWithKey = {
+      ...platformCandidate(),
+      providerOverride: { provider: 'lm-studio', api_key: 'platform-key', funding: 'platform' as const },
+    };
     textAgents.resolve.mockResolvedValue(spec({ chain: [platformWithKey] }));
     const applyTenantProviderOverrides = vi.fn(async (target: Record<string, unknown>) => {
       if (target.provider_overrides) return target;
@@ -234,7 +264,14 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     });
     const { service, post } = buildService({
       generate: (n) => (n === 0 ? new Error('primary provider down') : NOTE),
-      textRequestEnrichment: { applyTextRuntimeProfile: vi.fn(async (t: unknown) => t), applyTenantProviderOverrides },
+      textRequestEnrichment: {
+        applyTextRuntimeProfile: vi.fn(async (t: unknown) => t),
+        applyTenantProviderOverrides,
+        // TASK-890 §3.14 — the realtime producer states the folded guardrail decision on every
+        // `core.agent` post, so a partial enrichment fixture has to answer this call too.
+        applyGuardrailDecision: vi.fn((t: unknown) => t),
+        guardrailDisposition: vi.fn(async () => 'screened'),
+      },
     });
     const { payload, calls } = await runOneFlush(service, post);
 
@@ -273,7 +310,15 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
         { stageIndex: 0, nodes: [{ nodeId: 'capture', type: 'consultation.captureBinding', config: {}, inputs: [], onError: 'fail' }] },
         {
           stageIndex: 1,
-          nodes: [{ nodeId: 'summarize', type: 'consultation.realtimeSummary', config: {}, inputs: [{ fromNodeId: 'capture', fromPort: 'out', toPort: 'in' }], onError: 'degrade' }],
+          nodes: [
+            {
+              nodeId: 'summarize',
+              type: 'consultation.realtimeSummary',
+              config: {},
+              inputs: [{ fromNodeId: 'capture', fromPort: 'out', toPort: 'in' }],
+              onError: 'degrade',
+            },
+          ],
         },
       ],
     };

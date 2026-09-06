@@ -80,6 +80,7 @@ import type { IInferenceReadinessService as IInferenceReadinessServicePort } fro
 import { modelReadinessFrom } from '../ai-readiness/inference-readiness.types';
 import type { InferenceReadinessSnapshot } from '../ai-readiness/inference-readiness.types';
 import { AgentDraftTestService } from './agent-draft-test.service';
+import { buildAgentPromptScope } from './agent-prompt-scope';
 import { textWireProvider } from './text-generation-spec';
 import { AgentDtoMapper } from './agent.dto.mapper';
 import { codeForConfigProblem, hasBlocking, type AgentFinding, type AgentValidationReport } from './agent-findings';
@@ -121,31 +122,13 @@ const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
 type ResolvedPrompt = AgentCompiledConfig['resolvedPrompt'];
 
 /**
- * TASK-890 §3.4 / §3.14 — the two fields this lane FREEZES into a published agent's compiled
- * config. They are declared here as an additive intersection rather than on `AgentCompiledConfig`
- * itself because `packages/types/src/agent.ts` has ONE writer per wave (§4.3) and it is not this
- * one: L14 lands `contextSchema` and `guardrail` on the canonical interface (and exposes
- * `guardrail` on `ResolvedAgent`) in the same wave. When it does, this intersection collapses to
- * a no-op and is deleted in one line — the shapes below are the shapes handed over.
+ * TASK-890 §3.4 — the frozen context-schema snapshot a published agent carries.
  *
- * Both are OPTIONAL on the type and UNCONDITIONAL in `compile()`: every agent published after
- * this lane carries `guardrail`, and carries `contextSchema` exactly when it pins one. Optional
- * is what keeps the artifacts a PREVIOUS release compiled readable.
+ * The shape lives on `AgentCompiledConfig` (`packages/types/src/agent.ts`) since the wave-2b
+ * close; this alias is the local NAME the service reads it under, so the freeze site and the two
+ * consumers (`testScope`, `assertContextConforms`) name one type rather than restating it.
  */
-export interface AgentCompiledContextSchema {
-  /** The tenant's own schema row (never SYSTEM's — a schema is cloned, not shared: §3.4). */
-  schemaId: string;
-  versionNumber: number;
-  /** The immutable version row the payload schema was derived from — the provenance edge. */
-  versionId: string;
-  /** `payloadSchemaFromDefinition(version.definition)`, frozen. The runtime NEVER re-reads the row. */
-  payloadSchema: Record<string, unknown>;
-}
-
-type CompiledAgentConfig = AgentCompiledConfig & {
-  contextSchema?: AgentCompiledContextSchema | null;
-  guardrail?: { enabled: boolean };
-};
+export type AgentCompiledContextSchema = NonNullable<AgentCompiledConfig['contextSchema']>;
 
 /**
  * What the caller of `publishFindings` needs to know about ONE agent a `core.agent` node
@@ -577,7 +560,9 @@ export class AgentService extends BaseService implements IAgentService {
       contextSchema,
     );
 
-    const scope = this.testScope(entity, dto, contextSchema);
+    // Built through the same failure mapping as the render below: a `{ path }` binding resolves
+    // through the grammar, so an unresolvable one is a 400 naming the path, not a 500.
+    const scope = this.renderMapped(() => this.testScope(entity, dto, contextSchema));
     const assembledSystemPrompt = compiled.resolvedPrompt ? this.render(compiled.resolvedPrompt.content, scope, 'instruction') : null;
     const assembledUserPrompt = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
 
@@ -649,16 +634,16 @@ export class AgentService extends BaseService implements IAgentService {
   private testScope(entity: AgentEntity, dto: TestAgentRequest, contextSchema: AgentCompiledContextSchema | null): Record<string, unknown> {
     const context = dto.context ?? {};
     this.assertContextConforms(context, contextSchema);
-    const base: Record<string, unknown> = { context, trigger: context, input: dto.input ?? {} };
-
-    const bindings = asRecord(asRecord(entity.instruction)?.variables) ?? {};
-    for (const [name, binding] of Object.entries(bindings)) {
-      const spec = asRecord(binding);
-      if (!spec) continue;
-      if (typeof spec.value === 'string') base[name] = spec.value;
-      else if (typeof spec.path === 'string') base[name] = this.render(`{{${spec.path}}}`, base, `instruction.variables.${name}`);
-    }
-    return { ...base, ...(dto.variables ?? {}) };
+    // The SHARED builder, not a bench-local copy: the whole value of a draft test is that what
+    // renders here is what will render on the invocation route, the realtime lane and the durable
+    // lane. When the bench had its own scope it was the only site that resolved `{ path }`
+    // bindings, so it rendered a value the three runtimes did not.
+    return buildAgentPromptScope({
+      trigger: context,
+      input: dto.input ?? {},
+      variables: { ...asRecord(asRecord(entity.instruction)?.variables), ...(dto.variables ?? {}) },
+      templateRef: `agent:${entity.slug}`,
+    });
   }
 
   /**
@@ -682,8 +667,13 @@ export class AgentService extends BaseService implements IAgentService {
 
   /** One render, with an unresolved variable turned into a 400 that NAMES the path. */
   private render(content: string, scope: Record<string, unknown>, templateRef: string): string {
+    return this.renderMapped(() => renderTemplate(content, scope, { templateRef }));
+  }
+
+  /** The grammar's two named failures, as the 400s a bench caller can act on. */
+  private renderMapped<T>(work: () => T): T {
     try {
-      return renderTemplate(content, scope, { templateRef });
+      return work();
     } catch (error) {
       if (error instanceof PromptVariableUnresolvedError) {
         throw new BadRequestException({ message: error.message, code: 'PROMPT_VARIABLE_UNRESOLVED', path: error.path });
@@ -1645,6 +1635,22 @@ export class AgentService extends BaseService implements IAgentService {
       return staged ? null : `it has no staged weights (availability is ${model.availability}); publish is refused until the weights are available.`;
     }
 
+    // TASK-890 §3.1 (L10) — a routed row must name what goes ON THE WIRE.
+    //
+    // Routing was re-pointed off the locator `sourceUri` onto `wireModelId`, and
+    // `toTextCandidate` now DROPS a candidate that declares none — so a `cloud-*` /
+    // `engine-served` row without one resolves no candidate at all and the agent fails at RUN
+    // time with "no usable candidate", which names neither the row nor the missing column. The
+    // gate says it at publish instead.
+    //
+    // `platform-self-host` is deliberately exempt: `wireModelId` is conditionally NOT NULL for
+    // CLOUD only, and the seeded self-hosted catalogue legitimately leaves it null for rows a
+    // HOPE service loads by path (measured on dev: 23 such rows, none of them bound to a
+    // TEXT_GENERATION agent). Refusing them here would refuse publishes that work.
+    if (!model.wireModelId?.trim()) {
+      return `it declares no wire model id, so routing has nothing to send as the model name for \`${model.provider ?? '(none)'}\`.`;
+    }
+
     // Every remaining class needs the connection plane. An absent collaborator FAILS CLOSED with
     // a named cause — an optimistic pass here is how an agent publishes onto a credential nobody
     // ever configured.
@@ -1810,7 +1816,7 @@ export class AgentService extends BaseService implements IAgentService {
     fallbackRows: AgentModelFallbackEntity[],
     resolvedPrompt: ResolvedPrompt,
     contextSchema: AgentCompiledContextSchema | null,
-  ): CompiledAgentConfig {
+  ): AgentCompiledConfig {
     const byId = new Map(fallbackModels.map((row) => [row.id, row]));
     const defaults = AGENT_IO_DEFAULTS[entity.task];
     return {
@@ -1981,6 +1987,6 @@ function toModelView(model: AiModelEntity): AgentModelView {
   return { slug: model.slug, taskType: String(model.taskType), provider: model.provider ?? undefined };
 }
 
-function checksumOf(compiled: CompiledAgentConfig): string {
+function checksumOf(compiled: AgentCompiledConfig): string {
   return `sha256:${createHash('sha256').update(canonicalJson(compiled)).digest('hex')}`;
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
+import { AgentServiceModule } from '../agent/agent.service.module';
 import { AgentPromotionServiceModule } from '../agentPromotion/agentPromotion.service.module';
 import { AuthorizationModule } from '../../authorization/authorization.module';
 import { EvalServiceModule } from '../eval/eval.service.module';
@@ -65,6 +66,12 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  */
 @Module({
   imports: [
+    // TASK-890 §3.5 — `IAgentService.publishAgentViews`, the per-agent facts the publish gate
+    // checks a `core.agent` node's prompt references and generation overrides against. Named
+    // rather than left to an @Optional() absence: without it the gate silently stops checking
+    // them, which is not a state anyone would notice. `AgentServiceModule` does not import this
+    // module (nor does anything it imports), so this closes no cycle.
+    AgentServiceModule,
     AgentPromotionServiceModule,
     AiRoutingPolicyServiceModule,
     AuthorizationModule,

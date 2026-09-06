@@ -132,7 +132,8 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
         content: 'Generate a {{department}} clinical summary from the following notes.',
         category: 'SUMMARY',
         status: 'PUBLISHED',
-        variables: { department: { type: 'string', required: true } },
+        // TASK-890 §3.6 (L4) — the legacy MAP form is refused; declarations are an array.
+        variables: [{ name: 'department', type: 'string', required: true }],
       },
     });
     expect([200, 201], `create throwaway template → ${created.status()}`).toContain(created.status());
@@ -263,7 +264,16 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
   test('explicit provider/model: a known ENABLED pair is accepted (dry-run, 200 when TEXT is up)', async ({ request }) => {
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
       headers: auth(tenantAdminToken),
-      data: { sampleInput: 'Patient reports 3 days of dry cough, no fever.', provider: KNOWN_PROVIDER, model: KNOWN_MODEL, dryRun: true },
+      // `variables` supplies the template's REQUIRED `department` declaration — since TASK-890
+      // §3.6 a test-run is validated against the declarations, so omitting it is a 400 about the
+      // variable rather than about the provider/model pair this case is here to assert.
+      data: {
+        sampleInput: 'Patient reports 3 days of dry cough, no fever.',
+        variables: { department: 'General Medicine' },
+        provider: KNOWN_PROVIDER,
+        model: KNOWN_MODEL,
+        dryRun: true,
+      },
     });
     expect(res.status(), 'owned template ⇒ never 428/404').not.toBe(428);
     expect(res.status()).not.toBe(404);

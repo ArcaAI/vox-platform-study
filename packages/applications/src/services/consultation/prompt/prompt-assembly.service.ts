@@ -23,6 +23,7 @@ import {
 } from '@arcaai/domains';
 // TASK-890 §3.2 — the ONE prompt grammar, shared with the agent lanes and the harness.
 import { PromptTemplateSyntaxError, renderTemplate, templateReferences } from '@arcaai/workflow-contract';
+import { bindEmpty, unresolvedReferences } from './governed-template-render';
 // TASK-890 §3.4 — the legacy bridge: the SYSTEM schema that DECLARES the v1 prompt vocabulary,
 // cloned into every tenant by the reference set. The slug is imported, never re-typed.
 import { LEGACY_CONTEXT_SCHEMA_SLUG, payloadSchemaFromDefinition } from '../../consultation-context-schema/context-schema-definition';
@@ -128,27 +129,6 @@ function referencesPreSummaryVariables(content: string): boolean {
 }
 
 /** Does `path` resolve in `scope`? Mirrors `renderTemplate`'s own traversal (own keys, plain objects). */
-function resolvesInScope(scope: Record<string, unknown>, path: string): boolean {
-  let current: unknown = scope;
-  for (const segment of path.split('.')) {
-    if (current === null || typeof current !== 'object' || Array.isArray(current)) return false;
-    if (!Object.prototype.hasOwnProperty.call(current, segment)) return false;
-    current = (current as Record<string, unknown>)[segment];
-  }
-  return current !== null && current !== undefined;
-}
-
-/** Bind `path` to the empty string, creating the intermediate objects it names. */
-function bindEmpty(scope: Record<string, unknown>, path: string): void {
-  const segments = path.split('.');
-  let current: Record<string, unknown> = scope;
-  for (const segment of segments.slice(0, -1)) {
-    const next = current[segment];
-    if (next === null || typeof next !== 'object' || Array.isArray(next)) current[segment] = {};
-    current = current[segment] as Record<string, unknown>;
-  }
-  current[segments[segments.length - 1] as string] = '';
-}
 
 /**
  * Serialises NER entities into a compact, LLM-friendly block.
@@ -723,9 +703,7 @@ export class PromptAssemblyService {
 
     // A reference that CARRIES a default is not missing — the author already said what an
     // absent value should read as, and pre-binding an empty string would silence them.
-    const unresolved = templateReferences(bodyTemplate)
-      .filter((reference) => !reference.hasDefault && !resolvesInScope(scope, reference.path))
-      .map((reference) => reference.path);
+    const unresolved = unresolvedReferences(bodyTemplate, scope);
     if (unresolved.length > 0) {
       // DECLARED-but-empty is expected (this encounter has no prior visit); UNDECLARED is a
       // defect the publish check should have caught, so the two are reported apart.
@@ -807,6 +785,19 @@ export class PromptAssemblyService {
   private async buildVariables(params: PromptAssemblyParams, resolvedContent: string | null): Promise<Record<string, string>> {
     const variables: Record<string, string> = {
       conversation_language: params.conversationLanguage,
+      // TASK-890 — the transcript, bound like its four siblings below.
+      //
+      // Thirteen seeded bodies end with `Transcript:\n{{transcript}}` and nothing bound the
+      // name, so under the one grammar the placeholder rendered EMPTY and the transcript then
+      // arrived in the appended block instead — under a heading the author had already written,
+      // in a place the author did not choose. (Before the grammar landed it was worse: the
+      // single-brace substituter left the literal `{{transcript}}` in the prompt.)
+      //
+      // Binding it makes the author's placement authoritative and the `includes(...)` guard
+      // below then SUPPRESSES the duplicate append on its own — the same mechanism that already
+      // governs `ner_entities`, `clinician_notes`, `attachments` and `doctor_highlights`. A
+      // template that does not mention it keeps the appended, delimiter-wrapped block unchanged.
+      transcript: params.transcript,
       // Always define {ner_entities} (empty when none) so
       // templates referencing it never leave a literal placeholder behind.
       ner_entities: serializeNerEntities(params.nerEntities ?? []),

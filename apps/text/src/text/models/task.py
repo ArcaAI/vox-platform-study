@@ -7,6 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from text.models.responses import TokenUsage
+
 
 class TaskStatus(StrEnum):
     PENDING = "pending"
@@ -30,3 +32,15 @@ class TaskState(BaseModel):
     error: str | None = None
     total_chunks: int = 0
     total_tokens: int = 0
+    # TASK-890 — what a FINALIZE reads back.
+    #
+    # ``TaskResponse`` has declared ``content`` and ``usage`` since it was written, but the state
+    # this service persists carried neither, so ``GET /tasks/{id}`` answered ``content: null`` and
+    # ``usage: null`` for every completed generation and the two gateway benches
+    # (``finalizePromptTemplateTest``, the draft-agent test finalize) scored an empty string and
+    # metered nothing. The response model promised a contract the state could not keep.
+    #
+    # No new exposure: the deltas are already in the task's Redis stream under the same TTL, so
+    # this stores the assembled form of bytes that are already there, and expires with them.
+    content: str | None = None
+    usage: TokenUsage | None = None

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -40,6 +40,7 @@ import type {
   CompiledWorkflowConfig,
   CompilerContext,
   PortableBundleTenantKind,
+  PublishAgentView,
   ResolvedTriggerContextSchema,
   ProviderGenerationCapabilities,
   WorkflowFinding,
@@ -60,6 +61,7 @@ import { PolicyEngine } from '../../authorization/policy.engine';
 // TASK-885 — CONSUMED, never modified: `agentPromotion/**` is lane F's (TASK-884). The
 // Global -> SYSTEM path is the existing cross-tenant promotion plus a publish, not a second
 // implementation of promotion.
+import { IAgentService } from '../agent/IAgentService';
 import { IAgentPromotionService } from '../agentPromotion/IAgentPromotionService';
 import type { IAgentPromotionService as IAgentPromotionServicePort } from '../agentPromotion/IAgentPromotionService';
 // TASK-889 — the membership-bounded cross-tenant step (the counterpart to that service's
@@ -256,6 +258,8 @@ function reportIsShapeBroken(report: WorkflowValidationReport): boolean {
  */
 @Injectable()
 export class WorkflowDefinitionService extends BaseService implements IWorkflowDefinitionService {
+  private readonly logger = new Logger(WorkflowDefinitionService.name);
+
   constructor(
     private readonly workflowDefinitionRepository: WorkflowDefinitionRepository,
     protected override readonly eventEmitter: EventEmitter2,
@@ -313,6 +317,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     @Optional() @Inject(IAgentPromotionService) private readonly agentPromotionService?: IAgentPromotionServicePort,
     @Optional() private readonly evalPromotionGate?: EvalPromotionGateService,
     @Optional() private readonly policyEngine?: PolicyEngine,
+    // TASK-890 §3.5 — the per-agent facts the publish gate needs about each `core.agent` node's
+    // referenced agent (declared variable names, bound context payload schema, generation
+    // ranges). The gate is a PURE function in a package with no database, so a service resolves
+    // them; `AgentService.publishAgentViews` is that resolution and this is its one caller.
+    // `@Optional()` + trailing for the same reason as every dependency above (positional unit
+    // fixtures); absent ⇒ the map is empty and the contract SKIPS the per-agent checks rather
+    // than guessing — an unresolved slot is safe, a WRONG one would not be.
+    // `AgentServiceModule` does not import this module, so this closes no cycle.
+    @Optional() @Inject(IAgentService) private readonly agentService?: Pick<IAgentService, 'publishAgentViews'>,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -382,7 +395,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // refused with ERRORs was stored with `ok: true` — a green draft the console could not act
     // on. A draft is still WRITTEN: authoring feedback belongs on the report, not in a 400.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const report = this.mergePublishGate(baseReport, this.graphPublishFindings(graph, triggerContextSchema));
+    const report = this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, triggerContextSchema));
 
     if (dto.parentVersionId) {
       const parent = await this.workflowDefinitionRepository.findById(dto.parentVersionId).catch(() => null);
@@ -1209,7 +1222,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // authoring feedback, and refusing a draft for a problem publish will refuse anyway would
     // just move the same wall earlier in the author's day.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const publishGate = this.graphPublishFindings(graph, triggerContextSchema);
+    const publishGate = await this.graphPublishFindings(graph, triggerContextSchema);
     const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
     // Same bindings publish() will stamp — a validate() that compiled against different
     // policyBindings would greenlight an artifact the publish() then produces differently.
@@ -1276,7 +1289,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // (`GUARDRAIL_OPTED_OUT`, and `PROMPT_VARIABLE_UNDECLARED` during the OD-C ramp) are recorded
     // and never block: an opt-out is a decision to record, not a defect to refuse.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const publishGate = this.graphPublishFindings(graph, triggerContextSchema);
+    const publishGate = await this.graphPublishFindings(graph, triggerContextSchema);
     const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
     if (hasBlockingFindings(publishGate)) {
       throw new BadRequestException({
@@ -1791,15 +1804,19 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * undeclared prompt variable is a WARNING, because no agent binds a context schema yet (gap
    * 4e) and enforcing it now would be a migration wearing a gate's clothes.
    *
-   * The per-agent slots (`agents`, `triggerContextSchema`) are deliberately left unresolved here.
-   * They need reads this method does not have — the referenced agent row, the tenant's context
-   * schema — and TASK-890 L2/L8 supply them. Absent, the contract SKIPS those checks rather than
-   * guessing, which is why an unresolved slot is safe and a WRONG one would not be.
+   * Both per-agent slots are RESOLVED here — `triggerContextSchema` by L2's resolver and
+   * `agents` by `AgentService.publishAgentViews` over the slugs this graph's `core.agent` nodes
+   * name. Absent (no agent service wired, an unknown slug), a slot is simply not supplied and
+   * the contract SKIPS that check rather than guessing: an unresolved slot is safe, a WRONG one
+   * would not be. An unknown slug is already `AGENT_REF_MISSING` from the gate itself, so
+   * inventing an empty view for it would mask a hard finding behind a soft one.
    */
-  private graphPublishFindings(graph: WorkflowGraph, triggerContextSchema?: TriggerContextSchemaResolution): WorkflowFinding[] {
+  private async graphPublishFindings(graph: WorkflowGraph, triggerContextSchema?: TriggerContextSchemaResolution): Promise<WorkflowFinding[]> {
+    const agents = await this.publishAgentViews(graph);
     return publishFindings(graph, {
       schemaValueProblems: jsonSchemaValueProblems,
       templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+      ...(agents === undefined ? {} : { agents }),
       // `undefined` = not resolved, and the contract SKIPS the check. `null` = resolved to
       // nothing, which is the finding. The two are deliberately different values.
       ...(triggerContextSchema === undefined
@@ -1808,6 +1825,36 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
           ? { triggerContextSchema: null, triggerContextSchemaFailure: triggerContextSchema.failure }
           : { triggerContextSchema: triggerContextSchema.resolved?.payloadSchema ?? null }),
     });
+  }
+
+  /**
+   * The agents this graph's `core.agent` nodes reference, resolved to what the publish gate
+   * checks against. `undefined` when there is nothing to resolve or nobody to resolve it —
+   * which the caller turns into an ABSENT slot, not an empty map.
+   *
+   * Best-effort by contract: a resolution failure must not fail a publish that is otherwise
+   * clean. It degrades to "these checks were not run", which is the state every publish was in
+   * before this wiring, rather than to a refusal whose cause is this method's own dependency.
+   */
+  private async publishAgentViews(graph: WorkflowGraph): Promise<Record<string, PublishAgentView> | undefined> {
+    if (!this.agentService) return undefined;
+    const slugs = new Set<string>();
+    for (const node of graph.nodes ?? []) {
+      if (node.type !== 'core.agent') continue;
+      const config = (node.config ?? {}) as { agentRef?: { slug?: unknown } };
+      const slug = config.agentRef?.slug;
+      if (typeof slug === 'string' && slug.length > 0) slugs.add(slug);
+    }
+    if (slugs.size === 0) return undefined;
+    try {
+      return await this.agentService.publishAgentViews([...slugs]);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Per-agent publish-gate facts could not be resolved; the prompt-variable and override-range checks are skipped for this graph',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
   }
 
   private async validateGraph(graph: WorkflowGraph, paletteKey: string, tenantId: string): Promise<WorkflowValidationReport> {
