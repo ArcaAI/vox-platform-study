@@ -40,18 +40,31 @@ export const COMPILED_AT = '2026-09-04T00:00:00.000Z';
 
 export type SeedAgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
 
-export const AGENT_TASK_SERVICE: Record<SeedAgentTask, 'stt' | 'llm' | 'tts'> = { SPEECH_TO_TEXT: 'stt', TEXT_GENERATION: 'llm', TEXT_TO_SPEECH: 'tts' };
+export const AGENT_TASK_SERVICE: Record<SeedAgentTask, 'stt' | 'llm' | 'tts'> = {
+  SPEECH_TO_TEXT: 'stt',
+  TEXT_GENERATION: 'llm',
+  TEXT_TO_SPEECH: 'tts',
+};
 export const AGENT_TASK_MODEL_TASK_TYPE: Record<SeedAgentTask, string> = {
   SPEECH_TO_TEXT: 'AUTOMATIC_SPEECH_RECOGNITION',
   TEXT_GENERATION: 'TEXT_GENERATION',
   TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
 };
-const AGENT_PROTOCOLS: Record<SeedAgentTask, string[]> = { SPEECH_TO_TEXT: ['http', 'socket'], TEXT_GENERATION: ['http', 'http-sse'], TEXT_TO_SPEECH: ['http', 'http-sse'] };
+const AGENT_PROTOCOLS: Record<SeedAgentTask, string[]> = {
+  SPEECH_TO_TEXT: ['http', 'socket'],
+  TEXT_GENERATION: ['http', 'http-sse'],
+  TEXT_TO_SPEECH: ['http', 'http-sse'],
+};
 
 /** The task defaults of AGENT_IO_DEFAULTS, compiled verbatim so the runtime never reads a null schema. */
 const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>; outputSchema: Record<string, unknown> }> = {
   TEXT_GENERATION: {
-    inputSchema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', minLength: 1 }, variables: { type: 'object', additionalProperties: { type: 'string' } } } },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['text'],
+      properties: { text: { type: 'string', minLength: 1 }, variables: { type: 'object', additionalProperties: { type: 'string' } } },
+    },
     outputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' } } },
   },
   SPEECH_TO_TEXT: {
@@ -60,7 +73,12 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
       additionalProperties: false,
       required: ['audio'],
       properties: {
-        audio: { type: 'object', additionalProperties: false, required: ['kind'], properties: { kind: { type: 'string', enum: ['artifact', 'stream'] }, mediaId: { type: 'string' }, sessionId: { type: 'string' } } },
+        audio: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind'],
+          properties: { kind: { type: 'string', enum: ['artifact', 'stream'] }, mediaId: { type: 'string' }, sessionId: { type: 'string' } },
+        },
         language: { type: 'string', minLength: 2, maxLength: 16 },
       },
     },
@@ -68,14 +86,43 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
       type: 'object',
       required: ['transcript'],
       properties: {
-        transcript: { type: 'array', items: { type: 'object', required: ['text', 'start', 'end'], properties: { text: { type: 'string' }, start: { type: 'number', minimum: 0 }, end: { type: 'number', minimum: 0 }, speaker: { type: 'string' }, isFinal: { type: 'boolean' } } } },
+        transcript: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['text', 'start', 'end'],
+            properties: {
+              text: { type: 'string' },
+              start: { type: 'number', minimum: 0 },
+              end: { type: 'number', minimum: 0 },
+              speaker: { type: 'string' },
+              isFinal: { type: 'boolean' },
+            },
+          },
+        },
         language: { type: 'string' },
       },
     },
   },
   TEXT_TO_SPEECH: {
-    inputSchema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', minLength: 1, maxLength: 20000 }, ssml: { type: 'string', minLength: 1, maxLength: 40000 } }, anyOf: [{ required: ['text'] }, { required: ['ssml'] }] },
-    outputSchema: { type: 'object', required: ['audio'], properties: { audio: { type: 'object', required: ['mediaId', 'format'], properties: { mediaId: { type: 'string' }, format: { type: 'string' }, sampleRate: { type: 'integer' } } }, durationMs: { type: 'integer', minimum: 0 } } },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { text: { type: 'string', minLength: 1, maxLength: 20000 }, ssml: { type: 'string', minLength: 1, maxLength: 40000 } },
+      anyOf: [{ required: ['text'] }, { required: ['ssml'] }],
+    },
+    outputSchema: {
+      type: 'object',
+      required: ['audio'],
+      properties: {
+        audio: {
+          type: 'object',
+          required: ['mediaId', 'format'],
+          properties: { mediaId: { type: 'string' }, format: { type: 'string' }, sampleRate: { type: 'integer' } },
+        },
+        durationMs: { type: 'integer', minimum: 0 },
+      },
+    },
   },
 };
 
@@ -102,13 +149,19 @@ export const fallbackId = (n: number) => `9c000000-0000-0000-0003-${String(n).pa
 export const assignmentId = (n: number) => `9c000000-0000-0000-0004-${String(n).padStart(12, '0')}`;
 
 const ASR_PARAMETERS = {
-  audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 250, minSilenceMs: 500 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
+  audioFrontEnd: {
+    vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 250, minSilenceMs: 500 },
+    diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 },
+  },
   decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: true, beamSize: 5, temperature: 0 },
   postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-punctuation' }, disfluency: true, stabilizer: true },
   streaming: { partialIntervalMs: 500, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
 };
-const ASR_INSTRUCTION = { initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.', hotwords: [] as string[] };
+const ASR_INSTRUCTION = {
+  initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.',
+  hotwords: [] as string[],
+};
 
 const DISCHARGE_SYSTEM_PROMPT =
   'You are a clinical documentation assistant. From the consultation transcript and the clinician notes provided, draft a discharge summary with these sections: Admission diagnosis, Hospital course, Procedures, Discharge diagnosis, Discharge medications, Follow-up, Patient instructions. Use only facts present in the input; mark anything uncertain as "to be confirmed by the clinician". Never invent findings, doses or dates.';
@@ -126,7 +179,8 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       tenantId,
       slug: `${prefix}-transcription`,
       name: prefix === 'platform' ? 'Platform transcription (whisper.cpp ML/EN)' : 'Example transcription (whisper.cpp ML/EN)',
-      description: 'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF, Silero VAD gating, Cadence punctuation, CTranslate2 turbo as the fallback.',
+      description:
+        'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF, Silero VAD gating, Cadence punctuation, CTranslate2 turbo as the fallback.',
       task: 'SPEECH_TO_TEXT',
       modelSlug: 'arcaai-whisper-large-ml-en-gguf',
       fallbackModelSlugs: ['faster-whisper-large-v3-turbo-int8'],
@@ -171,7 +225,8 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       tenantId,
       slug: `${prefix}-discharge-summary`,
       name: prefix === 'platform' ? 'Platform discharge summary' : 'Example discharge summary',
-      description: 'Discharge summary drafting with an inline system prompt (no approved platform discharge template exists yet — bind one when it does).',
+      description:
+        'Discharge summary drafting with an inline system prompt (no approved platform discharge template exists yet — bind one when it does).',
       task: 'TEXT_GENERATION',
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
@@ -243,7 +298,11 @@ export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = [
     modelSlug: 'azure-speech-stt',
     fallbackModelSlugs: ['arcaai-whisper-large-ml-en-gguf'],
     instruction: { initialPrompt: ASR_INSTRUCTION.initialPrompt },
-    parameters: { decoding: { languageMode: 'en', wordTimestamps: true }, streaming: { partialIntervalMs: 500, endpointing: 'fixed' }, fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 2 } },
+    parameters: {
+      decoding: { languageMode: 'en', wordTimestamps: true },
+      streaming: { partialIntervalMs: 500, endpointing: 'fixed' },
+      fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 2 },
+    },
     status: 'DRAFT',
     isActive: false,
     tags: ['tier:example', 'task:stt', 'provider:azure', 'hosting:cloud'],
@@ -253,7 +312,8 @@ export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = [
     tenantId: SEED_TENANT_ID,
     slug: 'example-sarvam-transcription',
     name: 'Example transcription (Sarvam Saaras) — draft',
-    description: 'Cloud ASR on Sarvam Saaras for Indic languages. DRAFT: publish fails closed until an enabled stt/sarvam provider connection exists (no key is seeded).',
+    description:
+      'Cloud ASR on Sarvam Saaras for Indic languages. DRAFT: publish fails closed until an enabled stt/sarvam provider connection exists (no key is seeded).',
     task: 'SPEECH_TO_TEXT',
     modelSlug: 'sarvam-saaras-v4',
     fallbackModelSlugs: ['arcaai-whisper-large-ml-en-gguf'],
@@ -284,9 +344,7 @@ export interface SeedModelRef {
 }
 
 export type SeedResolvedPrompt =
-  | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string }
-  | { source: 'inline'; content: string }
-  | null;
+  { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string } | { source: 'inline'; content: string } | null;
 
 /** `canonicalJson` of @arcaai/workflow-contract, verbatim (sorted keys, `undefined` dropped, no whitespace). */
 export function canonicalJson(value: unknown): string {
@@ -302,7 +360,12 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(value ?? null);
 }
 
-export function buildCompiledConfig(spec: SeedAgentSpec, model: SeedModelRef, fallbacks: SeedModelRef[], resolvedPrompt: SeedResolvedPrompt): Record<string, unknown> {
+export function buildCompiledConfig(
+  spec: SeedAgentSpec,
+  model: SeedModelRef,
+  fallbacks: SeedModelRef[],
+  resolvedPrompt: SeedResolvedPrompt,
+): Record<string, unknown> {
   return {
     task: spec.task,
     service: AGENT_TASK_SERVICE[spec.task],
@@ -391,15 +454,36 @@ export interface SeedAgentsResult {
 
 /** The slice of the Prisma client the seed touches — typed narrowly so the test can hand in a fake. */
 export interface SeedAgentsClient {
-  aiModel: { findMany(args: { where: { tenantId: string } }): Promise<Array<{ id: string; slug: string; taskType: string; provider: string | null }>> };
-  promptTemplate: { findUnique(args: { where: { id: string } }): Promise<{ id: string; status: string | null; content: string | null; approvedVersionNumber: number | null; currentVersionNumber: number | null } | null> };
+  aiModel: {
+    findMany(args: { where: { tenantId: string } }): Promise<Array<{ id: string; slug: string; taskType: string; provider: string | null }>>;
+  };
+  promptTemplate: {
+    findUnique(args: {
+      where: { id: string };
+    }): Promise<{
+      id: string;
+      status: string | null;
+      content: string | null;
+      approvedVersionNumber: number | null;
+      currentVersionNumber: number | null;
+    } | null>;
+  };
   promptVersion: { findFirst(args: { where: { promptTemplateId: string; versionNumber: number } }): Promise<{ content: string | null } | null> };
-  agent: { findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>; create(args: { data: unknown }): Promise<unknown> };
+  agent: {
+    findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;
+    create(args: { data: unknown }): Promise<unknown>;
+  };
   agentModelFallback: { create(args: { data: unknown }): Promise<unknown> };
-  agentAssignment: { findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>; create(args: { data: unknown }): Promise<unknown> };
+  agentAssignment: {
+    findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;
+    create(args: { data: unknown }): Promise<unknown>;
+  };
 }
 
-async function resolvePrompt(client: SeedAgentsClient, spec: SeedAgentSpec): Promise<{ ok: true; resolvedPrompt: SeedResolvedPrompt } | { ok: false; reason: string }> {
+async function resolvePrompt(
+  client: SeedAgentsClient,
+  spec: SeedAgentSpec,
+): Promise<{ ok: true; resolvedPrompt: SeedResolvedPrompt } | { ok: false; reason: string }> {
   if (spec.task !== 'TEXT_GENERATION' || !spec.instruction) return { ok: true, resolvedPrompt: null };
   const systemPrompt = spec.instruction.systemPrompt;
   if (typeof systemPrompt === 'string') return { ok: true, resolvedPrompt: { source: 'inline', content: systemPrompt } };
@@ -408,9 +492,20 @@ async function resolvePrompt(client: SeedAgentsClient, spec: SeedAgentSpec): Pro
   const template = await client.promptTemplate.findUnique({ where: { id: templateId } });
   if (!template) return { ok: false, reason: `prompt template ${templateId} is not seeded` };
   if (template.status !== 'APPROVED') return { ok: false, reason: `prompt template ${templateId} is ${template.status ?? 'DRAFT'}, not APPROVED` };
-  const versionNumber = typeof spec.instruction.promptVersionNumber === 'number' ? spec.instruction.promptVersionNumber : (template.approvedVersionNumber ?? template.currentVersionNumber ?? 1);
+  const versionNumber =
+    typeof spec.instruction.promptVersionNumber === 'number'
+      ? spec.instruction.promptVersionNumber
+      : (template.approvedVersionNumber ?? template.currentVersionNumber ?? 1);
   const version = await client.promptVersion.findFirst({ where: { promptTemplateId: templateId, versionNumber } });
-  return { ok: true, resolvedPrompt: { source: 'template', promptTemplateId: templateId, promptVersionNumber: versionNumber, content: version?.content ?? template.content ?? '' } };
+  return {
+    ok: true,
+    resolvedPrompt: {
+      source: 'template',
+      promptTemplateId: templateId,
+      promptVersionNumber: versionNumber,
+      content: version?.content ?? template.content ?? '',
+    },
+  };
 }
 
 export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentSpec[], label: string): Promise<SeedAgentsResult> {
@@ -463,7 +558,15 @@ export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentS
     await client.agent.create({ data: row });
     for (const [priority, fallback] of fallbacks.entries()) {
       await client.agentModelFallback.create({
-        data: { id: fallbackId(fallbackSeq++), tenantId: spec.tenantId, agentId: spec.id, priority, modelId: fallback.id, enabled: true, createdBy: SYSTEM_USER_ID },
+        data: {
+          id: fallbackId(fallbackSeq++),
+          tenantId: spec.tenantId,
+          agentId: spec.id,
+          priority,
+          modelId: fallback.id,
+          enabled: true,
+          createdBy: SYSTEM_USER_ID,
+        },
       });
     }
     result.created += 1;
@@ -477,13 +580,24 @@ export async function seedPlatformAgentAssignments(client: SeedAgentsClient): Pr
   for (const assignment of PLATFORM_AGENT_ASSIGNMENTS) {
     const existing = await client.agentAssignment.findUnique({ where: { id: assignment.id }, select: { id: true } });
     if (existing) continue;
-    const agent = await client.agent.findUnique({ where: { id: PLATFORM_AGENT_SPECS.find((spec) => spec.slug === assignment.agentSlug)?.id ?? '' }, select: { id: true } });
+    const agent = await client.agent.findUnique({
+      where: { id: PLATFORM_AGENT_SPECS.find((spec) => spec.slug === assignment.agentSlug)?.id ?? '' },
+      select: { id: true },
+    });
     if (!agent) {
       console.warn(`  ! assignment ${assignment.task} → ${assignment.agentSlug}: the agent was not seeded — skipped`);
       continue;
     }
     await client.agentAssignment.create({
-      data: { id: assignment.id, tenantId: SYSTEM_TENANT_ID, scope: 'TENANT', scopeId: null, task: assignment.task, agentSlug: assignment.agentSlug, createdBy: SYSTEM_USER_ID },
+      data: {
+        id: assignment.id,
+        tenantId: SYSTEM_TENANT_ID,
+        scope: 'TENANT',
+        scopeId: null,
+        task: assignment.task,
+        agentSlug: assignment.agentSlug,
+        createdBy: SYSTEM_USER_ID,
+      },
     });
     created += 1;
     console.log(`  assigned SYSTEM ${assignment.task} → ${assignment.agentSlug}`);

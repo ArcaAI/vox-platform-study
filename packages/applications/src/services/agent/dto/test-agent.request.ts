@@ -17,7 +17,8 @@ export class TestAgentRequest {
   input?: Record<string, unknown>;
 
   @ApiPropertyOptional({
-    description: 'Bare-name variable overrides. Overlays the agent’s own `instruction.variables` bindings — the caller wins, as it does at invocation.',
+    description:
+      'Bare-name variable overrides. Overlays the agent’s own `instruction.variables` bindings — the caller wins, as it does at invocation.',
     type: Object,
   })
   @IsOptional()
@@ -25,7 +26,8 @@ export class TestAgentRequest {
   variables?: Record<string, unknown>;
 
   @ApiPropertyOptional({
-    description: 'Consultation context — validated against the agent’s bound context schema when it pins one; reachable as `context.*` and `trigger.*`.',
+    description:
+      'Consultation context — validated against the agent’s bound context schema when it pins one; reachable as `context.*` and `trigger.*`.',
     type: Object,
   })
   @IsOptional()
