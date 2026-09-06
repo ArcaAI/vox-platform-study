@@ -27,6 +27,15 @@ import { getAtPath, setAtPath } from './field-path';
 import { RawJsonField } from './raw-json-field';
 import { CelExpressionField } from './cel-expression-field';
 
+/** One field's render context, handed to a `fieldOverrides` entry — everything a specialized
+ *  control needs and nothing it would otherwise have to re-derive. */
+export interface FieldRenderContext {
+  value: unknown;
+  set: (next: unknown) => void;
+  errors?: string[];
+  id: string;
+}
+
 export interface FieldRendererProps {
   descriptor: FieldDescriptor;
   config: Record<string, unknown>;
@@ -36,16 +45,30 @@ export interface FieldRendererProps {
   idPrefix: string;
   /** Run-context references the CEL editor offers as quick inserts (TASK-864 B1). */
   references?: readonly string[];
+  /**
+   * TASK-890 §3.10 — a per-PATH escape hatch for a field NESTED inside a schema `group` (e.g.
+   * `overrides.promptVariables`, buried inside `core.agent`'s `overrides` object). The top-level
+   * withholding `Set` in `inspector-panel.tsx` only reaches TOP-LEVEL descriptor paths; a field
+   * one or more groups deep needs this instead — checked before `descriptor.kind` is dispatched
+   * on, so it can replace ANY kind (raw-json, string, …), and threaded through every recursive
+   * call so it reaches a field at any depth.
+   */
+  fieldOverrides?: Record<string, (ctx: FieldRenderContext) => React.ReactNode>;
 }
 
 function fieldId(idPrefix: string, path: string): string {
   return `${idPrefix}-${path || 'root'}`;
 }
 
-export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPrefix, references }: FieldRendererProps) {
+export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPrefix, references, fieldOverrides }: FieldRendererProps) {
   const id = fieldId(idPrefix, descriptor.path);
   const value = getAtPath(config, descriptor.path);
   const set = (next: unknown) => onConfigChange(setAtPath(config, descriptor.path, next));
+
+  const override = fieldOverrides?.[descriptor.path];
+  if (override) {
+    return <>{override({ value, set, errors, id })}</>;
+  }
 
   if (descriptor.kind === 'group') {
     return (
@@ -57,7 +80,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
         {descriptor.description ? <FieldDescription>{descriptor.description}</FieldDescription> : null}
         <div className="flex flex-col gap-4 pl-4">
           {descriptor.fields.map((field) => (
-            <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} />
+            <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} />
           ))}
         </div>
       </FieldSet>
@@ -92,7 +115,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
         {currentBranch ? (
           <div className="flex flex-col gap-4 pl-4">
             {currentBranch.fields.map((field) => (
-              <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} />
+              <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} />
             ))}
           </div>
         ) : null}

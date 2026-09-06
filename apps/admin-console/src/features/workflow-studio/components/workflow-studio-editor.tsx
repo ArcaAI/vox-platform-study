@@ -143,6 +143,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const [validating, setValidating] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // TASK-890 §3.10 — once a publish succeeds, the SAME dialog swaps to the endpoints panel
+  // instead of closing; reset the moment the dialog is dismissed so re-opening it for the NEXT
+  // publish starts back on the confirm step.
+  const [justPublished, setJustPublished] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [name, setName] = useState(definition.name);
   const [description, setDescription] = useState(definition.description ?? '');
@@ -169,6 +173,14 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const selectedActionSchema =
     selectedNode?.type === ACTION_NODE_TYPE ? (descriptorByType.get(actionKeyOf(selectedNode.config) ?? '')?.configSchema ?? undefined) : undefined;
   const celReferences = useMemo(() => celReferencesOf(nodes), [nodes]);
+  // TASK-890 §3.14 — the workflow's own guardrail default, for `core.agent`'s effective-value
+  // display in the inspector (`GuardrailField`, node scope). `core.trigger` is the graph's one
+  // mandatory entry node, so there is at most one.
+  const triggerGuardrailEnabled = useMemo(() => {
+    const trigger = nodes.find((candidate) => candidate.type === 'core.trigger');
+    const enabled = (trigger?.config?.guardrail as { enabled?: unknown } | undefined)?.enabled;
+    return typeof enabled === 'boolean' ? enabled : null;
+  }, [nodes]);
 
   const hydratedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -384,7 +396,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     try {
       await publishWorkflowDefinition(definition.id, { activate });
       toast.success('Published.');
-      setPublishOpen(false);
+      setJustPublished(true);
       router.refresh();
     } catch {
       toast.error('Publish failed.');
@@ -601,6 +613,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             references={celReferences}
             actionOptions={selectedNode?.type === ACTION_NODE_TYPE ? actionOptions : undefined}
             actionSchema={selectedActionSchema}
+            workflowGuardrailEnabled={triggerGuardrailEnabled}
           />
           <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
           {/*
@@ -614,9 +627,14 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       </div>
       <PublishDialog
         open={publishOpen}
-        onOpenChange={setPublishOpen}
+        onOpenChange={(next) => {
+          setPublishOpen(next);
+          if (!next) setJustPublished(false);
+        }}
         onConfirm={(activate) => void handlePublish(activate)}
         confirming={publishing}
+        published={justPublished}
+        slug={definition.slug}
       />
       <DefinitionMetadataForm
         open={metadataOpen}
