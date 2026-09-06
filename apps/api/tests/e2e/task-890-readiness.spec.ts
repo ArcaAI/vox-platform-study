@@ -184,12 +184,12 @@ test.describe('refresh', () => {
 
 /**
  * The catalogue half of §3.12 — `GET admin/ai-models/catalogue` stamps each row
- * with the readiness the sweep observed. That route is L1's and lands in a later
- * wave, so this asserts the CONTRACT rather than pretending to test a route that
- * does not exist yet: un-skip it with L1's catalogue, no rewrite needed.
+ * with the readiness the sweep observed. L1's route merged in the same wave, so
+ * this now runs: it is the ONE assertion that the two lanes share a snapshot
+ * (`modelReadinessFrom`) rather than each computing a readiness of its own.
  */
-test.describe('catalogue stamping (awaiting the catalogue route — TASK-890 L1)', () => {
-  test.skip('a model the sweep saw ready reads `ready` in the tenant catalogue', async ({ request }) => {
+test.describe('catalogue stamping', () => {
+  test('a model the sweep saw ready reads `ready` in the tenant catalogue', async ({ request }) => {
     const readiness = (await (await readReadiness(request, superAdminToken)).json()) as ReadinessDocument;
     const ready = readiness.models.find((model) => model.readiness === 'ready');
     test.skip(!ready, 'no model is currently ready on this deployment');

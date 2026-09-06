@@ -2701,6 +2701,265 @@
         ],
         "type": "object"
       },
+      "CatalogueModelResponse": {
+        "properties": {
+          "availability": {
+            "description": "MEASURED presence of the weights (inventory job).",
+            "enum": [
+              "UNKNOWN",
+              "AVAILABLE",
+              "MISSING",
+              "PARTIAL",
+              "NOT_APPLICABLE"
+            ],
+            "type": "string"
+          },
+          "capabilities": {
+            "description": "What the model accepts, for the authoring form.",
+            "type": "object"
+          },
+          "deploymentKind": {
+            "enum": [
+              "SELF_HOSTED",
+              "CLOUD",
+              "BYOK"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isPlatformDefaultFor": {
+            "description": "Tasks this row is the platform default for.",
+            "items": {
+              "enum": [
+                "TEXT_GENERATION",
+                "TRANSLATION",
+                "SPEECH_TO_TEXT",
+                "TEXT_TO_SPEECH",
+                "VISION_EXTRACTION",
+                "EMBEDDING",
+                "NAMED_ENTITY_RECOGNITION",
+                "TEXT_CLASSIFICATION",
+                "CONTENT_SAFETY",
+                "GROUNDEDNESS",
+                "PII_DETECTION"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pipelineTag": {
+            "description": "The Hugging Face `pipeline_tag` derived from `taskType`.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "The engine / vendor id — what routing and the usage ledger are keyed on.",
+            "nullable": true,
+            "type": "string"
+          },
+          "providerClass": {
+            "enum": [
+              "cloud-byo",
+              "cloud-platform",
+              "engine-served",
+              "platform-self-host"
+            ],
+            "type": "string"
+          },
+          "providerId": {
+            "description": "The `CatalogueProviderResponse.id` this model sits under.",
+            "type": "string"
+          },
+          "readiness": {
+            "description": "Last OBSERVED serving readiness.",
+            "enum": [
+              "ready",
+              "loadable",
+              "engine_down",
+              "weights_missing",
+              "credential_missing",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "readinessCheckedAt": {
+            "description": "When that observation was taken (\"at that point of time\").",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "readinessDetail": {
+            "description": "Non-secret detail behind the readiness verdict.",
+            "nullable": true,
+            "type": "string"
+          },
+          "resourceStatus": {
+            "enum": [
+              "ENABLED",
+              "DISABLED",
+              "SUSPENDED",
+              "ARCHIVED",
+              "DELETED"
+            ],
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "taskType": {
+            "enum": [
+              "IMAGE_TEXT_TO_TEXT",
+              "VISUAL_QUESTION_ANSWERING",
+              "DOCUMENT_QUESTION_ANSWERING",
+              "VIDEO_TEXT_TO_TEXT",
+              "ANY_TO_ANY",
+              "DEPTH_ESTIMATION",
+              "IMAGE_CLASSIFICATION",
+              "OBJECT_DETECTION",
+              "IMAGE_SEGMENTATION",
+              "TEXT_TO_IMAGE",
+              "IMAGE_TO_TEXT",
+              "IMAGE_TO_IMAGE",
+              "IMAGE_TO_VIDEO",
+              "UNCONDITIONAL_IMAGE_GENERATION",
+              "VIDEO_CLASSIFICATION",
+              "TEXT_TO_VIDEO",
+              "ZERO_SHOT_IMAGE_CLASSIFICATION",
+              "MASK_GENERATION",
+              "ZERO_SHOT_OBJECT_DETECTION",
+              "TEXT_TO_3D",
+              "IMAGE_TO_3D",
+              "IMAGE_FEATURE_EXTRACTION",
+              "KEYPOINT_DETECTION",
+              "TEXT_CLASSIFICATION",
+              "TOKEN_CLASSIFICATION",
+              "TABLE_QUESTION_ANSWERING",
+              "QUESTION_ANSWERING",
+              "ZERO_SHOT_CLASSIFICATION",
+              "TRANSLATION",
+              "SUMMARIZATION",
+              "FEATURE_EXTRACTION",
+              "TEXT_GENERATION",
+              "TEXT2TEXT_GENERATION",
+              "FILL_MASK",
+              "SENTENCE_SIMILARITY",
+              "GUARDRAIL",
+              "TEXT_TO_SPEECH",
+              "TEXT_TO_AUDIO",
+              "AUTOMATIC_SPEECH_RECOGNITION",
+              "AUDIO_TO_AUDIO",
+              "AUDIO_CLASSIFICATION",
+              "VOICE_ACTIVITY_DETECTION",
+              "SPEAKER_DIARIZATION",
+              "SPEAKER_EMBEDDING",
+              "TABULAR_CLASSIFICATION",
+              "TABULAR_REGRESSION",
+              "TIME_SERIES_FORECASTING",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          },
+          "unusableReason": {
+            "description": "Why not, when `usable` is false.",
+            "nullable": true,
+            "type": "string"
+          },
+          "usable": {
+            "description": "Whether an agent bound to this model could publish and run today.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "description",
+          "taskType",
+          "pipelineTag",
+          "providerId",
+          "provider",
+          "providerClass",
+          "deploymentKind",
+          "availability",
+          "readiness",
+          "readinessCheckedAt",
+          "readinessDetail",
+          "capabilities",
+          "isPlatformDefaultFor",
+          "resourceStatus",
+          "usable",
+          "unusableReason"
+        ],
+        "type": "object"
+      },
+      "CatalogueProviderResponse": {
+        "properties": {
+          "connectionId": {
+            "description": "The tenant `AiProviderConnection` behind a BYO entry; NULL for `hope`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "group": {
+            "description": "Which half of the picker this entry belongs to.",
+            "enum": [
+              "byo",
+              "hope"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "`byo:<service>:<provider>` for a tenant connection, or the literal `hope` (exactly one entry).",
+            "type": "string"
+          },
+          "modelCount": {
+            "description": "Models listed under this entry after every filter.",
+            "type": "number"
+          },
+          "name": {
+            "description": "Display name.",
+            "type": "string"
+          },
+          "providerClass": {
+            "description": "How the entry is served. NULL for the `hope` group, whose MODELS carry their own class.",
+            "enum": [
+              "cloud-byo",
+              "cloud-platform",
+              "engine-served",
+              "platform-self-host"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why not, when `usable` is false. A stable machine token, not prose.",
+            "nullable": true,
+            "type": "string"
+          },
+          "usable": {
+            "description": "Whether ANY model under this entry can serve the caller today.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "group",
+          "name",
+          "providerClass",
+          "connectionId",
+          "usable",
+          "reason",
+          "modelCount"
+        ],
+        "type": "object"
+      },
       "ChangelogEntryResponse": {
         "properties": {
           "acknowledged": {
@@ -9427,6 +9686,40 @@
         ],
         "type": "object"
       },
+      "InferenceReadinessResponse": {
+        "properties": {
+          "checkedAt": {
+            "description": "When this observation was taken. `null` together with empty collections means there is no observation yet — a cold process, an expired snapshot, or the sweep switched off — and NOT that everything is down.",
+            "nullable": true,
+            "type": "string"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessEngineResponse"
+            },
+            "type": "array"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessModelResponse"
+            },
+            "type": "array"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessServiceResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "checkedAt",
+          "engines",
+          "services",
+          "models"
+        ],
+        "type": "object"
+      },
       "InvokeWorkflowRequest": {
         "properties": {
           "input": {
@@ -10642,6 +10935,32 @@
         ],
         "type": "object"
       },
+      "ModelCatalogueResponse": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogueModelResponse"
+            },
+            "type": "array"
+          },
+          "providers": {
+            "description": "BYO entries first, then the single Hope entry (picker order).",
+            "items": {
+              "$ref": "#/components/schemas/CatalogueProviderResponse"
+            },
+            "type": "array"
+          },
+          "unassignedProviderCount": {
+            "description": "SUPER ADMIN ONLY — catalogue rows naming no provider this platform can serve. Hidden from tenants entirely; surfaced to the person who can fix them so an unassigned row is visible rather than silently absent.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "providers",
+          "models"
+        ],
+        "type": "object"
+      },
       "ModelDownloadStatusResponse": {
         "properties": {
           "error": {
@@ -10856,28 +11175,6 @@
             "description": "Model description",
             "type": "string"
           },
-          "downloadStatus": {
-            "deprecated": true,
-            "description": "Download status",
-            "enum": [
-              "NOT_DOWNLOADED",
-              "DOWNLOADING",
-              "DOWNLOADED",
-              "DOWNLOAD_FAILED"
-            ],
-            "type": "string"
-          },
-          "downloadedAt": {
-            "deprecated": true,
-            "description": "Download timestamp",
-            "format": "date-time",
-            "type": "string"
-          },
-          "fileSizeMb": {
-            "deprecated": true,
-            "description": "File size in MB",
-            "type": "number"
-          },
           "format": {
             "description": "Artifact format (descriptive; loader selection is `libraryName`).",
             "enum": [
@@ -10979,7 +11276,7 @@
             "type": "string"
           },
           "localPath": {
-            "description": "DERIVED (TASK-860): `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. Read by every service resolver as the highest-precedence weight location. Falls back to the legacy stored value on rows that predate `bucketPrefix`.",
+            "description": "DERIVED, never stored (TASK-890 §3.11): `/mnt/models-bucket/` + `bucketPrefix`, plus `primaryObject` for a single-file loader. Read by every service resolver as the highest-precedence weight location; null when the row has no bucket identity, which is the signal to fall back to `sourceUri` scheme dispatch.",
             "type": "string"
           },
           "manifestDigest": {
@@ -11171,7 +11468,6 @@
           "languages",
           "availability",
           "isPlatformDefaultFor",
-          "downloadStatus",
           "resourceStatus",
           "version",
           "tags",
@@ -14614,6 +14910,140 @@
         ],
         "type": "object"
       },
+      "ReadinessEngineResponse": {
+        "properties": {
+          "baseUrlHost": {
+            "description": "Host of the resolved endpoint — never the full URL.",
+            "example": "hope-lmstudio:1234",
+            "nullable": true,
+            "type": "string"
+          },
+          "detail": {
+            "description": "Probe error or explanatory note.",
+            "nullable": true,
+            "type": "string"
+          },
+          "latencyMs": {
+            "description": "Probe round-trip in milliseconds, as the text service measured it.",
+            "nullable": true,
+            "type": "number"
+          },
+          "listedCount": {
+            "description": "Models the engine lists at all.",
+            "type": "number"
+          },
+          "loadedCount": {
+            "description": "Models the engine reports as resident.",
+            "type": "number"
+          },
+          "provider": {
+            "description": "Engine provider id, canonical spelling.",
+            "example": "lm-studio",
+            "type": "string"
+          },
+          "providerClass": {
+            "description": "How this engine serves models.",
+            "example": "engine-served",
+            "type": "string"
+          },
+          "status": {
+            "description": "`unknown` means the probe aggregator itself did not answer — nobody looked, which is not the same as the engine being down.",
+            "enum": [
+              "up",
+              "down",
+              "unknown"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "providerClass",
+          "baseUrlHost",
+          "status",
+          "latencyMs",
+          "loadedCount",
+          "listedCount",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "ReadinessModelResponse": {
+        "properties": {
+          "detail": {
+            "description": "Why, in an operator’s words.",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "description": "Engine or vendor id from the registry row.",
+            "nullable": true,
+            "type": "string"
+          },
+          "providerClass": {
+            "description": "How this row is served, which is what decides how readiness is derived.",
+            "nullable": true,
+            "type": "string"
+          },
+          "readiness": {
+            "description": "The verdict at `checkedAt`. `unknown` means nothing was measured.",
+            "enum": [
+              "ready",
+              "loadable",
+              "engine_down",
+              "weights_missing",
+              "credential_missing",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "taskType": {
+            "description": "The registry row’s task type.",
+            "example": "TEXT_GENERATION",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "taskType",
+          "provider",
+          "providerClass",
+          "readiness",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "ReadinessServiceResponse": {
+        "properties": {
+          "healthy": {
+            "description": "Last heartbeat says up AND is recent enough to be evidence.",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "Service key as the heartbeat cron writes it.",
+            "example": "stt",
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "description": "ISO timestamp of the last heartbeat sample.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "healthy",
+          "lastSeenAt"
+        ],
+        "type": "object"
+      },
       "RecordingStateResponse": {
         "properties": {
           "consultationId": {
@@ -15207,6 +15637,30 @@
           "key",
           "value",
           "revealedAt"
+        ],
+        "type": "object"
+      },
+      "ReviewDecisionRequest": {
+        "properties": {
+          "comment": {
+            "description": "Free-text rationale recorded with the decision.",
+            "type": "string"
+          },
+          "decision": {
+            "description": "The human decision. There is no third value: a timeout is the workflow’s own outcome, never a decision.",
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "editedPayload": {
+            "description": "A corrected payload to hand back to the graph in place of what was reviewed. Honoured ONLY when the review node was authored with `allowEdit` — the workflow drops it otherwise (`review_workflow.py`), which is the node author’s decision and not this route’s.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "decision"
         ],
         "type": "object"
       },
@@ -23279,6 +23733,81 @@
         ],
         "type": "object"
       },
+      "WorkflowReviewDecisionResponse": {
+        "properties": {
+          "decision": {
+            "description": "The decision the interpreter was signalled with.",
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "reviewerId": {
+            "description": "The acting user, resolved from CLS by the gateway — never from the request body.",
+            "nullable": true,
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "signaled": {
+            "description": "True once the signal reached the review child. The graph may not have resumed yet.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "runId",
+          "nodeId",
+          "decision",
+          "signaled"
+        ],
+        "type": "object"
+      },
+      "WorkflowReviewResponse": {
+        "properties": {
+          "decided": {
+            "description": "Whether a decision signal has been accepted. A review is decided once; a second signal is ignored.",
+            "type": "boolean"
+          },
+          "decision": {
+            "description": "The decision, once made. `null` while waiting — NEVER a default, because a timeout must not read as an approval.",
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "escalations": {
+            "description": "How many times the wait has escalated. `null` when no child exists.",
+            "nullable": true,
+            "type": "number"
+          },
+          "exists": {
+            "description": "Whether a review child is currently live for this node. `false` is normal.",
+            "type": "boolean"
+          },
+          "nodeId": {
+            "description": "The graph node id of the `core.humanReview` node — a graph may carry several.",
+            "type": "string"
+          },
+          "phase": {
+            "description": "WAITING | ESCALATED | DECIDED | TIMED_OUT. `null` when no child exists.",
+            "nullable": true,
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId",
+          "nodeId",
+          "exists",
+          "decided"
+        ],
+        "type": "object"
+      },
       "WorkflowRunCancelResponse": {
         "properties": {
           "runId": {
@@ -23464,15 +23993,39 @@
             "nullable": true,
             "type": "string"
           },
+          "inputSchema": {
+            "description": "JSON Schema of the run `input` — the Trigger's inline context schema. `null` when the definition declares none.",
+            "nullable": true,
+            "type": "object"
+          },
           "name": {
             "type": "string"
+          },
+          "outputSchema": {
+            "description": "JSON Schema of what the run delivers — the Output's `outputSchema`. `null` when the definition declares none.",
+            "nullable": true,
+            "type": "object"
           },
           "paletteKey": {
             "type": "string"
           },
+          "protocols": {
+            "description": "Output protocols the definition publishes (`http`, `http-sse`, `socket`, …) — what bounds `?mode=`. `[]` for a legacy graph (unrestricted).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "slug": {
             "description": "The public URL segment: /api/v1/workflows/:slug/…",
             "type": "string"
+          },
+          "triggerKinds": {
+            "description": "Trigger kinds the definition accepts (`api`, `webhook`, `schedule`, …). `[]` for a legacy graph (treated as `api`).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "versionNumber": {
             "description": "The ACTIVE published version number currently resolved for this slug.",
@@ -23483,7 +24036,11 @@
           "slug",
           "name",
           "paletteKey",
-          "versionNumber"
+          "versionNumber",
+          "inputSchema",
+          "outputSchema",
+          "protocols",
+          "triggerKinds"
         ],
         "type": "object"
       },
@@ -24133,6 +24690,9 @@
           },
           "404": {
             "description": "Unknown, unpublished, or another tenant’s agent."
+          },
+          "429": {
+            "description": "The tenant has reached its `monthlyLlmTokens` allowance. Refused before the model runs, so nothing is billed."
           }
         },
         "security": [
@@ -35046,6 +35606,179 @@
           }
         ],
         "summary": "Cancel a run — sends the interpreter's allow-listed cancel signal, never a caller-supplied signal name.",
+        "tags": [
+          "workflows"
+        ],
+        "x-hope-abilities": [
+          "update:WorkflowRun"
+        ],
+        "x-hope-api-key-scopes": [
+          "workflow:run:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}": {
+      "get": {
+        "description": "A graph may carry several review nodes, so a review is addressed by `(runId, nodeId)`. `exists: false` is a NORMAL 200 — the node has not been reached yet, or the review already settled and its durable child is gone. It is deliberately different from a 404, which means the RUN is not yours: a reviewer UI must be able to tell \"nothing to decide here\" from \"you are looking at someone else’s run\". `decision` is `null` until a human sets it — a timeout never reads as an approval.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowsController_getReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The graph node id of the `core.humanReview` node.",
+            "in": "path",
+            "name": "nodeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowReviewResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Scope violation."
+          },
+          "404": {
+            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+          },
+          "503": {
+            "description": "The interpreter could not be reached. Never reported as \"no review\"."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The live state of one Human-review node of a run: whether it is waiting, how many times it has escalated, and the decision if one was made.",
+        "tags": [
+          "workflows"
+        ],
+        "x-hope-abilities": [
+          "read:WorkflowRun"
+        ],
+        "x-hope-api-key-scopes": [
+          "workflow:run:read"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide": {
+      "post": {
+        "description": "Body `{ decision: \"approved\" | \"rejected\", comment?, editedPayload? }`. **`reviewerId` is not accepted** — the acting user is resolved from the session and stamped server-side, so a caller cannot attribute an approval to somebody else; sending the field is a 400 (the global pipe forbids undeclared properties). `editedPayload` is honoured only when the node was authored with `allowEdit`; the workflow drops it otherwise. A review is decided ONCE: a second decision on the same node is ignored by the durable child, so this route is safe to retry. Returns when the signal was SENT — the graph resumes on its own clock.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `update:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowsController_decideReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The graph node id of the `core.humanReview` node.",
+            "in": "path",
+            "name": "nodeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowReviewDecisionResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "A decision outside `approved` / `rejected`, or an undeclared body field such as `reviewerId`."
+          },
+          "403": {
+            "description": "Scope violation."
+          },
+          "404": {
+            "description": "Cross-tenant run id, a runId that does not belong to slug's lineage, or no review child under that nodeId."
+          },
+          "503": {
+            "description": "The interpreter could not be reached; no decision was recorded."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Release a Human-review node with a decision — the graph resumes down the `approved` or `rejected` handle.",
         "tags": [
           "workflows"
         ],

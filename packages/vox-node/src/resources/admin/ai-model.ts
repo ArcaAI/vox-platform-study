@@ -14,6 +14,7 @@ import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource'
 import type {
   CreateModelRequest,
   DiscoveryResponse,
+  ModelCatalogueResponse,
   ModelDownloadStatusResponse,
   ModelInventoryReport,
   ModelResponse,
@@ -32,8 +33,12 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers AiModelAdminController, AiModelDiscoveryController
- * (13 routes). Several controllers sharing one scope share one
+ * 1 of its route ALSO accepts `svc:admin:ai-model:read`, so a read-only grant reaches
+ * it and nothing else here. Those methods name their own accepted scopes in a 403;
+ * the scope above is the one that reaches EVERY route.
+ *
+ * Backed by controllers AiModelAdminController, AiModelCatalogueController, AiModelDiscoveryController
+ * (14 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -159,6 +164,82 @@ export class AdminAiModelResource extends AdminResource {
       method: 'PATCH',
       path: `admin/ai-models/${encodePathSegment(String(id))}/platform-default`,
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * The model catalogue this tenant may bind, in picker order
+   *
+   * Two groups: the tenant’s OWN provider connections first (`byo:<service>:<provider>`), then exactly one "Hope provider" entry standing for everything the platform serves. Each model carries a `usable` verdict with a machine-readable reason (an unusable model is listed WITH its reason rather than hidden) and the last OBSERVED `readiness` — a stored snapshot, never a probe: reading this route never causes a vendor call. Plan entitlements BOUND the Hope group; they never add or substitute a model. Rows naming no servable provider are hidden, and counted in `unassignedProviderCount` for a super admin.
+   *
+   * `GET /api/v1/admin/ai-models/catalogue` — `AiModelCatalogueController.catalogue`.
+   *
+   * Reachable with ANY ONE of `svc:admin:ai-model:manage`, `svc:admin:ai-model:read` — the gateway matches required scopes with OR, so the area's `svc:admin:ai-model:manage` still reaches this route and a read-only grant now does too.
+   */
+  catalogue(
+    options: AdminRequestOptions & {
+      query?: {
+        providerGroup?: 'byo' | 'hope';
+        taskType?:
+          | 'IMAGE_TEXT_TO_TEXT'
+          | 'VISUAL_QUESTION_ANSWERING'
+          | 'DOCUMENT_QUESTION_ANSWERING'
+          | 'VIDEO_TEXT_TO_TEXT'
+          | 'ANY_TO_ANY'
+          | 'DEPTH_ESTIMATION'
+          | 'IMAGE_CLASSIFICATION'
+          | 'OBJECT_DETECTION'
+          | 'IMAGE_SEGMENTATION'
+          | 'TEXT_TO_IMAGE'
+          | 'IMAGE_TO_TEXT'
+          | 'IMAGE_TO_IMAGE'
+          | 'IMAGE_TO_VIDEO'
+          | 'UNCONDITIONAL_IMAGE_GENERATION'
+          | 'VIDEO_CLASSIFICATION'
+          | 'TEXT_TO_VIDEO'
+          | 'ZERO_SHOT_IMAGE_CLASSIFICATION'
+          | 'MASK_GENERATION'
+          | 'ZERO_SHOT_OBJECT_DETECTION'
+          | 'TEXT_TO_3D'
+          | 'IMAGE_TO_3D'
+          | 'IMAGE_FEATURE_EXTRACTION'
+          | 'KEYPOINT_DETECTION'
+          | 'TEXT_CLASSIFICATION'
+          | 'TOKEN_CLASSIFICATION'
+          | 'TABLE_QUESTION_ANSWERING'
+          | 'QUESTION_ANSWERING'
+          | 'ZERO_SHOT_CLASSIFICATION'
+          | 'TRANSLATION'
+          | 'SUMMARIZATION'
+          | 'FEATURE_EXTRACTION'
+          | 'TEXT_GENERATION'
+          | 'TEXT2TEXT_GENERATION'
+          | 'FILL_MASK'
+          | 'SENTENCE_SIMILARITY'
+          | 'GUARDRAIL'
+          | 'TEXT_TO_SPEECH'
+          | 'TEXT_TO_AUDIO'
+          | 'AUTOMATIC_SPEECH_RECOGNITION'
+          | 'AUDIO_TO_AUDIO'
+          | 'AUDIO_CLASSIFICATION'
+          | 'VOICE_ACTIVITY_DETECTION'
+          | 'SPEAKER_DIARIZATION'
+          | 'SPEAKER_EMBEDDING'
+          | 'TABULAR_CLASSIFICATION'
+          | 'TABULAR_REGRESSION'
+          | 'TIME_SERIES_FORECASTING'
+          | 'UNKNOWN';
+        usableOnly?: boolean;
+      };
+    } = {},
+  ): Promise<ModelCatalogueResponse> {
+    return this.request<ModelCatalogueResponse>({
+      method: 'GET',
+      path: 'admin/ai-models/catalogue',
+      query: options.query,
+      svcScopes: ['svc:admin:ai-model:manage', 'svc:admin:ai-model:read'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

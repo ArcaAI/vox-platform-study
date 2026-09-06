@@ -1,3 +1,5 @@
+import { PLATFORM_SELF_HOST_MODEL_PROVIDER } from '../ai-provider-connection/constants';
+
 /**
  * TASK-890 §3.12 — the readiness sweep's keys, defaults and vocabulary.
  *
@@ -66,18 +68,12 @@ export const READINESS_SERVICE_KEYS = ['text', 'nlp', 'stt', 'tts', 'guardrail',
 
 export type ReadinessServiceKey = (typeof READINESS_SERVICE_KEYS)[number];
 
-/**
- * Providers served by an ENGINE the platform runs (LM Studio, Ollama, vLLM,
- * llama.cpp). `lmstudio` is the wire alias LM Studio's own OpenAI-compatible
- * surface reports; both spellings mean the same engine.
- *
- * INTERIM COPY. TASK-890 L1 moves the canonical set to
- * `ai-provider-connection/constants.ts` (with `providerClassOf`) in the same
- * wave; this lane may not edit that file, so the set lives here until the merge
- * repoints it. The four probe-able spellings are already shared —
- * `DISCOVERABLE_AI_MODEL_PROVIDERS` — and this adds only the alias.
+/*
+ * `ENGINE_SERVED_PROVIDERS` used to be copied here while TASK-890 L1 and L12 ran
+ * in parallel worktrees. The canonical set now lives beside `providerClassOf`
+ * in `../ai-provider-connection/constants.ts` and the sweep imports it from
+ * there — one set, one owner. Do NOT reintroduce a local copy.
  */
-export const ENGINE_SERVED_PROVIDERS: ReadonlySet<string> = new Set(['lm-studio', 'lmstudio', 'ollama', 'vllm', 'llama-cpp']);
 
 /**
  * Engines whose listing carries NO per-model load state: being listed IS being
@@ -90,8 +86,11 @@ export const STATELESS_LISTING_ENGINES: ReadonlySet<string> = new Set(['vllm', '
  * The `AiModel.provider` sentinel meaning "one of the platform's own services
  * serves this from the models bucket" (23 of the 33 seeded rows). Readiness for
  * such a row is bucket availability × the `servedBy` service's heartbeat.
+ *
+ * An ALIAS of the canonical spelling, not a second literal (TASK-890 wave-1
+ * close): the value is owned by `../ai-provider-connection/constants.ts`.
  */
-export const PLATFORM_SELF_HOST_SENTINEL = 'built-in';
+export const PLATFORM_SELF_HOST_SENTINEL = PLATFORM_SELF_HOST_MODEL_PROVIDER;
 
 /** Canonical spelling for an engine provider (folds the `lmstudio` alias). */
 export function normalizeEngineProvider(provider: string): string {

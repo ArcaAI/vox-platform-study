@@ -1,8 +1,12 @@
+import type { ProviderClass } from '../ai-provider-connection/constants';
+
 /**
  * The readiness vocabulary (TASK-890 §3.7 / §3.12).
  *
- * ⚠ CANONICAL HOME. `ModelReadiness` and `ReadinessProviderClass` are declared
- * ONCE, here, and re-exported through the package barrel. The model-catalogue
+ * ⚠ CANONICAL HOME of `ModelReadiness`, declared ONCE here and re-exported
+ * through the package barrel. `ReadinessProviderClass` is an ALIAS of the
+ * provider plane's `ProviderClass` (`../ai-provider-connection/constants.ts`),
+ * which owns it next to `providerClassOf` — one union, one owner. The model-catalogue
  * DTO stamps the same values onto every row, so it IMPORTS these names rather
  * than restating them — two unions with the same members and different owners
  * drift the first time a state is added.
@@ -50,7 +54,7 @@ export const MODEL_READINESS_STATES: readonly ModelReadiness[] = [
  *                          the models bucket (`provider: 'built-in'` and the
  *                          named TTS engines).
  */
-export type ReadinessProviderClass = 'cloud-byo' | 'cloud-platform' | 'engine-served' | 'platform-self-host';
+export type ReadinessProviderClass = ProviderClass;
 
 /** One engine, as the last sweep saw it. */
 export interface ReadinessEngineEntry {

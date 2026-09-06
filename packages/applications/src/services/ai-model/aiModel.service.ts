@@ -23,7 +23,6 @@ import {
   CreateModelRequest,
   ModelCatalogueFilter,
   ModelCatalogueResponse,
-  ModelReadiness,
   ModelResponse,
   PaginatedModelResponse,
   SetPlatformDefaultRequest,
@@ -31,7 +30,16 @@ import {
 } from './dto';
 import { AiModelDtoMapper } from './aiModel.dto.mapper';
 import { toCatalogueModel } from './model-catalogue.mapper';
-import { IInferenceReadinessService, type IInferenceReadinessServicePort } from './model-readiness.port';
+// ONE readiness port, ONE symbol, ONE type set (TASK-890 wave-1 close): the
+// catalogue CONSUMES what `services/ai-readiness` declares. It needs only the
+// stored-snapshot read — a tenant reading the catalogue must never trigger a
+// probe — so it depends on exactly that method, derived from the interface
+// rather than restated beside it.
+import { IInferenceReadinessService } from '../ai-readiness/IInferenceReadinessService';
+import type { IInferenceReadinessService as InferenceReadinessContract } from '../ai-readiness/IInferenceReadinessService';
+import { modelReadinessFrom } from '../ai-readiness/inference-readiness.types';
+
+type ReadinessSnapshotReader = Pick<InferenceReadinessContract, 'getSnapshot'>;
 import {
   MODEL_TASK_TYPE_SERVICE,
   PROVIDER_GROUP_HOPE,
@@ -127,7 +135,7 @@ export class AiModelService extends BaseService implements IAiModelService {
     // catalogue reports `unknown` readiness until it does.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnections?: IProviderConnectionServicePort,
     @Optional() private readonly tenantRepository?: TenantRepository,
-    @Optional() @Inject(IInferenceReadinessService) private readonly readiness?: IInferenceReadinessServicePort,
+    @Optional() @Inject(IInferenceReadinessService) private readonly readiness?: ReadinessSnapshotReader,
   ) {
     super(eventEmitter, clsService, ResourceType.AiModel);
   }
@@ -197,16 +205,17 @@ export class AiModelService extends BaseService implements IAiModelService {
     const models: CatalogueModelResponse[] = [];
     for (const { entity, service, providerClass, providerId } of classified) {
       const usability = await this.usabilityOf(providerClass, service, entity, tenantId, facts);
-      const observation = snapshot?.models[entity.id];
+      // ONE projection helper, owned by the lane that writes the snapshot: a
+      // model the snapshot does not name is `unknown` as of NOW, not stale as
+      // of the sweep — so it carries no timestamp at all.
+      const verdict = modelReadinessFrom(snapshot, entity.id);
       models.push(
         toCatalogueModel(entity, {
           providerId,
           providerClass,
-          readiness: (observation?.readiness ?? 'unknown') as ModelReadiness,
-          // A model the snapshot does not name is `unknown` as of NOW, not stale
-          // as of the sweep — so it carries no timestamp at all.
-          readinessCheckedAt: observation ? (snapshot?.checkedAt ?? null) : null,
-          readinessDetail: observation?.detail ?? null,
+          readiness: verdict.readiness,
+          readinessCheckedAt: verdict.checkedAt,
+          readinessDetail: verdict.detail,
           usable: usability.usable,
           unusableReason: usability.reason,
         }),
