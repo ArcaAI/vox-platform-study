@@ -40,7 +40,10 @@ import {
   type ProviderClass,
   type ProviderService,
 } from '../ai-provider-connection/constants';
-import { IProviderConnectionService, type IProviderConnectionService as IProviderConnectionServicePort } from '../ai-provider-connection/IProviderConnectionService';
+import {
+  IProviderConnectionService,
+  type IProviderConnectionService as IProviderConnectionServicePort,
+} from '../ai-provider-connection/IProviderConnectionService';
 import { modelAllowedForTier, modelTierForPlan } from '../entitlements/model-access';
 import type { ModelTier } from '../entitlements/entitlements.constants';
 import { BaseService } from '../../common';

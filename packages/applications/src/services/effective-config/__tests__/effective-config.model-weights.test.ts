@@ -62,7 +62,11 @@ describe('effective-config: modelWeights', () => {
         [MINICHECK]: {
           slug: MINICHECK,
           sourceUri: 's3://models/minicheck',
-          localPath: '/opt/hope/models/minicheck',
+          // TASK-890 §3.11 — `localPath` is DERIVED from the bucket identity,
+          // so the fixture supplies the identity rather than a stored path.
+          bucketPrefix: 'minicheck-flan-t5-large/q6-k-abc/',
+          primaryObject: 'minicheck.gguf',
+          libraryName: 'llama.cpp',
           checksum: 'abc123',
         },
       }),
@@ -72,12 +76,12 @@ describe('effective-config: modelWeights', () => {
 
     expect(res.modelWeights?.[MINICHECK]).toEqual({
       sourceUri: 's3://models/minicheck',
-      localPath: '/opt/hope/models/minicheck',
+      localPath: '/mnt/models-bucket/minicheck-flan-t5-large/q6-k-abc/minicheck.gguf',
       checksum: 'abc123',
     });
   });
 
-  it('normalises an absent localPath/checksum to null rather than omitting them', async () => {
+  it('normalises an absent bucket identity/checksum to null rather than omitting them', async () => {
     const svc = serviceWith(
       routingStub({ 'guardrail.groundedness': MINICHECK }),
       modelsStub({ [MINICHECK]: { slug: MINICHECK, sourceUri: 'hf:nvhf/MiniCheck' } }),
