@@ -148,10 +148,17 @@ export interface ResolvedAgent {
   slug: string;
   versionNumber: number;
   task: AgentTask;
-  /** The tenant that owns the resolved row (the caller's, or SYSTEM for a platform default). */
+  /** The tenant that owns the resolved row — always the CALLER's after TASK-890 L13. */
   tenantId: string;
-  /** How the row was chosen. */
-  source: 'explicit' | 'department' | 'tenant' | 'platform-default';
+  /**
+   * How the row was chosen.
+   *
+   * TASK-890 OD-M — `platform-default` is gone: an agent is CONTENT (§1.5), so SYSTEM is the
+   * reference set a tenant is PROVISIONED from and never a tier resolved through at runtime. A
+   * platform agent reaches a tenant as the tenant's own clone (`sourceTenantId = SYSTEM`), which
+   * resolves through the `tenant` tier like any other row.
+   */
+  source: 'explicit' | 'department' | 'tenant';
   compiledConfig: AgentCompiledConfig;
   models: ResolvedAgentModel[];
   providerOverride?: ResolvedAgentProviderOverride;

@@ -29,8 +29,14 @@ const WRITABLE_SCOPES: ReadonlySet<PipelinePolicyScope> = new Set([PipelinePolic
 /**
  * WHICH agent serves a task for a scope (TASK-863) — the `WorkflowAssignmentService` shape:
  * OCC-guarded CRUD with referential validation at WRITE time, and `resolve()`, the
- * `department → tenant → SYSTEM` walk. The SYSTEM tenant's TENANT-scope row IS the platform
- * default (rule 00: two tiers, request tenant → SYSTEM; `50000000-…` never appears here).
+ * `department → tenant → null` walk.
+ *
+ * TASK-890 OD-M — the walk USED to end at the SYSTEM tenant's TENANT-scope row, and no longer
+ * does. An agent and its assignment are CONTENT (§1.5): SYSTEM holds the REFERENCE SET a tenant
+ * is provisioned from, not a tier it resolves through, so the platform default reaches a tenant
+ * as the tenant's OWN cloned row. A tenant with nothing assigned resolves `unassigned`, and its
+ * callers raise `AGENT_NOT_ASSIGNED` naming the task and the tenant — a named, fail-closed
+ * error, never a silent read of somebody else's row.
  */
 @Injectable()
 export class AgentAssignmentService extends BaseService implements IAgentAssignmentService {
@@ -61,17 +67,14 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     const requestTags = canonicalAgentTags([...selectorTags]);
     const candidates: Array<{ source: AgentAssignmentSource; slug: string; selector: string[] }> = [];
 
-    // TIER order is unchanged — department → tenant → SYSTEM. WITHIN each tier, TASK-884 adds
-    // the selector: the rows whose `key:value` selector is a SUBSET of the request's tags, most
-    // specific first, unqualified last. A request that carries no tags therefore sees exactly
-    // the one unqualified row each tier always had, and behaviour is byte-identical.
+    // TIER order: department → tenant. There is no third tier (TASK-890 OD-M). WITHIN each
+    // tier, TASK-884's selector applies: the rows whose `key:value` selector is a SUBSET of the
+    // request's tags, most specific first, unqualified last — so a request carrying no tags
+    // sees exactly the one unqualified row each tier always had.
     if (departmentId) {
       candidates.push(...(await this.tierCandidates(tenantId, PipelinePolicyScope.DEPARTMENT, departmentId, task, requestTags, 'department')));
     }
     candidates.push(...(await this.tierCandidates(tenantId, PipelinePolicyScope.TENANT, null, task, requestTags, 'tenant')));
-    if (tenantId !== SYSTEM_TENANT_ID) {
-      candidates.push(...(await this.tierCandidates(SYSTEM_TENANT_ID, PipelinePolicyScope.TENANT, null, task, requestTags, 'platform-default')));
-    }
 
     // First-match-wins, but a matched row must also RESOLVE: an assignment is a reference and a
     // reference can rot (the agent was deprecated or deleted since). Skip it with a warning
@@ -91,7 +94,18 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
         selector: candidate.selector,
       });
     }
-    return { agentSlug: null, source: 'platform-default', selector: [] };
+    // Fail CLOSED and say so. `unassigned` is not "the platform will handle it" — after
+    // TASK-890 L13 step v there is no platform tier to fall through to, so every caller turns
+    // this into `AGENT_NOT_ASSIGNED { task, tenantId, departmentId }` and the remedy is the
+    // tenant's own assignment (or a reference-set re-sync).
+    this.logger.warn({
+      message: 'No agent is assigned for this task in this tenant',
+      code: 'AGENT_NOT_ASSIGNED',
+      tenantId,
+      task,
+      departmentId: departmentId ?? null,
+    });
+    return { agentSlug: null, source: 'unassigned', selector: [] };
   }
 
   /**
