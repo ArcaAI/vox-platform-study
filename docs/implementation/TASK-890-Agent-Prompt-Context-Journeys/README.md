@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending → In Progress on execution start; all owner items answered — round 3 applied OD-M..OD-R (§1.4, §1.5, §6.2), and on 2026-09-06 the owner answered the two §6.3 discussion items: **D-1 YES** (the opt-out extends to the mandatory clinical guard nodes — §3.14a, P-32) and **D-2 YES** (the external-guardrail switch is seeded ON — §3.14b, P-33). §6 carries NO open item. Execution is one team of agents in parallel worktrees, merged wave by wave into `dev-2.2` with an `opus` wave-close pass — §4.9 |
+| **Status** | **In Progress** — wave 1 CLOSED 2026-09-06 (L0, L1, L7, L11, L12; §9); all owner items answered — round 3 applied OD-M..OD-R (§1.4, §1.5, §6.2), and on 2026-09-06 the owner answered the two §6.3 discussion items: **D-1 YES** (the opt-out extends to the mandatory clinical guard nodes — §3.14a, P-32) and **D-2 YES** (the external-guardrail switch is seeded ON — §3.14b, P-33). §6 carries NO open item. Execution is one team of agents in parallel worktrees, merged wave by wave into `dev-2.2` with an `opus` wave-close pass — §4.9 |
 | **Type** | feature (with `bugfix` incidentals: the unwired publish gate, the realtime-lane render divergence, the deprecated-column availability read, the unmetered agent-invocation route, the Global-tenant provisioning source, the SYSTEM-template fallback chain silently dropped by BOTH readers (TASK-884 H-6), the legacy settings CRUD missing the SYSTEM-tier guard) |
 | **Branch** | `dev-2.2` (every lane merges here; the orchestrator merges from the primary checkout) |
 | **Created** | 2026-09-06 (round 1) · 2026-09-06 (round 2) — assessment against the twelve owner answers + two targeted discovery lanes (E: BYO / Hope provider / readiness; F: provisioning / quota / scopes / deprecation) · **2026-09-06 (round 3)** — the six round-2 answers + two discovery lanes (G: guardrail management / opt-out surfaces; H: content SYSTEM fallback / settings write gate / catalogue slug shadowing) + a five-point re-verification (§2.7 #18-#25) + the fast-win path (§4.8) |
@@ -1265,6 +1265,143 @@ Numbering is taken against `docs/implementation/` (highest: TASK-890) and `docs/
 
 ## 9. Implementation Summary
 
+### Wave 1 — CLOSED 2026-09-06 (L0, L1, L7, L11, L12)
+
+Closed by the `opus` wave-close pass of §4.9, run in the PRIMARY checkout on the MERGED tree with
+no worktree. Head at close `f63f021d7`; base `b2511b005`. 188 files, +15.4k/-0.9k.
+
+| Lane | Branch | Merge commit | Files | What landed |
+|---|---|---|---|---|
+| L0 | `task-890-l0` | `808edbd60` | 38 | the template grammar + its Python mirror + the parity fixture; `publishFindings` replacing `workflowPublishProblems`; the guardrail-precedence shapes handed to L3/L14 |
+| L11 | `task-890-l11` | `b1ab9f0b2` | 22 | metering parity: the invocation precheck + record (blocking and SSE), `LlmStreamUsageCollector`, the `trigger` dimension, the STT-session / embedding / NER allowances that were only ever recorded |
+| L7 | `task-890-l7` | `be2a896d2` | 38 | the human-review proxy (gateway + `hope.workflows.reviews.*`), `workflows.schema()`, `signWebhookTrigger` |
+| L12 | `task-890-l12` | `cc5a13343` | 37 | the readiness sweep + stored snapshot, five `global-kv` descriptors, `GET`/`POST admin/ai-services/readiness`, the console Readiness tab |
+| L1 | `task-890-l1` | `3392eadf2` | 51 | `GET admin/ai-models/catalogue` (two groups, per-row usability), `providerClassOf` + `ProviderClass`, `read:AiModel`, the deprecated-column reader switch, `assertPlatformTierWrite` |
+
+Four close commits on top: `83a84f11c` (the L1↔L12 integration + the five artifacts), `5813fec3f`
+(three defects fixed), `f63f021d7` (the lifecycle fixture), plus the rule-05 row `cb6853ea8` the
+orchestrator landed with L1.
+
+**Integration fix — one readiness port, one symbol, one type set.** L1 and L12 each declared a
+readiness vocabulary and an `IInferenceReadinessService` symbol in their own worktree; merged, that
+was four TS2308 ambiguous re-exports and a `@arcaai/applications` that did not build. Resolved in
+favour of the lane that MEASURES readiness: `services/ai-readiness` owns `ModelReadiness`,
+`InferenceReadinessSnapshot`, the symbol and `modelReadinessFrom`; `ai-model/model-readiness.port.ts`
+is deleted; the catalogue DTO re-exports the canonical union instead of restating it;
+`AiModelService` injects the same symbol narrowed to `Pick<…,'getSnapshot'>` so a catalogue read can
+never trigger a probe. `ReadinessProviderClass` is now an alias of the provider plane's
+`ProviderClass`, and the interim `ENGINE_SERVED_PROVIDERS` / `PLATFORM_SELF_HOST_SENTINEL` copies are
+gone — both come from `ai-provider-connection/constants.ts`, beside `providerClassOf`.
+`AiModelServiceModule` imports `InferenceReadinessServiceModule`, so the catalogue actually stamps
+`modelReadinessFrom(snapshot, model.id)` (`unknown`, with no timestamp, on a cold snapshot); the
+silent-optional hazard is pinned by the module test next to the provider-connection assertion.
+
+**Defects found reviewing the merged tree, and fixed here** (each verified against the running stack
+before it was touched):
+
+| # | Where | Defect | Fix |
+|---|---|---|---|
+| W1-1 | `tenant.service.ts:1149` | `PATCH admin/tenants/configs/__SYSTEM__` walked around §3.15's platform-tier guard: the controller's scope check only 404s a UUID identifier, so a KEY skips it; `GlobalSetting` is SYSTEM-shared-READ, so a tenant admin's `findById` resolves a platform row; the ownership check compares the row to the NAMED tenant, not the caller; the write goes through the unscoped base client. `locked` stopped 5 of the 37 seeded SYSTEM rows; nothing stopped the other 32 | the same 403 the sibling guard raises, on the SYSTEM tier, with the cross-tenant 404 untouched; two tests pin both directions |
+| W1-2 | `inference-readiness.service.ts:400` | a model's `readinessDetail` forwarded TEXT's raw `probe_error` (`str(exc)`) to any holder of `read:AiModel`; for an httpx failure that string carries the engine's internal URL — the very thing the sweep's `hostOf()` reduction exists to strip | the MODEL verdict is a curated phrase; the ENGINE entry keeps the diagnostic and that document is super-admin-only |
+| W1-3 | `ai-service-admin.controller.ts` | `POST admin/ai-services/readiness/refresh` answered 201 while its own `@ApiOkResponse` and the published `openapi.json` said 200 | `@HttpCode(HttpStatus.OK)`; artifacts regenerated |
+| W1-4 | `task-890-metering.spec.ts` | the 429 case was asserted against `__GLOBAL__`, which is in `RESERVED_UNGATED_TENANT_IDS`: with no plan it resolves `UNGATED_ENTITLEMENTS` and Q3 IGNORES the override, so `assertMeterQuota` returned on `limit === null` and the call reached TEXT (503). The one assertion that would have proven the precheck proved nothing | stamps a plan for the length of the describe (`effectivePlan` rule 1 — the documented escape hatch), restores it, and skips with a named reason if the tenant still resolves ungated. Now PASSES: 429, `DOMAIN.QUOTA_EXCEEDED`, no ledger row |
+| W1-5 | `task-890-metering.spec.ts` | the `PROMPT_TEST` case asserts L4's emitter, which is wave 2b — a red that would only say "the wave that owns it has not run" | `test.fixme` naming the lane; the body needs no change when L4 lands |
+| W1-6 | `task-779-workflow-lifecycle.spec.ts` | four tests went red on the newly-wired publish gate. The findings were CORRECT: the fixture chained all eleven canonical types on the DATA ports (type-incompatible at `bindTerminology[entities] → phiHop[transcript]` and `sensors[verdict] → persistDraft[document]`) and stamped `emitsTrajectory` on the two graph boundaries, whose schemas are `additionalProperties: false` | the chain moves to the CONTROL pair (`next` → `after`) and boundaries take their own config only. 11 passed; the WF-CONS-007 test still publishes, so rule findings stay non-blocking and the two concepts remain distinct |
+
+`PENDING_MANIFEST_ROUTES` in `workflows.contract.task850.test.ts` is EMPTIED — the two review routes
+are asserted unconditionally — and `task-890-readiness.spec.ts`'s catalogue-stamping case is
+un-skipped now that L1's route ships.
+
+**Gates re-run on the merged tree** (not the lanes' pasted output):
+
+```
+pnpm lint            → 39 successful, 39 total; 0 errors (only-warn warnings unchanged; no wave-1 file added one)
+pnpm typecheck:all   → exit 0 (TS packages + mypy: harness 150 files, tts 41 files, "Success: no issues found")
+pnpm test:unit       → Test Files 1410 passed | 2 skipped (1412);  Tests 24118 passed | 4 skipped | 9 todo (24131)
+admin-console        → build ok; lint `eslint src --max-warnings 0` clean; Test Files 261 passed, Tests 2300 passed
+pnpm sdk-node:test   → 3 successful, 3 total (vox-node 27 files / 420 tests)
+@arcaai/vox test     → Test Files 284 passed (284);  Tests 4407 passed (4407)
+pnpm harness:test    → 6 failed, 2140 passed  (the 6 are PRE-EXISTING — see below)
+five artifacts       → route-manifest 729 routes (451 admin, 411 machine-reachable) · openapi 506 paths ·
+                       portal 649/198 · vox-node admin 49 areas / 411 routes / 395 schemas
+three :check gates   → openapi-coverage OK · portal "no drift" · gen:admin "no drift"
+```
+
+The five new routes in the regenerated manifest: `GET admin/ai-models/catalogue` (`apiKeyForbidden`,
+`read:AiModel`), `GET`/`POST admin/ai-services/readiness[/refresh]` (`apiKeyForbidden`, `manage:all`),
+and the two `workflows/{slug}/runs/{runId}/reviews/*` business-plane routes (API key allowed with
+`workflow:run:read` / `workflow:run:write`, `svcScopes: []`).
+
+**Harness replay failures are pre-existing, by construction.** Wave 1 touches four harness files and
+all four are NEW (`git diff --name-status b2511b005..HEAD -- apps/harness` → four `A` lines:
+`temporal/interpreter/templating.py`, `guardrail_optout.py` and their two parity tests). Nothing in
+the harness imports them yet — they are L0's shapes handed to L3/L14 in wave 2b — so no existing
+workflow module changed and replay determinism cannot have moved. The six are the same
+`NondeterminismError … task-355-optimistic-delivery` patch-marker failures TASK-870 recorded at its
+own close.
+
+**Boot smoke** (the merged build, test API on 8968):
+
+```
+{"status":"healthy","service":"api","version":"0.0.0-dev-2-2.83a84f11","uptime_seconds":3.5,
+ "timestamp":"2026-09-06T09:41:00.900Z","checks":{"process":{"status":"healthy","duration_ms":0}}}
+```
+
+**E2E** (`RESET_DB=false`, live gateway on 8968):
+
+```
+task-890-*                      → 31 passed, 7 skipped, 0 failed
+task-890-metering (after W1-4)  → the 429 case PASSES; the two invocation cases skip (apps/text unreachable on this stack)
+task-776-route-authz-matrix     → 7 passed (the five new routes are covered automatically)
+task-779-workflow-lifecycle     → 11 passed (after W1-6)
+FULL SUITE                      → 1144 passed | 44 skipped | 0 failed (3.5m)
+```
+
+**§4.4 data proofs** (dev DB unless stated):
+
+| # | Result |
+|---|---|
+| 1 | `audit-publish-findings.ts` re-run on the merged tree: 6 seeded graphs clean, 9 `WorkflowDefinition.graph` rows clean, 0 ERROR graphs. *"VERDICT: the new gate is a NO-OP on this corpus — nothing needs migrating."* |
+| 2 | EMPTY. Zero ENABLED `Agent` rows carry a dotted `{{a.b}}` in `instruction`/`compiledConfig`, and zero `PromptVersion` rows carry one in `content` — so L3's realtime renderer fix changes no stored output (Risk 5 has no victims here). Eight graphs mention `realtime`, none binds a dotted reference. Separately, 5 `PromptVersion` rows still carry single-brace tokens — proof #4's target for wave 2a, expected non-zero now. |
+| 3 | 0 ENABLED `AiModel` rows with a NULL provider; 33 ENABLED rows over 7 providers (`built-in` 23, `lm-studio` 3, `azure` 2, `sarvam` 2, `azure-foundry` 1, `openai` 1, `azure-speech` 1) — every one of which `providerClassOf` classifies, so `unassignedProviderCount` is 0 and no row is hidden from the picker (Risk 6 clear). 0 non-SYSTEM `AiModel` rows, i.e. the per-tenant clones OD-O retires do not exist on this DB. 23 rows have `wireModelId` distinct from `sourceUri` — the `built-in` bucket-served rows, which is the expected shape, not a drift. |
+
+Seeds re-run after the merge: `RUN_SEED=all pnpm db:seed` (dev) and `RUN_SEED=all NODE_ENV=test
+pnpm test:db:seed` both exit 0. Two warnings on both, both PRE-EXISTING and both fail-closed by
+design: `nlp.classification → nlp-doc-type-classifier` is not seeded because TASK-860 retired that
+slug while `16-ai-routing-policy.ts` still names it; and the create-only phases decline to clobber
+21 existing `AiProviderConnection` rows and 8 elected defaults.
+
+Registry measured **214** on the close tree (`HOPE_SETTINGS_REGISTRY.byKey.size`), up from TASK-870's
+209 — L12's five `global-kv` keys. TASK-870's README carries the Change History row (§4.7 step 8).
+
+**Review findings NOT fixed here, handed to the lane that owns them.** Three reviewers with distinct
+lenses (correctness/seams, security/tenancy, invariants) read the merged diff; every finding below
+was re-verified by this pass before being deferred.
+
+| For | Finding | Evidence |
+|---|---|---|
+| L11 (wave 2) | `trigger` is stamped on the invocation, speech and summary emitters, but `WORKFLOW_RUN` has NO producer at all, and `transcribe.stream`, `transcribe.batch` and `ner.extract` still emit without it. A "spend by activity" rollup attributes every workflow step and transcription to `null`. §4.6 defers these to the full cut, so this is scope, not regression — but the enum member ships un-writable | `usage-attributes.ts:48`; `agent-trajectory.service.ts:386-392`; `streamingSession.service.ts:481-495`; `nerUsageEvent.ts:64-80` |
+| L11 (wave 2) | the NER precheck landed on the CLINICAL path only, so a tenant at its `monthlyNlpTextUnits` ceiling is refused in `summary.service.ts` and served on the playground. Asymmetric within one merge; adding a 429 to a super-admin playground route is a lane decision, not a close fix | `summary.service.ts` (precheck added) vs `ai-inference.controller.ts:175-182` (records, no precheck) |
+| L11 (wave 2) | on the blocking invocation an unresolved provider is written as `'none'` while `classifyLlmDeployment('')` classifies the row `CLOUD` — a platform-funded engine call recorded as vendor spend. Funding itself is still DERIVED (`fundingTier === 'tenant'`), so inv-3 holds; this is a derivation edge, and which way it should fall is a billing decision | `agent.controller.ts:456-461`; `vocabulary.ts:131-134` |
+| L8 (wave 2b) | `MODEL_NOT_READY` (§3.12's advisory WARNING when `readiness ∈ {engine_down, weights_missing}`) does not exist yet. Correctly deferred — §4.1's L8 row owns it — recorded so the §3.12 table is not read as describing shipped code | grep over `packages`+`apps`: no occurrence |
+| L2/L5 (wave 2) | `create` reports `validationReport.ok: true` with no findings on a graph that `validate` then refuses with six ERRORs. Both are correct in isolation (create is a draft-time rule-catalogue pass; validate is the gate) but §3.5's "one name, one enforcement point" reads as broken to an author. Whoever builds the console findings rail should decide whether create runs the gate in report-only mode | `workflow-definition.service.ts:1181` vs the create path |
+| L12 (follow-up) | `SERVED_BY_TO_PROVIDER_SERVICE[row.servedBy ?? ''] ?? 'llm'` silently classifies an unmapped `servedBy` onto the `llm` credential plane, against the file's own "inventing a verdict would hide the real defect". All six deployables are mapped today, so it is latent; the fix is not one line, because `service` also feeds `cloudReadiness`'s non-null parameter | `inference-readiness.service.ts:371` |
+| L8 (wave 2b) | the third `ENGINE_SERVED_PROVIDERS` copy, private in `agent.service.ts:103`, still stands. L1 already handed L8 the repoint; left alone here because `agent.service.ts` is L8's file and editing it would conflict | `agent.service.ts:103,1188` |
+| L7 (follow-up) | `WorkflowSchemaDescription.modes` can now return `'socket'`, which the run route does not accept and `modeRefusal` does not know. No console consumer today | `workflow-schema-description.ts:75-83` |
+
+**Open for the owner.**
+
+1. `updateTenantConfigs` is reachable by any caller holding `update:Tenant` and takes a tenant
+   KEY as well as a UUID, so the controller's UUID-only scope check never fires for a key. W1-1
+   closes the SYSTEM tier; a foreign CUSTOMER tenant is already invisible (the read extension widens
+   to `[caller, SYSTEM]` only). Should `assertConfigInScope` refuse a non-UUID identifier outright
+   for a non-super-admin, or is key addressing a deliberate console affordance?
+2. `PUT admin/entitlements/tenants/:id/override` accepts and stores an override for `__GLOBAL__`
+   and `__SYSTEM__`, which Q3 then ignores outright — the write succeeds and changes nothing. Worth
+   a 409/422 on a reserved tenant rather than a silent no-op.
+
+### Waves 2a / 2b / 3 — not started
+
 Not started; every owner decision is in (OD-A..OD-R plus D-1 and D-2 — §6 carries no open item), and execution follows §4.9: one team of agents, one worktree per lane, wave-by-wave merges into `dev-2.2`, each wave closed by an `opus` verification / review / bug-fix pass over the MERGED tree in the primary checkout. D-1 and D-2 both land inside L14's existing wave-2b slot and move no estimate (§4.8). D-2's two preconditions are recorded here before its seed row merges: proof #8's live value per environment (dev, test, k3s `hope-v2-dev`), and the confirmation that every stack the e2e suite runs against has a reachable guardrail client — including whatever change that required in `tests/docker-compose.test.yml` / `pnpm setup:test`. Evidence per lane (gate commands with pasted output, boot-smoke lines, the §4.4 proof results incl. #8–#12, the empty-migration-diff line, the L1 "no reader remains" grep, the L9 "no `/admin/` reference" grep, the L13 step-v `tenant-scope.ts` grep, the post-D-2 latency/cost delta) is recorded here as each wave lands.
 
 ## 10. Change History
@@ -1275,3 +1412,4 @@ Not started; every owner decision is in (OD-A..OD-R plus D-1 and D-2 — §6 car
 | 2026-09-06 (round 2) | The owner answered all twelve §6 decisions verbatim and asked for one more assessment round. Two targeted discovery lanes (E: BYO connections / `AiModel` / engine-served vs cloud / readiness probes / `AiRoutingPolicy` / seeds; F: tenant provisioning / `SYSTEM_SHARED_READ_MODELS` / quota + metering per path / API-key scopes / the browser-SDK admin surface / the deprecation register / context-schema seeds) plus a six-point re-verification by this assessment (§2.7) changed the design: (1) OD-A/OD-L — BYO connections declare models, materialised as tenant-owned `AiModel` rows with `sourceConnectionId`; one "Hope provider" fronts every SYSTEM row; routing repointed at `wireModelId`; a readiness snapshot service, descriptors, route and console (§3.7, §3.12, L10, L12). (2) OD-E — every inference path quota-checked and metered; the unmetered production invocation route, the realtime `core.agent` lane and the prompt test-run became BLOCKER #7 (§3.13, L11; P-10 reversed). (3) OD-H/OD-J — context schemas stay tenant-owned and out of shared read; SYSTEM content is a REFERENCE SET cloned at tenant creation, re-syncable and backfilled (§3.4, L13); the Global-tenant settings clone and the per-tenant catalogue clone are retired subject to OD-O/OD-P; TASK-896 dropped. (4) OD-F/OD-K — `@arcaai/vox` loses its 22-prefix admin surface (zero first-party consumers, L9); nothing is deprecated: no `PromptVersion.syntax`, no shim, no convert assistant, the four deprecated `AiModel` columns drop in L2, `workflowPublishProblems` and the flat variable form go (§3.11); the broader register execution is TASK-901 (OD-N); TASK-897 dropped (`built-in` classified). (5) OD-C/OD-D — grammar and ramp kept, L0 sized at ≈ 3 days. Lanes re-cut from nine to thirteen in four waves (fan-out cap five); the day-1 cut recomputed (§4.6); nineteen risks; six second-round owner questions (§6.2). Status stays `Pending`. |
 | 2026-09-06 (round 3) | The owner answered OD-M..OD-R verbatim and asked for "a best practical practice fast-win solution". Two discovery lanes (G: guardrail management + every existing opt-out surface; H: every runtime SYSTEM read of content, the two flip failure modes, the `findCloneSource` reference-read pattern, TASK-884 H-6 in BOTH readers, the settings write lanes, BYO slug shadowing) and a five-point re-verification (§2.7 #18–#25) changed the plan in six places: (1) OD-M — the owner rule "content is cloned, config cascades" is written down (§1.5) with exact entity lists; the runtime SYSTEM fallback for content is REMOVED in five ordered steps inside L13 (§3.4: provision + backfill → verify H-6 fixed → rewrite every SYSTEM-reading path incl. the two resolvers' terminal candidate and `PromptResolutionService` → rewrite the pinned tests → the flip), the flip being the LAST merge of the day-1 path; `PromptTemplate` provenance keys on the SYSTEM row's id (no slug exists). (2) OD-R — guardrail management is already platform-only and never cloned (documented, not built); the opt-out is one boolean on three existing JSON shapes with node > workflow > agent precedence, a parity-checked pure function, `guardrail_policy.enabled` on every TEXT post, `resolve_posture` honouring it with the platform switch as the floor, and a recorded `attributesJson.guardrail` (§3.14, new lane L14 in wave 2b, P-27); two discussion items opened (§6.3). (3) OD-P — the legacy `GlobalSettingService` CRUD gains the SYSTEM-tier super-admin guard its two siblings already carry (§3.15, L1, P-28). (4) OD-O / OD-Q — decided; `AiModel` stays shared-read; the BYO slug-shadowing guard added to L10 (P-29). (5) OD-N — TASK-901 confirmed. (6) The TASK-884 H-6 fallback bug is a real defect in both the runtime resolver and the clone path and is fixed by CLS context (L1, L8), not by widening. Five new proofs (#8–#12), three new e2e specs, four new risks (20–23), six new decisions (P-26–P-31), the §4.6 re-cut, a new §4.8 fast-win path (≈ 28.5 engineer-days, ≈ 16 elapsed days, critical path L0/L1 → L2 → L3 → L13), and the rule-amendment row (§8). Fourteen lanes. Status stays `Pending`. |
 | 2026-09-06 (round 3, owner close-out) | The owner answered the two §6.3 discussion items verbatim — **D-1: "does the opt-out extend to the seven mandatory clinical guard nodes? YES"**; **D-2: "seed the external-guardrail switch on? YES"** — and directed the execution shape: one team of agents in parallel worktrees, merged into `dev-2.2` wave by wave, with an `opus` gated verification / review / bug-fix pass before each wave closes. Applied: (1) §3.14's boundary row rewritten and §3.14a added — the opt-out covers `MANDATORY_NODE_TYPES` through ONE filter change (`node-config-schemas.ts:2252`, gated on a new two-member `GRAPH_BOUNDARY_NODE_TYPES` instead), with mandatory PRESENCE, the `requires: ['guard.groundedness']` attachment check and both runtimes UNCHANGED (verified: no predicate and no `requires` check reads `config.enabled`), the two in-code "compliance defect" statements (`:2211-2214`, `:2172-2176`) rewritten to record the decision, a `GUARDRAIL_OPTED_OUT` WARNING naming every disabled mandatory node, and `guardrail: 'opted_out'` + the node ids on the run and the ledger; `consultation.hitlGate` and the two graph boundaries deliberately gain nothing, so TASK-859 invariant 5 is untouched. (2) §3.14b added — `text.externalGuardrail.enabled` seeded ON as one create-only SYSTEM row in `seed/11-global-setting.ts` (L14, wave 2b), gated by proof #8 and by an orchestrator-run stack precondition (a reachable guardrail client on every e2e stack, the isolated test stack included). (3) §4.9 added — the execution protocol (worktree per lane, disjoint file sets per §4.3, identical brief preambles for prompt-cache hygiene, follow-ups to the SAME agent, and the `opus` wave-close agent that re-runs the gates on the merged tree and whose "not closed" verdict blocks the next wave). (4) L14, §4.3 (three ownership rows), proof #8, the opt-out e2e spec, §4.6, §4.8, P-27, Risks 21 / 22 and §9 updated accordingly; P-32 and P-33 added. Status: `Pending` → `In Progress` on execution start; §6 has no open item. |
+| 2026-09-06 (wave 1 close) | **Wave 1 CLOSED** — L0, L1, L7, L11 and L12 merged into `dev-2.2` (`808edbd60`, `3392eadf2`, `be2a896d2`, `b1ab9f0b2`, `cc5a13343`), then verified, reviewed and bug-fixed on the MERGED tree by the `opus` wave-close pass of §4.9 (head `f63f021d7`). One integration fix (L1 and L12 had each declared a readiness vocabulary and symbol — four TS2308 ambiguous re-exports and a package that did not build; now one port, one symbol, one type set, owned by `services/ai-readiness`, with `AiModelServiceModule` actually resolving it) and six defects fixed: the platform-tier guard bypass through `PATCH admin/tenants/configs/__SYSTEM__` (32 unlocked SYSTEM rows were writable by a tenant admin), raw engine `probe_error` strings reaching tenant admins through `readinessDetail`, a 201-vs-200 contract drift on the readiness refresh, and three e2e assertions that could not pass as written (the 429 case ran against a `RESERVED_UNGATED` tenant; the `PROMPT_TEST` case asserts L4's wave-2b emitter; the workflow-lifecycle fixture named ports no node declares). Gates on the merged tree: lint 0 errors, typecheck clean, unit 24118 passed, console 2300 passed, vox 4407 passed, vox-node 420 passed, five artifacts regenerated with all three `:check`s green, boot smoke healthy, **full e2e 1144 passed / 44 skipped / 0 failed**. Data proofs #1–#3 recorded in §9 (all three clean; the publish gate is a no-op on the current corpus and no stored content carries a dotted reference). Harness's 6 replay failures are pre-existing by construction — all four harness files in the diff are NEW and nothing imports them yet. Registry 209 → 214. Eight items handed to their owning lanes and two owner questions opened in §9. Status: `In Progress`. |
