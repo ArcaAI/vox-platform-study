@@ -1,4 +1,3 @@
-import { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
 import { SYSTEM_TENANT_ID } from '../00-constants';
 import {
   AiDeploymentKind,
@@ -162,12 +161,17 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     metaData: { hubArtifact: 'google/gemma-4-E2B-it-qat-q4_0-gguf', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
   {
-    id: '80000000-0000-0000-0007-000000000005',
+    // The E4B tier of the catalogue, and the harness LLM-as-judge's alternate.
+    // The id is the one the retired `lms-gemma-4-e4b` (un-quantised bf16) row
+    // carried, because `seedAiModels` upserts on (tenantId, slug): keeping it
+    // makes the rename an in-place update on an existing database and a cold
+    // seed produce the same id. The old QAT slug is in the never-reuse ledger.
+    id: '80000000-0000-0000-0007-000000000023',
     tenantId: SYSTEM_TENANT_ID,
     name: 'Gemma 4 E4B IT QAT (LM Studio)',
-    slug: 'lms-gemma-4-e4b-it-qat',
+    slug: 'lms-gemma-4-e4b',
     description:
-      'Google Gemma 4 E4B instruction-tuned QAT (q4_0 GGUF + mmproj) via LM Studio — balanced local text-generation model. Served by the dev LM Studio instance (verified 2026-08-16).',
+      'Google Gemma 4 E4B instruction-tuned QAT (q4_0 GGUF + mmproj) via LM Studio — balanced local text-generation model, and the alternate harness LLM-as-judge. Served by the dev LM Studio instance (verified 2026-08-16).',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -187,73 +191,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     architecture: 'gemma4',
     memorySizeMb: 3072,
     computeType: 'q4_0',
-    tags: ['llm', 'lm-studio', 'mmproj'],
+    tags: ['llm', 'lm-studio', 'mmproj', 'judge'],
     metaData: { hubArtifact: 'google/gemma-4-E4B-it-qat-q4_0-gguf', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
-  },
-  {
-    // Unvalidated community fine-tune (5 downloads) — seeded DISABLED pending
-    // evaluation (decision D-5). Upstream is safetensors; needs a GGUF
-    // conversion step before LM Studio can serve it.
-    id: '80000000-0000-0000-0007-000000000006',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'Gemma 4 Medical ICD-10 (LM Studio)',
-    slug: 'lms-gemma-4-medical-icd10',
-    description:
-      'Gemma 4 medical ICD-10 community fine-tune (nikhil061307/Gemma-4-Medical-ICD10) via LM Studio — medical-coding-aware text generation. UNVALIDATED; DISABLED until evaluated. Needs a GGUF conversion step.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.FINETUNED_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'gemma-4-medical-icd10',
-    sourceRevision: 'main',
-    format: AiModelFormat.GGUF,
-    libraryName: 'llama.cpp',
-    servedBy: 'lmstudio',
-    deploymentKind: AiDeploymentKind.SELF_HOSTED,
-    wireModelId: 'gemma-4-medical-icd10',
-    license: 'gemma',
-    baseModel: 'google/gemma-4-E4B-it',
-    languages: ['en'],
-    provider: 'lm-studio',
-    architecture: 'gemma4',
-    memorySizeMb: 3072,
-    computeType: 'q5_k_m',
-    tags: ['llm', 'lm-studio', 'medical', 'unvalidated', 'requires-conversion'],
-    metaData: { hubArtifact: 'nikhil061307/Gemma-4-Medical-ICD10', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
-    resourceStatus: ResourceStatusType.DISABLED,
-  },
-  {
-    // The un-quantised E4B build — a catalogued ALTERNATE for the harness
-    // LLM-as-judge. `harness.judge` targets the QAT row; this one is here so
-    // a super admin can select the bf16 build deliberately. Upstream is bf16
-    // safetensors; needs a GGUF conversion step.
-    id: '80000000-0000-0000-0007-000000000023',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'Gemma 4 E4B (LM Studio judge)',
-    slug: 'lms-gemma-4-e4b',
-    description:
-      'Google Gemma 4 E4B served via LM Studio (OpenAI-compatible) — an alternate harness LLM-as-judge model. Identifier verified against the live instance 2026-08-16 (`google/gemma-4-e4b`). Upstream bf16 safetensors; needs a GGUF conversion step.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.BASE_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'google/gemma-4-e4b',
-    sourceRevision: 'main',
-    format: AiModelFormat.GGUF,
-    libraryName: 'llama.cpp',
-    servedBy: 'lmstudio',
-    deploymentKind: AiDeploymentKind.SELF_HOSTED,
-    wireModelId: 'google/gemma-4-e4b',
-    license: 'gemma',
-    gated: true,
-    baseModel: 'google/gemma-4-E4B',
-    languages: ['en'],
-    provider: 'lm-studio',
-    architecture: 'gemma4',
-    memorySizeMb: 3072,
-    computeType: 'q4_0',
-    tags: ['llm', 'lm-studio', 'judge', 'requires-conversion'],
-    metaData: { hubArtifact: 'google/gemma-4-E4B', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 
   // =========================================================================

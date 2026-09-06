@@ -44,7 +44,7 @@ class ProviderInfo(BaseModel):
     probe_error: str | None = None
     # admin introspection additions. All additive/optional:
     # `pool_health`/`pool_health_checked_at` come from the SAME
-    # `PoolHealthTracker` `/generate`'s degrade-routing check consults 
+    # `PoolHealthTracker` `/generate`'s degrade-routing check consults
     # — `None` means nobody has health-checked this provider yet (distinct
     # from `False`, which means the LAST check failed). `in_flight_requests`
     # mirrors the `text_active_generations` gauge for this provider.

@@ -245,9 +245,9 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     category: 'Platform Operations',
     label: 'Origin (CORS) enforcement enabled',
     description:
-      "Master switch for browser-origin enforcement. TRUE is the DEFAULT — for every tenant including SYSTEM and GLOBAL, in every environment, with no row present and no opt-in step (enforcing-by-default; reverses the earlier permissive-by-default posture): " +
+      'Master switch for browser-origin enforcement. TRUE is the DEFAULT — for every tenant including SYSTEM and GLOBAL, in every environment, with no row present and no opt-in step (enforcing-by-default; reverses the earlier permissive-by-default posture): ' +
       '`isOriginAllowed` consults the `TenantAllowedOrigin` registry, `OriginTenantBindingGuard` enforces origin↔tenant binding, and the STT WebSocket handshake checks the registry — an unregistered origin is refused. ' +
-      "Setting it FALSE restores the original permissive-by-default behaviour live, with no redeploy: every origin is admitted for every tenant and the allow-list is not consulted. " +
+      'Setting it FALSE restores the original permissive-by-default behaviour live, with no redeploy: every origin is admitted for every tenant and the allow-list is not consulted. ' +
       'Register the origins each tenant needs BEFORE relying on enforcement, or legitimate browser traffic gets refused (grep the `origin_registry_miss` log reason). The SYSTEM rows needed for local development ship as unconditional bootstrap seed data, not demo data, precisely so this default is safe on a fresh database. ' +
       'Authentication and tenancy remain the enforcing controls either way; CORS is advisory browser behaviour and never was an authorization boundary.',
     default: true,

@@ -27,10 +27,18 @@
  *      outcome; never the password).
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, generateUniqueSuffix } from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
-const UNIQUE = Date.now();
+// ONE token shared by every name this file mints, because names cross tests
+// inside a serial group (C1 creates `t409-c-role-b-<UNIQUE>`; E1 deletes it), so
+// a per-site call would break that lookup. `Date.now()` alone was not enough:
+// this is module scope, evaluated once per WORKER, and `Role.name`/`Policy.name`
+// are GLOBALLY unique — two workers drawing the same millisecond is a P2002 the
+// gateway answers 409. Serial mode happens to keep each describe on one worker
+// today, so this file was safe by scheduling accident rather than by naming;
+// the random tail makes it safe by construction.
+const UNIQUE = generateUniqueSuffix();
 
 // Seeded protected GLOBAL policies (packages/database/.../seed/01-policy.ts).
 const SYSTEM_FULL_ACCESS_ID = '00000000-0000-0000-0001-000000000001';

@@ -1248,9 +1248,7 @@ export class ContextService extends BaseService implements IContextService {
             thumbnailUrl: isImage ? await this.resolveThumbnailUrl(blobStorage, location, url) : undefined,
           });
         } catch (error) {
-          this.logger.warn(
-            `failed to presign media ${media.id} for context timeline: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          this.logger.warn(`failed to presign media ${media.id} for context timeline: ${error instanceof Error ? error.message : String(error)}`);
         }
       }),
     );

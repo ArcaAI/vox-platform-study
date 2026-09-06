@@ -30,9 +30,34 @@
  *     (attached JSON — the number the eventual fix is measured against),
  *     asserting only the invariant that holds today (the reconnect handshake
  *     is accepted). It does NOT green-wash the defect.
- *   • Encodes the TARGET contract the eventual fix must satisfy as a
- *     `test.fixme` (replay-from-lastSeq, no duplicate flood, no silent
- *     freeze) so the desired bar is visible and cannot pass by accident.
+ *   • Asserts the TARGET contract the fix had to satisfy (replay-from-lastSeq,
+ *     no duplicate flood, no silent freeze) as a live regression gate.
+ *
+ * STATUS — the two paragraphs above are HISTORY, not current behavior. Both
+ * defects they describe are fixed and the gateway is measured green here:
+ *   • control frames are routed on the ws `isBinary` flag, so `{type:'resume'}`
+ *     reaches `handleResume` (baseline `finding_control_frames_ignored: false`,
+ *     `resumeReplyType: 'resumed'`);
+ *   • a transient drop keeps the session alive for `WS_RESUME_GRACE_MS` and the
+ *     reconnect rebinds it, so the resume answers `fromSeq: lastSeq + 1` off the
+ *     live session instead of a 0-0 re-read (`c3_01_duplicate_flood: false`).
+ * The TARGET test below is therefore a live gate, NOT a `test.fixme`. Do not
+ * re-add `.fixme` to it — a red here is a regression in the resume path (or the
+ * ASR-contention failure the serial mode below exists to prevent), not the
+ * historical baseline reasserting itself.
+ *
+ * ASR CONTENTION — why this describe is `mode: 'serial'`. Both tests drive REAL
+ * inference through the single local ASR model, and the caption windows below
+ * are latency budgets against it. Measured on an idle stack (2026-09-06): the
+ * first caption lands ~15s after a 12s realtime feed ends, a post-resume caption
+ * ~4s after an 8s feed. Run the two tests CONCURRENTLY — which `fullyParallel`
+ * did until this line — and that latency roughly doubles: the TARGET test's
+ * post-resume wait then expires empty and reports a "silent freeze" that is
+ * purely two tests queueing behind one model. Reproduced deterministically with
+ * just this one file at 2 workers; green with `mode: 'serial'`. Same class of
+ * problem `streaming-backpressure-recovery` solves with its own exclusive
+ * project — that one is throughput-bound (it must drain a 24s flood), this one
+ * is latency-bound and needs only to not race its own sibling.
  *
  * Live-stack requirement: needs STT behind the gateway; self-skips with an
  * explicit reason when unreachable. Prereqs + invocation:
@@ -59,6 +84,25 @@ const PRE_DROP_SECONDS = 12;
 /** Seconds fed AFTER resume — a silent stream here is the C3-01 freeze. */
 const POST_RESUME_SECONDS = 8;
 
+/**
+ * How long to wait for a caption after a realtime feed ends.
+ *
+ * This is a budget against REAL ASR latency, not against any gateway behaviour
+ * under test. Measured idle (2026-09-06, single local model): ~15s for the first
+ * caption of a session, ~4s for a post-resume caption. The previous 15s sat
+ * exactly ON the worst idle measurement, so any queueing at all expired it empty
+ * and the test reported a "silent freeze" that was really the model being busy.
+ * 60s is ~4x that worst case — enough headroom for ordinary jitter, still far
+ * short of the test timeout, and still red for an actual freeze (a frozen stream
+ * never produces a caption however long you wait).
+ */
+const CAPTION_WINDOW_MS = 60_000;
+
+// Both tests below drive real inference through the SINGLE local ASR model.
+// Serial so they never queue behind each other — see the ASR CONTENTION note in
+// the file header for the measurement that made this necessary.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
   let token: string;
 
@@ -67,7 +111,7 @@ test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
   });
 
   test('documented baseline: capture the current resume-after-drop transport behavior', async ({ request }, testInfo) => {
-    test.setTimeout(150_000);
+    test.setTimeout(180_000);
 
     const created = await createStreamSession(request, { token });
     test.skip(!created.ok, `streaming session unavailable (is STT running?): ${created.ok ? '' : created.reason}`);
@@ -138,7 +182,7 @@ test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
 
         // Feed MORE audio; a silent stream here is the C3-01 freeze.
         await feedFramesRealtime(second, postResumePcm, { frameMs: 80 });
-        await second.waitForTranscripts(1, 15_000);
+        await second.waitForTranscripts(1, CAPTION_WINDOW_MS);
         second.sendStop();
         await sleep(1500);
 
@@ -181,7 +225,7 @@ test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
 
       // Stable invariant ONLY — whether the gateway answers the resume, replays,
       // duplicates (seq reset), or freezes IS the C3-01 baseline recorded above
-      // and the `test.fixme` target below. We do NOT green-wash any of that here.
+      // and the TARGET gate below. We do NOT green-wash any of that here.
       expect(handshakeAccepted, 'reconnect after drop should complete the WS handshake').toBe(true);
     } finally {
       await closeStreamSession(request, token, session.sessionId);
@@ -189,14 +233,13 @@ test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // TARGET CONTRACT (Redis consumer-groups migration). Marked
-  // `test.fixme` — it encodes the behavior the migration must deliver and MUST
-  // NOT pass on today's plain-XREAD transport. When the migration lands, drop
-  // the `.fixme` and this becomes the regression gate. Do not green-wash by
-  // deleting it.
+  // TARGET CONTRACT (Redis consumer-groups migration + the resume grace window).
+  // The migration LANDED, so this is a LIVE regression gate, not a `test.fixme`:
+  // it must stay green, and a red here means the resume path regressed. Do not
+  // green-wash it by deleting it, loosening an assertion, or re-adding `.fixme`.
   // ---------------------------------------------------------------------------
   test('TARGET: resumes from lastSeq with no duplicate flood and no silent freeze', async ({ request }) => {
-    test.setTimeout(150_000);
+    test.setTimeout(210_000);
     const created = await createStreamSession(request, { token });
     test.skip(!created.ok, `streaming session unavailable: ${created.ok ? '' : created.reason}`);
     const session = (created as { ok: true; session: StreamSessionInfo }).session;
@@ -211,9 +254,27 @@ test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
       ticket: session.ticket,
     });
     await feedFramesRealtime(first, pcm.subarray(0, preDropFrames * frameBytesPer), { frameMs: 80 });
-    await first.waitForTranscripts(1, 25_000);
+    const banked = await first.waitForTranscripts(1, CAPTION_WINDOW_MS);
     const lastSeq = first.lastSeq();
+    // PRECONDITION, asserted rather than assumed. Every assertion below is about
+    // resuming FROM a seq the client already saw: `fromSeq === lastSeq + 1` and
+    // "nothing with seq <= lastSeq is re-delivered". With no pre-drop caption
+    // both collapse to the vacuous lastSeq = 0 case — `fromSeq: 1` and an
+    // empty duplicate filter pass while measuring nothing — and the run then
+    // dies on the post-resume wait with a "freeze" message that names the wrong
+    // cause. This return value used to be discarded, which is exactly how that
+    // happened. An ASR that produced nothing at all is a stack problem, not a
+    // resume regression, so say so and skip.
     first.drop();
+    if (!banked || lastSeq === 0) {
+      await closeStreamSession(request, token, session.sessionId);
+      test.skip(
+        true,
+        `no pre-drop caption in ${CAPTION_WINDOW_MS}ms (transcripts=${first.transcripts.length}, lastSeq=${lastSeq}) — ` +
+          'the resume-from-lastSeq contract is unmeasurable without one. The ASR produced nothing; check STT/model ' +
+          'availability and contention, not the resume path.',
+      );
+    }
     await sleep(500);
 
     const refreshed = await refreshStreamTicket(request, token, session.sessionId);
@@ -240,8 +301,10 @@ test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
 
     // (3) no silent freeze: new transcripts continue after resume.
     await feedFramesRealtime(second, pcm.subarray(preDropFrames * frameBytesPer), { frameMs: 80 });
-    const flowed = await second.waitForTranscripts(1, 15_000);
-    expect(flowed, 'transcripts must continue flowing after resume (no freeze)').toBe(true);
+    const flowed = await second.waitForTranscripts(1, CAPTION_WINDOW_MS);
+    expect(flowed, `transcripts must continue flowing after resume (no freeze) — waited ${CAPTION_WINDOW_MS}ms after the post-resume feed`).toBe(
+      true,
+    );
 
     second.close();
     await closeStreamSession(request, token, session.sessionId);

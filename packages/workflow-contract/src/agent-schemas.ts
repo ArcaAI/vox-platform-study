@@ -340,7 +340,7 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
           maxItems: 2,
           items: Object.freeze({ type: 'number', minimum: 0, maximum: 30 }),
           description:
-            'TASK-877 (owner decision #9) — `[left, right]` overlap in seconds around each chunk. TASK-880 corrected the type: the wire field, `buildResolvedAsrSpec`\'s reader and the committed contract fixture have always been a PAIR, so a scalar here made the value an agent could author and the value the runtime consumes different things. Optional.',
+            "TASK-877 (owner decision #9) — `[left, right]` overlap in seconds around each chunk. TASK-880 corrected the type: the wire field, `buildResolvedAsrSpec`'s reader and the committed contract fixture have always been a PAIR, so a scalar here made the value an agent could author and the value the runtime consumes different things. Optional.",
         }),
       }),
     }),

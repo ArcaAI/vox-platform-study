@@ -66,20 +66,19 @@ export const DEFAULT_STREAM_PIPELINE_ID: string | undefined = process.env.STREAM
 /**
  * The ASR agent every streaming e2e session names explicitly.
  *
- * NOT a stylistic preference — it is what makes a live session possible at all.
- * Left implicit, the cascade resolves the SYSTEM default `platform-transcription`,
- * whose model is an ArcaAI fine-tune in a PRIVATE Hub repo; the
- * `model-registry:huggingface` connection is seeded blank + disabled, so the
- * pull 401s, `createSession` (which loads the model INLINE) blows the gateway's
- * 15s budget, and every live-session spec skips with "is STT running?" — which
- * is exactly what it looked like before TASK-869, and exactly what it was not.
+ * `example-transcription` (`25-agents.ts`) is PUBLISHED to the `__GLOBAL__`
+ * tenant and binds `arcaai-whisper-large-ml-en-gguf`.
  *
- * `example-transcription-turbo` (`25-agents.ts`) is PUBLISHED to the `__GLOBAL__`
- * tenant, never assigned to anyone, and bound to the PUBLIC
- * `whisper-large-v3-turbo-q8_0` GGUF — no credential, no fallback download.
+ * KNOWN CONSTRAINT — that model lives in a PRIVATE Hub repo, and the SYSTEM
+ * `model-registry:huggingface` connection is seeded blank + disabled, so on a
+ * stack with no Hub token the pull 401s, `createSession` (which loads the model
+ * INLINE) blows the gateway's 15s budget, and the live-session specs skip with
+ * "is STT running?". TASK-869 worked around that with a public GGUF fixture row
+ * + agent; the owner's 33-row catalogue revision removed both, so a live-session
+ * run now needs either a Hub token on that connection or locally staged weights.
  * Override with `STREAM_E2E_AGENT_SLUG` to point the suite at another agent.
  */
-export const DEFAULT_STREAM_AGENT_SLUG: string = process.env.STREAM_E2E_AGENT_SLUG?.trim() || 'example-transcription-turbo';
+export const DEFAULT_STREAM_AGENT_SLUG: string = process.env.STREAM_E2E_AGENT_SLUG?.trim() || 'example-transcription';
 
 /**
  * Committed 16 kHz mono PCM16 fixture (≈107 s real Malayalam speech). Override

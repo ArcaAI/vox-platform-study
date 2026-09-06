@@ -119,9 +119,7 @@ export function assertCaslEnforcePairReachability(enforcedPairs: ReadonlySet<str
   }
 
   if (problems.length > 0) {
-    throw new Error(
-      `refused to start — ${problems.length} unreachable CASL enforce pair(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`,
-    );
+    throw new Error(`refused to start — ${problems.length} unreachable CASL enforce pair(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`);
   }
 }
 

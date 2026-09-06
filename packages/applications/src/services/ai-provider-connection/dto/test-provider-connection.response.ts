@@ -16,6 +16,9 @@ export class TestProviderConnectionResponse {
   })
   probe!: 'auth' | 'reachability';
 
-  @ApiProperty({ description: 'Which tier supplied the probed configuration: the request body, the tenant row, or the SYSTEM row.', enum: ['request', 'tenant', 'platform'] })
+  @ApiProperty({
+    description: 'Which tier supplied the probed configuration: the request body, the tenant row, or the SYSTEM row.',
+    enum: ['request', 'tenant', 'platform'],
+  })
   source!: 'request' | 'tenant' | 'platform';
 }

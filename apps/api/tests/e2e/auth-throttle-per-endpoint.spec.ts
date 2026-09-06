@@ -116,7 +116,9 @@ test.describe('AC-6 — Auth throttle granularity', () => {
     const existing = await request.get('/api/v1/admin/rate-limit/rules', { headers: adminHeaders() });
     const match =
       existing.status() === 200
-        ? ((await existing.json()) as Array<{ id: string; routeMatch: string; limitValue: number; version: number }>).find((r) => r.routeMatch === LOGIN_ROUTE_KEY)
+        ? ((await existing.json()) as Array<{ id: string; routeMatch: string; limitValue: number; version: number }>).find(
+            (r) => r.routeMatch === LOGIN_ROUTE_KEY,
+          )
         : undefined;
 
     if (match) {
@@ -133,7 +135,13 @@ test.describe('AC-6 — Auth throttle granularity', () => {
     } else {
       const rule = await request.post('/api/v1/admin/rate-limit/rules', {
         headers: adminHeaders(),
-        data: { routeMatch: LOGIN_ROUTE_KEY, matchKind: 'EXACT', limitValue: LOGIN_RULE_LIMIT, windowMs: 60_000, description: 'e2e login throttle probe' },
+        data: {
+          routeMatch: LOGIN_ROUTE_KEY,
+          matchKind: 'EXACT',
+          limitValue: LOGIN_RULE_LIMIT,
+          windowMs: 60_000,
+          description: 'e2e login throttle probe',
+        },
       });
       expect(rule.status(), 'declare the login rule this spec measures').toBe(201);
       createdRuleId = (await rule.json()).id;
@@ -149,7 +157,8 @@ test.describe('AC-6 — Auth throttle granularity', () => {
     // the row addressable and stops it throttling anything.
     if (createdRuleId) {
       const current = await request.get('/api/v1/admin/rate-limit/rules', { headers: adminHeaders() });
-      const row = current.status() === 200 ? ((await current.json()) as Array<{ id: string; version: number }>).find((r) => r.id === createdRuleId) : undefined;
+      const row =
+        current.status() === 200 ? ((await current.json()) as Array<{ id: string; version: number }>).find((r) => r.id === createdRuleId) : undefined;
       if (row) {
         await request
           .patch(`/api/v1/admin/rate-limit/rules/${createdRuleId}`, {

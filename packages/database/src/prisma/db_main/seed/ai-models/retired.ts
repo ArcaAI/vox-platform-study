@@ -100,6 +100,13 @@ export const RETIRED_AI_MODEL_SLUGS: readonly string[] = [
   'bedrock-claude-3.5-haiku',
   'nlp-doc-type-classifier',
   'indic-f5',
+  // Owner catalogue revision (33 rows): the e2e ASR fixture row and the two
+  // surplus LM Studio rows. `lms-gemma-4-e4b-it-qat` is retired as a SLUG only —
+  // its weights (the QAT q4_0 GGUF) live on under `lms-gemma-4-e4b`, which took
+  // over that row's identity; the un-quantised bf16 build it displaced is gone.
+  'whisper-large-v3-turbo-q8_0',
+  'lms-gemma-4-e4b-it-qat',
+  'lms-gemma-4-medical-icd10',
 ];
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

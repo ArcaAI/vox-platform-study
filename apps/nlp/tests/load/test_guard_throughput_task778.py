@@ -59,7 +59,7 @@ def _env_int(name: str, default: int) -> int:
 CONCURRENCY = _env_int("NLP_LOAD_TEST_CONCURRENCY", 100)
 ROUNDS = _env_int("NLP_LOAD_TEST_ROUNDS", 3)
 PASS_MS = _env_int("NLP_LOAD_TEST_PASS_MS", 40)
-# Batching geometry under test. Overridable so the tuning 
+# Batching geometry under test. Overridable so the tuning
 # is REPRODUCIBLE — the recorded numbers name the geometry that produced them.
 BATCH = _env_int("NLP_LOAD_TEST_BATCH", 16)
 LINGER_MS = _env_int("NLP_LOAD_TEST_LINGER_MS", 8)

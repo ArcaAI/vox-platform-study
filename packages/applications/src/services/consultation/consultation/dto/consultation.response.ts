@@ -64,8 +64,7 @@ export class ConsultationResponse {
   parentConsultationId?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine).',
+    description: 'Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine).',
     enum: ConsultationStatus,
     example: ConsultationStatus.OPEN,
   })
