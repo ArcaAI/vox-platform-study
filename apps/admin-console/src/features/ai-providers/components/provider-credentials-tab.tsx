@@ -8,7 +8,7 @@ import { PROVIDERS_BY_SERVICE } from './provider-meta';
 
 const SERVICE_COPY: Record<ProviderService, string> = {
   llm: 'Bring your own Azure OpenAI, Amazon Bedrock, OpenAI, Anthropic, or Google Vertex AI account for text generation and summarization.',
-  stt: 'Bring your own Azure Speech, Sarvam, or OpenAI account for speech-to-text transcription.',
+  stt: 'Bring your own Azure Speech, Azure AI Foundry, Sarvam, or OpenAI account for speech-to-text transcription.',
   tts: 'Bring your own Azure Speech or Sarvam account for text-to-speech synthesis.',
   embeddings:
     'Bring your own Azure OpenAI or OpenAI account for embedding generation. This is a separate connection from text generation: a tenant may bring one vendor for generation and another for embeddings.',
