@@ -62,7 +62,15 @@ async function createDraft(page: Page, slug: string, paletteKey = 'summarization
   await page.goto('/workflow-studio/new');
   await page.getByLabel('Slug *').fill(slug);
   await page.getByLabel('Name *').fill(`E2E ${slug}`);
-  await page.getByLabel('Palette key *').fill(paletteKey);
+  // TASK-890 black-box J4-F7 — `Palette key *` is a PICKER over the registry's own palette keys
+  // now; the free-text box survives only for a failed registry read, so drive whichever is up.
+  const palette = page.getByLabel('Palette key *');
+  if ((await palette.getAttribute('role')) === 'combobox') {
+    await palette.click();
+    await page.locator(`[role="option"][data-value="${paletteKey}"]`).click();
+  } else {
+    await palette.fill(paletteKey);
+  }
   await page.getByRole('button', { name: 'Create draft' }).click();
   // Surface a failed create as itself rather than as an opaque navigation
   // timeout — a quota rejection renders an alert and never navigates.
