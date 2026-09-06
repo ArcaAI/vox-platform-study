@@ -10,7 +10,7 @@ import {
   internalServiceHeaders,
   resolveInternalAccessToken,
 } from '@arcaai/applications';
-import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType } from '@arcaai/domains';
+import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -118,6 +118,13 @@ export class DiscoveryResponse {
 /** The subset of TEXT's `ProviderInfo` this merge consumes. */
 interface TextProviderEntry {
   name: string;
+  /**
+   * TEXT's own verdict on the ENGINE: `available` when it enumerated it,
+   * `unavailable` when it could not. Distinct from `probe_status`, which only
+   * says whether the probe CALL raised — every adapter swallows a connection
+   * error and returns `unavailable` with `probe_status: "ok"`.
+   */
+  status?: string;
   models?: Array<{ name: string; state?: string | null; engine_native?: Record<string, unknown> | null }>;
   probe_status?: string;
   probe_latency_ms?: number;
@@ -285,8 +292,14 @@ export class AiModelDiscoveryService {
     wantedProviders: readonly string[],
   ): Promise<{ connections: Record<string, ProbeConnectionWire>; sources: Record<string, DiscoveryConnectionSource> }> {
     const empty = { connections: {}, sources: {} };
-    const tenantId = this.clsService?.get('tenantId');
-    if (!this.providerConnections || !tenantId || wantedProviders.length === 0) return empty;
+    // A SUPER_ADMIN with no working tenant selected — the normal state of the
+    // platform operator on `/ai-models` — has no tenant in CLS. Rule 00: a
+    // request with no tenant context resolves SYSTEM only, never a customer
+    // tenant. Bailing here instead sent TEXT an empty `connections` map, so it
+    // enumerated nothing and every registered engine row came back
+    // `registered-missing-on-server` while the engine was serving.
+    const tenantId = this.clsService?.get('tenantId') || SYSTEM_TENANT_ID;
+    if (!this.providerConnections || wantedProviders.length === 0) return empty;
 
     // TEXT is the LLM capability, so the service discriminator is always `llm`.
     let overrides: Record<string, { api_key: string; base_url?: string; funding: 'tenant' | 'platform' }>;
@@ -371,9 +384,8 @@ export class AiModelDiscoveryService {
         live,
         live.map((p) => ({
           provider: p.name,
-          probeStatus: normalizeProbeStatus(p.probe_status),
+          ...engineProbeOutcome(p, Boolean(connections[p.name])),
           ...(typeof p.probe_latency_ms === 'number' ? { latencyMs: p.probe_latency_ms } : {}),
-          ...(p.probe_error ? { error: p.probe_error } : {}),
           ...(sources[p.name] ? { connectionSource: sources[p.name] } : {}),
         })),
       ];
@@ -392,4 +404,27 @@ function normalizeLoadState(state: string | null | undefined): DiscoveryLoadStat
 
 function normalizeProbeStatus(status: string | undefined): DiscoveryProbeStatus {
   return status === 'ok' || status === 'timeout' || status === 'error' || status === 'skipped' ? status : 'ok';
+}
+
+/**
+ * The probe outcome for one engine, from BOTH facts TEXT reports.
+ *
+ * `probe_status` only says whether the probe CALL raised inside TEXT; every
+ * adapter swallows a connection error and returns `status: "unavailable"` with
+ * `probe_status: "ok"`. Trusting the latter alone rendered a dead engine as
+ * "Reachable · 0 ms" in the console and flagged its registered rows
+ * `registered-missing-on-server`. So an engine that did not answer is `error`
+ * when we actually gave TEXT an address for it, and `skipped` when we did not.
+ */
+function engineProbeOutcome(entry: TextProviderEntry, probed: boolean): { probeStatus: DiscoveryProbeStatus; error?: string } {
+  const reported = normalizeProbeStatus(entry.probe_status);
+  const withError = (probeStatus: DiscoveryProbeStatus, fallback?: string) => ({
+    probeStatus,
+    ...(entry.probe_error ? { error: entry.probe_error } : fallback ? { error: fallback } : {}),
+  });
+
+  if (reported !== 'ok') return withError(reported);
+  if (entry.status === undefined || entry.status === 'available') return withError('ok');
+  if (!probed) return withError('skipped', 'no endpoint resolved for this provider — nothing was probed');
+  return withError('error', `the engine did not answer (TEXT reported '${entry.status}')`);
 }

@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PATH_METADATA, METHOD_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { GoneException, HttpStatus, RequestMethod } from '@nestjs/common';
+import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiModelDiscoveryController } from '../ai-model-discovery.controller';
 import { AiModelDiscoveryService, normalizeModelSlug } from '../ai-model-discovery.service';
 
@@ -176,7 +177,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 });
 
 // =============================================================================
-// Tenant-aware discovery 
+// Tenant-aware discovery
 // =============================================================================
 describe('AiModelDiscoveryService.discover — tenant-aware engine resolution', () => {
   it("probes the TENANT's own LM Studio when it has one", async () => {
@@ -246,16 +247,42 @@ describe('AiModelDiscoveryService.discover — tenant-aware engine resolution', 
     expect(result.entries.map((e) => e.modelName)).toEqual(['x']);
   });
 
-  it('resolves nothing when there is no tenant context', async () => {
+  // A SUPER_ADMIN with no working tenant selected is the NORMAL state of the
+  // platform operator who opens `/ai-models`. Resolving nothing for them meant
+  // TEXT was handed an empty `connections` map, enumerated no engine, and every
+  // registered engine row came back `registered-missing-on-server` — LM Studio's
+  // LOADED model reported as missing. Rule 00: a request with no tenant context
+  // resolves SYSTEM only (never a customer tenant).
+  it('resolves the SYSTEM tier when there is no tenant context (platform operator)', async () => {
     const { service, post, connections } = makeService({
-      text: [{ name: 'lm-studio', probe_status: 'ok', models: [] }],
+      text: [{ name: 'lm-studio', status: 'available', probe_status: 'ok', models: [{ name: 'platform-gemma' }] }],
       tenantId: null,
+      overrides: { 'lm-studio': { api_key: 'platform-key', funding: 'platform', base_url: 'http://platform-lms.test/v1' } },
     });
 
-    await service.discover();
+    const result = await service.discover('lm-studio');
 
-    expect(connections.resolveTenantCloudOverrides).not.toHaveBeenCalled();
-    expect(sentConnections(post)).toEqual({});
+    expect(connections.resolveTenantCloudOverrides).toHaveBeenCalledWith('llm', SYSTEM_TENANT_ID);
+    expect(sentConnections(post)['lm-studio']).toMatchObject({ base_url: 'http://platform-lms.test/v1' });
+    expect(result.entries.map((e) => e.modelName)).toEqual(['platform-gemma']);
+  });
+
+  it('never widens a tenantless resolution to a CUSTOMER tenant', async () => {
+    const { service, connections } = makeService({
+      text: [{ name: 'lm-studio', status: 'available', probe_status: 'ok', models: [] }],
+      tenantId: '',
+      overrides: {},
+      rows: {},
+    });
+
+    await service.discover('lm-studio');
+
+    const tenants = [
+      ...connections.resolveTenantCloudOverrides.mock.calls.map((c: unknown[]) => c[1]),
+      ...connections.resolveConnection.mock.calls.map((c: unknown[]) => c[2]),
+    ];
+    expect(tenants.length).toBeGreaterThan(0);
+    expect(new Set(tenants)).toEqual(new Set([SYSTEM_TENANT_ID]));
   });
 
   it('never leaks a credential into the discovery response', async () => {
@@ -415,5 +442,66 @@ describe('AiModelDiscoveryController delegation', () => {
     await expect(controller.register(body as never)).rejects.toThrow(/inventory|register from the bucket/i);
     expect(service.register).not.toHaveBeenCalled();
     expect(Reflect.getMetadata(HTTP_CODE_METADATA, AiModelDiscoveryController.prototype.register)).toBe(HttpStatus.GONE);
+  });
+});
+
+// =============================================================================
+// Probe truthfulness — an engine that did not answer must not read "Reachable".
+//
+// TEXT reports TWO facts per provider: `probe_status` (did the probe CALL
+// raise) and `status` (did the engine answer). Every adapter swallows a
+// connection error and returns `status: "unavailable"` with `probe_status:
+// "ok"`, so trusting `probe_status` alone renders a dead engine as
+// "Reachable · 0 ms" in the console's discovery drawer.
+// =============================================================================
+describe('AiModelDiscoveryService.discover — probe status reflects whether the engine answered', () => {
+  it('reports `error` for an engine that was probed and did not answer', async () => {
+    const { service } = makeService({
+      text: [{ name: 'ollama', status: 'unavailable', probe_status: 'ok', probe_latency_ms: 3, models: [] }],
+      overrides: {},
+      rows: { ollama: { baseUrl: 'http://sys-ollama.test', source: 'system' } },
+    });
+
+    const result = await service.discover('ollama');
+
+    const probe = result.probes.find((p) => p.provider === 'ollama');
+    expect(probe?.probeStatus).toBe('error');
+    expect(probe?.error).toBeTruthy();
+  });
+
+  it('reports `skipped` for a provider no connection was resolved for', async () => {
+    const { service } = makeService({
+      text: [{ name: 'ollama', status: 'unavailable', probe_status: 'ok', models: [] }],
+      overrides: {},
+      rows: { ollama: null },
+    });
+
+    const result = await service.discover('ollama');
+
+    expect(result.probes.find((p) => p.provider === 'ollama')?.probeStatus).toBe('skipped');
+  });
+
+  it('still reports `ok` for an engine that answered', async () => {
+    const { service } = makeService({
+      text: [{ name: 'lm-studio', status: 'available', probe_status: 'ok', probe_latency_ms: 17, models: [{ name: 'gemma' }] }],
+      overrides: { 'lm-studio': { api_key: 'k', funding: 'platform', base_url: 'http://lms.test/v1' } },
+    });
+
+    const result = await service.discover('lm-studio');
+
+    expect(result.probes.find((p) => p.provider === 'lm-studio')?.probeStatus).toBe('ok');
+  });
+
+  it('does not flag a registered model as missing-on-server when the probe did not really succeed', async () => {
+    const { service } = makeService({
+      text: [{ name: 'vllm', status: 'unavailable', probe_status: 'ok', models: [] }],
+      dbRows: [dbRow({ provider: 'vllm' })],
+      overrides: {},
+      rows: { vllm: { baseUrl: 'http://sys-vllm.test/v1', source: 'system' } },
+    });
+
+    const result = await service.discover('vllm');
+
+    expect(result.entries[0]?.status).toBe('registered');
   });
 });
