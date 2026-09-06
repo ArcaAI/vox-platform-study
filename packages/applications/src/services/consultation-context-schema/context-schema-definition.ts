@@ -40,6 +40,21 @@ export const CONTEXT_CARDINALITIES = ['ONE', 'MANY'] as const;
 export const CONTEXT_LIFECYCLES = ['PRE', 'DURING', 'POST', 'ANY'] as const;
 export const CONTEXT_PRODUCERS = ['CLIENT', 'AGENT', 'SYSTEM'] as const;
 
+/**
+ * TASK-890 §3.4 — the SLUG of the legacy bridge schema: the SYSTEM reference row that declares
+ * the v1 consultation prompt vocabulary, cloned into every tenant by the reference set.
+ *
+ * The prompt path resolves the TENANT's clone by `sourceTemplateSlug`, never the SYSTEM row —
+ * context schemas are CONTENT (§1.5), so SYSTEM is a reference set, not a runtime tier.
+ *
+ * Underscores because a schema slug is validated against `CONTEXT_KIND_KEY_PATTERN` below: a
+ * hyphenated slug could not be authored through the API, and the clone path goes through the
+ * same `create()` the API does. Mirrored in
+ * `packages/database/src/prisma/db_main/seed/07g-consultation-legacy-context-schema.ts`, which
+ * cannot import this package; the seed test asserts the two agree.
+ */
+export const LEGACY_CONTEXT_SCHEMA_SLUG = 'consultation_legacy_v1';
+
 /** The only `schemaVersion` this platform understands. */
 export const CONTEXT_SCHEMA_DEFINITION_VERSION = '1.0';
 

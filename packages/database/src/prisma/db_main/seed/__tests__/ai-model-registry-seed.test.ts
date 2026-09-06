@@ -203,11 +203,13 @@ describe('the platform model catalogue (33 SYSTEM rows)', () => {
     expect(nonDefault).toEqual([]);
   });
 
-  it('never seeds the publisher-owned bucket identity (bucketPrefix / primaryObject / localPath)', () => {
+  it('never seeds the publisher-owned bucket identity (bucketPrefix / primaryObject)', () => {
     catalog.forEach((m) => {
       expect((m as { bucketPrefix?: unknown }).bucketPrefix, m.slug).toBeUndefined();
       expect(m.primaryObject, m.slug).toBeUndefined();
-      expect(m.localPath, m.slug).toBeUndefined();
+      // TASK-890 — `localPath` is no longer a column at all; the mount path is derived
+      // from the bucket identity above at the moment a resolved spec is built.
+      expect((m as { localPath?: unknown }).localPath, m.slug).toBeUndefined();
     });
   });
 
