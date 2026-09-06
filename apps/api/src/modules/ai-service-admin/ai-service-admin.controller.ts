@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Post, Query } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Inject, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IInferenceReadinessService, InferenceReadinessResponse, toInferenceReadinessResponse } from '@arcaai/applications';
@@ -63,6 +63,11 @@ export class AiServiceAdminController {
   }
 
   @Post('readiness/refresh')
+  // 200, not Nest's POST default of 201: this creates no resource. It takes an
+  // OBSERVATION and returns it, which is what `@ApiOkResponse` below declares
+  // and what `openapi.json` therefore publishes — without this the served
+  // status and the published contract disagree.
+  @HttpCode(HttpStatus.OK)
   // A refresh costs a real engine probe through the text service, so it carries
   // its own ceiling on top of the global default tier. The GET does not: it is
   // a Redis read.

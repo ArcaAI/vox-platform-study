@@ -117,7 +117,12 @@ describe('InferenceReadinessService — engine-served rows', () => {
           { name: 'a', state: 'loaded' },
           { name: 'b', state: 'not-loaded' },
         ]),
-        { name: 'ollama', models: [], probe_status: 'error', probe_error: 'connect ECONNREFUSED' },
+        {
+          name: 'ollama',
+          models: [],
+          probe_status: 'error',
+          probe_error: "Client error '401 Unauthorized' for url 'http://hope-ollama.hope-v2-dev:11434/api/tags'",
+        },
       ],
     });
 
@@ -126,6 +131,13 @@ describe('InferenceReadinessService — engine-served rows', () => {
     expect(snapshot.models['m-a']!.readiness).toBe('ready');
     expect(snapshot.models['m-b']!.readiness).toBe('loadable');
     expect(snapshot.models['m-o']!.readiness).toBe('engine_down');
+    // TASK-890 wave-1 close: a MODEL detail is stamped onto the tenant-facing
+    // catalogue, so it is a curated phrase — never the upstream's raw
+    // `probe_error`, which carries the engine's internal address.
+    expect(snapshot.models['m-o']!.detail).toBe('the serving engine did not answer the last probe');
+    expect(snapshot.models['m-o']!.detail).not.toContain('http');
+    // The super-admin ENGINE document keeps the diagnostic.
+    expect(snapshot.engines.find((e) => e.provider === 'ollama')!.detail).toContain('401');
     expect(snapshot.engines.find((e) => e.provider === 'lm-studio')).toMatchObject({ status: 'up', loadedCount: 1, listedCount: 2 });
     expect(snapshot.engines.find((e) => e.provider === 'ollama')).toMatchObject({ status: 'down' });
   });

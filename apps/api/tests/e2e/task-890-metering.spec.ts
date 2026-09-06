@@ -142,6 +142,7 @@ test.describe('TASK-890 — an agent invocation is metered', () => {
 
 test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs', () => {
   let previousEnforcement: boolean | undefined;
+  let previousPlan: string | null = null;
 
   /** `PUT admin/entitlements/tenants/:id/override` is OCC-guarded: `"0"` creates. */
   async function setLlmAllowance(request: APIRequestContext, value: number | null): Promise<void> {
@@ -154,11 +155,54 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
     expect(response.status(), await response.text()).toBeLessThan(300);
   }
 
+  /**
+   * Stamp a plan on the caller's tenant for the length of this describe.
+   *
+   * `__GLOBAL__` is in `RESERVED_UNGATED_TENANT_IDS` (`entitlements.constants.ts`),
+   * so with no plan it resolves `UNGATED_ENTITLEMENTS` and Q3 IGNORES the
+   * per-tenant override outright (`resolve-entitlements.ts` — "no plan means
+   * ungated-legacy; overrides are intentionally ignored"). The allowance of 0
+   * below is therefore invisible to `assertMeterQuota`, which returns on the
+   * `limit === null` line before it ever reads the meter — the call reaches
+   * TEXT and answers 503, and the one assertion that would have proven the
+   * precheck proves nothing.
+   *
+   * `effectivePlan`'s rule 1 is the documented way out: "an explicitly stamped
+   * `Tenant.plan` always wins — on every tenant, reserved or not." ENTERPRISE
+   * is chosen so the ONLY thing that differs from the ungated baseline is the
+   * meter this test zeroes; its rate-limit tier is `relaxed`, like the ungated
+   * default, so a sibling worker sees no new throttle.
+   */
+  async function setPlan(request: APIRequestContext, plan: string | null): Promise<void> {
+    const current = await request.get(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, { headers: bearer(adminToken) });
+    const etag = current.headers()['etag'];
+    if (!etag) return;
+    // This route wants BOTH halves of the OCC pair: `If-Match` (the guard) and
+    // `expectedVersion` in the body (the validated DTO field). Sending only the
+    // header is a 400, not a 412.
+    const expectedVersion = Number(etag.replace(/[^0-9]/g, ''));
+    const response = await request.patch(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, {
+      headers: { ...bearer(adminToken), 'If-Match': etag },
+      data: { plan, expectedVersion },
+    });
+    expect(response.status(), await response.text()).toBeLessThan(300);
+  }
+
+  /** The tenant's stamped plan — readable by the tenant admin; the entitlements document is not. */
+  async function stampedPlan(request: APIRequestContext): Promise<string | null> {
+    const response = await request.get(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, { headers: bearer(adminToken) });
+    if (response.status() !== 200) return null;
+    return ((await response.json()) as { plan?: string | null }).plan ?? null;
+  }
+
   test.beforeAll(async ({ playwright }) => {
     const request = await playwright.request.newContext();
     const read = await request.get('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken) });
     previousEnforcement = ((await read.json()) as { enabled?: boolean }).enabled;
+    const tenant = await request.get(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, { headers: bearer(adminToken) });
+    previousPlan = ((await tenant.json()) as { plan?: string | null }).plan ?? null;
     await request.put('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken), data: { enabled: true } });
+    await setPlan(request, 'ENTERPRISE');
     await setLlmAllowance(request, 0);
     await request.dispose();
   });
@@ -168,6 +212,7 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
     // Restore BOTH knobs: leaving a zero allowance behind would fail every
     // later LLM spec in this suite with a 429 that looks unrelated.
     await setLlmAllowance(request, null);
+    await setPlan(request, previousPlan);
     if (previousEnforcement !== undefined) {
       await request.put('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken), data: { enabled: previousEnforcement } });
     }
@@ -180,6 +225,11 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
       headers: bearer(doctorToken),
       data: { text: 'Summarise: patient reports a mild headache.' },
     });
+
+    // If the tenant still resolves ungated the precheck cannot fire, and a
+    // 503 here would mean "TEXT answered", not "the quota was honoured" —
+    // say so rather than assert something the fixture cannot produce.
+    test.skip(!(await stampedPlan(request)), 'the caller tenant resolves ungated — the meter allowance cannot be enforced against it');
 
     expect(response.status()).toBe(429);
     const body = (await response.json()) as { code?: string; metadata?: { capability?: string } };
@@ -195,12 +245,19 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
 });
 
 /**
- * The prompt test bench (L4's emitter). Asserted in this file so the two
- * triggers are shown to be DISTINGUISHABLE in one place — the whole point of
- * the dimension.
+ * The prompt test bench. Asserted in this file so the two triggers are shown to
+ * be DISTINGUISHABLE in one place — the whole point of the dimension.
+ *
+ * `fixme` until L4 lands (wave 2b): §3.13 assigns the `PROMPT_TEST` emitter to
+ * L4, which owns `prompt-management.service.ts` and records it in
+ * `finalizePromptTemplateTest`. Wave 1 ships the DIMENSION (`USAGE_TRIGGERS`,
+ * `withUsageTrigger`) and the `AGENT_INVOCATION` producer only, so the route
+ * this drives answers 2xx and writes no row — the wait would time out and the
+ * red would say nothing but "the wave that owns it has not run yet". Delete the
+ * `fixme` with L4's emitter; the body needs no other change.
  */
 test.describe('TASK-890 — the prompt test-run is a different activity', () => {
-  test('a non-dry prompt test-run writes a row carrying trigger PROMPT_TEST', async ({ request }) => {
+  test.fixme('a non-dry prompt test-run writes a row carrying trigger PROMPT_TEST', async ({ request }) => {
     const since = new Date();
     const templates = await request.get('/api/v1/admin/prompt-templates?limit=1', { headers: bearer(adminToken) });
     test.skip(templates.status() !== 200, `prompt-template listing unavailable (${templates.status()})`);

@@ -301,6 +301,55 @@ describe('TenantService — locked-field runtime plumbing (Agent D)', () => {
     });
   });
 
+  /**
+   * TASK-890 §3.15 (OD-P), wave-1 close — the platform TIER, not just the
+   * `locked` column. `locked` protected 5 of the 37 seeded SYSTEM rows; the
+   * other 32 were writable by any caller holding `update:Tenant` who addressed
+   * the tenant by its KEY (`__SYSTEM__` is not a UUID, so the controller's
+   * scope check never fired). These two pin the tier gate that closed it.
+   */
+  describe('updateTenantConfigs — the SYSTEM tier is super-admin-only', () => {
+    it('refuses an UNLOCKED platform-tier row for a tenant admin', async () => {
+      installCls(['TENANT_ADMIN']);
+      const systemTenant = createMockTenantEntity({ id: '00000000-0000-0000-0000-000000000000', key: '__SYSTEM__' });
+      mockTenantRepository.findFirst.mockResolvedValue(systemTenant);
+
+      const platformRow = buildSetting({
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        key: 'platform-knob',
+        value: 'old',
+        locked: false,
+      });
+      mockGlobalSettingRepository.findById.mockResolvedValue(platformRow);
+
+      await expect(service.updateTenantConfigs('__SYSTEM__', [{ id: platformRow.id, value: 'new', expectedVersion: 1 } as never])).rejects.toThrow(
+        /super.?admin/i,
+      );
+
+      expect(mockGlobalSettingRepository.updateWithVersion).not.toHaveBeenCalled();
+    });
+
+    it('permits the same write for a super admin', async () => {
+      installCls(['SUPER_ADMIN']);
+      const systemTenant = createMockTenantEntity({ id: '00000000-0000-0000-0000-000000000000', key: '__SYSTEM__' });
+      mockTenantRepository.findFirst.mockResolvedValue(systemTenant);
+
+      const platformRow = buildSetting({
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        key: 'platform-knob',
+        value: 'old',
+        locked: false,
+      });
+      mockGlobalSettingRepository.findById.mockResolvedValue(platformRow);
+      mockGlobalSettingRepository.updateWithVersion.mockImplementation(async (_id: string, entity: GlobalSettingEntity) => entity);
+
+      const result = await service.updateTenantConfigs('__SYSTEM__', [{ id: platformRow.id, value: 'new', expectedVersion: 1 } as never]);
+
+      expect(result.data).toHaveLength(1);
+      expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('fetchTenantConfigs — locked-value masking via real entity', () => {
     it('masks the value of locked=true rows when caller is non-SUPER_ADMIN', async () => {
       installCls(['DOCTOR']);
