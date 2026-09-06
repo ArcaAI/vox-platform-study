@@ -26,7 +26,6 @@ import {
   AiModelRepository,
   GoldenCaseRepository,
   ModelTaskType,
-  AiDeploymentKind,
 } from '@arcaai/domains';
 import { IPromptManagementService, ListPromptTemplatesFilters, PaginatedPromptTemplates } from './IPromptManagementService';
 import {
@@ -65,7 +64,13 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { renderTemplate, PromptVariableUnresolvedError, PromptTemplateSyntaxError } from '@arcaai/workflow-contract';
 import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
-import { buildLlmUsageInputFromTokenCounts, toLedgerProvider } from '../consultation/summary/text-usage';
+import {
+  buildLlmUsageInput,
+  buildLlmUsageInputFromTokenCounts,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+} from '../consultation/summary/text-usage';
 import { withUsageTrigger } from '../usageLedger/usage-attributes';
 import { PromptVariableDeclarationDto, PromptVariableType, parsePromptVariableDeclarations } from './dto/prompt-variable-declaration.dto';
 
@@ -1642,9 +1647,14 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * `buildLlmUsageInputFromTokenCounts` (`text-usage.ts`) exists for — the
    * honest builder that never fabricates an `endpointKind` it did not see.
    */
-  private async fetchTextTaskOutput(
-    taskId: string,
-  ): Promise<{ content: string; provider: string | null; model: string | null; promptTokens: number; completionTokens: number }> {
+  private async fetchTextTaskOutput(taskId: string): Promise<{
+    content: string;
+    provider: string | null;
+    model: string | null;
+    promptTokens: number;
+    completionTokens: number;
+    usageDetail: unknown;
+  }> {
     if (!this.httpService) {
       throw new BadRequestException('TEXT/text-generation client is not configured');
     }
@@ -1656,6 +1666,9 @@ export class PromptManagementService extends BaseService implements IPromptManag
       provider?: string | null;
       model?: string | null;
       usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+      // J3-4 — TEXT persists its own meterable block with the task now, so the bench can bill
+      // the same dimensions a real generation does instead of bare counts.
+      usage_detail?: unknown;
     };
     try {
       const response = await this.httpService.axiosRef.get(`${this.textServiceUrl}/api/v1/tasks/${taskId}`, {
@@ -1686,6 +1699,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       model: data.model ?? null,
       promptTokens: data.usage?.prompt_tokens ?? 0,
       completionTokens: data.usage?.completion_tokens ?? 0,
+      usageDetail: data.usage_detail ?? null,
     };
   }
 
@@ -1698,7 +1712,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * counters to bill — no row is more honest than a zero-value one).
    */
   private async recordPromptTestUsage(
-    taskOutput: { provider: string | null; model: string | null; promptTokens: number; completionTokens: number },
+    taskOutput: { provider: string | null; model: string | null; promptTokens: number; completionTokens: number; usageDetail: unknown },
     taskId: string,
   ): Promise<void> {
     if (!this.usageLedgerService) return;
@@ -1706,22 +1720,36 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (!tenantId) return;
 
     try {
-      const batch = withUsageTrigger(
+      // J3-4 — PREFER TEXT's own block. It is the only source that carries a real
+      // `endpoint_kind`, `byok` and `cost_basis`, so it is the only one that produces a
+      // fully-dimensioned row; `apps/text` persists it with the task since this lane.
+      const detail = parseTextUsageDetail(taskOutput.usageDetail);
+      const provider = taskOutput.provider ? toLedgerProvider(taskOutput.provider) : 'none';
+      const raw =
+        (detail ? buildLlmUsageInput({ usage: detail, tenantId, operation: 'generate.stream' }) : null) ??
         buildLlmUsageInputFromTokenCounts({
           tenantId,
           operation: 'generate.stream',
           requestId: taskId,
-          provider: taskOutput.provider ? toLedgerProvider(taskOutput.provider) : 'none',
+          provider,
           model: taskOutput.model,
-          deployment: AiDeploymentKind.CLOUD,
+          // DERIVED, not stamped. This used to be a constant `CLOUD`, which put every local
+          // `lm-studio` bench run in the cloud rollup bucket and under-reported self-hosted.
+          deployment: resolveDeployment(provider, false),
           occurredAt: new Date(),
           inputTokens: taskOutput.promptTokens,
           outputTokens: taskOutput.completionTokens,
-        }),
-        'PROMPT_TEST',
-      );
-      if (!batch) return;
-      await this.usageLedgerService.recordUsage(batch);
+        });
+      if (!raw) {
+        // Never a row saying "an unknown amount happened" — but never silent either: an
+        // unexplained absence is how the draft-agent bench stayed unmetered to the release phase.
+        this.logger.warn({
+          message: 'A prompt-template test-run finalize was persisted unmetered: the TEXT task read-back carried no billable usage',
+          taskId,
+        });
+        return;
+      }
+      await this.usageLedgerService.recordUsage(withUsageTrigger(raw, 'PROMPT_TEST'));
     } catch (error) {
       this.logger.warn({
         message: 'Usage metering failed for a prompt-template test-run finalize; the test result was persisted unmetered',

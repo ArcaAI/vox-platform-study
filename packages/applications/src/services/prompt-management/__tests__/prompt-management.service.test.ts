@@ -2163,6 +2163,67 @@ describe('PromptManagementService', () => {
         expect(batch.common.tenantId).toBe('tenant-1');
       });
 
+      /**
+       * J3-4 (sibling of the draft-agent bench) — bill from the BLOCK when TEXT sends one.
+       *
+       * Bare counts carry no `endpoint_kind`, no `byok` and no `cost_basis`, so this path had to
+       * stamp a deployment: it stamped `CLOUD`, unconditionally. Every local `lm-studio` bench
+       * run therefore landed in the cloud rollup bucket. `apps/text` now persists its
+       * `usage_detail` with the task, so the fully-dimensioned block is available and preferred;
+       * the count path survives for a gateway talking to an older text, with the deployment
+       * DERIVED from the provider rather than assumed.
+       */
+      it('finalize prefers TEXT`s own usage_detail block, endpoint kind and all', async () => {
+        const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+        const recordUsage = vi.fn().mockResolvedValue(undefined);
+        const { svc } = buildTextService(wordsOfLength(60), {
+          usageLedgerService: { recordUsage },
+          taskOverrides: {
+            provider: 'lm-studio',
+            model: 'medgemma-27b',
+            usage: { prompt_tokens: 120, completion_tokens: 45 },
+            usage_detail: {
+              task_id: 'task-1',
+              request_id: 'req-1',
+              provider: 'lm-studio',
+              model: 'medgemma-27b',
+              endpoint_kind: 'lmstudio.chat',
+              interrupted: false,
+              byok: false,
+              cost_basis: 'INTERNAL',
+              occurred_at: '2026-09-06T00:00:00.000Z',
+              prompt_tokens: 120,
+              completion_tokens: 45,
+            },
+          },
+        });
+
+        await runFullTest(svc, { variables: { topic: 'asthma' } });
+
+        const [batch] = recordUsage.mock.calls[0];
+        expect(batch.common.attributesJson).toMatchObject({ trigger: 'PROMPT_TEST', endpointKind: 'lmstudio.chat' });
+        expect(batch.common.deployment).toBe('SELF_HOSTED');
+      });
+
+      it('finalize derives the deployment from the provider when only bare counts came back', async () => {
+        const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+        const recordUsage = vi.fn().mockResolvedValue(undefined);
+        const { svc } = buildTextService(wordsOfLength(60), {
+          usageLedgerService: { recordUsage },
+          taskOverrides: { provider: 'lm-studio', model: 'medgemma-27b', usage: { prompt_tokens: 120, completion_tokens: 45 } },
+        });
+
+        await runFullTest(svc, { variables: { topic: 'asthma' } });
+
+        const [batch] = recordUsage.mock.calls[0];
+        // NOT `CLOUD` — that constant was forking the rollup dimension for every local run.
+        expect(batch.common.deployment).toBe('SELF_HOSTED');
+      });
+
       it('finalize degrades to unmetered (never throws) when the ledger write fails', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
         mockTemplateRepo.findById.mockResolvedValue(existing);

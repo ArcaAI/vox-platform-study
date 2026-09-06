@@ -326,9 +326,56 @@ describe('AgentDraftTestService — metering (§3.13, OD-E)', () => {
     expect(usageLedger.recordUsage).not.toHaveBeenCalled();
   });
 
-  it('records NOTHING when TEXT reported no usage block (never a row saying nothing happened)', async () => {
+  it('records NOTHING when TEXT reported no counters at all (never a row saying nothing happened)', async () => {
     get.mockResolvedValue({ data: { status: 'completed', content: 'x', provider: 'lm-studio', model: 'gemma' } });
     await makeTransport().finalize(TENANT, 'task-1');
     expect(usageLedger.recordUsage).not.toHaveBeenCalled();
+  });
+
+  /**
+   * J3-4 — the bench billed NOTHING, ever, and said nothing about it.
+   *
+   * `record()` read `usage_detail` off `GET /tasks/{id}`, a key that route did not have (its
+   * response carried `content`, `usage`, `provider`, `model` and the timestamps — no
+   * `endpoint_kind`, no `usage_detail`). `parseTextUsageDetail` correctly refuses to invent an
+   * endpoint kind, so it returned `null` and `record()` returned on the next line — silently.
+   * Measured on dev: the console rendered "1490 tokens · served by lm-studio/gemma-4-e2b-it-qat"
+   * while `AiUsageEvent` gained no row, on any run.
+   *
+   * `apps/text` now persists the block (J3-4, `TaskState.usage_detail`), which is the real fix.
+   * These two pin the parts that must hold even so: a gateway talking to an OLDER text still
+   * bills from the counts it DID get, and a decline is never silent again.
+   */
+  it('falls back to the bare token counts when TEXT sent no usage_detail', async () => {
+    get.mockResolvedValue({
+      data: {
+        status: 'completed',
+        content: 'the summary',
+        provider: 'lm-studio',
+        model: 'gemma',
+        usage: { prompt_tokens: 698, completion_tokens: 792, total_tokens: 1490 },
+      },
+    });
+
+    await makeTransport().finalize(TENANT, 'task-1');
+
+    expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+    const [batch] = usageLedger.recordUsage.mock.calls[0] as [{ common: Record<string, unknown>; units: Array<{ quantity: number }> }];
+    expect(batch.common).toMatchObject({ operation: 'generate.stream', provider: 'lm-studio', model: 'gemma' });
+    expect(batch.common.attributesJson).toMatchObject({ trigger: 'AGENT_TEST' });
+    // `lm-studio` runs on the platform's own hardware — billing it as CLOUD forks the dimension.
+    expect(batch.common.deployment).toBe('SELF_HOSTED');
+    expect(batch.units.map((unit) => unit.quantity)).toEqual(expect.arrayContaining([698, 792]));
+  });
+
+  it('LOGS when it declines to meter — the silence is why this survived to the release phase', async () => {
+    const transport = makeTransport();
+    const warn = vi.spyOn((transport as unknown as { logger: { warn: (arg: unknown) => void } }).logger, 'warn');
+    get.mockResolvedValue({ data: { status: 'completed', content: 'x', provider: 'lm-studio', model: 'gemma' } });
+
+    await transport.finalize(TENANT, 'task-1');
+
+    expect(usageLedger.recordUsage).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('unmetered') }));
   });
 });

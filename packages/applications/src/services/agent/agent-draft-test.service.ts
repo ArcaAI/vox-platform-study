@@ -13,7 +13,13 @@ import type { IEntitlementsService as IEntitlementsServicePort } from '../entitl
 import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
 import type { IUsageLedgerService as IUsageLedgerServicePort } from '../usageLedger/IUsageLedgerService';
 import { withUsageTrigger } from '../usageLedger/usage-attributes';
-import { buildLlmUsageInput, parseTextUsageDetail } from '../consultation/summary/text-usage';
+import {
+  buildLlmUsageInput,
+  buildLlmUsageInputFromTokenCounts,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+} from '../consultation/summary/text-usage';
 
 /** TEXT's terminal task state — the only one whose `content` is the whole generation. */
 const TEXT_TASK_COMPLETED = 'completed';
@@ -183,7 +189,7 @@ export class AgentDraftTestService {
       throw new BadRequestException(`Generation task ${taskId} is not complete (state: ${state}). Wait for the stream to finish before finalizing.`);
     }
 
-    await this.record(tenantId, data.usage_detail);
+    await this.record(tenantId, taskId, data);
 
     return {
       output: data.content ?? '',
@@ -200,23 +206,67 @@ export class AgentDraftTestService {
   }
 
   /**
-   * §3.13 — `generate.stream`, `trigger: 'AGENT_TEST'`, from TEXT's OWN usage block.
+   * §3.13 — `generate.stream`, `trigger: 'AGENT_TEST'`, from what the task read-back ACTUALLY
+   * carries.
    *
-   * A block TEXT did not send, or one the normalizer refuses to guess at, records NOTHING: a row
-   * saying "an unknown amount happened" is worse than no row. The trigger is what makes the
-   * spend attributable to the bench rather than to a consultation.
+   * TEXT's own `usage_detail` block is preferred and is the only source that can supply a real
+   * `endpoint_kind`, so it is the only one that produces a fully-dimensioned row. It was ALSO
+   * the only source this method read — and `GET /tasks/{id}` did not return it (J3-4). The
+   * normalizer correctly refused to invent an endpoint kind, so every bench run recorded
+   * nothing, silently, while the console displayed the token total it had just been handed.
+   *
+   * `apps/text` now persists that block, so the first branch is the live one. The second exists
+   * because a gateway can outrun the service it talks to: bare `{prompt_tokens,
+   * completion_tokens}` is less than a usage block, but it is not nothing, and dropping real
+   * spend to protect a dimension is the wrong trade. It bills through the honest builder, which
+   * fabricates no endpoint kind.
+   *
+   * A decline is LOGGED. The whole gap survived to the release phase because it was silent.
    */
-  private async record(tenantId: string, usageDetail: unknown): Promise<void> {
+  private async record(
+    tenantId: string,
+    taskId: string,
+    data: { provider?: string; model?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } | null; usage_detail?: unknown },
+  ): Promise<void> {
     if (!this.usageLedger) return;
-    const usage = parseTextUsageDetail(usageDetail);
-    if (!usage) return;
-    const batch = buildLlmUsageInput({ usage, tenantId, operation: 'generate.stream' });
-    if (!batch) return;
+
+    const detail = parseTextUsageDetail(data.usage_detail);
+    let batch = detail ? buildLlmUsageInput({ usage: detail, tenantId, operation: 'generate.stream' }) : null;
+
+    if (!batch) {
+      const provider = toLedgerProvider(data.provider ?? '');
+      batch = buildLlmUsageInputFromTokenCounts({
+        tenantId,
+        operation: 'generate.stream',
+        requestId: taskId,
+        provider: provider || 'none',
+        model: data.model ?? null,
+        // Derived from the provider, never stamped: a local `lm-studio` bench run recorded as
+        // CLOUD forks the rollup dimension it belongs in.
+        deployment: resolveDeployment(provider, false),
+        occurredAt: new Date(),
+        inputTokens: data.usage?.prompt_tokens ?? 0,
+        outputTokens: data.usage?.completion_tokens ?? 0,
+      });
+    }
+
+    if (!batch) {
+      // Nothing to bill, or nothing billable — say so. A row claiming an unknown amount happened
+      // is worse than no row, but an unexplained absence is how this stayed broken.
+      this.logger.warn({
+        message: 'A draft-agent test run was persisted unmetered: the TEXT task read-back carried no usage the ledger can bill',
+        taskId,
+        hasUsageDetail: data.usage_detail !== undefined && data.usage_detail !== null,
+      });
+      return;
+    }
+
     try {
       await this.usageLedger.recordUsage(withUsageTrigger(batch, 'AGENT_TEST'));
     } catch (error) {
       this.logger.warn({
-        message: 'Usage metering failed for a draft-agent test run',
+        message: 'Usage metering failed for a draft-agent test run; the run is unmetered',
+        taskId,
         error: error instanceof Error ? error.message : String(error),
       });
     }

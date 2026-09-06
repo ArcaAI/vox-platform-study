@@ -365,13 +365,18 @@ class TestStreamingGenerationBackground:
         tm.update_task.assert_any_call("t-1", status=TaskStatus.RUNNING)
         # TASK-890 — the terminal update also persists WHAT was generated and WHAT it cost, so a
         # gateway bench can finalize by reading the task back (`GET /tasks/{id}`) instead of
-        # trusting the browser to hand the text back.
-        tm.update_task.assert_any_call(
-            "t-1",
-            status=TaskStatus.COMPLETED,
-            content="hello",
-            usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        )
+        # trusting the browser to hand the text back. J3-4 added the METERABLE form of the cost
+        # alongside the three counts: without an `endpoint_kind` the gateway ledger records
+        # nothing rather than guess an arithmetic convention, so the bench billed nothing.
+        terminal = tm.update_task.await_args_list[-1].kwargs
+        assert terminal["status"] == TaskStatus.COMPLETED
+        assert terminal["content"] == "hello"
+        assert terminal["usage"] == {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        assert terminal["usage_detail"]["endpoint_kind"] == "openai.chat"
         # deltas are coalesced into `append_batch`; the terminal frame
         # keeps its own `append_chunk` write (once per generation, and it is the
         # frame the gateway meters from).

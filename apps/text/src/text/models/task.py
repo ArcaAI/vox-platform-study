@@ -8,6 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from text.models.responses import TokenUsage
+from text.models.usage import UsageDetail
 
 
 class TaskStatus(StrEnum):
@@ -44,3 +45,16 @@ class TaskState(BaseModel):
     # this stores the assembled form of bytes that are already there, and expires with them.
     content: str | None = None
     usage: TokenUsage | None = None
+    # J3-4 — the METERABLE block, not just the three counts.
+    #
+    # ``usage`` is ``TokenUsage``: three integers, no ``endpoint_kind``, no ``byok``, no
+    # ``cost_basis``, no ``occurred_at``. The gateway ledger refuses to bill from that
+    # (``parseTextUsageDetail`` returns null without a known endpoint kind, because guessing
+    # between inclusive and exclusive input arithmetic is a coin flip that lands on an invoice),
+    # so the draft-agent bench read ``usage_detail`` here, found nothing, and metered NOTHING for
+    # every run — while the console displayed the token total it had just been handed.
+    #
+    # Both terminal paths already BUILD this block for their own response/frame; persisting it
+    # with the task is the whole fix, and it carries no field the sync response does not already
+    # return to the same caller.
+    usage_detail: UsageDetail | None = None
