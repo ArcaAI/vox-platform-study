@@ -181,6 +181,32 @@ describe('templateReferenceProblems', () => {
     expect(templateReferenceProblems('{{context.absent | default("n/a")}} {{banana.x | default("q")}}', declared)).toEqual([]);
   });
 
+  /**
+   * J3-6 — ONE problem per undeclared NAME, not one per occurrence.
+   *
+   * A prompt that repeats `{{context.safe_age}}` in its header and again in its body is one
+   * authoring mistake, and the author fixes it once. Reporting it twice inflates the report
+   * (measured on dev: 17 findings for 9 distinct placeholders) and buries the names that appear
+   * only once — the report reads as a wall rather than a list of things to do.
+   *
+   * `templateReferences` still reports every OCCURRENCE with its offset: that is a fact about
+   * the source and something an editor highlights. Deduplication belongs to the FINDING.
+   */
+  it('reports an undeclared name ONCE however many times the template repeats it', () => {
+    const problems = templateReferenceProblems('{{context.absent}} and again {{context.absent}}', declared);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('context.absent');
+  });
+
+  it('still reports each DISTINCT undeclared name', () => {
+    expect(templateReferenceProblems('{{context.absent}} {{context.other}} {{context.absent}}', declared)).toHaveLength(2);
+  });
+
+  it('does not collapse a bare name onto a same-named path (they are different references)', () => {
+    expect(templateReferenceProblems('{{height}} {{height.cm}}', declared)).toHaveLength(2);
+  });
+
   it('declares nothing ⇒ every non-defaulted reference is undeclared (the check has no "unknown" mode)', () => {
     expect(templateReferenceProblems('{{context.absent}} {{age}}', {})).toHaveLength(2);
     expect(templateReferenceProblems('{{context.absent | default("x")}}', {})).toEqual([]);

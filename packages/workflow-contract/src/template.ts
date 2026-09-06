@@ -372,9 +372,17 @@ export function templateReferenceProblems(content: string, declared: DeclaredNam
   const roots = declared.roots ?? {};
   const variables = new Set(declared.variables ?? []);
   const problems: string[] = [];
+  // ONE problem per undeclared NAME (J3-6). A prompt that repeats `{{context.safe_age}}` in its
+  // header and again in its body is ONE authoring mistake and the author fixes it once; reporting
+  // it per occurrence inflates the report (measured: 17 findings for 9 distinct placeholders) and
+  // buries the names that appear only once. `templateReferences` still yields every occurrence
+  // with its offset — that is a fact about the SOURCE, and an editor wants all of them.
+  const reported = new Set<string>();
 
   for (const reference of templateReferences(content)) {
     if (reference.hasDefault) continue;
+    if (reported.has(reference.path)) continue;
+    reported.add(reference.path);
     const segments = reference.path.split('.');
     const [root, ...rest] = segments as [string, ...string[]];
 

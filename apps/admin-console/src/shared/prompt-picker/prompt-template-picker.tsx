@@ -49,8 +49,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Label,
   Skeleton,
 } from '@arcaai/ui';
+import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
 import { usePromptTemplateOptions, usePromptTemplateQuickView } from './hooks';
 import type { PromptPickerStatus, PromptPickerTemplate } from './types';
 
@@ -154,13 +156,25 @@ export function PromptTemplatePicker({ id, value, onChange, category, disabled, 
   // than a page-local guess. `known` is resolved against the FULL list above,
   // so narrowing the options never orphans an already-bound template.
   const [tag, setTag] = useState('');
+  // J3-6 — the field is labelled "Approved prompt template" on both consumers, and the agent
+  // publish gate REFUSES a non-APPROVED binding (`TEMPLATE_NOT_APPROVED`). Offering unapproved
+  // rows by default invites the author to pick something that cannot be published and only says
+  // so three steps later. They are not HIDDEN, they are opted into: binding a draft while both
+  // are in flight is legitimate, and the quick view already says "not approved".
+  const [includeUnapproved, setIncludeUnapproved] = useState(false);
   const tagOptions = useMemo(
     // Keyed on the QUERY result, not the `?? []` fallback — that literal is a
     // new array every render and would re-run this on each one.
     () => [...new Set((options.data ?? []).flatMap((template) => template.tags ?? []))].sort((a, b) => a.localeCompare(b)),
     [options.data],
   );
-  const visible = tag ? templates.filter((template) => (template.tags ?? []).includes(tag)) : templates;
+  // Only a status we can READ as not-approved is narrowed away. An absent or unrecognised status
+  // is not a verdict — a server that grows a state must not empty this picker — and the CURRENT
+  // selection is always kept, because a picker that silently drops its own value is worse than
+  // one showing a status it does not love.
+  const unapproved = templates.filter((template) => template.status === 'DRAFT' || template.status === 'PUBLISHED');
+  const byStatus = includeUnapproved ? templates : templates.filter((template) => !unapproved.includes(template) || template.id === value);
+  const visible = tag ? byStatus.filter((template) => (template.tags ?? []).includes(tag)) : byStatus;
   // The selected id may not be in a category-filtered (or paginated) list —
   // fall back to a direct read so the quick view still resolves.
   const fallback = usePromptTemplateQuickView(value && !known ? value : null);
@@ -228,6 +242,19 @@ export function PromptTemplatePicker({ id, value, onChange, category, disabled, 
             ))}
           </SelectContent>
         </Select>
+      ) : null}
+      {unapproved.length > 0 ? (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id={`${fieldId}-include-drafts`}
+            checked={includeUnapproved}
+            disabled={disabled}
+            onCheckedChange={(checked) => setIncludeUnapproved(checked === true)}
+          />
+          <Label htmlFor={`${fieldId}-include-drafts`} className="text-muted-foreground text-xs font-normal">
+            Include drafts ({unapproved.length}) — an unapproved template cannot be published on an agent
+          </Label>
+        </div>
       ) : null}
       <Select value={known ? value! : ''} onValueChange={(next) => onChange(next || null)} disabled={disabled}>
         <SelectTrigger id={fieldId} className="w-full">

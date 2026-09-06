@@ -83,8 +83,34 @@ const AGENTS: Agent[] = [
 
 /** `GET admin/ai-models/catalogue` — one "Hope provider" holding both task's models (TASK-890 §3.7). */
 const CATALOGUE_MODELS = [
-  { id: 'm-llm', slug: 'lms-gemma-4-e2b-it-qat', name: 'Gemma 4 E2B', taskType: 'TEXT_GENERATION', providerId: 'hope', provider: 'lm-studio', providerClass: 'engine-served', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
-  { id: 'm-asr', slug: 'arcaai-whisper-large-ml-en-gguf', name: 'Whisper ML/EN', taskType: 'AUTOMATIC_SPEECH_RECOGNITION', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  {
+    id: 'm-llm',
+    slug: 'lms-gemma-4-e2b-it-qat',
+    name: 'Gemma 4 E2B',
+    taskType: 'TEXT_GENERATION',
+    providerId: 'hope',
+    provider: 'lm-studio',
+    providerClass: 'engine-served',
+    readiness: 'ready',
+    readinessCheckedAt: null,
+    readinessDetail: null,
+    usable: true,
+    unusableReason: null,
+  },
+  {
+    id: 'm-asr',
+    slug: 'arcaai-whisper-large-ml-en-gguf',
+    name: 'Whisper ML/EN',
+    taskType: 'AUTOMATIC_SPEECH_RECOGNITION',
+    providerId: 'hope',
+    provider: 'built-in',
+    providerClass: 'platform-self-host',
+    readiness: 'ready',
+    readinessCheckedAt: null,
+    readinessDetail: null,
+    usable: true,
+    unusableReason: null,
+  },
 ];
 
 interface RecordedCall {
@@ -101,7 +127,12 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
-      const call: RecordedCall = { url: String(input), method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined, ifMatch: headers.get('if-match') };
+      const call: RecordedCall = {
+        url: String(input),
+        method: init?.method ?? 'GET',
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+        ifMatch: headers.get('if-match'),
+      };
       calls.push(call);
       const response = handler(call);
       if (!response) throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
@@ -112,7 +143,14 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
 }
 
 function session() {
-  const base = { user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['SUPER_ADMIN'] }, isElevated: true, workingTenantId: 'tnt-1', workingTenantName: 'Sunrise Medical Group', impersonatingUserId: null, impersonatingUsername: null };
+  const base = {
+    user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['SUPER_ADMIN'] },
+    isElevated: true,
+    workingTenantId: 'tnt-1',
+    workingTenantName: 'Sunrise Medical Group',
+    impersonatingUserId: null,
+    impersonatingUsername: null,
+  };
   return { ...base, effectiveUser: { ...base.user, tenantId: null, departmentId: null }, effectiveIsElevated: true, effectiveTenantId: 'tnt-1' };
 }
 
@@ -130,10 +168,35 @@ function defaultHandler(call: RecordedCall): Response | undefined {
   if (path === '/api/hope/admin/ai-models/catalogue') {
     const taskType = url.searchParams.get('taskType');
     const models = taskType ? CATALOGUE_MODELS.filter((model) => model.taskType === taskType) : CATALOGUE_MODELS;
-    return Response.json({ providers: [{ id: 'hope', group: 'hope', name: 'Hope provider', providerClass: null, connectionId: null, usable: true, reason: null, modelCount: models.length }], models });
+    return Response.json({
+      providers: [
+        {
+          id: 'hope',
+          group: 'hope',
+          name: 'Hope provider',
+          providerClass: null,
+          connectionId: null,
+          usable: true,
+          reason: null,
+          modelCount: models.length,
+        },
+      ],
+      models,
+    });
   }
-  if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([]);
-  if (path === '/api/hope/admin/prompt-templates') return Response.json({ data: [{ id: 'tpl-1', name: 'SOAP', status: 'APPROVED', currentVersionNumber: 1, category: 'SUMMARY' }] });
+  if (path === '/api/hope/admin/consultation-context-schemas')
+    return Response.json([
+      {
+        id: 'schema-legacy',
+        slug: 'consultation_legacy_v1',
+        name: 'Legacy consultation prompt context',
+        status: 'PUBLISHED',
+        pinnedVersionNumber: 1,
+        isDefault: true,
+      },
+    ]);
+  if (path === '/api/hope/admin/prompt-templates')
+    return Response.json({ data: [{ id: 'tpl-1', name: 'SOAP', status: 'APPROVED', currentVersionNumber: 1, category: 'SUMMARY' }] });
   return undefined;
 }
 
@@ -173,7 +236,14 @@ describe('AgentsScreen', () => {
   it('publish opens the confirm dialog; publish fails closed on a 400 with coded findings', async () => {
     const calls = stubAgents((call) => {
       if (call.method === 'POST' && call.url.endsWith('/admin/agents/a-1/publish')) {
-        return Response.json({ message: 'The agent cannot be published.', code: 'MODEL_UNAVAILABLE', findings: [{ severity: 'ERROR', code: 'MODEL_UNAVAILABLE', path: 'modelId', message: 'no staged weights' }] }, { status: 400 });
+        return Response.json(
+          {
+            message: 'The agent cannot be published.',
+            code: 'MODEL_UNAVAILABLE',
+            findings: [{ severity: 'ERROR', code: 'MODEL_UNAVAILABLE', path: 'modelId', message: 'no staged weights' }],
+          },
+          { status: 400 },
+        );
       }
       return undefined;
     });
@@ -217,6 +287,38 @@ describe('AgentsScreen', () => {
     fireEvent.click(await screen.findByLabelText('Model'));
     expect(await screen.findByRole('option', { name: /Whisper ML\/EN/ })).toBeTruthy();
     expect(screen.queryByRole('option', { name: /Gemma 4 E2B/ })).toBeNull();
+  });
+
+  /**
+   * J3-6 — the Review step must name what the author is about to publish, not its primary key.
+   *
+   * The context-schema row rendered the raw UUID while every neighbouring row (model, fallbacks,
+   * prompt template) already resolved to a name. A UUID at the last confirmation step tells the
+   * author nothing about what they are agreeing to.
+   */
+  it('the Review step names the bound context schema, not its UUID', async () => {
+    stubAgents();
+    renderWithProviders(<AgentsScreen />);
+    await screen.findByText('Clinic summarizer');
+    fireEvent.click(screen.getByRole('button', { name: 'New agent' }));
+    const wizard = await screen.findByRole('dialog');
+    fireEvent.change(within(wizard).getByLabelText(/^Name/), { target: { value: 'Ward summarizer' } });
+    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Model
+    fireEvent.click(await screen.findByLabelText('Model'));
+    fireEvent.click(await screen.findByRole('option', { name: /Gemma 4 E2B/ }));
+    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Instruction
+
+    // Template mode is the default and is the only mode that shows the context-schema picker.
+    fireEvent.click(await screen.findByLabelText('Prompt template'));
+    fireEvent.click(await screen.findByRole('option', { name: /SOAP/ }));
+    fireEvent.click(await screen.findByLabelText('Context schema'));
+    fireEvent.click(await screen.findByRole('option', { name: /Legacy consultation prompt context/ }));
+    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Parameters
+    fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // → Schemas
+    fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // → Review
+
+    const schemaRow = (await within(wizard).findByText('Context schema')).nextElementSibling;
+    expect(schemaRow?.textContent).toBe('Legacy consultation prompt context');
   });
 
   it('has no axe violations on the loaded grid, nor inside the open detail slide-over (WCAG 2.2 AA gate)', async () => {
