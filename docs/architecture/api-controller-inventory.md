@@ -156,7 +156,6 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | WorkflowTestFixtureController            | `api/v1/admin/workflow-test-fixtures`                                      |    5 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:WorkflowTestFixture                          |                                                                                                                                          |
 | WorkflowsController                      | `api/v1/workflows`                                                         |    5 | JWT + API key                                | workflow:definition:read / workflow:run:read\|write                                     | per-route WorkflowDefinition / WorkflowRun          | Hand-rolled SSE on run stream. Heavy throttle on invoke.                                                                                 |
 | AdminUsageController                     | `api/v1/admin/usage`                                                       |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:UsageAnalytics                               | top-tenants SUPER_ADMIN in service.                                                                                                      |
-| AiTaskDefaultAdminController             | `api/v1/admin/ai-task-defaults`                                            |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read/manage:AiTaskDefault                           | DEPRECATED (TASK-862, R3) — facade over AiRoutingPolicy; `Deprecation` headers.                                                          |
 | MonitoringController                     | `api/v1/admin/monitoring`                                                  |    4 | JWT only                                     | forbidden                                                                               | CanAny manage:all \| read:TenantTelemetry           | Under /admin (rule P2). Throttle 300/60s.                                                                                                |
 | AdminHealthServicesController            | `api/v1/admin/health/services`                                             |    2 | JWT only                                     | forbidden                                                                               | CanAny manage:all \| read:TenantTelemetry           | Split off ApiHealthController (rule P2). Throttle 30/60s. Fans out 6 downstream probes.                                                  |
 | NotificationController                   | `api/v1/admin/notifications`                                               |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:Notification                                 | No create route.                                                                                                                         |
@@ -1192,22 +1191,15 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 
 The `admin/ai-providers/**` llm-only alias was deleted; every caller uses `admin/providers/llm/:provider` (`ProviderConnectionController`, below).
 
-### AiTaskDefaultAdminController — DEPRECATED (TASK-862, removed in R3)
+### AiTaskDefaultAdminController — REMOVED (TASK-881, 2026-09-06)
 
-_Every route carries `Deprecation` headers. The service behind them is a facade over `AiRoutingPolicy` (no `AiTaskDefault` row is read or written any more)._
-
-- **File:** `src/modules/ai-task-default/ai-task-default-admin.controller.ts`
-- **Prefix:** `admin/ai-task-defaults` → `api/v1/admin/ai-task-defaults`
-- **api_count:** 4
-- **Auth model:** JWT + API key
-- **API key:** `admin:ai-task-default:manage`
-- **JWT / other:** read/manage:AiTaskDefault
-- **Notes:** Some keys SUPER_ADMIN in service.
-
-- `GET /api/v1/admin/ai-task-defaults/options` — jwt `CanRead(AiTaskDefault)` — apikey yes `admin:ai-task-default:manage` — `getOptions`
-- `GET /api/v1/admin/ai-task-defaults` — jwt `CanRead(AiTaskDefault)` — apikey yes `admin:ai-task-default:manage` — `getEffective`
-- `GET /api/v1/admin/ai-task-defaults/row` — jwt `CanRead(AiTaskDefault)` — apikey yes `admin:ai-task-default:manage` — `getRow`
-- `PUT /api/v1/admin/ai-task-defaults/row` — jwt `CanManage(AiTaskDefault)` — apikey yes `admin:ai-task-default:manage` — OCC — `upsertRow`
+The 4 `admin/ai-task-defaults` routes, the controller, `AiTaskDefaultService`, the
+`admin:ai-task-default:manage` scope, the CASL grant and the domain trio are gone with the
+`AiTaskDefault` table; `route-manifest.json` carries zero such routes. Non-agent task defaults
+resolve through `IAiRoutingPolicyService.resolveDefault` (`AiRoutingPolicyAdminController`,
+`admin/routing-policies`); an agent's model is `Agent.modelId`.
+`ResourceType.AiTaskDefault` stays in both enums as a tombstone — a Postgres enum value cannot
+be dropped in place and historical `AuditLog` rows name it.
 
 ### MonitoringController
 
