@@ -375,21 +375,18 @@ describe('Policy Seed Data', () => {
     // tenant-owned rows, so the harness policies carry `manage` (not just
     // `read`) on HarnessEval: unconditional at platform scope, pinned to
     // the caller's tenant at tenant scope. HarnessAudit stays read-only.
-    it.each(['harness-platform-manage', 'harness-tenant-manage', 'tenant-full-access'])(
-      'should grant manage HarnessEval in %s',
-      (policyName) => {
-        const policy = DEFAULT_POLICIES.find((p) => p.name === policyName);
-        const rule = policy?.rules.find((r) => r.subject === 'HarnessEval');
-        expect(rule).toBeDefined();
-        const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
-        expect(actions).toContain('manage');
-        if (policy?.scope === PolicyScope.TENANT) {
-          expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
-        } else {
-          expect(rule?.conditions).toBeUndefined();
-        }
-      },
-    );
+    it.each(['harness-platform-manage', 'harness-tenant-manage', 'tenant-full-access'])('should grant manage HarnessEval in %s', (policyName) => {
+      const policy = DEFAULT_POLICIES.find((p) => p.name === policyName);
+      const rule = policy?.rules.find((r) => r.subject === 'HarnessEval');
+      expect(rule).toBeDefined();
+      const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
+      expect(actions).toContain('manage');
+      if (policy?.scope === PolicyScope.TENANT) {
+        expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
+      } else {
+        expect(rule?.conditions).toBeUndefined();
+      }
+    });
 
     // The MCP registry and the agent-trajectory read plane no longer
     // borrow the `HarnessPolicy` subject. The seed grants below
@@ -418,7 +415,6 @@ describe('Policy Seed Data', () => {
         expect(rule?.conditions).toBeUndefined();
       }
     });
-
 
     it('should have unique policy names', () => {
       const names = DEFAULT_POLICIES.map((p) => p.name);
@@ -883,7 +879,9 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
 
     // v1 differs from every later version for every template.
     byTemplate.forEach((_versions, templateId) => {
-      const [v1, ...later] = [1, 2, 3].map((n) => ARCAAI_CLINICAL_VERSIONS.find((v) => v.promptTemplateId === templateId && v.versionNumber === n)!.content);
+      const [v1, ...later] = [1, 2, 3].map(
+        (n) => ARCAAI_CLINICAL_VERSIONS.find((v) => v.promptTemplateId === templateId && v.versionNumber === n)!.content,
+      );
       later.forEach((body, i) => expect(body, `v${i + 2} of ${templateId} is byte-identical to v1`).not.toBe(v1));
     });
 
@@ -903,7 +901,9 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     expect(differsFromV2).toEqual([ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY]);
 
     // The template's mutable `content` column mirrors the APPROVED version.
-    const approvedById = new Map(ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === ARCAAI_CLINICAL_APPROVED_VERSION).map((v) => [v.promptTemplateId, v.content]));
+    const approvedById = new Map(
+      ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === ARCAAI_CLINICAL_APPROVED_VERSION).map((v) => [v.promptTemplateId, v.content]),
+    );
     ARCAAI_CLINICAL_TEMPLATES.forEach((t) => expect(t.content).toBe(approvedById.get(t.id)));
 
     // ...and v1 still holds the v1 body, byte-for-byte.
@@ -917,7 +917,9 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     // content restyled as today's findings. It must be present and identical in
     // all 22 department prompts of the version.
     const blockA = new Set<string>();
-    const prompts = ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === versionNumber && v.promptTemplateId !== ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+    const prompts = ARCAAI_CLINICAL_VERSIONS.filter(
+      (v) => v.versionNumber === versionNumber && v.promptTemplateId !== ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    );
     expect(prompts).toHaveLength(22);
     prompts.forEach((v) => {
       const match = /=== SOURCE-OF-TRUTH PROTOCOL[\s\S]*?=== END SOURCE-OF-TRUTH PROTOCOL ===/.exec(v.content);
@@ -929,7 +931,9 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
   });
 
   it.each([2, 3])('should keep the v%i pre-summary literal and its parsing contracts intact', (versionNumber) => {
-    const preSummary = ARCAAI_CLINICAL_VERSIONS.find((v) => v.versionNumber === versionNumber && v.promptTemplateId === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+    const preSummary = ARCAAI_CLINICAL_VERSIONS.find(
+      (v) => v.versionNumber === versionNumber && v.promptTemplateId === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    );
     expect(preSummary).toBeDefined();
 
     // The five FORMAT titles are title-matched by PRE_SUMMARY_DISPLAY_TITLES;
@@ -946,9 +950,17 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     // source; extraction unescapes). A lost placeholder ships a literal brace.
     // v3 makes the pre-summary English-only but RETAINS {language_name}, so the
     // contract with renderPreSummaryTemplate is unchanged across versions.
-    ['current_department', 'visit_type', 'safe_age', 'safe_dob', 'safe_gender', 'safe_vitals', 'formatted_test_results', 'formatted_previous_visits', 'language_name'].forEach((name) =>
-      expect(preSummary!.content).toContain(`{${name}}`),
-    );
+    [
+      'current_department',
+      'visit_type',
+      'safe_age',
+      'safe_dob',
+      'safe_gender',
+      'safe_vitals',
+      'formatted_test_results',
+      'formatted_previous_visits',
+      'language_name',
+    ].forEach((name) => expect(preSummary!.content).toContain(`{${name}}`));
 
     // The pre-summary reads typed EMR text, not ASR output — the RULE 6
     // terminology-repair licence must NOT leak into it.
@@ -979,9 +991,7 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     // bodies are fence-extracted and never contained it; this still scans every
     // seeded version so a later corpus cannot leak it unnoticed.
     [...ARCAAI_CLINICAL_VERSIONS, ...ARCAAI_CLINICAL_TEMPLATES].forEach((row) => {
-      expect(row.content, `FILE METADATA leaked into ${'promptTemplateId' in row ? row.promptTemplateId : row.id}`).not.toContain(
-        'FILE METADATA',
-      );
+      expect(row.content, `FILE METADATA leaked into ${'promptTemplateId' in row ? row.promptTemplateId : row.id}`).not.toContain('FILE METADATA');
       expect(row.content).not.toContain('DO NOT PASTE INTO HOPE');
     });
   });
@@ -992,7 +1002,16 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
 // =============================================================================
 
 describe('Department Prompt Configuration', () => {
-  const VALID_SUMMARY_TEMPLATES = ['SOAP', 'Progress-Note', 'ED-Encounter', 'Periop-Assessment', 'Imaging-Report', 'Lab-Report', 'Behavioral-Assessment', 'Pediatric-SOAP'];
+  const VALID_SUMMARY_TEMPLATES = [
+    'SOAP',
+    'Progress-Note',
+    'ED-Encounter',
+    'Periop-Assessment',
+    'Imaging-Report',
+    'Lab-Report',
+    'Behavioral-Assessment',
+    'Pediatric-SOAP',
+  ];
 
   const VALID_ABBREVIATION_DENSITIES = ['low', 'medium', 'high'];
 
@@ -1342,9 +1361,12 @@ describe('STT Seed Data', () => {
     describe('ASR Models (consolidated keepers)', () => {
       // TASK-860: the generic OpenAI whisper rows left the catalogue (the
       // ArcaAI fine-tunes are the platform's ASR); see RETIRED_AI_MODEL_SLUGS.
-      it.each(['whisper-large-v3-turbo', 'whisper-small', 'whisper-large-v3-turbo-gguf'])('should NOT seed the retired generic whisper row %s', (slug) => {
-        expect(DEFAULT_AI_MODELS.find((m) => m.slug === slug)).toBeUndefined();
-      });
+      it.each(['whisper-large-v3-turbo', 'whisper-small', 'whisper-large-v3-turbo-gguf'])(
+        'should NOT seed the retired generic whisper row %s',
+        (slug) => {
+          expect(DEFAULT_AI_MODELS.find((m) => m.slug === slug)).toBeUndefined();
+        },
+      );
 
       it('should include the ArcaAI ML-EN whisper.cpp fine-tune as the platform ASR default', () => {
         const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'arcaai-whisper-large-ml-en-gguf');
@@ -1511,10 +1533,8 @@ describe('STT Seed Data', () => {
           expect(setting.value).toBe(setting.defaultValue);
         });
       });
-
     });
   });
-
 });
 
 // =============================================================================
@@ -1562,6 +1582,52 @@ describe('nightly pipeline template resync is enabled by a platform setting', ()
   it('keys are unique across the platform rows (flat-by-key AppSettings cache)', () => {
     const keys = PLATFORM_SETTINGS.map((s) => s.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+/**
+ * TASK-890 D-2 (owner answer, 2026-09-06) — the external-guardrail switch ships ON.
+ *
+ * `text.externalGuardrail.enabled` is the gate in front of TEXT's input and output moderation.
+ * Its descriptor is a KILL SWITCH, and the registry refuses at assembly to register one that
+ * defaults ON, so the descriptor default stays `false` and NOTHING seeded a value — which meant
+ * the TASK-871 gates were inert on every deployment until a super admin flipped one key by hand.
+ * D-2 answers that with one platform row, in exactly the `pipeline.templateResync.enabled`
+ * shape: `value` turns it on, `defaultValue` keeps the fail-safe OFF for a reset, `locked`
+ * restricts the flip to SUPER_ADMIN, and the seed is CREATE-ONLY so a deliberate flip survives
+ * `db:seed`.
+ *
+ * The namespace is `registry` and that is load-bearing, not cosmetic:
+ * `SettingsRegistryWriteService` upserts its backing row by `(key, namespace: 'registry',
+ * tenantId)`. A seeded row under any other namespace would be invisible to that lookup, so the
+ * first governed write would CREATE A SECOND SYSTEM row for the same key — and two platform rows
+ * with one key trip `AppSettingsService`'s boot-time duplicate-key invariant, which refuses to
+ * start the gateway.
+ */
+describe('the external-guardrail switch is seeded ON (D-2)', () => {
+  const row = () => PLATFORM_SETTINGS.find((s) => s.key === 'text.externalGuardrail.enabled');
+
+  it('seeds the gate ON while keeping the fail-safe default OFF', () => {
+    expect(row()).toBeDefined();
+    expect(row()?.value).toBe('true');
+    expect(row()?.defaultValue).toBe('false');
+    expect(row()?.dataType).toBe('Boolean');
+  });
+
+  it('is owned by the SYSTEM tenant and locked to SUPER_ADMIN', () => {
+    expect(row()?.tenantId).toBe(SYSTEM_TENANT_ID);
+    expect(row()?.locked).toBe(true);
+  });
+
+  it('lives in the `registry` namespace, so the governed write lane updates THIS row', () => {
+    // Not a style choice: a different namespace would make the registry write create a second
+    // SYSTEM row for the same key, and the flat-by-key platform cache refuses to boot on that.
+    expect(row()?.namespace).toBe('registry');
+  });
+
+  it('is exactly ONE row — never a per-tenant copy of a platform kill switch', () => {
+    expect(PLATFORM_SETTINGS.filter((s) => s.key === 'text.externalGuardrail.enabled')).toHaveLength(1);
+    expect(ALL_SETTINGS.filter((s) => s.key === 'text.externalGuardrail.enabled')).toEqual([]);
   });
 });
 
@@ -1626,7 +1692,6 @@ describe('Phase 2 — STT default (CT2 registered; whisper.cpp GGUF effective de
     // runtime via FasterWhisperLoader.
     expect(ct2?.sourceUri).toBe('deepdml/faster-whisper-large-v3-turbo-ct2');
   });
-
 });
 
 describe('STT default resolves to a loadable artifact (no placeholder default)', () => {

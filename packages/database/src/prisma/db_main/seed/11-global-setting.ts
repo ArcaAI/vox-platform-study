@@ -525,6 +525,48 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     description: 'Cron expression for the nightly SYSTEM-template resync sweep . Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
+  // TASK-890 D-2 (owner answer, 2026-09-06) — turn TEXT's input/output moderation ON.
+  //
+  // `text.externalGuardrail.enabled` gates both halves of the TASK-871 gate. Its descriptor is a
+  // KILL SWITCH, and the registry refuses at assembly to register a kill-switch that defaults ON
+  // (fail-safe governance), so nothing seeded a value and the gates were INERT on every
+  // deployment until someone flipped one key by hand. This is the sanctioned way to ship it on,
+  // and it is the same shape as the two rows above: `value` is the live setting, `defaultValue`
+  // keeps the OFF fallback so a reset reverts to fail-safe, `locked` restricts the flip to
+  // SUPER_ADMIN, and the platform loop below is CREATE-ONLY on `value` — a deliberate flip
+  // survives every re-seed.
+  //
+  // Two details that are load-bearing rather than cosmetic:
+  //
+  //   - NAMESPACE `registry`. `SettingsRegistryWriteService` finds its backing row by
+  //     `(key, namespace: 'registry', tenantId)`. Seeded under any other namespace, the first
+  //     governed write would not find this row and would CREATE A SECOND SYSTEM row for the same
+  //     key — and two platform rows sharing a key trip `AppSettingsService`'s boot-time
+  //     duplicate-key invariant, which refuses to start the gateway.
+  //   - NAME `TEXT input moderation` matches `descriptor.label`, which is what that same write
+  //     lane would name a row it created. Nothing keys on it (the lookup ignores `name`), but a
+  //     divergence would leave two plausible names for one row in the console.
+  //
+  // The gate is fail-CLOSED by construction: with it on, a deployment whose `apps/text` cannot
+  // reach `apps/guardrail` answers 503 on every generation rather than shipping unmoderated PHI.
+  // That is the intended behaviour and the reason §3.14b makes a reachable guardrail a
+  // precondition of this row on every stack, checked by the orchestrator — never by a lane.
+  {
+    // Same `0002` SYSTEM-tenant block as the two rows above. Declared here rather than in
+    // `seed/00-constants.ts` only because this lane owns this file alone; move it up with the
+    // siblings on the next pass through that file.
+    id: '00000000-0000-0000-0002-000000000004',
+    tenantId: SYSTEM_TENANT_ID,
+    namespace: 'registry',
+    name: 'TEXT input moderation',
+    key: 'text.externalGuardrail.enabled',
+    value: 'true',
+    defaultValue: 'false',
+    dataType: ValueType.Boolean,
+    description:
+      'Gates TEXT input and output moderation (TASK-871). ON since TASK-890 D-2. A tenant may opt OUT per agent / workflow / node; nothing can turn screening on that this switch turns off. Locked — only SUPER_ADMIN may change it.',
+    locked: true,
+  },
 ];
 
 // =============================================================================

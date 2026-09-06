@@ -6,6 +6,8 @@ import { isCloudByoProvider } from '../ai-provider-connection/constants';
 import { assertProviderAvailable } from '../ai-provider-connection/assert-provider-available';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { TEXT_GUARDRAIL_POLICY_PUSH_FIELDS } from '../settings-registry/descriptors/text-guardrail-policy.descriptors';
+import type { TextGuardrailPostureKey } from '../settings-registry/descriptors/text-provider-connections.descriptors';
+import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
 
 /**
  * The ONE implementation of the enrichments every outgoing TEXT
@@ -205,9 +207,82 @@ export class TextRequestEnrichmentService {
     }
 
     if (Object.keys(policy).length > 0) {
-      (target as Record<string, unknown>).guardrail_policy = policy;
+      // MERGED, never assigned: `applyGuardrailDecision` writes `enabled` into the same
+      // block, and the two enrichments have no fixed order across the five producers. An
+      // assignment here would let a caller's ordering decide whether a tenant's opt-out
+      // survived — a clinical gate must not depend on that.
+      const record = target as Record<string, unknown>;
+      const existing = isPlainObject(record.guardrail_policy) ? record.guardrail_policy : {};
+      record.guardrail_policy = { ...existing, ...policy };
     }
     return target;
+  }
+
+  /**
+   * TASK-890 §3.14 (OD-R) — write THIS call's guardrail decision onto the outgoing body.
+   *
+   * The decision itself is folded by `resolveGuardrailDecision` (`@arcaai/workflow-contract`:
+   * node > workflow > agent > on) and reaches here already answered. This method is the ONE
+   * place it becomes a wire field, so all five producers state it identically and none of them
+   * hand-rolls the key.
+   *
+   * Three properties worth stating, because each is easy to lose:
+   *
+   *   - EXPLICIT IN BOTH DIRECTIONS. `enabled: true` is written, not omitted. On the wire it is
+   *     a different statement from an absent block: TEXT can then distinguish "screened because
+   *     a decision said so" from "no opinion — the platform posture governs", and the usage
+   *     ledger records `screened` rather than inferring it.
+   *   - IT ONLY EVER SUBTRACTS. A pushed `true` cannot turn a platform kill switch back on;
+   *     `apps/text` keeps `platform.enabled` as the floor (`core/guardrail_posture.py`). So this
+   *     is safe to send unconditionally.
+   *   - IT MERGES. `applyTenantGuardrailPolicy` owns the other two fields of the same block.
+   *
+   * Synchronous and pure: unlike its siblings it resolves nothing, so there is no failure mode
+   * to degrade — which is what lets a producer state the decision without a `try`/`catch` that
+   * could swallow it.
+   */
+  applyGuardrailDecision<T extends object>(target: T, decision: { enabled: boolean }): T {
+    const record = target as Record<string, unknown>;
+    const existing = isPlainObject(record.guardrail_policy) ? record.guardrail_policy : {};
+    record.guardrail_policy = { ...existing, enabled: decision.enabled };
+    return target;
+  }
+
+  /**
+   * The SCREENING DISPOSITION of a call, for the usage ledger's `guardrail` attribute.
+   *
+   * Three values, and the third is why this is a lookup rather than a boolean: `platform_off`
+   * (the `text.externalGuardrail.enabled` kill switch is off, so nobody's opt-out was even
+   * consulted), `opted_out` (a tenant decision on the record) and `screened`. Collapsing the
+   * first two would let a deployment that never turned the platform gate on look like a fleet of
+   * tenants who each chose to run unscreened.
+   *
+   * Read here rather than taken from the TEXT response because the ledger row must be
+   * attributable even when the response carries nothing about screening — and because the
+   * gateway is where the switch already resolves (`global-kv`, SYSTEM-scope).
+   *
+   * FAIL HONEST, not fail-`screened`: if the switch cannot be read the answer falls back to the
+   * DECISION this gateway made, which is the half it knows for certain. Claiming `screened` on
+   * an unreadable control plane would put a false safety record in the billing plane.
+   */
+  async guardrailDisposition(decision: { enabled: boolean }): Promise<GuardrailDisposition> {
+    const fromDecision: GuardrailDisposition = decision.enabled ? 'screened' : 'opted_out';
+    if (!this.effectiveSettings) return fromDecision;
+    const tenantId = this.clsService.get('tenantId');
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(PLATFORM_GUARDRAIL_SWITCH_KEY, {
+        tenantId: tenantId ?? null,
+        departmentId: null,
+        doctorId: null,
+      });
+      if (resolved.value === false) return 'platform_off';
+    } catch (error) {
+      this.logger.warn({
+        message: 'Platform guardrail switch could not be resolved; recording this call by its own decision',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return fromDecision;
   }
 
   /**
@@ -221,4 +296,17 @@ export class TextRequestEnrichmentService {
   async applyTextRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
     return target;
   }
+}
+
+/**
+ * The platform kill switch the disposition above reads. `globalOnly`, `maxScope: 'system'`,
+ * `killSwitch: true` — a SYSTEM-tier value, never a tenant's (see
+ * `text-provider-connections.descriptors.ts`). Typed against the descriptor key union so a
+ * rename cannot leave a string literal pointing at a key that no longer exists.
+ */
+const PLATFORM_GUARDRAIL_SWITCH_KEY: TextGuardrailPostureKey = 'text.externalGuardrail.enabled';
+
+/** A plain object, as the two guardrail merges above model one. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

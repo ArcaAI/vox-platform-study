@@ -98,11 +98,26 @@ class GuardrailPolicyOverride(BaseModel):
     the same as ``False`` and must never be flattened into it. Resolution lives in
     `core/guardrail_posture.resolve_posture`.
 
-    The remaining posture fields (`enabled`, retry budget) are platform-scope and
-    arrive on the PULL channel instead; the FAIL POSTURE is not configurable at
-    all — an errored guardrail can never return ``allowed: True``.
+    ``enabled`` is the per-call OPT-OUT (TASK-890 OD-R, 2026-09-06), and it is
+    asymmetric on purpose. This field used to be described here as platform-scope
+    and PULL-only; the owner decided a tenant may switch platform screening off
+    for one agent, one workflow or one node, so the decision — folded gateway-side
+    by `resolveGuardrailDecision` (node > workflow > agent > on) — rides on the
+    request. What it can do is SUBTRACT: a pushed ``False`` turns both gates off
+    for this call, while a pushed ``True`` can never revive a platform kill
+    switch, because `resolve_posture` keeps ``platform.enabled`` as the floor.
+    Every ``False`` is on the record three ways — a publish WARNING
+    (`GUARDRAIL_OPTED_OUT`), the per-call ledger attribute
+    ``guardrail: 'opted_out'``, and the ``tenant_opted_out`` skip reason this
+    service reports — so the omission is attributable, never merely permitted.
+
+    The remaining posture fields (the retry budget and the platform switch's own
+    value) stay platform-scope and arrive on the PULL channel; the FAIL POSTURE is
+    not configurable at all — an errored guardrail can never return
+    ``allowed: True``.
     """
 
+    enabled: bool | None = None
     require_medical: bool | None = None
     include_reasoning: bool | None = None
 
@@ -146,15 +161,15 @@ ContentPart = Annotated[TextContentPart | ImageContentPart, Field(discriminator=
 #: here so the next reader does not have to re-derive why it is still standing:
 #:
 #: * It is ASYMMETRIC with `model`, which has NO default: `POST /generate`
-#Fail-closes with a 422 when the model is missing (`api/endpoints/generate.py`
-#"Text has no default model"). Provider selection deserves the same posture —
-#Both halves of a `{provider, model}` pair come from the same `AiTaskDefault`
-#/ `HarnessPolicy` resolution on the gateway.
+# Fail-closes with a 422 when the model is missing (`api/endpoints/generate.py`
+# "Text has no default model"). Provider selection deserves the same posture —
+# Both halves of a `{provider, model}` pair come from the same `AiTaskDefault`
+# / `HarnessPolicy` resolution on the gateway.
 #: * It is REACHABLE, not vestigial. `apps/api`
-#`streaming/text-proxy.controller.ts::applyTextModelSelection` stamps
-#`{provider, model}` only when `!target.model`, so a caller that PINS a model
-#And omits the provider reaches this line — and is then routed to LM Studio
-#Whatever engine that model actually lives on.
+# `streaming/text-proxy.controller.ts::applyTextModelSelection` stamps
+# `{provider, model}` only when `!target.model`, so a caller that PINS a model
+# And omits the provider reaches this line — and is then routed to LM Studio
+# Whatever engine that model actually lives on.
 #:
 #: WHAT BLOCKS REMOVAL, precisely: turning this into a required field (or
 #: `None` + a 422, mirroring `model`) converts that silent mis-route into a hard

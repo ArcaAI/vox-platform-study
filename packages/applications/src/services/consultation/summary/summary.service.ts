@@ -50,7 +50,7 @@ import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildTextGeneratePayload, mapTextGenerateResponse, type LegacyTextSummaryResponse } from './text-generate';
 import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
-import { withUsageTrigger } from '../../usageLedger/usage-attributes';
+import { withUsageAttributes, withUsageTrigger } from '../../usageLedger/usage-attributes';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
 import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -796,6 +796,14 @@ export class SummaryService extends BaseService implements ISummaryService {
     // TASK-890 (OD-E) — WHICH activity produced these rows. Every generation
     // this service performs is a clinical consultation; the dimension is what
     // lets a tenant's spend be split from a prompt bench's or a workflow's.
+    //
+    // TASK-890 §3.14 (OD-R) — and HOW it was screened. This path pushes no opt-out (it posts
+    // to TEXT with no `guardrail_policy.enabled`), so the answer is the platform's own state:
+    // `screened`, or `platform_off` when the kill switch is off. It can never be `opted_out`
+    // here, and it is recorded rather than assumed so "was this clinical note generated behind
+    // the guard" is a query on the ledger instead of an inference about the code path.
+    // Unresolvable (no enrichment service wired) ⇒ stamped with NOTHING, never a guess.
+    const guardrail = await this.textRequestEnrichment?.guardrailDisposition({ enabled: true });
     const llmInput = textResponse.usage
       ? withUsageTrigger(
           buildLlmUsageInput({
@@ -823,7 +831,9 @@ export class SummaryService extends BaseService implements ISummaryService {
         )
       : null;
 
-    const inputs = [llmInput, guardrailInput].filter((input): input is NonNullable<typeof input> => input !== null);
+    const inputs = [guardrail ? (withUsageAttributes(llmInput, { guardrail }) ?? llmInput) : llmInput, guardrailInput].filter(
+      (input): input is NonNullable<typeof input> => input !== null,
+    );
 
     if (!this.usageLedger || !this.unitOfWork || inputs.length === 0) {
       await this.summaryMetaRepository.create(summaryMeta);
