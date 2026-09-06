@@ -1,14 +1,17 @@
 /**
- * The gateway carries `AiModel.localPath` to NLP.
+ * The gateway carries the registry row's WEIGHT PATH to NLP.
  *
  * NLP is deliberately stateless (no DB), so the registry's weight path can only
  * reach it by request injection — `_MODEL_IDENTITY_FIELDS` in
  * `nlp/core/config.py` already blocks env from setting `model_path`, making the
  * request lane the sanctioned one.
  *
- * The load-bearing guarantee here is the OMISSION case: when the registry row
- * carries no `localPath`, the upstream payload must be byte-for-byte identical
- * to today's, so this ships with zero behaviour change for every existing row.
+ * TASK-890 §3.11: the path is now DERIVED from the row's bucket identity rather
+ * than read from a `localPath` column, so these fixtures supply `bucketPrefix`
+ * (+ `libraryName`) and expect the derived mount path. The wire is unchanged.
+ *
+ * The load-bearing guarantee here is still the OMISSION case: a row with no
+ * bucket identity produces a payload byte-for-byte identical to today's.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { AiInferenceController } from '../ai-inference.controller';
@@ -22,7 +25,10 @@ function makeController(
   return { controller, client };
 }
 
-const effective = (taskKey: string, sourceUri: string, localPath?: string | null) => ({
+/** `/mnt/models-bucket/<prefix>/` — what `derivedLocalPath` produces for a directory loader. */
+const derived = (bucketPrefix: string) => `/mnt/models-bucket/${bucketPrefix}/`;
+
+const effective = (taskKey: string, sourceUri: string, bucketPrefix?: string | null) => ({
   tenantId: 't1',
   taskKey,
   modelSlug: 'some-slug',
@@ -37,14 +43,17 @@ const effective = (taskKey: string, sourceUri: string, localPath?: string | null
     taskType: 'X',
     format: 'SAFETENSOR',
     sourceUri,
-    localPath: localPath ?? null,
+    // The bucket IDENTITY is what a row carries; the path follows from it.
+    bucketPrefix: bucketPrefix || null,
+    primaryObject: null,
+    libraryName: 'transformers',
   },
 });
 
 describe('model_path injection (NER)', () => {
-  it('injects model_path when the registry row carries a localPath', async () => {
+  it('injects model_path derived from the registry row bucket identity', async () => {
     const routingPolicies = {
-      resolveDefault: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', '/opt/hope/models/ner')),
+      resolveDefault: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', 'medical-ner/1')),
     };
     const { controller, client } = makeController(routingPolicies);
     client.classifyTokens.mockResolvedValue({});
@@ -54,7 +63,7 @@ describe('model_path injection (NER)', () => {
     expect(client.classifyTokens).toHaveBeenCalledWith({
       text: 'aspirin 100mg',
       model_name: 'blaze999/Medical-NER',
-      model_path: '/opt/hope/models/ner',
+      model_path: derived('medical-ner/1'),
     });
   });
 
@@ -75,7 +84,7 @@ describe('model_path injection (NER)', () => {
     expect(Object.keys(payload)).not.toContain('model_path');
   });
 
-  it('omits model_path when localPath is an empty string (cleared override)', async () => {
+  it('omits model_path when the bucket prefix was cleared', async () => {
     const routingPolicies = {
       resolveDefault: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', '')),
     };
@@ -89,15 +98,15 @@ describe('model_path injection (NER)', () => {
 });
 
 describe('model_path injection (diagnosis)', () => {
-  it('injects model_path when the diagnosis row carries a localPath', async () => {
-    // The route resolves TWO keys, so each weight path must come
-    // from ITS OWN registry row — a blanket mock would let one row's localPath
-    // satisfy both assertions and hide a crossed pair.
+  it('injects a model_path derived from EACH diagnosis row own bucket identity', async () => {
+    // The route resolves TWO keys, so each weight path must come from ITS OWN
+    // registry row — a blanket mock would let one row's path satisfy both
+    // assertions and hide a crossed pair.
     const routingPolicies = {
       resolveDefault: vi.fn(async (_tenantId: string, taskKey: string) =>
         taskKey === 'nlp.ner'
-          ? effective('nlp.ner', 'blaze999/Medical-NER', '/opt/hope/models/ner')
-          : effective('nlp.diagnosis', 'some/diagnosis-model', '/opt/hope/models/dx'),
+          ? effective('nlp.ner', 'blaze999/Medical-NER', 'medical-ner/1')
+          : effective('nlp.diagnosis', 'some/diagnosis-model', 'diagnosis-model/1'),
       ),
     };
     const { controller, client } = makeController(routingPolicies);
@@ -108,9 +117,9 @@ describe('model_path injection (diagnosis)', () => {
     expect(client.suggestDiagnosis).toHaveBeenCalledWith({
       text: 'chest pain',
       model_name: 'some/diagnosis-model',
-      model_path: '/opt/hope/models/dx',
+      model_path: derived('diagnosis-model/1'),
       ner_model_name: 'blaze999/Medical-NER',
-      ner_model_path: '/opt/hope/models/ner',
+      ner_model_path: derived('medical-ner/1'),
     });
   });
 
@@ -136,9 +145,11 @@ describe('model_path injection (diagnosis)', () => {
 });
 
 describe('override lane stays fail-closed', () => {
-  it('a validated override forwards the matched row localPath, not a caller value', async () => {
+  it('a validated override forwards the MATCHED row path, derived, not a caller value', async () => {
     const aiModels = {
-      getByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ slug: 'ner-alt', sourceUri: 'org/ner-alt', localPath: '/opt/hope/models/ner-alt' }]),
+      getByTaskTypeSharedRead: vi
+        .fn()
+        .mockResolvedValue([{ slug: 'ner-alt', sourceUri: 'org/ner-alt', bucketPrefix: 'ner-alt/1', primaryObject: null, libraryName: 'transformers' }]),
     };
     const { controller, client } = makeController(undefined, aiModels);
     client.classifyTokens.mockResolvedValue({});
@@ -148,13 +159,13 @@ describe('override lane stays fail-closed', () => {
     expect(client.classifyTokens).toHaveBeenCalledWith({
       text: 'x',
       model_name: 'org/ner-alt',
-      model_path: '/opt/hope/models/ner-alt',
+      model_path: derived('ner-alt/1'),
     });
   });
 
-  it('an override whose row has no localPath injects no model_path', async () => {
+  it('an override whose row has no bucket identity injects no model_path', async () => {
     const aiModels = {
-      getByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ slug: 'ner-alt', sourceUri: 'org/ner-alt', localPath: null }]),
+      getByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ slug: 'ner-alt', sourceUri: 'org/ner-alt', bucketPrefix: null }]),
     };
     const { controller, client } = makeController(undefined, aiModels);
     client.classifyTokens.mockResolvedValue({});

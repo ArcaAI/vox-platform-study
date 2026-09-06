@@ -29,7 +29,10 @@ function makeController(
   return { controller, client };
 }
 
-const effectiveWithModel = (taskKey: string, sourceUri: string, localPath: string | null = null) => ({
+/** TASK-890 §3.11 — a row carries a bucket IDENTITY; the weight path is derived from it. */
+const derived = (bucketPrefix: string) => `/mnt/models-bucket/${bucketPrefix}/`;
+
+const effectiveWithModel = (taskKey: string, sourceUri: string, bucketPrefix: string | null = null) => ({
   tenantId: 't1',
   taskKey,
   modelSlug: 'some-slug',
@@ -44,7 +47,9 @@ const effectiveWithModel = (taskKey: string, sourceUri: string, localPath: strin
     taskType: 'X',
     format: 'SAFETENSOR',
     sourceUri,
-    localPath,
+    bucketPrefix,
+    primaryObject: null,
+    libraryName: 'transformers',
   },
 });
 
@@ -338,11 +343,11 @@ describe('AiInferenceController — diagnosis suggestions', () => {
     expect(result).toBe(suggestions);
   });
 
-  it('forwards ner_model_path from the NER registry row when it carries a localPath', async () => {
+  it('forwards ner_model_path derived from the NER registry row own bucket identity', async () => {
     const routingPolicies = {
       resolveDefault: effectiveByKey({
-        'nlp.diagnosis': effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41', '/weights/symps'),
-        'nlp.ner': effectiveWithModel('nlp.ner', 'blaze999/Medical-NER', '/weights/medical-ner'),
+        'nlp.diagnosis': effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41', 'symps/1'),
+        'nlp.ner': effectiveWithModel('nlp.ner', 'blaze999/Medical-NER', 'medical-ner/1'),
       }),
     };
     const { controller, client } = makeController(routingPolicies);
@@ -353,9 +358,9 @@ describe('AiInferenceController — diagnosis suggestions', () => {
     expect(client.suggestDiagnosis).toHaveBeenCalledWith({
       text: 'fever',
       model_name: 'shanover/symps_disease_bert_v3_c41',
-      model_path: '/weights/symps',
+      model_path: derived('symps/1'),
       ner_model_name: 'blaze999/Medical-NER',
-      ner_model_path: '/weights/medical-ner',
+      ner_model_path: derived('medical-ner/1'),
     });
   });
 
