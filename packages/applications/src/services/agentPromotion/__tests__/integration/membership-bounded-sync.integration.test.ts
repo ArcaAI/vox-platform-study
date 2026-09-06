@@ -1,17 +1,12 @@
 /**
  * TASK-889 — `runInTenantContext` against a REAL PostgreSQL, with the REAL extended client.
  *
- * ## SKIPPED, and the condition for unskipping it
+ * ## Runs with the rest of the integration suite
  *
- * `describe.skip`. The test database on this branch still carries the PRE-WAVE schema: the
- * wave-3a retirement migration and TASK-886's `TenantGuardrailPolicy` migration are authored and
- * proven on a shadow database but NOT applied anywhere, and the orchestrator has not been cleared
- * to reset the shared test DB (a reset mid-wave destroys whatever other lane is using it). Running
- * this now would fail for reasons that have nothing to do with what it asserts.
- *
- * **Unskip when**: the test database has been reset onto the wave's schema
- * (`pnpm setup:test` / `pnpm test:db:reset` + `pnpm test:db:seed`), i.e. the same gate the rest of
- * `pnpm test:integration` waits on. Change `describe.skip` to `describe` — nothing else.
+ * Shipped `describe.skip` while the shared test database still carried the pre-wave schema;
+ * un-skipped on 2026-09-06 once the owner reset it onto the wave's schema (the fixture tenants
+ * needed the required `key` and had a `code` field the model does not carry). It creates two
+ * fixture tenants and removes them — and their departments — when it is done.
  *
  * ## What it adds over the unit proof
  *
@@ -70,7 +65,7 @@ function makeClsStandIn(initial: Record<string, unknown>) {
   };
 }
 
-describe.skip('runInTenantContext against a live database (TASK-889)', () => {
+describe('runInTenantContext against a live database (TASK-889)', () => {
   const cls = makeClsStandIn({ tenantId: TENANT_A, user: { id: SYSTEM_USER_ID, roles: ['TENANT_ADMIN'] } });
   const scoped = getExtendedPrismaClient();
   let unscoped: CorePrismaClient;
@@ -83,7 +78,7 @@ describe.skip('runInTenantContext against a live database (TASK-889)', () => {
       await unscoped.tenant.upsert({
         where: { id },
         update: {},
-        create: { id, name: `TASK-889 ${id.slice(-4)}`, code: `t889${id.slice(-4)}`, createdBy: SYSTEM_USER_ID },
+        create: { id, name: `TASK-889 ${id.slice(-4)}`, key: `t889-${id.slice(-4)}`, createdBy: SYSTEM_USER_ID },
       });
     }
     await unscoped.department.deleteMany({ where: { tenantId: { in: [TENANT_A, TENANT_B] } } });
@@ -92,6 +87,7 @@ describe.skip('runInTenantContext against a live database (TASK-889)', () => {
   afterAll(async () => {
     setTenantContextProvider(null);
     await unscoped.department.deleteMany({ where: { tenantId: { in: [TENANT_A, TENANT_B] } } });
+    await unscoped.tenant.deleteMany({ where: { id: { in: [TENANT_A, TENANT_B] } } });
     await unscoped.$disconnect();
   });
 
