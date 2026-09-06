@@ -177,7 +177,12 @@ describe('the invocation itself refuses a context the bound schema does not admi
   });
 
   it('proceeds when the context is admitted', async () => {
-    await service().invokeText(withPrompt('Age {{context.patient.age}}', bound), TENANT, { text: 't', context: { patient: { age: 41 } } }, 'blocking');
+    await service().invokeText(
+      withPrompt('Age {{context.patient.age}}', bound),
+      TENANT,
+      { text: 't', context: { patient: { age: 41 } } },
+      'blocking',
+    );
 
     expect(sentBody().system_prompt).toBe('Age 41');
   });

@@ -4,7 +4,9 @@
  * Assembles a complete TEXT v2 payload by:
  * 1. Resolving the prompt template via PromptResolutionService
  * 2. Loading template content + hyperparameters + JSON schema from DB
- * 3. Substituting variables ({conversation_language}, {style_DNA_*}, etc.)
+ * 3. Rendering the body through the ONE grammar (TASK-890 §3.2) over the `context.*`
+ *    namespace the tenant's `consultation_legacy_v1` schema clone declares
+ *    (`{{context.conversation_language}}`, `{{context.style_DNA_*}}`, …)
  * 4. Building the final payload with all parameters for TEXT v2
  */
 
@@ -30,7 +32,6 @@ import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExem
 import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
 import { IActiveUserContext } from '../../../interfaces';
 import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
-
 
 /**
  * The platform-tier system prompt (F-20).
@@ -110,7 +111,6 @@ function fingerprintExemplarSet(input: string): string {
   }
   return (hash >>> 0).toString(36);
 }
-
 
 /**
  * Does this body reference any of v1's nine pre-summary names, in the ONE grammar?
@@ -779,7 +779,8 @@ export class PromptAssemblyService {
       const schema = await this.contextSchemaRepository.findByTenantAndSlug(tenantId, LEGACY_CONTEXT_SCHEMA_SLUG);
       if (!schema || schema.pinnedVersionNumber == null) {
         this.logger.warn({
-          message: 'PROMPT_CONTEXT_SCHEMA_UNBOUND — this tenant has no pinned clone of the legacy context schema; assembling from the code-owned variables',
+          message:
+            'PROMPT_CONTEXT_SCHEMA_UNBOUND — this tenant has no pinned clone of the legacy context schema; assembling from the code-owned variables',
           tenantId,
           slug: LEGACY_CONTEXT_SCHEMA_SLUG,
         });
@@ -789,7 +790,8 @@ export class PromptAssemblyService {
       if (!version) return [];
       const payloadSchema = payloadSchemaFromDefinition(version.definition);
       const properties = (payloadSchema.properties as Record<string, unknown> | undefined)?.context;
-      const fields = properties !== null && typeof properties === 'object' ? (properties as { properties?: Record<string, unknown> }).properties : undefined;
+      const fields =
+        properties !== null && typeof properties === 'object' ? (properties as { properties?: Record<string, unknown> }).properties : undefined;
       return fields ? Object.keys(fields) : [];
     } catch (error) {
       // A governance lookup must never fail a generation (the `resolveWarmStartEnabled` rule).
