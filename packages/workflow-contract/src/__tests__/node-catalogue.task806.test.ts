@@ -9,13 +9,14 @@
 import { describe, expect, it } from 'vitest';
 import { NODE_CONFIG_SCHEMAS } from '../node-config-schemas';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
-import { isValidConnection, nodeDescriptorContractProblems, workflowPublishProblems } from '../port-validation';
+import { isValidConnection, nodeDescriptorContractProblems } from '../port-validation';
+import { publishProblems as workflowPublishProblems } from './publish-problems.helper';
 import { TERMINOLOGY_PURPOSE_SCOPES } from '../node-config-schemas';
 
 const REGISTRY = WORKFLOW_NODE_REGISTRY;
 
 /**
-* DD-9's target catalogue, verbatim, plus DD-6's pre-summarization entry and the
+ * DD-9's target catalogue, verbatim, plus DD-6's pre-summarization entry and the
  * DNA-redaction node turns from a resolver flag into a node.
  */
 const AGENT_CATALOGUE = [

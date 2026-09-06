@@ -30,9 +30,9 @@ interface FixtureEntry {
   /** the FIRST port field that is SHARED, not TS-only. See the projection below. */
   outputKeys: Record<string, string | null>;
   /**
-* lane A item 7 — the SECOND shared field: it decides which runtime executes a node,
-   *  and the durable interpreter has to read it in order to skip a `realtime` one. 
- */
+   * lane A item 7 — the SECOND shared field: it decides which runtime executes a node,
+   *  and the durable interpreter has to read it in order to skip a `realtime` one.
+   */
   lane: 'realtime' | 'durable';
 }
 
@@ -82,7 +82,9 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
   });
 
   it('`implemented: false` is exactly the retired `stt` palette (TASK-861 step 10 / TASK-867) — the keys the Python registry has NO spec for', () => {
-    const unimplemented = loadFixtureEntries().filter((entry) => !entry.implemented).map((entry) => entry.key);
+    const unimplemented = loadFixtureEntries()
+      .filter((entry) => !entry.implemented)
+      .map((entry) => entry.key);
     expect(unimplemented).toEqual([
       'stt.asrEngine',
       'stt.audioInput',

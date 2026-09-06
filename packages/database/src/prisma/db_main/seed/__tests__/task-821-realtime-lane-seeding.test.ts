@@ -50,7 +50,23 @@ const REALTIME_LANE_SRC = path.resolve(HERE, '../../../../../../applications/src
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const contract: any = await import(/* @vite-ignore */ CONTRACT_SRC);
-const { allPathsPassThrough, registryChecksum, validate, workflowNodeClassLookup, workflowPublishProblems } = contract;
+const { allPathsPassThrough, registryChecksum, validate, workflowNodeClassLookup } = contract;
+
+// TASK-890 §3.5 — `workflowPublishProblems` is GONE: it was a real publish gate nothing called
+// (BLOCKER 1c), and its checks now run inside `publishFindings`, which the gateway's
+// `WorkflowDefinitionService.publishEntity` actually invokes. A SEED never goes through that
+// service, so this suite keeps running the same gate directly. The contract takes its
+// JSON-Schema value checker from the caller (it has zero runtime dependencies) and
+// `packages/database` does not depend on `@arcaai/json-schema-subset`, so it is loaded by path
+// exactly as the contract is. ERROR severity only: a WARNING never blocked a publish.
+const SUBSET_SRC = path.resolve(HERE, '../../../../../../json-schema-subset/src/index.ts');
+const { jsonSchemaValueProblems }: any = await import(/* @vite-ignore */ SUBSET_SRC);
+const workflowPublishProblems = (graph: any): string[] =>
+  contract
+    .publishFindings(graph, { schemaValueProblems: jsonSchemaValueProblems, templateReferenceSeverity: 'WARNING' })
+    .filter((finding: any) => finding.severity === 'ERROR')
+    .map((finding: any) => finding.message);
+
 const { buildRealtimeLane }: any = await import(/* @vite-ignore */ REALTIME_LANE_SRC);
 
 const GRAPHS: Array<[string, any]> = [

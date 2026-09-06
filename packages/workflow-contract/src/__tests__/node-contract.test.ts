@@ -187,10 +187,13 @@ describe('OD-15 — outputKey is declared on every data output port, and on no c
     expect(offenders, `${descriptor.key}: control ports carry no payload, so they can name no output key`).toEqual([]);
   });
 
-  it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares NO outputKey on an INPUT port (a socket is bound by toPort)', (_key, descriptor) => {
-    const offenders = descriptor.inputs.filter((port) => (port as { outputKey?: string }).outputKey !== undefined).map((port) => port.name);
-    expect(offenders).toEqual([]);
-  });
+  it.each(DESCRIPTORS.map((d) => [d.key, d] as const))(
+    '%s declares NO outputKey on an INPUT port (a socket is bound by toPort)',
+    (_key, descriptor) => {
+      const offenders = descriptor.inputs.filter((port) => (port as { outputKey?: string }).outputKey !== undefined).map((port) => port.name);
+      expect(offenders).toEqual([]);
+    },
+  );
 
   it('the two nodes whose descriptor contradicted their activity now declare real data outputs (OD-15)', () => {
     // `persistDraft` emits `{contextItemId, text}` and `finalizeAssurance` genuinely consumes the

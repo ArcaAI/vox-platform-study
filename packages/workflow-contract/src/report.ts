@@ -22,6 +22,14 @@ export interface WorkflowFinding {
   path?: string;
   /** The house `problems` string, verbatim. */
   message: string;
+  /**
+   * TASK-890 §3.5 — the machine-readable reason, from the vocabulary `publish-findings.ts`
+   * declares (and shares with `AgentFindingCode` in the applications layer). Optional because
+   * the rule catalogue's own findings identify themselves by `ruleId`; a publish finding needs a
+   * SECOND axis, because ten different rule ids all mean "this node's config is wrong" and a
+   * console that wants to offer the right fix cannot get that from a message string.
+   */
+  code?: string;
   /** INV-xxx ids from `01-invariant-register.md`, when the rule cites the register. */
   registerRefs?: readonly string[];
 }

@@ -44,8 +44,16 @@ describe(' tier 2 — shallow structural compatibility', () => {
   });
 
   it('does NOT descend past one level — a nested mismatch is tier 3`s job, at run time', () => {
-    const nestedProducer = { type: 'object', properties: { patient: { type: 'object', properties: { id: { type: 'integer' } } } }, required: ['patient'] };
-    const nestedConsumer = { type: 'object', properties: { patient: { type: 'object', properties: { id: { type: 'string' } } } }, required: ['patient'] };
+    const nestedProducer = {
+      type: 'object',
+      properties: { patient: { type: 'object', properties: { id: { type: 'integer' } } } },
+      required: ['patient'],
+    };
+    const nestedConsumer = {
+      type: 'object',
+      properties: { patient: { type: 'object', properties: { id: { type: 'string' } } } },
+      required: ['patient'],
+    };
     expect(schemaCompatWarnings(nestedProducer, nestedConsumer)).toEqual([]);
   });
 
@@ -59,7 +67,9 @@ describe(' tier 2 — shallow structural compatibility', () => {
   });
 
   it('SKIPS `patternProperties` — a pattern can satisfy a name this reader cannot predict', () => {
-    expect(schemaCompatWarnings({ type: 'object', patternProperties: { '^p_': { type: 'string' } } }, { type: 'object', required: ['p_id'] })).toEqual([]);
+    expect(
+      schemaCompatWarnings({ type: 'object', patternProperties: { '^p_': { type: 'string' } } }, { type: 'object', required: ['p_id'] }),
+    ).toEqual([]);
   });
 
   it('says nothing when either side declares no schema — absence is not a mismatch', () => {
@@ -74,8 +84,16 @@ describe(' tier 2 — over a graph', () => {
     version: 1,
     nodes: [
       { id: 'in_node', type: 'agentic.input', config: { ioSchema: PRODUCER } },
-      { id: 'out_node', type: 'agentic.output', config: { ioSchema: { type: 'object', properties: { patientId: { type: 'string' } }, required: ['patientId'] } } },
-      { id: 'ok_node', type: 'agentic.output', config: { ioSchema: { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] } } },
+      {
+        id: 'out_node',
+        type: 'agentic.output',
+        config: { ioSchema: { type: 'object', properties: { patientId: { type: 'string' } }, required: ['patientId'] } },
+      },
+      {
+        id: 'ok_node',
+        type: 'agentic.output',
+        config: { ioSchema: { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] } },
+      },
     ],
     edges: [
       { id: 'e1', from: 'in_node', to: 'out_node', fromPort: 'out', toPort: 'in' },

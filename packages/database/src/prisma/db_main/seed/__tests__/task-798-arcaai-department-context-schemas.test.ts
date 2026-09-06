@@ -37,10 +37,7 @@ import { definitionChecksum } from '../07e-consultation-loop-defaults';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from '../00-constants';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DEFINITION_MODULE = path.resolve(
-  HERE,
-  '../../../../../../applications/src/services/consultation-context-schema/context-schema-definition.ts',
-);
+const DEFINITION_MODULE = path.resolve(HERE, '../../../../../../applications/src/services/consultation-context-schema/context-schema-definition.ts');
 
 const JSON_SCHEMA_SUBSET_DIST = path.resolve(HERE, '../../../../../../json-schema-subset/dist/index.mjs');
 if (!existsSync(JSON_SCHEMA_SUBSET_DIST)) {
@@ -65,8 +62,7 @@ const versionFor = (schemaId: string) => {
   if (!row) throw new Error(`no seeded version for schema ${schemaId}`);
   return row;
 };
-const kindKeys = (departmentId: string) =>
-  ((schemaFor(departmentId).definition as { kinds: { key: string }[] }).kinds ?? []).map((k) => k.key);
+const kindKeys = (departmentId: string) => ((schemaFor(departmentId).definition as { kinds: { key: string }[] }).kinds ?? []).map((k) => k.key);
 const outputKeys = (departmentId: string) =>
   ((schemaFor(departmentId).definition as { outputs?: { key: string }[] }).outputs ?? []).map((o) => o.key);
 

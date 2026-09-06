@@ -13,7 +13,8 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowGraph } from '../graph-model';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
-import { isValidConnection, workflowEdgePortProblems, workflowPublishProblems } from '../port-validation';
+import { isValidConnection, workflowEdgePortProblems } from '../port-validation';
+import { publishProblems as workflowPublishProblems } from './publish-problems.helper';
 
 function graph(nodes: WorkflowGraph['nodes'], edges: WorkflowGraph['edges']): WorkflowGraph {
   return { version: 1, nodes, edges };
@@ -123,7 +124,9 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
   });
 
   it('is total — a structurally broken graph yields problems, never a throw', () => {
-    expect(() => workflowEdgePortProblems({ version: 1, nodes: [], edges: [{ id: 'e', from: 'x', fromPort: 'out', to: 'y', toPort: 'in' }] })).not.toThrow();
+    expect(() =>
+      workflowEdgePortProblems({ version: 1, nodes: [], edges: [{ id: 'e', from: 'x', fromPort: 'out', to: 'y', toPort: 'in' }] }),
+    ).not.toThrow();
   });
 
   it('reports EVERY bad edge in one pass, not just the first', () => {
@@ -177,7 +180,7 @@ describe('isValidConnection — the canvas predicate (same relation, one edge at
   });
 });
 
-describe('workflowPublishProblems — the publish gate', () => {
+describe('the publish gate (now `publishFindings`, via the string adapter)', () => {
   it('is empty for a graph whose edges all type-check', () => {
     expect(
       workflowPublishProblems(

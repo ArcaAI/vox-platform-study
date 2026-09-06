@@ -26,7 +26,8 @@ import { workflowGraphProblems } from '../graph-model';
 import { NODE_CONFIG_SCHEMAS } from '../node-config-schemas';
 import { CORE_NODE_TYPES, CORE_PALETTE_KEY, WORKFLOW_NODE_REGISTRY, isDeprecatedNodeType, nodeInfo, registryChecksum } from '../node-registry';
 import { ANY_PORT_PRIMITIVE, WORKFLOW_PORT_PRIMITIVES, portKindsCompatible, portPrimitiveSatisfies } from '../port-model';
-import { isValidConnection, workflowEdgePortProblems, workflowPublishProblems } from '../port-validation';
+import { isValidConnection, workflowEdgePortProblems } from '../port-validation';
+import { publishProblems as workflowPublishProblems } from './publish-problems.helper';
 import { DRAFT_CORE_RULE_SET } from '../rule-catalogue';
 import { validate } from '../validate';
 import { workflowNodeClassLookup } from '../node-registry';
@@ -93,7 +94,11 @@ function loopGraph(): WorkflowGraph {
     version: 1,
     nodes: [
       { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
-      { id: 'n_loop', type: 'core.loop', config: { mode: 'foreach', over: 'trigger.items', bounds: { maxIterations: 3, maxDurationSeconds: 60, maxTotalTokens: 1000 } } },
+      {
+        id: 'n_loop',
+        type: 'core.loop',
+        config: { mode: 'foreach', over: 'trigger.items', bounds: { maxIterations: 3, maxDurationSeconds: 60, maxTotalTokens: 1000 } },
+      },
       { id: 'n_body_agent', type: 'core.agent', config: { agentRef: { slug: 'platform-summarization' } }, parentId: 'n_loop' },
       { id: 'n_body_data', type: 'core.data', config: { mappings: [{ from: 'in.text', to: 'summary' }] }, parentId: 'n_loop' },
       { id: 'n_output', type: 'core.output', config: {} },
@@ -191,7 +196,12 @@ describe('dynamic branch handles', () => {
     expect(branchHandlesOf('core.classify', CLASSIFY_CONFIG)).toEqual(['safe', 'unsafe', 'otherwise']);
     expect(isBranchHandle('core.classify', CLASSIFY_CONFIG, 'safe')).toBe(true);
     expect(isBranchHandle('core.classify', CLASSIFY_CONFIG, 'out')).toBe(false);
-    expect(resolveOutputPort('core.classify', CLASSIFY_CONFIG, 'unsafe')).toEqual({ name: 'unsafe', primitive: 'control', required: false, multiple: true });
+    expect(resolveOutputPort('core.classify', CLASSIFY_CONFIG, 'unsafe')).toEqual({
+      name: 'unsafe',
+      primitive: 'control',
+      required: false,
+      multiple: true,
+    });
     expect(resolveOutputPort('core.classify', CLASSIFY_CONFIG, 'nope')).toBeUndefined();
   });
 
@@ -223,7 +233,15 @@ describe('the action catalogue', () => {
     expect(keys).toContain('consultation.phiHop');
     expect(keys).toContain('guard.groundedness');
     expect(keys).toContain('prompt.template_ref');
-    for (const excluded of ['consultation.synthesize', 'consultation.hitlGate', 'agentic.agent', 'agentic.input', 'output.deliver', 'input.context_binding', 'generate.text']) {
+    for (const excluded of [
+      'consultation.synthesize',
+      'consultation.hitlGate',
+      'agentic.agent',
+      'agentic.input',
+      'output.deliver',
+      'input.context_binding',
+      'generate.text',
+    ]) {
       expect(keys).not.toContain(excluded);
     }
     for (const key of keys) expect(WORKFLOW_NODE_REGISTRY[key]).toBeDefined();
@@ -238,7 +256,10 @@ describe('the action catalogue', () => {
     });
     expect(actionConfigSchemaOf(config)).toBe(NODE_CONFIG_SCHEMAS['consultation.phiHop']);
     expect(actionDelegateOf({ actionKey: 'nope' })).toBeUndefined();
-    expect(effectivePorts('core.action', { actionKey: 'nope' })).toEqual({ inputs: WORKFLOW_NODE_REGISTRY['core.action'].inputs, outputs: WORKFLOW_NODE_REGISTRY['core.action'].outputs });
+    expect(effectivePorts('core.action', { actionKey: 'nope' })).toEqual({
+      inputs: WORKFLOW_NODE_REGISTRY['core.action'].inputs,
+      outputs: WORKFLOW_NODE_REGISTRY['core.action'].outputs,
+    });
   });
 });
 
@@ -251,7 +272,14 @@ describe('coreNodeConfigProblems — what a JSON Schema cannot say', () => {
     const problems = coreNodeConfigProblems({
       id: 'c',
       type: 'core.classify',
-      config: { modelSlug: 'm', classes: [{ key: 'otherwise', label: 'x' }, { key: 'a', label: 'a' }, { key: 'a', label: 'b' }] },
+      config: {
+        modelSlug: 'm',
+        classes: [
+          { key: 'otherwise', label: 'x' },
+          { key: 'a', label: 'a' },
+          { key: 'a', label: 'b' },
+        ],
+      },
     });
     expect(problems.some((p) => p.includes('reserved'))).toBe(true);
     expect(problems.some((p) => p.includes('declared twice'))).toBe(true);
@@ -259,17 +287,34 @@ describe('coreNodeConfigProblems — what a JSON Schema cannot say', () => {
 
   it('parses every condition and refuses one that reads an undeclared root', () => {
     expect(coreNodeConfigProblems({ id: 'c', type: 'core.condition', config: { branches: [{ key: 'a', when: 'trigger.age > 1' }] } })).toEqual([]);
-    const problems = coreNodeConfigProblems({ id: 'c', type: 'core.condition', config: { branches: [{ key: 'a', when: 'patient.age >' }, { key: 'b', when: 'patient.age > 1' }] } });
+    const problems = coreNodeConfigProblems({
+      id: 'c',
+      type: 'core.condition',
+      config: {
+        branches: [
+          { key: 'a', when: 'patient.age >' },
+          { key: 'b', when: 'patient.age > 1' },
+        ],
+      },
+    });
     expect(problems.some((p) => p.includes('does not parse'))).toBe(true);
     expect(problems.some((p) => p.includes('not a run-context root'))).toBe(true);
   });
 
   it('a loop must name its mode`s driver and all three bounds', () => {
-    expect(coreNodeConfigProblems({ id: 'l', type: 'core.loop', config: { mode: 'foreach', bounds: { maxIterations: 1, maxDurationSeconds: 1 } } })).toEqual([
+    expect(
+      coreNodeConfigProblems({ id: 'l', type: 'core.loop', config: { mode: 'foreach', bounds: { maxIterations: 1, maxDurationSeconds: 1 } } }),
+    ).toEqual([
       'node `l`: a `foreach` loop needs `over` — the run-context path of the array to iterate.',
       'node `l`: `bounds.maxTotalTokens` is required — a loop bounded on fewer than all three axes is unbounded on the missing one.',
     ]);
-    expect(coreNodeConfigProblems({ id: 'l', type: 'core.loop', config: { mode: 'while', until: 'vars.done == true', bounds: { maxIterations: 1, maxDurationSeconds: 1, maxTotalTokens: 1 } } })).toEqual([]);
+    expect(
+      coreNodeConfigProblems({
+        id: 'l',
+        type: 'core.loop',
+        config: { mode: 'while', until: 'vars.done == true', bounds: { maxIterations: 1, maxDurationSeconds: 1, maxTotalTokens: 1 } },
+      }),
+    ).toEqual([]);
   });
 
   it('a trigger needs a kind; an output`s protocols come from the closed list; an action key must exist', () => {
@@ -373,7 +418,11 @@ describe('compile() — branches, loops and notes (A3)', () => {
 describe('publish + validate over a core graph', () => {
   it('the proof graph publishes clean and validates ok under the full rule set', () => {
     expect(workflowPublishProblems(proofGraph())).toEqual([]);
-    const report = validate(proofGraph(), { paletteKey: 'core', registry: workflowNodeClassLookup }, { ruleSetVersion: 1, registryChecksum: registryChecksum() });
+    const report = validate(
+      proofGraph(),
+      { paletteKey: 'core', registry: workflowNodeClassLookup },
+      { ruleSetVersion: 1, registryChecksum: registryChecksum() },
+    );
     expect(report.findings.filter((f) => f.severity === 'ERROR')).toEqual([]);
     expect(report.ok).toBe(true);
   });
@@ -381,7 +430,11 @@ describe('publish + validate over a core graph', () => {
   it('the core rule set refuses a graph with two triggers or no output', () => {
     const twoTriggers = proofGraph();
     twoTriggers.nodes.push({ id: 'n_trigger2', type: 'core.trigger', config: { kinds: ['api'] } });
-    const report = validate(twoTriggers, { paletteKey: 'core', registry: workflowNodeClassLookup }, { ruleSetVersion: 1, registryChecksum: registryChecksum() });
+    const report = validate(
+      twoTriggers,
+      { paletteKey: 'core', registry: workflowNodeClassLookup },
+      { ruleSetVersion: 1, registryChecksum: registryChecksum() },
+    );
     expect(report.findings.map((f) => f.ruleId)).toContain('WF-CORE-001');
     expect(DRAFT_CORE_RULE_SET.every((rule) => rule.paletteKey === 'core')).toBe(true);
   });

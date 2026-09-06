@@ -85,7 +85,7 @@ describe('evaluateCondition', () => {
 
 describe('expressionRootIdentifiers — what the Studio autocompletes and publish checks', () => {
   it('lists every root identifier, sorted and deduplicated', () => {
-    expect(expressionRootIdentifiers("nodes.a.text.contains(vars.needle) && trigger.age > vars.min")).toEqual(['nodes', 'trigger', 'vars']);
+    expect(expressionRootIdentifiers('nodes.a.text.contains(vars.needle) && trigger.age > vars.min')).toEqual(['nodes', 'trigger', 'vars']);
   });
 
   it('the three declared roots are exactly trigger / vars / nodes', () => {
