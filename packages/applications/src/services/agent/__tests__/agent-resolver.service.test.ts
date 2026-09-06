@@ -12,16 +12,48 @@ const assignments = { resolve: vi.fn() };
 const providerConnections = { resolveTenantCloudOverrides: vi.fn(async () => ({ overrides: {} })) };
 
 const model = (over: Record<string, unknown>) => ({
-  id: 'm1', tenantId: SYSTEM_TENANT_ID, slug: 'lms-gemma-4-e2b-it-qat', sourceUri: 'hf:google/gemma', sourceRevision: null, localPath: null, checksum: null, format: 'GGUF', computeType: null, provider: 'lm-studio', ...over,
+  id: 'm1',
+  tenantId: SYSTEM_TENANT_ID,
+  slug: 'lms-gemma-4-e2b-it-qat',
+  sourceUri: 'hf:google/gemma',
+  sourceRevision: null,
+  localPath: null,
+  checksum: null,
+  format: 'GGUF',
+  computeType: null,
+  provider: 'lm-studio',
+  ...over,
 });
 const published = (over: Record<string, unknown> = {}) => ({
-  id: 'agent-1', tenantId: TENANT, slug: 'clinic-summarizer', versionNumber: 3, task: AgentTask.TEXT_GENERATION,
-  compiledConfig: { task: 'TEXT_GENERATION', service: 'llm', model: { id: 'm1', slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio', taskType: 'TEXT_GENERATION' }, fallbacks: [], instruction: null, resolvedPrompt: null, parameters: {}, inputSchema: { type: 'object' }, outputSchema: { type: 'object' }, tools: [], protocols: ['http'] },
+  id: 'agent-1',
+  tenantId: TENANT,
+  slug: 'clinic-summarizer',
+  versionNumber: 3,
+  task: AgentTask.TEXT_GENERATION,
+  compiledConfig: {
+    task: 'TEXT_GENERATION',
+    service: 'llm',
+    model: { id: 'm1', slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio', taskType: 'TEXT_GENERATION' },
+    fallbacks: [],
+    instruction: null,
+    resolvedPrompt: null,
+    parameters: {},
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    tools: [],
+    protocols: ['http'],
+  },
   ...over,
 });
 
 function make() {
-  return new AgentResolverService(agentRepository as never, fallbackRepository as never, aiModelRepository as never, assignments as never, providerConnections as never);
+  return new AgentResolverService(
+    agentRepository as never,
+    fallbackRepository as never,
+    aiModelRepository as never,
+    assignments as never,
+    providerConnections as never,
+  );
 }
 
 beforeEach(() => {
@@ -46,7 +78,9 @@ describe('AgentResolverService.resolve', () => {
 
   it('a slug of the wrong task is a caller error (400), not a silent substitution', async () => {
     agentRepository.findPublishedActiveBySlug.mockResolvedValue(published());
-    await expect(make().resolve({ tenantId: TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'clinic-summarizer' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(make().resolve({ tenantId: TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'clinic-summarizer' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('no slug → the assignment cascade decides (department → tenant → SYSTEM) and the source is reported', async () => {
@@ -63,9 +97,18 @@ describe('AgentResolverService.resolve', () => {
   });
 
   it('cloud provider → providerOverride derived from the (service, provider) cascade with the funding tier', async () => {
-    agentRepository.findPublishedActiveBySlug.mockResolvedValue(published({ compiledConfig: { ...published().compiledConfig, model: { id: 'm2', slug: 'azure-gpt-5.4-mini', provider: 'azure', taskType: 'TEXT_GENERATION' } } }));
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(
+      published({
+        compiledConfig: {
+          ...published().compiledConfig,
+          model: { id: 'm2', slug: 'azure-gpt-5.4-mini', provider: 'azure', taskType: 'TEXT_GENERATION' },
+        },
+      }),
+    );
     aiModelRepository.findById.mockResolvedValue(model({ id: 'm2', slug: 'azure-gpt-5.4-mini', provider: 'azure' }));
-    providerConnections.resolveTenantCloudOverrides.mockResolvedValue({ overrides: { azure: { api_key: 'k', funding: 'platform', deployment_name: 'gpt' } } });
+    providerConnections.resolveTenantCloudOverrides.mockResolvedValue({
+      overrides: { azure: { api_key: 'k', funding: 'platform', deployment_name: 'gpt' } },
+    });
     const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
     expect(providerConnections.resolveTenantCloudOverrides).toHaveBeenCalledWith('llm', TENANT);
     expect(resolved.providerOverride).toMatchObject({ provider: 'azure', api_key: 'k', deployment_name: 'gpt' });
@@ -76,11 +119,19 @@ describe('AgentResolverService.resolve', () => {
     agentRepository.findPublishedActiveBySlug.mockResolvedValue(
       published({
         task: AgentTask.SPEECH_TO_TEXT,
-        compiledConfig: { ...published().compiledConfig, task: 'SPEECH_TO_TEXT', service: 'stt', model: { id: 'asr', slug: 'arcaai-whisper-large-ml-en-gguf', provider: null, taskType: 'AUTOMATIC_SPEECH_RECOGNITION' }, parameters: { audioFrontEnd: { vad: { modelSlug: 'silero-vad' } }, postProcessing: { punctuation: { modelSlug: 'cadence-punctuation' } } } },
+        compiledConfig: {
+          ...published().compiledConfig,
+          task: 'SPEECH_TO_TEXT',
+          service: 'stt',
+          model: { id: 'asr', slug: 'arcaai-whisper-large-ml-en-gguf', provider: null, taskType: 'AUTOMATIC_SPEECH_RECOGNITION' },
+          parameters: { audioFrontEnd: { vad: { modelSlug: 'silero-vad' } }, postProcessing: { punctuation: { modelSlug: 'cadence-punctuation' } } },
+        },
       }),
     );
     aiModelRepository.findById.mockResolvedValue(model({ id: 'asr', slug: 'arcaai-whisper-large-ml-en-gguf', provider: null }));
-    aiModelRepository.findBySlug.mockImplementation(async (tenantId: string, slug: string) => (tenantId === SYSTEM_TENANT_ID ? model({ id: slug, slug, provider: null }) : null));
+    aiModelRepository.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
+      tenantId === SYSTEM_TENANT_ID ? model({ id: slug, slug, provider: null }) : null,
+    );
     const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'x' });
     expect(resolved.models.map((m) => [m.role, m.slug])).toEqual([
       ['primary', 'arcaai-whisper-large-ml-en-gguf'],
@@ -95,7 +146,9 @@ describe('AgentResolverService.resolve', () => {
 describe('AgentResolverService.resolve — model metadata and the endpointing role (TASK-880 H-4)', () => {
   it('carries the model row metaData slice onto the resolved model (absent when the row has none)', async () => {
     agentRepository.findPublishedActiveBySlug.mockResolvedValue(published());
-    aiModelRepository.findById.mockResolvedValue(model({ metaData: { asr: { maxDecodeWindowSec: 30, partialWindowSec: 4 }, embedding: { dimension: 256 } } }));
+    aiModelRepository.findById.mockResolvedValue(
+      model({ metaData: { asr: { maxDecodeWindowSec: 30, partialWindowSec: 4 }, embedding: { dimension: 256 } } }),
+    );
     const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
     expect(resolved.models[0].metaData).toEqual({ asr: { maxDecodeWindowSec: 30, partialWindowSec: 4 }, embedding: { dimension: 256 } });
 
@@ -119,7 +172,9 @@ describe('AgentResolverService.resolve — model metadata and the endpointing ro
       }),
     );
     aiModelRepository.findById.mockResolvedValue(model({ id: 'asr', slug: 'arcaai-whisper-large-ml-en-gguf', provider: null }));
-    aiModelRepository.findBySlug.mockImplementation(async (tenantId: string, slug: string) => (tenantId === SYSTEM_TENANT_ID ? model({ id: slug, slug, provider: null }) : null));
+    aiModelRepository.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
+      tenantId === SYSTEM_TENANT_ID ? model({ id: slug, slug, provider: null }) : null,
+    );
     const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'x' });
     expect(resolved.models.map((m) => [m.role, m.slug])).toContainEqual(['endpointing', 'eou-classifier']);
   });
@@ -165,9 +220,7 @@ describe('TASK-890 H-6 — the fallback chain of a SYSTEM agent resolved by a te
       cls.current() === SYSTEM_TENANT_ID ? [{ modelId: 'm-fb', priority: 1, enabled: true }] : [],
     );
     agentRepository.findPublishedActiveBySlug.mockResolvedValue(published({ slug: 'platform-summarization', tenantId: SYSTEM_TENANT_ID }));
-    aiModelRepository.findById.mockImplementation(async (id: string) =>
-      id === 'm-fb' ? model({ id: 'm-fb', slug: 'fallback-model' }) : model({}),
-    );
+    aiModelRepository.findById.mockImplementation(async (id: string) => (id === 'm-fb' ? model({ id: 'm-fb', slug: 'fallback-model' }) : model({})));
 
     const service = new AgentResolverService(
       agentRepository as never,
@@ -183,5 +236,45 @@ describe('TASK-890 H-6 — the fallback chain of a SYSTEM agent resolved by a te
     expect(resolved.models[1]).toMatchObject({ slug: 'fallback-model', priority: 1 });
     // The caller's own context is restored — the wrap must not leak.
     expect(cls.current()).toBe(TENANT);
+  });
+});
+
+/**
+ * TASK-890 §3.14 (OD-R) — the AGENT tier of the guardrail precedence, on the resolved shape.
+ *
+ * `resolveGuardrailDecision` folds node > workflow > agent > on, and the agent's own default is
+ * the bottom of that chain. Every consumer of a resolved agent — the invocation path, the
+ * realtime `core.agent` lane and the harness over `GET /internal/agents/resolve` — reads it from
+ * HERE, so an artifact published before this ticket must resolve to `true` rather than to
+ * `undefined`: absence is INHERIT, and the floor of the chain is screening ON.
+ */
+describe('AgentResolverService.resolve — the guardrail decision (§3.14)', () => {
+  const withGuardrail = (guardrail: unknown) => published({ compiledConfig: { ...published().compiledConfig, guardrail } });
+
+  it('mirrors the agent`s compiled opt-out', async () => {
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(withGuardrail({ enabled: false }));
+    const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
+    expect(resolved.guardrail).toEqual({ enabled: false });
+  });
+
+  it('mirrors an explicit `true` as well', async () => {
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(withGuardrail({ enabled: true }));
+    const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
+    expect(resolved.guardrail).toEqual({ enabled: true });
+  });
+
+  it('defaults to ON for an artifact published before the field existed', async () => {
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(published());
+    const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
+    expect(resolved.guardrail).toEqual({ enabled: true });
+  });
+
+  it('a malformed compiled value reads as ON, never as an opt-out', async () => {
+    // Defensive on purpose: on a safety gate, "unparseable" must never resolve to "off".
+    for (const malformed of [{ enabled: 'false' }, {}, null, 'off']) {
+      agentRepository.findPublishedActiveBySlug.mockResolvedValue(withGuardrail(malformed));
+      const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
+      expect(resolved.guardrail).toEqual({ enabled: true });
+    }
   });
 });

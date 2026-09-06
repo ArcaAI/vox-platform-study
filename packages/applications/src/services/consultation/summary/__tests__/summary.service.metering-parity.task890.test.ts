@@ -65,7 +65,7 @@ function cls() {
 }
 
 /** The generation harness (the `summary.service.quota.task615` fixture shape). */
-function makeGenerationService(entitlements?: unknown) {
+function makeGenerationService(entitlements?: unknown, enrichment?: unknown) {
   const usageLedger = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
   const httpService = { axiosRef: { post: vi.fn().mockResolvedValue(textResponse()) } };
   const service = new SummaryService(
@@ -108,6 +108,19 @@ function makeGenerationService(entitlements?: unknown) {
     undefined,
     usageLedger as never,
     { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work({})) } as never,
+    undefined, // billing
+    undefined, // aiModelRepository
+    undefined, // noteGenerationService
+    undefined, // phiRedactor
+    undefined, // gateEditMiningQueue
+    // `null` means "explicitly unwired" — the composition that supplies no enrichment service.
+    (enrichment === null
+      ? undefined
+      : (enrichment ?? {
+          applyTextRuntimeProfile: vi.fn(async (body: unknown) => body),
+          applyTenantProviderOverrides: vi.fn(async (body: unknown) => body),
+          guardrailDisposition: vi.fn(async () => 'screened'),
+        })) as never,
   );
   return { service, usageLedger, httpService };
 }
@@ -201,5 +214,53 @@ describe('SummaryService.extractEntities — the NLP allowance is checked before
     const { service, httpService } = makeNerService(null);
     await expect(service.extractEntities('ctx-1')).resolves.toBeUndefined();
     expect(nlpCall(httpService)).toBeDefined();
+  });
+});
+
+/**
+ * TASK-890 L14 (§3.14, OD-R) — the clinical summary path records HOW it was screened.
+ *
+ * This path pushes no opt-out: it posts to TEXT with the tenant's credential fold and no
+ * `guardrail_policy.enabled`, so the platform posture governs. Its rows can therefore say
+ * `screened` or `platform_off` — never `opted_out`. Recording it anyway is the point: "was this
+ * clinical note generated behind the guard" must be a query on the ledger, not an inference from
+ * which code path produced it.
+ */
+describe('SummaryService — the guardrail disposition on the clinical row', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('stamps the platform disposition on the LLM row', async () => {
+    const { service, usageLedger } = makeGenerationService();
+    await service.generateSummary('c-1', {} as never);
+
+    const llm = usageLedger.recordUsage.mock.calls
+      .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
+      .find((batch) => batch.common.operation === 'generate');
+    expect(llm!.common.attributesJson).toMatchObject({ guardrail: 'screened', trigger: 'CONSULTATION' });
+  });
+
+  it('records `platform_off` when the platform kill switch is off — never a fabricated `screened`', async () => {
+    const { service, usageLedger } = makeGenerationService(undefined, {
+      applyTextRuntimeProfile: vi.fn(async (body: unknown) => body),
+      applyTenantProviderOverrides: vi.fn(async (body: unknown) => body),
+      guardrailDisposition: vi.fn(async () => 'platform_off'),
+    });
+    await service.generateSummary('c-1', {} as never);
+
+    const llm = usageLedger.recordUsage.mock.calls
+      .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
+      .find((batch) => batch.common.operation === 'generate');
+    expect(llm!.common.attributesJson).toMatchObject({ guardrail: 'platform_off' });
+  });
+
+  it('an unwired enrichment service stamps nothing rather than guessing', async () => {
+    const { service, usageLedger } = makeGenerationService(undefined, null);
+    await service.generateSummary('c-1', {} as never);
+
+    const llm = usageLedger.recordUsage.mock.calls
+      .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
+      .find((batch) => batch.common.operation === 'generate');
+    expect(llm!.common.attributesJson?.guardrail).toBeUndefined();
+    expect(llm!.common.attributesJson).toMatchObject({ trigger: 'CONSULTATION' });
   });
 });

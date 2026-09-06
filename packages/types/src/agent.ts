@@ -112,12 +112,23 @@ export interface AgentCompiledConfig {
   fallbacks: Array<{ priority: number; id: string; slug: string; provider: string | null }>;
   instruction: Record<string, unknown> | null;
   /** The resolved prompt text when the instruction is template-bound (pinned version), else the inline system prompt. */
-  resolvedPrompt: { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string } | { source: 'inline'; content: string } | null;
+  resolvedPrompt:
+    { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string } | { source: 'inline'; content: string } | null;
   parameters: Record<string, unknown>;
   inputSchema: Record<string, unknown>;
   outputSchema: Record<string, unknown>;
   tools: Array<{ mcpServerId: string; toolName: string }>;
   protocols: Array<'http' | 'http-sse' | 'socket'>;
+  /**
+   * TASK-890 §3.14 (OD-R) — the AGENT tier of the guardrail opt-out, stamped at publish from
+   * `parameters.guards.enabled ?? true`.
+   *
+   * ADDITIVE-OPTIONAL on purpose: every artifact published before this ticket carries no such
+   * key, and absence must read as ON. It is the BOTTOM of `resolveGuardrailDecision`'s
+   * precedence (node > workflow > agent > on) — a workflow node may override it in either
+   * direction, and nothing here can turn screening on that the PLATFORM turned off.
+   */
+  guardrail?: { enabled: boolean };
 }
 
 export interface ResolvedAgent {
@@ -135,4 +146,17 @@ export interface ResolvedAgent {
   models: ResolvedAgentModel[];
   providerOverride?: ResolvedAgentProviderOverride;
   fundingTier?: AgentFundingTier;
+  /**
+   * TASK-890 §3.14 — the agent's guardrail decision, RESOLVED (never optional here).
+   *
+   * `compiledConfig.guardrail` is additive-optional because old artifacts predate it; this is
+   * not, because every consumer needs an answer rather than a maybe. `AgentResolverService`
+   * normalises absence — and any malformed value — to `{ enabled: true }`: on a safety gate,
+   * "unparseable" must read as SCREENED, never as an opt-out.
+   *
+   * Consumed by the invocation path, the realtime `core.agent` lane and the harness over
+   * `GET /internal/agents/resolve`, each of which pushes it to TEXT as
+   * `guardrail_policy.enabled` after folding any node / workflow opinion over it.
+   */
+  guardrail: { enabled: boolean };
 }
