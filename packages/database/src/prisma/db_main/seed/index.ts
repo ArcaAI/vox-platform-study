@@ -40,6 +40,7 @@ import { seedArcaaiWorkflowAuthoring } from './23-arcaai-workflow-authoring';
 import { seedArcaaiExampleConsultationWorkflows, seedExampleConsultationWorkflowTemplates } from './24-example-consultation-workflows';
 import { seedConsentGrant } from './22-consent-grant';
 import { seedAgents } from './25-agents';
+import { seedTenantReferenceSets } from './26-tenant-reference-set';
 import { seedUser } from './91-user';
 import { seedBootstrapAdmin } from './92-bootstrap-admin';
 import { seedBootstrapTenantAdmin } from './93-bootstrap-tenant-admin';
@@ -354,6 +355,17 @@ export const seed = async () => {
     // seeded broken. ArcaAI gets nothing — provisioning clones SYSTEM.
     if (isPhaseEnabled('25-agents', mode)) {
       await seedAgents(client);
+      console.log('');
+    }
+
+    // TASK-890 §3.4 — provision every non-SYSTEM tenant with the platform REFERENCE SET
+    // (context schemas, prompt templates, agents and their TENANT assignments). It runs LAST
+    // among the content phases because it copies what they seeded, and it must run at all
+    // because the seeded tenants are written directly rather than through
+    // `TenantService.create`: after L13 step v nothing widens a CONTENT read to SYSTEM, so an
+    // unprovisioned tenant fails closed on its first consultation. Create-only and idempotent.
+    if (isPhaseEnabled('26-tenant-reference-set', mode)) {
+      await seedTenantReferenceSets(client);
       console.log('');
     }
 
