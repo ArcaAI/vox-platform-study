@@ -70,13 +70,27 @@ const FLAGS: FlagSpec[] = [
     default: false,
     killSwitch: true,
   },
+  // WHY IT IS NO LONGER `killSwitch: true` (TASK-890 J7-5). It defaulted `false`
+  // and carried the marker while its stated precondition was outstanding:
+  // "API-key scope enforcement must be verified end-to-end before this ships
+  // enabled". That precondition is DISCHARGED — TASK-757 put `@ForbidApiKey()`
+  // ahead of the scope check and added the boot audit that refuses startup when
+  // an admin route declares an API-key scope; TASK-776 added the route-authz
+  // matrix over every route plus the credential-class depth suites. With it
+  // discharged the pre-production posture applies (ship complete and ENABLED),
+  // and a default-ON descriptor CANNOT carry `killSwitch: true`: the marker
+  // means "an ENFORCEMENT/engine gate that ships OFF", and
+  // `SettingsRegistry.killSwitches()` throws on a truthy default. Same
+  // reasoning, and the same polarity, as `rateLimit.enabled` and
+  // `origin.enforcementEnabled` (`platform-ops.descriptors.ts`): `false` is the
+  // state that now needs justifying. Turning it off is still a supported
+  // operator veto — it is simply no longer the shipped posture.
   {
     key: 'workflowExposure.enabled',
     label: 'Workflow exposure plane (public invoke)',
     description:
-      "R-1 kill-switch for the whole `/api/v1/workflows/:slug/…` public-invoke surface. Design.md's precondition: API-key scope enforcement must be verified end-to-end before this ships enabled; Temporal is also not yet production-ready (R-2). Read via `ConfigService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED')`, `=== \"true\"` — a 404 (existence not disclosed) while off, same posture as `registration.selfSignupEnabled`.",
-    default: false,
-    killSwitch: true,
+      'Gates the whole `/api/v1/workflows/:slug/…` public-invoke surface. Read via `ConfigService.getConfigValue(\'WORKFLOW_EXPOSURE_ENABLED\')`, `=== "true"` — a 404 (existence not disclosed) while off, same posture as `registration.selfSignupEnabled`. SHIPS ON: the original precondition ("API-key scope enforcement must be verified end-to-end before this ships enabled") was discharged by TASK-757 (`@ForbidApiKey()` enforced ahead of the scope check, plus the boot audit that refuses startup when an admin route declares an API-key scope) and TASK-776 (the route-authz matrix over every route, plus the credential-class depth suites). Left off, a fresh install 404s the entire workflow plane, which is what the pre-production posture — ship complete and ENABLED — exists to avoid. A platform admin turns it off deliberately.',
+    default: true,
   },
   // `workflowExposure.allowCloudProviders` (decision #6, R-8) REMOVED by owner decision
   // (2026-08-20): a publicly-exposed workflow MAY select a cloud AI provider — the
