@@ -34,13 +34,17 @@ import { CodeEditor, Empty, EmptyDescription, EmptyMedia, EmptyTitle, Field, Fie
 import { IconLayoutBoard } from '@tabler/icons-react';
 import { useState } from 'react';
 import { toFieldDescriptors, type FieldDescriptor } from '../../lib/schema-form';
+import { useAgentOptions } from '../../api/hooks';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
-import { AgentPickerField } from './agent-picker-field';
+import { AgentPickerField, DEFAULT_AGENT_TASK } from './agent-picker-field';
+import { ContextSchemaRefField } from './context-schema-ref-field';
 import { DocumentBindingField } from './document-binding-field';
-import { FieldRenderer } from './field-renderers';
+import { FieldRenderer, type FieldRenderContext } from './field-renderers';
 import { getAtPath, setAtPath } from './field-path';
+import { GuardrailField } from './guardrail-field';
 import { PromptTemplatePicker } from './prompt-template-picker';
+import { PromptVariablesField } from './prompt-variables-field';
 import { NO_SCHEMA_REASON } from './raw-json-field';
 
 const PROMPT_TEMPLATE_PATH = 'promptTemplateId';
@@ -54,6 +58,12 @@ const DOCUMENT_TEMPLATE_PATH = 'documentTemplateId';
 const DOCUMENT_VERSION_PATH = 'documentVersionNumber';
 /** The two schema-declared keys `DocumentBindingField` renders as ONE control. */
 const DOCUMENT_BINDING_PATHS = new Set<string>([DOCUMENT_TEMPLATE_PATH, DOCUMENT_VERSION_PATH]);
+/** TASK-890 §3.4 — `core.trigger`'s reference-or-inline schema binding, rendered as one control. */
+const CONTEXT_SCHEMA_PATH = 'contextSchema';
+/** TASK-890 §3.14 — the guardrail opt-out object, top-level on BOTH `core.agent` and `core.trigger`. */
+const GUARDRAIL_PATH = 'guardrail';
+/** TASK-890 §3.10 — `core.agent`'s per-node prompt-variable overrides, nested under `overrides`. */
+const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
 
 export interface InspectorPanelProps {
   node: GraphStoreNode | null;
@@ -72,6 +82,12 @@ export interface InspectorPanelProps {
   actionOptions?: ReadonlyArray<{ key: string; label: string }>;
   /** TASK-864 B1 — for a `core.action` node: the chosen delegate's own config schema (rendered under `action`). */
   actionSchema?: unknown;
+  /**
+   * TASK-890 §3.14 — the workflow's own `core.trigger` guardrail decision
+   * (`config.guardrail.enabled`), for `core.agent`'s effective-value display. `undefined`/`null`
+   * when the graph has no opinion yet — the node then inherits the agent's own default.
+   */
+  workflowGuardrailEnabled?: boolean | null;
 }
 
 function errorsForPath(problems: WorkflowFinding[], path: string): string[] {
@@ -105,8 +121,6 @@ function PromptTemplateSection({
   return (
     <PromptTemplatePicker
       id={`${node.id}-${PROMPT_TEMPLATE_PATH}`}
-      label="Prompt template"
-      description="Optional — links this node to a tenant prompt template."
       value={promptTemplateValue(node.config)}
       onChange={(next) => {
         const { [PROMPT_TEMPLATE_PATH]: _omit, ...rest } = node.config;
@@ -184,7 +198,25 @@ function ActionKeySection({
   );
 }
 
-export function InspectorPanel({ node, configSchema, problems, onConfigChange, loading, readOnly, references, actionOptions, actionSchema }: InspectorPanelProps) {
+export function InspectorPanel({
+  node,
+  configSchema,
+  problems,
+  onConfigChange,
+  loading,
+  readOnly,
+  references,
+  actionOptions,
+  actionSchema,
+  workflowGuardrailEnabled,
+}: InspectorPanelProps) {
+  // Hooks run unconditionally, ahead of every early return (rules of hooks) — `enabled` gates
+  // the actual network read to `core.agent` nodes only. `useAgentOptions` is the SAME query
+  // `AgentPickerField` already runs for this task, so this is a cache hit, not a second fetch.
+  const isCoreAgentNode = node?.type === 'core.agent';
+  const agentSlugValue = node && typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : '';
+  const agentOptions = useAgentOptions(DEFAULT_AGENT_TASK, isCoreAgentNode);
+
   if (!node) {
     return (
       <Empty>
@@ -227,13 +259,45 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
   // `actionKey` + `action` (a select over the catalogue, then the DELEGATE's schema).
   const isCoreAgent = node.type === 'core.agent';
   const isCoreAction = node.type === 'core.action' && actionOptions !== undefined;
-  const withheld = new Set<string>([...DOCUMENT_BINDING_PATHS, ...(isCoreAgent ? [AGENT_REF_PATH] : []), ...(isCoreAction ? [ACTION_KEY_PATH, ACTION_CONFIG_PATH] : [])]);
+  const isCoreTrigger = node.type === 'core.trigger';
+  const withheld = new Set<string>([
+    ...DOCUMENT_BINDING_PATHS,
+    ...(isCoreAgent ? [AGENT_REF_PATH, GUARDRAIL_PATH] : []),
+    ...(isCoreAction ? [ACTION_KEY_PATH, ACTION_CONFIG_PATH] : []),
+    ...(isCoreTrigger ? [CONTEXT_SCHEMA_PATH, GUARDRAIL_PATH] : []),
+  ]);
   const descriptors = allDescriptors.filter((descriptor) => !withheld.has(descriptor.path));
   const hasDocumentBinding = allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
   // The delegate's schema, hoisted under `action.` so every generated path lands in the sub-config.
   const actionDescriptors = isCoreAction && actionSchema !== undefined ? toFieldDescriptors({ type: 'object', properties: { [ACTION_CONFIG_PATH]: actionSchema } }) : [];
   const knownPaths = new Set([...flattenPaths(allDescriptors), ...flattenPaths(actionDescriptors), AGENT_SLUG_PATH]);
   const graphLevelErrors = problems.filter((problem) => !knownPaths.has(problem.path ?? ''));
+
+  // TASK-890 §3.6/§3.10 — the referenced agent's own declared prompt-variable names and
+  // guardrail default, resolved from the SAME `useAgentOptions` read `AgentPickerField` uses
+  // (no second route, §2.7 #6: `GET admin/agents` already returns the full `AgentResponse`).
+  const referencedAgent = isCoreAgent ? (agentOptions.data ?? []).find((agent) => agent.slug === agentSlugValue) : undefined;
+  const declaredVariableNames = referencedAgent?.instruction?.variables ? Object.keys(referencedAgent.instruction.variables) : [];
+  const agentGuardrailEnabled = referencedAgent?.parameters?.guards?.enabled ?? null;
+
+  // TASK-890 §3.10 — `overrides.promptVariables` is nested inside `overrides`, so the top-level
+  // `withheld` Set cannot reach it; `fieldOverrides` intercepts it wherever `FieldRenderer`
+  // recurses into the `overrides` group.
+  const fieldOverrides = isCoreAgent
+    ? {
+        [PROMPT_VARIABLES_PATH]: ({ errors: fieldErrors }: FieldRenderContext) => (
+          <PromptVariablesField
+            idPrefix={node.id}
+            config={node.config}
+            onConfigChange={onConfigChange}
+            declaredVariableNames={declaredVariableNames}
+            references={references}
+            errors={fieldErrors}
+            disabled={readOnly}
+          />
+        ),
+      }
+    : undefined;
 
   return (
     <fieldset disabled={readOnly} className="flex flex-col gap-4">
@@ -243,6 +307,27 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
           value={typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : ''}
           onChange={(slug) => onConfigChange(setAtPath(node.config, AGENT_SLUG_PATH, slug))}
           errors={[...errorsForPath(problems, AGENT_SLUG_PATH), ...errorsForPath(problems, AGENT_REF_PATH)]}
+          disabled={readOnly}
+        />
+      ) : null}
+      {isCoreTrigger ? (
+        <ContextSchemaRefField
+          idPrefix={node.id}
+          config={node.config}
+          onConfigChange={onConfigChange}
+          errors={errorsForPath(problems, CONTEXT_SCHEMA_PATH)}
+          disabled={readOnly}
+        />
+      ) : null}
+      {isCoreAgent || isCoreTrigger ? (
+        <GuardrailField
+          idPrefix={node.id}
+          scope={isCoreAgent ? 'node' : 'workflow'}
+          config={node.config}
+          onConfigChange={onConfigChange}
+          workflowGuardrailEnabled={isCoreAgent ? workflowGuardrailEnabled : undefined}
+          agentGuardrailEnabled={isCoreAgent ? agentGuardrailEnabled : undefined}
+          errors={[...errorsForPath(problems, GUARDRAIL_PATH), ...errorsForPath(problems, `${GUARDRAIL_PATH}.enabled`)]}
           disabled={readOnly}
         />
       ) : null}
@@ -267,6 +352,7 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
           errors={errorsForPath(problems, descriptor.path)}
           idPrefix={node.id}
           references={references}
+          fieldOverrides={fieldOverrides}
         />
       ))}
       {hasDocumentBinding ? (

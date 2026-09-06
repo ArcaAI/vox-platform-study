@@ -5,9 +5,10 @@
  * (the REAL registry today — `contracts/registry.contract.md`: no delivered node type has
  * one), the panel falls back to the raw `CodeEditor` over `node.config` directly.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { NODE_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
 import { renderWithProviders } from '@/test/render';
 import { InspectorPanel } from '../inspector-panel';
 import type { GraphStoreNode } from '../../../store/types';
@@ -37,30 +38,30 @@ afterEach(() => {
 
 describe('InspectorPanel', () => {
   it('shows an empty state when no node is selected', () => {
-    render(<InspectorPanel node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
+    renderWithProviders(<InspectorPanel node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
     expect(screen.getByText(/select a node/i)).toBeTruthy();
   });
 
   it('renders a Skeleton matching the field layout while loading', () => {
-    const { container } = render(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} loading />);
+    const { container } = renderWithProviders(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} loading />);
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
   });
 
   it('renders visible labels (never placeholder-only) for every schema field', () => {
-    render(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
+    renderWithProviders(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
     expect(screen.getByText(/^Prompt Template Id/)).toBeTruthy();
     expect(screen.getByText(/retries/i)).toBeTruthy();
     expect(screen.getByText(/enabled/i)).toBeTruthy();
   });
 
   it('marks the required field with *', () => {
-    render(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
+    renderWithProviders(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
     expect(screen.getByText(/^Prompt Template Id/).closest('[data-slot="field-label"]')?.textContent).toContain('*');
   });
 
   it('editing a string field calls onConfigChange with the merged config', () => {
     const onConfigChange = vi.fn();
-    render(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={onConfigChange} />);
+    renderWithProviders(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={onConfigChange} />);
     const input = screen.getByLabelText(/^Prompt Template Id/);
     fireEvent.change(input, { target: { value: 'discharge_v2' } });
     expect(onConfigChange).toHaveBeenCalledWith(expect.objectContaining({ promptTemplateId: 'discharge_v2' }));
@@ -70,7 +71,7 @@ describe('InspectorPanel', () => {
     const problems: WorkflowFinding[] = [
       { ruleId: 'WF-C-004', ruleClass: 'schema', severity: 'ERROR', nodeId: 'n1', path: 'promptTemplateId', message: 'unknown template id' },
     ];
-    render(<InspectorPanel node={node()} configSchema={SCHEMA} problems={problems} onConfigChange={vi.fn()} />);
+    renderWithProviders(<InspectorPanel node={node()} configSchema={SCHEMA} problems={problems} onConfigChange={vi.fn()} />);
     expect(screen.getByText('unknown template id')).toBeTruthy();
     expect(screen.getByRole('alert').className).toContain('text-destructive');
   });
@@ -85,7 +86,13 @@ describe('InspectorPanel', () => {
     stubPromptTemplatesFetch();
     renderWithProviders(<InspectorPanel node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
     expect(await screen.findByText('Prompt template')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /manage prompt templates/i }).getAttribute('href')).toBe('/prompt-templates');
+  });
+
+  it('TASK-890: the deep link targets /prompt-templates?template=<id> once a template is bound (the shared picker`s quick view)', async () => {
+    stubPromptTemplatesFetch();
+    renderWithProviders(<InspectorPanel node={node({ raw: true, promptTemplateId: 't-1' })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
+    const link = (await screen.findByRole('link', { name: /open in prompt templates/i })) as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/prompt-templates?template=t-1');
   });
 
   it('Task 19: selecting a prompt template merges promptTemplateId into node.config without disturbing other keys', async () => {
@@ -105,7 +112,7 @@ describe('InspectorPanel', () => {
   });
 
   it('Task 19: the PromptTemplatePicker section steps aside when the schema already declares a promptTemplateId field', () => {
-    render(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
+    renderWithProviders(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
     // The schema's own generic string control ("Prompt Template Id") renders it — the Task 19
     // section (labeled exactly "Prompt template") never doubles up on the same key.
     expect(screen.getByText(/^Prompt Template Id/)).toBeTruthy();
@@ -113,7 +120,90 @@ describe('InspectorPanel', () => {
   });
 
   it('0 axe violations with a schema-backed node selected', async () => {
-    const { container } = render(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
+    const { container } = renderWithProviders(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+/**
+ * TASK-890 §3.10 integration coverage — the withholding + `fieldOverrides` wiring, against the
+ * REAL delivered `core.trigger` / `core.agent` schemas (`@arcaai/workflow-contract`), not a
+ * hand-rolled fixture: the generic renderer's raw `contextSchemaId` box and raw-json
+ * `overrides.promptVariables` box are gone, replaced by the specialized fields, and every other
+ * generic field on the same schema (`kinds`, `overrides.generation`) still renders untouched.
+ */
+describe('InspectorPanel — TASK-890 core.trigger', () => {
+  function triggerNode(config: Record<string, unknown> = { kinds: ['api'] }): GraphStoreNode {
+    return { id: 'trigger-1', type: 'core.trigger', position: { x: 0, y: 0 }, safetyClasses: [], config };
+  }
+
+  function stubContextSchemasFetch(): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json([{ id: 's-1', slug: 'intake', name: 'Intake', status: 'PUBLISHED', pinnedVersionNumber: 1, isDefault: true }]),
+      ),
+    );
+  }
+
+  it('renders ContextSchemaRefField instead of the raw contextSchemaId / inline boxes', async () => {
+    stubContextSchemasFetch();
+    renderWithProviders(<InspectorPanel node={triggerNode()} configSchema={NODE_CONFIG_SCHEMAS['core.trigger']} problems={[]} onConfigChange={vi.fn()} />);
+    expect(await screen.findByText('Context schema')).toBeTruthy();
+    expect(screen.queryByLabelText(/context schema id/i)).toBeNull();
+  });
+
+  it('renders the workflow-scope GuardrailField, labelled "Workflow default"', async () => {
+    stubContextSchemasFetch();
+    renderWithProviders(<InspectorPanel node={triggerNode()} configSchema={NODE_CONFIG_SCHEMAS['core.trigger']} problems={[]} onConfigChange={vi.fn()} />);
+    expect(await screen.findByLabelText('Workflow default')).toBeTruthy();
+  });
+
+  it('still renders the schema`s other generic fields (kinds) untouched', async () => {
+    stubContextSchemasFetch();
+    renderWithProviders(<InspectorPanel node={triggerNode()} configSchema={NODE_CONFIG_SCHEMAS['core.trigger']} problems={[]} onConfigChange={vi.fn()} />);
+    expect(await screen.findByLabelText(/^Kinds/)).toBeTruthy();
+  });
+});
+
+describe('InspectorPanel — TASK-890 core.agent', () => {
+  function agentNode(config: Record<string, unknown> = { agentRef: { slug: 'discharge' } }): GraphStoreNode {
+    return { id: 'agent-1', type: 'core.agent', position: { x: 0, y: 0 }, safetyClasses: [], config };
+  }
+
+  function stubAgentsFetch(): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json([
+          {
+            slug: 'discharge',
+            name: 'Discharge summary',
+            task: 'TEXT_GENERATION',
+            instruction: { variables: { topic: { value: '' } } },
+            parameters: { guards: { enabled: false } },
+          },
+        ]),
+      ),
+    );
+  }
+
+  it('renders the node-scope GuardrailField, labelled "This node", reflecting the agent`s own default', async () => {
+    stubAgentsFetch();
+    renderWithProviders(<InspectorPanel node={agentNode()} configSchema={NODE_CONFIG_SCHEMAS['core.agent']} problems={[]} onConfigChange={vi.fn()} />);
+    expect(await screen.findByLabelText('This node')).toBeTruthy();
+    expect(await screen.findByText(/effective: off — agent/i)).toBeTruthy();
+  });
+
+  it('renders PromptVariablesField with one row per the agent`s declared variable, instead of a raw-json box', async () => {
+    stubAgentsFetch();
+    renderWithProviders(<InspectorPanel node={agentNode()} configSchema={NODE_CONFIG_SCHEMAS['core.agent']} problems={[]} onConfigChange={vi.fn()} />);
+    expect(await screen.findByLabelText('topic')).toBeTruthy();
+  });
+
+  it('still renders the schema`s other generic overrides fields (generation) untouched', async () => {
+    stubAgentsFetch();
+    renderWithProviders(<InspectorPanel node={agentNode()} configSchema={NODE_CONFIG_SCHEMAS['core.agent']} problems={[]} onConfigChange={vi.fn()} />);
+    expect(await screen.findByText('Generation')).toBeTruthy();
   });
 });
