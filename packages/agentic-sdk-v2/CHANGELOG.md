@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### BREAKING — TASK-890 (OD-F/OD-K): `@arcaai/vox` is business-plane only, no management surface
+
+Every admin-hook family has been removed, along with the `/admin/*` endpoint constants that backed
+them — 25 hooks (`useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePrompts`,
+`useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`,
+`useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio`, `useTenants`,
+`useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements`,
+`useGlobalSettings`, `useMonitoring`, `usePlatformMetrics`, `useHealthCheck`, `useStorageKeys`,
+`useDnaStyle`, `useDnaDashboard`) and the constant groups (`USER_ENDPOINTS`, `ROLE_ENDPOINTS`,
+`DEPARTMENT_ENDPOINTS`'s admin CRUD surface, `TENANT_ENDPOINTS`, `TENANT_BUCKET_ENDPOINTS`,
+`GLOBAL_SETTINGS_ENDPOINTS`, `API_KEY_ENDPOINTS`, `AUDIT_LOG_ENDPOINTS`,
+`ADMIN_USER_SETTINGS_ENDPOINTS`, `ADMIN_USER_ROLES_ENDPOINTS`, `ADMIN_USER_DEPARTMENTS_ENDPOINTS`,
+`ADMIN_USER_PROFILE_ENDPOINTS`, `TENANT_STORAGE_CONFIG_ENDPOINTS`, `RATE_LIMIT_ADMIN_ENDPOINTS`,
+`MONITORING_ENDPOINTS`, `PLATFORM_METRICS_ENDPOINTS`, `ADMIN_TRANSCRIPTION_JOB_ENDPOINTS`,
+`ADMIN_CONSULTATION_ENDPOINTS`, `TENANT_FRONTEND_CONFIG_ENDPOINTS`, `PSTUDIO_ENDPOINTS`,
+`SERVICE_HEALTH_ENDPOINTS`, `HARNESS_ADMIN_ENDPOINTS`, `QUEUE_ADMIN_ENDPOINTS`) it took to build a
+URL for them. `useUserSettings` stays — it is self-only (`/users/me/settings`), never another
+user's; its admin-plane `listForUser`/`updateForUser` methods are gone with it.
+
+`isAdminPlanePath` is inverted: `AgenticClient` now REFUSES an admin-plane request outright — a
+named `AdminPlaneRefusedError`, thrown before any network call — instead of routing it with a
+stashed admin JWT during impersonation, as it once did. This applies regardless of credential
+(JWT or API key) or impersonation state.
+
+Zero first-party consumers imported any of the removed hooks or constants (verified: `apps/`,
+`packages/ui` import none of them). Management moved to `@arcaai/vox-node`'s `hope.admin.*`
+(service-account credential) or the admin console — see
+[Business plane only](README.md#business-plane-only-no-management-surface).
+
 ### Note — service-account credentials are not supported by this SDK
 
 The gateway gained a third credential class in `ALL-3.0.0` (service accounts, bearer tokens with

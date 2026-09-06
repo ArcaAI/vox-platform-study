@@ -3,14 +3,17 @@
  *
  * Guards the SDK endpoint paths for the A6 audio-pipeline-config slice:
  *   • PIPELINE_ENDPOINTS additions: SET_DEFAULT / TOGGLE / VERSIONS / VERSION
- *   • TENANT_FRONTEND_CONFIG_ENDPOINTS: GET / UPSERT
  * Paths must match the backend controllers exactly.
+ *
+ * `TENANT_FRONTEND_CONFIG_ENDPOINTS` was removed under TASK-890 (OD-F/OD-K)
+ * along with its sole consumer, the admin `useTenantFrontendConfig` hook —
+ * `@arcaai/vox` carries no management surface.
  *
  * @vitest-environment jsdom
  */
 
 import { describe, it, expect } from 'vitest';
-import { PIPELINE_ENDPOINTS, TENANT_FRONTEND_CONFIG_ENDPOINTS } from '../constants';
+import { PIPELINE_ENDPOINTS } from '../constants';
 
 describe('PIPELINE_ENDPOINTS additions', () => {
   it('SET_DEFAULT targets /admin/audio/pipelines/:id/set-default', () => {
@@ -37,16 +40,5 @@ describe('PIPELINE_ENDPOINTS additions', () => {
       PIPELINE_ENDPOINTS.VERSIONS('x'),
       PIPELINE_ENDPOINTS.VERSION('x', 1),
     ].forEach((p) => expect(p).toMatch(/^\/admin\/audio\/pipelines\//));
-  });
-});
-
-describe('TENANT_FRONTEND_CONFIG_ENDPOINTS', () => {
-  it('GET and UPSERT share the /admin/tenant-frontend-config path', () => {
-    expect(TENANT_FRONTEND_CONFIG_ENDPOINTS.GET).toBe('/admin/tenant-frontend-config');
-    expect(TENANT_FRONTEND_CONFIG_ENDPOINTS.UPSERT).toBe('/admin/tenant-frontend-config');
-  });
-
-  it('has exactly the expected keys', () => {
-    expect(Object.keys(TENANT_FRONTEND_CONFIG_ENDPOINTS).sort()).toEqual(['GET', 'UPSERT']);
   });
 });

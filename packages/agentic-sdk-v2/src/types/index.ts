@@ -364,14 +364,10 @@ export type { ConsultationJob, JobStatus, JobStreamCallbacks, PollOptions } from
 
 export { isTerminalStatus } from './consultation-job';
 
-// User management types
-export type { AssignDepartmentsInput, CreateUserInput, UpdateUserInput, User } from '../hooks/useUsers';
-
-// API Key types
-export type { ApiKey, ApiKeyUsage, ApiKeyWithRawKey, CreateApiKeyInput, UpdateApiKeyInput } from '../hooks/useApiKeys';
-
-// Role types
-export type { Role, UserRoleAssignment } from '../hooks/useRoles';
+// User management, API-key and role types were removed under TASK-890
+// (OD-F/OD-K) along with their sole consumers, the admin `useUsers` /
+// `useApiKeys` / `useRoles` hooks — `@arcaai/vox` carries no management
+// surface.
 
 // Health check types
 export type { ComponentCheck, ComponentStatus, HealthStatus, ServiceHealthStatus } from './health';

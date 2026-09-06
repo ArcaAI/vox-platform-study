@@ -14,7 +14,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useUserSettings } from '../useUserSettings';
 import { useAgenticStore } from '../../store/agenticStore';
 import { createMockLogger } from '../../__tests__/setup';
-import { USER_SETTINGS_ENDPOINTS, ADMIN_USER_SETTINGS_ENDPOINTS } from '../../core/constants';
+import { USER_SETTINGS_ENDPOINTS } from '../../core/constants';
 
 vi.mock('../../store/agenticStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../store/agenticStore')>();
@@ -174,56 +174,6 @@ describe('useUserSettings (reduced surface)', () => {
     });
   });
 
-  // ─── Admin edit ANOTHER user's settings/preferences ───
-  // The backend already exposes `GET /admin/users/:id/settings` and
-  // `PATCH /admin/users/:id/settings/:namespace/:key` (assertUserInScope).
-  // These SDK methods target a specific `userId` so a future admin
-  // FE can view/edit another user's preferences.
-  describe('admin target-user surface', () => {
-    it('listForUser GETs the admin settings route for the target user', async () => {
-      const data = [{ id: 'us-9', namespace: 'arcaai-sdk', key: 'theme', value: 'dark', userId: 'u-9' }];
-      mockGet.mockResolvedValue(data);
-      const { result } = renderHook(() => useUserSettings());
-
-      let resp: unknown;
-      await act(async () => {
-        resp = await result.current.listForUser('u-9');
-      });
-
-      expect(mockGet).toHaveBeenCalledWith(ADMIN_USER_SETTINGS_ENDPOINTS.list('u-9'));
-      expect(mockGet).toHaveBeenCalledWith('/admin/users/u-9/settings');
-      expect(result.current.settings).toEqual(data);
-      expect(resp).toEqual(data);
-    });
-
-    it('updateForUser PATCHes the admin settings route with the value payload', async () => {
-      const updated = { id: 'us-9', namespace: 'arcaai-sdk', key: 'theme', value: 'light', userId: 'u-9' };
-      mockPatch.mockResolvedValue(updated);
-      const { result } = renderHook(() => useUserSettings());
-
-      let resp: unknown;
-      await act(async () => {
-        resp = await result.current.updateForUser('u-9', 'arcaai-sdk', 'theme', 'light');
-      });
-
-      expect(mockPatch).toHaveBeenCalledWith(ADMIN_USER_SETTINGS_ENDPOINTS.updateByKey('u-9', 'arcaai-sdk', 'theme'), { value: 'light' });
-      expect(mockPatch).toHaveBeenCalledWith('/admin/users/u-9/settings/arcaai-sdk/theme', { value: 'light' });
-      expect(resp).toEqual(updated);
-    });
-
-    it('updateForUser encodes special characters in userId, namespace and key', async () => {
-      mockPatch.mockResolvedValue({ ok: true });
-      const { result } = renderHook(() => useUserSettings());
-
-      await act(async () => {
-        await result.current.updateForUser('u/9', 'a/ns', 'k=1', 'v');
-      });
-
-      const [endpoint] = mockPatch.mock.calls[0];
-      expect(endpoint).toBe('/admin/users/u%2F9/settings/a%2Fns/k%3D1');
-    });
-  });
-
   describe('removed legacy surface', () => {
     it('does not expose get(id)/create()/update(id)/getMySettings()/mySettings', () => {
       const { result } = renderHook(() => useUserSettings());
@@ -234,11 +184,18 @@ describe('useUserSettings (reduced surface)', () => {
       expect((result.current as any).mySettings).toBeUndefined();
     });
 
-    it('return surface is exactly { settings, isLoading, error, list, updateByKey, listForUser, updateForUser }', () => {
+    // TASK-890 (OD-F/OD-K): `@arcaai/vox` carries no management surface —
+    // the admin-plane `listForUser`/`updateForUser` methods (editing ANOTHER
+    // user's settings via `/admin/users/:id/settings`) were removed.
+    it('does not expose the admin-plane listForUser()/updateForUser()', () => {
       const { result } = renderHook(() => useUserSettings());
-      expect(Object.keys(result.current).sort()).toEqual(
-        ['error', 'isLoading', 'list', 'listForUser', 'settings', 'updateByKey', 'updateForUser'].sort(),
-      );
+      expect((result.current as any).listForUser).toBeUndefined();
+      expect((result.current as any).updateForUser).toBeUndefined();
+    });
+
+    it('return surface is exactly { settings, isLoading, error, list, updateByKey }', () => {
+      const { result } = renderHook(() => useUserSettings());
+      expect(Object.keys(result.current).sort()).toEqual(['error', 'isLoading', 'list', 'settings', 'updateByKey'].sort());
     });
   });
 

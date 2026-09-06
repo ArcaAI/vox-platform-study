@@ -3,11 +3,15 @@
  *
  * Tests for new endpoint constants added in WS-H.
  *
+ * `DNA_STYLE_ENDPOINTS` was removed under TASK-890 (OD-F/OD-K) along with
+ * its sole consumers, the admin `useDnaStyle`/`useDnaDashboard` hooks —
+ * `@arcaai/vox` carries no management surface.
+ *
  * @vitest-environment jsdom
  */
 
 import { describe, it, expect } from 'vitest';
-import { CONSULTATION_ENDPOINTS, DNA_STYLE_ENDPOINTS } from '../constants';
+import { CONSULTATION_ENDPOINTS } from '../constants';
 
 describe('WS-H Constants', () => {
   describe('CONSULTATION_ENDPOINTS.LIST', () => {
@@ -21,41 +25,10 @@ describe('WS-H Constants', () => {
     });
   });
 
-  describe('DNA_STYLE_ENDPOINTS.BY_DOCTOR', () => {
-    it('should be defined as a function', () => {
-      expect(DNA_STYLE_ENDPOINTS.BY_DOCTOR).toBeDefined();
-      expect(typeof DNA_STYLE_ENDPOINTS.BY_DOCTOR).toBe('function');
-    });
-
-    it('should return correct path', () => {
-      expect(DNA_STYLE_ENDPOINTS.BY_DOCTOR('doc-123')).toBe('/dna-writing-styles/doctor/doc-123');
-    });
-  });
-
   describe('CONSULTATION_ENDPOINTS completeness', () => {
     it('should have all expected keys including LIST', () => {
       const keys = Object.keys(CONSULTATION_ENDPOINTS);
       expect(keys).toEqual(expect.arrayContaining(['OPEN', 'GET', 'PATIENT_HISTORY', 'PATIENT_DATE', 'TIMELINE', 'CHAIN', 'LIST']));
-    });
-  });
-
-  describe('DNA_STYLE_ENDPOINTS completeness', () => {
-    it('should have all expected keys including BY_DOCTOR', () => {
-      const keys = Object.keys(DNA_STYLE_ENDPOINTS);
-      expect(keys).toEqual(
-        expect.arrayContaining([
-          'GENERATE',
-          'GENERATE_FOR_DOCTOR',
-          'JOB_STREAM',
-          'MY_STYLE',
-          'UPDATE',
-          'VERSIONS',
-          'ADMIN_LIST',
-          'ADMIN_JOB_STATUS',
-          'ADMIN_JOB_STREAM',
-          'BY_DOCTOR',
-        ]),
-      );
     });
   });
 });

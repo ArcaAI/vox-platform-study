@@ -31,7 +31,7 @@ Peer dependencies: `react` / `react-dom` `^18.3.0 || ^19.0.4`.
 | `@arcaai/vox/plugins/med-ner` | **Deprecated** (removed in R4) — `useMedNER` only; isolates the optional `@arcaai/med-ner` dependency |
 | `@arcaai/vox/compat`          | v1 (`@arcaai/agentic-sdk`) source-compatible hooks for migrating apps — see [Migrating from v1](#migrating-from-v1-arcaaivoxcompat)  |
 
-Use `/core` for admin/dashboard surfaces that only need API access; audio and ML dependencies stay out of that graph.
+Use `/core` for dashboard-style surfaces that only need API access; audio and ML dependencies stay out of that graph. (`@arcaai/vox` itself carries no ADMINISTRATION surface — see [Business plane only](#business-plane-only-no-management-surface).)
 
 **Entry bundles don't share a React context.** Each entry (`.`, `/core`, `/plugins`, `/plugins/med-ner`, `/compat`) is built as a separate bundle (`tsup.config.ts`, `splitting: false`), so a component tree rendered under `<ArcaCompatProvider>` (from `/compat`) must import every hook it uses — including v2-native ones like `useArcaSttLanguageModes` — from `/compat` too. Importing the "same" hook from `/core` in a `/compat`-provided tree throws (`useStoreApi()` finds no provider), even though the hook is re-exported under an identical name.
 
@@ -42,7 +42,7 @@ packages/agentic-sdk-v2/
 ├── src/
 │   ├── index.ts / core.ts / plugins.ts / plugins-med-ner.ts   # Entry points
 │   ├── providers/     # AgenticProvider (owns one store instance per mount)
-│   ├── hooks/         # useArca + focused domain/admin hooks (~45)
+│   ├── hooks/         # useArca + focused, business-plane domain hooks (no management surface — TASK-890)
 │   ├── store/         # Zustand store: createAgenticStore, useArcaStore, useStoreApi
 │   ├── core/          # AgenticClient, ConfigManager/ConfigSchema (valibot),
 │   │                  # PluginManager, TranscriptionPipeline, KnowledgePipeline,
@@ -51,7 +51,7 @@ packages/agentic-sdk-v2/
 │   │                  # PersonalizationManager, ModelRegistry, LocalVoiceEmbedder,
 │   │                  # DualStreamRecorder, ProcessedAudioTap, FileTranscriptionService,
 │   │                  # logger/ (SDKLogger + transports)
-│   ├── types/         # Config, consultation, context, summary, STT, admin types
+│   ├── types/         # Config, consultation, context, summary, STT types
 │   ├── utils/         # Diff, dates, errors, idempotency, citations, voice embedding
 │   └── compat/        # v1-compat provider + hooks (entry: src/compat.ts) — see below
 ├── docs/API-Reference.md   # Full generated API reference
@@ -68,7 +68,7 @@ import { AgenticProvider, useArca } from '@arcaai/vox';
 const config = {
   api: {
     baseUrl: 'https://api.arcaai.example.com',
-    accessToken: 'jwt-from-your-auth-flow', // or apiKey for system keys (business plane only — admin hooks need the JWT)
+    accessToken: 'jwt-from-your-auth-flow', // or apiKey for system keys (business plane only — @arcaai/vox carries no admin hooks)
     tenantId: 'tenant-id',
   },
   // Backend streaming STT. No client model: VAD/denoise run server-side,
@@ -406,7 +406,7 @@ Note the `clarity.level: 'info'` — at the default `'error'` floor, `vox.op.*` 
 const SDK_CONFIG_OPTIONS = {
   apiEndpoint: 'https://staging-api.arcaai.com',
   websocketUrl: 'wss://staging-api.arcaai.com',
-  credentials: { apiKey: KEY },                 // business plane only — see the admin-hooks note above
+  credentials: { apiKey: KEY },                 // business plane only — see `Business plane only` above
   environment: 'staging',                       // ← also feeds the transport stage gate
   logging: {
     clarity: { projectId: process.env.CLARITY_PROJECT_ID, level: 'info' },
@@ -437,22 +437,28 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useConsultationSchema`, `useConsultationWorkflow`, `useSelectableConsultationWorkflows`, `useAudioRecordings`                                |
 | Live streams²    | `useArcaLiveSummary`, `useArcaLiveAssist`, `useConsultationEvents`, `useWorkflowRun`                                                                                                                                                                                          |
-| Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements`                                                                                                                                    |
-| Admin¹           | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
-| Platform         | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys`                                                                                                        |
-| Voice and DNA    | `useVoiceEmbedding`, `useLocalVoiceEmbedding`, `useDnaStyle`, `useDnaDashboard`                                                                                                                                                                        |
+| Agents and workflows | `useSelectableAsrAgents`, `useAgentInvocation` (invoke a PUBLISHED agent), `useWorkflowReview` (release a `core.humanReview` node) — business plane only, see [Business plane only](#business-plane-only-no-management-surface) |
+| Auth and self-service | `useAuth`, `useUserSettings` (self-only, `/users/me/settings`) |
+| Platform         | `usePipelines` (deprecated, removed in R4), `usePolicies`, `useStorage`                                                                                                        |
+| Voice            | `useVoiceEmbedding`, `useLocalVoiceEmbedding`                                                                                                                                                                        |
 | Audio plugins    | `useVAD`, `useSTT`, `useNoiseFilter` (from `/plugins`), `useMedNER` (from `/plugins/med-ner`)                                                                                                                                                          |
 | Compat (v1 migration) | `ArcaCompatProvider`, `useArcaSessionManager`, `useAudioCapture`, `useArcaSpeechToText`, `useText`, `useArcaSttProvider`, `useArcaSttLanguageModes` (all from `/compat` — see [Migrating from v1](#migrating-from-v1-arcaaivoxcompat))                |
 
-> **¹ Admin hooks require a JWT.** `/api/v1/admin/*` is a **JWT-only** plane (policy A2): API
-> keys are prohibited there and every request carrying one is refused with `403 This route does not
-> accept API-key authentication` — including a key holding the `'*'` wildcard. Configure
-> `credentials: { accessToken }` for any admin hook; `credentials: { apiKey }` reaches the business
-> plane (consultations, STT/TTS, storage, self-service `me` surfaces) only.
->
-> The reason is credential class, not privilege: an API key is a long-lived static bearer secret
-> with no MFA, no session expiry, no revocation-on-logout and no impersonation audit trail.
-> Headless administration is unsupported until the platform's service-account credential ships.
+### Business plane only — no management surface
+
+**`@arcaai/vox` carries NO administration capability (TASK-890, OD-F/OD-K).** The admin-hook
+families that used to live here — users, roles, departments, tenants, prompts, API keys, audit
+logs, entitlements, global settings, monitoring, platform metrics, DNA style, rate limits, queues,
+Prisma Studio, harness policy, tenant storage/buckets/frontend-config — are gone, along with the
+`/admin/*` endpoint constants that backed them. `useUserSettings` is the one exception, and it is
+self-only (`/users/me/settings`), never another user's.
+
+`AgenticClient` enforces the same boundary at the transport layer: any request whose path matches
+`isAdminPlanePath` (`/admin/*`, plus the two legacy non-`/admin/` admin-only surfaces
+`/monitoring/*` and `/health/services*`) throws a named `AdminPlaneRefusedError` before any network
+call is made — regardless of credential (JWT or API key) or impersonation state. Administration
+lives in [`@arcaai/vox-node`](../vox-node/README.md)'s `hope.admin.*` (service-account credential)
+or the admin console.
 
 > **² Live streams are SSE, and each opens with a single-use ticket.** All four follow the same
 > shape — `start(id)` / `stop()` plus `status` (`idle | connecting | open | error | closed`) — and
@@ -494,7 +500,7 @@ The recommendation is not a capability limit — it is about what each credentia
 | Lifetime | short, expiring, refreshable | long-lived and static until rotated |
 | Revocation | logout, session end, refresh-token rotation | manual rotation only |
 | Carries the identity abilities compose against | yes | no — a key's scopes bind the *credential*; abilities bind the bound *human*, and the two compose as **AND**, so a key can never exceed its human |
-| Admin plane (`/api/v1/admin/*`) | reachable | **never** — refused unconditionally (policy A2) |
+| Admin plane (`/api/v1/admin/*`) | **never** — the SDK itself refuses it (TASK-890, `AdminPlaneRefusedError`) | **never** — refused unconditionally (policy A2) |
 
 For a **user-facing frontend, use the JWT.** A key shipped to a browser is a static, long-lived,
 shared secret sitting in code every user can read, and nothing about a page load can revoke it.
