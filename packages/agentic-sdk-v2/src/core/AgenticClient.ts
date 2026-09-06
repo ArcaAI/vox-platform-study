@@ -6,7 +6,7 @@
 
 import type { ApiConfig } from '../types';
 import { AgenticError } from '../types';
-import { DEFAULT_TIMEOUT, isAdminPlanePath } from './constants';
+import { AdminPlaneRefusedError, DEFAULT_TIMEOUT, isAdminPlanePath } from './constants';
 import type { ISDKLogger } from './logger';
 import { createTraceparent, generateSpanId, toW3CTraceId } from './logger';
 import { classifyHttpError } from '../utils/errorUtils';
@@ -1279,17 +1279,19 @@ export class AgenticClient {
   /**
    * Resolve the bearer token for a request to `endpoint`.
    *
-   * While impersonating, admin-plane routes (`/admin/*`) must carry the
-   * admin's OWN JWT (stashed via `startImpersonation`) so backend RBAC sees
-   * the admin's roles — otherwise every admin interface returns 403. Every
-   * other (user-plane) route keeps the active token so the SDK acts as the
-   * impersonated user. When not impersonating, both branches return
-   * `this.accessToken`, so behavior is unchanged.
+   * `@arcaai/vox` is business-plane only (TASK-890, OD-F/OD-K): it carries
+   * no management surface, so an admin-plane route (`/admin/*`, and the two
+   * legacy non-`/admin/` admin-only surfaces `isAdminPlanePath` also covers)
+   * is REFUSED outright rather than routed with a stashed admin JWT during
+   * impersonation, as it once was — administration lives in
+   * `@arcaai/vox-node`'s `hope.admin.*` or the admin console. Every
+   * user-plane route is unaffected: it keeps returning the active token
+   * (the impersonated user's token while impersonating, else the caller's
+   * own).
    */
   private resolveAuthToken(endpoint: string): string | undefined {
-    const adminToken = impersonationTokens.get(this);
-    if (adminToken && isAdminPlanePath(endpoint)) {
-      return adminToken;
+    if (isAdminPlanePath(endpoint)) {
+      throw new AdminPlaneRefusedError(endpoint);
     }
     return this.accessToken;
   }

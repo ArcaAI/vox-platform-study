@@ -4,34 +4,31 @@
  * Verifies all endpoint constants match the new /api/v1/<domain> route convention.
  * Written TDD-first — these tests define the target state before any constants change.
  *
+ * `GLOBAL_SETTINGS_ENDPOINTS`, `API_KEY_ENDPOINTS`, `ROLE_ENDPOINTS`,
+ * `TENANT_ENDPOINTS`, `DNA_STYLE_ENDPOINTS`, `PROMPT_TEMPLATE_ENDPOINTS`,
+ * the admin CRUD surface of `DEPARTMENT_ENDPOINTS`, `MONITORING_ENDPOINTS`,
+ * `SERVICE_HEALTH_ENDPOINTS` and `USER_ENDPOINTS` were removed under
+ * TASK-890 (OD-F/OD-K) along with their sole consumers, the admin
+ * hooks — `@arcaai/vox` carries no management surface.
+ *
  * @vitest-environment jsdom
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  API_KEY_ENDPOINTS,
   AUTH_ENDPOINTS,
   CONSULTATION_ENDPOINTS,
   CONSULTATION_JOB_ENDPOINTS,
   CONTEXT_ENDPOINTS,
-  DEPARTMENT_ENDPOINTS,
-  DNA_STYLE_ENDPOINTS,
   ENTITY_ENDPOINTS,
-  GLOBAL_SETTINGS_ENDPOINTS,
   HEALTH_ENDPOINTS,
-  MONITORING_ENDPOINTS,
   MY_TENANT_ENDPOINTS,
   NLP_ENDPOINTS,
   PERSONALIZATION_ENDPOINTS,
   PIPELINE_ENDPOINTS,
-  PROMPT_TEMPLATE_ENDPOINTS,
-  ROLE_ENDPOINTS,
-  SERVICE_HEALTH_ENDPOINTS,
   STORAGE_ENDPOINTS,
   STT_ENDPOINTS,
   SUMMARY_ENDPOINTS,
-  TENANT_ENDPOINTS,
-  USER_ENDPOINTS,
   USER_SETTINGS_ENDPOINTS,
   VOICE_EMBEDDING_ENDPOINTS,
 } from '../constants';
@@ -172,48 +169,6 @@ describe('SDK v2 route standardization', () => {
   });
 
   // ===========================================================================
-  // GLOBAL_SETTINGS_ENDPOINTS: /global-settings -> /admin/settings
-  // ===========================================================================
-
-  describe('GLOBAL_SETTINGS_ENDPOINTS (/global-settings -> /admin/settings)', () => {
-    it('should use /admin/settings for LIST', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.LIST).toBe('/admin/settings');
-    });
-
-    it('should use /admin/settings/:id for GET', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.GET('s-1')).toBe('/admin/settings/s-1');
-    });
-
-    it('should use /admin/settings for CREATE', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.CREATE).toBe('/admin/settings');
-    });
-
-    it('should use /admin/settings/:id for UPDATE', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.UPDATE('s-1')).toBe('/admin/settings/s-1');
-    });
-
-    it('should use /admin/settings/tenant/:tenantId for BY_TENANT', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.BY_TENANT('t-1')).toBe('/admin/settings/tenant/t-1');
-    });
-
-    it('should use /admin/settings/tenant/:tenantId/config for TENANT_CONFIG', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG('t-1')).toBe('/admin/settings/tenant/t-1/config');
-    });
-
-    it('should NOT contain /global-settings path', () => {
-      const all = [
-        GLOBAL_SETTINGS_ENDPOINTS.LIST,
-        GLOBAL_SETTINGS_ENDPOINTS.CREATE,
-        GLOBAL_SETTINGS_ENDPOINTS.GET('x'),
-        GLOBAL_SETTINGS_ENDPOINTS.UPDATE('x'),
-        GLOBAL_SETTINGS_ENDPOINTS.BY_TENANT('x'),
-        GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG('x'),
-      ];
-      all.forEach((ep) => expect(ep).not.toContain('/global-settings'));
-    });
-  });
-
-  // ===========================================================================
   // USER_SETTINGS_ENDPOINTS: /user-settings -> /users/me/settings
   // ===========================================================================
 
@@ -226,96 +181,6 @@ describe('SDK v2 route standardization', () => {
     it('should NOT contain /user-settings path', () => {
       const all = [USER_SETTINGS_ENDPOINTS.list, USER_SETTINGS_ENDPOINTS.updateByKey('ns', 'k')];
       all.forEach((ep) => expect(ep).not.toContain('/user-settings'));
-    });
-  });
-
-  // ===========================================================================
-  // API_KEY_ENDPOINTS: /api-keys -> /admin/api-keys
-  // ===========================================================================
-
-  describe('API_KEY_ENDPOINTS (/api-keys -> /admin/api-keys)', () => {
-    it('should use /admin/api-keys for LIST', () => {
-      expect(API_KEY_ENDPOINTS.LIST).toBe('/admin/api-keys');
-    });
-
-    it('should use /admin/api-keys/:id for GET', () => {
-      expect(API_KEY_ENDPOINTS.GET('k-1')).toBe('/admin/api-keys/k-1');
-    });
-
-    it('should use /admin/api-keys for CREATE', () => {
-      expect(API_KEY_ENDPOINTS.CREATE).toBe('/admin/api-keys');
-    });
-
-    it('should use /admin/api-keys/:id for UPDATE', () => {
-      expect(API_KEY_ENDPOINTS.UPDATE('k-1')).toBe('/admin/api-keys/k-1');
-    });
-
-    it('should use /admin/api-keys/:id for DELETE', () => {
-      expect(API_KEY_ENDPOINTS.DELETE('k-1')).toBe('/admin/api-keys/k-1');
-    });
-
-    it('should use /admin/api-keys/:id/revoke for REVOKE', () => {
-      expect(API_KEY_ENDPOINTS.REVOKE('k-1')).toBe('/admin/api-keys/k-1/revoke');
-    });
-
-    it('should use /admin/api-keys/:id/usage for USAGE', () => {
-      expect(API_KEY_ENDPOINTS.USAGE('k-1')).toBe('/admin/api-keys/k-1/usage');
-    });
-  });
-
-  // ===========================================================================
-  // ROLE_ENDPOINTS: /rbac/roles -> /admin/rbac/roles
-  // ===========================================================================
-
-  describe('ROLE_ENDPOINTS (/rbac/roles -> /admin/rbac/roles)', () => {
-    it('should use /admin/rbac/roles for LIST', () => {
-      expect(ROLE_ENDPOINTS.LIST).toBe('/admin/rbac/roles');
-    });
-
-    it('should use /admin/rbac/roles/:id for GET', () => {
-      expect(ROLE_ENDPOINTS.GET('r-1')).toBe('/admin/rbac/roles/r-1');
-    });
-
-    it('should use /admin/rbac/roles for CREATE', () => {
-      expect(ROLE_ENDPOINTS.CREATE).toBe('/admin/rbac/roles');
-    });
-
-    it('should use /admin/rbac/roles/:id for UPDATE', () => {
-      expect(ROLE_ENDPOINTS.UPDATE('r-1')).toBe('/admin/rbac/roles/r-1');
-    });
-
-    it('should use /admin/rbac/roles/:id for DELETE', () => {
-      expect(ROLE_ENDPOINTS.DELETE('r-1')).toBe('/admin/rbac/roles/r-1');
-    });
-
-    it('should use /admin/rbac/roles/:roleId/policies/:policyId for ASSIGN_POLICY', () => {
-      expect(ROLE_ENDPOINTS.ASSIGN_POLICY('r-1', 'p-1')).toBe('/admin/rbac/roles/r-1/policies/p-1');
-    });
-
-    it('should use /admin/rbac/roles/:roleId/policies/:policyId for REMOVE_POLICY', () => {
-      expect(ROLE_ENDPOINTS.REMOVE_POLICY('r-1', 'p-1')).toBe('/admin/rbac/roles/r-1/policies/p-1');
-    });
-
-    it('should keep USER_ROLES under /users (not admin)', () => {
-      expect(ROLE_ENDPOINTS.USER_ROLES('u-1')).toBe('/users/u-1/roles');
-    });
-
-    it('should keep USER_ROLE under /users (not admin)', () => {
-      expect(ROLE_ENDPOINTS.USER_ROLE('u-1', 'r-1')).toBe('/users/u-1/roles/r-1');
-    });
-  });
-
-  // ===========================================================================
-  // TENANT_ENDPOINTS: /tenants/configs -> /admin/tenants/configs
-  // ===========================================================================
-
-  describe('TENANT_ENDPOINTS (/tenants/configs -> /admin/tenants/configs)', () => {
-    it('should use /admin/tenants/configs/:identifier for GET_CONFIGS', () => {
-      expect(TENANT_ENDPOINTS.GET_CONFIGS('tenant-1')).toBe('/admin/tenants/configs/tenant-1');
-    });
-
-    it('should use /admin/tenants/configs/:identifier for UPDATE_CONFIGS', () => {
-      expect(TENANT_ENDPOINTS.UPDATE_CONFIGS('tenant-1')).toBe('/admin/tenants/configs/tenant-1');
     });
   });
 
@@ -355,40 +220,10 @@ describe('SDK v2 route standardization', () => {
       expect(ENTITY_ENDPOINTS.GET_ALL('123')).toBe('/consultations/123/named-entities');
     });
 
-    it('DNA_STYLE_ENDPOINTS should be unchanged', () => {
-      expect(DNA_STYLE_ENDPOINTS.GENERATE).toBe('/dna-writing-styles/generate');
-      expect(DNA_STYLE_ENDPOINTS.MY_STYLE).toBe('/dna-writing-styles/my-style');
-      expect(DNA_STYLE_ENDPOINTS.ADMIN_LIST).toBe('/admin/dna-writing-styles');
-    });
-
-    // Prompt-template management lives under the audited /admin
-    // prefix.
-    it('PROMPT_TEMPLATE_ENDPOINTS should use the admin prefix', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.LIST).toBe('/admin/prompt-templates');
-      expect(PROMPT_TEMPLATE_ENDPOINTS.CREATE).toBe('/admin/prompt-templates');
-    });
-
-    // End-user (clinician) read-only template plane. This is
-    // the doctor-safe path integrators should copy for the Pre-Summary /
-    // Summary selector; it must NOT carry the `/admin` prefix.
-    it('PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE should be the unprefixed end-user route', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE).toBe('/prompt-templates/available');
-    });
-
-    it('DEPARTMENT_ENDPOINTS should use admin prefix', () => {
-      expect(DEPARTMENT_ENDPOINTS.LIST).toBe('/admin/departments');
-      expect(DEPARTMENT_ENDPOINTS.GET('d-1')).toBe('/admin/departments/d-1');
-    });
-
     it('HEALTH_ENDPOINTS should be unchanged', () => {
       expect(HEALTH_ENDPOINTS.HEALTH).toBe('/health');
       expect(HEALTH_ENDPOINTS.LIVE).toBe('/health/live');
       expect(HEALTH_ENDPOINTS.READY).toBe('/health/ready');
-    });
-
-    it('MONITORING_ENDPOINTS should sit on the admin plane ', () => {
-      expect(MONITORING_ENDPOINTS.UPTIME).toBe('/admin/monitoring/uptime');
-      expect(MONITORING_ENDPOINTS.SESSIONS).toBe('/admin/monitoring/sessions');
     });
 
     it('AUTH_ENDPOINTS should be unchanged', () => {
@@ -398,11 +233,6 @@ describe('SDK v2 route standardization', () => {
       expect(AUTH_ENDPOINTS.IMPERSONATE).toBe('/auth/impersonate');
     });
 
-    it('SERVICE_HEALTH_ENDPOINTS should use the consolidated /admin/health/services endpoint', () => {
-      expect(SERVICE_HEALTH_ENDPOINTS.SERVICES).toBe('/admin/health/services');
-      expect(Object.keys(SERVICE_HEALTH_ENDPOINTS)).toHaveLength(1);
-    });
-
     it('NLP_ENDPOINTS should be unchanged', () => {
       expect(NLP_ENDPOINTS.CLASSIFY_TOKENS).toBe('/nlp/classify/tokens');
       expect(NLP_ENDPOINTS.CLASSIFY_TEXT).toBe('/nlp/classify/text');
@@ -410,11 +240,6 @@ describe('SDK v2 route standardization', () => {
 
     it('CONSULTATION_JOB_ENDPOINTS should be unchanged', () => {
       expect(CONSULTATION_JOB_ENDPOINTS.GET('j-1')).toBe('/consultations/jobs/j-1');
-    });
-
-    it('USER_ENDPOINTS should use admin prefix', () => {
-      expect(USER_ENDPOINTS.LIST).toBe('/admin/users');
-      expect(USER_ENDPOINTS.ME).toBe('/auth/me');
     });
 
     it('STORAGE_ENDPOINTS should be unchanged', () => {
@@ -447,13 +272,7 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.JOB_STATS,
         PIPELINE_ENDPOINTS.LIST,
         PIPELINE_ENDPOINTS.VALIDATE,
-        GLOBAL_SETTINGS_ENDPOINTS.LIST,
-        GLOBAL_SETTINGS_ENDPOINTS.CREATE,
         USER_SETTINGS_ENDPOINTS.list,
-        API_KEY_ENDPOINTS.LIST,
-        API_KEY_ENDPOINTS.CREATE,
-        ROLE_ENDPOINTS.LIST,
-        ROLE_ENDPOINTS.CREATE,
       ];
       statics.forEach((ep) => {
         expect(ep).toMatch(/^\//);
@@ -472,23 +291,7 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.CLOSE_SESSION('x'),
         PIPELINE_ENDPOINTS.GET('x'),
         PIPELINE_ENDPOINTS.GET_BY_SLUG('x'),
-        GLOBAL_SETTINGS_ENDPOINTS.GET('x'),
-        GLOBAL_SETTINGS_ENDPOINTS.UPDATE('x'),
-        GLOBAL_SETTINGS_ENDPOINTS.BY_TENANT('x'),
-        GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG('x'),
         USER_SETTINGS_ENDPOINTS.updateByKey('x', 'y'),
-        API_KEY_ENDPOINTS.GET('x'),
-        API_KEY_ENDPOINTS.UPDATE('x'),
-        API_KEY_ENDPOINTS.DELETE('x'),
-        API_KEY_ENDPOINTS.REVOKE('x'),
-        API_KEY_ENDPOINTS.USAGE('x'),
-        ROLE_ENDPOINTS.GET('x'),
-        ROLE_ENDPOINTS.UPDATE('x'),
-        ROLE_ENDPOINTS.DELETE('x'),
-        ROLE_ENDPOINTS.ASSIGN_POLICY('x', 'y'),
-        ROLE_ENDPOINTS.REMOVE_POLICY('x', 'y'),
-        TENANT_ENDPOINTS.GET_CONFIGS('x'),
-        TENANT_ENDPOINTS.UPDATE_CONFIGS('x'),
       ];
       dynamics.forEach((ep) => {
         expect(ep).toMatch(/^\//);
@@ -520,38 +323,9 @@ describe('SDK v2 route standardization', () => {
       expect(PIPELINE_ENDPOINTS.GET_BY_SLUG(dangerous)).toContain(encoded);
     });
 
-    it('GLOBAL_SETTINGS_ENDPOINTS should encode special chars', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.GET(dangerous)).toContain(encoded);
-      expect(GLOBAL_SETTINGS_ENDPOINTS.UPDATE(dangerous)).toContain(encoded);
-      expect(GLOBAL_SETTINGS_ENDPOINTS.BY_TENANT(dangerous)).toContain(encoded);
-      expect(GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG(dangerous)).toContain(encoded);
-    });
-
     it('USER_SETTINGS_ENDPOINTS should encode special chars (reduced surface)', () => {
       const path = USER_SETTINGS_ENDPOINTS.updateByKey(dangerous, dangerous);
       expect(path.split(encoded).length - 1).toBe(2);
-    });
-
-    it('API_KEY_ENDPOINTS should encode special chars', () => {
-      expect(API_KEY_ENDPOINTS.GET(dangerous)).toContain(encoded);
-      expect(API_KEY_ENDPOINTS.UPDATE(dangerous)).toContain(encoded);
-      expect(API_KEY_ENDPOINTS.DELETE(dangerous)).toContain(encoded);
-      expect(API_KEY_ENDPOINTS.REVOKE(dangerous)).toContain(encoded);
-      expect(API_KEY_ENDPOINTS.USAGE(dangerous)).toContain(encoded);
-    });
-
-    it('ROLE_ENDPOINTS should encode special chars in both parameters', () => {
-      expect(ROLE_ENDPOINTS.GET(dangerous)).toContain(encoded);
-      expect(ROLE_ENDPOINTS.UPDATE(dangerous)).toContain(encoded);
-      expect(ROLE_ENDPOINTS.DELETE(dangerous)).toContain(encoded);
-      const assignPath = ROLE_ENDPOINTS.ASSIGN_POLICY(dangerous, dangerous);
-      const occurrences = assignPath.split(encoded).length - 1;
-      expect(occurrences).toBe(2);
-    });
-
-    it('TENANT_ENDPOINTS should encode special chars', () => {
-      expect(TENANT_ENDPOINTS.GET_CONFIGS(dangerous)).toContain(encoded);
-      expect(TENANT_ENDPOINTS.UPDATE_CONFIGS(dangerous)).toContain(encoded);
     });
   });
 
@@ -573,14 +347,6 @@ describe('SDK v2 route standardization', () => {
     it('PIPELINE_ENDPOINTS should handle UUID IDs', () => {
       expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/audio/pipelines/${uuid}`);
     });
-
-    it('admin endpoints should handle UUID IDs', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.GET(uuid)).toBe(`/admin/settings/${uuid}`);
-      expect(API_KEY_ENDPOINTS.GET(uuid)).toBe(`/admin/api-keys/${uuid}`);
-      expect(API_KEY_ENDPOINTS.REVOKE(uuid)).toBe(`/admin/api-keys/${uuid}/revoke`);
-      expect(ROLE_ENDPOINTS.GET(uuid)).toBe(`/admin/rbac/roles/${uuid}`);
-      expect(TENANT_ENDPOINTS.GET_CONFIGS(uuid)).toBe(`/admin/tenants/configs/${uuid}`);
-    });
   });
 
   // ===========================================================================
@@ -591,19 +357,7 @@ describe('SDK v2 route standardization', () => {
     it('should not throw for empty string IDs', () => {
       expect(() => STT_ENDPOINTS.GET_JOB('')).not.toThrow();
       expect(() => PIPELINE_ENDPOINTS.GET('')).not.toThrow();
-      expect(() => GLOBAL_SETTINGS_ENDPOINTS.GET('')).not.toThrow();
       expect(() => USER_SETTINGS_ENDPOINTS.updateByKey('', '')).not.toThrow();
-      expect(() => API_KEY_ENDPOINTS.GET('')).not.toThrow();
-      expect(() => ROLE_ENDPOINTS.GET('')).not.toThrow();
-      expect(() => TENANT_ENDPOINTS.GET_CONFIGS('')).not.toThrow();
-    });
-
-    it('should still produce valid path structure with empty IDs', () => {
-      expect(STT_ENDPOINTS.GET_JOB('')).toMatch(/^\/audio\/transcription-jobs\//);
-      expect(GLOBAL_SETTINGS_ENDPOINTS.GET('')).toMatch(/^\/admin\/settings\//);
-      expect(API_KEY_ENDPOINTS.GET('')).toMatch(/^\/admin\/api-keys\//);
-      expect(ROLE_ENDPOINTS.GET('')).toMatch(/^\/admin\/rbac\/roles\//);
-      expect(TENANT_ENDPOINTS.GET_CONFIGS('')).toMatch(/^\/admin\/tenants\/configs\//);
     });
   });
 
@@ -625,13 +379,7 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.JOB_STATS,
         PIPELINE_ENDPOINTS.LIST,
         PIPELINE_ENDPOINTS.VALIDATE,
-        GLOBAL_SETTINGS_ENDPOINTS.LIST,
-        GLOBAL_SETTINGS_ENDPOINTS.CREATE,
         USER_SETTINGS_ENDPOINTS.list,
-        API_KEY_ENDPOINTS.LIST,
-        API_KEY_ENDPOINTS.CREATE,
-        ROLE_ENDPOINTS.LIST,
-        ROLE_ENDPOINTS.CREATE,
       ];
       statics.forEach((ep) => {
         expect(ep).not.toMatch(/\/\//);
@@ -650,23 +398,7 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.JOBS_BY_STATUS(id),
         PIPELINE_ENDPOINTS.GET(id),
         PIPELINE_ENDPOINTS.GET_BY_SLUG(id),
-        GLOBAL_SETTINGS_ENDPOINTS.GET(id),
-        GLOBAL_SETTINGS_ENDPOINTS.UPDATE(id),
-        GLOBAL_SETTINGS_ENDPOINTS.BY_TENANT(id),
-        GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG(id),
         USER_SETTINGS_ENDPOINTS.updateByKey(id, id),
-        API_KEY_ENDPOINTS.GET(id),
-        API_KEY_ENDPOINTS.UPDATE(id),
-        API_KEY_ENDPOINTS.DELETE(id),
-        API_KEY_ENDPOINTS.REVOKE(id),
-        API_KEY_ENDPOINTS.USAGE(id),
-        ROLE_ENDPOINTS.GET(id),
-        ROLE_ENDPOINTS.UPDATE(id),
-        ROLE_ENDPOINTS.DELETE(id),
-        ROLE_ENDPOINTS.ASSIGN_POLICY(id, id),
-        ROLE_ENDPOINTS.REMOVE_POLICY(id, id),
-        TENANT_ENDPOINTS.GET_CONFIGS(id),
-        TENANT_ENDPOINTS.UPDATE_CONFIGS(id),
       ];
       dynamics.forEach((ep) => {
         expect(ep).not.toMatch(/\/\//);
@@ -722,28 +454,9 @@ describe('SDK v2 route standardization', () => {
       expect(Object.keys(PIPELINE_ENDPOINTS)).toEqual(expect.arrayContaining(['SET_DEFAULT', 'TOGGLE', 'VERSIONS', 'VERSION']));
     });
 
-    it('GLOBAL_SETTINGS_ENDPOINTS should have exactly 8 keys', () => {
-      // REVEAL brings the count to 8.
-      expect(Object.keys(GLOBAL_SETTINGS_ENDPOINTS)).toHaveLength(8);
-    });
-
     it('USER_SETTINGS_ENDPOINTS should have exactly 2 keys (reduction)', () => {
       expect(Object.keys(USER_SETTINGS_ENDPOINTS)).toHaveLength(2);
       expect(Object.keys(USER_SETTINGS_ENDPOINTS).sort()).toEqual(['list', 'updateByKey']);
-    });
-
-    it('API_KEY_ENDPOINTS should have exactly 8 keys', () => {
-      // ROTATE brings the count to 8.
-      expect(Object.keys(API_KEY_ENDPOINTS)).toHaveLength(8);
-    });
-
-    it('ROLE_ENDPOINTS should have exactly 11 keys', () => {
-      expect(Object.keys(ROLE_ENDPOINTS)).toHaveLength(11);
-    });
-
-    it('TENANT_ENDPOINTS should have exactly 13 keys', () => {
-      // USAGE brings the count to 9; SUSPEND/ARCHIVE/RESTORE/TAGS bring it to 13.
-      expect(Object.keys(TENANT_ENDPOINTS)).toHaveLength(13);
     });
   });
 
@@ -803,42 +516,6 @@ describe('SDK v2 route standardization', () => {
       expect(matches).toHaveLength(0);
     });
 
-    it('should not contain bare /api-keys (without /admin prefix) as endpoint path', () => {
-      const lines = constantsSource.split('\n');
-      const endpointLines = lines.filter(
-        (l) =>
-          (l.includes("'/api-keys") || l.includes('`/api-keys')) &&
-          !l.includes('/admin/api-keys') &&
-          !l.trimStart().startsWith('*') &&
-          !l.trimStart().startsWith('//'),
-      );
-      expect(endpointLines).toHaveLength(0);
-    });
-
-    it('should not contain bare /rbac/roles (without /admin prefix) as endpoint path', () => {
-      const lines = constantsSource.split('\n');
-      const endpointLines = lines.filter(
-        (l) =>
-          (l.includes("'/rbac/roles") || l.includes('`/rbac/roles')) &&
-          !l.includes('/admin/rbac/roles') &&
-          !l.trimStart().startsWith('*') &&
-          !l.trimStart().startsWith('//'),
-      );
-      expect(endpointLines).toHaveLength(0);
-    });
-
-    it('should not contain bare /tenants/configs (without /admin prefix) as endpoint path', () => {
-      const lines = constantsSource.split('\n');
-      const endpointLines = lines.filter(
-        (l) =>
-          (l.includes("'/tenants/configs") || l.includes('`/tenants/configs')) &&
-          !l.includes('/admin/tenants/configs') &&
-          !l.trimStart().startsWith('*') &&
-          !l.trimStart().startsWith('//'),
-      );
-      expect(endpointLines).toHaveLength(0);
-    });
-
     it('should not contain DNA_ENDPOINTS export', () => {
       expect(constantsSource).not.toMatch(/export\s+const\s+DNA_ENDPOINTS/);
     });
@@ -857,24 +534,14 @@ describe('SDK v2 route standardization', () => {
         'SUMMARY_ENDPOINTS',
         'ENTITY_ENDPOINTS',
         'PERSONALIZATION_ENDPOINTS',
-        'DNA_STYLE_ENDPOINTS',
-        'PROMPT_TEMPLATE_ENDPOINTS',
-        'DEPARTMENT_ENDPOINTS',
         'HEALTH_ENDPOINTS',
-        'MONITORING_ENDPOINTS',
-        'TENANT_ENDPOINTS',
         'STT_ENDPOINTS',
         'PIPELINE_ENDPOINTS',
         'NLP_ENDPOINTS',
         'AUTH_ENDPOINTS',
-        'SERVICE_HEALTH_ENDPOINTS',
-        'GLOBAL_SETTINGS_ENDPOINTS',
         'USER_SETTINGS_ENDPOINTS',
         'CONSULTATION_JOB_ENDPOINTS',
-        'USER_ENDPOINTS',
-        'API_KEY_ENDPOINTS',
         'STORAGE_ENDPOINTS',
-        'ROLE_ENDPOINTS',
         'VOICE_EMBEDDING_ENDPOINTS',
         'MY_TENANT_ENDPOINTS',
       ];
@@ -899,10 +566,6 @@ describe('SDK v2 route standardization', () => {
     });
 
     it('admin endpoints should use /admin/ prefix (matching admin/* controllers)', () => {
-      expect(GLOBAL_SETTINGS_ENDPOINTS.LIST).toMatch(/^\/admin\//);
-      expect(API_KEY_ENDPOINTS.LIST).toMatch(/^\/admin\//);
-      expect(ROLE_ENDPOINTS.LIST).toMatch(/^\/admin\//);
-      expect(TENANT_ENDPOINTS.GET_CONFIGS('x')).toMatch(/^\/admin\//);
       expect(PIPELINE_ENDPOINTS.CREATE).toMatch(/^\/admin\//);
     });
 
@@ -914,11 +577,6 @@ describe('SDK v2 route standardization', () => {
     it('WS_STREAM should NOT use /audio/ prefix (WebSocket bypasses global prefix)', () => {
       expect(STT_ENDPOINTS.WS_STREAM).toMatch(/^\/ws\//);
       expect(STT_ENDPOINTS.WS_STREAM).not.toMatch(/^\/audio\//);
-    });
-
-    it('ROLE_ENDPOINTS.USER_ROLES should stay under /users/ (not /admin/)', () => {
-      expect(ROLE_ENDPOINTS.USER_ROLES('u-1')).toMatch(/^\/users\//);
-      expect(ROLE_ENDPOINTS.USER_ROLES('u-1')).not.toMatch(/^\/admin\//);
     });
 
     it('MY_TENANT_ENDPOINTS should use /tenants/me/ prefix (auth-based, not admin)', () => {
