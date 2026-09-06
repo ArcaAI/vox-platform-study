@@ -18,7 +18,12 @@ import {
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { IConsultationContextSchemaService, ValidateContextPayloadInput, ValidatedContextPayload } from './IConsultationContextSchemaService';
+import {
+  ContextSchemaReferenceResolution,
+  IConsultationContextSchemaService,
+  ValidateContextPayloadInput,
+  ValidatedContextPayload,
+} from './IConsultationContextSchemaService';
 import {
   ConsultationContextSchemaBundleResponse,
   ConsultationContextSchemaResponse,
