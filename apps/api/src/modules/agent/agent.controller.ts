@@ -23,8 +23,7 @@ import {
   toLedgerProvider,
   withUsageTrigger,
 } from '@arcaai/applications';
-import type { AgentTextInvocationResult, UsageEventBatchInput } from '@arcaai/applications';
-import type { ResolvedAgent } from '@arcaai/types';
+import type { AgentTextInvocationResult, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {

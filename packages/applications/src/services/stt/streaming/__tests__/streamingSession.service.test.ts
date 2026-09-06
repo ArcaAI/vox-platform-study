@@ -759,7 +759,10 @@ describe('StreamingSessionService — voice profiles ride the create body', () =
 
   it('sends null rather than an empty list when the user has enrolled nothing', async () => {
     // One encoding of one state: `apps/stt` reads absence as "diarize generically".
-    const body = await openSession({ listForRuntime: vi.fn().mockResolvedValue([]) }, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }));
+    const body = await openSession(
+      { listForRuntime: vi.fn().mockResolvedValue([]) },
+      specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }),
+    );
     expect(body.voice_profiles).toBeNull();
   });
 

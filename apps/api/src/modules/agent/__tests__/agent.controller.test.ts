@@ -88,7 +88,7 @@ function make(overrides: Record<string, unknown> = {}) {
   // TASK-890 L11 — metering parity: the invocation routes now precheck the
   // LLM-token allowance and record what they spent, as `speech()` always did.
   const entitlementsService = { assertMeterQuota: vi.fn(async () => undefined) };
-  const usageLedger = { recordUsage: vi.fn(async () => ({ written: 1 })) };
+  const usageLedger = { recordUsage: vi.fn(async (_batch: unknown) => ({ written: 1 })) };
   const deps = {
     agentService,
     resolver,
@@ -221,7 +221,6 @@ describe('AgentController — transcriptions (TASK-861: agent-keyed, no pipeline
   });
 });
 
-
 /**
  * TASK-890 L11 (BLOCKER #7, OD-E) — `POST /agents/:slug/invocations` checked no
  * quota and recorded no usage while `speech()` on the SAME controller did both.
@@ -330,7 +329,9 @@ describe('AgentController — metering parity on invocations', () => {
 describe('AgentController — speech carries the same activity dimension', () => {
   it('stamps trigger AGENT_INVOCATION on the tts.synthesize row', async () => {
     const stream = new PassThrough();
-    const httpService = { axiosRef: { post: vi.fn(async () => ({ headers: { 'content-type': 'audio/wav', 'x-tts-provider': 'kokoro' }, data: stream })) } };
+    const httpService = {
+      axiosRef: { post: vi.fn(async () => ({ headers: { 'content-type': 'audio/wav', 'x-tts-provider': 'kokoro' }, data: stream })) },
+    };
     const { controller, usageLedger } = make({
       httpService,
       invocation: {

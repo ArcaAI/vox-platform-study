@@ -25,9 +25,10 @@ function fakeCls() {
 function make() {
   const resolver = { resolve: vi.fn(async (input: unknown): Promise<unknown> => ({ input })) };
   const textAgents = {
-    resolveFromAgent: vi.fn(
-      async (): Promise<unknown> => ({ primary: { kind: 'primary', fundingTier: 'platform' }, fallback: { autoSwitch: true, chain: [] } }),
-    ),
+    resolveFromAgent: vi.fn(async (): Promise<unknown> => ({
+      primary: { kind: 'primary', fundingTier: 'platform' },
+      fallback: { autoSwitch: true, chain: [] },
+    })),
   };
   const cls = fakeCls();
   // TASK-890 L11 — the ONE gateway touch every durable `core.agent` step makes,
