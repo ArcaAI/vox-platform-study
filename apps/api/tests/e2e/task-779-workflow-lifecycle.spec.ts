@@ -46,8 +46,21 @@ interface Graph {
   edges: Array<{ id: string; from: string; fromPort: string; to: string; toPort: string }>;
 }
 
-/** Satisfies the palette-agnostic invariants WF-I-004 (trajectory stated) and WF-I-010 (bounded retry). */
+/**
+ * Satisfies the palette-agnostic invariants WF-I-004 (trajectory stated) and
+ * WF-I-010 (bounded retry) — on the EXECUTABLE nodes only.
+ *
+ * `core.start` and `core.end` are graph BOUNDARIES: they execute nothing, their
+ * config schemas declare no `emitsTrajectory`, and those schemas are
+ * `additionalProperties: false`. Stamping it on them is a `NODE_CONFIG_SCHEMA`
+ * ERROR at the publish gate (TASK-890 L0 wired it; §3.14a relies on the same
+ * strictness to keep a runtime knob off a boundary). Neither invariant asks for
+ * it there — the rule catalogue reports the graph clean without it.
+ */
 const BASE_CONFIG = { emitsTrajectory: true, retry: { maximumAttempts: 3 } };
+
+/** Boundary nodes take their own config only; see `BASE_CONFIG`. */
+const isBoundary = (type: string): boolean => type === 'core.start' || type === 'core.end';
 /** The consultation palette's non-abort error policy (CR-16 / WF-CONS-019). */
 const DEGRADE = 'degrade';
 
@@ -75,12 +88,31 @@ const CANONICAL_TYPES = [
   'core.end',
 ] as const;
 
-/** A linear graph over `types`, matching the unit fixture's `chain()` helper exactly. */
+/**
+ * A linear graph over `types`, ordered on the CONTROL ports.
+ *
+ * `next` → `after`, not `out` → `in`. Every node in this vocabulary declares a
+ * control pair (`after` in, `next` out) beside its typed data pair, and only the
+ * control pair composes into an arbitrary chain: `out`/`in` carry primitives
+ * (`transcript`, `entities`, `document`, `verdict`), so a chain of all eleven
+ * canonical types on the DATA ports is not merely mis-named — it is
+ * type-incompatible at `bindTerminology[entities] → phiHop[transcript]` and at
+ * `sensors[verdict] → persistDraft[document]`.
+ *
+ * `out`/`in` was what this fixture used until TASK-890 L0 wired the publish gate
+ * (§2.3 BLOCKER 1). The port problems were always COMPUTED; nothing enforced
+ * them, so a graph naming ports no node declares still reached VALIDATED. It no
+ * longer does, and this fixture had to stop asserting that it could.
+ */
 function chain(types: readonly string[]): Graph {
   return {
     version: 1,
-    nodes: types.map((type, index) => ({ id: `n${index}`, type, config: { ...BASE_CONFIG, ...(NODE_CONFIG[type] ?? {}) } })),
-    edges: types.slice(1).map((_, index) => ({ id: `e${index}`, from: `n${index}`, fromPort: 'out', to: `n${index + 1}`, toPort: 'in' })),
+    nodes: types.map((type, index) => ({
+      id: `n${index}`,
+      type,
+      config: isBoundary(type) ? { ...(NODE_CONFIG[type] ?? {}) } : { ...BASE_CONFIG, ...(NODE_CONFIG[type] ?? {}) },
+    })),
+    edges: types.slice(1).map((_, index) => ({ id: `e${index}`, from: `n${index}`, fromPort: 'next', to: `n${index + 1}`, toPort: 'after' })),
   };
 }
 
