@@ -68,13 +68,17 @@ describe('AgentRepository', () => {
     expect(args.orderBy).toEqual([{ tenantId: 'desc' }]);
   });
 
-  it('prefers the tenant row over the SYSTEM row and drops any foreign row (defence in depth when no CLS tenant is set)', async () => {
+  // TASK-890 L13 (OD-M) — `Agent` LEFT `SYSTEM_SHARED_READ_MODELS`. The by-slug read answers the
+  // CALLER's row and nothing else: a SYSTEM row is not a fallback any more, it is the reference
+  // the tenant's own clone was made FROM. The post-filter is defence in depth for a call made
+  // with no CLS tenant, where the extension cannot filter at all.
+  it('answers the caller`s row and drops every other tenant`s — SYSTEM included', async () => {
     const systemRow = { ...row, id: 'sys', tenantId: SYSTEM_TENANT_ID };
     const foreign = { ...row, id: 'foreign', tenantId: 'tenant-2' };
     delegate.findMany.mockResolvedValue([foreign, row, systemRow]);
     expect((await repo.findPublishedActiveBySlug('tenant-1', 'platform-summarization'))?.id).toBe('agent-1');
     delegate.findMany.mockResolvedValue([foreign, systemRow]);
-    expect((await repo.findPublishedActiveBySlug('tenant-1', 'platform-summarization'))?.id).toBe('sys');
+    expect(await repo.findPublishedActiveBySlug('tenant-1', 'platform-summarization')).toBeNull();
     delegate.findMany.mockResolvedValue([foreign]);
     expect(await repo.findPublishedActiveBySlug('tenant-1', 'platform-summarization')).toBeNull();
   });
@@ -86,14 +90,21 @@ describe('AgentRepository', () => {
     expect(await repo.findPublishedActiveBySlug('tenant-1', 'nope')).toBeNull();
   });
 
-  it('findPublishedActiveVisible lists the visible rows, optionally filtered by task, one row per slug (tenant wins)', async () => {
+  it('findPublishedActiveVisible lists the CALLER`s rows only, optionally filtered by task, one row per slug', async () => {
     const systemRow = { ...row, id: 'sys', tenantId: SYSTEM_TENANT_ID };
     const systemOnly = { ...row, id: 'sys-only', slug: 'platform-tts', task: AgentTask.TEXT_TO_SPEECH, tenantId: SYSTEM_TENANT_ID };
     delegate.findMany.mockResolvedValue([row, systemRow, systemOnly]);
     const rows = await repo.findPublishedActiveVisible('tenant-1');
-    expect(rows.map((r) => r.id)).toEqual(['agent-1', 'sys-only']);
+    // The SYSTEM rows are absent: a tenant lists the agents it OWNS (each carrying
+    // `sourceTenantId = SYSTEM` when it was provisioned from the platform library).
+    expect(rows.map((r) => r.id)).toEqual(['agent-1']);
     await repo.findPublishedActiveVisible('tenant-1', AgentTask.TEXT_GENERATION);
-    expect(delegate.findMany.mock.calls[1][0].where).toEqual({ task: 'TEXT_GENERATION', status: 'PUBLISHED', isActive: true, resourceStatus: 'ENABLED' });
+    expect(delegate.findMany.mock.calls[1][0].where).toEqual({
+      task: 'TEXT_GENERATION',
+      status: 'PUBLISHED',
+      isActive: true,
+      resourceStatus: 'ENABLED',
+    });
   });
 
   it('findMaxVersionNumber reads the aggregate from the tx client when given', async () => {
