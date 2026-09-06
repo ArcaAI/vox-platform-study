@@ -87,11 +87,7 @@ function EngineStats({ probe, entries, isLoading }: { probe: DiscoveryProbe | un
         accent={isLoading ? 'default' : reachable ? 'success' : 'destructive'}
         isLoading={isLoading}
       />
-      <StatCard
-        label="Probe latency"
-        value={isLoading ? null : typeof probe?.latencyMs === 'number' ? `${probe.latencyMs} ms` : '—'}
-        isLoading={isLoading}
-      />
+      <StatCard label="Probe latency" value={isLoading ? null : typeof probe?.latencyMs === 'number' ? `${probe.latencyMs} ms` : '—'} isLoading={isLoading} />
       <StatCard label="Models reported" value={isLoading ? null : reachable ? `${loaded}/${entries.length} loaded` : '—'} isLoading={isLoading} />
       {/*
         's CPU-fallback tell. There is NO honest value to put here — the
@@ -258,13 +254,7 @@ export function EngineScreen({ provider }: EngineScreenProps) {
                       <dt className="text-muted-foreground">Row state</dt>
                       <dd>
                         <Badge variant={connection.data?.enabled ? 'default' : 'outline'}>
-                          {connection.data === undefined
-                            ? '—'
-                            : connection.data.version === 0
-                              ? 'No row'
-                              : connection.data.enabled
-                                ? 'Enabled'
-                                : 'Disabled'}
+                          {connection.data === undefined ? '—' : connection.data.version === 0 ? 'No row' : connection.data.enabled ? 'Enabled' : 'Disabled'}
                         </Badge>
                       </dd>
                       <dt className="text-muted-foreground">Model listing</dt>
