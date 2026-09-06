@@ -25,6 +25,28 @@ interface ProbeTarget {
 type ProbeOutcome = Omit<TestProviderConnectionResponse, 'source'>;
 
 /**
+ * TASK-890 §3.7 — the vendor's own model list, kept instead of discarded.
+ *
+ * Every listing this probe already performs answers in the OpenAI shape
+ * (`{ data: [{ id }] }`): Azure's deployment listing, OpenAI `/models` and
+ * Anthropic `/v1/models` all do. Returns `undefined` — never `[]` — when the
+ * body is not that shape, so an absent list is distinguishable from an empty
+ * one and the response shape stays four fields for every other provider.
+ */
+function discoveredIdsOf(body: unknown): string[] | undefined {
+  const data = (body as { data?: unknown } | null)?.data;
+  if (!Array.isArray(data)) return undefined;
+  const ids = data.map((entry) => (entry as { id?: unknown })?.id).filter((id): id is string => typeof id === 'string' && id.length > 0);
+  return ids.length > 0 ? ids : undefined;
+}
+
+/** Read a fetch response as JSON without assuming the double is a full `Response`. */
+async function readJson(response: { json?: () => Promise<unknown> }): Promise<unknown> {
+  if (typeof response.json !== 'function') return null;
+  return response.json().catch(() => null);
+}
+
+/**
  * TASK-862 — the ephemeral "Test connection" probe behind
  * `POST admin/providers/:service/:provider/test`, generalised from the former
  * `admin/stt-config/credentials/:provider/test` (the only test route that
@@ -138,7 +160,7 @@ export class ProviderConnectionProbe {
       case 'llm:openai':
       case 'embeddings:openai':
       case 'stt:openai':
-        return this.probeBearerList(t, 'https://api.openai.com/v1', '/models', tenantId, 'key');
+        return this.probeBearerList(t, 'https://api.openai.com/v1', '/models', tenantId, 'key', true);
       case 'llm:anthropic':
         return this.probeAnthropic(t, tenantId);
       case 'llm:azure':
@@ -173,8 +195,21 @@ export class ProviderConnectionProbe {
     }
   }
 
-  /** `GET {base}{path}` with `Authorization: Bearer <key>` — a real auth-only call. */
-  private async probeBearerList(t: ProbeTarget, defaultBase: string, path: string, tenantId: string, keyLabel: string): Promise<ProbeOutcome> {
+  /**
+   * `GET {base}{path}` with `Authorization: Bearer <key>` — a real auth-only call.
+   *
+   * `collect` says whether the 200 body is a MODEL LISTING worth keeping
+   * (TASK-890 §3.7): true for OpenAI `/models`, false for HuggingFace `whoami`,
+   * which answers with an identity and not a catalogue.
+   */
+  private async probeBearerList(
+    t: ProbeTarget,
+    defaultBase: string,
+    path: string,
+    tenantId: string,
+    keyLabel: string,
+    collect = false,
+  ): Promise<ProbeOutcome> {
     if (!t.apiKey) return this.noKey(keyLabel);
     const base = this.assertProbeUrl(t.baseUrl ?? defaultBase, 'baseUrl', tenantId);
     const target = new URL(`${base.origin}${base.pathname.replace(/\/$/, '')}${path}`);
@@ -183,7 +218,10 @@ export class ProviderConnectionProbe {
         headers: { Authorization: `Bearer ${t.apiKey}` },
         signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
       });
-      if (response.ok) return { ok: true, message: `Connected — ${keyLabel} accepted`, probe: 'auth' };
+      if (response.ok) {
+        const discoveredModels = collect ? discoveredIdsOf(await readJson(response)) : undefined;
+        return { ok: true, message: `Connected — ${keyLabel} accepted`, probe: 'auth', ...(discoveredModels ? { discoveredModels } : {}) };
+      }
       if (response.status === 401 || response.status === 403) return { ok: false, message: `Rejected — invalid ${keyLabel}`, probe: 'auth' };
       return { ok: false, message: `Provider responded ${response.status}`, probe: 'auth' };
     } catch (error) {
@@ -200,7 +238,10 @@ export class ProviderConnectionProbe {
         headers: { 'x-api-key': t.apiKey, 'anthropic-version': t.apiVersion ?? '2023-06-01' },
         signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
       });
-      if (response.ok) return { ok: true, message: 'Connected — key accepted', probe: 'auth' };
+      if (response.ok) {
+        const discoveredModels = discoveredIdsOf(await readJson(response));
+        return { ok: true, message: 'Connected — key accepted', probe: 'auth', ...(discoveredModels ? { discoveredModels } : {}) };
+      }
       if (response.status === 401 || response.status === 403) return { ok: false, message: 'Rejected — invalid key', probe: 'auth' };
       return { ok: false, message: `Provider responded ${response.status}`, probe: 'auth' };
     } catch (error) {
@@ -219,14 +260,14 @@ export class ProviderConnectionProbe {
       const response = await fetch(target, { headers: { 'api-key': t.apiKey }, signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS) });
       if (response.status === 401 || response.status === 403) return { ok: false, message: 'Rejected — invalid key', probe: 'auth' };
       if (!response.ok) return { ok: false, message: `Provider responded ${response.status}`, probe: 'auth' };
-      if (t.deploymentName) {
-        const body = (await response.json().catch(() => null)) as { data?: Array<{ id?: string }> } | null;
-        const ids = (body?.data ?? []).map((d) => d.id).filter((id): id is string => typeof id === 'string');
-        if (ids.length > 0 && !ids.includes(t.deploymentName)) {
-          return { ok: false, message: `Connected, but deployment '${t.deploymentName}' is not listed on this resource`, probe: 'auth' };
-        }
+      // ONE read of the body, used for both jobs: validating the configured
+      // deployment and (TASK-890 §3.7) keeping the listing the console derives
+      // a model declaration from.
+      const discoveredModels = discoveredIdsOf(await readJson(response));
+      if (t.deploymentName && discoveredModels && !discoveredModels.includes(t.deploymentName)) {
+        return { ok: false, message: `Connected, but deployment '${t.deploymentName}' is not listed on this resource`, probe: 'auth' };
       }
-      return { ok: true, message: 'Connected — key accepted', probe: 'auth' };
+      return { ok: true, message: 'Connected — key accepted', probe: 'auth', ...(discoveredModels ? { discoveredModels } : {}) };
     } catch (error) {
       return { ok: false, message: `Could not reach provider: ${this.errorMessage(error)}`, probe: 'auth' };
     }

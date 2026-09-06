@@ -39,6 +39,63 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
 };
 
 /**
+ * TASK-890 §3.7a — one model DECLARED on a connection. The slug is
+ * SERVER-generated and stable; the console never invents one.
+ */
+export interface ConnectionModel {
+  id: string;
+  slug: string;
+  name: string;
+  wireModelId: string;
+  taskType: string;
+  capabilities: { supportedGenerationParams?: string[]; supportsSsml?: boolean };
+}
+
+/** One entry of `PUT admin/providers/:service/:provider/models`. */
+export interface DeclaredConnectionModel {
+  wireModelId: string;
+  name: string;
+  taskType: string;
+  /** Sent ONLY to accept the `suggestedSlug` a 409 offered. */
+  slug?: string;
+}
+
+export interface DeclareConnectionModelsRequest {
+  models: DeclaredConnectionModel[];
+}
+
+/**
+ * The services a tenant may declare models under, and the task types each
+ * governs. Hand-declared at the BFF boundary, mirroring
+ * `BYO_DECLARABLE_SERVICES` / `MODEL_TASK_TYPE_SERVICE` in @arcaai/applications
+ * (`byo-model-declaration.ts`, `constants.ts`); nothing on the wire serves
+ * them. A capability that is absent here declares no per-tenant model rows —
+ * `embeddings` / `rerank` / `vector` / `model-registry` have no workload that
+ * executes one, and the gateway refuses the declaration with a 400.
+ */
+export const MODEL_TASK_TYPES_BY_SERVICE: Partial<Record<ProviderService, readonly { value: string; label: string }[]>> = {
+  llm: [
+    { value: 'TEXT_GENERATION', label: 'Text generation' },
+    { value: 'TEXT2TEXT_GENERATION', label: 'Text-to-text generation' },
+    { value: 'SUMMARIZATION', label: 'Summarization' },
+    { value: 'TRANSLATION', label: 'Translation' },
+    { value: 'GUARDRAIL', label: 'Guardrail screen' },
+  ],
+  stt: [
+    { value: 'AUTOMATIC_SPEECH_RECOGNITION', label: 'Speech recognition' },
+    { value: 'SPEAKER_DIARIZATION', label: 'Speaker diarization' },
+  ],
+  tts: [
+    { value: 'TEXT_TO_SPEECH', label: 'Text to speech' },
+    { value: 'TEXT_TO_AUDIO', label: 'Text to audio' },
+  ],
+};
+
+export function declarableService(service: ProviderService): boolean {
+  return (MODEL_TASK_TYPES_BY_SERVICE[service]?.length ?? 0) > 0;
+}
+
+/**
  * GET admin/providers/:service/:provider — the MASKED row. There is
  * deliberately no key field and no reveal route: presence of key material is
  * reported as `hasKey` + `keyVersion` only.
@@ -63,6 +120,8 @@ export interface ProviderConnection {
   /** OCC token; 0 = the "no row yet" placeholder. */
   version: number;
   updatedAt?: string;
+  /** TASK-890 §3.7a — the models declared on this connection (single-row read only). */
+  models?: ConnectionModel[];
 }
 
 /** The ceiling columns, in display order. */
@@ -113,6 +172,11 @@ export interface TestProviderConnectionResult {
   probe: 'auth' | 'reachability';
   /** Which tier supplied the probed configuration. */
   source: 'request' | 'tenant' | 'platform';
+  /**
+   * Model / deployment ids the vendor listed during this probe (TASK-890 §3.7).
+   * ABSENT — never `[]` — when the vendor exposes no listing or the probe failed.
+   */
+  discoveredModels?: string[];
 }
 
 /**

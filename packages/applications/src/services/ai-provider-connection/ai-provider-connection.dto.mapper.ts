@@ -1,5 +1,5 @@
-import { AiProviderConnectionEntity } from '@arcaai/domains';
-import { AiProviderConnectionResponse } from './dto';
+import { AiModelEntity, AiProviderConnectionEntity } from '@arcaai/domains';
+import { AiProviderConnectionResponse, ConnectionModelResponse } from './dto';
 
 /**
  * Entity → masked response projection.
@@ -9,8 +9,9 @@ import { AiProviderConnectionResponse } from './dto';
  * A snapshot/deep-key test asserts this (no ciphertext at any depth).
  */
 export class AiProviderConnectionDtoMapper {
-  static toResponse(entity: AiProviderConnectionEntity): AiProviderConnectionResponse {
+  static toResponse(entity: AiProviderConnectionEntity, models?: AiModelEntity[]): AiProviderConnectionResponse {
     return {
+      ...(models ? { models: models.map((model) => AiProviderConnectionDtoMapper.toModel(model)) } : {}),
       tenantId: entity.tenantId,
       service: entity.service,
       provider: entity.provider,
@@ -28,6 +29,27 @@ export class AiProviderConnectionDtoMapper {
       timeoutS: entity.timeoutS ?? null,
       version: entity.version,
       ...(entity.updatedAt ? { updatedAt: entity.updatedAt.toISOString() } : {}),
+    };
+  }
+
+  /**
+   * One declared model, projected (TASK-890 §3.7a). Field by field, like the
+   * catalogue mapper and for the same reason: a spread would leak the next
+   * registry column somebody adds.
+   */
+  static toModel(model: AiModelEntity): ConnectionModelResponse {
+    const meta = (model.metaData ?? null) as { capabilities?: Record<string, unknown> } | null;
+    const caps = (meta?.capabilities ?? {}) as { supportedGenerationParams?: string[]; supportsSsml?: boolean };
+    return {
+      id: model.id,
+      slug: model.slug,
+      name: model.name,
+      wireModelId: model.wireModelId ?? model.sourceUri,
+      taskType: model.taskType,
+      capabilities: {
+        ...(Array.isArray(caps.supportedGenerationParams) ? { supportedGenerationParams: caps.supportedGenerationParams } : {}),
+        ...(typeof caps.supportsSsml === 'boolean' ? { supportsSsml: caps.supportsSsml } : {}),
+      },
     };
   }
 

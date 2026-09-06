@@ -53,10 +53,7 @@ const MODEL: AiModel = {
   architecture: 'whisper',
   memorySizeMb: 3096,
   computeType: 'float16',
-  downloadStatus: 'DOWNLOADED',
   localPath: null,
-  downloadedAt: null,
-  fileSizeMb: null,
   checksum: null,
   resourceStatus: 'ENABLED',
   version: 4,
@@ -71,7 +68,13 @@ const MODEL: AiModel = {
 function stubFetch() {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => Response.json(MODEL, { headers: { etag: '"4"' } })),
+    // TASK-890 §3.11 — the registry row no longer carries `downloadStatus`, so
+    // the publish panel asks the JOB endpoint; that answer is stubbed here.
+    vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith('/download')
+        ? Response.json({ status: 'DOWNLOADED', localPath: '/mnt/models-bucket/whisper/v1/' })
+        : Response.json(MODEL, { headers: { etag: '"4"' } }),
+    ),
   );
 }
 
@@ -230,8 +233,9 @@ describe('ModelFormSheet — Publish action placement', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
     await within(dialog).findByDisplayValue('Whisper Large v4');
-    // MODEL.downloadStatus is 'DOWNLOADED'; availability UNKNOWN (never inventoried).
-    expect(within(dialog).getByText('Downloaded')).toBeDefined();
+    // The publish JOB reports DOWNLOADED; availability is UNKNOWN (never inventoried) —
+    // two different facts, from two different sources, both shown.
+    expect(await within(dialog).findByText('Downloaded')).toBeDefined();
     expect(within(dialog).getByText('Not inventoried')).toBeDefined();
     expect(within(dialog).getByRole('button', { name: /re-publish/i })).toBeDefined();
   });

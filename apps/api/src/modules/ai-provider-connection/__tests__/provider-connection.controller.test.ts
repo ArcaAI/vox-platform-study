@@ -15,7 +15,7 @@ const SUPER: Ctx['user'] = { roles: ['SUPER_ADMIN'] };
 const TENANT_ADMIN = (tenantId: string): Ctx['user'] => ({ roles: ['TENANT_ADMIN'], tenantId });
 
 function makeController(ctx: Ctx) {
-  const service = { list: vi.fn(), getRow: vi.fn(), upsertRow: vi.fn(), deleteRow: vi.fn() };
+  const service = { list: vi.fn(), getRow: vi.fn(), upsertRow: vi.fn(), deleteRow: vi.fn(), declareModels: vi.fn() };
   const probe = { test: vi.fn() };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
   const controller = new ProviderConnectionController(service as never, probe as never, cls as never);
@@ -62,5 +62,41 @@ describe('ProviderConnectionController — scoping on the CRUD routes', () => {
     service.list.mockResolvedValue([]);
     await controller.list('tts', undefined);
     expect(service.list).toHaveBeenCalledWith('tts', 't1');
+  });
+});
+
+/**
+ * TASK-890 §3.7a — `PUT :service/:provider/models`.
+ *
+ * The route is thin on purpose: the class gate, the slug-shadow refusal and the
+ * replacement semantics all live in the service, where one rule serves every
+ * surface. What the CONTROLLER owns is the `:service` guard and the tenant
+ * scoping, and both are pinned here — a tenant admin declaring models for
+ * ANOTHER tenant would be the one way this route could leak.
+ */
+describe('ProviderConnectionController — declaring a connection\u2019s models', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const BODY = { models: [{ wireModelId: 'gpt-4o-mini', name: 'GPT-4o mini', taskType: 'TEXT_GENERATION' }] };
+
+  it('delegates to the service scoped to the caller tenant', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    service.declareModels.mockResolvedValue({ provider: 'azure', models: [] });
+
+    await controller.declareModels('llm', 'azure', BODY as never, undefined);
+
+    expect(service.declareModels).toHaveBeenCalledWith('llm', 'azure', BODY, 't1');
+  });
+
+  it('rejects a tenant admin declaring models on another tenant', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.declareModels('llm', 'azure', BODY as never, 't2')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.declareModels).not.toHaveBeenCalled();
+  });
+
+  it('400s an unknown service segment before reaching the service', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.declareModels('not-a-service', 'azure', BODY as never, undefined)).rejects.toBeInstanceOf(BadRequestException);
+    expect(service.declareModels).not.toHaveBeenCalled();
   });
 });

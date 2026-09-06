@@ -411,6 +411,9 @@ describe('AiModelService', () => {
         deploymentKind: 'SELF_HOSTED' as any,
         provider: 'lm-studio',
         architecture: 'gemma4',
+        // TASK-890 §3.1 — an engine-served row declares the id the engine
+        // answers to; routing reads it now that `sourceUri` is the locator.
+        wireModelId: 'gemma-4-e2b-it-qat',
       });
 
       expect(result.provider).toBe('lm-studio');
@@ -521,6 +524,8 @@ describe('AiModelService', () => {
       const result = await service.update('model-1', {
         provider: 'ollama',
         architecture: 'qwen3.5',
+        // Engine-served rows carry their wire id (TASK-890 §3.1).
+        wireModelId: 'qwen3.5:latest',
         expectedVersion: 3,
       } as any);
 

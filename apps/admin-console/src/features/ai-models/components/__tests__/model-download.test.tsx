@@ -50,10 +50,7 @@ const BASE_MODEL: AiModel = {
   architecture: 'whisper',
   memorySizeMb: 3096,
   computeType: 'float16',
-  downloadStatus: 'NOT_DOWNLOADED',
   localPath: null,
-  downloadedAt: null,
-  fileSizeMb: null,
   checksum: null,
   resourceStatus: 'ENABLED',
   version: 4,
@@ -116,9 +113,9 @@ describe('ModelDownloadPanel — start + poll + terminal outcomes', () => {
   it('POSTs to start, then polls GET while DOWNLOADING, and toasts success once DOWNLOADED', async () => {
     const calls = stubFetch((url, method, index) => {
       if (method === 'POST') return Response.json({ jobId: 'job-1', status: 'DOWNLOADING' }, { status: 202 });
-      // The immediate poll right after start still reports running; the next
-      // (2s-interval) poll reports done — keeps the real-timer test bounded.
-      if (index === 1) return Response.json({ status: 'DOWNLOADING' });
+      // The mount poll and the one right after start still report running; the
+      // next (2s-interval) poll reports done — keeps the real-timer test bounded.
+      if (index < 3) return Response.json({ status: 'DOWNLOADING' });
       return Response.json({ status: 'DOWNLOADED', fileSizeMb: 256, sha256: 'abc123', localPath: '/mnt/models-bucket/whisper/v1/' });
     });
     renderWithProviders(<ModelDownloadPanel model={BASE_MODEL} />);
@@ -151,7 +148,7 @@ describe('ModelDownloadPanel — start + poll + terminal outcomes', () => {
   it('toasts the failure reason and stops polling on DOWNLOAD_FAILED', async () => {
     stubFetch((url, method, index) => {
       if (method === 'POST') return Response.json({ jobId: 'job-2', status: 'DOWNLOADING' }, { status: 202 });
-      if (index === 1) return Response.json({ status: 'DOWNLOADING' });
+      if (index < 3) return Response.json({ status: 'DOWNLOADING' });
       return Response.json({ status: 'DOWNLOAD_FAILED', error: 'checksum mismatch' });
     });
     renderWithProviders(<ModelDownloadPanel model={BASE_MODEL} />);
@@ -166,12 +163,14 @@ describe('ModelDownloadPanel — start + poll + terminal outcomes', () => {
   }, 10000);
 
   it('resumes polling on mount for a model already DOWNLOADING (started elsewhere)', async () => {
+    // TASK-890 §3.11 — the row carries no `downloadStatus` any more, so "already
+    // running" is a fact only the job endpoint holds; the panel asks it on mount.
     const calls = stubFetch(() => Response.json({ status: 'DOWNLOADING' }));
-    renderWithProviders(<ModelDownloadPanel model={{ ...BASE_MODEL, downloadStatus: 'DOWNLOADING' }} />);
+    renderWithProviders(<ModelDownloadPanel model={BASE_MODEL} />);
 
     await waitFor(() => expect(calls.some((c) => c.method === 'GET')).toBe(true));
     expect(calls[0].url).toBe('/api/hope/admin/ai-models/m-1/download');
-    expect(screen.getByRole('button', { name: /publishing/i })).toHaveProperty('disabled', true);
+    expect(await screen.findByRole('button', { name: /publishing/i })).toHaveProperty('disabled', true);
   });
 
   it('maps a 409 (already in flight) to a friendly toast and starts polling to catch up', async () => {

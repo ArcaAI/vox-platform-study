@@ -26,19 +26,26 @@ export interface UseModelDownloadResult {
  *   POST :id/download -> 202 { jobId, status: 'DOWNLOADING' }
  *   GET :id/download -> 200 { status, startedAt, finishedAt, fileSizeMb, sha256, localPath, error }
  * Polls while DOWNLOADING, stops on a terminal state, toasts the outcome
- * exactly once per transition, and refreshes the registry list so the grid's
- * `downloadStatus`/`localPath`/`fileSizeMb` pick up the finished row.
+ * exactly once per transition, and refreshes the registry list so the grid
+ * picks up the finished row's `availability`.
+ *
+ * TASK-890 §3.11 — the registry row no longer carries `downloadStatus`, so the
+ * panel ASKS the job once on mount rather than reading a field that cannot
+ * exist. `refetchInterval` stops itself the moment the state is terminal, so
+ * the one extra read costs a single request per drawer open and is what makes
+ * a run started elsewhere visible here again.
  */
 export function useModelDownload(model: AiModel): UseModelDownloadResult {
   // A model already DOWNLOADING when the drawer opens (started elsewhere, or
-  // from a prior visit) must resume polling immediately, not wait for a click.
-  const [polling, setPolling] = useState(model.downloadStatus === 'DOWNLOADING');
+  // from a prior visit) must resume polling immediately, not wait for a click —
+  // and the only thing that still knows is the job itself.
+  const [polling, setPolling] = useState(true);
   const poll = useModelDownloadStatus(model.id, { enabled: polling });
   const startMutation = useStartModelDownload();
   const invalidateModels = useInvalidateAiModels();
   const previousStatus = useRef<AiModelDownloadStatus | undefined>(undefined);
 
-  const status = poll.data?.status ?? model.downloadStatus;
+  const status: AiModelDownloadStatus = poll.data?.status ?? 'NOT_DOWNLOADED';
 
   useEffect(() => {
     if (previousStatus.current === 'DOWNLOADING' && status !== 'DOWNLOADING') {
