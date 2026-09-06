@@ -547,6 +547,75 @@ describe('publish — availability via the provider class table (§3.7)', () => 
     expect(report.findings).toContainEqual(expect.objectContaining({ code: 'MODEL_NOT_READY', severity: 'WARNING' }));
   });
 
+  /**
+   * J3-2 — the gate and the CATALOGUE must answer the same question the same way.
+   *
+   * `usabilityOf` (`aiModel.service.ts`) already accepts EITHER measurement for a
+   * `platform-self-host` row: `bucketHasIt || readiness === 'ready'`. The bucket measurement
+   * alone was wrong for most of the catalogue — a serving service resolves these weights out of
+   * its HuggingFace cache and never touches `s3://hope-models`, so a NULL `bucketPrefix` is
+   * stamped MISSING while `apps/stt` holds the file on disk (21 of 33 rows, every whisper row
+   * among them). The gate kept reading `availability` alone, so the console offered a model it
+   * called usable and then refused to publish an agent bound to it — measured on dev against
+   * `arcaai-whisper-large-ml-en-gguf-q8_0`, which the readiness sweep reports `ready`.
+   *
+   * The two axes do NOT collapse: readiness still never REFUSES (that is `MODEL_NOT_READY`, a
+   * WARNING), and `unknown` — nobody looked — is still not a licence to publish onto weights no
+   * measurement has ever found.
+   */
+  it('publishes a self-hosted row the bucket calls MISSING when the readiness sweep says `ready`', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr', instruction: null, parameters: { decoding: { languageMode: 'ml-en' } } }),
+    );
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockReadiness.getSnapshot.mockResolvedValue({
+      checkedAt: '2026-09-06T00:00:00.000Z',
+      engines: {},
+      models: { 'model-asr': { readiness: 'ready', detail: 'resolvable from the local cache' } },
+    });
+    const published = await makeService().publish('agent-1', {});
+    expect(published.status).toBe('PUBLISHED');
+  });
+
+  it('still refuses a self-hosted row when readiness is `unknown` — nobody looked is not a verdict', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr', instruction: null, parameters: null }),
+    );
+    mockReadiness.getSnapshot.mockResolvedValue({ checkedAt: '2026-09-06T00:00:00.000Z', engines: {}, models: {} });
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_UNAVAILABLE' } });
+  });
+
+  it('still refuses a self-hosted row the serving side says has no weights', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr', instruction: null, parameters: null }),
+    );
+    mockReadiness.getSnapshot.mockResolvedValue({
+      checkedAt: '2026-09-06T00:00:00.000Z',
+      engines: {},
+      models: { 'model-asr': { readiness: 'weights_missing', detail: 'not in the cache' } },
+    });
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_UNAVAILABLE' } });
+  });
+
+  // The advisory axis survives the change: a STAGED row whose engine was down at the last sweep
+  // still publishes, and still says so.
+  it('keeps MODEL_NOT_READY advisory for a staged self-hosted row whose serving side is down', async () => {
+    mockAiModelRepository.findById.mockResolvedValue(STAGED_ASR);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: STAGED_ASR.id, instruction: null, parameters: { decoding: { languageMode: 'ml-en' } } }),
+    );
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockReadiness.getSnapshot.mockResolvedValue({
+      checkedAt: '2026-09-06T00:00:00.000Z',
+      engines: {},
+      models: { [STAGED_ASR.id]: { readiness: 'engine_down', detail: 'stt did not answer' } },
+    });
+    const published = await makeService().publish('agent-1', {});
+    expect(published.status).toBe('PUBLISHED');
+    const report = published.validationReport as unknown as { findings: Array<{ code: string; severity: string }> };
+    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'MODEL_NOT_READY', severity: 'WARNING' }));
+  });
+
   it('says nothing when readiness is `ready` (and nothing at all when no snapshot exists)', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
