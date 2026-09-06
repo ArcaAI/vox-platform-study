@@ -16,8 +16,14 @@
  * row.
  */
 
-/** The two self-hosted engines that have a screen. Spelled exactly as the gateway/TEXT registry keys. */
-export type InferenceEngineProvider = 'lm-studio' | 'vllm';
+/**
+ * The self-hosted engines that have a screen. Spelled exactly as the
+ * gateway/TEXT registry keys, and deliberately the SAME four the gateway
+ * enumerates (`DISCOVERABLE_AI_MODEL_PROVIDERS`) — the rail is the platform's
+ * engine inventory, so an engine the readiness sweep probes but the console
+ * cannot show is a blind spot rather than a simplification (TASK-890 §3.12).
+ */
+export type InferenceEngineProvider = 'lm-studio' | 'vllm' | 'ollama' | 'llama-cpp';
 
 export type DiscoveryEntryStatus = 'registered' | 'discovered' | 'registered-missing-on-server';
 export type DiscoveryLoadState = 'loaded' | 'not-loaded' | 'unknown';

@@ -23,7 +23,10 @@ function makeController() {
     searchRegisteredModels: vi.fn().mockResolvedValue({ registered_models: [] }),
     searchModelVersions: vi.fn().mockResolvedValue({ model_versions: [] }),
   };
-  const controller = new AiServiceAdminController(client as never, mlflow as never);
+  // The readiness dependency (TASK-890) is stubbed rather than exercised here —
+  // its own routes are covered by `ai-service-readiness.controller.test.ts`.
+  const readiness = { getSnapshot: vi.fn().mockResolvedValue(null), sweep: vi.fn() };
+  const controller = new AiServiceAdminController(client as never, mlflow as never, readiness as never);
   return { controller, client, mlflow };
 }
 
