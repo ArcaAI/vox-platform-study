@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /** Result of an ephemeral provider "Test connection" probe. Never carries the key. */
 export class TestProviderConnectionResponse {
@@ -21,4 +21,13 @@ export class TestProviderConnectionResponse {
     enum: ['request', 'tenant', 'platform'],
   })
   source!: 'request' | 'tenant' | 'platform';
+
+  @ApiPropertyOptional({
+    description:
+      'Model / deployment ids the vendor listed during this probe (TASK-890 §3.7) — the input for "derive models from ' +
+      'provider" in the models editor. ABSENT (never `[]`) when the vendor exposes no listing, the probe failed, or the ' +
+      'response could not be parsed: an empty array would promise a list that was never obtained.',
+    type: [String],
+  })
+  discoveredModels?: string[];
 }
