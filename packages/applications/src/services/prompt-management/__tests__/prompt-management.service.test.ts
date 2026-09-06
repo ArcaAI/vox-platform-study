@@ -1777,10 +1777,14 @@ describe('PromptManagementService', () => {
       opts: {
         textAgents?: { resolve: ReturnType<typeof vi.fn> };
         secretsService?: Record<string, unknown>;
-        aiModelRepository?: { findByTaskTypeSharedRead: ReturnType<typeof vi.fn> };
+        aiModelRepository?: { findByTaskTypeSharedRead?: ReturnType<typeof vi.fn>; findById?: ReturnType<typeof vi.fn> };
         goldenCaseRepository?: { findById: ReturnType<typeof vi.fn>; decryptFieldsFromEntity: ReturnType<typeof vi.fn> };
         textRequestEnrichment?: Record<string, unknown>;
         taskOverrides?: Record<string, unknown>;
+        // TASK-890 §3.13 (OD-E) — the metering precheck (`startPromptTemplateTest`)
+        // and the finalize-time record (`finalizePromptTemplateTest`).
+        entitlements?: { assertMeterQuota: ReturnType<typeof vi.fn> };
+        usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> };
       } = {},
     ) => {
       const httpMock = createTextHttpMock(taskOutput, opts.taskOverrides);
@@ -1798,12 +1802,13 @@ describe('PromptManagementService', () => {
         configMock as never,
         opts.secretsService as never, // secretsService
         undefined, // userProfileService
-        undefined, // entitlements
+        opts.entitlements as never, // entitlements
         undefined, // promotionGate
         opts.aiModelRepository as never, // aiModelRepository
         opts.goldenCaseRepository as never, // goldenCaseRepository
         opts.textRequestEnrichment as never, // TextRequestEnrichmentService
         textAgents as never, // TextAgentResolverService
+        opts.usageLedgerService as never, // IUsageLedgerService
       );
       return { svc, httpMock, textAgents };
     };
@@ -2093,6 +2098,140 @@ describe('PromptManagementService', () => {
       );
     });
 
+    // ── TASK-890 §3.13 (OD-E) — a prompt-bench run is a production inference
+    // activity like any other and must be quota-checked and metered. ──
+    describe('metering (TASK-890 §3.13, OD-E)', () => {
+      it('asserts the monthlyLlmTokens quota BEFORE submitting a non-dry run', async () => {
+        const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        const assertMeterQuota = vi.fn().mockResolvedValue(undefined);
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { entitlements: { assertMeterQuota } });
+
+        await svc.startPromptTemplateTest('tpl-1', { variables: { topic: 'asthma' } } as never);
+
+        expect(assertMeterQuota).toHaveBeenCalledWith('tenant-1', 'monthlyLlmTokens');
+        expect(assertMeterQuota.mock.invocationCallOrder[0]).toBeLessThan(httpMock.axiosRef.post.mock.invocationCallOrder[0]);
+      });
+
+      it('never asserts the quota on a dry run — no cost, no precheck', async () => {
+        const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        const assertMeterQuota = vi.fn().mockResolvedValue(undefined);
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { entitlements: { assertMeterQuota } });
+
+        await svc.startPromptTemplateTest('tpl-1', { variables: { topic: 'asthma' }, dryRun: true } as never);
+
+        expect(assertMeterQuota).not.toHaveBeenCalled();
+        expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it('propagates a 429 from the quota precheck without submitting a job', async () => {
+        const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        const quotaError = new Error('quota exceeded');
+        const assertMeterQuota = vi.fn().mockRejectedValue(quotaError);
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { entitlements: { assertMeterQuota } });
+
+        await expect(svc.startPromptTemplateTest('tpl-1', { variables: { topic: 'asthma' } } as never)).rejects.toThrow(quotaError);
+        expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it('finalize records ONE generate.stream usage row tagged trigger=PROMPT_TEST, from the TEXT task`s own provider/model/usage', async () => {
+        const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+        const recordUsage = vi.fn().mockResolvedValue(undefined);
+        const { svc } = buildTextService(wordsOfLength(60), {
+          usageLedgerService: { recordUsage },
+          taskOverrides: { provider: 'lm-studio', model: 'medgemma-27b', usage: { prompt_tokens: 120, completion_tokens: 45 } },
+        });
+
+        await runFullTest(svc, { variables: { topic: 'asthma' } });
+
+        expect(recordUsage).toHaveBeenCalledTimes(1);
+        const [batch] = recordUsage.mock.calls[0];
+        expect(batch.common.operation).toBe('generate.stream');
+        expect(batch.common.attributesJson).toMatchObject({ trigger: 'PROMPT_TEST' });
+        expect(batch.common.tenantId).toBe('tenant-1');
+      });
+
+      it('finalize degrades to unmetered (never throws) when the ledger write fails', async () => {
+        const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+        const recordUsage = vi.fn().mockRejectedValue(new Error('ledger down'));
+        const { svc } = buildTextService(wordsOfLength(60), {
+          usageLedgerService: { recordUsage },
+          taskOverrides: { provider: 'lm-studio', model: 'medgemma-27b', usage: { prompt_tokens: 120, completion_tokens: 45 } },
+        });
+
+        const { result } = await runFullTest(svc, { variables: { topic: 'asthma' } });
+
+        expect(result.id).toBe('tpl-1');
+        expect(recordUsage).toHaveBeenCalledTimes(1);
+      });
+
+      it('finalize records nothing when the ledger is not wired (best-effort, no throw)', async () => {
+        const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+        const { svc } = buildTextService(wordsOfLength(60));
+
+        const { result } = await runFullTest(svc, { variables: { topic: 'asthma' } });
+        expect(result.id).toBe('tpl-1');
+      });
+    });
+
+    // TASK-890 §3.6 — a required declared variable with no default and not
+    // supplied fails BEFORE any TEXT call.
+    describe('typed variable validation on test run (TASK-890 §3.6)', () => {
+      it('rejects a missing required variable with no default — 400, no TEXT call', async () => {
+        const existing = createMockTemplateEntity({
+          id: 'tpl-1',
+          version: 1,
+          content: 'Summarize {{topic}}',
+          variables: [{ name: 'topic', type: 'string', required: true }],
+        });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        const { svc, httpMock } = buildTextService(wordsOfLength(60));
+
+        await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(ArgumentInvalidException);
+        expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it('applies the declared default when a required variable is not supplied', async () => {
+        const existing = createMockTemplateEntity({
+          id: 'tpl-1',
+          version: 1,
+          content: 'Summarize {{topic}}',
+          variables: [{ name: 'topic', type: 'string', required: true, default: 'the visit' }],
+        });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        const { svc, httpMock } = buildTextService(wordsOfLength(60));
+
+        await svc.startPromptTemplateTest('tpl-1', {} as never);
+
+        const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+        expect((payload as { prompt: string }).prompt).toContain('Summarize the visit');
+      });
+
+      it('coerces a caller-supplied string to the declared `number` type', async () => {
+        const existing = createMockTemplateEntity({
+          id: 'tpl-1',
+          version: 1,
+          content: 'Age: {{age}}',
+          variables: [{ name: 'age', type: 'number', required: true }],
+        });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        const { svc, httpMock } = buildTextService(wordsOfLength(60));
+
+        await svc.startPromptTemplateTest('tpl-1', { variables: { age: '42' } } as never);
+
+        const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+        expect((payload as { prompt: string }).prompt).toContain('Age: 42');
+      });
+    });
+
     // ── deterministic composite rubric ──────────
     describe('deterministic output rubric', () => {
       const runWith = async (entityOverrides: Record<string, unknown>, output: string) => {
@@ -2141,7 +2280,16 @@ describe('PromptManagementService', () => {
 
       it('measures declared-variable coverage in the output', async () => {
         const result = await runWith(
-          { category: 'SYSTEM', content: 'Note about {{topic}} for {{patient}}', variables: [{ name: 'topic' }, { name: 'patient' }] },
+          {
+            category: 'SYSTEM',
+            // `default("")` — the ONE grammar errors on an unresolved reference with
+            // no default (§3.2); this test only cares about the SCORE's coverage
+            // metric (computed from the OUTPUT text below, not from rendering), so
+            // the content just needs to render successfully with neither variable
+            // supplied.
+            content: 'Note about {{topic | default("")}} for {{patient | default("")}}',
+            variables: [{ name: 'topic' }, { name: 'patient' }],
+          },
           `topic ${wordsOfLength(60)}`,
         );
         expect(result.metrics?.variablesDeclared).toBe(2);
@@ -2196,6 +2344,71 @@ describe('PromptManagementService', () => {
         const { svc } = buildTextService(wordsOfLength(60));
 
         await expect(svc.startPromptTemplateTest('tpl-1', { provider: 'azure-openai' } as never)).rejects.toThrow(ArgumentInvalidException);
+      });
+
+      // ── TASK-890 §3.7 — the catalogue picker's modelId selector ──
+      describe('modelId (TASK-890 §3.7 — the tenant catalogue picker)', () => {
+        it('resolves the wire provider/model from the catalogue row, preferring wireModelId over sourceUri', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const textAgents = { resolve: vi.fn() };
+          const findById = vi.fn().mockResolvedValue({
+            provider: 'lm-studio',
+            wireModelId: 'medgemma-27b-it',
+            sourceUri: 'hf://google/medgemma-27b',
+            resourceStatus: 'ENABLED',
+          });
+          const { svc, httpMock } = buildTextService(wordsOfLength(60), { textAgents, aiModelRepository: { findById } });
+
+          await svc.startPromptTemplateTest('tpl-1', { modelId: 'model-1' } as never);
+
+          expect(findById).toHaveBeenCalledWith('model-1');
+          expect(textAgents.resolve).not.toHaveBeenCalled();
+          const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+          expect((payload as { provider?: string }).provider).toBe('lm-studio');
+          expect((payload as { model?: string }).model).toBe('medgemma-27b-it');
+        });
+
+        it('falls back to sourceUri when wireModelId is not yet backfilled', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const findById = vi.fn().mockResolvedValue({ provider: 'lm-studio', wireModelId: null, sourceUri: 'medgemma-27b', resourceStatus: 'ENABLED' });
+          const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiModelRepository: { findById } });
+
+          await svc.startPromptTemplateTest('tpl-1', { modelId: 'model-1' } as never);
+
+          const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+          expect((payload as { model?: string }).model).toBe('medgemma-27b');
+        });
+
+        it('404s an unknown/cross-tenant modelId (404-over-403 — never leaks existence)', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const findById = vi.fn().mockResolvedValue(null);
+          const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiModelRepository: { findById } });
+
+          await expect(svc.startPromptTemplateTest('tpl-1', { modelId: 'ghost' } as never)).rejects.toThrow(NotFoundException);
+          expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+        });
+
+        it('404s a DISABLED row — never routes a test run to a retired model', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const findById = vi.fn().mockResolvedValue({ provider: 'lm-studio', wireModelId: 'x', resourceStatus: 'DISABLED' });
+          const { svc } = buildTextService(wordsOfLength(60), { aiModelRepository: { findById } });
+
+          await expect(svc.startPromptTemplateTest('tpl-1', { modelId: 'model-1' } as never)).rejects.toThrow(NotFoundException);
+        });
+
+        it('rejects modelId combined with an explicit provider/model pair as ambiguous', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const { svc } = buildTextService(wordsOfLength(60));
+
+          await expect(
+            svc.startPromptTemplateTest('tpl-1', { modelId: 'model-1', provider: 'lm-studio', model: 'x' } as never),
+          ).rejects.toThrow(ArgumentInvalidException);
+        });
       });
 
       // ── fail-closed miss, and miss ≠ error ──
@@ -2274,11 +2487,16 @@ describe('PromptManagementService', () => {
         expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
       });
 
-      it('interpolates a single-brace v1-style body via the shared substituter — no literal braces leak', async () => {
+      // TASK-890 §3.2/§3.11 — the retired single-brace v1 substituter (flavour 1/2)
+      // is DELETED outright, not dual-homed behind a fallback. A single-brace
+      // token is now literal: "the deleted grammar is not silently honoured by
+      // a fallback pass — a template that was never converted shows its
+      // unconverted variable instead of quietly resolving one."
+      it('renders a single-brace token LITERALLY — no v1 fallback substitution', async () => {
         const existing = createMockTemplateEntity({
           id: 'tpl-1',
           version: 1,
-          content: 'Dept: {current_department} | Visit: {visit_type}',
+          content: 'Dept: {current_department} | Visit: {{visit_type | default("n/a")}}',
           variables: [{ name: 'current_department' }, { name: 'visit_type' }],
         });
         mockTemplateRepo.findById.mockResolvedValue(existing);
@@ -2288,10 +2506,10 @@ describe('PromptManagementService', () => {
 
         const [, payload] = httpMock.axiosRef.post.mock.calls[0];
         const prompt = (payload as { prompt: string }).prompt;
-        expect(prompt).toContain('Dept: Cardiology');
-        expect(prompt).toContain('Visit: Medical examination');
-        expect(prompt).not.toMatch(/\{current_department\}/);
-        expect(prompt).not.toMatch(/\{visit_type\}/);
+        // The single-brace `{current_department}` is untouched literal text — the
+        // supplied `variables.current_department` value never reaches it.
+        expect(prompt).toContain('Dept: {current_department}');
+        expect(prompt).toContain('Visit: n/a');
       });
     });
 

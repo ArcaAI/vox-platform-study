@@ -1,3 +1,4 @@
+export * from './prompt-variable-declaration.dto';
 export * from './create-prompt-template.request';
 export * from './update-prompt-template.request';
 export * from './prompt-template.response';

@@ -60,6 +60,16 @@ export class TestPromptTemplateRequest {
   model?: string;
 
   @ApiPropertyOptional({
+    description:
+      'TASK-890 §3.7 — a tenant-catalogue `AiModel` row id (the console picker). The server resolves the ACTUAL wire ' +
+      '`{provider, model}` from this row — its routing identifier is never exposed to the browser (the catalogue DTO ' +
+      'deliberately omits it). Mutually exclusive with `provider`/`model`; either selector wins over the resolved agent.',
+  })
+  @IsOptional()
+  @IsUUID()
+  modelId?: string;
+
+  @ApiPropertyOptional({
     description: 'Assemble and return the prompt WITHOUT calling TEXT at all — no generation, no job, no tokens.',
     default: true,
   })

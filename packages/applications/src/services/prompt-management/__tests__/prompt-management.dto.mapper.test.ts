@@ -284,6 +284,71 @@ describe('PromptManagementDtoMapper', () => {
     });
   });
 
+  // TASK-890 §3.6 — the list/picker projection: a truncated content preview
+  // and the typed variable declarations, parsed from the raw `variables` JSON.
+  describe('contentPreview + declaredVariables (TASK-890 §3.6)', () => {
+    it('truncates content to 400 chars for contentPreview and leaves short content untouched', () => {
+      const longContent = 'x'.repeat(500);
+      const long = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-long',
+        name: 'Long',
+        content: longContent,
+        category: 'SYSTEM',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      expect(long.contentPreview).toHaveLength(400);
+      expect(long.contentPreview).toBe(longContent.slice(0, 400));
+
+      const short = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-short',
+        name: 'Short',
+        content: 'short body',
+        category: 'SYSTEM',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      expect(short.contentPreview).toBe('short body');
+    });
+
+    it('parses the typed array into declaredVariables and ignores the retired legacy map shape', () => {
+      const arrayForm = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-arr',
+        name: 'Arr',
+        content: 'x',
+        category: 'SYSTEM',
+        variables: [{ name: 'topic', type: 'string', required: true }],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      expect(arrayForm.declaredVariables).toEqual([
+        expect.objectContaining({ name: 'topic', type: 'string', required: true }),
+      ]);
+
+      const legacyMap = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-legacy',
+        name: 'Legacy',
+        content: 'x',
+        category: 'SYSTEM',
+        variables: { topic: { type: 'string', required: true } },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      expect(legacyMap.declaredVariables).toEqual([]);
+
+      const none = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-none',
+        name: 'None',
+        content: 'x',
+        category: 'SYSTEM',
+        variables: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      expect(none.declaredVariables).toEqual([]);
+    });
+  });
+
   describe('toVersionResponse', () => {
     it('should map version response correctly', () => {
       const entity = {
