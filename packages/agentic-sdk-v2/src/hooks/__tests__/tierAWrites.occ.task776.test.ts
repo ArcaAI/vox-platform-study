@@ -2,10 +2,13 @@
  * / REST review H-1 phase 0b — the SDK sends `If-Match` on the
  * tier-A routes it drives.
  *
- * Two of the seven flipped routes are reachable from the BROWSER SDK:
+ * Of the seven flipped routes, one is reachable from the BROWSER SDK:
  *
  *   `PATCH /consultations/:id` — `useArcaSession.update` / `useArca.updateConsultation`
- *   `PATCH /dna-writing-styles/:reportId/default` — `useDnaStyle.setDefault`
+ *
+ * (`PATCH /dna-writing-styles/:reportId/default` — `useDnaStyle.setDefault` —
+ * was the other; `useDnaStyle` and the whole DNA_STYLE_ENDPOINTS surface were
+ * removed under TASK-890, OD-F/OD-K — `@arcaai/vox` is business-plane only.)
  *
  * The contract these tests pin, in both directions:
  *
@@ -24,8 +27,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useArcaSession } from '../useArcaSession';
-import { useDnaStyle } from '../useDnaStyle';
-import { CONSULTATION_ENDPOINTS, DNA_STYLE_ENDPOINTS } from '../../core/constants';
+import { CONSULTATION_ENDPOINTS } from '../../core/constants';
 import { ConfigConflictError } from '../../types/settings';
 import { AgenticError } from '../../types/common';
 
@@ -76,12 +78,6 @@ vi.mock('../../store', () => ({
   selectAttachments: () => [],
 }));
 
-// `useDnaStyle` reads the store through the legacy module accessor.
-vi.mock('../../store/agenticStore', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../store/agenticStore')>();
-  return { ...actual, useAgenticStore: vi.fn(() => mockStore) };
-});
-
 const conflict = () => new AgenticError('UNKNOWN_ERROR', 'HTTP 412', { context: { status: 412, currentVersion: 9 } });
 
 describe(' phase 0b — SDK sends If-Match on the tier-A routes', () => {
@@ -125,71 +121,6 @@ describe(' phase 0b — SDK sends If-Match on the tier-A routes', () => {
           await result.current.update({ metadata: { note: 'x' } });
         }),
       ).rejects.toBeInstanceOf(ConfigConflictError);
-    });
-  });
-
-  describe('PATCH /dna-writing-styles/:reportId/default — useDnaStyle.setDefault', () => {
-    const report = { id: 'dna-2', doctorId: 'd-1', reportData: {}, isLatest: false, currentVersionNumber: 3, createdAt: '', updatedAt: '', version: 6 };
-
-    it('echoes the version from the report list the SDK loaded', async () => {
-      apiClient.get.mockResolvedValue([report]);
-      mockPatchWithIfMatch.mockResolvedValue({ ...report, isLatest: true, version: 7 });
-      const { result } = renderHook(() => useDnaStyle());
-
-      await act(async () => {
-        await result.current.getMyReports();
-      });
-      await act(async () => {
-        await result.current.setDefault('dna-2');
-      });
-
-      expect(mockPatchWithIfMatch).toHaveBeenCalledWith(DNA_STYLE_ENDPOINTS.SET_DEFAULT('dna-2'), {}, '"6"');
-    });
-
-    it('prefers an explicitly supplied version over the loaded one', async () => {
-      apiClient.get.mockResolvedValue([report]);
-      mockPatchWithIfMatch.mockResolvedValue({ ...report, isLatest: true, version: 12 });
-      const { result } = renderHook(() => useDnaStyle());
-
-      await act(async () => {
-        await result.current.getMyReports();
-      });
-      await act(async () => {
-        await result.current.setDefault('dna-2', 11);
-      });
-
-      expect(mockPatchWithIfMatch).toHaveBeenCalledWith(DNA_STYLE_ENDPOINTS.SET_DEFAULT('dna-2'), {}, '"11"');
-    });
-
-    it('sends NO If-Match for a report whose version the SDK never read', async () => {
-      mockPatch.mockResolvedValue({ ...report, isLatest: true });
-      const { result } = renderHook(() => useDnaStyle());
-
-      await act(async () => {
-        await result.current.setDefault('never-loaded');
-      });
-
-      expect(mockPatch).toHaveBeenCalledWith(DNA_STYLE_ENDPOINTS.SET_DEFAULT('never-loaded'), {});
-      expect(mockPatchWithIfMatch).not.toHaveBeenCalled();
-    });
-
-    it('surfaces a 412 as a ConfigConflictError', async () => {
-      apiClient.get.mockResolvedValue([report]);
-      mockPatchWithIfMatch.mockRejectedValue(conflict());
-      const { result } = renderHook(() => useDnaStyle());
-
-      await act(async () => {
-        await result.current.getMyReports();
-      });
-
-      let captured: unknown;
-      await act(async () => {
-        await result.current.setDefault('dna-2').catch((error: unknown) => {
-          captured = error;
-        });
-      });
-
-      expect(captured).toBeInstanceOf(ConfigConflictError);
     });
   });
 });

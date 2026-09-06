@@ -1,29 +1,31 @@
 /**
- * Admin-only routes OUTSIDE the `/admin/` prefix must also carry
- * the admin's own JWT during impersonation.
+ * Admin-only routes OUTSIDE the `/admin/` prefix are refused too.
  *
  * The backend gates `/monitoring/*` (whole controller) and
  * `/health/services[/:serviceKey]` behind CASL (`manage:all | read:TenantTelemetry`),
- * but `isAdminPlanePath` only matched `/admin/*`.
- * While impersonating a doctor, these endpoints received the impersonation JWT
- * and returned 403 — e.g. the entire /admin/system-health page broke.
+ * so `isAdminPlanePath` also classifies them as admin-plane even though they
+ * don't start with `/admin/`.
  *
  * Other `/health/*` probes (`/health`, `/health/live`, `/health/ready`) are
  * unrestricted and stay on the user-plane path.
  *
- * filed both surfaces under `admin/` (`/admin/monitoring/*`,
- * `/admin/health/services*`), so the generic `admin/` branch now carries them
- * and the SDK's own endpoint constants emit the new paths. The legacy branches
- * are retained and still asserted below: a caller passing a hard-coded
- * pre-move path must still be classified admin-plane rather than silently
- * receiving the impersonation JWT.
+ * Both surfaces are ALSO filed under `admin/` (`/admin/monitoring/*`,
+ * `/admin/health/services*`), so the generic `admin/` branch covers them too
+ * and the SDK's own endpoint constants emit the new paths. The legacy
+ * branches are retained and still asserted below: a caller passing a
+ * hard-coded pre-move path must still be classified admin-plane rather than
+ * silently receiving the impersonation JWT.
+ *
+ * `@arcaai/vox` is business-plane only (TASK-890, OD-F/OD-K): every
+ * admin-plane path — legacy or current — is now REFUSED outright with a
+ * named `AdminPlaneRefusedError`, not routed with an admin JWT.
  *
  * @vitest-environment jsdom
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AgenticClient } from '../AgenticClient';
-import { isAdminPlanePath } from '../constants';
+import { AdminPlaneRefusedError, isAdminPlanePath } from '../constants';
 import { mockFetch, createMockResponse, createMockLogger } from '../../__tests__/setup';
 
 const ADMIN_TOKEN = 'admin-jwt-token';
@@ -69,7 +71,7 @@ describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
   });
 });
 
-describe('AgenticClient token routing for non-/admin admin-only routes', () => {
+describe('AgenticClient refusal for non-/admin admin-only routes', () => {
   let client: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 
@@ -89,16 +91,14 @@ describe('AgenticClient token routing for non-/admin admin-only routes', () => {
       client.updateAccessToken(IMP_TOKEN);
     });
 
-    it('sends the ADMIN token for /monitoring/uptime', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
-      await client.get('/monitoring/uptime');
-      expect(authHeaderOf()).toBe(`Bearer ${ADMIN_TOKEN}`);
+    it('refuses /monitoring/uptime with a named error, and makes NO network call', async () => {
+      await expect(client.get('/monitoring/uptime')).rejects.toThrow(AdminPlaneRefusedError);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('sends the ADMIN token for /health/services', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
-      await client.get('/health/services');
-      expect(authHeaderOf()).toBe(`Bearer ${ADMIN_TOKEN}`);
+    it('refuses /health/services with a named error, and makes NO network call', async () => {
+      await expect(client.get('/health/services')).rejects.toThrow(AdminPlaneRefusedError);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('keeps the IMPERSONATION token for unrestricted /health/live', async () => {
@@ -108,11 +108,10 @@ describe('AgenticClient token routing for non-/admin admin-only routes', () => {
     });
   });
 
-  describe('when NOT impersonating (unchanged behavior)', () => {
-    it('sends the access token for /monitoring/uptime', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
-      await client.get('/monitoring/uptime');
-      expect(authHeaderOf()).toBe(`Bearer ${ADMIN_TOKEN}`);
+  describe('when NOT impersonating', () => {
+    it('refuses /monitoring/uptime with a named error, and makes NO network call', async () => {
+      await expect(client.get('/monitoring/uptime')).rejects.toThrow(AdminPlaneRefusedError);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });

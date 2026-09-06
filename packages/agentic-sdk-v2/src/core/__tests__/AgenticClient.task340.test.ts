@@ -1,18 +1,20 @@
 /**
- * Impersonation must not block administration interfaces.
+ * `@arcaai/vox` is business-plane only (TASK-890, OD-F/OD-K).
  *
- * During impersonation the SDK stashes the admin's own JWT in a WeakMap while
- * `accessToken` holds the short-lived impersonation JWT. Admin-plane routes
- * (`/admin/*`) MUST be sent with the admin's own JWT so backend RBAC sees the
- * admin's roles; user-plane routes keep the impersonation JWT so the SDK acts
- * as the impersonated user. When NOT impersonating, nothing changes.
+ * `AgenticClient` used to stash the admin's own JWT in a WeakMap during
+ * impersonation and route admin-plane requests (`/admin/*`) with it so
+ * backend RBAC saw the admin's roles. The SDK carries no management surface
+ * any more, so admin-plane requests are now REFUSED outright — with a named
+ * `AdminPlaneRefusedError` — regardless of impersonation state. User-plane
+ * routes are unaffected: they keep receiving the active token (the
+ * impersonated user's token while impersonating, else the caller's own).
  *
  * @vitest-environment jsdom
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AgenticClient } from '../AgenticClient';
-import { isAdminPlanePath } from '../constants';
+import { AdminPlaneRefusedError, isAdminPlanePath } from '../constants';
 import { mockFetch, createMockResponse, createMockLogger } from '../../__tests__/setup';
 
 const ADMIN_TOKEN = 'admin-jwt-token';
@@ -46,7 +48,7 @@ describe('isAdminPlanePath', () => {
   });
 });
 
-describe('AgenticClient admin-plane token routing', () => {
+describe('AgenticClient admin-plane refusal', () => {
   let client: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 
@@ -67,10 +69,9 @@ describe('AgenticClient admin-plane token routing', () => {
       client.updateAccessToken(IMP_TOKEN);
     });
 
-    it('sends the ADMIN token for an admin-plane request', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
-      await client.get('/admin/audit-logs');
-      expect(authHeaderOf()).toBe(`Bearer ${ADMIN_TOKEN}`);
+    it('refuses an admin-plane request with a named error, and makes NO network call', async () => {
+      await expect(client.get('/admin/audit-logs')).rejects.toThrow(AdminPlaneRefusedError);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('sends the IMPERSONATION token for a user-plane request', async () => {
@@ -85,11 +86,10 @@ describe('AgenticClient admin-plane token routing', () => {
       expect(authHeaderOf()).toBe(`Bearer ${IMP_TOKEN}`);
     });
 
-    it('uses a refreshed admin token for admin-plane requests after updateImpersonationOriginalToken', async () => {
+    it('still refuses an admin-plane request after updateImpersonationOriginalToken', async () => {
       client.updateImpersonationOriginalToken('admin-jwt-token-v2');
-      mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
-      await client.get('/admin/audit-logs');
-      expect(authHeaderOf()).toBe('Bearer admin-jwt-token-v2');
+      await expect(client.get('/admin/audit-logs')).rejects.toThrow(AdminPlaneRefusedError);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('keeps the impersonation token on user-plane after the admin stash is refreshed', async () => {
@@ -100,11 +100,10 @@ describe('AgenticClient admin-plane token routing', () => {
     });
   });
 
-  describe('when NOT impersonating (unchanged behavior)', () => {
-    it('sends the access token for an admin-plane request', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
-      await client.get('/admin/audit-logs');
-      expect(authHeaderOf()).toBe(`Bearer ${ADMIN_TOKEN}`);
+  describe('when NOT impersonating', () => {
+    it('refuses an admin-plane request with a named error, and makes NO network call', async () => {
+      await expect(client.get('/admin/audit-logs')).rejects.toThrow(AdminPlaneRefusedError);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('sends the access token for a user-plane request', async () => {
@@ -113,11 +112,10 @@ describe('AgenticClient admin-plane token routing', () => {
       expect(authHeaderOf()).toBe(`Bearer ${ADMIN_TOKEN}`);
     });
 
-    it('updateImpersonationOriginalToken is a no-op when not impersonating', async () => {
+    it('updateImpersonationOriginalToken is a no-op when not impersonating, and admin-plane still refuses', async () => {
       client.updateImpersonationOriginalToken('should-be-ignored');
-      mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
-      await client.get('/admin/audit-logs');
-      expect(authHeaderOf()).toBe(`Bearer ${ADMIN_TOKEN}`);
+      await expect(client.get('/admin/audit-logs')).rejects.toThrow(AdminPlaneRefusedError);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });
