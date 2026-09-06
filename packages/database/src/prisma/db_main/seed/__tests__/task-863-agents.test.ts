@@ -195,3 +195,62 @@ describe('TASK-863 — seedAgents against an in-memory client', () => {
     expect(result2.created).toBe(8);
   });
 });
+
+/**
+ * TASK-890 (L8) — what the seed must now say, and why each is a REGRESSION guard rather than a
+ * restatement of the code.
+ *
+ * 1. `instruction.variables` is a map of BINDINGS (`{ value }` | `{ path }`). The retired
+ *    flat-string form is REFUSED by the instruction schema, so a seed that still carried one
+ *    would fail every publish of that agent — and the seed is what a fresh environment starts
+ *    from, which is the worst place to discover it.
+ * 2. `compiledConfig` carries `guardrail` and `contextSchema`, because a seeded row and a
+ *    re-published one must be the same artifact down to the checksum.
+ */
+describe('TASK-890 — the seeded agents on the new instruction and compiled shapes', () => {
+  const ALL_SPECS: SeedAgentSpec[] = [...PLATFORM_AGENT_SPECS, ...GLOBAL_AGENT_SPECS];
+
+  it('no seeded instruction carries the retired flat-string `variables` form', () => {
+    for (const spec of ALL_SPECS) {
+      const variables = (spec.instruction as Record<string, unknown> | null)?.variables;
+      if (variables === undefined) continue;
+      expect(variables, `${spec.slug}.instruction.variables`).toBeTypeOf('object');
+      for (const [name, binding] of Object.entries(variables as Record<string, unknown>)) {
+        expect(binding, `${spec.slug}.instruction.variables.${name}`).toBeTypeOf('object');
+        expect(Object.keys(binding as Record<string, unknown>).sort(), `${spec.slug}.instruction.variables.${name}`).toSatisfy(
+          (keys: string[]) => keys.length === 1 && (keys[0] === 'value' || keys[0] === 'path'),
+        );
+      }
+    }
+  });
+
+  it('every seeded configuration still passes the contract`s own `agentConfigProblems`', () => {
+    for (const spec of ALL_SPECS) {
+      const problems = agentConfigProblems({
+        task: spec.task,
+        instruction: spec.instruction ?? null,
+        parameters: spec.parameters ?? null,
+        inputSchema: null,
+        outputSchema: null,
+        tools: null,
+        contextSchemaId: null,
+        contextSchemaVersionNumber: null,
+      });
+      expect(problems, `${spec.slug}: ${JSON.stringify(problems)}`).toEqual([]);
+    }
+  });
+
+  it('a PUBLISHED row compiles `guardrail.enabled: true` (absent means ON) and no context pin', () => {
+    const llm = PLATFORM_AGENT_SPECS.find((spec) => spec.slug === 'platform-summarization')!;
+    const row = buildAgentRow(llm, modelRef(llm.modelSlug), [], { source: 'inline', content: 'x' });
+    expect(row.compiledConfig).toMatchObject({ guardrail: { enabled: true }, contextSchema: null });
+    expect(row).toMatchObject({ contextSchemaId: null, contextSchemaVersionNumber: null });
+  });
+
+  it('an agent that opts OUT compiles `guardrail.enabled: false`', () => {
+    const llm = PLATFORM_AGENT_SPECS.find((spec) => spec.slug === 'platform-summarization')!;
+    const optedOut: SeedAgentSpec = { ...llm, parameters: { ...llm.parameters, guards: { enabled: false } } };
+    const compiled = buildCompiledConfig(optedOut, modelRef(llm.modelSlug), [], null);
+    expect(compiled).toMatchObject({ guardrail: { enabled: false } });
+  });
+});

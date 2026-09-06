@@ -315,7 +315,29 @@ export function buildCompiledConfig(spec: SeedAgentSpec, model: SeedModelRef, fa
     outputSchema: IO_DEFAULTS[spec.task].outputSchema,
     tools: [],
     protocols: AGENT_PROTOCOLS[spec.task],
+    // TASK-890 §3.4 / §3.14 — the two fields `AgentService.compile` freezes. Seeded rows carry
+    // them explicitly so a seeded agent and a re-published one are the SAME artifact: a seed that
+    // omitted them would produce a different checksum for identical configuration, which is the
+    // drift `task-863-agents.test.ts` exists to keep out.
+    //
+    // `contextSchema: null` — no seeded SYSTEM agent pins a context schema. A schema is CONTENT
+    // and is cloned per tenant (§1.5), so a SYSTEM row could not resolve one anyway.
+    contextSchema: null,
+    // ABSENT MEANS ON: guardrail is platform-managed and screening is the floor a tenant opts out
+    // of, so a seed that says nothing about it says `enabled: true`.
+    guardrail: { enabled: guardrailEnabledOf(spec.parameters) },
   };
+}
+
+/**
+ * The AGENT level of the `node > workflow > agent > true` guardrail precedence (§3.14), mirroring
+ * `guardrailEnabledOf` in `AgentService`. Duplicated here for the same reason `canonicalJson` is:
+ * @arcaai/database takes no dependency on the applications layer or on the contract package.
+ */
+function guardrailEnabledOf(parameters: Record<string, unknown> | null | undefined): boolean {
+  const guards = parameters?.guards;
+  if (guards === null || typeof guards !== 'object' || Array.isArray(guards)) return true;
+  return (guards as Record<string, unknown>).enabled === false ? false : true;
 }
 
 export function checksumOf(compiled: Record<string, unknown>): string {
@@ -338,6 +360,9 @@ export function buildAgentRow(spec: SeedAgentSpec, model: SeedModelRef, fallback
     status: spec.status,
     isActive: spec.isActive,
     modelId: model.id,
+    // TASK-890 §3.4 — no seeded SYSTEM agent pins a context schema (see `buildCompiledConfig`).
+    contextSchemaId: null,
+    contextSchemaVersionNumber: null,
     instruction: spec.instruction,
     parameters: spec.parameters,
     inputSchema: null,

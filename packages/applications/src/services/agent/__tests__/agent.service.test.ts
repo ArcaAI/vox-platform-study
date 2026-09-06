@@ -13,7 +13,28 @@ import { AgentService } from '../agent.service';
 const TENANT = '50000000-0000-0000-0000-000000000000';
 const OTHER = '50000000-0000-0000-0000-000000000009';
 
-const mockClsService = { get: vi.fn(), set: vi.fn() };
+/**
+ * A CLS stub that actually MODELS `run({ ifNested: 'inherit' })`: the store is copied, the step
+ * may overwrite `tenantId`, and the parent's value is restored when it returns. A stub that
+ * ignored `run` would make every `runInTenantContext` assertion vacuous — which is exactly the
+ * shape of the H-6 defect this file now pins (the old portability fixture could not fail).
+ */
+const clsStore: Record<string, unknown> = {};
+const mockClsService = {
+  get: vi.fn((key: string) => clsStore[key]),
+  set: vi.fn((key: string, value: unknown) => {
+    clsStore[key] = value;
+  }),
+  run: vi.fn(async (_options: unknown, work: () => unknown) => {
+    const snapshot = { ...clsStore };
+    try {
+      return await work();
+    } finally {
+      for (const key of Object.keys(clsStore)) delete clsStore[key];
+      Object.assign(clsStore, snapshot);
+    }
+  }),
+};
 const mockEventEmitter = { emit: vi.fn() };
 const mockAgentRepository = {
   findByIdVisible: vi.fn(),
@@ -29,10 +50,13 @@ const mockAgentRepository = {
   softDelete: vi.fn(),
 };
 const mockFallbackRepository = { findByAgentId: vi.fn(async () => []), create: vi.fn(async (e: unknown) => e), deleteAllForAgent: vi.fn() };
-const mockAiModelRepository = { findById: vi.fn(), findBySlug: vi.fn(), findByTaskTypeSharedRead: vi.fn(async () => []) };
+const mockAiModelRepository = { findById: vi.fn(), findByIdOrNull: vi.fn(), findBySlug: vi.fn(), findByTaskTypeSharedRead: vi.fn(async () => []) };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
 const mockAssignments = { resolve: vi.fn(async () => ({ agentSlug: null, source: 'platform-default' })) };
-const mockProviderConnections = { resolveConnection: vi.fn(), resolveTenantCloudOverrides: vi.fn() };
+const KEYED = new Uint8Array([1, 2, 3]);
+const mockProviderConnections = { resolveConnection: vi.fn(), findRow: vi.fn(), resolveTenantCloudOverrides: vi.fn() };
+const mockContextSchemas = { resolveReference: vi.fn() };
+const mockReadiness = { getSnapshot: vi.fn(async () => null) };
 const mockPromptTemplateRepository = { findById: vi.fn() };
 const mockPromptVersionRepository = { findByVersionNumber: vi.fn() };
 
@@ -111,18 +135,49 @@ function makeService() {
     mockProviderConnections as never,
     mockPromptTemplateRepository as never,
     mockPromptVersionRepository as never,
+    undefined as never,
+    undefined as never,
+    mockContextSchemas as never,
+    mockReadiness as never,
   );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'user-1', roles: [] } : undefined));
+  for (const key of Object.keys(clsStore)) delete clsStore[key];
+  clsStore.tenantId = TENANT;
+  clsStore.user = { id: 'user-1', roles: [] };
+  mockClsService.get.mockImplementation((key: string) => clsStore[key]);
+  mockClsService.set.mockImplementation((key: string, value: unknown) => {
+    clsStore[key] = value;
+  });
+  mockClsService.run.mockImplementation(async (_options: unknown, work: () => unknown) => {
+    const snapshot = { ...clsStore };
+    try {
+      return await work();
+    } finally {
+      for (const key of Object.keys(clsStore)) delete clsStore[key];
+      Object.assign(clsStore, snapshot);
+    }
+  });
+  // TASK-890 §3.7 — an engine-served row is usable when its SYSTEM connection is ENABLED, so the
+  // publish gate now consults the connection plane for EVERY class except `platform-self-host`.
+  // The happy default is a resolved, keyed connection; the cases that care override it.
+  mockProviderConnections.resolveConnection.mockResolvedValue({ source: 'system', encryptedApiKey: KEYED });
+  mockProviderConnections.findRow.mockResolvedValue(null);
+  mockContextSchemas.resolveReference.mockResolvedValue({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
+  mockReadiness.getSnapshot.mockResolvedValue(null);
   mockAiModelRepository.findById.mockImplementation(async (id: string) => {
     if (id === 'model-llm') return LLM_MODEL;
     if (id === 'model-asr') return ASR_MODEL;
     if (id === 'model-azure') return AZURE_LLM;
     if (id === 'model-asr-staged') return STAGED_ASR;
     throw new Error('not found');
+  });
+  mockAiModelRepository.findByIdOrNull.mockImplementation(async (id: string) => {
+    if (id === 'model-llm') return LLM_MODEL;
+    if (id === 'model-azure') return AZURE_LLM;
+    return null;
   });
   mockAgentRepository.update.mockImplementation(async (_id: string, entity: unknown) => entity);
   mockAgentRepository.create.mockImplementation(async (entity: unknown) => entity);
@@ -225,7 +280,7 @@ describe('publish — fails closed', () => {
 
   it('publishes a cloud model when a connection exists (tenant or SYSTEM)', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-azure' }));
-    mockProviderConnections.resolveConnection.mockResolvedValue({ source: 'system' });
+    mockProviderConnections.resolveConnection.mockResolvedValue({ source: 'system', encryptedApiKey: KEYED });
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
     const published = await makeService().publish('agent-1', { activate: false });
     expect(published.status).toBe('PUBLISHED');
@@ -402,5 +457,214 @@ describe('listPublished', () => {
     const [summary] = await makeService().listPublished();
     expect(summary).toMatchObject({ slug: 'clinic-summarizer', task: 'TEXT_GENERATION', isTenantDefault: true, protocols: ['http', 'http-sse'] });
     expect(summary.inputSchema).toMatchObject({ type: 'object' });
+  });
+});
+
+/**
+ * TASK-890 §3.7 / §3.12 (L8) — the publish gate reads the provider CLASS table, and readiness is
+ * a SEPARATE, advisory axis.
+ *
+ * The two questions this pins apart: `usable` asks "could an agent bound to this row ever run?"
+ * and blocks; `readiness` asks "would it have run at the last moment anyone looked?" and never
+ * does. Before this lane an engine-served row passed unconditionally — a platform admin could
+ * disable the engine's connection and every agent bound to it still published.
+ */
+describe('publish — availability via the provider class table (§3.7)', () => {
+  it('refuses an engine-served model when the platform engine connection is not enabled', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    mockProviderConnections.resolveConnection.mockResolvedValue(null);
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_UNAVAILABLE' } });
+    expect(mockProviderConnections.resolveConnection).toHaveBeenCalledWith('llm', 'lm-studio', TENANT);
+  });
+
+  it('refuses a tenant BYO row whose own connection carries no credential', async () => {
+    const byo = { ...LLM_MODEL, id: 'model-byo', tenantId: TENANT, slug: 'byo-openai-gpt', provider: 'openai' };
+    mockAiModelRepository.findById.mockResolvedValue(byo);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-byo' }));
+    mockProviderConnections.findRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: null });
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_UNAVAILABLE' } });
+    expect(mockProviderConnections.findRow).toHaveBeenCalledWith('llm', 'openai', TENANT);
+  });
+
+  it('publishes a tenant BYO row whose own connection is enabled AND keyed', async () => {
+    const byo = { ...LLM_MODEL, id: 'model-byo', tenantId: TENANT, slug: 'byo-openai-gpt', provider: 'openai' };
+    mockAiModelRepository.findById.mockResolvedValue(byo);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-byo' }));
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockProviderConnections.findRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: KEYED });
+    await expect(makeService().publish('agent-1', {})).resolves.toMatchObject({ status: 'PUBLISHED' });
+  });
+
+  it('records MODEL_NOT_READY as a WARNING and still publishes (readiness is advisory)', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockReadiness.getSnapshot.mockResolvedValue({
+      checkedAt: '2026-09-06T00:00:00.000Z',
+      engines: {},
+      models: { 'model-llm': { readiness: 'engine_down', detail: 'probe timed out' } },
+    });
+    const published = await makeService().publish('agent-1', {});
+    expect(published.status).toBe('PUBLISHED');
+    const report = published.validationReport as unknown as { blocking: boolean; findings: Array<{ code: string; severity: string }> };
+    expect(report.blocking).toBe(false);
+    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'MODEL_NOT_READY', severity: 'WARNING' }));
+  });
+
+  it('says nothing when readiness is `ready` (and nothing at all when no snapshot exists)', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockReadiness.getSnapshot.mockResolvedValue({
+      checkedAt: '2026-09-06T00:00:00.000Z',
+      engines: {},
+      models: { 'model-llm': { readiness: 'ready', detail: null } },
+    });
+    const published = await makeService().publish('agent-1', {});
+    const report = published.validationReport as unknown as { findings: Array<{ code: string }> };
+    expect(report.findings.filter((finding) => finding.code === 'MODEL_NOT_READY')).toEqual([]);
+  });
+});
+
+/**
+ * TASK-890 §3.4 (L8) — the agent's context-schema PIN resolves in the CALLER's tenant only, and
+ * what it resolves to is FROZEN into the compiled config. A schema is CONTENT: it is cloned into
+ * a tenant and never shared from SYSTEM, so an unresolvable pin is a publish refusal that names
+ * WHICH half failed — the schema or the version.
+ */
+describe('publish — the bound context schema (§3.4)', () => {
+  // `additionalProperties: false` is what makes the root KNOWN-shaped: an open schema admits any
+  // sub-path by design (§3.3), so a closed one is the only fixture that can prove the frozen
+  // declaration is actually being consulted.
+  const PAYLOAD = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['visit'],
+    properties: { visit: { type: 'object', properties: { age: { type: 'string' } } } },
+  };
+
+  it('refuses CONTEXT_SCHEMA_NOT_FOUND for a pin this tenant cannot see (a SYSTEM id included)', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ contextSchemaId: 'schema-sys' }));
+    mockContextSchemas.resolveReference.mockResolvedValue({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'CONTEXT_SCHEMA_NOT_FOUND' } });
+    expect(mockContextSchemas.resolveReference).toHaveBeenCalledWith('schema-sys', null);
+  });
+
+  it('refuses CONTEXT_SCHEMA_VERSION_NOT_FOUND when the pinned version does not exist', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ contextSchemaId: 'schema-1', contextSchemaVersionNumber: 9 }));
+    mockContextSchemas.resolveReference.mockResolvedValue({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' });
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' } });
+    expect(mockContextSchemas.resolveReference).toHaveBeenCalledWith('schema-1', 9);
+  });
+
+  it('FREEZES the derived payload schema into compiledConfig.contextSchema, with its provenance', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ contextSchemaId: 'schema-1', contextSchemaVersionNumber: 2 }));
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockContextSchemas.resolveReference.mockResolvedValue({
+      outcome: 'resolved',
+      schemaId: 'schema-1',
+      versionNumber: 2,
+      versionId: 'schema-1-v2',
+      payloadSchema: PAYLOAD,
+    });
+    const published = await makeService().publish('agent-1', {});
+    expect(published.compiledConfig).toMatchObject({
+      contextSchema: { schemaId: 'schema-1', versionNumber: 2, versionId: 'schema-1-v2', payloadSchema: PAYLOAD },
+    });
+  });
+
+  it('lets the frozen schema DECLARE `context.*`, so a reference into it is no longer undeclared', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      agent({ contextSchemaId: 'schema-1', instruction: { systemPrompt: 'Visit: {{context.visit}} / {{context.absent}}' } }),
+    );
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    mockContextSchemas.resolveReference.mockResolvedValue({
+      outcome: 'resolved',
+      schemaId: 'schema-1',
+      versionNumber: 1,
+      versionId: 'schema-1-v1',
+      payloadSchema: PAYLOAD,
+    });
+    const published = await makeService().publish('agent-1', {});
+    const report = published.validationReport as unknown as { findings: Array<{ code: string; message: string }> };
+    const undeclared = report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
+    expect(undeclared).toHaveLength(1);
+    expect(undeclared[0]?.message).toContain('context.absent');
+  });
+});
+
+/**
+ * TASK-890 §3.14 (OD-R) — the agent-level guardrail opt-out. ABSENT MEANS ON at every level, and
+ * an opt-out is RECORDED (a publish WARNING) rather than merely permitted.
+ */
+describe('publish — the guardrail compile stamp (§3.14)', () => {
+  it('stamps guardrail.enabled = true when the agent says nothing', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    const published = await makeService().publish('agent-1', {});
+    expect(published.compiledConfig).toMatchObject({ guardrail: { enabled: true } });
+    const report = published.validationReport as unknown as { findings: Array<{ code: string }> };
+    expect(report.findings.filter((finding) => finding.code === 'GUARDRAIL_OPTED_OUT')).toEqual([]);
+  });
+
+  it('stamps guardrail.enabled = false and WARNS, without blocking, when the agent opts out', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ parameters: { guards: { enabled: false } } }));
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    const published = await makeService().publish('agent-1', {});
+    expect(published.compiledConfig).toMatchObject({ guardrail: { enabled: false } });
+    const report = published.validationReport as unknown as { blocking: boolean; findings: Array<{ code: string; severity: string }> };
+    expect(report.blocking).toBe(false);
+    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'GUARDRAIL_OPTED_OUT', severity: 'WARNING' }));
+  });
+});
+
+/**
+ * TASK-890 H-6 (the CLONE / BRANCH half) — `AgentModelFallback` is a plain tenant-scoped model, so
+ * a read of the SOURCE's chain under the CALLER's working tenant answers `[]`. Every copy of a
+ * SYSTEM template silently lost its whole fallback chain.
+ *
+ * The assertion is on the CLS tenant OBSERVED at read time, not on the returned rows: a fixture
+ * that simply returns a chain would pass whether or not the fix exists, which is precisely why
+ * the pre-existing portability fixture could not fail.
+ */
+describe('the source tenant`s fallback chain is read under the SOURCE`s tenant (H-6)', () => {
+  const SYSTEM_SOURCE = agent({
+    id: 'sys-1',
+    tenantId: SYSTEM_TENANT_ID,
+    slug: 'platform-summarization',
+    status: WorkflowDefinitionStatus.PUBLISHED,
+    compiledConfig: {},
+  });
+
+  function chainVisibleOnlyToSystem(): string[] {
+    const observed: string[] = [];
+    mockFallbackRepository.findByAgentId.mockImplementation(async (agentId: string) => {
+      const tenantId = clsStore.tenantId as string;
+      observed.push(tenantId);
+      return agentId === 'sys-1' && tenantId === SYSTEM_TENANT_ID ? [{ id: 'fb-1', priority: 0, modelId: 'model-azure', enabled: true }] : [];
+    });
+    return observed;
+  }
+
+  it('clone() copies the SYSTEM template`s chain', async () => {
+    const observed = chainVisibleOnlyToSystem();
+    mockAgentRepository.findAllVersionsBySlug.mockResolvedValue([]);
+    mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue(SYSTEM_SOURCE);
+    mockAgentRepository.findMaxVersionNumber.mockResolvedValue(0);
+
+    const cloned = await makeService().clone('platform-summarization', { newSlug: 'my-summarizer' });
+
+    expect(observed).toContain(SYSTEM_TENANT_ID);
+    expect(cloned.fallbacks).toHaveLength(1);
+    // The parent context is restored: the clone itself is written in the CALLER's tenant.
+    expect(clsStore.tenantId).toBe(TENANT);
+  });
+
+  it('newVersion() off a SYSTEM template inherits its chain', async () => {
+    chainVisibleOnlyToSystem();
+    mockAgentRepository.findByIdVisible.mockResolvedValue(SYSTEM_SOURCE);
+    mockAgentRepository.findMaxVersionNumber.mockResolvedValue(0);
+
+    await makeService().newVersion('sys-1', { slug: 'my-summarizer' });
+
+    expect(mockFallbackRepository.create).toHaveBeenCalledTimes(1);
   });
 });
