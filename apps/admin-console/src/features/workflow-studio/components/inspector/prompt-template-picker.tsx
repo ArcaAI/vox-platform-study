@@ -1,73 +1,33 @@
 'use client';
 
 /**
- * `PromptTemplatePicker` — the Studio's node inspector gets a *picker* of the
- * tenant's prompt templates, never its own editor: design.md "prompt templates keep their own
- * authoritative editor (picker + deep link)" and rule 13 §Routing's one-authoritative-editor
- * rule. Reads `admin/prompt-templates` through this feature's own `api/hooks.ts`
- * (`usePromptTemplateOptions`) — deliberately NOT imported from `features/departments/**`, which
- * does the identical read for the same "prompt config" reason at
- * `features/departments/api/client.ts:54` (rule 13 §Structure: "features never import each
- * other").
+ * `PromptTemplatePicker` — the Studio's node inspector's thin wrapper over the ONE shared
+ * prompt-template picker (`@/shared/prompt-picker`, TASK-890 §3.6/REQ-6 — the agents form (L5)
+ * renders the exact same component). Rule 13 §Structure "one authoritative editor" means the
+ * picker never grows a second implementation here: this file only adapts the shared component's
+ * `string | null` value contract to the inspector's `string` config-value contract (a node's
+ * `config` has no way to express "no value" other than an empty string / an absent key) and
+ * keeps the narrower prop surface (`id`/`value`/`onChange`/`disabled`/`errors`) the two call
+ * sites in `inspector-panel.tsx` already use.
  *
- * Rendered by `field-renderers.tsx` in place of a plain text `Input` for any `string` field whose
- * path is (or ends in) `promptTemplateId` — the naming convention the delivered
- * `WorkflowFinding`/inspector-panel test fixture already uses — and, as a general helper,
- * alongside the raw-JSON fallback for node types the registry has no config schema for yet
- * (the common case today — `contracts/registry.contract.md`).
+ * Before TASK-890 this component hand-rolled its own `usePromptTemplateOptions` read and a
+ * static `href="/prompt-templates"` link with no way to reach the SPECIFIC template selected.
+ * The shared component's quick view links to `/prompt-templates?template=<id>` instead — the
+ * deep link this ticket's TDD list names — and additionally renders status, the approved-version
+ * pin and the declared-variable chips, none of which this file re-implements.
  */
-import Link from 'next/link';
-import { IconExternalLink } from '@tabler/icons-react';
-import { Field, FieldDescription, FieldError, FieldLabel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton } from '@arcaai/ui';
-import { usePromptTemplateOptions } from '../../api/hooks';
-
-/** Radix `Select` reserves the empty string for "no value" — route "no template" through a
- *  sentinel, same convention as `department-prompt-config-panel.tsx`'s `NONE_SENTINEL`. */
-const NONE_SENTINEL = '__none__';
+import { PromptTemplatePicker as SharedPromptTemplatePicker } from '@/shared/prompt-picker';
 
 export interface PromptTemplatePickerProps {
   id: string;
-  label: string;
-  description?: string;
   value: string;
   onChange: (next: string) => void;
-  required?: boolean;
   disabled?: boolean;
   errors?: string[];
 }
 
-export function PromptTemplatePicker({ id, label, description, value, onChange, required, disabled, errors }: PromptTemplatePickerProps) {
-  const options = usePromptTemplateOptions();
-
+export function PromptTemplatePicker({ id, value, onChange, disabled, errors }: PromptTemplatePickerProps) {
   return (
-    <Field data-invalid={(errors?.length ?? 0) > 0 ? 'true' : undefined}>
-      <FieldLabel htmlFor={id}>
-        {label}
-        {required ? ' *' : ''}
-      </FieldLabel>
-      {description ? <FieldDescription>{description}</FieldDescription> : null}
-      {options.isLoading ? (
-        <Skeleton className="h-9 w-full" />
-      ) : (
-        <Select value={value || NONE_SENTINEL} onValueChange={(next) => onChange(next === NONE_SENTINEL ? '' : next)} disabled={disabled}>
-          <SelectTrigger id={id}>
-            <SelectValue placeholder="Select a prompt template…" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE_SENTINEL}>— None —</SelectItem>
-            {(options.data ?? []).map((option) => (
-              <SelectItem key={option.id} value={option.id}>
-                {option.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-      <Link href="/prompt-templates" className="text-foreground inline-flex w-fit items-center gap-1 text-xs hover:underline">
-        <IconExternalLink aria-hidden className="size-3" />
-        Manage prompt templates
-      </Link>
-      <FieldError errors={errors?.map((message) => ({ message }))} />
-    </Field>
+    <SharedPromptTemplatePicker id={id} value={value || null} onChange={(next) => onChange(next ?? '')} disabled={disabled} errors={errors} />
   );
 }
