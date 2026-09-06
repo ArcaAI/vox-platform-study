@@ -379,8 +379,21 @@ test.describe('workflow studio editor — TASK-890 core.trigger / core.agent ins
     const paletteNav = page.getByRole('navigation', { name: 'Node palette' });
     await expect(paletteNav).toBeVisible();
     await paletteNav.getByRole('button').filter({ hasText: 'Core.trigger' }).first().click();
+    // Adding a node does not OPEN its inspector — the sibling `core.agent` case above goes
+    // through list view for the same reason. Without this the assertion below waits for an
+    // inspector that was never rendered.
+    await page.getByRole('radio', { name: 'List view' }).click();
+    await page.getByRole('button', { name: /^Configure Core\.trigger/ }).click();
+    // Back to the canvas before the scan. List view renders a per-node row whose accessible name
+    // is byte-identical to the palette button that created it, and `expectDistinctControlNames`
+    // (rightly) refuses two page-level controls sharing a name — a PRE-EXISTING Studio issue in
+    // that view, unrelated to the inspector this case is here to scan. The selection, and so the
+    // open inspector, survives the switch.
+    await page.getByRole('radio', { name: 'Canvas view' }).click();
     await page.emulateMedia({ colorScheme: 'light' });
-    await expect(page.getByText('Context schema', { exact: true })).toBeVisible();
+    // The field renders its name twice (the fieldset legend and the select's own label), so this
+    // is scoped to the legend rather than left to resolve two elements under strict mode.
+    await expect(page.getByText('Context schema', { exact: true }).first()).toBeVisible();
     await expectNoA11yViolations(page);
   });
 });

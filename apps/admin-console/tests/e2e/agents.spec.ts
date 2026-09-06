@@ -58,7 +58,10 @@ test.describe('agents — grid', () => {
 
   test('?create=1 opens the create wizard directly (the Studio create-agent deep link)', async ({ page }) => {
     await page.goto(`${GRID_URL}?create=1`);
-    await waitForSettled(page);
+    // NOT `waitForSettled`: the wizard opens as a MODAL, and a modal marks the rest of the page
+    // `aria-hidden`, so the grid behind it is unreachable by role for as long as it is open. The
+    // wizard being visible is the whole assertion here anyway.
+    await expect(page.getByRole('heading', { level: 2, name: 'New agent' })).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'New agent' })).toBeVisible();
   });
 
@@ -89,8 +92,10 @@ test.describe('agents — create wizard (TASK-890 §3.7 model catalogue)', () =>
     await wizard.getByRole('button', { name: 'Next' }).click();
 
     // Provider then Model — BYO connections first, then exactly one "Hope provider".
-    await expect(wizard.getByLabel('Provider')).toBeVisible();
-    await expect(wizard.getByLabel('Model')).toBeVisible();
+    // `exact` on both: the same step also renders "Fallback models (in order)", which a substring
+    // match on "Model" resolves to as well (strict mode then fails on two elements).
+    await expect(wizard.getByLabel('Provider', { exact: true })).toBeVisible();
+    await expect(wizard.getByLabel('Model', { exact: true })).toBeVisible();
   });
 
   test('an unusable provider is shown greyed with its reason and a link to /ai-providers, never hidden', async ({ page }) => {
