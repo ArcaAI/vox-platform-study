@@ -96,7 +96,6 @@ const mockAiModelRepository = {
   create: vi.fn(),
 };
 
-
 // Mock PromptVersionRepository — the agent clone writes a v1 snapshot of
 // each cloned tenant template.
 const mockPromptVersionRepository = {
@@ -555,7 +554,7 @@ describe('TenantService', () => {
       ...over,
     });
 
-    it('clones the SYSTEM AiModel catalog into the new tenant', async () => {
+    it('clones NO AiModel row — the catalogue is CONFIG and stays SYSTEM-shared-read (TASK-890 OD-O)', async () => {
       const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
       mockTenantRepository.create.mockResolvedValue(newTenant);
       mockAiModelRepository.findAll.mockResolvedValue([makeSystemModel('a'), makeSystemModel('b')]);
@@ -563,60 +562,13 @@ describe('TenantService', () => {
 
       await service.create({ key: 'NEW', name: 'New' });
 
-      // Reads the SYSTEM-owned master catalog.
-      expect(mockAiModelRepository.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }) }),
-      );
-      // One clone per SYSTEM row, each bound to the NEW tenant (never SYSTEM).
-      expect(mockAiModelRepository.create).toHaveBeenCalledTimes(2);
-      const clonedTenantIds = mockAiModelRepository.create.mock.calls.map((c: any[]) => c[0].tenantId);
-      expect(clonedTenantIds).toEqual(['new-tenant-id', 'new-tenant-id']);
-    });
-
-    it('clone carries provider, architecture and metaData', async () => {
-      const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-      mockTenantRepository.create.mockResolvedValue(newTenant);
-      mockAiModelRepository.findAll.mockResolvedValue([
-        makeSystemModel('a', {
-          provider: 'azure-foundry',
-          architecture: 'transformer',
-          metaData: { voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }], deployment: 'mai-transcribe' },
-        }),
-      ]);
-      mockAiModelRepository.isSlugUnique.mockResolvedValue(true);
-
-      await service.create({ key: 'NEW', name: 'New' });
-
-      expect(mockAiModelRepository.create).toHaveBeenCalledTimes(1);
-      const cloned = mockAiModelRepository.create.mock.calls[0][0];
-      expect(cloned.provider).toBe('azure-foundry');
-      expect(cloned.architecture).toBe('transformer');
-      expect(cloned.metaData).toEqual({ voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }], deployment: 'mai-transcribe' });
-    });
-
-    it('clone is idempotent — skips slugs already present in the tenant', async () => {
-      const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-      mockTenantRepository.create.mockResolvedValue(newTenant);
-      mockAiModelRepository.findAll.mockResolvedValue([makeSystemModel('a'), makeSystemModel('b')]);
-      // 'a' already cloned (not unique) → skipped; 'b' is new → cloned.
-      mockAiModelRepository.isSlugUnique.mockImplementation(async (_t: string, slug: string) => slug !== 'a');
-
-      await service.create({ key: 'NEW', name: 'New' });
-
-      expect(mockAiModelRepository.create).toHaveBeenCalledTimes(1);
-      expect(mockAiModelRepository.create.mock.calls[0][0].slug).toBe('b');
-    });
-
-    it('clone failure does not abort tenant creation', async () => {
-      const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-      mockTenantRepository.create.mockResolvedValue(newTenant);
-      mockAiModelRepository.findAll.mockRejectedValue(new Error('db down'));
-
-      const result = await service.create({ key: 'NEW', name: 'New' });
-
-      // The model-catalog provisioning ran but its failure was swallowed.
-      expect(mockAiModelRepository.findAll).toHaveBeenCalled();
-      expect(result.id).toBe('new-tenant-id');
+      // `provisionTenantModelCatalog` is DELETED. A per-tenant copy of the catalogue is exactly
+      // the shape rule 00 forbids: a frozen snapshot of platform CONFIG that silently stops
+      // tracking the platform. The tenant reads SYSTEM's rows through the shared-read set and
+      // owns only the models its own BYO connection declares.
+      expect(mockAiModelRepository.create).not.toHaveBeenCalled();
+      expect(mockAiModelRepository.findAll).not.toHaveBeenCalled();
+      expect(mockAiModelRepository.isSlugUnique).not.toHaveBeenCalled();
     });
 
     // Full-parity policy — clone EVERY enabled SYSTEM ASR pipeline (+ each
@@ -1828,96 +1780,27 @@ describe('TenantService', () => {
 
   const VALID_TENANT_UUID = '01931234-7abc-7def-9012-3456789abcde';
 
-  describe('create — provisionTenantConfigs', () => {
-    it('reads global tenant settings via globalSettingRepository.findAll filtered by global tenant id', async () => {
+  describe('create — the retired GlobalSetting clone (TASK-890 OD-P)', () => {
+    it('never reads the "Global" CUSTOMER tenant and clones NO GlobalSetting row', async () => {
       const newTenant = createMockTenantEntity({ id: 'new-tenant-id', key: 'NEW_TENANT' });
       const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
       mockTenantRepository.create.mockResolvedValue(newTenant);
       mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
-      mockGlobalSettingRepository.findAll.mockResolvedValue([]);
+      mockGlobalSettingRepository.findAll.mockResolvedValue([
+        createMockGlobalSettingEntity({ id: 'src-1', tenantId: 'global-id', key: 'default-stt-model', defaultValue: 'whisper-base' }),
+      ]);
 
       await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
 
-      expect(mockTenantRepository.findFirst).toHaveBeenCalledWith({
-        where: { key: '__GLOBAL__' },
-      });
-      expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith({
-        where: { tenantId: 'global-id' },
-      });
-    });
-
-    it('clones each source row using defaultValue as both value and defaultValue, with new tenant id and source metadata', async () => {
-      const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-      const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
-      mockTenantRepository.create.mockResolvedValue(newTenant);
-      mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
-
-      const sources = [
-        createMockGlobalSettingEntity({
-          id: 'src-1',
-          tenantId: 'global-id',
-          name: 'Default STT Model',
-          key: 'default-stt-model',
-          value: 'should-not-be-used',
-          defaultValue: 'whisper-base',
-          dataType: 'String',
-          description: 'STT default',
-          namespace: 'com.flw.stt',
-        }),
-        createMockGlobalSettingEntity({
-          id: 'src-2',
-          tenantId: 'global-id',
-          name: 'Feature Toggle',
-          key: 'feature.x',
-          value: 'true',
-          defaultValue: null,
-          dataType: 'Boolean',
-          description: null,
-          namespace: 'com.flw.feature-flags',
-        }),
-      ];
-      mockGlobalSettingRepository.findAll.mockResolvedValue(sources);
-      mockGlobalSettingRepository.create.mockImplementation(async (entity: any) => entity);
-
-      await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
-
-      expect(mockGlobalSettingRepository.create).toHaveBeenCalledTimes(2);
-
-      const firstCall = mockGlobalSettingRepository.create.mock.calls[0][0];
-      expect(firstCall.tenantId).toBe('new-tenant-id');
-      expect(firstCall.name).toBe('Default STT Model');
-      expect(firstCall.key).toBe('default-stt-model');
-      expect(firstCall.dataType).toBe('String');
-      expect(firstCall.description).toBe('STT default');
-      expect(firstCall.namespace).toBe('com.flw.stt');
-      expect(firstCall.value).toBe('whisper-base');
-      expect(firstCall.defaultValue).toBe('whisper-base');
-
-      const secondCall = mockGlobalSettingRepository.create.mock.calls[1][0];
-      expect(secondCall.tenantId).toBe('new-tenant-id');
-      expect(secondCall.key).toBe('feature.x');
-      expect(secondCall.value).toBe('true');
-      expect(secondCall.defaultValue).toBe('true');
-    });
-
-    it('continues cloning when a single insert fails and does not throw from create()', async () => {
-      const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-      const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
-      mockTenantRepository.create.mockResolvedValue(newTenant);
-      mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
-
-      const sources = [
-        createMockGlobalSettingEntity({ id: 'src-1', tenantId: 'global-id', key: 'will-fail' }),
-        createMockGlobalSettingEntity({ id: 'src-2', tenantId: 'global-id', key: 'will-succeed' }),
-      ];
-      mockGlobalSettingRepository.findAll.mockResolvedValue(sources);
-
-      mockGlobalSettingRepository.create.mockRejectedValueOnce(new Error('unique constraint race')).mockResolvedValueOnce({ id: 'cloned-2' });
-
-      const result = await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
-
-      expect(result.id).toBe('new-tenant-id');
-      expect(mockGlobalSettingRepository.create).toHaveBeenCalledTimes(2);
+      // `provisionTenantConfigs` is DELETED. It read `key === '__GLOBAL__'` — the seeded
+      // CUSTOMER tenant `50000000-…`, a platform-admin PLAYGROUND — and froze a copy of its
+      // settings onto every new tenant. That is a rule-00 violation twice over: one customer's
+      // configuration became every other customer's, and the copy stopped tracking the platform
+      // the moment it was written. Absence is now the answer: `AppSettingsService` resolves
+      // tenant → SYSTEM at read time, so a tenant with no row of its own gets the platform's
+      // CURRENT value rather than a snapshot of somebody's playground.
+      expect(mockTenantRepository.findFirst).not.toHaveBeenCalledWith({ where: { key: '__GLOBAL__' } });
+      expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
     });
 
     it('does not throw and still returns the new tenant when global tenant lookup returns null', async () => {

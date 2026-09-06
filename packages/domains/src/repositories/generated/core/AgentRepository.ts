@@ -61,7 +61,8 @@ export class AgentRepository extends Repository<AgentEntity, Agent> {
       orderBy: [{ tenantId: 'desc' }],
     });
     const visible = rows.filter((row) => row.tenantId === tenantId || row.tenantId === SYSTEM_TENANT_ID);
-    const row = visible.find((candidate) => candidate.tenantId === tenantId) ?? visible.find((candidate) => candidate.tenantId === SYSTEM_TENANT_ID) ?? null;
+    const row =
+      visible.find((candidate) => candidate.tenantId === tenantId) ?? visible.find((candidate) => candidate.tenantId === SYSTEM_TENANT_ID) ?? null;
     return row ? AgentEntityMapper.getInstance().toDomainEntity(row) : null;
   }
 

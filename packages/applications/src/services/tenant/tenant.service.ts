@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -8,7 +8,6 @@ import {
   TenantEntity,
   TenantFactory,
   TenantRepository,
-  GlobalSettingFactory,
   GlobalSettingRepository,
   GlobalSettingEntity,
   CoreDatabaseService,
@@ -21,7 +20,6 @@ import {
   AsrPipelineVersionRepository,
   AsrPipelineVersionFactory,
   AiModelRepository,
-  AiModelFactory,
   TenantPlan,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
@@ -35,10 +33,7 @@ import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constan
 import { DEFAULT_GEN_DEPARTMENT } from './departmentDefaults';
 import { scrubLockedForAudit } from './scrubbing';
 import { generateUniqueTenantKey } from './tenantKey';
-// Plan → model clone-subset. Imported from the specific file
-// (not the entitlements barrel) to avoid pulling the request-scoped
-// EntitlementsService and creating a module import cycle.
-import { modelAllowedForTier, modelTierForPlan } from '../entitlements/model-access';
+import { ITenantReferenceSetService } from './reference-set/ITenantReferenceSetService';
 
 /**
  * Reserved system tenant that owns the platform-wide AI model catalog (the
@@ -79,14 +74,23 @@ export class TenantService extends BaseService implements ITenantService {
     private readonly tenantBucketService: ITenantBucketService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // Appended last so existing positional callers
-    // (and tests) stay append-only. Used to clone the SYSTEM AiModel catalog
-    // into each new tenant.
-    private readonly aiModelRepository: AiModelRepository,
+    // Retained for constructor ARITY only. Its user, `provisionTenantModelCatalog`, was
+    // deleted by TASK-890 L13 (OD-O: the catalogue is CONFIG, stays SYSTEM-shared-read, and is
+    // never cloned). Removing the positional dependency would renumber every argument after it
+    // in six test fixtures for no behavioural gain; it goes with the ASR-pipeline clone under
+    // TASK-901, which owns the two parameters that follow.
+    private readonly _retiredAiModelRepository: AiModelRepository,
     // Appended last (append-only). Used
     // to clone the SYSTEM default ASR pipeline's current version into each new
     // tenant alongside the pipeline itself.
     private readonly asrPipelineVersionRepository: AsrPipelineVersionRepository,
+    /**
+     * TASK-890 §3.4 — the SYSTEM reference set. `@Optional()` + trailing, the house convention:
+     * production DI supplies it through `TenantServiceModule`; the positional unit fixtures do
+     * not, and a tenant created without it is provisioned with no platform content — which the
+     * step above LOGS rather than hides, because that is exactly the state proof #9 looks for.
+     */
+    @Optional() @Inject(ITenantReferenceSetService) private readonly referenceSet?: ITenantReferenceSetService,
   ) {
     super(eventEmitter, clsService, ResourceType.Tenant);
   }
@@ -158,31 +162,10 @@ export class TenantService extends BaseService implements ITenantService {
     }
 
     try {
-      await this.provisionTenantConfigs(tenant.id);
-    } catch (error) {
-      this.logger.warn({
-        message: 'Failed to provision tenant configurations for new tenant',
-        tenantId: tenant.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    try {
       await this.provisionDefaultDepartment(tenant.id);
     } catch (error) {
       this.logger.warn({
         message: 'Failed to provision default department for new tenant',
-        tenantId: tenant.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    try {
-      // Clone only the plan-appropriate model subset.
-      await this.provisionTenantModelCatalog(tenant.id, tenant.plan ?? null);
-    } catch (error) {
-      this.logger.warn({
-        message: 'Failed to provision AI model catalog for new tenant',
         tenantId: tenant.id,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -208,114 +191,41 @@ export class TenantService extends BaseService implements ITenantService {
       });
     }
 
-    return tenant;
-  }
-
-  /**
-   * Clones every `AiModel` row from the master `SYSTEM_TENANT_ID` catalog into
-   * the newly created tenant so each tenant owns an editable copy of the
-   * platform catalog. Composes with the `GlobalSetting` clone
-   * (`provisionTenantConfigs`) as an independent provisioning step.
-   *
-   * Behaviour mirrors `provisionTenantConfigs`:
-   *  - Reads the SYSTEM-owned source rows.
-   *  - For each source row, skips it when the new tenant already owns the slug
-   *    (`isSlugUnique` === false) so the method is idempotent and safe to
-   *    re-run as an existing-tenant backfill.
-   *  - Builds a clone via `AiModelFactory` bound to the NEW tenant; download
-   *    state is intentionally NOT copied — the factory resets it to
-   *    `NOT_DOWNLOADED` because a tenant's artifact state is its own.
-   *  - Each insert is wrapped in a try/catch so a single failure does not
-   *    abort the batch; the failure is logged and the loop continues.
-   *  - When zero rows are cloned, a warning is emitted for operators.
-   */
-  private async provisionTenantModelCatalog(newTenantId: string, plan: TenantPlan | null = null): Promise<void> {
-    const sourceModels = await this.aiModelRepository.findAll({
-      where: { tenantId: SYSTEM_TENANT_ID },
-    });
-
-    // Clone only the plan-appropriate SUBSET. Untagged catalog
-    // rows clone into every tier, so this is a no-op for today's (untagged)
-    // seed; ops opt models into higher tiers with a `tier:<full|full_custom>`
-    // tag. A null plan (ungated/system) resolves to the full catalog.
-    const tier = modelTierForPlan(plan);
-
-    let clonedCount = 0;
-    for (const src of sourceModels) {
-      try {
-        if (!modelAllowedForTier(src.tags, tier)) {
-          continue;
-        }
-
-        // Idempotency: skip slugs the new tenant already owns (backfill-safe).
-        const isUnique = await this.aiModelRepository.isSlugUnique(newTenantId, src.slug);
-        if (!isUnique) {
-          continue;
-        }
-
-        const cloned = AiModelFactory.CreateAiModel({
-          tenantId: newTenantId,
-          name: src.name,
-          slug: src.slug,
-          description: src.description ?? undefined,
-          category: src.category,
-          taskType: src.taskType,
-          modelType: src.modelType,
-          source: src.source,
-          sourceUri: src.sourceUri,
-          sourceRevision: src.sourceRevision ?? undefined,
-          format: src.format,
-          libraryName: src.libraryName,
-          servedBy: src.servedBy,
-          deploymentKind: src.deploymentKind,
-          wireModelId: src.wireModelId ?? undefined,
-          license: src.license ?? undefined,
-          gated: src.gated,
-          baseModel: src.baseModel ?? undefined,
-          languages: src.languages,
-          // Carry the registry columns through the
-          // clone; dropping them left every new tenant with NULL-provider
-          // clones that SHADOW the SYSTEM values in the runtime-provider
-          // resolvers (same defect the seed backfill already fixed).
-          provider: src.provider ?? undefined,
-          architecture: src.architecture ?? undefined,
-          metaData: src.metaData ?? undefined,
-          memorySizeMb: src.memorySizeMb ?? undefined,
-          computeType: src.computeType ?? undefined,
-          tags: src.tags,
-          createdBy: this.requestUser?.id,
-        });
-
-        await this.aiModelRepository.create(cloned);
-        clonedCount += 1;
-      } catch (error) {
-        this.logger.warn({
-          message: 'Failed to clone AI model for new tenant - continuing',
-          newTenantId,
-          sourceModelId: src.id,
-          sourceSlug: src.slug,
-          error: error instanceof Error ? error.message : String(error),
-        });
+    // TASK-890 §3.4 (OD-H / OD-M) — the SYSTEM REFERENCE SET: context schemas, prompt
+    // templates, agents (+ their TENANT assignments) and workflow definitions, CLONED into the
+    // new tenant. This is the step that makes the runtime's content plane tenant-only: after
+    // L13 step v nothing widens a content read to SYSTEM, so a tenant that was never
+    // provisioned resolves `AGENT_NOT_ASSIGNED` / `PROMPT_DEFAULT_NOT_PROVISIONED` rather than
+    // quietly serving the platform's rows.
+    //
+    // Best-effort like its six siblings — a copy that fails must not fail the tenant — and the
+    // summary it returns names every failure. `POST /admin/tenants/:id/reference-set/sync` is
+    // the repair, and §4.4 proof #9 is what catches a tenant this step could not complete.
+    try {
+      const summary = await this.referenceSet?.provision(tenant.id);
+      if (summary && summary.warnings.length > 0) {
+        this.logger.warn({ message: 'Reference set provisioned with warnings', tenantId: tenant.id, warnings: summary.warnings });
       }
-    }
-
-    if (clonedCount === 0) {
+      if (!this.referenceSet) {
+        this.logger.warn({ message: 'Reference-set service is not wired; the new tenant has no platform content', tenantId: tenant.id });
+      }
+    } catch (error) {
       this.logger.warn({
-        message: 'No AI models cloned for new tenant',
-        newTenantId,
-        systemTenantId: SYSTEM_TENANT_ID,
+        message: 'Failed to provision the SYSTEM reference set for new tenant',
+        tenantId: tenant.id,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
+
+    return tenant;
   }
 
   /**
    * Clones EVERY enabled SYSTEM `AsrPipeline` (plus each one's current
    * `AsrPipelineVersion`) into the newly created tenant, so a new tenant owns
    * the SAME pipeline catalog as SYSTEM — full parity by policy. This
-   * generalizes an earlier single-default-only clone; mirroring
-   * `provisionTenantModelCatalog`, which already
-   * clones the whole SYSTEM AiModel catalog. Composes as an independent
-   * provisioning step.
+   * generalizes an earlier single-default-only clone. Composes as an
+   * independent provisioning step.
    *
    * Behaviour:
    *  - Reads the SYSTEM-owned ENABLED pipelines (the shared master catalog).
@@ -551,95 +461,6 @@ export class TenantService extends BaseService implements ITenantService {
         name: saved.name,
       },
     });
-  }
-
-  /**
-   * Clones every `GlobalSetting` row from the master `__GLOBAL__` tenant into
-   * the newly created tenant so that the SDK and admin UI find a fully
-   * populated configuration on first load.
-   *
-   * Behaviour:
-   *  - Looks up the global tenant by `key === GLOBAL_TENANT_KEY` and reads
-   *    every setting belonging to it.
-   *  - For each source row, builds a clone via `GlobalSettingFactory` whose
-   *    `value` starts at `defaultValue ?? value` and copies the descriptive
-   *    metadata (`name`, `key`, `dataType`, `description`, `namespace`,
-   *    `locked`). The `locked` flag is preserved so admin-restricted defaults
-   *    (e.g. `default-stt-model`, `smr-provider-models`) remain locked on the
-   *    new tenant and are enforced by `updateTenantConfigs`.
-   *  - Each insert is wrapped in a try/catch so a single failure (e.g. a
-   *    unique-constraint race on `(tenantId, name, key)`) does not abort the
-   *    whole batch — the failure is logged and the loop continues.
-   *  - When zero rows are cloned, a warning is emitted with the global
-   *    tenant id so operators can investigate.
-   */
-  private async provisionTenantConfigs(newTenantId: string): Promise<void> {
-    let globalTenant: TenantEntity | null = null;
-    try {
-      globalTenant = await this.tenantRepository.findFirst({
-        where: { key: GLOBAL_TENANT_KEY },
-      });
-    } catch (error) {
-      this.logger.warn({
-        message: 'Global tenant lookup failed during config provisioning',
-        newTenantId,
-        globalTenantKey: GLOBAL_TENANT_KEY,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-
-    if (!globalTenant) {
-      this.logger.warn({
-        message: 'Global tenant not found during config provisioning',
-        newTenantId,
-        globalTenantKey: GLOBAL_TENANT_KEY,
-      });
-      return;
-    }
-
-    const sourceSettings = await this.globalSettingRepository.findAll({
-      where: { tenantId: globalTenant.id },
-    });
-
-    let clonedCount = 0;
-    for (const src of sourceSettings) {
-      const seedValue = src.defaultValue ?? src.value;
-      try {
-        const cloned = GlobalSettingFactory.CreateGlobalSetting({
-          tenantId: newTenantId,
-          name: src.name,
-          key: src.key,
-          dataType: src.dataType,
-          description: src.description ?? undefined,
-          namespace: src.namespace ?? undefined,
-          defaultValue: seedValue,
-          value: seedValue,
-          locked: src.locked,
-          createdBy: this.requestUser?.id,
-        });
-
-        await this.globalSettingRepository.create(cloned);
-        clonedCount += 1;
-      } catch (error) {
-        this.logger.warn({
-          message: 'Failed to clone global setting for new tenant - continuing',
-          newTenantId,
-          sourceSettingId: src.id,
-          sourceKey: src.key,
-          sourceName: src.name,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    if (clonedCount === 0) {
-      this.logger.warn({
-        message: 'No global settings cloned for new tenant',
-        newTenantId,
-        globalTenantId: globalTenant.id,
-      });
-    }
   }
 
   /**

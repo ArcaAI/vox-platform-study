@@ -6,5 +6,6 @@ export * from './tenant.dto.mapper';
 export * from './tenantConfig.dto.mapper';
 export * from './tenantKey';
 export * from './onboarding';
+export * from './reference-set';
 export * from './tenant.service.module';
 export * from './tenant.service';
