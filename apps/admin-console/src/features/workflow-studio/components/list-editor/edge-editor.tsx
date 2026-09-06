@@ -1,7 +1,11 @@
 'use client';
 
 /**
- * "Connect to…" — a picker of valid targets rather than a drag. The README
+ * "Connect to…" — a picker of valid targets rather than a drag.
+ *
+ * TASK-890 (black-box J4-F3): options and existing edges name the node — its authored label, else
+ * its type plus a short id (`lib/node-identity.ts`) — never the bare type, which made every
+ * same-typed sibling look identical. The README
  * approach text describes a "`Command`-style picker"; this implementation deliberately uses the
  * plain `Select` primitive instead of the `cmdk`-backed `Command` component — both are fully
  * keyboard-operable single-pointer controls (WCAG 2.5.7 is satisfied either way), and `Select`
@@ -16,7 +20,7 @@
 import { Button, Field, FieldLabel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui';
 import { IconTrash } from '@tabler/icons-react';
 import { useState } from 'react';
-import { humanizeKey } from '../../lib/schema-form';
+import { nodeDisplayName } from '../../lib/node-identity';
 import type { GraphStoreEdge, GraphStoreNode } from '../../store/types';
 
 export interface EdgeEditorProps {
@@ -36,14 +40,15 @@ export function EdgeEditor({ node, edges, otherNodes, readOnly, onConnect, onDis
   return (
     <div className="flex flex-col gap-2 pl-4">
       {edges.length > 0 ? (
-        <ul className="flex flex-col gap-1" aria-label={`Connections from ${humanizeKey(node.type)}`}>
+        <ul className="flex flex-col gap-1" aria-label={`Connections from ${nodeDisplayName(node)}`}>
           {edges.map((edge) => {
             const targetNode = otherNodes.find((candidate) => candidate.id === edge.target);
+            const targetName = targetNode ? nodeDisplayName(targetNode) : edge.target;
             return (
               <li key={edge.id} className="flex items-center justify-between gap-2 text-sm">
-                <span>→ {targetNode ? humanizeKey(targetNode.type) : edge.target}</span>
+                <span>→ {targetName}</span>
                 {!readOnly ? (
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Disconnect from ${targetNode ? humanizeKey(targetNode.type) : edge.target}`} onClick={() => onDisconnect(edge.id)}>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Disconnect from ${targetName}`} onClick={() => onDisconnect(edge.id)}>
                     <IconTrash aria-hidden="true" />
                   </Button>
                 ) : null}
@@ -61,8 +66,10 @@ export function EdgeEditor({ node, edges, otherNodes, readOnly, onConnect, onDis
             </SelectTrigger>
             <SelectContent>
               {otherNodes.map((candidate) => (
-                <SelectItem key={candidate.id} value={candidate.id}>
-                  {humanizeKey(candidate.type)}
+                // `data-value` so a test (and a human reading the DOM) can tell WHICH node an
+                // option is, even when two share a label.
+                <SelectItem key={candidate.id} value={candidate.id} data-value={candidate.id}>
+                  {nodeDisplayName(candidate)}
                 </SelectItem>
               ))}
             </SelectContent>
