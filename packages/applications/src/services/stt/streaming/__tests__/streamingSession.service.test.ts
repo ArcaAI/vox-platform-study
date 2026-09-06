@@ -759,7 +759,10 @@ describe('StreamingSessionService — voice profiles ride the create body', () =
 
   it('sends null rather than an empty list when the user has enrolled nothing', async () => {
     // One encoding of one state: `apps/stt` reads absence as "diarize generically".
-    const body = await openSession({ listForRuntime: vi.fn().mockResolvedValue([]) }, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }));
+    const body = await openSession(
+      { listForRuntime: vi.fn().mockResolvedValue([]) },
+      specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }),
+    );
     expect(body.voice_profiles).toBeNull();
   });
 
@@ -767,5 +770,53 @@ describe('StreamingSessionService — voice profiles ride the create body', () =
     const body = await openSession(undefined, specWith({ enabled: true, embeddingSlug: 'ecapa-tdnn-voxceleb' }));
     expect(body.voice_profiles).toBeNull();
     expect(body.session_id).toBe('s-vp');
+  });
+});
+
+/**
+ * TASK-890 L11 (§3.13) — `monthlySttSessionSeconds` was RECORDED at teardown
+ * (`emitStreamingUsage`) and never CHECKED anywhere. A tenant past its live-
+ * transcription allowance could open sessions indefinitely and only discover
+ * the overrun on its invoice, which is the opposite of what an allowance is.
+ *
+ * The check belongs at session OPEN: that is the only moment where refusing
+ * costs nothing. Refusing at teardown would bill the work and then complain.
+ */
+describe('StreamingSessionService — the live-session allowance (TASK-890)', () => {
+  const config: any = { config: { STT_URL: 'http://stt.internal:9000' } };
+  const dto: any = { sessionId: 's-1', tenantId: 'tenant-1', consultationId: 'c-1' };
+
+  function makeHttp() {
+    return {
+      get: vi.fn(),
+      delete: vi.fn(),
+      post: vi.fn().mockReturnValue(of({ data: { session_id: 's-1', status: 'ready' } })),
+    } as any;
+  }
+
+  it('prechecks the session allowance for the SESSION tenant, before opening on STT', async () => {
+    const http = makeHttp();
+    const entitlements = { assertMeterQuota: vi.fn().mockResolvedValue(undefined) };
+    const service = new StreamingSessionService(http, config, undefined, undefined, undefined, entitlements as any);
+
+    await service.createSession(dto);
+
+    expect(entitlements.assertMeterQuota).toHaveBeenCalledWith('tenant-1', 'monthlySttSessionSeconds');
+    expect(entitlements.assertMeterQuota.mock.invocationCallOrder[0]).toBeLessThan(http.post.mock.invocationCallOrder[0]);
+  });
+
+  it('refuses to open a session on an exhausted allowance — STT is never asked', async () => {
+    const http = makeHttp();
+    const entitlements = { assertMeterQuota: vi.fn().mockRejectedValue(new Error('over allowance')) };
+    const service = new StreamingSessionService(http, config, undefined, undefined, undefined, entitlements as any);
+
+    await expect(service.createSession(dto)).rejects.toThrow('over allowance');
+    expect(http.post).not.toHaveBeenCalled();
+  });
+
+  it('opens normally when no entitlements service is wired (metering is additive)', async () => {
+    const http = makeHttp();
+    const service = new StreamingSessionService(http, config);
+    await expect(service.createSession(dto)).resolves.toMatchObject({ status: 'ready' });
   });
 });

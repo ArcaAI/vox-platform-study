@@ -1,6 +1,7 @@
 export * from './dto';
 export * from './IUsageLedgerService';
 export * from './idempotency-keys';
+export * from './llm-stream-usage';
 export * from './normalizer/llm-usage-normalizer';
 export * from './usage-attributes';
 export * from './usage-event.validation';

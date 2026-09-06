@@ -85,18 +85,35 @@ function make(overrides: Record<string, unknown> = {}) {
       },
     })),
   };
-  const deps = { agentService, resolver, invocation, cls, jobService, realtimeService, mediaService, asrResolver, ...overrides };
+  // TASK-890 L11 — metering parity: the invocation routes now precheck the
+  // LLM-token allowance and record what they spent, as `speech()` always did.
+  const entitlementsService = { assertMeterQuota: vi.fn(async () => undefined) };
+  const usageLedger = { recordUsage: vi.fn(async (_batch: unknown) => ({ written: 1 })) };
+  const deps = {
+    agentService,
+    resolver,
+    invocation,
+    cls,
+    jobService,
+    realtimeService,
+    mediaService,
+    asrResolver,
+    entitlementsService,
+    usageLedger,
+    httpService: {} as unknown,
+    ...overrides,
+  };
   const controller = new AgentController(
     deps.agentService as never,
     deps.resolver as never,
     deps.invocation as never,
     deps.cls as never,
-    {} as never,
+    deps.httpService as never,
     { getConfigValue: () => 'http://tts' } as never,
     undefined, // secretsService
     undefined, // ttsResolver
-    undefined, // entitlementsService
-    undefined, // usageLedger
+    deps.entitlementsService as never,
+    deps.usageLedger as never,
     deps.jobService as never,
     deps.realtimeService as never,
     deps.mediaService as never,
@@ -201,5 +218,137 @@ describe('AgentController — transcriptions (TASK-861: agent-keyed, no pipeline
     realtimeService.dispatchDramatiqJob.mockRejectedValue(new Error('redis down'));
     await expect(controller.transcribe('x', { mediaId: 'media-1' })).rejects.toThrow();
     expect(jobService.failJob).toHaveBeenCalledWith('job-1', 'redis down', 'SETUP_ERROR');
+  });
+});
+
+/**
+ * TASK-890 L11 (BLOCKER #7, OD-E) — `POST /agents/:slug/invocations` checked no
+ * quota and recorded no usage while `speech()` on the SAME controller did both.
+ * A tenant could run the platform's most expensive route without limit and
+ * without a line on its own bill.
+ */
+describe('AgentController — metering parity on invocations', () => {
+  function usageResult() {
+    return { text: 'hello', provider: 'lm-studio', model: 'lms-gemma-4-e2b-it-qat', usage: { promptTokens: 120, completionTokens: 40 } };
+  }
+
+  it('prechecks the LLM-token allowance BEFORE the (expensive) TEXT call', async () => {
+    const { controller, entitlementsService, invocation } = make();
+    invocation.invokeText.mockResolvedValue(usageResult());
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
+    expect(entitlementsService.assertMeterQuota).toHaveBeenCalledWith(TENANT, 'monthlyLlmTokens');
+    expect(entitlementsService.assertMeterQuota.mock.invocationCallOrder[0]).toBeLessThan(invocation.invokeText.mock.invocationCallOrder[0]);
+  });
+
+  it('short-circuits on an exhausted allowance — no TEXT call, no ledger row', async () => {
+    const { controller, entitlementsService, invocation, usageLedger } = make();
+    entitlementsService.assertMeterQuota.mockRejectedValue(new Error('quota exceeded'));
+    await expect(controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined)).rejects.toThrow();
+    expect(invocation.invokeText).not.toHaveBeenCalled();
+    expect(usageLedger.recordUsage).not.toHaveBeenCalled();
+  });
+
+  it('blocking: records ONE `generate` batch carrying trigger AGENT_INVOCATION', async () => {
+    const { controller, usageLedger, invocation } = make();
+    invocation.invokeText.mockResolvedValue(usageResult());
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+    const batch = usageLedger.recordUsage.mock.calls[0][0] as {
+      common: { operation: string; provider: string; attributesJson?: Record<string, unknown> };
+      units: { quantity: number }[];
+    };
+    expect(batch.common.operation).toBe('generate');
+    expect(batch.common.provider).toBe('lm-studio');
+    expect(batch.common.attributesJson).toMatchObject({ trigger: 'AGENT_INVOCATION' });
+    expect(batch.units.length).toBeGreaterThan(0);
+  });
+
+  it('blocking: records nothing when TEXT reported no usage — never a row saying "nothing happened"', async () => {
+    const { controller, usageLedger } = make();
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(usageLedger.recordUsage).not.toHaveBeenCalled();
+  });
+
+  it('blocking: a ledger failure never breaks a delivered generation', async () => {
+    const { controller, usageLedger, invocation } = make();
+    invocation.invokeText.mockResolvedValue(usageResult());
+    usageLedger.recordUsage.mockRejectedValue(new Error('outbox down'));
+    const res = fakeRes();
+    await expect(controller.invoke('clinic-summarizer', { text: 'hi' }, res as never, undefined)).resolves.toBeUndefined();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('stream: tees the terminal usage frame and records ONE `generate.stream` batch', async () => {
+    const { controller, usageLedger, invocation } = make();
+    const stream = new PassThrough();
+    invocation.invokeText.mockResolvedValue({ stream });
+    const res = fakeRes();
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, res as never, 'stream');
+    stream.write('data: {"data":{"delta":"Pati"}}\n\n');
+    stream.write(
+      `data: ${JSON.stringify({
+        data: {
+          usage: {
+            task_id: 'task-9',
+            provider: 'openai_compat',
+            model: 'lms-gemma-4-e2b-it-qat',
+            endpoint_kind: 'openai.chat',
+            interrupted: false,
+            byok: false,
+            prompt_tokens: 10,
+            completion_tokens: 5,
+          },
+        },
+      })}\n\n`,
+    );
+    stream.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+    const batch = usageLedger.recordUsage.mock.calls[0][0] as { common: { operation: string; attributesJson?: Record<string, unknown> } };
+    expect(batch.common.operation).toBe('generate.stream');
+    expect(batch.common.attributesJson).toMatchObject({ trigger: 'AGENT_INVOCATION' });
+  });
+
+  it('stream: the frames the caller receives are untouched — the tee reads a side copy', async () => {
+    const { controller, invocation } = make();
+    const stream = new PassThrough();
+    invocation.invokeText.mockResolvedValue({ stream });
+    const res = fakeRes();
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, res as never, 'stream');
+    stream.write('data: {"data":{"delta":"Pati"}}\n\n');
+    stream.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(res.chunks.join('')).toBe('data: {"data":{"delta":"Pati"}}\n\n');
+  });
+});
+
+describe('AgentController — speech carries the same activity dimension', () => {
+  it('stamps trigger AGENT_INVOCATION on the tts.synthesize row', async () => {
+    const stream = new PassThrough();
+    const httpService = {
+      axiosRef: { post: vi.fn(async () => ({ headers: { 'content-type': 'audio/wav', 'x-tts-provider': 'kokoro' }, data: stream })) },
+    };
+    const { controller, usageLedger } = make({
+      httpService,
+      invocation: {
+        inputProblems: vi.fn(() => []),
+        invokeText: vi.fn(),
+        buildSpeechRequest: vi.fn(() => ({ input: 'hello there', voice: 'af_heart' })),
+        resolveAsrPipelineId: vi.fn(),
+      },
+      resolver: { resolve: vi.fn(async () => ({ ...RESOLVED, task: 'TEXT_TO_SPEECH' })) },
+    });
+    const res = fakeRes();
+    await controller.speech('platform-tts', { text: 'hello there' }, res as never);
+    stream.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+    const batch = usageLedger.recordUsage.mock.calls[0][0] as { common: { operation: string; attributesJson?: Record<string, unknown> } };
+    expect(batch.common.operation).toBe('tts.synthesize');
+    expect(batch.common.attributesJson).toMatchObject({ trigger: 'AGENT_INVOCATION', interrupted: false });
   });
 });

@@ -12,13 +12,19 @@ import {
   IEntitlementsService,
   IMediaService,
   IUsageLedgerService,
+  LlmStreamUsageCollector,
   SecretsService,
   TranscriptionJobService,
   TranscriptionRealtimeService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
+  buildLlmUsageInputFromTokenCounts,
+  classifyLlmDeployment,
+  toLedgerProvider,
+  withUsageTrigger,
 } from '@arcaai/applications';
-import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
+import type { AgentTextInvocationResult, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
+import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
@@ -81,6 +87,14 @@ export interface AgentTranscriptionResponse {
 }
 
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+
+/**
+ * Every ledger row this controller writes names the activity that produced it
+ * (TASK-890 OD-E). All three routes here ARE the agent business plane, so the
+ * value is a constant rather than a parameter — a caller cannot claim to be
+ * something else.
+ */
+const AGENT_INVOCATION_TRIGGER = 'AGENT_INVOCATION' as const;
 
 /**
  * AgentController — the Agent BUSINESS plane (TASK-863 §3.5), mounted at `/agents`
@@ -157,11 +171,23 @@ export class AgentController {
   @ApiResponse({ status: 200, description: 'The generated output (JSON) or the SSE stream.' })
   @ApiResponse({ status: 400, description: 'The body does not match the agent’s inputSchema, or the agent is not a TEXT_GENERATION agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
+  @ApiResponse({
+    status: 429,
+    description: 'The tenant has reached its `monthlyLlmTokens` allowance. Refused before the model runs, so nothing is billed.',
+  })
   async invoke(@Param('slug') slug: string, @Body() body: AgentInvocationBody, @Res() res: Response, @Query('mode') mode?: string): Promise<void> {
     const tenantId = this.requireTenant();
     const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug });
     const problems = this.invocation.inputProblems(resolved, body ?? {});
     if (problems.length > 0) throw new BadRequestException({ message: 'The invocation body does not match the agent’s inputSchema.', problems });
+
+    // TASK-890 (BLOCKER #7) — the LLM-token allowance, BEFORE the expensive
+    // call, exactly as `speech()` below has always gated `monthlyTtsCharacters`.
+    // Post-hoc debit (D6): this call's token count is unknowable until TEXT
+    // answers, so the check compares month-to-date rollups against the
+    // allowance rather than predicting this call — the same call shape
+    // `summary.service.ts` uses. Kill-switch-gated inside; → 429 when over.
+    await this.entitlementsService?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
 
     if (mode === 'stream') {
       const { stream } = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'stream');
@@ -173,24 +199,41 @@ export class AgentController {
       res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
       res.flushHeaders();
       const heartbeat = setInterval(() => res.write(':keepalive\n\n'), SSE_HEARTBEAT_INTERVAL_MS);
-      stream.on('data', (chunk: Buffer) => res.write(chunk));
+      // Forward first, observe from a side copy: the client's bytes are never
+      // touched by metering (§3.13 — the ONE tee, `LlmStreamUsageCollector`).
+      const collector = new LlmStreamUsageCollector();
+      stream.on('data', (chunk: Buffer) => {
+        res.write(chunk);
+        collector.observe(chunk);
+      });
       stream.on('end', () => {
         clearInterval(heartbeat);
         res.end();
+        this.emitInvocationUsage(collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER }), slug);
       });
       stream.on('error', (err: Error) => {
         clearInterval(heartbeat);
         this.logger.error({ message: 'Agent invocation stream error', agentSlug: slug, error: err.message });
         res.end();
+        // The tokens seen before the socket died were still spent.
+        this.emitInvocationUsage(
+          collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, interrupted: true }),
+          slug,
+        );
       });
       res.on('close', () => {
         clearInterval(heartbeat);
         stream.destroy();
+        this.emitInvocationUsage(
+          collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, interrupted: true }),
+          slug,
+        );
       });
       return;
     }
 
     const result = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking');
+    this.emitInvocationUsage(this.buildBlockingUsage(tenantId, resolved, result), slug);
     const payload: AgentTextInvocationResponse = {
       agentSlug: resolved.slug,
       agentVersionId: resolved.agentVersionId,
@@ -299,7 +342,9 @@ export class AgentController {
             deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
             ...(costBasis ? { costBasis } : {}),
             requestId,
-            attributesJson: { interrupted }, // allow-listed dimensions only (usage-attributes.ts); the agent identity is on the response headers
+            // Allow-listed dimensions only (usage-attributes.ts); the agent identity is
+            // on the response headers. `trigger` names the ACTIVITY (TASK-890 OD-E).
+            attributesJson: { interrupted, trigger: AGENT_INVOCATION_TRIGGER },
           },
           units: [{ unit: AiUsageUnit.CHARACTER, quantity: characters }],
         })
@@ -383,6 +428,63 @@ export class AgentController {
       pipelineId: spec.runtimeKey,
       sseUrl: `/api/v1/audio/transcription-jobs/${job.id}/stream`,
     };
+  }
+
+  /**
+   * The blocking invocation's ledger batch, from the bare token counts TEXT
+   * returned.
+   *
+   * Deliberately NOT `buildLlmUsageInput`: that builder needs a `usage_detail`
+   * block (endpoint kind, the raw provider usage object, the cache/reasoning
+   * split), and the blocking invocation result carries only
+   * `{promptTokens, completionTokens}`. Fabricating an `endpointKind` to reach
+   * the richer builder would stamp an API shape that never happened, so this
+   * uses the counts-only builder that exists for exactly this case.
+   *
+   * FUNDING IS DERIVED, NEVER STAMPED (rule 09): `fundingTier === 'tenant'`
+   * means the tenant's own credential served the call, which is BYOK whichever
+   * vendor answered; only an unfunded call lets the provider decide
+   * self-hosted vs cloud.
+   */
+  private buildBlockingUsage(tenantId: string, resolved: ResolvedAgent, result: AgentTextInvocationResult): UsageEventBatchInput | null {
+    if (!result.usage) return null;
+    const byok = resolved.fundingTier === 'tenant';
+    const provider = toLedgerProvider(result.provider ?? resolved.compiledConfig.model.provider ?? '');
+    const batch = buildLlmUsageInputFromTokenCounts({
+      tenantId,
+      operation: 'generate',
+      // No TEXT task id on the blocking path, so a fresh intent id per request:
+      // this emission happens exactly once and has no abort path to converge with.
+      requestId: generateId(),
+      provider: provider || 'none',
+      model: result.model ?? resolved.compiledConfig.model.slug,
+      deployment: AiDeploymentKind[classifyLlmDeployment(provider, byok)],
+      occurredAt: new Date(),
+      inputTokens: result.usage.promptTokens,
+      outputTokens: result.usage.completionTokens,
+    });
+    if (!batch) return null;
+    // `costBasis` is never derived from `deployment` (usage-event.input.ts): a
+    // BYOK emitter states it, or the row defaults to INTERNAL and over-reports
+    // platform spend — the safe direction, but wrong for a tenant-funded call.
+    const funded = byok ? { ...batch, common: { ...batch.common, costBasis: AiCostBasis.BYOK_NOTIONAL } } : batch;
+    return withUsageTrigger(funded, AGENT_INVOCATION_TRIGGER);
+  }
+
+  /**
+   * Fire-and-forget emission. The generation already happened and the caller
+   * already has its bytes: a metering failure must degrade to "not metered",
+   * never to a broken response.
+   */
+  private emitInvocationUsage(batch: UsageEventBatchInput | null, agentSlug: string): void {
+    if (!batch || !this.usageLedger) return;
+    void this.usageLedger.recordUsage(batch).catch((err: unknown) =>
+      this.logger.warn({
+        message: 'Agent invocation usage emission failed',
+        agentSlug,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
   }
 
   private requireTenant(): string {
