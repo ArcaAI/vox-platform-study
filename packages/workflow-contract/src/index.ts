@@ -83,6 +83,20 @@ export type {
 
 export { canonicalJson } from './canonical-json';
 
+// TASK-890 §3.2 — the ONE prompt-template grammar (`{{ path | default("…") }}`) that replaces the
+// six flavours §2.4 catalogued, mirrored in Python by the harness's `templating.py` and held to
+// `tests/contracts/prompt-template.fixture.json` by two loaders. Every TS renderer imports
+// `renderTemplate` from HERE — there is no dispatch, no syntax sniff and no per-caller copy.
+export {
+  PromptTemplateSyntaxError,
+  PromptVariableUnresolvedError,
+  renderTemplate,
+  templateReferenceProblems,
+  templateReferences,
+  templateSyntaxProblems,
+} from './template';
+export type { DeclaredNamespaces, RenderTemplateOptions, TemplateReference } from './template';
+
 export {
   AGENTIC_NODE_TYPES,
   AGENTIC_PALETTE_KEY,
