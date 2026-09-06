@@ -1,14 +1,23 @@
 /**
  * Golden Prompt Library (SYSTEM tenant).
  *
- * Promotes the 18-department fixture catalog (04-department.ts +
- * 07-prompt-template.ts) into platform-curated GOLDEN rows owned by the
- * SYSTEM tenant (00000000-…):
+ * Promotes the department fixture catalog (04-department.ts) into
+ * platform-curated GOLDEN rows owned by the SYSTEM tenant (00000000-…):
  *
  *   - 18 SYSTEM `Department` rows (code/name/description/promptConfig; the
- *     legacy per-department prompt pointers stay null),
- *   - 13 SYSTEM APPROVED `PromptTemplate`s (verbatim content copies of the
- *     fixture templates) + one v1 `PromptVersion` snapshot each.
+ *     legacy per-department prompt pointers stay null).
+ *
+ * ## Prompt templates are NO LONGER promoted (TASK-890 J7-1)
+ *
+ * This phase used to also mint 8 SYSTEM `PromptTemplate` rows as byte COPIES of
+ * the Global-tenant fixture bodies, under their own `71000000-…-0002-…` ids.
+ * That put the same template NAME in two tenants, and phase 26 skips a source
+ * whose `(tenantId, name)` the target already owns — so Global could never
+ * receive those eight as stamped clones and kept unstamped originals instead
+ * (measured on dev: 9 of SYSTEM's 17). `07-prompt-template.ts` now authors those
+ * eight ON SYSTEM, one home per template, and this file only SELECTS them:
+ * `GOLDEN_PROMPT_TEMPLATES` / `GOLDEN_PROMPT_VERSIONS` are a view over the
+ * seeded rows, kept because the seed's own tests read them.
  *
  * ## What left, and why the file kept its name
  *
@@ -17,8 +26,8 @@
  * per-visit-type agents for ArcaAI. All three went with `DepartmentAgent` itself
  * a prompt template's binding to a workflow now lives on the NODE
  * that references it, so there is no per-department agent row to seed. The
- * DEPARTMENT and PROMPT halves are untouched: they are the golden catalog every
- * tenant's provisioning still copies from.
+ * DEPARTMENT half is untouched: it is the golden catalog every tenant's
+ * provisioning still copies from.
  *
  * The filename and `seedAgentGoldenLibrary` are left alone deliberately. Both
  * are referenced by `seed/index.ts` ordering, by the pipeline-completeness test,
@@ -28,8 +37,8 @@
  *
  * ID blocks (documented in 00-constants.ts):
  *   70000000-…-0002-… SYSTEM golden departments
- *   71000000-…-0002-… SYSTEM golden prompt templates
- *   72000000-…-0002-… SYSTEM golden prompt versions
+ *   71000000-…-0002-… RETIRED — was SYSTEM golden prompt templates
+ *   72000000-…-0002-… RETIRED — was SYSTEM golden prompt versions
  *
  * SYSTEM_SHARED_READ_MODELS decision, amended:
  * Department is still deliberately NOT widened. PROMPT TEMPLATES ARE: `PromptTemplate`/`PromptVersion` joined SYSTEM_SHARED_READ_MODELS
@@ -45,17 +54,18 @@
  * is a dedicated super-admin-fed endpoint — not a scope widening.
  */
 import type { CorePrismaClient } from '../../../client';
-import { Prisma } from '../../../generated/core-prisma-client/client';
-import type { PromptTemplateCategory } from '../../../generated/core-prisma-client/enums';
-import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import { SYSTEM_TENANT_ID } from './00-constants';
 import { DEFAULT_DEPARTMENTS } from './04-department';
-import { DEFAULT_PROMPT_TEMPLATES, TEMPLATE_IDS } from './07-prompt-template';
+import { DEFAULT_PROMPT_TEMPLATES, DEFAULT_PROMPT_VERSIONS, TEMPLATE_IDS } from './07-prompt-template';
 
 const pad = (n: number): string => n.toString().padStart(12, '0');
 
 const goldenDepartmentId = (n: number): string => `70000000-0000-0000-0002-${pad(n)}`;
-const goldenTemplateId = (n: number): string => `71000000-0000-0000-0002-${pad(n)}`;
-const goldenVersionId = (n: number): string => `72000000-0000-0000-0002-${pad(n)}`;
+// `71000000-…-0002-…` (golden templates) and `72000000-…-0002-…` (their versions)
+// are RETIRED id blocks. They existed only for the byte copies this phase used to
+// mint; the eight bodies are authored on SYSTEM by `07-prompt-template.ts` under
+// their own ids now. Do not re-use these prefixes — a re-seeded database may still
+// carry rows written under them by an older seed.
 
 /**
  * Which fixture template each department's golden default agent documents with.
@@ -113,14 +123,26 @@ export const GOLDEN_DEPARTMENTS = DEFAULT_DEPARTMENTS.map((dept, i) => ({
   promptConfig: dept.promptConfig,
 }));
 
-const goldenDepartmentByCode = new Map<string, (typeof GOLDEN_DEPARTMENTS)[number]>(GOLDEN_DEPARTMENTS.map((d) => [d.code, d]));
-const fixtureDepartmentById = new Map<string, (typeof DEFAULT_DEPARTMENTS)[number]>(DEFAULT_DEPARTMENTS.map((d) => [d.id, d]));
 const fixtureTemplateById = new Map<string, (typeof DEFAULT_PROMPT_TEMPLATES)[number]>(DEFAULT_PROMPT_TEMPLATES.map((t) => [t.id, t]));
 
 // =============================================================================
-// SYSTEM golden prompt templates — verbatim content copies of the fixture
-// sources, deduplicated (the catch-all backs six departments), APPROVED so a
-// freshly-provisioned tenant resolves them for clinical generation.
+// SYSTEM golden prompt templates — a VIEW, no longer a copy (TASK-890 J7-1).
+//
+// This block used to PROMOTE the eight generic care-setting bodies: read them
+// out of the Global fixture catalog, re-key them under `71000000-…-0002-…`,
+// re-anchor their department to the golden SYSTEM one, and upsert them as a
+// second set of rows. That is what put the same template NAME in two tenants —
+// and phase 26 (`26-tenant-reference-set.ts`) skips a source whose
+// `(tenantId, name)` the target already owns, so Global could never receive
+// those eight as stamped clones and kept its unstamped originals instead
+// (measured: 9 of 17 on the dev database).
+//
+// `07-prompt-template.ts` now authors those eight ON SYSTEM directly, so there
+// is nothing left to promote. What stays here is the SELECTION — which template
+// backs which care setting — expressed as a view over the seeded rows. The
+// exports are kept because the inventory-lock and FK-closure tests read them;
+// `seedAgentGoldenLibrary` no longer writes a prompt row, because phase 07
+// already did.
 // =============================================================================
 
 const uniqueSourceIds: string[] = [];
@@ -131,45 +153,23 @@ for (const dept of DEFAULT_DEPARTMENTS) {
   }
 }
 
-export const GOLDEN_PROMPT_TEMPLATES = uniqueSourceIds.map((sourceId, i) => {
+export const GOLDEN_PROMPT_TEMPLATES = uniqueSourceIds.map((sourceId) => {
   const source = fixtureTemplateById.get(sourceId);
   if (!source) {
     throw new Error(`Golden library source template ${sourceId} missing from DEFAULT_PROMPT_TEMPLATES`);
   }
-  // Department-specific sources re-anchor to the SYSTEM golden department.
-  const sourceDept = source.departmentId ? fixtureDepartmentById.get(source.departmentId) : undefined;
-  const goldenDept = sourceDept ? goldenDepartmentByCode.get(sourceDept.code) : undefined;
-  return {
-    id: goldenTemplateId(i + 1),
-    tenantId: SYSTEM_TENANT_ID,
-    name: source.name,
-    description: source.description,
-    content: source.content,
-    category: source.category,
-    status: 'APPROVED' as const,
-    variables: source.variables ?? null,
-    currentVersionNumber: 1,
-    departmentId: goldenDept?.id ?? null,
-    tags: source.tags,
-    // Provenance for the inventory-lock test (NOT persisted).
-    sourceFixtureTemplateId: sourceId,
-  };
+  // The seed authors these on SYSTEM. Assert it rather than assume it: a row
+  // moved back to a customer tenant would silently un-do J7-1 and hand every
+  // newly-provisioned tenant one customer's template.
+  if (source.tenantId !== SYSTEM_TENANT_ID) {
+    throw new Error(`Golden library source template ${sourceId} ('${source.name}') must be authored on the SYSTEM tenant, not ${source.tenantId}`);
+  }
+  return source;
 });
 
-const goldenTemplateBySourceId = new Map<string, (typeof GOLDEN_PROMPT_TEMPLATES)[number]>(
-  GOLDEN_PROMPT_TEMPLATES.map((t) => [t.sourceFixtureTemplateId, t]),
-);
+const goldenTemplateIds = new Set(GOLDEN_PROMPT_TEMPLATES.map((t) => t.id));
 
-export const GOLDEN_PROMPT_VERSIONS = GOLDEN_PROMPT_TEMPLATES.map((tpl, i) => ({
-  id: goldenVersionId(i + 1),
-  tenantId: SYSTEM_TENANT_ID,
-  promptTemplateId: tpl.id,
-  versionNumber: 1,
-  content: tpl.content,
-  variables: tpl.variables,
-  changeReason: 'Initial golden library version',
-  changedBy: SYSTEM_USER_ID,
-}));
+export const GOLDEN_PROMPT_VERSIONS = DEFAULT_PROMPT_VERSIONS.filter((version) => goldenTemplateIds.has(version.promptTemplateId));
 
 // =============================================================================
 // Seed function — idempotent upsert-by-id. Runs AFTER 04-department and
@@ -189,37 +189,13 @@ export const seedAgentGoldenLibrary = async (client: CorePrismaClient) => {
     }
     console.log(`Seeded ${GOLDEN_DEPARTMENTS.length} golden departments`);
 
-    const templates = [...GOLDEN_PROMPT_TEMPLATES];
-    for (const template of templates) {
-      const { sourceFixtureTemplateId: _source, variables, ...rest } = template;
-      const data = {
-        ...rest,
-        category: rest.category as PromptTemplateCategory,
-        status: rest.status,
-        ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
-      };
-      await client.promptTemplate.upsert({
-        where: { id: template.id },
-        update: data,
-        create: data,
-      });
-    }
-    console.log(`Seeded ${templates.length} golden/snapshot prompt templates`);
-
-    const versions = [...GOLDEN_PROMPT_VERSIONS];
-    for (const version of versions) {
-      const { variables, ...rest } = version;
-      const data = {
-        ...rest,
-        ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
-      };
-      await client.promptVersion.upsert({
-        where: { id: version.id },
-        update: data,
-        create: data,
-      });
-    }
-    console.log(`Seeded ${versions.length} golden/snapshot prompt versions`);
+    // NO prompt-template or prompt-version write (TASK-890 J7-1). The eight
+    // golden bodies are authored on SYSTEM by `07-prompt-template.ts`, which
+    // runs before this phase and upserts them along with every other seeded
+    // template. Re-writing them here is what minted the duplicate SYSTEM rows
+    // this ticket removed; `GOLDEN_PROMPT_TEMPLATES` / `GOLDEN_PROMPT_VERSIONS`
+    // are now a VIEW over those rows and exist for the seed's own tests.
+    console.log(`Golden prompt library: ${GOLDEN_PROMPT_TEMPLATES.length} SYSTEM templates already written by phase 07`);
   } catch (error) {
     console.error('Error seeding golden prompt library:', error);
     throw error;

@@ -53,6 +53,25 @@ async function main(): Promise<void> {
 
     console.log(`TASK-890 reference-set backfill — ${tenants.length} tenant(s)${dryRun ? ' (DRY RUN)' : ''}\n`);
 
+    // The SIZE of the reference set, measured on SYSTEM. `--dry-run` compares
+    // each tenant against THIS, not against zero (TASK-890 J7-1): a tenant
+    // carrying 9 of 17 prompt templates used to print `ok` and read as
+    // provisioned, which is exactly how Global's eight missing clones survived
+    // proof #9. A partial copy is a GAP.
+    const expected = {
+      schemas: await client.consultationContextSchema.count({ where: { tenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED' } }),
+      prompts: await client.promptTemplate.count({
+        where: { tenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED', scope: { not: 'USER_PERSONAL' } },
+      }),
+      agents: await client.agent.count({ where: { tenantId: SYSTEM_TENANT_ID, status: 'PUBLISHED', isActive: true, resourceStatus: 'ENABLED' } }),
+      assignments: await client.agentAssignment.count({ where: { tenantId: SYSTEM_TENANT_ID, scope: 'TENANT', resourceStatus: 'ENABLED' } }),
+    };
+    if (dryRun) {
+      console.log(
+        `  reference set on SYSTEM: schemas=${expected.schemas} prompts=${expected.prompts} agents=${expected.agents} assignments=${expected.assignments}\n`,
+      );
+    }
+
     let totalWritten = 0;
     for (const tenant of tenants) {
       if (dryRun) {
@@ -62,9 +81,12 @@ async function main(): Promise<void> {
           client.agent.count({ where: { tenantId: tenant.id, sourceTenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED' } }),
           client.agentAssignment.count({ where: { tenantId: tenant.id, scope: 'TENANT', resourceStatus: 'ENABLED' } }),
         ]);
-        const gap = schemas === 0 || prompts === 0 || agents === 0 || assignments === 0;
+        const gap = schemas < expected.schemas || prompts < expected.prompts || agents < expected.agents || assignments < expected.assignments;
+        const shortfall = (actual: number, want: number): string => (actual < want ? `${actual}/${want}` : String(actual));
         console.log(
-          `  ${gap ? 'GAP ' : 'ok  '} ${tenant.key} (${tenant.id}): schemas=${schemas} prompts=${prompts} agents=${agents} assignments=${assignments}`,
+          `  ${gap ? 'GAP ' : 'ok  '} ${tenant.key} (${tenant.id}): schemas=${shortfall(schemas, expected.schemas)} ` +
+            `prompts=${shortfall(prompts, expected.prompts)} agents=${shortfall(agents, expected.agents)} ` +
+            `assignments=${shortfall(assignments, expected.assignments)}`,
         );
         continue;
       }

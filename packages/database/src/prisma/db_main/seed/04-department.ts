@@ -11,11 +11,15 @@ export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 //
 // This array is load-bearing FAR beyond the Global fixture tenant:
 // `07a-agent-golden-library.ts` promotes it 1:1 onto the SYSTEM tenant to build
-// GOLDEN_DEPARTMENTS / GOLDEN_PROMPT_TEMPLATES / GOLDEN_AGENTS, and THAT golden
-// set is what `TenantService.provisionTenantAgentCatalog` clones into every
-// newly-provisioned tenant and what `AgentTemplateResyncService` reconciles
-// existing tenants against. Whatever is written here becomes every future
-// customer's day-1 catalog.
+// GOLDEN_DEPARTMENTS. Whatever is written here becomes every future customer's
+// day-1 department catalog.
+//
+// It no longer decides the PROMPT catalog: since TASK-890 J7-1 the eight
+// new-encounter bodies are authored on SYSTEM in `07-prompt-template.ts` and
+// reach a tenant through `TenantReferenceSetService` / `seed/26`, not through a
+// promotion of this array. `GOLDEN_TEMPLATE_SOURCE_BY_CODE` (07a) still maps a
+// care-setting CODE to its platform body, so this array's `code` values remain
+// the join key.
 //
 // OWNER RULING (2026-08-20, OD-8): "what belong to BCMCH keep those
 // in ArcaAI, for SYSTEM and GLOBAL, use different ones." The previous 18 rows
@@ -40,6 +44,19 @@ export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 // `preSummaryPromptId` is null on every row: pre-summary has no department axis
 // (see ARCAAI_FALLBACK_TEMPLATE_IDS / the SYSTEM tier-2 default …040).
 //
+// `newPatientPromptId` is ALSO null on all eight care-setting rows (TASK-890
+// J7-1). It used to name the setting's `GENERIC_*_NEW` body, and those eight
+// bodies are now authored on the SYSTEM tenant so every tenant — Global
+// included — receives them as a stamped reference-set clone. A GLOBAL
+// department may not point at a SYSTEM template: these columns are plain
+// strings with no FK, so the row would seed fine and then resolve to nothing
+// once the tenant-scoped read refuses it (`isApprovedTemplate` fails safe and
+// skips the tier), which is a pointer that looks provisioned and is not.
+// `GOLDEN_DEPARTMENTS` (07a) already nulls all three for the same reason: the
+// binding lives on the workflow node / agent now, not on these legacy columns.
+// The `revisitPromptId` values stay — those follow-up bodies are still
+// Global-authored fixture content.
+//
 // Exported for testing purposes.
 export const DEFAULT_DEPARTMENTS = [
   {
@@ -50,7 +67,7 @@ export const DEFAULT_DEPARTMENTS = [
     description: 'Ambulatory consultations across primary and general specialty outpatient care',
     defaultSummaryTemplate: 'SOAP',
     preSummaryPromptId: null,
-    newPatientPromptId: TEMPLATE_IDS.GENERIC_OUTPATIENT_NEW,
+    newPatientPromptId: null,
     revisitPromptId: TEMPLATE_IDS.GENERIC_OUTPATIENT_REVISIT,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
@@ -66,7 +83,7 @@ export const DEFAULT_DEPARTMENTS = [
     description: 'Admitted-patient ward rounds, daily progress review, and discharge planning',
     defaultSummaryTemplate: 'Progress-Note',
     preSummaryPromptId: null,
-    newPatientPromptId: TEMPLATE_IDS.GENERIC_INPATIENT_ADMISSION,
+    newPatientPromptId: null,
     revisitPromptId: TEMPLATE_IDS.GENERIC_INPATIENT_PROGRESS,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'Active Medications'],
@@ -82,7 +99,7 @@ export const DEFAULT_DEPARTMENTS = [
     description: 'Unscheduled presentations requiring triage, stabilisation, and disposition',
     defaultSummaryTemplate: 'ED-Encounter',
     preSummaryPromptId: null,
-    newPatientPromptId: TEMPLATE_IDS.GENERIC_EMERGENCY_ENCOUNTER,
+    newPatientPromptId: null,
     revisitPromptId: null,
     promptConfig: {
       contextVariables: ['Triage Assessment', 'Recent Vitals', 'Allergies'],
@@ -98,7 +115,7 @@ export const DEFAULT_DEPARTMENTS = [
     description: 'Pre-procedure assessment, procedural record, and post-procedure recovery',
     defaultSummaryTemplate: 'Periop-Assessment',
     preSummaryPromptId: null,
-    newPatientPromptId: TEMPLATE_IDS.GENERIC_PERIOP_ASSESSMENT,
+    newPatientPromptId: null,
     revisitPromptId: TEMPLATE_IDS.GENERIC_PERIOP_REVIEW,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'Active Medications'],
@@ -114,7 +131,7 @@ export const DEFAULT_DEPARTMENTS = [
     description: 'Imaging studies reported against a stated clinical question',
     defaultSummaryTemplate: 'Imaging-Report',
     preSummaryPromptId: null,
-    newPatientPromptId: TEMPLATE_IDS.GENERIC_IMAGING_REPORT,
+    newPatientPromptId: null,
     revisitPromptId: null,
     promptConfig: {
       contextVariables: ['Clinical Indication', 'Prior Imaging'],
@@ -130,7 +147,7 @@ export const DEFAULT_DEPARTMENTS = [
     description: 'Specimen-based diagnostics and interpretive laboratory reporting',
     defaultSummaryTemplate: 'Lab-Report',
     preSummaryPromptId: null,
-    newPatientPromptId: TEMPLATE_IDS.GENERIC_LAB_REPORT,
+    newPatientPromptId: null,
     revisitPromptId: null,
     promptConfig: {
       contextVariables: ['Test Orders', 'Previous Results'],
@@ -146,7 +163,7 @@ export const DEFAULT_DEPARTMENTS = [
     description: 'Mental health assessment, therapy, and ongoing psychiatric review',
     defaultSummaryTemplate: 'Behavioral-Assessment',
     preSummaryPromptId: null,
-    newPatientPromptId: TEMPLATE_IDS.GENERIC_BEHAVIORAL_ASSESSMENT,
+    newPatientPromptId: null,
     revisitPromptId: TEMPLATE_IDS.GENERIC_BEHAVIORAL_REVIEW,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Medication History', 'Risk Assessment'],
@@ -162,7 +179,7 @@ export const DEFAULT_DEPARTMENTS = [
     description: 'Infant, child, and adolescent care including growth and development review',
     defaultSummaryTemplate: 'Pediatric-SOAP',
     preSummaryPromptId: null,
-    newPatientPromptId: TEMPLATE_IDS.GENERIC_PEDIATRIC_NEW,
+    newPatientPromptId: null,
     revisitPromptId: TEMPLATE_IDS.GENERIC_PEDIATRIC_REVISIT,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'Growth Chart', 'Immunization History'],
@@ -223,7 +240,14 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_FOLLOWUP,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
-      preferredSections: ['Presenting Complaints', 'Past History', 'Drug History', 'General Examination & Vitals', 'Current Diagnosis', 'Plan of Care'],
+      preferredSections: [
+        'Presenting Complaints',
+        'Past History',
+        'Drug History',
+        'General Examination & Vitals',
+        'Current Diagnosis',
+        'Plan of Care',
+      ],
       abbreviationDensity: 'low',
     },
   },
@@ -241,7 +265,15 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_FOLLOWUP,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
-      preferredSections: ['BIODATA', 'Presenting Complaints', 'Comorbidities', 'Investigations', 'Current Diagnosis', 'Plan of Care', 'Fitness for Surgery'],
+      preferredSections: [
+        'BIODATA',
+        'Presenting Complaints',
+        'Comorbidities',
+        'Investigations',
+        'Current Diagnosis',
+        'Plan of Care',
+        'Fitness for Surgery',
+      ],
       abbreviationDensity: 'medium',
     },
   },
@@ -371,7 +403,14 @@ export const ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT = [
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_FOLLOWUP,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
-      preferredSections: ['Presenting Complaints', 'Evolution of Symptoms', 'Clinical Examination', 'Impression', 'Treatment Plan', 'Follow-Up Advice'],
+      preferredSections: [
+        'Presenting Complaints',
+        'Evolution of Symptoms',
+        'Clinical Examination',
+        'Impression',
+        'Treatment Plan',
+        'Follow-Up Advice',
+      ],
       abbreviationDensity: 'low',
     },
   },
@@ -387,7 +426,14 @@ export const ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT = [
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_FOLLOWUP,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
-      preferredSections: ['Patient History', 'Anthropometric Measurements', 'Diet History', 'Nutrition Screening', 'Nutritional Status', 'Plan of Care'],
+      preferredSections: [
+        'Patient History',
+        'Anthropometric Measurements',
+        'Diet History',
+        'Nutrition Screening',
+        'Nutritional Status',
+        'Plan of Care',
+      ],
       abbreviationDensity: 'low',
     },
   },
