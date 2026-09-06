@@ -47,6 +47,22 @@ function dig(value: unknown, path: readonly string[]): unknown {
 }
 
 /**
+ * TASK-890 §3.14 (OD-R) — the AGENT tier of the guardrail precedence, normalised.
+ *
+ * `compiledConfig.guardrail` is additive-optional (every artifact published before this ticket
+ * has none) and the runtime needs an ANSWER, not a maybe. Absence is INHERIT and the bottom of
+ * the chain is screening ON, so absence resolves to `true`.
+ *
+ * A non-boolean is treated identically to absence, deliberately: publish closes the `guards`
+ * object so a malformed value should be unreachable, and if one is reached anyway the call is
+ * SCREENED. The failure direction on a safety gate is never "off".
+ */
+function guardrailOf(compiled: AgentCompiledConfig): { enabled: boolean } {
+  const declared = (compiled as { guardrail?: { enabled?: unknown } }).guardrail?.enabled;
+  return { enabled: typeof declared === 'boolean' ? declared : true };
+}
+
+/**
  * ONE resolution for two callers (TASK-863 §3.4): the gateway (standalone invocation, STT
  * sessions — TASK-861) and the harness `core.agent` activity (TASK-864, over
  * `GET /internal/agents/resolve`).
@@ -112,6 +128,7 @@ export class AgentResolverService {
       source,
       compiledConfig,
       models,
+      guardrail: guardrailOf(compiledConfig),
       ...(override ? { providerOverride: override.entry, fundingTier: override.fundingTier } : {}),
     };
   }

@@ -8,6 +8,7 @@ import type { ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
+import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
 
 export interface AgentTextInvocationResult {
   text: string;
@@ -101,6 +102,15 @@ export class AgentInvocationService {
     // profile first, then the tenant → SYSTEM credential fold (`provider_overrides`, funding).
     await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string });
     await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
+    // TASK-890 §3.14 (OD-R) — the guardrail decision for THIS call. A standalone invocation has
+    // no workflow and no node, so the AGENT tier is the whole precedence: `ResolvedAgent.guardrail`
+    // is what `resolveGuardrailDecision` would answer with `node`/`workflow` absent, already
+    // normalised by the resolver (absent or malformed ⇒ screening ON).
+    //
+    // Stated EXPLICITLY in both directions so TEXT can tell "screened because a decision said so"
+    // from "no opinion", and safe to send unconditionally because it can only ever subtract —
+    // `apps/text` keeps the platform switch as the floor.
+    this.textRequestEnrichment.applyGuardrailDecision(body, resolved.guardrail);
 
     const headers = internalServiceHeaders({
       serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),
@@ -130,6 +140,18 @@ export class AgentInvocationService {
       model: data.model ?? compiled.model.slug,
       usage: data.usage ? { promptTokens: data.usage.prompt_tokens ?? null, completionTokens: data.usage.completion_tokens ?? null } : null,
     };
+  }
+
+  /**
+   * TASK-890 §3.14 — the SCREENING DISPOSITION this call's ledger row records.
+   *
+   * Delegated to the enrichment service (which owns the platform-switch read) rather than
+   * duplicated at the controller: the same service writes the wire field above, so "what we
+   * asked TEXT to do" and "what we recorded having done" are derived in ONE place and cannot
+   * drift into disagreeing about the same call.
+   */
+  async guardrailDisposition(decision: { enabled: boolean }): Promise<GuardrailDisposition> {
+    return this.textRequestEnrichment.guardrailDisposition(decision);
   }
 
   /** The agent-derived half of a TTS request; the gateway merges the tenant's TTS config + BYO overrides on top. */

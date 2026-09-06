@@ -24,6 +24,7 @@ import {
   tenantHeaderValue,
   DEFAULT_VISIT_TYPE_SERVICE,
   VisitTypeService,
+  withUsageAttributes,
   type VisitTypeDefinition,
 } from '@arcaai/applications';
 import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
@@ -775,9 +776,19 @@ export class TextProxyController {
     // fire more than once. Emission is idempotent at the ledger anyway — the
     // key is derived from the task id — but emitting once keeps the outbox from
     // absorbing three copies of every stream.
+    // TASK-890 §3.14 (OD-R) — how this call was screened, for the ledger row.
+    //
+    // The proxy pushes NO opt-out: `postTextGenerate` applies the tenant's `require_medical` /
+    // `include_reasoning` policy and leaves `enabled` absent, so the PLATFORM posture governs
+    // the generation. Its rows can therefore only ever say `screened` or `platform_off` — never
+    // `opted_out`, because no agent / workflow / node opinion reaches this route. Resolved once,
+    // before any frame arrives, so all three teardown paths stamp the same answer.
+    const guardrail = await this.textRequestEnrichment.guardrailDisposition({ enabled: true });
+
     const emitUsageOnce = (): void => {
       if (!this.usageLedger || !tenantId) return;
-      const input = collector.take({ tenantId, operation: 'generate.stream' });
+      const taken = collector.take({ tenantId, operation: 'generate.stream' });
+      const input = taken ? (withUsageAttributes(taken, { guardrail }) ?? taken) : null;
       if (!input) return;
 
       // Fire-and-forget with a swallowed rejection: the generation already

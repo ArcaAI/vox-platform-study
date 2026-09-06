@@ -34,6 +34,8 @@ const RESOLVED = {
     protocols: ['http', 'http-sse'],
   },
   models: [],
+  // TASK-890 §3.14 — `AgentResolverService` always answers this (absence normalises to ON).
+  guardrail: { enabled: true },
 };
 
 function fakeRes() {
@@ -68,6 +70,10 @@ function make(overrides: Record<string, unknown> = {}) {
     ),
     buildSpeechRequest: vi.fn(),
     resolveAsrPipelineId: vi.fn(async () => 'pipe-1'),
+    // TASK-890 §3.14 — the ledger's screening disposition for this call.
+    guardrailDisposition: vi.fn(
+      async (decision: { enabled: boolean }): Promise<'screened' | 'opted_out' | 'platform_off'> => (decision.enabled ? 'screened' : 'opted_out'),
+    ),
   };
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'u1' } : undefined)) };
   const jobService = { createBatchJob: vi.fn(async (_input: unknown) => ({ id: 'job-1', status: 'PENDING' })), failJob: vi.fn() };
@@ -350,5 +356,96 @@ describe('AgentController — speech carries the same activity dimension', () =>
     const batch = usageLedger.recordUsage.mock.calls[0][0] as { common: { operation: string; attributesJson?: Record<string, unknown> } };
     expect(batch.common.operation).toBe('tts.synthesize');
     expect(batch.common.attributesJson).toMatchObject({ trigger: 'AGENT_INVOCATION', interrupted: false });
+  });
+});
+
+/**
+ * TASK-890 §3.14 (OD-R) — the RECORD half of the guardrail opt-out.
+ *
+ * A tenant may switch platform screening off per agent / workflow / node. What makes that a
+ * decision on the record rather than a silent omission is this attribute: every generation row
+ * says whether the guard ran (`screened`), whether this tenant turned it off (`opted_out`), or
+ * whether the platform kill switch made every opt-out moot (`platform_off`).
+ */
+describe('AgentController — the guardrail disposition on the ledger row (§3.14)', () => {
+  const usageResult = () => ({
+    text: 'hello',
+    provider: 'lm-studio',
+    model: 'lms-gemma-4-e2b-it-qat',
+    usage: { promptTokens: 120, completionTokens: 40 },
+  });
+
+  it('blocking: stamps `opted_out` when the resolved agent opted out', async () => {
+    const { controller, usageLedger, invocation, resolver } = make();
+    resolver.resolve.mockResolvedValue({ ...RESOLVED, guardrail: { enabled: false } });
+    invocation.invokeText.mockResolvedValue(usageResult());
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
+    await new Promise((resolve) => setImmediate(resolve));
+    const batch = usageLedger.recordUsage.mock.calls[0][0] as { common: { attributesJson?: Record<string, unknown> } };
+    expect(batch.common.attributesJson).toMatchObject({ guardrail: 'opted_out', trigger: 'AGENT_INVOCATION' });
+  });
+
+  it('blocking: stamps `screened` for an agent that did not opt out', async () => {
+    const { controller, usageLedger, invocation } = make();
+    invocation.invokeText.mockResolvedValue(usageResult());
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
+    await new Promise((resolve) => setImmediate(resolve));
+    const batch = usageLedger.recordUsage.mock.calls[0][0] as { common: { attributesJson?: Record<string, unknown> } };
+    expect(batch.common.attributesJson).toMatchObject({ guardrail: 'screened' });
+  });
+
+  it('stream: the same disposition rides the `generate.stream` row', async () => {
+    const { controller, usageLedger, invocation, resolver } = make();
+    resolver.resolve.mockResolvedValue({ ...RESOLVED, guardrail: { enabled: false } });
+    const stream = new PassThrough();
+    invocation.invokeText.mockResolvedValue({ stream });
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, 'stream');
+    stream.write(
+      `data: ${JSON.stringify({
+        data: {
+          usage: {
+            task_id: 'task-9',
+            provider: 'openai_compat',
+            model: 'lms-gemma-4-e2b-it-qat',
+            endpoint_kind: 'openai.chat',
+            interrupted: false,
+            byok: false,
+            prompt_tokens: 10,
+            completion_tokens: 5,
+          },
+        },
+      })}\n\n`,
+    );
+    stream.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    const batch = usageLedger.recordUsage.mock.calls[0][0] as { common: { operation: string; attributesJson?: Record<string, unknown> } };
+    expect(batch.common.operation).toBe('generate.stream');
+    expect(batch.common.attributesJson).toMatchObject({ guardrail: 'opted_out' });
+  });
+
+  it('the platform switch beats the tenant`s opt-out — a platform-off gate is not a tenant decision', async () => {
+    const { controller, usageLedger, invocation, resolver } = make();
+    resolver.resolve.mockResolvedValue({ ...RESOLVED, guardrail: { enabled: false } });
+    invocation.guardrailDisposition.mockResolvedValue('platform_off');
+    invocation.invokeText.mockResolvedValue(usageResult());
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
+    await new Promise((resolve) => setImmediate(resolve));
+    const batch = usageLedger.recordUsage.mock.calls[0][0] as { common: { attributesJson?: Record<string, unknown> } };
+    expect(batch.common.attributesJson).toMatchObject({ guardrail: 'platform_off' });
+  });
+
+  it('the TTS row carries NO guardrail dimension — a speech call passes no guardrail gate at all', async () => {
+    // `null`/absent is the allow-list's own spelling of "this dimension does not apply"; a
+    // fabricated `screened` here would put a screening claim on a call nothing screened.
+    const { controller, usageLedger } = make({
+      resolver: { resolve: vi.fn(async () => ({ ...RESOLVED, task: 'TEXT_TO_SPEECH' })) },
+    });
+    await controller.speech('tts-agent', { text: 'hello' }, fakeRes() as never).catch(() => undefined);
+    await new Promise((resolve) => setImmediate(resolve));
+    for (const call of usageLedger.recordUsage.mock.calls) {
+      const batch = call[0] as { common: { attributesJson?: Record<string, unknown> } };
+      expect(batch.common.attributesJson?.guardrail).toBeUndefined();
+    }
   });
 });
