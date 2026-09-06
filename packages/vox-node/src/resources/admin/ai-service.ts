@@ -10,7 +10,7 @@
 
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions } from './admin-resource';
-import type { MlflowStatusResponse } from './schemas';
+import type { InferenceReadinessResponse, MlflowStatusResponse } from './schemas';
 
 /**
  * `hope.admin.aiService` — the `svc:admin:ai-service:manage` administration area.
@@ -20,7 +20,7 @@ import type { MlflowStatusResponse } from './schemas';
  * names the scope in that error's message.
  *
  * Backed by controller AiServiceAdminController
- * (7 routes). Several controllers sharing one scope share one
+ * (9 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -137,6 +137,38 @@ export class AdminAiServiceResource extends AdminResource {
     return this.request<unknown>({
       method: 'GET',
       path: 'admin/ai-services/nlp/status',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Inference readiness — the platform’s last observation of every engine, service and model
+   *
+   * The stored snapshot taken by the readiness sweep: per engine (LM Studio, Ollama, vLLM, llama.cpp) its probe status, latency and loaded/listed counts; per HOPE service its heartbeat; per registry model a readiness state (`ready` / `loadable` / `engine_down` / `weights_missing` / `credential_missing` / `unknown`). READS NOTHING LIVE — it serves what the sweep last saw, and `checkedAt` says when that was, so an operator is never shown a stale answer dressed as a current one. Before the first sweep (or with the sweep switched off) this is an EMPTY document with `checkedAt: null`, not a 404: "nothing has been observed" is a state of the platform, not a missing resource. Use `POST readiness/refresh` to take an observation now.
+   *
+   * `GET /api/v1/admin/ai-services/readiness` — `AiServiceAdminController.readiness`.
+   */
+  readiness(options: AdminRequestOptions = {}): Promise<InferenceReadinessResponse> {
+    return this.request<InferenceReadinessResponse>({
+      method: 'GET',
+      path: 'admin/ai-services/readiness',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Take one readiness observation now
+   *
+   * Runs a single sweep immediately, ignoring the configured interval, and returns its result. Rate-limited to 6 per minute because each run sends a probe to the text service, which is the single aggregator in front of the engines. Never fails on an unreachable engine — an engine that does not answer IS the observation.
+   *
+   * `POST /api/v1/admin/ai-services/readiness/refresh` — `AiServiceAdminController.refreshReadiness`.
+   */
+  refreshReadiness(options: AdminRequestOptions = {}): Promise<InferenceReadinessResponse> {
+    return this.request<InferenceReadinessResponse>({
+      method: 'POST',
+      path: 'admin/ai-services/readiness/refresh',
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

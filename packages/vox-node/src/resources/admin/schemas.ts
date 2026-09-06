@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 388 component schemas the generated surface transitively
+ * Only the 395 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -615,6 +615,118 @@ export interface CapabilityUsageRow {
   unlimited: boolean;
   /** Current usage; null when not metered for this capability */
   used?: number | null;
+}
+
+export interface CatalogueModelResponse {
+  /** MEASURED presence of the weights (inventory job). */
+  availability: 'UNKNOWN' | 'AVAILABLE' | 'MISSING' | 'PARTIAL' | 'NOT_APPLICABLE';
+  /** What the model accepts, for the authoring form. */
+  capabilities: Record<string, unknown>;
+  deploymentKind: 'SELF_HOSTED' | 'CLOUD' | 'BYOK';
+  description: string | null;
+  id: string;
+  /** Tasks this row is the platform default for. */
+  isPlatformDefaultFor: Array<
+    | 'TEXT_GENERATION'
+    | 'TRANSLATION'
+    | 'SPEECH_TO_TEXT'
+    | 'TEXT_TO_SPEECH'
+    | 'VISION_EXTRACTION'
+    | 'EMBEDDING'
+    | 'NAMED_ENTITY_RECOGNITION'
+    | 'TEXT_CLASSIFICATION'
+    | 'CONTENT_SAFETY'
+    | 'GROUNDEDNESS'
+    | 'PII_DETECTION'
+  >;
+  name: string;
+  /** The Hugging Face `pipeline_tag` derived from `taskType`. */
+  pipelineTag: string;
+  /** The engine / vendor id — what routing and the usage ledger are keyed on. */
+  provider: string | null;
+  providerClass: 'cloud-byo' | 'cloud-platform' | 'engine-served' | 'platform-self-host';
+  /** The `CatalogueProviderResponse.id` this model sits under. */
+  providerId: string;
+  /** Last OBSERVED serving readiness. */
+  readiness: 'ready' | 'loadable' | 'engine_down' | 'weights_missing' | 'credential_missing' | 'unknown';
+  /** When that observation was taken ("at that point of time"). */
+  readinessCheckedAt: string | null;
+  /** Non-secret detail behind the readiness verdict. */
+  readinessDetail: string | null;
+  resourceStatus: 'ENABLED' | 'DISABLED' | 'SUSPENDED' | 'ARCHIVED' | 'DELETED';
+  slug: string;
+  taskType:
+    | 'IMAGE_TEXT_TO_TEXT'
+    | 'VISUAL_QUESTION_ANSWERING'
+    | 'DOCUMENT_QUESTION_ANSWERING'
+    | 'VIDEO_TEXT_TO_TEXT'
+    | 'ANY_TO_ANY'
+    | 'DEPTH_ESTIMATION'
+    | 'IMAGE_CLASSIFICATION'
+    | 'OBJECT_DETECTION'
+    | 'IMAGE_SEGMENTATION'
+    | 'TEXT_TO_IMAGE'
+    | 'IMAGE_TO_TEXT'
+    | 'IMAGE_TO_IMAGE'
+    | 'IMAGE_TO_VIDEO'
+    | 'UNCONDITIONAL_IMAGE_GENERATION'
+    | 'VIDEO_CLASSIFICATION'
+    | 'TEXT_TO_VIDEO'
+    | 'ZERO_SHOT_IMAGE_CLASSIFICATION'
+    | 'MASK_GENERATION'
+    | 'ZERO_SHOT_OBJECT_DETECTION'
+    | 'TEXT_TO_3D'
+    | 'IMAGE_TO_3D'
+    | 'IMAGE_FEATURE_EXTRACTION'
+    | 'KEYPOINT_DETECTION'
+    | 'TEXT_CLASSIFICATION'
+    | 'TOKEN_CLASSIFICATION'
+    | 'TABLE_QUESTION_ANSWERING'
+    | 'QUESTION_ANSWERING'
+    | 'ZERO_SHOT_CLASSIFICATION'
+    | 'TRANSLATION'
+    | 'SUMMARIZATION'
+    | 'FEATURE_EXTRACTION'
+    | 'TEXT_GENERATION'
+    | 'TEXT2TEXT_GENERATION'
+    | 'FILL_MASK'
+    | 'SENTENCE_SIMILARITY'
+    | 'GUARDRAIL'
+    | 'TEXT_TO_SPEECH'
+    | 'TEXT_TO_AUDIO'
+    | 'AUTOMATIC_SPEECH_RECOGNITION'
+    | 'AUDIO_TO_AUDIO'
+    | 'AUDIO_CLASSIFICATION'
+    | 'VOICE_ACTIVITY_DETECTION'
+    | 'SPEAKER_DIARIZATION'
+    | 'SPEAKER_EMBEDDING'
+    | 'TABULAR_CLASSIFICATION'
+    | 'TABULAR_REGRESSION'
+    | 'TIME_SERIES_FORECASTING'
+    | 'UNKNOWN';
+  /** Why not, when `usable` is false. */
+  unusableReason: string | null;
+  /** Whether an agent bound to this model could publish and run today. */
+  usable: boolean;
+}
+
+export interface CatalogueProviderResponse {
+  /** The tenant `AiProviderConnection` behind a BYO entry; NULL for `hope`. */
+  connectionId: string | null;
+  /** Which half of the picker this entry belongs to. */
+  group: 'byo' | 'hope';
+  /** `byo:<service>:<provider>` for a tenant connection, or the literal `hope` (exactly one entry). */
+  id: string;
+  /** Models listed under this entry after every filter. */
+  modelCount: number;
+  /** Display name. */
+  name: string;
+  /** How the entry is served. NULL for the `hope` group, whose MODELS carry their own class. */
+  providerClass: 'cloud-byo' | 'cloud-platform' | 'engine-served' | 'platform-self-host' | null;
+  /** Why not, when `usable` is false. A stable machine token, not prose. */
+  reason: string | null;
+  /** Whether ANY model under this entry can serve the caller today. */
+  usable: boolean;
 }
 
 export interface ChangelogEntryResponse {
@@ -2389,6 +2501,14 @@ export interface ImportWorkflowDefinitionRequest {
   targetSlug: string;
 }
 
+export interface InferenceReadinessResponse {
+  /** When this observation was taken. `null` together with empty collections means there is no observation yet — a cold process, an expired snapshot, or the sweep switched off — and NOT that everything is down. */
+  checkedAt: string | null;
+  engines: ReadinessEngineResponse[];
+  models: ReadinessModelResponse[];
+  services: ReadinessServiceResponse[];
+}
+
 export interface JobDetailResponse {
   attempts: number;
   /** PII-redacted job payload. */
@@ -2655,6 +2775,14 @@ export interface MlflowStatusResponse {
   version?: string;
 }
 
+export interface ModelCatalogueResponse {
+  models: CatalogueModelResponse[];
+  /** BYO entries first, then the single Hope entry (picker order). */
+  providers: CatalogueProviderResponse[];
+  /** SUPER ADMIN ONLY — catalogue rows naming no provider this platform can serve. Hidden from tenants entirely; surfaced to the person who can fix them so an unassigned row is visible rather than silently absent. */
+  unassignedProviderCount?: number;
+}
+
 export interface ModelDownloadStatusResponse {
   /** Failure message from the most recent DOWNLOAD_FAILED job, if any. */
   error?: string | null;
@@ -2721,12 +2849,6 @@ export interface ModelResponse {
   deploymentKind: 'SELF_HOSTED' | 'CLOUD' | 'BYOK';
   /** Model description */
   description?: string;
-  /** Download status */
-  downloadStatus: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
-  /** Download timestamp */
-  downloadedAt?: string;
-  /** File size in MB */
-  fileSizeMb?: number;
   /** Artifact format (descriptive; loader selection is `libraryName`). */
   format:
     | 'SAFETENSOR'
@@ -2798,7 +2920,7 @@ export interface ModelResponse {
     | 'vertex';
   /** Model-card licence identifier. */
   license?: string | null;
-  /** DERIVED (TASK-860): `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. Read by every service resolver as the highest-precedence weight location. Falls back to the legacy stored value on rows that predate `bucketPrefix`. */
+  /** DERIVED, never stored (TASK-890 §3.11): `/mnt/models-bucket/` + `bucketPrefix`, plus `primaryObject` for a single-file loader. Read by every service resolver as the highest-precedence weight location; null when the row has no bucket identity, which is the signal to fall back to `sourceUri` scheme dispatch. */
   localPath?: string;
   /** sha256 of the published `manifest.json`. */
   manifestDigest?: string | null;
@@ -3905,6 +4027,49 @@ export interface RateLimitTierPolicyResponse {
   tier: 'default' | 'strict' | 'heavy' | 'relaxed';
   ttl: number;
   ttlSource: 'db' | 'code' | 'default';
+}
+
+export interface ReadinessEngineResponse {
+  /** Host of the resolved endpoint — never the full URL. */
+  baseUrlHost: string | null;
+  /** Probe error or explanatory note. */
+  detail: string | null;
+  /** Probe round-trip in milliseconds, as the text service measured it. */
+  latencyMs: number | null;
+  /** Models the engine lists at all. */
+  listedCount: number;
+  /** Models the engine reports as resident. */
+  loadedCount: number;
+  /** Engine provider id, canonical spelling. */
+  provider: string;
+  /** How this engine serves models. */
+  providerClass: string;
+  /** `unknown` means the probe aggregator itself did not answer — nobody looked, which is not the same as the engine being down. */
+  status: 'up' | 'down' | 'unknown';
+}
+
+export interface ReadinessModelResponse {
+  /** Why, in an operator’s words. */
+  detail: string | null;
+  id: string;
+  /** Engine or vendor id from the registry row. */
+  provider: string | null;
+  /** How this row is served, which is what decides how readiness is derived. */
+  providerClass: string | null;
+  /** The verdict at `checkedAt`. `unknown` means nothing was measured. */
+  readiness: 'ready' | 'loadable' | 'engine_down' | 'weights_missing' | 'credential_missing' | 'unknown';
+  slug: string;
+  /** The registry row’s task type. */
+  taskType: string;
+}
+
+export interface ReadinessServiceResponse {
+  /** Last heartbeat says up AND is recent enough to be evidence. */
+  healthy: boolean;
+  /** Service key as the heartbeat cron writes it. */
+  key: string;
+  /** ISO timestamp of the last heartbeat sample. */
+  lastSeenAt: string | null;
 }
 
 export interface RedisHealthInfoResponse {

@@ -66,37 +66,26 @@ function find(method: string, path: string): ManifestRoute | undefined {
 }
 
 /**
- * TASK-890 adds two human-review routes to this plane. `route-manifest.json` is regenerated
- * ONCE PER MERGE by the orchestrator (rule 05 §Definition of Done — it is one of five
- * artifacts, and no lane regenerates it in its own worktree), so between authoring the routes
- * and that regeneration the manifest legitimately does not carry them yet.
- *
- * Rather than delete the assertions for that window, the routes are PARTITIONED: everything
- * the manifest already ships is asserted unconditionally, and the pending pair is asserted in
- * a block that SKIPS ITSELF until the manifest catches up — the `agents.contract.task865.test.ts`
- * pattern, for the same reason it was used there. A red test here would only say "the artifact
- * has not been regenerated yet", which is not a finding; the moment it is, every assertion runs
- * unchanged and a genuine drift is caught.
- *
- * This list must SHRINK. An entry that outlives its merge means the route never shipped.
+ * TASK-890's two human-review routes shipped with wave 1 and the orchestrator
+ * regenerated `route-manifest.json` at the merge (rule 05 §Definition of Done).
+ * The partition that skipped them while the artifact lagged is GONE: every
+ * route this SDK calls — the review pair included — is asserted unconditionally.
+ * Do not reintroduce a pending list without a route that is genuinely in flight.
  */
-const PENDING_MANIFEST_ROUTES: ReadonlySet<string> = new Set([
-  'GET /api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}',
-  'POST /api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide',
-]);
-
-const SHIPPED_ROUTES = WORKFLOW_PLANE_ROUTES.filter((r) => !PENDING_MANIFEST_ROUTES.has(`${r.method} ${r.path}`));
-const PENDING_ROUTES = WORKFLOW_PLANE_ROUTES.filter((r) => PENDING_MANIFEST_ROUTES.has(`${r.method} ${r.path}`));
-const PENDING_ROUTES_SHIPPED = PENDING_ROUTES.every((r) => find(r.method, r.path) !== undefined);
+const REVIEW_ROUTES = WORKFLOW_PLANE_ROUTES.filter((r) => r.path.includes('/reviews/'));
 
 describe('every route this SDK calls exists in the shipped route manifest', () => {
-  it.each(SHIPPED_ROUTES)('$method $path', ({ method, path }) => {
+  it.each(WORKFLOW_PLANE_ROUTES)('$method $path', ({ method, path }) => {
     expect(find(method, path)).toBeDefined();
   });
 });
 
-describe.skipIf(!PENDING_ROUTES_SHIPPED)('the TASK-890 human-review routes, once the manifest is regenerated', () => {
-  it.each(PENDING_ROUTES)('$method $path is the business plane with a run scope', ({ method, path }) => {
+describe('the TASK-890 human-review routes', () => {
+  it('covers both of them', () => {
+    expect(REVIEW_ROUTES).toHaveLength(2);
+  });
+
+  it.each(REVIEW_ROUTES)('$method $path is the business plane with a run scope', ({ method, path }) => {
     const route = find(method, path)!;
     expect(route.isPublic).toBe(false);
     expect(route.apiKeyForbidden).toBe(false);
@@ -106,7 +95,7 @@ describe.skipIf(!PENDING_ROUTES_SHIPPED)('the TASK-890 human-review routes, once
 });
 
 describe('the credential class the SDK assumes is the one the gateway enforces', () => {
-  it.each(SHIPPED_ROUTES)('$method $path accepts an API key and NOT a service account', ({ method, path }) => {
+  it.each(WORKFLOW_PLANE_ROUTES)('$method $path accepts an API key and NOT a service account', ({ method, path }) => {
     const route = find(method, path)!;
     // API-key reachable — this plane is the business plane.
     expect(route.apiKeyForbidden).toBe(false);
@@ -137,7 +126,7 @@ describe('the credential class the SDK assumes is the one the gateway enforces',
   });
 
   it('none of these routes is public — the SDK always sends a credential', () => {
-    for (const { method, path } of SHIPPED_ROUTES) {
+    for (const { method, path } of WORKFLOW_PLANE_ROUTES) {
       expect(find(method, path)!.isPublic).toBe(false);
     }
   });

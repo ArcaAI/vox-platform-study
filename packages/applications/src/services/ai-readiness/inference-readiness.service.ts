@@ -9,11 +9,10 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../baseServices/redis';
 import { IServiceHealthMonitoringService } from '../baseServices/serviceHealth';
 import { DISCOVERABLE_AI_MODEL_PROVIDERS } from '../ai-model/constants';
-import { CLOUD_BYO_PROVIDERS, ProviderService, isPlatformSelfHostProvider } from '../ai-provider-connection/constants';
+import { CLOUD_BYO_PROVIDERS, ENGINE_SERVED_PROVIDERS, ProviderService, isPlatformSelfHostProvider } from '../ai-provider-connection/constants';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
 import { IInferenceReadinessService } from './IInferenceReadinessService';
 import {
-  ENGINE_SERVED_PROVIDERS,
   HEARTBEAT_STALE_AFTER_SECONDS,
   INFERENCE_READINESS_CLOUD_PROBE_INTERVAL_KEY,
   INFERENCE_READINESS_DEFAULTS,

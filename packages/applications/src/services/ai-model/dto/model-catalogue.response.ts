@@ -1,23 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AiDeploymentKind, AiModelAvailability, AiTaskKind, ModelTaskType, ResourceStatusType } from '@arcaai/domains';
+import { MODEL_READINESS_STATES } from '../../ai-readiness/inference-readiness.types';
+import type { ModelReadiness } from '../../ai-readiness/inference-readiness.types';
 import type { ProviderClass, ProviderGroup } from '../../ai-provider-connection/constants';
 
 export type { ProviderClass, ProviderGroup } from '../../ai-provider-connection/constants';
 
 /**
- * How ready a model is to serve RIGHT NOW, as last OBSERVED by the platform
- * (TASK-890 §3.12). It is a snapshot, never a live probe: a tenant reading the
- * catalogue must never cause a vendor call or an engine round trip.
- *
- *   `ready`              serving now (engine up + model resident, or weights staged + service healthy, or a probed credential)
- *   `loadable`           the engine has it listed but not resident — the first call pays the load
- *   `engine_down`        the serving engine did not answer the last probe
- *   `weights_missing`    the engine/bucket does not have the weights the row names
- *   `credential_missing` a cloud row whose resolved connection carries no key
- *   `unknown`            never observed (cold snapshot, or the readiness service is not wired)
+ * The readiness vocabulary is declared ONCE, by the lane that measures it
+ * (`services/ai-readiness/inference-readiness.types.ts`, TASK-890 §3.12). The
+ * catalogue STAMPS those values; it does not get to have an opinion about what
+ * they are, so it imports the union and the value list rather than restating
+ * them — two unions with the same members and different owners drift the first
+ * time a state is added.
  */
-export const MODEL_READINESS_VALUES = ['ready', 'loadable', 'engine_down', 'weights_missing', 'credential_missing', 'unknown'] as const;
-export type ModelReadiness = (typeof MODEL_READINESS_VALUES)[number];
+export type { ModelReadiness } from '../../ai-readiness/inference-readiness.types';
 
 /**
  * One picker GROUP entry: a tenant's own BYO connection, or the single
@@ -67,7 +64,7 @@ export class CatalogueModelResponse {
   @ApiProperty({ enum: ['cloud-byo', 'cloud-platform', 'engine-served', 'platform-self-host'] }) providerClass: ProviderClass;
   @ApiProperty({ enum: AiDeploymentKind }) deploymentKind: AiDeploymentKind;
   @ApiProperty({ description: 'MEASURED presence of the weights (inventory job).', enum: AiModelAvailability }) availability: AiModelAvailability;
-  @ApiProperty({ description: 'Last OBSERVED serving readiness.', enum: MODEL_READINESS_VALUES }) readiness: ModelReadiness;
+  @ApiProperty({ description: 'Last OBSERVED serving readiness.', enum: MODEL_READINESS_STATES }) readiness: ModelReadiness;
   @ApiProperty({ description: 'When that observation was taken ("at that point of time").', nullable: true }) readinessCheckedAt: Date | null;
   @ApiProperty({ description: 'Non-secret detail behind the readiness verdict.', nullable: true }) readinessDetail: string | null;
   @ApiProperty({ description: 'What the model accepts, for the authoring form.', type: Object })

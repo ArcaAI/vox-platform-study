@@ -884,6 +884,30 @@
       "apiExcluded": false
     },
     {
+      "controller": "AiModelCatalogueController",
+      "handler": "catalogue",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/catalogue",
+      "routePath": "/admin/ai-models/catalogue",
+      "svcScopes": [
+        "svc:admin:ai-model:manage",
+        "svc:admin:ai-model:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "AiModel"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelDiscoveryController",
       "handler": "discover",
       "method": "GET",
@@ -1142,6 +1166,52 @@
       "method": "GET",
       "path": "/api/v1/admin/ai-services/nlp/status",
       "routePath": "/admin/ai-services/nlp/status",
+      "svcScopes": [
+        "svc:admin:ai-service:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiServiceAdminController",
+      "handler": "readiness",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-services/readiness",
+      "routePath": "/admin/ai-services/readiness",
+      "svcScopes": [
+        "svc:admin:ai-service:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiServiceAdminController",
+      "handler": "refreshReadiness",
+      "method": "POST",
+      "path": "/api/v1/admin/ai-services/readiness/refresh",
+      "routePath": "/admin/ai-services/readiness/refresh",
       "svcScopes": [
         "svc:admin:ai-service:manage"
       ],
@@ -15481,6 +15551,52 @@
       "method": "POST",
       "path": "/api/v1/workflows/{slug}/runs/{runId}/cancel",
       "routePath": "/workflows/:slug/runs/:runId/cancel",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflow:run:write"
+      ],
+      "requiredPermissions": [
+        [
+          "update",
+          "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowsController",
+      "handler": "getReview",
+      "method": "GET",
+      "path": "/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}",
+      "routePath": "/workflows/:slug/runs/:runId/reviews/:nodeId",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflow:run:read"
+      ],
+      "requiredPermissions": [
+        [
+          "read",
+          "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowsController",
+      "handler": "decideReview",
+      "method": "POST",
+      "path": "/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide",
+      "routePath": "/workflows/:slug/runs/:runId/reviews/:nodeId/decide",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,

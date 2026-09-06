@@ -23,4 +23,12 @@ describe('AiModelServiceModule', () => {
     expect(names).toContain('AiProviderConnectionServiceModule');
     expect(names).toContain('CoreDatabaseModule');
   });
+
+  // TASK-890 wave-1 close: same silent-optional hazard, second collaborator.
+  // Without this import the catalogue resolves NO readiness provider and every
+  // row reports `unknown` forever — indistinguishable from a cold snapshot.
+  it('declares the readiness module (the snapshot the catalogue stamps)', () => {
+    const imports = (Reflect.getMetadata('imports', AiModelServiceModule) as Array<{ name?: string } | undefined>) ?? [];
+    expect(imports.map((m) => m?.name)).toContain('InferenceReadinessServiceModule');
+  });
 });
