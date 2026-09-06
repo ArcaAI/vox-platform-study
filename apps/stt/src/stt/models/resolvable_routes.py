@@ -8,9 +8,13 @@ resolves ``source_uri`` into the HuggingFace cache. So every whisper row read as
 
 This route answers for the runtime path instead. Properties, all deliberate:
 
-* **Read-only and network-free.** ``check_resolvable`` only reads the cache; no
-  download, no S3 client, no hub call. A readiness probe that fetched weights
-  would be a denial of service wearing a health check.
+* **Read-only, network-free and OFF the event loop.** The check is a bounded
+  filesystem read of the cache layout — no download, no S3 client, and since
+  TASK-890 F3 no ``huggingface_hub`` call either — run in a worker thread inside
+  a wall-clock budget. It had to be: a synchronous hub read of the external
+  ``HF_HOME`` volume parked this service's main thread for fifteen minutes and
+  took the health probe with it. A readiness probe that can hang the process it
+  measures is a denial of service wearing a health check.
 * **Service-token gated.** It is mounted inside the app, so
   ``ServiceAuthMiddleware`` covers it — the exempt set is health/docs/metrics
   only. It reports filesystem paths, which are operational information.
@@ -25,7 +29,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query
-from hope_runtime_models import ResolvableQuery, check_resolvable
+from hope_runtime_models import ResolvableQuery, check_resolvable_many
 from pydantic import BaseModel, Field
 
 from stt.core.config.settings import get_settings
@@ -63,20 +67,31 @@ def _cache_dirs() -> tuple[str | None, str | None]:
     return cache_dir, cache_dir
 
 
-def _verdict(item: ResolvableItem) -> dict[str, Any]:
+def _query(item: ResolvableItem) -> ResolvableQuery:
+    return ResolvableQuery(
+        id=item.id,
+        source_uri=item.sourceUri,
+        library=item.library,
+        revision=item.revision,
+        local_path=item.localPath,
+    )
+
+
+async def _verdicts(items: list[ResolvableItem]) -> list[dict[str, Any]]:
+    """Off the event loop, inside one budget — see `check_resolvable_many`.
+
+    STT wedged itself on exactly this call before TASK-890 F3: the check ran
+    synchronously in the handler, a filesystem read on the external `HF_HOME`
+    volume never returned, and the whole service — health probe included — went
+    with it. Nothing on this path may block the loop again.
+    """
     hf_cache_dir, s3_cache_dir = _cache_dirs()
-    result = check_resolvable(
-        ResolvableQuery(
-            id=item.id,
-            source_uri=item.sourceUri,
-            library=item.library,
-            revision=item.revision,
-            local_path=item.localPath,
-        ),
+    results = await check_resolvable_many(
+        [_query(item) for item in items],
         hf_cache_dir=hf_cache_dir,
         s3_cache_dir=s3_cache_dir,
     )
-    return result.as_dict()
+    return [result.as_dict() for result in results]
 
 
 @router.get("/resolvable")
@@ -87,12 +102,13 @@ async def resolvable_one(
     revision: str | None = Query(default=None),
 ) -> dict[str, Any]:
     """One row, for a hand check. The gateway sweep uses the batch POST."""
+    (result,) = await _verdicts(
+        [ResolvableItem(id=id, sourceUri=source_uri, library=library, revision=revision)]
+    )
     return {
         "service": SERVICE_NAME,
         "checkedAt": datetime.now(UTC).isoformat(),
-        "result": _verdict(
-            ResolvableItem(id=id, sourceUri=source_uri, library=library, revision=revision)
-        ),
+        "result": result,
     }
 
 
@@ -102,5 +118,5 @@ async def resolvable_batch(body: ResolvableRequest) -> dict[str, Any]:
     return {
         "service": SERVICE_NAME,
         "checkedAt": datetime.now(UTC).isoformat(),
-        "results": [_verdict(item) for item in body.models],
+        "results": await _verdicts(body.models),
     }

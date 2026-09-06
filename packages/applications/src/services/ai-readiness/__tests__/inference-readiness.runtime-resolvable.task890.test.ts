@@ -46,8 +46,14 @@ function makeModel(over: Record<string, unknown> = {}) {
 
 interface Options {
   models?: Array<Record<string, unknown>>;
-  /** `servedBy` -> the resolvable verdicts that service returns, keyed by model id. */
-  resolvable?: Record<string, Record<string, boolean> | 'unreachable'>;
+  /**
+   * `servedBy` -> the resolvable verdicts that service returns, keyed by model id.
+   *
+   * `null` for a row is the wire value a service sends when its OWN budget ran
+   * out before it could measure that row (TASK-890 F3) — not a verdict, and it
+   * must not be read as one.
+   */
+  resolvable?: Record<string, Record<string, boolean | null> | 'unreachable'>;
   uptime?: Record<string, { status: string; lastCheck: string }>;
   urls?: Record<string, string | undefined>;
 }
@@ -82,13 +88,18 @@ function makeHarness(options: Options = {}) {
     return {
       data: {
         service,
-        results: rows.map((row) => ({
-          id: row.id,
-          resolvable: answers?.[row.id] ?? false,
-          state: answers?.[row.id] ? 'hf_cache' : 'not_cached',
-          detail: 'stub',
-          path: null,
-        })),
+        results: rows.map((row) => {
+          // `??` would collapse a deliberate `null` (NOT MEASURED) into `false`
+          // (NOT RESOLVABLE) — the very confusion these cases exist to catch.
+          const verdict: boolean | null = answers && row.id in answers ? (answers[row.id] ?? null) : false;
+          return {
+            id: row.id,
+            resolvable: verdict,
+            state: verdict === null ? 'timeout' : verdict ? 'hf_cache' : 'not_cached',
+            detail: 'stub',
+            path: null,
+          };
+        }),
       },
     };
   });
@@ -172,6 +183,36 @@ describe('InferenceReadinessService — runtime resolvability (J1 MAJOR-A)', () 
     const snapshot = await service.sweep();
 
     expect(snapshot.models['m-x']!.readiness).toBe('unknown');
+  });
+
+  it('reports unknown when the service answers `null` — its own budget could not measure the row', async () => {
+    // TASK-890 F3. A service whose filesystem stalls answers INSIDE its budget
+    // with `resolvable: null` rather than hanging the request (that hang used to
+    // take the whole service down, health probe included). `null` is "nobody
+    // looked", exactly like an unreachable service — never "weights missing".
+    const { service } = makeHarness({
+      models: [makeModel({ id: 'm-slow', availability: AiModelAvailability.UNKNOWN })],
+      resolvable: { stt: { 'm-slow': null } },
+    });
+
+    const snapshot = await service.sweep();
+
+    expect(snapshot.models['m-slow']!.readiness).toBe('unknown');
+  });
+
+  it('a `null` for one row does not taint the measured rows beside it', async () => {
+    const { service } = makeHarness({
+      models: [
+        makeModel({ id: 'ok', availability: AiModelAvailability.MISSING }),
+        makeModel({ id: 'slow', availability: AiModelAvailability.UNKNOWN }),
+      ],
+      resolvable: { stt: { ok: true, slow: null } },
+    });
+
+    const snapshot = await service.sweep();
+
+    expect(snapshot.models['ok']!.readiness).toBe('ready');
+    expect(snapshot.models['slow']!.readiness).toBe('unknown');
   });
 
   it('asks each serving service ONCE, in a batch, with only its own rows', async () => {

@@ -96,6 +96,17 @@ const SERVED_BY_TO_URL_KEY: Readonly<Record<string, 'STT_URL' | 'NLP_URL' | 'TTS
 });
 
 /**
+ * How long the sweep waits for ONE serving service's resolvability answer.
+ *
+ * Per service, not per sweep: the probes run under `Promise.all`, so this bounds
+ * each service's own delay and never composes. It also sits ABOVE each service's
+ * own internal budget (`DEFAULT_BUDGET_SECONDS` in `hope_runtime_models`), so a
+ * service under a stalled filesystem answers "not measured" for its rows instead
+ * of leaving the gateway to guess from a client-side timeout.
+ */
+const RUNTIME_RESOLVABLE_TIMEOUT_MS = 10_000;
+
+/**
  * Is this row served by one of HOPE's own services out of its own storage?
  *
  * Extracted so the resolvability pre-pass and `classify` cannot disagree about
@@ -393,18 +404,39 @@ export class InferenceReadinessService implements IInferenceReadinessService {
             revision: row.sourceRevision ?? null,
           })),
         };
+        // Per SERVICE, not per sweep: each probe carries its own budget and its
+        // own elapsed time, and `Promise.all` runs them side by side, so one
+        // slow service delays neither its peers nor the rest of the document.
+        // The elapsed time is logged either way — TASK-890 F3 spent its first
+        // hour unable to tell a service that answered slowly from one that
+        // never answered, because only the failure was timed.
+        const startedAt = Date.now();
         try {
-          const response = await this.httpService.axiosRef.post(`${base}/api/v1/internal/models/resolvable`, body, { headers, timeout: 10_000 });
+          const response = await this.httpService.axiosRef.post(`${base}/api/v1/internal/models/resolvable`, body, {
+            headers,
+            timeout: RUNTIME_RESOLVABLE_TIMEOUT_MS,
+          });
           const results = (response.data?.results ?? []) as Array<{ id?: string; resolvable?: unknown }>;
           for (const result of results) {
-            // Only a literal `true` counts. An absent or non-boolean field is
-            // an unmeasured row, not a negative one.
+            // Only a literal `true`/`false` counts. An absent or non-boolean
+            // field — `null` is what a service sends for a row its own budget
+            // could not measure — is an unmeasured row, not a negative one.
             if (typeof result?.id === 'string' && typeof result.resolvable === 'boolean') verdicts.set(result.id, result.resolvable);
           }
+          this.logger.debug({
+            message: 'Runtime resolvability probe answered',
+            servedBy,
+            asked: serviceRows.length,
+            measured: results.filter((result) => typeof result?.resolvable === 'boolean').length,
+            elapsedMs: Date.now() - startedAt,
+          });
         } catch (error) {
           this.logger.warn({
             message: 'Runtime resolvability probe failed; those rows stay unknown for this sweep',
             servedBy,
+            asked: serviceRows.length,
+            elapsedMs: Date.now() - startedAt,
+            timeoutMs: RUNTIME_RESOLVABLE_TIMEOUT_MS,
             error: error instanceof Error ? error.message : String(error),
           });
         }
