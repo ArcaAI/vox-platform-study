@@ -8,12 +8,12 @@ import {
   IBlobStorageService,
   IConfigService,
   IDnaWritingStyleService,
+  IEntitlementsService,
   IProviderConnectionService,
   ITenantService,
   IUsageLedgerService,
+  LlmStreamUsageCollector,
   ModelResponse,
-  buildLlmUsageInput,
-  parseTextUsageDetail,
   parseStorageUri,
   readGenerationId,
   SecretsService,
@@ -267,6 +267,14 @@ export class TextProxyController {
     @Optional()
     @Inject(VisitTypeService)
     private readonly visitTypes?: VisitTypeService,
+    // TASK-890 (§3.13) — this route RECORDED what a stream spent but never
+    // checked whether the tenant could spend it, so a tenant at its
+    // `monthlyLlmTokens` ceiling kept generating here while the same ceiling
+    // stopped it on the summary path. @Optional + trailing so every existing
+    // positional fixture keeps its arity; absent ⇒ ungated, as today.
+    @Optional()
+    @Inject(IEntitlementsService)
+    private readonly entitlements?: IEntitlementsService,
   ) {
     // BUG-018 — the two enrichment steps now live in ONE applications-layer
     // service shared with the prompt-template test bench. Constructed here from
@@ -577,6 +585,10 @@ export class TextProxyController {
   @ApiOperation({ summary: 'Generate text via TEXT (sync or streaming)' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(@Body() body: TextGenerateRequest): Promise<any> {
+    // OUTSIDE the try below, deliberately: that catch turns everything it sees
+    // into `buildUpstreamException` ("TEXT service unavailable"), which would
+    // disguise a 429 quota refusal as a 502 the caller cannot act on.
+    await this.assertLlmAllowance();
     const base = this.getTextBaseUrl();
     await this.applyTextModelSelection(body);
 
@@ -746,27 +758,26 @@ export class TextProxyController {
     // Meter what flows through the pipe.
     //
     // The proxy stays a byte pipe: every chunk is forwarded VERBATIM and the
-    // usage block is read from a side copy. `usageTail` holds only the bytes
-    // after the last complete frame boundary, so memory does not grow with the
+    // usage block is read from a side copy, which holds only the bytes after
+    // the last complete frame boundary — so memory does not grow with the
     // length of a long generation.
     const tenantId = this.clsService.get('tenantId');
-    let usageTail = '';
-    let terminalUsage: unknown = null;
-    let emitted = false;
+
+    // TASK-890 — the frame scanning, the emit-once guard and the bounded
+    // carry-over moved VERBATIM into `LlmStreamUsageCollector`
+    // (`usageLedger/llm-stream-usage.ts`), because three more paths — agent
+    // invocation, the prompt test bench, the draft-agent test — now tee the
+    // same way and a second copy of this is a second place for a dropped tail
+    // to become lost revenue.
+    const collector = new LlmStreamUsageCollector();
 
     // Teardown fires from three places (`end`, `error`, client `close`) and can
     // fire more than once. Emission is idempotent at the ledger anyway — the
     // key is derived from the task id — but emitting once keeps the outbox from
     // absorbing three copies of every stream.
     const emitUsageOnce = (): void => {
-      if (emitted) return;
-      emitted = true;
-      if (!this.usageLedger || !tenantId || !terminalUsage) return;
-
-      const usage = parseTextUsageDetail(terminalUsage);
-      if (!usage) return;
-
-      const input = buildLlmUsageInput({ usage, tenantId, operation: 'generate.stream' });
+      if (!this.usageLedger || !tenantId) return;
+      const input = collector.take({ tenantId, operation: 'generate.stream' });
       if (!input) return;
 
       // Fire-and-forget with a swallowed rejection: the generation already
@@ -779,36 +790,6 @@ export class TextProxyController {
           error: error instanceof Error ? error.message : String(error),
         });
       });
-    };
-
-    /**
-     * Scan forwarded bytes for the terminal frame's `usage` block.
-     *
-     * Only complete `\n\n`-delimited frames are parsed, and only the ones whose
-     * payload carries a `usage` key — a token chunk never gets JSON-parsed, and
-     * frame content is never logged (it is generated clinical text).
-     */
-    const captureTerminalUsage = (chunk: Buffer): void => {
-      usageTail += chunk.toString('utf-8');
-      let boundary = usageTail.indexOf('\n\n');
-      while (boundary !== -1) {
-        const frame = usageTail.slice(0, boundary);
-        usageTail = usageTail.slice(boundary + 2);
-        const dataLine = frame.split('\n').find((line) => line.startsWith('data:'));
-        if (dataLine && dataLine.includes('"usage"')) {
-          try {
-            const payload = JSON.parse(dataLine.slice('data:'.length).trim()) as { data?: { usage?: unknown } };
-            if (payload?.data?.usage) terminalUsage = payload.data.usage;
-          } catch {
-            // A partially-delivered or non-JSON frame is not worth a log line
-            // (and its body may be PHI) — the next frame may still carry usage.
-          }
-        }
-        boundary = usageTail.indexOf('\n\n');
-      }
-      // Bound the carry-over: a frame this large is malformed, and holding it
-      // would turn a metering nicety into a memory leak.
-      if (usageTail.length > 64_000) usageTail = '';
     };
 
     try {
@@ -842,7 +823,7 @@ export class TextProxyController {
 
       stream.on('data', (chunk: Buffer) => {
         res.write(chunk);
-        captureTerminalUsage(chunk);
+        collector.observe(chunk);
       });
 
       stream.on('end', () => {
@@ -911,6 +892,9 @@ export class TextProxyController {
   async generateAssembled(@Body() body: AssembledGenerateRequest): Promise<any> {
     this.validateAssembledRequest(body);
     this.requireDebugAccess(body.debug);
+    // Before the assembly work, and outside the try below (same reason as
+    // `generate()`): a refused allowance must reach the caller as its own 429.
+    await this.assertLlmAllowance();
 
     const { prompt, systemPrompt, resolvedMeta } = await this.assemblePrompt(body);
 
@@ -955,6 +939,22 @@ export class TextProxyController {
       });
       throw this.buildUpstreamException(err, 'TEXT service unavailable');
     }
+  }
+
+  /**
+   * TASK-890 (§3.13) — the caller tenant's LLM-token allowance.
+   *
+   * This route RECORDED what a stream spent but never checked whether the
+   * tenant could spend it, so a tenant at its `monthlyLlmTokens` ceiling kept
+   * generating here while the same ceiling stopped it on the summary path.
+   *
+   * Post-hoc debit (D6): a request's own token count is unknowable until TEXT
+   * answers, so this compares month-to-date rollups against the allowance
+   * rather than predicting the call — the same call shape `summary.service.ts`
+   * uses. Kill-switch-gated inside; → 429 once over.
+   */
+  private async assertLlmAllowance(): Promise<void> {
+    await this.entitlements?.assertMeterQuota(this.clsService.get('tenantId'), 'monthlyLlmTokens');
   }
 
   private validateAssembledRequest(body: AssembledGenerateRequest): void {
