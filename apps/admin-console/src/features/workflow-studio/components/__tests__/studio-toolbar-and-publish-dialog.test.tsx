@@ -3,7 +3,8 @@
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderWithProviders } from '@/test/render';
 import { StudioToolbar } from '../studio-toolbar';
 import { PublishDialog } from '../publish-dialog';
 
@@ -71,16 +72,36 @@ describe('StudioToolbar', () => {
   });
 });
 
+function stubWorkflowSchemaFetch(overrides: Record<string, unknown> = {}): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({
+        slug: 'discharge-summary',
+        versionNumber: 3,
+        triggerKinds: ['api'],
+        protocols: ['http', 'http-sse'],
+        modes: ['async', 'blocking', 'stream'],
+        ...overrides,
+      }),
+    ),
+  );
+}
+
 describe('PublishDialog', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('confirms with activate=true by default', () => {
     const onConfirm = vi.fn();
-    render(<PublishDialog open onOpenChange={vi.fn()} onConfirm={onConfirm} />);
+    renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={onConfirm} />);
     screen.getByRole('button', { name: /^Publish$/ }).click();
     expect(onConfirm).toHaveBeenCalledWith(true);
   });
 
   it('0 axe violations while open', async () => {
-    render(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} />);
+    renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} />);
     // Scoped to the dialog panel itself, not `baseElement` — Radix's portal-level focus-trap
     // guard spans (`[data-radix-focus-guard]`, siblings of the dialog root) are a deliberate,
     // real-browser-only focus-management technique that axe's static jsdom scan cannot evaluate
@@ -88,6 +109,59 @@ describe('PublishDialog', () => {
     // real browser's focus-trap semantics make it correct); scoping to the dialog itself keeps
     // the scan meaningful.
     expect(await axe(screen.getByRole('dialog'))).toHaveNoViolations();
+  });
+
+  describe('TASK-890 §3.10 — the endpoints panel, once published', () => {
+    it('is not shown before publishing (the confirm step, unchanged)', () => {
+      renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} slug="discharge-summary" />);
+      expect(screen.queryByText(/POST \/workflows/)).toBeNull();
+    });
+
+    it('lists POST /workflows/{slug}/runs once published', async () => {
+      stubWorkflowSchemaFetch();
+      renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} published slug="discharge-summary" />);
+      expect(await screen.findByText('POST /workflows/discharge-summary/runs')).toBeTruthy();
+    });
+
+    it('lists the ?mode= set resolved from the schema, EXCLUDING socket (a delivery lane, not a query value)', async () => {
+      stubWorkflowSchemaFetch({ modes: ['async', 'blocking', 'stream', 'socket'] });
+      renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} published slug="discharge-summary" />);
+      expect(await screen.findByText('async')).toBeTruthy();
+      expect(screen.getByText('blocking')).toBeTruthy();
+      expect(screen.getByText('stream')).toBeTruthy();
+      expect(screen.queryByText('socket')).toBeNull();
+    });
+
+    it('renders a copyable @arcaai/vox-node snippet naming the slug', async () => {
+      stubWorkflowSchemaFetch();
+      renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} published slug="discharge-summary" />);
+      const snippet = await screen.findByRole('group', { name: /vox-node/i });
+      expect(snippet.textContent).toContain('@arcaai/vox-node');
+      expect(snippet.textContent).toContain('discharge-summary');
+    });
+
+    it('links to /api-keys', async () => {
+      stubWorkflowSchemaFetch();
+      renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} published slug="discharge-summary" />);
+      const link = (await screen.findByRole('link', { name: /api keys/i })) as HTMLAnchorElement;
+      expect(link.getAttribute('href')).toBe('/api-keys');
+    });
+
+    it('0 axe violations in the published endpoints view', async () => {
+      stubWorkflowSchemaFetch();
+      renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} published slug="discharge-summary" />);
+      await screen.findByText('POST /workflows/discharge-summary/runs');
+      expect(await axe(screen.getByRole('dialog'))).toHaveNoViolations();
+    });
+
+    it('0 axe violations in the published endpoints view, dark theme', async () => {
+      document.documentElement.classList.add('dark');
+      stubWorkflowSchemaFetch();
+      renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} published slug="discharge-summary" />);
+      await screen.findByText('POST /workflows/discharge-summary/runs');
+      expect(await axe(screen.getByRole('dialog'))).toHaveNoViolations();
+      document.documentElement.classList.remove('dark');
+    });
   });
 });
 
