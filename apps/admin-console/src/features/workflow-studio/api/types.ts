@@ -59,6 +59,13 @@ export interface WorkflowFinding {
   path?: string;
   message: string;
   registerRefs?: readonly string[];
+  /**
+   * TASK-890 §3.5 — the shared finding-code vocabulary (`AGENT_REF_MISSING`,
+   * `PROMPT_VARIABLE_UNDECLARED`, `MODEL_NOT_READY`, `GUARDRAIL_OPTED_OUT`, …), stamped by
+   * `publishFindings` (`@arcaai/workflow-contract`). Absent on findings emitted before this
+   * ticket landed (`ruleId` stays the only identifier those carry).
+   */
+  code?: string;
 }
 
 export interface WorkflowValidationReport {
@@ -352,6 +359,26 @@ export interface AgentOption {
   versionNumber?: number;
   tenantId?: string;
   description?: string | null;
+  /**
+   * TASK-890 §3.6 — `Agent.instruction.variables` is a MAP of bindings keyed by the declared
+   * variable NAME (`{ name: { value } | { path } }`, OD-K); the KEYS are what
+   * `PromptVariablesField` offers as quick-add chips for `core.agent.overrides.promptVariables`.
+   * `GET admin/agents` already returns the full `AgentResponse` (no new route) — this just
+   * widens the projection this feature reads from the same payload.
+   */
+  instruction?: { variables?: Record<string, unknown> } | null;
+  /**
+   * TASK-890 §3.14 — the agent-tier guardrail default (`Agent.parameters.guards.enabled`).
+   * Absent/undefined means the platform default (ON) — the same `parameters.guards.enabled`
+   * the agents form (L5) reads for its own switch.
+   */
+  parameters?: { guards?: { enabled?: boolean } } | null;
+}
+
+/** `GET admin/consultation-context-schemas/:id/versions` row — only what the version pin picker needs.
+ *  The schema OPTION list itself comes from `@/shared/catalog`'s `useContextSchemaCatalog`. */
+export interface ContextSchemaVersionOption {
+  versionNumber: number;
 }
 
 /**
@@ -382,4 +409,21 @@ export interface ImportWorkflowDefinitionRequest {
   targetSlug: string;
   name?: string;
   bundle: WorkflowDefinitionBundle;
+}
+
+/**
+ * `GET workflows/:slug/schema` — mirrors `WorkflowSchemaDescription`
+ * (`packages/applications/src/services/workflow-exposure/workflow-schema-description.ts`).
+ * Read only for the PublishDialog's endpoints panel (TASK-890 §3.9/§3.10) — 404 until the
+ * definition is actually published (the route serves the PUBLISHED, ACTIVE version only).
+ */
+export interface WorkflowRunSchema {
+  slug: string;
+  versionNumber: number;
+  triggerKinds: string[];
+  protocols: string[];
+  /** `?mode=` values PLUS `socket` when the graph publishes it — `socket` is a delivery LANE,
+   *  never a valid `?mode=` query value (`modesFor`'s own doc). Filter it out before rendering
+   *  a `?mode=` example. */
+  modes: string[];
 }
