@@ -2,6 +2,7 @@ import {
   IconActivity,
   IconApi,
   IconAtom,
+  IconBinaryTree,
   IconBinaryTree2,
   IconBook2,
   IconBrain,
@@ -316,6 +317,30 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'vLLM',
     tier: '10-19',
     icon: IconRocket,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  // Ollama and llama.cpp joined the rail with the readiness sweep (TASK-890
+  // §3.12). Both were already PROBED by the platform — `admin/ai-models/
+  // discovery` enumerates all four engines, and the sweep now reports each one's
+  // status every 30 seconds — but neither had a screen, so a down engine showed
+  // up only as a model row that would not serve. The rail is the engine
+  // inventory; an engine missing from it is a blind spot, not a simplification.
+  {
+    route: '/ai-services/ollama',
+    domain: 'ai-platform',
+    label: 'Ollama',
+    tier: '10-19',
+    icon: IconServerBolt,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  {
+    route: '/ai-services/llama-cpp',
+    domain: 'ai-platform',
+    label: 'llama.cpp',
+    tier: '10-19',
+    icon: IconBinaryTree,
     required: [['manage', 'all']],
     implemented: true,
   },

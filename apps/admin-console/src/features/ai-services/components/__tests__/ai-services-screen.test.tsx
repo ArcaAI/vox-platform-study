@@ -93,6 +93,39 @@ const INSTRUCTIONS: AgenticInstructions = {
   ],
 };
 
+/**
+ * The readiness observation the DEFAULT tab reads (TASK-890 §3.12). Kept
+ * minimal — the grid itself is covered by `readiness-panel.test.tsx`; here it
+ * only has to exist so the landing tab renders.
+ */
+const READINESS = {
+  checkedAt: '2026-09-06T10:00:00.000Z',
+  engines: [
+    {
+      provider: 'lm-studio',
+      providerClass: 'engine-served',
+      baseUrlHost: 'lmstudio:1234',
+      status: 'up',
+      latencyMs: 9,
+      loadedCount: 1,
+      listedCount: 2,
+      detail: null,
+    },
+  ],
+  services: [{ key: 'text', healthy: true, lastSeenAt: '2026-09-06T09:59:55.000Z' }],
+  models: [
+    {
+      id: 'm-1',
+      slug: 'qwen3-8b',
+      taskType: 'TEXT_GENERATION',
+      provider: 'lm-studio',
+      providerClass: 'engine-served',
+      readiness: 'ready',
+      detail: null,
+    },
+  ],
+};
+
 interface RecordedCall {
   url: string;
   method: string;
@@ -117,6 +150,7 @@ function stubFetch({ session = SESSION, custom }: StubOptions = {}): RecordedCal
       if (url.pathname === '/api/hope/admin/ai-services/guardrail/status') return Response.json(GUARDRAIL_STATUS);
       if (url.pathname === '/api/hope/admin/ai-services/guardrail/config') return Response.json(GUARDRAIL_CONFIG);
       if (url.pathname === '/api/hope/admin/ai-services/nlp/status') return Response.json(NLP_STATUS);
+      if (url.pathname === '/api/hope/admin/ai-services/readiness') return Response.json(READINESS);
       if (url.pathname === '/api/hope/admin/agentic/instructions') return Response.json(INSTRUCTIONS);
       throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
     }),
@@ -130,20 +164,27 @@ afterEach(() => {
 });
 
 describe('AiServicesScreen', () => {
-  it('renders the heading and the three governance tabs', async () => {
+  it('renders the heading and the four governance tabs', async () => {
     stubFetch();
     renderWithProviders(<AiServicesScreen />);
 
     expect(screen.getByRole('heading', { level: 1, name: 'AI services' })).toBeDefined();
+    expect(screen.getByRole('tab', { name: 'Readiness' })).toBeDefined();
     expect(screen.getByRole('tab', { name: 'Guardrail' })).toBeDefined();
     expect(screen.getByRole('tab', { name: 'NLP' })).toBeDefined();
     expect(screen.getByRole('tab', { name: 'Instructions' })).toBeDefined();
-    await screen.findAllByText('healthy');
+  });
+
+  it('lands on Readiness — the question an operator opens this screen with', async () => {
+    stubFetch();
+    renderWithProviders(<AiServicesScreen />);
+
+    expect(await screen.findByRole('region', { name: 'Inference engines' })).toBeDefined();
   });
 
   it('shows content-shaped skeletons while the guardrail reads are in flight', () => {
     stubFetch({ custom: () => undefined });
-    const { container } = renderWithProviders(<AiServicesScreen />);
+    const { container } = renderWithProviders(<AiServicesScreen />, { searchParams: '?tab=guardrail' });
 
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
   });
@@ -151,7 +192,7 @@ describe('AiServicesScreen', () => {
   describe('Guardrail tab', () => {
     it('badges recognizable component statuses and key/values the rest of the upstream document', async () => {
       stubFetch();
-      renderWithProviders(<AiServicesScreen />);
+      renderWithProviders(<AiServicesScreen />, { searchParams: '?tab=guardrail' });
 
       // The card keeps its region name while loading, so wait on content.
       await screen.findByText('llama-guard-3-8b');
@@ -169,7 +210,7 @@ describe('AiServicesScreen', () => {
 
     it('renders the medical-validation and analysis-type config documents', async () => {
       stubFetch();
-      renderWithProviders(<AiServicesScreen />);
+      renderWithProviders(<AiServicesScreen />, { searchParams: '?tab=guardrail' });
 
       await screen.findByText('medgemma-27b');
       const panel = screen.getByRole('region', { name: 'Guardrail configuration' });
@@ -190,7 +231,7 @@ describe('AiServicesScreen', () => {
           return undefined;
         },
       });
-      renderWithProviders(<AiServicesScreen />);
+      renderWithProviders(<AiServicesScreen />, { searchParams: '?tab=guardrail' });
 
       await screen.findByText('totally');
       const panel = screen.getByRole('region', { name: 'Guardrail service status' });
@@ -210,7 +251,7 @@ describe('AiServicesScreen', () => {
           return undefined;
         },
       });
-      renderWithProviders(<AiServicesScreen />);
+      renderWithProviders(<AiServicesScreen />, { searchParams: '?tab=guardrail' });
 
       expect(await screen.findByRole('alert')).toBeDefined();
       expect(screen.getByText('guardrail service unavailable')).toBeDefined();
@@ -298,7 +339,7 @@ describe('AiServicesScreen', () => {
 
   it('has no axe violations with the guardrail panels rendered', async () => {
     stubFetch();
-    const { container } = renderWithProviders(<AiServicesScreen />);
+    const { container } = renderWithProviders(<AiServicesScreen />, { searchParams: '?tab=guardrail' });
     await screen.findByText('llama-guard-3-8b');
     expect(await axe(container)).toHaveNoViolations();
   });
