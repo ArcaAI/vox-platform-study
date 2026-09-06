@@ -6,10 +6,11 @@
  * fallback chain; the helpers here decide what a candidate IS so the runtime lanes (the live
  * loop, the Temporal `core.agent` activity, every `resolveTextSelection` caller) read one shape.
  *
- * Reference-only rule holds: a candidate carries the model's provider-native id (`sourceUri`),
- * the provider name apps/text registers, the agent's resolved instruction and parameters, and
- * the funding tier DERIVED from the row that serves it — never a credential of its own beyond
- * the one-hop `providerOverride` the agent resolver already produces.
+ * Reference-only rule holds: a candidate carries the model's provider-native id
+ * (`wireModelId` — TASK-890 §3.1 re-pointed routing off the locator `sourceUri`), the provider
+ * name apps/text registers, the agent's resolved instruction and parameters, and the funding tier
+ * DERIVED from the row that serves it — never a credential of its own beyond the one-hop
+ * `providerOverride` the agent resolver already produces.
  */
 import type { AgentCompiledConfig, AgentFundingTier, ResolvedAgent, ResolvedAgentModel, ResolvedAgentProviderOverride } from '@arcaai/types';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
@@ -32,7 +33,7 @@ export interface ResolvedTextCandidate {
   modelSlug: string;
   /** The provider as apps/text registers it (`azure` → `azure-openai`). */
   provider: string;
-  /** The provider-native model id (`AiModel.sourceUri`) — what actually goes on the wire. */
+  /** The provider-native model id (`AiModel.wireModelId`) — what actually goes on the wire. */
   model: string;
   resolvedPrompt: AgentCompiledConfig['resolvedPrompt'];
   instruction: Record<string, unknown> | null;
@@ -112,27 +113,56 @@ export interface CandidateFunding {
   providerOverride?: ResolvedAgentProviderOverride;
 }
 
-/** One candidate from an agent + one of its materialised models. `null` when the model has no provider-native id. */
+/**
+ * The override entry a candidate travels with, minus anything the MODEL ROW already decides.
+ *
+ * TASK-890 §3.7a: a TENANT-owned `AiModel` row is a connection-DECLARED deployment by
+ * construction — the tenant plane owns no engine and stages no weights, so `providerClassOf`
+ * classifies every tenant row `cloud-byo`. For Azure that matters on the wire:
+ * `azure_openai.py` prefers `override.deployment_name` over the request's `model`, so shipping
+ * the connection's single `deploymentName` alongside a tenant-declared model would send the
+ * connection's deployment no matter which model the agent bound. Dropping the field lets the
+ * request's model reach Azure, which is the whole point of declaring more than one.
+ *
+ * A SYSTEM row keeps the field: there the connection's `deploymentName` names the PLATFORM
+ * deployment and no per-model declaration exists to disagree with it.
+ */
+function overrideForModel(
+  model: ResolvedAgentModel,
+  providerOverride: ResolvedAgentProviderOverride | undefined,
+): ResolvedAgentProviderOverride | undefined {
+  if (!providerOverride || model.tenantId === SYSTEM_TENANT_ID) return providerOverride;
+  const { deployment_name: _declaredByTheRow, ...rest } = providerOverride;
+  return rest as ResolvedAgentProviderOverride;
+}
+
+/**
+ * One candidate from an agent + one of its materialised models. `null` when the model declares no
+ * ROUTED id (`wireModelId`) — such a row cannot be invoked at all, which is exactly what a missing
+ * `sourceUri` used to mean here before the §3.1 repoint.
+ */
 export function toTextCandidate(
   agent: ResolvedAgent,
   model: ResolvedAgentModel,
   kind: TextCandidateKind,
   funding: CandidateFunding,
 ): ResolvedTextCandidate | null {
-  if (!model.sourceUri) return null;
+  const wireModelId = model.wireModelId?.trim();
+  if (!wireModelId) return null;
+  const providerOverride = overrideForModel(model, funding.providerOverride);
   const compiled = agent.compiledConfig;
   return {
     kind,
     agent: { slug: agent.slug, versionId: agent.agentVersionId, versionNumber: agent.versionNumber, tenantId: agent.tenantId, source: agent.source },
     modelSlug: model.slug,
     provider: textWireProvider(model.provider ?? 'local'),
-    model: model.sourceUri,
+    model: wireModelId,
     resolvedPrompt: compiled.resolvedPrompt ?? null,
     instruction: compiled.instruction ?? null,
     parameters: compiled.parameters ?? {},
     tools: compiled.tools ?? [],
     fundingTier: funding.fundingTier,
-    ...(funding.providerOverride ? { providerOverride: funding.providerOverride } : {}),
+    ...(providerOverride ? { providerOverride } : {}),
   };
 }
 

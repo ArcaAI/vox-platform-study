@@ -22,19 +22,27 @@ import { TEXT_SPEC_CACHE_TTL_MS, TextAgentResolverService } from '../text-agent-
 // cannot show that the cascade is `request tenant → SYSTEM` and nothing else.
 const TENANT = '7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91';
 
-const model = (over: Partial<ResolvedAgentModel> = {}): ResolvedAgentModel => ({
-  role: 'primary',
-  slug: 'lms-gemma-4-e2b-it-qat',
-  sourceUri: 'gemma-4-e2b-it-qat',
-  sourceRevision: null,
-  localPath: null,
-  checksum: null,
-  format: 'GGUF',
-  computeType: null,
-  provider: 'lm-studio',
-  tenantId: SYSTEM_TENANT_ID,
-  ...over,
-});
+// TASK-890 §3.1 — routing reads `wireModelId`, not the locator `sourceUri`. The
+// fixture mirrors the one into the other exactly as the migration's backfill
+// did for engine-served rows, so a test that only sets `sourceUri` still
+// describes a routable model and a test that sets neither still describes an
+// unrunnable one.
+const model = (over: Partial<ResolvedAgentModel> = {}): ResolvedAgentModel => {
+  const base = {
+    role: 'primary' as const,
+    slug: 'lms-gemma-4-e2b-it-qat',
+    sourceUri: 'gemma-4-e2b-it-qat',
+    sourceRevision: null,
+    localPath: null,
+    checksum: null,
+    format: 'GGUF',
+    computeType: null,
+    provider: 'lm-studio',
+    tenantId: SYSTEM_TENANT_ID,
+    ...over,
+  } as ResolvedAgentModel;
+  return { ...base, wireModelId: over.wireModelId !== undefined ? over.wireModelId : base.sourceUri || null };
+};
 
 const agent = (over: Partial<ResolvedAgent> & { parameters?: Record<string, unknown> } = {}): ResolvedAgent => {
   const { parameters, ...rest } = over;
@@ -118,7 +126,7 @@ describe('TextAgentResolverService.resolve — the primary', () => {
     });
   });
 
-  it('the wire provider is what apps/text registers (`azure` → `azure-openai`) and the model is the provider-native sourceUri', async () => {
+  it('the wire provider is what apps/text registers (`azure` → `azure-openai`) and the model is the provider-native wireModelId', async () => {
     bySlug(
       { 'platform-summarization': platformAgent() },
       agent({ models: [model({ slug: 'azure-gpt', provider: 'azure', sourceUri: 'gpt-5.4-mini' })] }),
