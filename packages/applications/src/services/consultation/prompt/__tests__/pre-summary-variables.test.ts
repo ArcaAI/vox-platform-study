@@ -15,7 +15,6 @@ import {
   PRE_SUMMARY_TEMPLATE_VARIABLES,
   resolveV1LanguageName,
   substitutePreSummaryVariables,
-  templateReferencesPreSummaryVariables,
 } from '../pre-summary-variables';
 
 describe('PRE_SUMMARY_TEMPLATE_VARIABLES', () => {
@@ -122,17 +121,5 @@ describe('substitutePreSummaryVariables', () => {
 
   it('treats `$&`-style replacement patterns in a value as literal text', () => {
     expect(substitutePreSummaryVariables('{safe_vitals}', { safe_vitals: 'BP $& 120/80 $1' })).toBe('BP $& 120/80 $1');
-  });
-});
-
-describe('templateReferencesPreSummaryVariables', () => {
-  it('detects a body carrying any of the nine placeholders', () => {
-    expect(templateReferencesPreSummaryVariables('- **Department:** {current_department}')).toBe(true);
-    expect(templateReferencesPreSummaryVariables('- Language: {language_name}')).toBe(true);
-  });
-
-  it('is false for a body with no v1 placeholder', () => {
-    expect(templateReferencesPreSummaryVariables('Summarize for {conversation_language}.')).toBe(false);
-    expect(templateReferencesPreSummaryVariables('')).toBe(false);
   });
 });

@@ -1,20 +1,27 @@
 /**
- * v1 pre-summary template variables — the SHARED substituter.
+ * v1 pre-summary template variables — the VALUE builders, plus the v1-COMPAT-ONLY substituter.
  *
- * The seeded pre-summary bodies are byte-exact v1 (sha256 `309a9cd13792`,
- * 3091 B) and therefore carry v1's NINE single-brace placeholders. Two surfaces
- * resolve those same bodies and both must interpolate them (OD-2/OD-3):
+ * ## What TASK-890 changed here, and what it deliberately did not
  *
- *  - the v1-compat shim — `apps/api/src/modules/text-compat/summary-prompt.builder.ts`,
- *    which imports these functions;
- *  - the native Vox SDK v2 path — `PromptAssemblyService`, reached by BOTH
- *    `SummaryService.generatePreSummary` and `PreSummaryProcessor`.
+ * The nine v1 names are still built the same way, by the same defaults, and
+ * `PromptAssemblyService` still populates them — §3.4 keeps the VALUE builders
+ * verbatim, because the assembled bytes must not move.
  *
- * The pure pieces live HERE, in `@arcaai/applications`, because `apps/api`
- * depends on this package and not the reverse — a copy on each side would drift,
- * and drift means literal braces reaching the LLM on one surface but not the
- * other. Framework-free on purpose (no Nest, no DI): it is called from a NestJS
- * service and from a plain builder function alike.
+ * What moved is the RENDERER. The native Vox v2 consultation path renders through the ONE
+ * grammar (`renderTemplate`, §3.2) over the `context.*` namespace the tenant's
+ * `consultation_legacy_v1` schema clone declares, so it no longer calls
+ * {@link substitutePreSummaryVariables} at all.
+ *
+ * That function survives for exactly ONE caller: the FROZEN v1-compat plane
+ * (`apps/api/src/modules/text-compat/summary-prompt.builder.ts`), whose
+ * `V1_PRE_SUMMARY_TEMPLATE` is a byte-exact v1 literal carrying v1's single-brace
+ * placeholders and is pinned by a checksum test. It is a compatibility contract, not a
+ * templating flavour anyone may reach for: **do not add a new caller.** Retiring it means
+ * moving it into the compat module and converting the governed bodies that surface renders
+ * — a follow-up outside this lane's ownership.
+ *
+ * The pure pieces live HERE, in `@arcaai/applications`, because `apps/api` depends on this
+ * package and not the reverse. Framework-free on purpose (no Nest, no DI).
  *
  * Substitution happens at ASSEMBLY time and nowhere earlier: seed time is
  * impossible (values are per-request), and resolve time would both destroy the
@@ -107,9 +114,10 @@ const V1_PLACEHOLDER_PATTERN = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 /**
  * Substitute v1's single-brace placeholders into a pre-summary body.
  *
- * Deliberately NOT `interpolateTemplate` (`prompt-management.service.ts`): that
- * one is `{{var}}` and runs on the template TEST path only, so a v1 body would
- * pass through untouched and literal braces would reach the LLM (D-08).
+ * TASK-890 §3.11: this is the LAST single-brace renderer in the monorepo, kept only for the
+ * frozen v1-compat body described in the module docstring. Everything else — the consultation
+ * assembly path, the prompt test, the agent lanes and the harness — renders `{{ path }}`
+ * through `renderTemplate` in `@arcaai/workflow-contract`.
  *
  * ONE pass, OWN keys only:
  *  - a brace sequence appearing inside a substituted value (clinical free text
@@ -125,14 +133,4 @@ export function substitutePreSummaryVariables(template: string, values: Record<s
   return template.replace(V1_PLACEHOLDER_PATTERN, (match, name: string) =>
     Object.prototype.hasOwnProperty.call(values, name) ? values[name] : match,
   );
-}
-
-/**
- * Does this body reference any of the nine v1 placeholders?
- *
- * Lets a caller pay for the extra context lookups (department name, …) only
- * when the resolved body actually needs them.
- */
-export function templateReferencesPreSummaryVariables(template: string): boolean {
-  return PRE_SUMMARY_TEMPLATE_VARIABLES.some((name) => template.includes(`{${name}}`));
 }

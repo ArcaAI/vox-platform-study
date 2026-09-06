@@ -4,9 +4,9 @@
  *
  * The seeded pre-summary bodies (the ArcaAI tenant row AND the SYSTEM default
  * `71000000-…040`) are byte-exact v1 and therefore carry
- * `{current_department} {visit_type} {safe_age} {safe_dob} {safe_gender}
- * {safe_vitals} {formatted_test_results} {formatted_previous_visits}
- * {language_name}`. The compat shim substitutes them in
+ * `{{context.current_department}} {{context.visit_type}} {{context.safe_age}} {{context.safe_dob}} {{context.safe_gender}}
+ * {{context.safe_vitals}} {{context.formatted_test_results}} {{context.formatted_previous_visits}}
+ * {{context.language_name}}`. The compat shim substitutes them in
  * `summary-prompt.builder.ts`; the native path resolves the SAME body through
  * `PromptAssemblyService`, so without this the LLM receives literal braces.
  *
@@ -18,14 +18,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const V1_PRE_SUMMARY_BODY = [
-  '- **Department:** {current_department}',
-  '- **Visit Type:** {visit_type}',
-  '- **Demographics:** Age {safe_age}, DOB {safe_dob}, Gender {safe_gender}',
-  '- **Recent Vitals:** {safe_vitals} (two most recent encounters)',
-  '- **Test Results:** {formatted_test_results}',
-  '- **Previous Visits:** {formatted_previous_visits}',
-  '- Notes from {current_department}',
-  '- Language: {language_name}',
+  '- **Department:** {{context.current_department}}',
+  '- **Visit Type:** {{context.visit_type}}',
+  '- **Demographics:** Age {{context.safe_age}}, DOB {{context.safe_dob}}, Gender {{context.safe_gender}}',
+  '- **Recent Vitals:** {{context.safe_vitals}} (two most recent encounters)',
+  '- **Test Results:** {{context.formatted_test_results}}',
+  '- **Previous Visits:** {{context.formatted_previous_visits}}',
+  '- Notes from {{context.current_department}}',
+  '- Language: {{context.language_name}}',
 ].join('\n');
 
 const mockPromptResolutionService = { resolve: vi.fn() };
@@ -104,7 +104,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
     expect(userPrompt).toContain('- **Visit Type:** revisit');
   });
 
-  it("resolves {language_name} from the conversation language via v1's LANGUAGE_MAP", async () => {
+  it("resolves {{context.language_name}} from the conversation language via v1's LANGUAGE_MAP", async () => {
     const service = await getService();
     const ml = await service.assemble({
       tenantId: 'tenant-1',
@@ -175,7 +175,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
     mockPromptResolutionService.resolve.mockResolvedValue({
       template: 'Surgery-NewReferral',
       promptId: 'template-001',
-      content: 'Summarize for {conversation_language}.',
+      content: 'Summarize for {{context.conversation_language}}.',
       resolvedFrom: 'department',
       resolutionTrace: { usedDefaults: [] },
     });
@@ -226,7 +226,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
   });
 
   it('substitutes in ONE pass — a brace inside a substituted value is never re-interpreted', async () => {
-    mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', name: '{safe_vitals}' });
+    mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', name: '{{context.safe_vitals}}' });
     const service = await getService();
     const { userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
@@ -235,7 +235,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
       transcript: 'case notes',
       conversationLanguage: 'en',
     });
-    expect(userPrompt).toContain('- **Department:** {safe_vitals}');
+    expect(userPrompt).toContain('- **Department:** {{context.safe_vitals}}');
     expect(userPrompt).toContain('- **Recent Vitals:** Not available');
   });
 });

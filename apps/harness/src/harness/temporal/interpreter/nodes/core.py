@@ -28,7 +28,6 @@ derived from ``row.tenantId``, so it would mis-bill silently rather than fail.
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from typing import Any
 
@@ -72,6 +71,7 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     wire_provider,
 )
 from harness.temporal.interpreter.nodes.agentic import interpreter_agentic_data
+from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 from harness.temporal.models import HarnessPolicy
 
 # The `core.action` catalogue — the legacy node types that survive as ACTIONS, keyed by their
@@ -115,8 +115,6 @@ ACTION_KEYS: tuple[str, ...] = (
     "prompt.template_ref",
 )
 
-_TEMPLATE_VARIABLE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}")
-
 
 def _config(payload: NodeActivityInput) -> dict[str, Any]:
     config = getattr(payload, "config", None)
@@ -153,24 +151,6 @@ def _texts(value: Any) -> list[str]:
     return out
 
 
-def interpolate_template(template: str, context: dict[str, Any]) -> str:
-    """Replace every ``{{path}}`` with the run-context value at that dotted path (pure).
-
-    A path that does not resolve is left VERBATIM rather than blanked: a prompt that silently
-    lost a variable is worse than one that shows the author which one is missing.
-    """
-
-    def _replace(match: re.Match[str]) -> str:
-        value = resolve_dotted_path(context, match.group(1))
-        if value is MISSING:
-            return match.group(0)
-        if isinstance(value, str):
-            return value
-        return json.dumps(value, ensure_ascii=False, sort_keys=True)
-
-    return _TEMPLATE_VARIABLE.sub(_replace, template)
-
-
 def _schema_violation(schema: Any, value: Any) -> str | None:
     """Validate ``value`` against a tenant-authored JSON Schema (TIER 3). Never raises."""
     if not isinstance(schema, dict) or not schema:
@@ -197,16 +177,23 @@ async def interpreter_core_trigger(payload: NodeActivityInput) -> NodeActivityRe
 
     `critical: true` in the registry: a payload that does not match the schema its author
     declared is a run that cannot honestly proceed, so the violation is RAISED (an activity
-    error), which the interpreter promotes to a run-level FAILED. Only an INLINE schema can be
-    checked here; a row-referenced `contextSchemaId` is validated by the gateway before the run
-    is dispatched (TASK-864 A6), so absence of an inline schema is not a missing check.
+    error), which the interpreter promotes to a run-level FAILED.
+
+    TASK-890 §3.4 — two authoring shapes, ONE check here. A BY-REFERENCE `contextSchemaId` is
+    resolved at PUBLISH time by the gateway, which freezes the derived payload schema onto the
+    compiled trigger as `contextSchema.resolved` (`compiler.ts`); an ad-hoc graph carries
+    `contextSchema.inline`. The frozen one wins — it is the version the graph was published
+    against — and neither costs this activity a database read (invariant 4). Absence of both is
+    an unbound trigger, not a missing check.
     """
     started = now()
     config = _config(payload)
     context = payload.run_payload if isinstance(payload.run_payload, dict) else {}
-    schema = config.get("contextSchema")
-    inline = schema.get("inline") if isinstance(schema, dict) else None
-    violation = _schema_violation(inline, context)
+    schema = config.get("contextSchema") if isinstance(config.get("contextSchema"), dict) else {}
+    declared = schema.get("resolved") if isinstance(schema, dict) else None
+    if not isinstance(declared, dict):
+        declared = schema.get("inline") if isinstance(schema, dict) else None
+    violation = _schema_violation(declared, context)
     if violation is not None:
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
         raise RuntimeError(
@@ -418,11 +405,43 @@ def _generation_params(resolved: ResolvedAgent, config: dict[str, Any]) -> dict[
     return merged
 
 
+def _prompt_scope(variables: dict[str, Any], run_context: dict[str, Any]) -> dict[str, Any]:
+    """The render scope of §3.3, built once so both call shapes agree.
+
+    Roots: the run env's ``trigger`` / ``vars`` / ``nodes``, the bare names bound by the agent's
+    ``instruction.variables`` (overlaid by the node's ``overrides.promptVariables``), and
+    ``context`` as an ALIAS of ``trigger``.
+
+    The alias is what makes ONE prompt portable between a workflow run — where the validated
+    payload arrives as ``trigger`` — and a standalone ``POST /agents/:slug/invocations``, where
+    the caller supplies it as ``context``. It is applied BEFORE the bare names, so an agent that
+    genuinely declares a variable called ``context`` still wins; and it is skipped when the run
+    published no trigger, because binding an empty object would turn "this run has no trigger"
+    into "this field does not exist", which are different findings for the author.
+
+    ``variables`` also stays reachable under its own key: the pre-890 scope exposed it that way
+    and a seeded instruction may reference ``{{variables.x}}``.
+    """
+    scope: dict[str, Any] = dict(run_context)
+    trigger = run_context.get("trigger")
+    if isinstance(trigger, dict):
+        scope["context"] = trigger
+    scope.update(variables)
+    scope["variables"] = variables
+    return scope
+
+
 def _system_prompt(
     resolved: ResolvedAgent, config: dict[str, Any], context: dict[str, Any]
 ) -> str | None:
-    """The agent's instruction, interpolated with `{{path}}` variables from the run context and
-    the node's `overrides.promptVariables` (node wins)."""
+    """The agent's instruction, rendered through the ONE grammar (§3.2) over the §3.3 scope: the
+    run env's ``trigger`` / ``vars`` / ``nodes`` (plus the ``context`` alias) and the agent's own
+    bound variables, overlaid by the node's ``overrides.promptVariables`` (node wins).
+
+    Raises ``PromptVariableUnresolved`` when a placeholder resolves to nothing and declares no
+    ``default("…")``. The caller degrades the step on it — a prompt that silently lost a
+    variable, or that shipped a literal ``{{…}}`` to the model, is the failure this replaces.
+    """
     instruction = resolved.instruction if isinstance(resolved.instruction, dict) else {}
     compiled = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
     template = next(
@@ -452,8 +471,9 @@ def _system_prompt(
     overrides = config.get("overrides")
     if isinstance(overrides, dict) and isinstance(overrides.get("promptVariables"), dict):
         variables.update(overrides["promptVariables"])
-    scope = {**context, **variables, "variables": variables}
-    return interpolate_template(template, scope)
+    return render_template(
+        template, _prompt_scope(variables, context), template_ref=f"agent:{resolved.slug}"
+    )
 
 
 async def _run_text_generation(
@@ -555,7 +575,23 @@ async def _run_text_generation(
         if not provider or not model:
             continue
 
-        system_prompt = _system_prompt(candidate, config, run_context)
+        # TASK-890 §3.2 — an unresolved, undefaulted placeholder is a NAMED failure of the
+        # prompt, not of the provider, so it degrades the step immediately instead of walking
+        # the fallback chain: every candidate renders the SAME template against the SAME scope,
+        # so a switch would re-raise identically while billing nothing but latency.
+        try:
+            system_prompt = _system_prompt(candidate, config, run_context)
+        except PromptVariableUnresolved as exc:
+            await record_and_flush(
+                payload,
+                status=STATUS_DEGRADED,
+                started=started,
+                error_code="prompt_variable_unresolved",
+            )
+            return NodeActivityResult(
+                status="DEGRADED",
+                reason=f"core.agent: prompt_variable_unresolved: {exc}",
+            )
         try:
             safe_prompt = ensure_egress_safe(
                 user_prompt,

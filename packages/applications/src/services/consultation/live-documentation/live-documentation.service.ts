@@ -39,6 +39,15 @@ import { HarnessPolicyService } from '../../harness-policy/harness-policy.servic
 // interpreter's Python mirror (`nodes/_shared.py`'s `read_model_slug`).
 import { TextAgentResolverService } from '../../agent/text-agent-resolver.service';
 import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../agent/text-generation-spec';
+// TASK-890 §3.2/§3.3 — the ONE prompt grammar and the ONE scope. The realtime and durable lanes
+// render the SAME `core.agent` node, so they must render it the same way.
+import { PromptTemplateSyntaxError, PromptVariableUnresolvedError, renderTemplate } from '@arcaai/workflow-contract';
+import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
+// TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
+import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
+import { withUsageTrigger } from '../../usageLedger/usage-attributes';
+import { buildLlmUsageInput, parseTextUsageDetail } from '../summary/text-usage';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
@@ -173,12 +182,44 @@ function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-/** `{{name}}` interpolation of an agent instruction — the same grammar `AgentInvocationService` and the harness `core.agent` apply. */
-function interpolatePrompt(content: string, variables: Record<string, unknown>): string {
-  return content.replace(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g, (match, key: string) => {
-    const value = variables[key];
-    return value === undefined || value === null ? match : String(value);
-  });
+/**
+ * TASK-890 §3.2 — an unresolved prompt variable, raised so `callText` can tell it apart from a
+ * provider outage.
+ *
+ * The fallback chain exists to survive an ENGINE failing. Every candidate renders the same
+ * template against the same scope, so switching after a render failure would re-raise
+ * identically while spending the flush's remaining budget: the node degrades on the first one,
+ * with the path named.
+ */
+class LivePromptUnresolvedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LivePromptUnresolvedError';
+  }
+}
+
+/**
+ * Render an agent instruction on the REALTIME lane through the ONE grammar (§3.2), over the
+ * §3.3 scope.
+ *
+ * This lane has no `core.trigger` and no `core.variable` handler (`realtime-node-registry.ts`),
+ * so it publishes no `trigger` / `vars` / `nodes` roots: what it HAS is the agent's bound
+ * variables overlaid by the node's `overrides.promptVariables`. Binding those roots to empty
+ * objects would claim the run has a trigger whose fields are all missing, which is a different —
+ * and more misleading — finding than "this lane declares no trigger".
+ */
+function renderLivePrompt(content: string, variables: Record<string, unknown>, agentSlug: string): string {
+  try {
+    return renderTemplate(content, buildAgentPromptScope({ variables }), { templateRef: `agent:${agentSlug}` });
+  } catch (error) {
+    if (error instanceof PromptVariableUnresolvedError) {
+      throw new LivePromptUnresolvedError(`core.agent: prompt_variable_unresolved: ${error.path} (agent '${agentSlug}')`);
+    }
+    if (error instanceof PromptTemplateSyntaxError) {
+      throw new LivePromptUnresolvedError(`core.agent: prompt_template_syntax: ${error.message} (agent '${agentSlug}')`);
+    }
+    throw error;
+  }
 }
 
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
@@ -694,6 +735,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Optional + trailing so every positional fixture keeps its arity; absent ⇒ a `core.agent`
     // on the realtime lane degrades with a named reason (never the tenant default).
     @Optional() @Inject(TextAgentResolverService) private readonly textAgents?: TextAgentResolverService,
+    // TASK-890 §3.13 (OD-E) — the realtime lane was the second unmetered production LLM path:
+    // it posts to `apps/text` directly, so nothing upstream could count it and no plan ceiling
+    // could bound it. Both are @Optional + trailing, so every positional fixture keeps its
+    // arity and a composition without them behaves exactly as before — metering is additive and
+    // must never become a precondition for documenting a consultation.
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1992,7 +2040,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
           generate: async (corrective) => {
             const startedAt = Date.now();
-            const { text, stats, structured } = await this.callText(promptText, session.tenantId, signal, corrective, agent, template.compiled);
+            const { text, stats, structured } = await this.callText(
+              promptText,
+              session.tenantId,
+              signal,
+              corrective,
+              agent,
+              template.compiled,
+              undefined,
+              session.consultationId,
+            );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
           parseStrict: (text) => {
@@ -2333,6 +2390,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               ctx.agent,
               ctx.template.compiled,
               textAgent,
+              session.consultationId,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
@@ -3275,6 +3333,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // node's own `overrides`. Trailing and optional, so every legacy-flush caller keeps its
     // arity and generates on the tenant's ASSIGNED agent instead.
     textAgent?: { spec: ResolvedTextGenerationSpec; overrides: NodeOverrides },
+    // TASK-890 §3.13 — attribution for the usage row this call now records. Trailing and
+    // optional so every positional fixture keeps its arity.
+    consultationId?: string | null,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     if (textAgent) {
       // The candidates this call may run, in order: the primary, then — only when the tenant's
@@ -3284,9 +3345,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       let lastError: unknown;
       for (const candidate of candidates) {
         try {
-          return await this.callTextCandidate(promptText, tenantId, candidate, textAgent.overrides, compiled, signal, corrective);
+          return await this.callTextCandidate(promptText, tenantId, candidate, textAgent.overrides, compiled, signal, corrective, consultationId);
         } catch (error) {
           lastError = error;
+          // TASK-890 §3.2 — a prompt that does not render is not a provider outage either: every
+          // candidate would fail identically, so the node degrades here with the path named.
+          if (error instanceof LivePromptUnresolvedError) throw error;
           // An aborted flush is not a provider outage — nothing to switch to.
           if (signal?.aborted || candidate === candidates[candidates.length - 1]) break;
           this.logger.warn({
@@ -3336,7 +3400,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // of being forbidden to emit anything but a string.
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
     };
-    const stats = await this.postTextGenerate(payload, tenantId, signal);
+    const stats = await this.postTextGenerate(payload, tenantId, signal, consultationId);
     // Stamp WHICH routing task served this flush (`text.live`, never `text.finalize` — this
     // method is the live tier exclusively). TEXT itself has no notion of this key; it only
     // echoes back the provider/model it actually ran, so the tier provenance is stamped here.
@@ -3367,6 +3431,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     compiled: CompiledDocumentTemplate,
     signal?: AbortSignal,
     corrective?: string,
+    consultationId?: string | null,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     const includeResponseFormat = candidate.provider.toLowerCase() !== 'ollama';
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
@@ -3381,7 +3446,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const { provider: _overrideProvider, ...overrideEntry } = candidate.providerOverride ?? {};
     const payload = {
       prompt: corrective ? `${promptText}${corrective}` : promptText,
-      system_prompt: promptTemplate ? interpolatePrompt(promptTemplate, variables) : LIVE_DOCUMENT_SYSTEM_PROMPT,
+      system_prompt: promptTemplate ? renderLivePrompt(promptTemplate, variables, candidate.agent.slug) : LIVE_DOCUMENT_SYSTEM_PROMPT,
       provider: candidate.provider,
       model: candidate.model,
       temperature: numberOrUndefined(generation.temperature),
@@ -3391,7 +3456,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
       ...(candidate.providerOverride ? { provider_overrides: { [candidate.provider]: overrideEntry } } : {}),
     };
-    const result = await this.postTextGenerate(payload, tenantId, signal);
+    const result = await this.postTextGenerate(payload, tenantId, signal, consultationId);
     return {
       text: result.text,
       stats: result.stats
@@ -3407,11 +3472,52 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * TASK-890 §3.13 — the LLM quota precheck every generation on this lane now makes.
+   *
+   * No increment: a generation's token count is unknowable before the model answers, so this is
+   * the "is this tenant over its ceiling AT ALL" shape `summary.service.ts` documents. A 429
+   * from here propagates — a consultation that has exhausted its plan must be told, not served
+   * silently and billed later. Absent service ⇒ no gate, exactly as before.
+   */
+  private async assertLlmQuota(tenantId: string): Promise<void> {
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
+  }
+
+  /**
+   * TASK-890 §3.13 — record ONE `generate` row for a completed TEXT call on this lane.
+   *
+   * `trigger: 'CONSULTATION'` is the dimension that separates this lane's spend from a prompt
+   * bench's or a workflow run's. Best-effort by contract: the model already ran and the
+   * clinician is waiting for the note, so a ledger outage is logged and swallowed — "not
+   * metered" is recoverable from the provider's own usage API, a failed flush is not. TEXT
+   * reporting no `usage_detail` records NOTHING rather than a row saying nothing happened.
+   */
+  private recordLlmUsage(tenantId: string, data: unknown, consultationId?: string | null): void {
+    if (!this.usageLedger) return;
+    const usage = parseTextUsageDetail((data as { usage_detail?: unknown } | null)?.usage_detail);
+    if (!usage) return;
+    const batch = withUsageTrigger(
+      buildLlmUsageInput({ usage, tenantId, operation: 'generate', consultationId: consultationId ?? null }),
+      'CONSULTATION',
+    );
+    if (!batch) return;
+    void this.usageLedger.recordUsage(batch).catch((error: unknown) => {
+      this.logger.warn({
+        message: 'Live TEXT generation was not metered (the note was still produced)',
+        tenantId,
+        consultationId: consultationId ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
   /** The shared gateway→TEXT hop the two live generation paths make: enrichment, auth, tenant header, one POST. */
   private async postTextGenerate(
     payload: { provider?: string; model?: string; [key: string]: unknown },
     tenantId: string,
     signal?: AbortSignal,
+    consultationId?: string | null,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null }> {
     // fold in the caller tenant's resolved provider credential
     // (`provider_overrides`) through the ONE shared implementation. Not
@@ -3441,11 +3547,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // dropped header mis-bills silently as well as mis-configuring the call. This is
     // the highest-volume internal hop in the platform (every live-doc flush).
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    // TASK-890 §3.13 — the ceiling is checked BEFORE the upstream call, the units are recorded
+    // from the upstream's own `usage_detail` AFTER it.
+    await this.assertLlmQuota(tenantId);
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
       timeout: this.textTimeoutMs,
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
+    this.recordLlmUsage(tenantId, response.data, consultationId);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
   }
 
@@ -3506,11 +3616,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
+    await this.assertLlmQuota(tenantId);
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
       timeout: this.textTimeoutMs,
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
+    this.recordLlmUsage(tenantId, response.data, consultationId);
 
     const { proposals, rejectedProposals } = verifyCorrectionProposals(mapTextGenerateResponse(response.data).summary, sourceText, {
       provider,
@@ -3605,11 +3718,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    // TASK-890 §3.13 — Lane N's mining call is a generation too. It carries no consultation id
+    // (this method is not given one), so the row is attributed to the tenant alone; threading
+    // the id here is a follow-up, not a reason to leave the call uncounted.
+    await this.assertLlmQuota(tenantId);
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
       timeout: this.textTimeoutMs,
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
+    this.recordLlmUsage(tenantId, response.data, null);
 
     const maxFindings = typeof config.maxFindings === 'number' && config.maxFindings > 0 ? Math.floor(config.maxFindings) : DEFAULT_MAX_FINDINGS;
     return { findings: parseImportantFindings(mapTextGenerateResponse(response.data).summary, maxFindings) };
