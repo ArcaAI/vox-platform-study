@@ -96,6 +96,62 @@ export const ENGINE_DESCRIPTORS: Record<InferenceEngineProvider, EngineDescripto
       },
     ],
   },
+  ollama: {
+    provider: 'ollama',
+    route: '/ai-services/ollama',
+    title: 'Ollama',
+    summary: 'Self-hosted GGUF engine — the pull-and-run tier, kept for local and fallback serving',
+    listingSurface: 'Ollama’s `/api/tags` catalogue plus its `/api/ps` running list, aggregated by the text service',
+    notDeployedNote:
+      'Ollama has no deployment in this cluster today, so an unreachable probe is the expected result rather than a ' +
+      'fault. The engine stays selectable because a tenant or a local developer may point the platform at one; this ' +
+      'screen exists so that state is legible instead of silent.',
+    artifactPrefix: 'ollama/',
+    omissions: [
+      LIFECYCLE_OMISSION,
+      {
+        title: 'Models are pulled on the engine, not from here',
+        detail:
+          'Ollama fetches its own weights with `ollama pull`, straight from its registry rather than from the models ' +
+          'bucket. This screen reads what the engine reports and how the registry governs it; the Artifacts tab is ' +
+          'therefore usually empty for Ollama, and that is correct rather than missing data.',
+      },
+      {
+        title: 'Residency is reported, never changed',
+        detail:
+          'Ollama distinguishes a model it KNOWS (`/api/tags`) from one it is currently RUNNING (`/api/ps`), which is ' +
+          'what "loaded" means on this screen. Loading or evicting one is an engine-mutating call this read plane does ' +
+          'not make.',
+      },
+    ],
+  },
+  'llama-cpp': {
+    provider: 'llama-cpp',
+    route: '/ai-services/llama-cpp',
+    title: 'llama.cpp',
+    summary: 'Self-hosted GGUF server — the single-model, low-overhead serving tier',
+    listingSurface: 'the llama.cpp server’s `/health` probe and its OpenAI-compatible model listing, aggregated by the text service',
+    notDeployedNote:
+      'llama.cpp has no deployment in this cluster today, so "unreachable" is its normal state rather than an outage. ' +
+      'The engine is kept in the inventory because it is the cheapest way to serve one GGUF model on modest hardware.',
+    artifactPrefix: 'llama-cpp/',
+    omissions: [
+      LIFECYCLE_OMISSION,
+      {
+        title: 'One server serves one model',
+        detail:
+          'A llama.cpp server is started with its model and serves that one. Promoting a different model is a ' +
+          're-deploy through GitOps, which is why there is no load/unload control here — there is nothing for it to ' +
+          'call. Anything the server lists, it is already serving.',
+      },
+      {
+        title: 'Weights are not fetched from this screen',
+        detail:
+          'The server reads its GGUF at start-up. The Artifacts tab shows what is in the models bucket under this ' +
+          'engine’s prefix; putting something new there is a storage operation, and serving it is a deployment one.',
+      },
+    ],
+  },
   vllm: {
     provider: 'vllm',
     route: '/ai-services/vllm',

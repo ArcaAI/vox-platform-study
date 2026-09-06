@@ -7,8 +7,8 @@
  * through with its own status; a transport failure becomes 503.
  */
 
-import { getJson } from '@/shared/api';
-import type { AgenticInstructions, AgenticInstructionsParams, GuardrailConfig, GuardrailStatus, NlpStatus } from './types';
+import { getJson, postJson } from '@/shared/api';
+import type { AgenticInstructions, AgenticInstructionsParams, GuardrailConfig, GuardrailStatus, InferenceReadiness, NlpStatus } from './types';
 
 const AI_SERVICES_BASE = 'admin/ai-services';
 
@@ -34,4 +34,20 @@ export function getNlpStatus(): Promise<NlpStatus> {
  */
 export function getAgenticInstructions(params: AgenticInstructionsParams = {}): Promise<AgenticInstructions> {
   return getJson('admin/agentic/instructions', { ...params });
+}
+
+/**
+ * The platform's LAST readiness observation. A plain read — it triggers no
+ * probe, which is exactly why the console may poll it.
+ */
+export function getInferenceReadiness(): Promise<InferenceReadiness> {
+  return getJson(`${AI_SERVICES_BASE}/readiness`);
+}
+
+/**
+ * Take an observation now. Costs a real probe through the text service and is
+ * rate-limited server-side (6/min), so it is only ever a deliberate action.
+ */
+export function refreshInferenceReadiness(): Promise<InferenceReadiness> {
+  return postJson(`${AI_SERVICES_BASE}/readiness/refresh`);
 }

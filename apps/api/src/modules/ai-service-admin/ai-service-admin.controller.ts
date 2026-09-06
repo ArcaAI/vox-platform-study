@@ -1,5 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { IInferenceReadinessService, InferenceReadinessResponse, toInferenceReadinessResponse } from '@arcaai/applications';
 import { Authorize, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { AiServiceProxyClient, GuardrailConfigResult } from './ai-service-proxy.client';
 import { MlflowSearchQuery } from './dto/mlflow-search.query';
@@ -39,7 +41,45 @@ export class AiServiceAdminController {
   constructor(
     private readonly proxyClient: AiServiceProxyClient,
     private readonly mlflowClient: MlflowProxyClient,
+    @Inject(IInferenceReadinessService) private readonly readinessService: IInferenceReadinessService,
   ) {}
+
+  @Get('readiness')
+  @ApiOperation({
+    summary: 'Inference readiness — the platform’s last observation of every engine, service and model',
+    description:
+      'The stored snapshot taken by the readiness sweep: per engine (LM Studio, Ollama, vLLM, llama.cpp) its probe ' +
+      'status, latency and loaded/listed counts; per HOPE service its heartbeat; per registry model a readiness state ' +
+      '(`ready` / `loadable` / `engine_down` / `weights_missing` / `credential_missing` / `unknown`). ' +
+      'READS NOTHING LIVE — it serves what the sweep last saw, and `checkedAt` says when that was, so an operator is ' +
+      'never shown a stale answer dressed as a current one. Before the first sweep (or with the sweep switched off) ' +
+      'this is an EMPTY document with `checkedAt: null`, not a 404: "nothing has been observed" is a state of the ' +
+      'platform, not a missing resource. Use `POST readiness/refresh` to take an observation now.',
+  })
+  @ApiOkResponse({ description: 'The last readiness observation.', type: InferenceReadinessResponse })
+  @ApiResponse({ status: 403, description: 'Caller is not a super admin, or presented an API key (this plane is JWT/service-account only).' })
+  async readiness(): Promise<InferenceReadinessResponse> {
+    return toInferenceReadinessResponse(await this.readinessService.getSnapshot());
+  }
+
+  @Post('readiness/refresh')
+  // A refresh costs a real engine probe through the text service, so it carries
+  // its own ceiling on top of the global default tier. The GET does not: it is
+  // a Redis read.
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Take one readiness observation now',
+    description:
+      'Runs a single sweep immediately, ignoring the configured interval, and returns its result. Rate-limited to 6 per ' +
+      'minute because each run sends a probe to the text service, which is the single aggregator in front of the ' +
+      'engines. Never fails on an unreachable engine — an engine that does not answer IS the observation.',
+  })
+  @ApiOkResponse({ description: 'The observation just taken.', type: InferenceReadinessResponse })
+  @ApiResponse({ status: 403, description: 'Caller is not a super admin, or presented an API key.' })
+  @ApiResponse({ status: 429, description: 'Refresh rate limit exceeded.' })
+  async refreshReadiness(): Promise<InferenceReadinessResponse> {
+    return toInferenceReadinessResponse(await this.readinessService.sweep());
+  }
 
   @Get('guardrail/status')
   @ApiOperation({

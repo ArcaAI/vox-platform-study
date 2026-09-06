@@ -100,16 +100,19 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // tier 30-49 21 -> 22.
   // TASK-861: `/audio/pipelines` and `/harness/pipeline-policy` RETIRED (redirect
   // stubs; the ASR Agent + workflow assignments replace them), 59 -> 57, tier 30-49 22 -> 20.
-  it('covers the full 57-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(57);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
+  // TASK-890: `/ai-services/ollama` and `/ai-services/llama-cpp` join the rail —
+  // both engines were already probed by discovery and by the readiness sweep and
+  // had no screen — 57 -> 59, tier 10-19 22 -> 24.
+  it('covers the full 59-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(24);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
     // TASK-862: 62 -> 60; TASK-863: 60 -> 61 (`/agents` returns to the rail as a real screen);
-    // TASK-861: 61 -> 59 (two retired routes).
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(59);
+    // TASK-861: 61 -> 59 (two retired routes). TASK-890: 59 -> 61 (two engines).
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -455,6 +458,8 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   // parent: platform infrastructure, cross-tenant, SUPER_ADMIN only.
   ['/ai-services/lm-studio', '10-19', [['manage', 'all']]],
   ['/ai-services/vllm', '10-19', [['manage', 'all']]],
+  ['/ai-services/ollama', '10-19', [['manage', 'all']]],
+  ['/ai-services/llama-cpp', '10-19', [['manage', 'all']]],
   ['/ai-services/mlflow', '10-19', [['manage', 'all']]],
   ['/ai-operations/runs', '10-19', [['manage', 'all']]],
   ['/ai-operations/metrics', '10-19', [['manage', 'all']]],
@@ -493,10 +498,14 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   // E.1 — the descriptor-driven registry lane. `read` as well
   // as `manage`: the catalog is RBAC-filtered and readable by any admin, and
   // which keys are WRITABLE (and at which scope) is decided per descriptor.
-  ['/settings-registry', '20-29', [
-    ['read', 'GlobalSetting'],
-    ['manage', 'GlobalSetting'],
-  ]],
+  [
+    '/settings-registry',
+    '20-29',
+    [
+      ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
+    ],
+  ],
   ['/settings', '20-29', [['manage', 'GlobalSetting']]],
   [
     '/tenant-profile',
@@ -640,6 +649,8 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
       // The self-hosted engines and the model registry of record.
       '/ai-services/lm-studio',
       '/ai-services/vllm',
+      '/ai-services/ollama',
+      '/ai-services/llama-cpp',
       '/ai-services/mlflow',
     ],
   ],
@@ -651,7 +662,17 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
   // TASK-863: `/agents` (the Agent entity) joins knowledge-agents, 8 -> 9.
   [
     'knowledge-agents',
-    ['/agents', '/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles', '/tools-mcp', '/workflow-studio', '/workflow-studio/assignments'],
+    [
+      '/agents',
+      '/prompt-templates',
+      '/context-schemas',
+      '/document-templates',
+      '/knowledge',
+      '/dna-writing-styles',
+      '/tools-mcp',
+      '/workflow-studio',
+      '/workflow-studio/assignments',
+    ],
   ],
   // TASK-861: `/audio/pipelines` retired.
   ['clinical', ['/consultations', '/consent', '/audio/transcription-jobs']],
@@ -753,7 +774,7 @@ describe('NAV_DOMAINS', () => {
   // knowledge-agents 5 -> 8 (+ `/tools-mcp`, `/workflow-studio`, `/workflow-studio/assignments`);
   // workflow-harness 7 -> 5; platform-ops 8 -> 11.
   // TASK-863: knowledge-agents 8 -> 9 (/agents).
-  it('partitions the 59 rail routes exactly as the ticket Domain Model does (3·6·8·9·4·5·7·11·6)', () => {
+  it('partitions the 61 rail routes exactly as the ticket Domain Model does (3·6·8·9·4·5·7·11·6, AI Platform +2)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -762,7 +783,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(57);
+    expect(NAV_ENTRIES).toHaveLength(59);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {
@@ -885,7 +906,7 @@ describe('activeNavDomainId (AC-6 — selection is derived from the URL)', () =>
 });
 
 describe('domainLandingRoute (Open Question — a rail click always navigates)', () => {
-  it('lands on the domain\'s first visible entry', () => {
+  it("lands on the domain's first visible entry", () => {
     expect(domainLandingRoute('overview', [...NAV_ENTRIES])).toBe('/dashboard');
     expect(domainLandingRoute('platform-ops', [...NAV_ENTRIES])).toBe('/rate-limits');
   });

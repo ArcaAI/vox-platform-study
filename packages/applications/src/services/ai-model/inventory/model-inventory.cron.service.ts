@@ -8,16 +8,27 @@ import { ModelInventoryService } from './model-inventory.service';
 const JOB_NAME = 'model-registry-inventory';
 
 /**
- * FAIL-SAFE defaults for the scheduled inventory sweep. `enabled` is OFF here
- * on purpose (a kill-switch never defaults ON); the deployed posture is a
- * platform VALUE on the two AppSettings keys below. Until those descriptors are
- * registered (`settings-registry/descriptors`, outside this ticket's file
- * scope — see the TASK-860 report) the sweep runs on demand only
- * (`POST admin/ai-models/inventory`); the publish processor stamps its own
- * row AVAILABLE, so a fresh publish never waits for a sweep.
+ * Code defaults for the scheduled inventory sweep — the LAST fallback of the
+ * cascade, behind whatever `GlobalSetting` rows a platform admin has written.
+ *
+ * Both keys are now REGISTERED descriptors
+ * (`settings-registry/descriptors/ai-readiness.descriptors.ts`), so the sweep's
+ * posture is admin-reachable rather than a code constant; the earlier note here
+ * ("until those descriptors are registered … the sweep runs on demand only") no
+ * longer holds, and the two sides are pinned together by
+ * `__tests__/ai-readiness.descriptors.test.ts`.
+ *
+ * `enabled` ships ON. It is NOT a kill-switch (which the registry requires to
+ * default OFF): turning it off removes a MEASUREMENT, not an enforcement path —
+ * the same polarity as `metering.outbox.drain.enabled`. And the measurement is
+ * load-bearing: `AiModel.availability`, which this sweep is the only scheduled
+ * writer of, is half of the readiness verdict for every platform-served model
+ * (TASK-890 §3.12), so leaving it off reports `unknown` forever on a platform
+ * that is in fact serving. The on-demand route (`POST admin/ai-models/inventory`)
+ * and the publish processor's own row stamp are unchanged.
  */
 const DEFAULTS = {
-  enabled: false,
+  enabled: true,
   cron: '0 * * * *',
 } as const;
 
