@@ -434,8 +434,19 @@ export function declaredTriggerKinds(graph: Pick<WorkflowGraph, 'nodes'>): CoreT
   return [...kinds].sort();
 }
 
-/** The Trigger's inline context schema and the Output's schema, when authored — what the
- *  generated OpenAPI components are built from (TASK-864 A7). */
+/**
+ * The Trigger's context schema and the Output's schema, when authored — what the generated
+ * OpenAPI components are built from (TASK-864 A7).
+ *
+ * TASK-890 (black-box J4-F4): the trigger's schema is `resolved` FIRST, `inline` second. A
+ * trigger bound BY REFERENCE authors no inline schema at all, so reading `inline` alone published
+ * an untyped Input for exactly the binding the console's picker creates. `resolved` is the
+ * derived payload schema the publish path froze onto the compiled trigger node
+ * (`compiler.ts#compiledConfigFor`); it is never authored by hand, so preferring it can only ever
+ * type an Input that would otherwise have been open. For a PUBLISHED definition that answer lives
+ * in the compiled artifact rather than the authored `graph` column — see
+ * {@link compiledTriggerContextSchema}.
+ */
 export function declaredIoSchemas(graph: Pick<WorkflowGraph, 'nodes'>): {
   input: Readonly<Record<string, unknown>> | null;
   output: Readonly<Record<string, unknown>> | null;
@@ -444,8 +455,9 @@ export function declaredIoSchemas(graph: Pick<WorkflowGraph, 'nodes'>): {
   let output: Readonly<Record<string, unknown>> | null = null;
   for (const node of Array.isArray(graph.nodes) ? graph.nodes : []) {
     if (node?.type === 'core.trigger') {
-      const inline = asObject(asObject(node.config)?.contextSchema)?.inline;
-      if (asObject(inline) !== undefined) input = inline as Record<string, unknown>;
+      const contextSchema = asObject(asObject(node.config)?.contextSchema);
+      const bound = asObject(contextSchema?.resolved) ?? asObject(contextSchema?.inline);
+      if (bound !== undefined) input = bound;
     }
     if (node?.type === 'core.output') {
       const schema = asObject(node.config)?.outputSchema;
@@ -453,4 +465,33 @@ export function declaredIoSchemas(graph: Pick<WorkflowGraph, 'nodes'>): {
     }
   }
   return { input, output };
+}
+
+/**
+ * The trigger's FROZEN context payload schema, lifted out of a compiled artifact
+ * (`CompiledWorkflowConfig`), or `null` when publish froze nothing.
+ *
+ * Why this rather than the `graph` column: the authored graph keeps the reference verbatim (that
+ * is what a re-publish re-resolves), while the resolved answer is written once, at publish, into
+ * the compiled trigger node's `config.contextSchema.resolved`. The exposure plane serves a
+ * PUBLISHED row, so this is the read that types `GET /workflows/{slug}/schema` and the catalogue
+ * summary for a reference-bound trigger — with no republish and no database read.
+ *
+ * Total: any shape that is not a compiled config carrying a `core.trigger` node with a resolved
+ * object answers `null`.
+ */
+export function compiledTriggerContextSchema(compiledConfig: unknown): Record<string, unknown> | null {
+  const stages = asObject(compiledConfig)?.stages;
+  if (!Array.isArray(stages)) return null;
+  for (const stage of stages) {
+    const nodes = asObject(stage)?.nodes;
+    if (!Array.isArray(nodes)) continue;
+    for (const node of nodes) {
+      const compiled = asObject(node);
+      if (compiled?.type !== 'core.trigger') continue;
+      const resolved = asObject(asObject(asObject(compiled.config)?.contextSchema)?.resolved);
+      if (resolved !== undefined) return resolved;
+    }
+  }
+  return null;
 }

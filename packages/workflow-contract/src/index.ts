@@ -30,6 +30,7 @@ export {
   actionConfigSchemaOf,
   actionDelegateOf,
   branchHandlesOf,
+  compiledTriggerContextSchema,
   coreNodeConfigProblems,
   declaredIoSchemas,
   declaredOutputProtocols,

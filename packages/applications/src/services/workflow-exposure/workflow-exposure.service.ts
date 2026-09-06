@@ -481,7 +481,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     if (!definition || exposureBoundaryViolation(definition, {}) !== null) {
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
-    return describeWorkflow(definition.slug, definition.versionNumber, graphOf(definition.graph));
+    return describeWorkflow(definition.slug, definition.versionNumber, graphOf(definition.graph), definition.compiledConfig);
   }
 
   async rotateWebhookSecret(slug: string): Promise<WorkflowWebhookSecretResponse> {
