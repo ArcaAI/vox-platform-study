@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react';
+import type { ComponentType, DragEvent, ReactNode } from 'react';
 
 /**
  * Mirrors `WorkflowFindingSeverity` from `@arcaai/workflow-contract`
@@ -104,6 +104,16 @@ export interface WorkflowCanvasProps {
   emptyState?: ReactNode;
   /** Never removes a node itself — the consumer decides (and may refuse for a `mandatory` node). */
   onDeleteRequest?: (nodeId: string) => void;
+  /**
+   * Drop-to-add: something was dropped on the pane. The composite contributes the ONE thing only
+   * it can — the drop point projected into flow coordinates (`screenToFlowPosition`, so pan and
+   * zoom are accounted for) — and hands the raw event on; what the payload MEANS is the
+   * consumer's business (this composite knows nothing about node types or registries).
+   *
+   * Never the only way to add a node: the consumer keeps a pointer-free path (WCAG 2.5.7). Not
+   * called while `readOnly`.
+   */
+  onPaneDrop?: (event: DragEvent<HTMLDivElement>, position: { x: number; y: number }) => void;
   /** Render the overview minimap (bottom-right). Default `true`; pass `false` for tiny embeds. */
   minimap?: boolean;
   'aria-label': string;

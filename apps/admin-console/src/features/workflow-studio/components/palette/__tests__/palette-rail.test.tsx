@@ -53,6 +53,31 @@ describe('PaletteRail', () => {
     expect(onAddNode).toHaveBeenCalledWith(NOOP);
   });
 
+  /**
+   * TASK-890 black-box J4-F1 — the item's own doc promised a drag the code never implemented.
+   * The drag is an ENHANCEMENT: the click path above still adds the node, and a disabled item
+   * (unimplemented / unentitled) is not draggable either, so the two paths refuse in step.
+   */
+  it('a palette item is draggable and carries its registry type on the drag', () => {
+    render(<PaletteRail descriptors={[NOOP]} onAddNode={vi.fn()} />);
+    const button = screen.getByRole('button', { name: /noop/i });
+    expect(button.getAttribute('draggable')).toBe('true');
+
+    const store = new Map<string, string>();
+    const dataTransfer = {
+      effectAllowed: 'none',
+      setData: (format: string, value: string) => void store.set(format, value),
+      getData: (format: string) => store.get(format) ?? '',
+    };
+    fireEvent.dragStart(button, { dataTransfer });
+    expect(store.get('application/x-hope-workflow-node')).toBe('noop');
+  });
+
+  it('a disabled palette item is not draggable either', () => {
+    render(<PaletteRail descriptors={[UNIMPLEMENTED]} onAddNode={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /future step/i }).getAttribute('draggable')).toBe('false');
+  });
+
   it('an unimplemented (observable placeholder) node type renders disabled with a reason, never dropped from the list', () => {
     render(<PaletteRail descriptors={[UNIMPLEMENTED]} onAddNode={vi.fn()} />);
     const button = screen.getByRole('button', { name: /future step/i });

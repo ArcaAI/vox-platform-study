@@ -34,6 +34,8 @@ vi.mock('sonner', () => ({
  * workflow-canvas` stays real.
  */
 let capturedOnNodesChange: ((next: { id: string; position: { x: number; y: number } }[]) => void) | null = null;
+/** TASK-890/BBJ4-F1 — the same seam for the drop path: the real pane cannot be dragged in jsdom. */
+let capturedOnPaneDrop: ((event: { dataTransfer: DataTransfer | null }, position: { x: number; y: number }) => void) | null = null;
 vi.mock('@arcaai/ui/components/workflow-canvas', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@arcaai/ui/components/workflow-canvas')>();
   return {
@@ -42,8 +44,10 @@ vi.mock('@arcaai/ui/components/workflow-canvas', async (importOriginal) => {
       nodes?: readonly unknown[];
       emptyState?: ReactNode;
       onNodesChange?: (next: { id: string; position: { x: number; y: number } }[]) => void;
+      onPaneDrop?: (event: { dataTransfer: DataTransfer | null }, position: { x: number; y: number }) => void;
     }) => {
       capturedOnNodesChange = props.onNodesChange ?? null;
+      capturedOnPaneDrop = props.onPaneDrop ?? null;
       // Keep the one observable behaviour the other cases in this file assert: an empty graph
       // renders the canvas's own empty state.
       return <div data-testid="canvas-stub">{(props.nodes?.length ?? 0) === 0 ? props.emptyState : null}</div>;
@@ -266,5 +270,66 @@ describe('WorkflowStudioEditor — a canvas node drag persists (TASK-890/BB4)', 
     const patch = calls.find((call) => call.method === 'PATCH');
     expect(patch).toBeTruthy();
     expect((patch?.body as { graph: { nodes: { position: unknown }[] } }).graph.nodes[0].position).toEqual({ x: 400, y: 250 });
+  });
+});
+
+/**
+ * TASK-890 black-box J4-F1 — drop-from-palette.
+ *
+ * The canvas contributes the projected drop point; the editor decides what the payload means. A
+ * dropped node is an AUTHORED edit like any other, so it marks the graph dirty and rides the same
+ * debounced autosave a palette click does — the failure mode this locks out is a node that
+ * appears on the canvas and is gone after a reload (the sibling drag case above).
+ */
+describe('WorkflowStudioEditor — drop from the palette (TASK-890/BBJ4-F1)', () => {
+  const NOTE_DESCRIPTOR = {
+    type: 'core.note',
+    implemented: true,
+    classes: ['annotation'],
+    paletteKey: 'core',
+    deprecated: false,
+    entitlementKey: null,
+    inputs: [],
+    outputs: [],
+  } as never;
+
+  function drag(entries: Record<string, string>): { dataTransfer: DataTransfer } {
+    const store = new Map(Object.entries(entries));
+    return { dataTransfer: { getData: (format: string) => store.get(format) ?? '' } as unknown as DataTransfer };
+  }
+
+  it('adds the dropped node type at the projected position and autosaves it', async () => {
+    vi.useFakeTimers();
+    const calls = installFetchMock();
+    renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[NOTE_DESCRIPTOR]} />, {});
+
+    act(() => {
+      capturedOnPaneDrop?.(drag({ 'application/x-hope-workflow-node': 'core.note' }), { x: 320, y: 180 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    const patch = calls.find((call) => call.method === 'PATCH');
+    const nodes = (patch?.body as { graph: { nodes: { type: string; position: unknown }[] } }).graph.nodes;
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({ type: 'core.note', position: { x: 320, y: 180 } });
+  });
+
+  it('ignores a foreign drag and an unregistered node type — a drop is never a way around the registry', async () => {
+    vi.useFakeTimers();
+    const calls = installFetchMock();
+    renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[NOTE_DESCRIPTOR]} />, {});
+
+    act(() => {
+      capturedOnPaneDrop?.(drag({ 'text/plain': 'some pasted prose' }), { x: 10, y: 10 });
+      capturedOnPaneDrop?.(drag({ 'application/x-hope-workflow-node': 'core.not_a_registered_type' }), { x: 20, y: 20 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
+    expect(screen.getByText('0 nodes · 0 connections')).toBeTruthy();
   });
 });

@@ -1,6 +1,7 @@
 /**
  * Workflow Studio v1 (tier 30-49) against a RUNNING stack: create-draft →
- * keyboard-only palette add → configure → Validate → publish gated until the server report is clean;
+ * keyboard-only palette add (and, since TASK-890/BBJ4-F1, the drag-from-palette enhancement beside
+ * it) → configure → Validate → publish gated until the server report is clean;
  * a mandatory node's no-delete posture in both view modes; click-error → focus-node in both
  * view modes; a cross-tenant definition id renders not-found (404, never 403); axe scans in
  * both themes on the definitions list, the canvas editor and the list editor.
@@ -137,6 +138,31 @@ test.describe('workflow studio editor', () => {
     await page.getByRole('button', { name: 'Validate' }).click();
     await expect(page.getByRole('button', { name: 'Publish' })).toBeDisabled();
     await expect(page.getByText(/before publishing/i)).toBeVisible();
+  });
+
+  /**
+   * TASK-890 black-box J4-F1 — the DRAG path, the enhancement over the keyboard case above.
+   * Playwright drives Chromium's real HTML5 drag engine, so this exercises `dragstart` on the
+   * palette `<button>` and `dragover`/`drop` on the pane, not a synthetic event. The node has to
+   * both appear AND survive autosave: an added node that a reload loses is the failure mode the
+   * sibling move-persistence case exists for.
+   */
+  test('drag a node type from the palette onto the canvas adds it, and it persists', async ({ page }) => {
+    const definitionId = await createDraft(page, `e2e_drag_${Date.now()}`);
+    test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
+
+    const paletteNav = page.getByRole('navigation', { name: 'Node palette' });
+    await expect(paletteNav).toBeVisible();
+    const canvas = page.locator('[data-slot="workflow-canvas"]');
+    await expect(canvas).toBeVisible();
+
+    await paletteNav.getByRole('button').filter({ hasText: 'Core.start' }).first().dragTo(canvas, { targetPosition: { x: 320, y: 200 } });
+
+    await expect(page.locator('.react-flow__node')).toHaveCount(1);
+    await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 15_000 });
+
+    await page.reload();
+    await expect(page.locator('.react-flow__node')).toHaveCount(1);
   });
 
   test('Publish is disabled while the report is dirty, with a visible reason', async ({ page }) => {
