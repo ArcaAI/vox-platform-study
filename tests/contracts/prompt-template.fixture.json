@@ -1,0 +1,147 @@
+{
+  "_comment": "TASK-890 §3.2 — the CROSS-LANGUAGE parity fixture for the ONE prompt-template grammar. Asserted from BOTH tests/contracts/prompt-template-parity.contract.test.ts (TypeScript, packages/workflow-contract/src/template.ts — the gateway renderer and the publish-time checks) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_templating_parity.py (Python, harness.temporal.interpreter.templating — the durable interpreter's renderer). Neither runtime can import the other's renderer, so this file IS the contract: every case names a template, the scope it renders against, and EITHER the exact string both sides must produce OR the named error both must raise. Adding a capability to one renderer without a case here is drift the two suites cannot see. `error` is `PromptVariableUnresolved` or `PromptTemplateSyntaxError`.",
+  "cases": [
+    {
+      "name": "dotted-resolution",
+      "template": "Patient age: {{trigger.patient.age}}.",
+      "scope": { "trigger": { "patient": { "age": 67, "name": "A" } } },
+      "expected": "Patient age: 67."
+    },
+    {
+      "name": "bare-name",
+      "template": "Department: {{department}}",
+      "scope": { "department": "cardiology" },
+      "expected": "Department: cardiology"
+    },
+    {
+      "name": "missing-path-errors",
+      "template": "{{context.absent}}",
+      "scope": { "context": { "present": 1 } },
+      "error": "PromptVariableUnresolved"
+    },
+    {
+      "name": "default-applied",
+      "template": "{{context.absent | default(\"n/a\")}}",
+      "scope": { "context": {} },
+      "expected": "n/a"
+    },
+    {
+      "name": "default-not-applied-when-present",
+      "template": "{{context.value | default(\"n/a\")}}",
+      "scope": { "context": { "value": "real" } },
+      "expected": "real"
+    },
+    {
+      "name": "default-with-escaped-quote",
+      "template": "{{absent | default(\"say \\\"hi\\\"\")}}",
+      "scope": {},
+      "expected": "say \"hi\""
+    },
+    {
+      "name": "escape",
+      "template": "{{{{a}} and {{b}}",
+      "scope": { "b": "B" },
+      "expected": "{{a}} and B"
+    },
+    {
+      "name": "value-with-braces-not-reparsed",
+      "template": "{{a}}",
+      "scope": { "a": "{{b}}", "b": "NEVER" },
+      "expected": "{{b}}"
+    },
+    {
+      "name": "whitespace-tolerance",
+      "template": "[{{ a.b }}][{{a.b}}][{{\ta.b\t}}][{{ a.b | default(\"d\") }}]",
+      "scope": { "a": { "b": "x" } },
+      "expected": "[x][x][x][x]"
+    },
+    {
+      "name": "object-value-json-sorted",
+      "template": "{{vars.obj}}",
+      "scope": { "vars": { "obj": { "b": [1, 2], "a": 1 } } },
+      "expected": "{\"a\":1,\"b\":[1,2]}"
+    },
+    {
+      "name": "scalar-values-json",
+      "template": "{{vars.n}}|{{vars.t}}|{{vars.f}}",
+      "scope": { "vars": { "n": 3, "t": true, "f": 1.5 } },
+      "expected": "3|true|1.5"
+    },
+    {
+      "name": "array-not-indexable",
+      "template": "{{vars.list.0}}",
+      "scope": { "vars": { "list": [1, 2] } },
+      "error": "PromptTemplateSyntaxError"
+    },
+    {
+      "name": "array-is-not-a-namespace",
+      "template": "{{vars.list.length}}",
+      "scope": { "vars": { "list": [1, 2] } },
+      "error": "PromptVariableUnresolved"
+    },
+    {
+      "name": "null-is-missing",
+      "template": "{{vars.notes}}",
+      "scope": { "vars": { "notes": null } },
+      "error": "PromptVariableUnresolved"
+    },
+    {
+      "name": "null-is-missing-so-default-applies",
+      "template": "{{vars.notes | default(\"none\")}}",
+      "scope": { "vars": { "notes": null } },
+      "expected": "none"
+    },
+    {
+      "name": "unknown-filter-is-syntax-error",
+      "template": "{{a | upper}}",
+      "scope": { "a": "x" },
+      "error": "PromptTemplateSyntaxError"
+    },
+    {
+      "name": "unterminated-is-syntax-error",
+      "template": "{{a",
+      "scope": { "a": "x" },
+      "error": "PromptTemplateSyntaxError"
+    },
+    {
+      "name": "invalid-ident-is-syntax-error",
+      "template": "{{9lives}}",
+      "scope": {},
+      "error": "PromptTemplateSyntaxError"
+    },
+    {
+      "name": "prototype-key-not-variable",
+      "template": "{{constructor}}",
+      "scope": {},
+      "error": "PromptVariableUnresolved"
+    },
+    {
+      "name": "nodes-namespace",
+      "template": "{{nodes.n1.text}}",
+      "scope": { "nodes": { "n1": { "text": "hello" } } },
+      "expected": "hello"
+    },
+    {
+      "name": "single-brace-is-literal",
+      "template": "Answer in {language_name} for {{name}}.",
+      "scope": { "name": "Ada", "language_name": "NEVER" },
+      "expected": "Answer in {language_name} for Ada."
+    },
+    {
+      "name": "no-placeholders-is-identity",
+      "template": "A plain sentence with no variables.",
+      "scope": {},
+      "expected": "A plain sentence with no variables."
+    }
+  ],
+  "references": [
+    {
+      "name": "offsets-and-defaults",
+      "template": "x {{a.b}} y {{c | default(\"z\")}} {{{{d}}",
+      "expected": [
+        { "path": "a.b", "hasDefault": false, "offset": 2 },
+        { "path": "c", "hasDefault": true, "offset": 12 }
+      ]
+    }
+  ]
+}
