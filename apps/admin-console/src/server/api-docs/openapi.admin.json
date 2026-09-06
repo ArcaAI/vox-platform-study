@@ -14399,6 +14399,11 @@
             "description": "Template scope (e.g. USER_PERSONAL, DEPARTMENT_DEFAULT, TENANT_DEFAULT)",
             "type": "string"
           },
+          "sourceTemplateId": {
+            "description": "The SYSTEM reference row this template was cloned from at provisioning. Null = the tenant authored it.",
+            "nullable": true,
+            "type": "string"
+          },
           "status": {
             "default": "DRAFT",
             "description": "Publication status",
@@ -14415,6 +14420,15 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "templateLocked": {
+            "default": false,
+            "description": "The clone is platform-managed: the tenant may not edit it.",
+            "type": "boolean"
+          },
+          "tenantId": {
+            "description": "Owning tenant id. The SYSTEM tenant marks a platform/library template.",
+            "type": "string"
           },
           "updatedAt": {
             "description": "Last update timestamp",
@@ -40100,6 +40114,15 @@
             "required": false,
             "schema": {
               "type": "number"
+            }
+          },
+          {
+            "description": "Narrow to templates carrying EVERY tag (`hasEvery`). Comma-separated, or repeat the parameter.",
+            "in": "query",
+            "name": "tags",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           },
           {
