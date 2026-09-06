@@ -327,6 +327,44 @@ export interface ApproveWorkflowRunGateResult {
 }
 
 /**
+ * TASK-890 — live state of ONE `core.humanReview` node's child workflow, from its own `state`
+ * query (`review_workflow.py`). `exists: false` is a normal 200: the node has not been reached,
+ * or the review already settled and the child is gone. The remaining fields are absent in that
+ * case — the interpreter spreads the query result only when there IS one, and inventing a
+ * `phase` for a child that does not exist would be a lie the caller could not detect.
+ */
+export interface WorkflowRunReviewState {
+  runId: string;
+  nodeId: string;
+  exists: boolean;
+  phase?: string;
+  escalations?: number;
+  decided?: boolean;
+  decision?: string | null;
+}
+
+/**
+ * Body for `POST /workflow-runs/{runId}/reviews/{nodeId}:decide`.
+ *
+ * `reviewerId` is the ACTING user resolved server-side from CLS — never accepted from a client
+ * body, exactly as {@link ApproveWorkflowRunGateInput.clinicianId} is not.
+ */
+export interface DecideWorkflowRunReviewInput {
+  decision: 'approved' | 'rejected';
+  reviewerId?: string;
+  comment?: string;
+  editedPayload?: Record<string, unknown>;
+}
+
+/** Response of `POST /workflow-runs/{runId}/reviews/{nodeId}:decide`. */
+export interface DecideWorkflowRunReviewResult {
+  runId: string;
+  nodeId: string;
+  workflowId: string;
+  signaled: boolean;
+}
+
+/**
  * HarnessGatewayService.
  *
  * The OUTBOUND half of the apps/api <-> apps/harness gate adapter. Uses Nest
@@ -577,11 +615,60 @@ export class HarnessGatewayService {
     return response.data as ApproveWorkflowRunGateResult;
   }
 
-  private async buildHeaders(): Promise<Record<string, string>> {
+  /**
+   * TASK-890 — the live state of one `core.humanReview` node of a run.
+   *
+   * A GET with no side effect, addressed by (runId, nodeId) alone: the review child's id is
+   * derived from exactly those two (`review_gate_workflow_id`), which is what lets a graph
+   * carry several reviews and lets this route address each without reading run state.
+   *
+   * Errors are NOT swallowed into `exists: false`. The interpreter answers that itself for a
+   * missing child; a transport failure or a 503 (Temporal unreachable) must stay a failure, or
+   * a reviewer UI would render "nothing to decide" during an outage.
+   */
+  async getWorkflowRunReview(runId: string, nodeId: string, tenantId: string): Promise<WorkflowRunReviewState> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${encodeURIComponent(runId)}/reviews/${encodeURIComponent(nodeId)}`;
+    const response = await this.httpService.axiosRef.get(url, { headers: await this.buildHeaders(tenantId), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
+    return response.data as WorkflowRunReviewState;
+  }
+
+  /**
+   * TASK-890 — release a `core.humanReview` node with a human decision.
+   *
+   * Signals the REVIEW CHILD, never the interpreter (whose own signal surface stays
+   * cancel-only), and the signal name is a CODE allow-list exactly like
+   * {@link cancelWorkflowRun} — never a caller-supplied `signalName` (the F-09 anti-pattern).
+   */
+  async decideWorkflowRunReview(
+    runId: string,
+    nodeId: string,
+    input: DecideWorkflowRunReviewInput,
+    tenantId: string,
+  ): Promise<DecideWorkflowRunReviewResult> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${encodeURIComponent(runId)}/reviews/${encodeURIComponent(nodeId)}:decide`;
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { decision: input.decision, reviewerId: input.reviewerId, comment: input.comment, editedPayload: input.editedPayload },
+      { headers: await this.buildHeaders(tenantId), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS },
+    );
+    this.logger.log({ message: 'Harness workflow run review decided', runId, nodeId, decision: input.decision });
+    return response.data as DecideWorkflowRunReviewResult;
+  }
+
+  /**
+   * `tenantId` is passed on the calls that carry TENANT-SCOPED work, per rule 00 §"Tenant
+   * identity is mandatory on internal service calls": a guardrail/attribution decision must be
+   * attributable, and an absent header is a defect in the CALLER. The older methods on this
+   * client carry the tenant in their BODY instead (`StartWorkflowRunInput.tenantId`,
+   * `HarnessApprovalSignal.tenantId`) and are left alone here — repointing them is an audit
+   * (TASK-737), not this lane's change.
+   */
+  private async buildHeaders(tenantId?: string): Promise<Record<string, string>> {
     const token = (await this.secretsService?.getSecretOptional('HARNESS_SERVICE_TOKEN')) ?? '';
     return {
       'Content-Type': 'application/json',
       'X-Service-Token': token,
+      ...(tenantId === undefined ? {} : { 'X-Tenant-Id': tenantId }),
     };
   }
 }

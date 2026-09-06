@@ -64,8 +64,12 @@ export type {
   WorkflowRunEventType,
   WorkflowRunHandle,
   WorkflowRunStatus,
+  WorkflowSchemaDescription,
   WorkflowSummary,
 } from './workflow';
+
+/** Human-review plane — `hope.workflows.reviews.*` (TASK-890). */
+export type { WorkflowReview, WorkflowReviewDecision, WorkflowReviewDecisionResult } from './workflow';
 
 /** Published-Agent invocation plane — `hope.agents.*` (TASK-865). */
 export type {

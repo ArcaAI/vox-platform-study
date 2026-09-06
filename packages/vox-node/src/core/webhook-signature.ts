@@ -40,6 +40,21 @@
 /** The header the delivery processor sends the signature in. Compare case-insensitively: HTTP header names are not case-sensitive, and Node lower-cases them on `req.headers`. */
 export const WEBHOOK_SIGNATURE_HEADER = 'X-Hope-Webhook-Signature';
 
+/**
+ * The header HOPE reads the signature from on an INBOUND workflow trigger — a different header
+ * from {@link WEBHOOK_SIGNATURE_HEADER}, because it covers a different signed string.
+ *
+ * `WorkflowHooksController` (`apps/api/src/modules/workflows/workflow-hooks.controller.ts`).
+ */
+export const WEBHOOK_TRIGGER_SIGNATURE_HEADER = 'X-Hope-Signature';
+
+/**
+ * The header carrying the unix-seconds timestamp that is FOLDED INTO the inbound signature.
+ * The gateway bounds replay on it (`WEBHOOK_TRIGGER_REPLAY_WINDOW_SECONDS`, 300s), which only
+ * works because the timestamp is signed — an unsigned one is a value an attacker rewrites.
+ */
+export const WEBHOOK_TRIGGER_TIMESTAMP_HEADER = 'X-Hope-Timestamp';
+
 /** SHA-256 digest length in bytes; the header must carry exactly twice this in hex. */
 const DIGEST_BYTES = 32;
 
@@ -235,4 +250,65 @@ export function verifyWebhookSignature(rawBody: string | Uint8Array, signatureHe
 
   const expected = hmacSha256(toBytes(secret), toBytes(rawBody));
   return timingSafeEqual(expected, provided);
+}
+
+/**
+ * Sign an INBOUND workflow trigger for `POST /api/v1/hooks/workflows/{hookId}`.
+ *
+ * The mirror image of {@link verifyWebhookSignature}: that one checks what HOPE sends you,
+ * this one produces what you send HOPE. Both are HMAC-SHA256 over the same zero-dependency
+ * core, but they sign DIFFERENT strings, and conflating them is the mistake this doc exists
+ * to prevent:
+ *
+ * | | signed string | header |
+ * |---|---|---|
+ * | outbound delivery (HOPE → you) | `rawBody` | `X-Hope-Webhook-Signature` |
+ * | inbound trigger (you → HOPE) | `` `${timestamp}.${rawBody}` `` | `X-Hope-Signature` |
+ *
+ * The verifying side is `signWebhookTrigger` in
+ * `packages/applications/src/services/workflow-exposure/workflow-exposure.service.ts`, which
+ * compares in constant time and, separately, refuses a `timestamp` more than 300 seconds from
+ * its own clock. Signing the timestamp is what makes that window mean anything.
+ *
+ * @param secret - The definition's inbound webhook secret, shown once at issue/rotation.
+ * @param timestamp - Unix SECONDS, as a string. Send the same value in `X-Hope-Timestamp`.
+ * @param rawBody - The exact bytes you will put on the wire — sign what you send, not a
+ *   re-serialization of it, for the same reason the receiving side verifies the raw body.
+ *
+ * @example
+ * ```ts
+ * import { WEBHOOK_TRIGGER_SIGNATURE_HEADER, WEBHOOK_TRIGGER_TIMESTAMP_HEADER, signWebhookTrigger } from '@arcaai/vox-node';
+ *
+ * const body = JSON.stringify({ note });
+ * const timestamp = String(Math.floor(Date.now() / 1000));
+ *
+ * await fetch(`${HOPE_API_URL}/hooks/workflows/${hookId}`, {
+ *   method: 'POST',
+ *   headers: {
+ *     'content-type': 'application/json',
+ *     [WEBHOOK_TRIGGER_TIMESTAMP_HEADER]: timestamp,
+ *     [WEBHOOK_TRIGGER_SIGNATURE_HEADER]: signWebhookTrigger(secret, timestamp, body),
+ *   },
+ *   body,
+ * });
+ * ```
+ */
+export function signWebhookTrigger(secret: string, timestamp: string, rawBody: string | Uint8Array): string {
+  // Join in BYTES, not by string concatenation: `rawBody` may be a Uint8Array the caller is
+  // about to send verbatim, and forcing it through a UTF-8 round trip to build the joined
+  // string would re-encode bytes that were never text.
+  const prefix = toBytes(`${timestamp}.`);
+  const body = toBytes(rawBody);
+  const message = new Uint8Array(prefix.length + body.length);
+  message.set(prefix);
+  message.set(body, prefix.length);
+
+  return `sha256=${toHex(hmacSha256(toBytes(secret), message))}`;
+}
+
+/** Lowercase hex, the only encoding either side of this contract emits or parses. */
+function toHex(bytes: Uint8Array): string {
+  let hex = '';
+  for (const byte of bytes) hex += byte.toString(16).padStart(2, '0');
+  return hex;
 }
