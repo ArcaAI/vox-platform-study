@@ -9,6 +9,7 @@
 import { AGENTIC_CONTEXT_SETTINGS } from './descriptors/agentic-context.descriptors';
 import { AGENTIC_EVAL_SETTINGS } from './descriptors/agentic-eval.descriptors';
 import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descriptors';
+import { AI_READINESS_SETTINGS } from './descriptors/ai-readiness.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
@@ -167,4 +168,11 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // descriptor file for why the split falls that way (D-1).
   ...HARNESS_SENSOR_SETTINGS,
   HARNESS_CLAIM_CHECK_MIN_BYTES,
+
+  // ── Inference readiness ──────────────────────────────────────────────────
+  // The readiness sweep's three knobs plus the two `modelRegistry.inventory.*`
+  // keys the inventory cron has read since TASK-860 with no descriptor behind
+  // them. Registering them is what makes them reachable from an admin surface —
+  // there is no per-key allow-list anywhere else.
+  ...AI_READINESS_SETTINGS,
 ]);
