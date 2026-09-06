@@ -10,6 +10,7 @@ import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
+import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/native-select';
 import { Popover, PopoverContent, PopoverTrigger } from '@arcaai/ui/components/shadcn/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Separator } from '@arcaai/ui/components/shadcn/separator';
@@ -36,7 +37,30 @@ import {
   useUsageStats,
   useVersions,
 } from '../api/hooks';
-import type { AssignDepartmentRequest, EvalGoldenCase, PromptTemplate, PromptTestAck, PromptTestResult, PromptUsageByDay } from '../api/types';
+import type {
+  AssignDepartmentRequest,
+  EvalGoldenCase,
+  PromptTemplate,
+  PromptTestAck,
+  PromptTestResult,
+  PromptUsageByDay,
+  PromptVariableDeclaration,
+} from '../api/types';
+
+/**
+ * TASK-890 J2-10 — the declarations are typed, so the inputs are too: a `date`
+ * gets a date picker (a free-text date reached the model as a midnight-UTC
+ * timestamp), a `number` a numeric field, a `boolean` a two-value select
+ * (`booleans` are handled separately below — an `<input type="checkbox">`
+ * cannot express "unset", which is what an optional variable needs).
+ * `json` stays free text: it is edited as source.
+ */
+const INPUT_TYPE: Partial<Record<PromptVariableDeclaration['type'], string>> = {
+  date: 'date',
+  number: 'number',
+  string: 'text',
+  json: 'text',
+};
 
 /** Sentinel Select values — Radix Select rejects an empty-string item value. */
 const TENANT_DEFAULT = '__tenant_default__';
@@ -512,13 +536,26 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
                       </span>
                     ) : null}
                   </Label>
-                  <Input
-                    id={`test-run-var-${declaration.name}`}
-                    value={declaredValues[declaration.name] ?? declaration.default ?? ''}
-                    onChange={(event) => setDeclaredValues((prev) => ({ ...prev, [declaration.name]: event.target.value }))}
-                    placeholder={declaration.description ?? declaration.type}
-                    autoComplete="off"
-                  />
+                  {declaration.type === 'boolean' ? (
+                    <NativeSelect
+                      id={`test-run-var-${declaration.name}`}
+                      value={declaredValues[declaration.name] ?? declaration.default ?? ''}
+                      onChange={(event) => setDeclaredValues((prev) => ({ ...prev, [declaration.name]: event.target.value }))}
+                    >
+                      <NativeSelectOption value="">{declaration.description ?? 'unset'}</NativeSelectOption>
+                      <NativeSelectOption value="true">true</NativeSelectOption>
+                      <NativeSelectOption value="false">false</NativeSelectOption>
+                    </NativeSelect>
+                  ) : (
+                    <Input
+                      id={`test-run-var-${declaration.name}`}
+                      type={INPUT_TYPE[declaration.type] ?? 'text'}
+                      value={declaredValues[declaration.name] ?? declaration.default ?? ''}
+                      onChange={(event) => setDeclaredValues((prev) => ({ ...prev, [declaration.name]: event.target.value }))}
+                      placeholder={declaration.description ?? declaration.type}
+                      autoComplete="off"
+                    />
+                  )}
                 </div>
               ))}
             </div>

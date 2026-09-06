@@ -220,6 +220,53 @@ afterEach(() => {
 });
 
 describe('TestRunPanel', () => {
+  /**
+   * TASK-890 J2-10 — the declarations are TYPED, and the inputs were not: a
+   * `date` variable took free text (and reached the model as a midnight-UTC
+   * timestamp), a `boolean` was a text box that accepted "yes".
+   */
+  describe('typed variable inputs', () => {
+    const typed = () =>
+      template({
+        declaredVariables: [
+          { name: 'visit_date', type: 'date', required: true },
+          { name: 'follow_up', type: 'boolean', required: false },
+          { name: 'age', type: 'number', required: false },
+          { name: 'patient_name', type: 'string', required: true },
+        ],
+      });
+
+    it('renders a date picker, a number field and a true/false control for the declared types', async () => {
+      stubFetch((call) => defaultHandler(typed(), call));
+      renderWithProviders(<TestRunPanel template={typed()} />);
+
+      const date = await screen.findByLabelText(/visit_date/);
+      expect(date.getAttribute('type')).toBe('date');
+      expect((await screen.findByLabelText(/age/)).getAttribute('type')).toBe('number');
+      expect((await screen.findByLabelText(/patient_name/)).getAttribute('type')).toBe('text');
+      // A boolean is a two-value control, never a free-text box.
+      const boolean = await screen.findByLabelText(/follow_up/);
+      expect(boolean.tagName).toBe('SELECT');
+      expect([...(boolean as HTMLSelectElement).options].map((option) => option.value)).toEqual(['', 'true', 'false']);
+    });
+
+    it('sends the typed values as entered', async () => {
+      const calls = stubFetch((call) => defaultHandler(typed(), call));
+      renderWithProviders(<TestRunPanel template={typed()} />);
+
+      fireEvent.change(await screen.findByLabelText(/visit_date/), { target: { value: '2026-09-06' } });
+      fireEvent.change(await screen.findByLabelText(/follow_up/), { target: { value: 'true' } });
+      fireEvent.click(await screen.findByRole('button', { name: /run test/i }));
+
+      await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
+      const post = calls.find((call) => call.method === 'POST');
+      expect((post?.body as { variables: Record<string, string> }).variables).toMatchObject({
+        visit_date: '2026-09-06',
+        follow_up: 'true',
+      });
+    });
+  });
+
   it('populates the provider select from the tenant catalogue (BYO first, then Hope) and omits modelId on "Tenant default"', async () => {
     const calls = stubFetch((call) => defaultHandler(template(), call));
     renderWithProviders(<TestRunPanel template={template()} />);
