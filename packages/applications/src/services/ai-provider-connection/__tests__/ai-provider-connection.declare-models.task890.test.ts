@@ -191,3 +191,52 @@ describe('the connection lifecycle around declared rows', () => {
     expect(repo.softDelete).toHaveBeenCalled();
   });
 });
+
+/**
+ * TASK-890 §3.7a — the five single-model cards keep working.
+ *
+ * Before this ticket a speech connection named its ONE model in
+ * `extraJson.model`, and that extra is forwarded on the wire
+ * (`toOverrideEntry`) where it PINS the model for every call. The models editor
+ * replaces that field for the operator, so the declaration has to keep the pin
+ * in step or a single-model tenant would silently change behaviour:
+ *
+ *   - exactly one declared model  → the pin names it (today's behaviour, kept);
+ *   - none, or more than one      → the pin is CLEARED, because a stale pin
+ *     would make every model but one unreachable — the exact defect this ticket
+ *     exists to remove;
+ *   - `llm` is never pinned: there the equivalent field is the connection's
+ *     `deploymentName`, and pinning it is what the wire fix stopped doing.
+ */
+describe('the single-model extra stays in step (speech planes only)', () => {
+  const STT_ONE = { models: [{ wireModelId: 'mai-transcribe-1.5', name: 'MAI transcribe', taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION }] };
+
+  it('pins `extraJson.model` when exactly one model is declared', async () => {
+    const { svc, repo } = makeService({ connection: connectionRow({ service: 'stt', provider: 'azure-speech' }) });
+
+    await svc.declareModels('stt', 'azure-speech', STT_ONE as any);
+
+    const saved = repo.updateWithVersion.mock.calls.at(-1)?.[1] as any;
+    expect(saved?.extraJson).toMatchObject({ model: 'mai-transcribe-1.5' });
+  });
+
+  it('CLEARS the pin when the connection serves more than one model', async () => {
+    const { svc, repo } = makeService({ connection: connectionRow({ service: 'stt', provider: 'azure-speech' }) });
+
+    await svc.declareModels('stt', 'azure-speech', {
+      models: [
+        STT_ONE.models[0],
+        { wireModelId: 'whisper-1', name: 'Whisper', taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION },
+      ],
+    } as any);
+
+    const saved = repo.updateWithVersion.mock.calls.at(-1)?.[1] as any;
+    expect(saved?.extraJson?.model ?? null).toBeNull();
+  });
+
+  it('never pins an llm connection — that is what the deployment_name fix removed', async () => {
+    const { svc, repo } = makeService();
+    await svc.declareModels('llm', 'azure', { models: [AZURE_TWO.models[0]] } as any);
+    expect(repo.updateWithVersion).not.toHaveBeenCalled();
+  });
+});

@@ -247,6 +247,8 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       await this.aiModelRepository.softDelete(row.id, userId, tx);
     }
 
+    await this.syncSingleModelExtra(connection, service, kept, tx);
+
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: connection.id,
       data: {
@@ -1026,6 +1028,40 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         },
       };
     });
+  }
+
+  /**
+   * Keep the SINGLE-MODEL extra in step with the declaration (TASK-890 §3.7a).
+   *
+   * Before this ticket a speech connection named its one model in
+   * `extraJson.model`, and that extra is forwarded on the wire
+   * (`toOverrideEntry`) where it PINS the model for every call. The models
+   * editor replaces that field for the operator, so the pin has to follow the
+   * declaration or a single-model tenant silently changes behaviour — and a
+   * STALE pin is worse: it makes every declared model but one unreachable,
+   * which is the exact defect this ticket removes for Azure OpenAI.
+   *
+   * `llm` is deliberately excluded. Its equivalent field is the connection's
+   * `deploymentName`, and pinning THAT is what the wire fix stopped doing; a
+   * `model` extra there would reintroduce the same override one level up.
+   */
+  private async syncSingleModelExtra(
+    connection: AiProviderConnectionEntity,
+    service: ProviderService,
+    declared: AiModelEntity[],
+    tx?: CoreDatabaseService['baseClient'],
+  ): Promise<void> {
+    if (service === 'llm') return;
+    const extras = { ...((connection.extraJson as Record<string, unknown> | null) ?? {}) };
+    const pinned = declared.length === 1 ? (declared[0]!.wireModelId ?? declared[0]!.sourceUri) : null;
+    const current = typeof extras.model === 'string' ? extras.model : null;
+    if (current === pinned) return;
+
+    if (pinned) extras.model = pinned;
+    else delete extras.model;
+    connection.extraJson = extras as AiProviderConnectionEntity['extraJson'];
+    if (!connection.hasChanges) return;
+    await this.connectionRepository.updateWithVersion(connection.id, connection, connection.version, tx);
   }
 
   /**
