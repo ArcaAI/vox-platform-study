@@ -52,11 +52,39 @@ things follow, and all three are load-bearing:
 3. A row the budget could not measure answers ``resolvable = None``. The gateway
    records only a literal boolean, so an unmeasured row stays ``unknown`` and is
    never mistaken for "weights missing".
+
+**TASK-890 F6 — why one worker was not enough, and what a warm volume costs.**
+F3's answer to (2) was a ``BoundedSemaphore(1)``: a stalled volume must cost one
+abandoned thread, so allow exactly one. Measured on a clean restart 2026-09-07,
+that traded a hung service for a permanently useless one — the FIRST probe on
+both ``stt`` and ``nlp`` never returned, held the only slot, and every later
+probe answered in 2 ms with ``an earlier probe on this host has not returned``.
+Readiness never recovered short of a restart. Three changes follow:
+
+4. The bound is :data:`MAX_PROBE_THREADS` daemon threads, not one slot, with an
+   explicit stalled count. A wedged read costs ONE probe; the next is still
+   attempted; only at the cap does the answer become ``degraded`` — which names
+   the count and the root instead of implying somebody measured something.
+   Daemon threads on purpose: a ``ThreadPoolExecutor`` joins its workers at
+   interpreter exit, so one wedged worker would make the process unstoppable.
+5. A boot WARM-UP (:func:`warm_cache_roots`) touches every cache root once, off
+   every request path, with its own generous budget — so an external volume's
+   wake-up cost is paid before the first readiness sweep, and a host where even
+   that does not return says so (``warm: false``) instead of being discovered
+   one abandoned thread at a time.
+6. Every filesystem call publishes what it is (:func:`_fs_op`) before entering
+   it, so an abandoned probe can be logged with the exact ``open``/``stat``/
+   ``scandir`` and path it went into and never came back from. On this host the
+   volume is exFAT served by a USERSPACE FSKit extension: a shell ``ls`` and a
+   fresh Python process both answer in milliseconds while the service's own
+   thread stays inside the kernel indefinitely, so the call has to be recorded
+   as it is entered — it will never return to be timed.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import importlib.util
 import logging
@@ -64,9 +92,11 @@ import os
 import re
 import threading
 import time
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from concurrent.futures import Future
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -92,6 +122,27 @@ DEFAULT_BUDGET_SECONDS = 5.0
 #: Hard cap on entries examined in any one directory. Bounds the cost on a cache
 #: whose `snapshots/` has accumulated many revisions.
 _SCAN_CAP = 64
+
+#: How many probe threads this process will ever have alive AT ONCE — including
+#: the ones a previous budget abandoned inside a filesystem call that never
+#: returned. It is deliberately more than one (TASK-890 F6): the single slot F3
+#: shipped meant the FIRST stalled read made every later probe answer
+#: `an earlier probe on this host has not returned` for the life of the process,
+#: so one wedged volume access cost the service its readiness answer permanently.
+#: Three is small enough that a wedged volume cannot grow threads without bound
+#: and large enough that a transient stall costs one probe, not all of them.
+MAX_PROBE_THREADS = 3
+
+#: A single `open`/`stat`/`scandir` slower than this is logged with its path.
+#: Diagnostic only — it does not abort the call (a syscall wedged in the kernel
+#: cannot be aborted from Python at all), it just makes the difference between
+#: "slow volume" and "wedged volume" visible in the log instead of inferred.
+SLOW_OP_SECONDS = 1.0
+
+#: The warm-up's own budget. Generous on purpose: it runs ONCE, at boot, off
+#: every request path, and the whole point is to pay an external volume's
+#: wake-up cost there rather than inside the first readiness sweep.
+WARMUP_BUDGET_SECONDS = 60.0
 
 # The libraries whose weights ship INSIDE the Python package, mapped to the
 # module whose presence proves it. Mirrors `WEIGHTLESS_LIBRARIES` in
@@ -132,7 +183,12 @@ class ResolvableResult:
     #: WHY, as a stable token — never a free-form message. The gateway projects
     #: `detail` onto a tenant-facing field, so the vocabulary is closed:
     #: local_path | file | package | hf_cache | s3_cache | not_cached |
-    #: package_missing | no_source | unsupported | timeout | error
+    #: package_missing | no_source | unsupported | timeout | degraded | error
+    #:
+    #: `degraded` (TASK-890 F6) is the answer at the thread cap: every probe
+    #: thread this process allows is still inside a filesystem call that has not
+    #: returned, so nothing was even attempted for this row. Like `timeout` it
+    #: carries `resolvable = None`.
     state: str
     detail: str
     #: Where it would load from, when that is known. Absolute paths are
@@ -156,11 +212,347 @@ class ResolvableResult:
 _cache_lock = threading.Lock()
 _cache: dict[tuple[str | None, ...], tuple[float, ResolvableResult]] = {}
 
-#: One probe in flight per process. A batch that is stalled inside a filesystem
-#: call holds this, and the next batch answers `timeout` IMMEDIATELY instead of
-#: parking a second worker thread in the same syscall. Threads are the resource
-#: a stalled volume would otherwise consume without bound.
-_probe_slot = threading.BoundedSemaphore(1)
+
+# --------------------------------------------------------------------------- #
+# Which filesystem call a thread is inside
+# --------------------------------------------------------------------------- #
+
+#: Keyed by thread id: the `(op, path, started)` a thread is CURRENTLY inside.
+#: A thread that returns clears its entry; a thread wedged in the kernel never
+#: does — which is exactly what makes this the only thing in the process that
+#: can name the call an abandoned probe went into and never came back from.
+#: Plain dict, no lock: each thread only ever writes its OWN key, and CPython's
+#: dict item assignment is atomic, so a lock here would buy nothing and would be
+#: taken on every single file operation.
+_active_ops: dict[int, tuple[str, str, float]] = {}
+
+
+@contextlib.contextmanager
+def _fs_op(op: str, path: str) -> Iterator[None]:
+    """Record — and time — one filesystem call.
+
+    Two jobs, both diagnostic. It publishes what this thread is inside so an
+    abandoned probe can be described rather than guessed at, and it logs any
+    single call that took longer than :data:`SLOW_OP_SECONDS`. It never bounds
+    anything: a call already wedged in the kernel cannot be cancelled from
+    Python, which is why the BUDGET lives one level up, around the whole batch.
+    """
+    ident = threading.get_ident()
+    previous = _active_ops.get(ident)
+    started = time.monotonic()
+    _active_ops[ident] = (op, path, started)
+    try:
+        yield
+    finally:
+        elapsed = time.monotonic() - started
+        if previous is None:
+            _active_ops.pop(ident, None)
+        else:
+            _active_ops[ident] = previous
+        if elapsed >= SLOW_OP_SECONDS:
+            logger.warning(
+                "hope_runtime_models.resolvable_slow_fs_op op=%s path=%s elapsed=%.1fs",
+                op,
+                path,
+                elapsed,
+            )
+
+
+def _describe_op(ident: int | None) -> str:
+    """What that thread is inside, right now, as one loggable token."""
+    entry = _active_ops.get(ident) if ident is not None else None
+    if entry is None:
+        return "op=<none>"
+    op, path, started = entry
+    return f"op={op} path={path} inside_for={time.monotonic() - started:.1f}s"
+
+
+# --------------------------------------------------------------------------- #
+# The probe pool
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class _Probe:
+    """One batch, running on its own daemon thread."""
+
+    future: Future[Any]
+    thread: threading.Thread
+    generation: int
+    started: float
+    abandoned: bool = field(default=False)
+    finished: bool = field(default=False)
+
+
+class _ProbePool:
+    """Bounded daemon threads, and an honest count of the ones we walked away from.
+
+    The contract, which is the whole of TASK-890 F6:
+
+    * a call that outlives its budget is ABANDONED — its thread stays wedged in
+      the syscall, because nothing in Python can pull it out — and the pool
+      remembers that as ``stalled``;
+    * later probes are still ATTEMPTED while a thread remains free, so one dead
+      volume access does not disable readiness for the life of the process;
+    * at the cap the answer is ``degraded``, naming the count and the root,
+      instead of silently starting a fourth thread nobody will ever join;
+    * when an abandoned thread eventually DOES return, the count comes back down
+      and its true duration is logged. That log line is the only record of how
+      long the volume actually took, and without it the number is unknowable.
+
+    Threads are daemons and are never joined: a ``ThreadPoolExecutor`` registers
+    an atexit hook that joins its workers, so a single wedged worker would hang
+    interpreter shutdown — trading a stalled probe for a process that cannot be
+    stopped is not a trade worth making.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._inflight = 0
+        self._stalled = 0
+        #: Bumped by `reset()`. A probe abandoned before a reset must not
+        #: decrement the counters afterwards — tests reset between cases, and a
+        #: stale thread landing later would drive the count negative.
+        self._generation = 0
+
+    def counts(self) -> tuple[int, int]:
+        with self._lock:
+            return self._inflight, self._stalled
+
+    def reset(self) -> None:
+        with self._lock:
+            self._inflight = 0
+            self._stalled = 0
+            self._generation += 1
+
+    def submit(self, work: Callable[[], Any]) -> _Probe | None:
+        """Start ``work`` on a daemon thread, or ``None`` when every thread is busy."""
+        with self._lock:
+            if self._inflight >= MAX_PROBE_THREADS:
+                return None
+            self._inflight += 1
+            generation = self._generation
+
+        future: Future[Any] = Future()
+
+        def _runner() -> None:
+            if not future.set_running_or_notify_cancel():
+                return
+            try:
+                future.set_result(work())
+            except BaseException as exc:  # noqa: BLE001 — carried to the awaiting caller
+                future.set_exception(exc)
+
+        probe = _Probe(
+            future=future,
+            thread=threading.Thread(target=_runner, name="hope-resolvable-probe", daemon=True),
+            generation=generation,
+            started=time.monotonic(),
+        )
+        future.add_done_callback(lambda _f: self._on_done(probe))
+        probe.thread.start()
+        return probe
+
+    def abandon(self, probe: _Probe, *, what: str) -> int:
+        """Stop waiting on ``probe``. Returns the stalled count after doing so."""
+        with self._lock:
+            if probe.finished:
+                # It landed in the race between the timeout firing and this
+                # call. Nothing was abandoned, so nothing is stalled.
+                return self._stalled
+            probe.abandoned = True
+            if probe.generation == self._generation:
+                self._stalled += 1
+            stalled = self._stalled
+        logger.warning(
+            "hope_runtime_models.resolvable_probe_abandoned what=%s waited=%.1fs stalled=%d "
+            "thread=%s %s",
+            what,
+            time.monotonic() - probe.started,
+            stalled,
+            probe.thread.name,
+            _describe_op(probe.thread.ident),
+        )
+        return stalled
+
+    def _on_done(self, probe: _Probe) -> None:
+        with self._lock:
+            probe.finished = True
+            stale = probe.generation != self._generation
+            was_abandoned = probe.abandoned
+            if not stale:
+                self._inflight = max(0, self._inflight - 1)
+                if was_abandoned:
+                    self._stalled = max(0, self._stalled - 1)
+            stalled = self._stalled
+        if was_abandoned:
+            # The number nobody could otherwise know: how long the volume
+            # actually took. A probe abandoned at 5 s that returns at 900 s is a
+            # very different fact from one that returns at 6 s.
+            logger.warning(
+                "hope_runtime_models.resolvable_abandoned_probe_returned true_duration=%.1fs "
+                "stalled=%d",
+                time.monotonic() - probe.started,
+                stalled,
+            )
+
+
+_PROBES = _ProbePool()
+
+
+def probe_state() -> tuple[int, int]:
+    """``(threads alive, threads past their budget)``. For tests and diagnostics."""
+    return _PROBES.counts()
+
+
+def reset_probe_state() -> None:
+    """Forget the current counts. For tests — it cannot un-wedge a live thread."""
+    _PROBES.reset()
+
+
+# --------------------------------------------------------------------------- #
+# Warm-up
+# --------------------------------------------------------------------------- #
+
+#: `"pending"` until the boot warm-up has finished; then `True` if every
+#: configured cache root answered inside its budget, `False` if one did not.
+#: Reported on the resolvable endpoints so an operator can tell "this host has
+#: not touched the volume yet" from "this host touched it and it answered".
+_warmup_state: bool | str = "pending"
+_warmup_lock = threading.Lock()
+
+
+def warmup_state() -> bool | str:
+    """``True`` | ``False`` | ``"pending"`` — see :func:`warm_cache_roots`."""
+    with _warmup_lock:
+        return _warmup_state
+
+
+def reset_warmup_state() -> None:
+    """Back to ``"pending"``. For tests."""
+    _set_warmup_state("pending")
+
+
+def _set_warmup_state(value: bool | str) -> None:
+    global _warmup_state
+    with _warmup_lock:
+        _warmup_state = value
+
+
+def cache_roots(*, hf_cache_dir: str | None = None, s3_cache_dir: str | None = None) -> list[Path]:
+    """Every directory a verdict could have to read, in the order it would try them."""
+    roots = _hf_cache_roots(hf_cache_dir)
+    if s3_cache_dir:
+        roots = roots + [Path(s3_cache_dir) / "s3"]
+    return _dedupe(roots)
+
+
+def _touch_roots(roots: Sequence[Path]) -> list[tuple[str, float, str]]:
+    """One `stat` and one `scandir` per root — the cheapest thing that wakes a volume."""
+    report: list[tuple[str, float, str]] = []
+    for root in roots:
+        started = time.monotonic()
+        outcome = "ok"
+        try:
+            with _fs_op("warmup_stat", str(root)):
+                os.stat(root)
+            with _fs_op("warmup_scandir", str(root)):
+                with os.scandir(root) as entries:
+                    for index, _entry in enumerate(entries):
+                        if index >= _SCAN_CAP:
+                            break
+        except (FileNotFoundError, NotADirectoryError):
+            # A root this host does not have is not a failure — `_hf_cache_roots`
+            # deliberately offers candidates, and most hosts hold one of them.
+            outcome = "absent"
+        except OSError as exc:
+            outcome = f"error:{type(exc).__name__}"
+        report.append((str(root), time.monotonic() - started, outcome))
+    return report
+
+
+async def warm_cache_roots(
+    *,
+    hf_cache_dir: str | None = None,
+    s3_cache_dir: str | None = None,
+    budget_seconds: float | None = None,
+    service: str | None = None,
+) -> bool | str:
+    """Touch every cache root ONCE, at boot, off every request path.
+
+    TASK-890 F6. The stall this exists for is not a slow filesystem, it is a
+    volume whose FIRST access from a given process does not return: measured on
+    this host, ``/Volumes/aillusion`` is an exFAT volume served by a USERSPACE
+    FSKit extension, a shell ``ls`` answers instantly, and the service's first
+    access from a worker thread stayed inside the kernel for minutes. Paying
+    that cost here means the first readiness sweep meets a volume that is
+    already awake, and — when it does not return even here — the process says so
+    (``warm: false``) instead of a sweep discovering it one abandoned thread at
+    a time.
+
+    NEVER raises and never blocks boot: it is meant to be launched with
+    ``asyncio.create_task`` from a lifespan and forgotten.
+    """
+    try:
+        budget = WARMUP_BUDGET_SECONDS if budget_seconds is None else budget_seconds
+        roots = cache_roots(hf_cache_dir=hf_cache_dir, s3_cache_dir=s3_cache_dir)
+        if not roots:
+            _set_warmup_state(True)
+            return True
+
+        probe = _PROBES.submit(lambda: _touch_roots(roots))
+        if probe is None:
+            logger.warning(
+                "hope_runtime_models.resolvable_warmup_no_thread service=%s roots=%d",
+                service,
+                len(roots),
+            )
+            _set_warmup_state(False)
+            return False
+
+        started = time.monotonic()
+        try:
+            report = await asyncio.wait_for(asyncio.wrap_future(probe.future), timeout=budget)
+        except TimeoutError:
+            _PROBES.abandon(probe, what="warmup")
+            logger.warning(
+                "hope_runtime_models.resolvable_warmup_stalled service=%s budget=%.0fs roots=%s",
+                service,
+                budget,
+                [str(root) for root in roots],
+            )
+            _set_warmup_state(False)
+            return False
+
+        healthy = True
+        for root, elapsed, outcome in report:
+            logger.info(
+                "hope_runtime_models.resolvable_warmup service=%s root=%s elapsed=%.3fs "
+                "outcome=%s",
+                service,
+                root,
+                elapsed,
+                outcome,
+            )
+            if outcome.startswith("error"):
+                healthy = False
+        logger.info(
+            "hope_runtime_models.resolvable_warmup_done service=%s roots=%d elapsed=%.3fs warm=%s",
+            service,
+            len(report),
+            time.monotonic() - started,
+            healthy,
+        )
+        _set_warmup_state(healthy)
+        return healthy
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — a warm-up must never fail a boot
+        logger.warning(
+            "hope_runtime_models.resolvable_warmup_failed service=%s error=%s", service, exc
+        )
+        _set_warmup_state(False)
+        return False
 
 
 def clear_resolvable_cache() -> None:
@@ -235,7 +627,7 @@ def _has_materialised_entry(directory: Path) -> bool:
     dangling one means the blob was pruned.
     """
     try:
-        with os.scandir(directory) as entries:
+        with _fs_op("scandir", str(directory)), os.scandir(directory) as entries:
             for index, entry in enumerate(entries):
                 if index >= _SCAN_CAP:
                     break
@@ -254,7 +646,7 @@ def _has_materialised_entry(directory: Path) -> bool:
 def _read_ref(ref_path: Path) -> str | None:
     """The commit hash a branch/tag ref points at. Bounded read, never a walk."""
     try:
-        with ref_path.open("rb") as handle:
+        with _fs_op("open", str(ref_path)), ref_path.open("rb") as handle:
             raw = handle.read(128)
     except OSError:
         return None
@@ -266,8 +658,9 @@ def _snapshot_in_root(root: Path, repo_id: str, revision: str | None) -> str | N
     """The materialised snapshot directory for ``repo_id`` under ``root``."""
     storage = root / ("models--" + repo_id.replace("/", "--"))
     snapshots = storage / "snapshots"
-    if not snapshots.is_dir():
-        return None
+    with _fs_op("stat", str(snapshots)):
+        if not snapshots.is_dir():
+            return None
 
     rev = (revision or "").strip() or "main"
 
@@ -287,7 +680,7 @@ def _snapshot_in_root(root: Path, repo_id: str, revision: str | None) -> str | N
     # answers the question the gateway actually asked — "must this host download
     # something to serve the row?" — and the branch stays bounded to one level.
     try:
-        with os.scandir(snapshots) as entries:
+        with _fs_op("scandir", str(snapshots)), os.scandir(snapshots) as entries:
             for index, entry in enumerate(entries):
                 if index >= _SCAN_CAP:
                     break
@@ -360,10 +753,6 @@ def check_resolvable(
     return result
 
 
-class _ProbeBusyError(RuntimeError):
-    """A probe is already in flight and has not returned."""
-
-
 async def check_resolvable_many(
     queries: Sequence[ResolvableQuery],
     *,
@@ -374,9 +763,20 @@ async def check_resolvable_many(
     """Every row, off the event loop, inside one wall-clock budget.
 
     The endpoints call ONLY this. It is what stops a stalled filesystem from
-    becoming a stalled service: the reads happen on a worker thread, the caller
+    becoming a stalled service: the reads happen on a daemon thread, the caller
     stops waiting at ``budget_seconds``, and every row the budget did not reach
     comes back ``resolvable = None`` (NOT MEASURED) rather than ``False``.
+
+    **TASK-890 F6 — why one slot was not enough.** F3 guarded this with a
+    ``BoundedSemaphore(1)``, reasoning that a wedged volume must not grow
+    threads. It does not grow them — but the FIRST wedged read then held the
+    only slot for the life of the process, and every later probe answered in
+    2 ms with ``an earlier probe on this host has not returned``. Measured on
+    this host: both ``stt`` and ``nlp`` reached that state within minutes of a
+    clean start and never left it. A cap of :data:`MAX_PROBE_THREADS` keeps the
+    bound that mattered while letting the NEXT probe actually try; only when
+    every thread is wedged does the service answer ``degraded``, which says
+    "this host is not answering" rather than pretending to have measured.
 
     ``budget_seconds`` defaults to :data:`DEFAULT_BUDGET_SECONDS` READ AT CALL
     TIME, not bound into the signature — a default argument evaluated at import
@@ -393,25 +793,27 @@ async def check_resolvable_many(
             for query in queries
         ]
 
-    def _guarded() -> list[ResolvableResult]:
-        # A previous batch parked in a filesystem call still holds the slot. Do
-        # not queue a second thread behind it; say so and let the row stay
-        # unknown for this sweep.
-        if not _probe_slot.acquire(blocking=False):
-            raise _ProbeBusyError
-        try:
-            return _work()
-        finally:
-            _probe_slot.release()
+    probe = _PROBES.submit(_work)
+    if probe is None:
+        inflight, stalled = _PROBES.counts()
+        root = _primary_root(hf_cache_dir, s3_cache_dir)
+        logger.warning(
+            "hope_runtime_models.resolvable_degraded rows=%d inflight=%d stalled=%d root=%s",
+            len(queries),
+            inflight,
+            stalled,
+            root,
+        )
+        detail = (
+            f"{stalled} of this host's {inflight} probe threads have not returned; "
+            f"the model cache root {root} is not answering"
+        )
+        return [ResolvableResult(query.id, None, "degraded", detail, root) for query in queries]
 
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_guarded), timeout=budget)
-    except _ProbeBusyError:
-        return [
-            _unmeasured(query, "an earlier probe on this host has not returned")
-            for query in queries
-        ]
+        return await asyncio.wait_for(asyncio.wrap_future(probe.future), timeout=budget)
     except TimeoutError:  # `asyncio.TimeoutError` is an alias of it on 3.11+
+        _PROBES.abandon(probe, what=f"batch rows={len(queries)}")
         logger.warning(
             "hope_runtime_models.resolvable_budget_exceeded rows=%d budget=%.1fs",
             len(queries),
@@ -421,6 +823,30 @@ async def check_resolvable_many(
             _unmeasured(query, "the filesystem check did not finish inside this probe's budget")
             for query in queries
         ]
+    except Exception as exc:  # noqa: BLE001 — a probe must never take the service down
+        logger.warning("hope_runtime_models.resolvable_batch_failed error=%s", exc)
+        return [
+            ResolvableResult(
+                query.id,
+                None,
+                "error",
+                "the resolvability check itself failed; nothing was measured",
+            )
+            for query in queries
+        ]
+
+
+def _primary_root(hf_cache_dir: str | None, s3_cache_dir: str | None) -> str:
+    """The root an operator would go and look at. Named in the degraded answer.
+
+    The `path` field is the sanctioned place for an absolute host path (the
+    gateway keeps it out of tenant payloads), and it is repeated in `detail`
+    because a degraded readiness answer that does not say WHICH volume stopped
+    answering is not actionable — and `detail` reaches only the platform
+    operator: the gateway's sweep reads `id` and `resolvable`, nothing else.
+    """
+    roots = cache_roots(hf_cache_dir=hf_cache_dir, s3_cache_dir=s3_cache_dir)
+    return str(roots[0]) if roots else "<none configured>"
 
 
 def _unmeasured(query: ResolvableQuery, why: str) -> ResolvableResult:
@@ -436,7 +862,9 @@ def _check(
     # 1. Operator override wins everywhere, exactly as the loaders order it.
     if query.local_path:
         candidate = Path(query.local_path)
-        if candidate.exists():
+        with _fs_op("stat", str(candidate)):
+            staged = candidate.exists()
+        if staged:
             return ResolvableResult(
                 query.id, True, "local_path", "staged at the configured local_path", str(candidate)
             )
@@ -469,7 +897,9 @@ def _check(
     # 3. file:// — verified in place, never copied.
     if uri.startswith("file://"):
         path = Path(uri[len("file://") :])
-        if path.exists():
+        with _fs_op("stat", str(path)):
+            present = path.exists()
+        if present:
             return ResolvableResult(
                 query.id, True, "file", "present at the declared file:// path", str(path)
             )
@@ -494,7 +924,9 @@ def _check(
         # or this reports a cache the loader will not find.
         digest = hashlib.sha1(uri.encode()).hexdigest()  # noqa: S324
         target = Path(s3_cache_dir) / "s3" / digest
-        if target.exists():
+        with _fs_op("stat", str(target)):
+            materialised = target.exists()
+        if materialised:
             return ResolvableResult(
                 query.id,
                 True,

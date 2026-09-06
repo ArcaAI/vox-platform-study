@@ -18,6 +18,13 @@ resolves ``$HF_HOME/hub``. Since TASK-890 F3 the resolver tries BOTH layouts —
 ``$HF_HOME/hub`` and ``HF_HOME`` itself, which is what STT's own resolver
 passes — so neither service can report a warm cache as cold by reading the
 other one's directory.
+
+``warm`` on every response is the boot warm-up's verdict (TASK-890 F6):
+``"pending"`` until the process has touched its cache roots once, then ``true``
+when they answered and ``false`` when even a 60 s budget did not get an answer
+out of them. It is the difference between "this host has not looked yet" and
+"this host looked and the volume is not answering", which a per-row verdict
+cannot express.
 """
 
 from __future__ import annotations
@@ -26,7 +33,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query
-from hope_runtime_models import ResolvableQuery, check_resolvable_many
+from hope_runtime_models import ResolvableQuery, check_resolvable_many, warmup_state
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/internal/models", tags=["internal"])
@@ -83,6 +90,7 @@ async def resolvable_one(
     return {
         "service": SERVICE_NAME,
         "checkedAt": datetime.now(UTC).isoformat(),
+        "warm": warmup_state(),
         "result": result,
     }
 
@@ -93,5 +101,6 @@ async def resolvable_batch(body: ResolvableRequest) -> dict[str, Any]:
     return {
         "service": SERVICE_NAME,
         "checkedAt": datetime.now(UTC).isoformat(),
+        "warm": warmup_state(),
         "results": await _verdicts(body.models),
     }

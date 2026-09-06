@@ -171,12 +171,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:  # noqa: BLE001 - registration must never block boot
         logger.warning("stt.service_release_registration_failed", error=str(exc))
 
+    # Warm the model-cache roots ONCE, off every request path (TASK-890 F6).
+    #
+    # `HF_HOME` here is an external volume, and its FIRST access from a given
+    # process can stay inside the kernel for minutes while a shell `ls` answers
+    # instantly. Paying that cost in a detached boot task means the first
+    # readiness sweep meets a volume that is already awake; when even a 60 s
+    # budget gets no answer, the resolvable endpoints report `warm: false`
+    # instead of the sweep discovering it one abandoned probe thread at a time.
+    # Detached and never awaited: warming can make the first probe faster, never
+    # slower, and it must not delay or fail boot.
+    from hope_runtime_models import warm_cache_roots
+
+    _cache_dir = getattr(app.state, "settings", settings).huggingface_cache_dir
+    app.state.model_cache_warmup_task = asyncio.create_task(
+        warm_cache_roots(hf_cache_dir=_cache_dir, s3_cache_dir=_cache_dir, service="stt")
+    )
+
     logger.info("STT Service started successfully")
 
     yield
 
     # Shutdown
     logger.info("Shutting down STT Service...")
+    warmup_task = getattr(app.state, "model_cache_warmup_task", None)
+    if warmup_task is not None and not warmup_task.done():
+        warmup_task.cancel()
     invalidation_task = getattr(app.state, "config_invalidation_task", None)
     if invalidation_task is not None:
         invalidation_task.cancel()

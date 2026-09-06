@@ -189,8 +189,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:  # noqa: BLE001 - registration must never block boot
         logger.warning("tts.service_release_registration_failed", error=str(exc))
 
+    # Warm the model-cache roots ONCE, off every request path (TASK-890 F6).
+    #
+    # `HF_HOME` here is an external volume, and its FIRST access from a given
+    # process can stay inside the kernel for minutes while a shell `ls` answers
+    # instantly. Paying that cost in a detached boot task means the first
+    # readiness sweep meets a volume that is already awake; when even a 60 s
+    # budget gets no answer, the resolvable endpoints report `warm: false`
+    # instead of the sweep discovering it one abandoned probe thread at a time.
+    # Filesystem only — no socket, so `test_keyless_readiness_task642`'s
+    # no-outbound-connections-at-boot invariant is untouched — detached, and
+    # never awaited: warming can make the first probe faster, never slower.
+    from hope_runtime_models import warm_cache_roots
+
+    app.state.model_cache_warmup_task = asyncio.create_task(warm_cache_roots(service="tts"))
+
     logger.info("tts.started", providers=registry.list_providers())
     yield
+
+    warmup_task = getattr(app.state, "model_cache_warmup_task", None)
+    if warmup_task is not None and not warmup_task.done():
+        warmup_task.cancel()
 
     invalidation_task = getattr(app.state, "config_invalidation_task", None)
     if invalidation_task is not None:
