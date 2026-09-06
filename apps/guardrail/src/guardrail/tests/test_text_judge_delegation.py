@@ -27,7 +27,7 @@ import pytest
 
 from guardrail.core.config import Settings
 from guardrail.core.errors import GuardrailUndeterminedError
-from guardrail.services.external_text_client import TextJudgeClient
+from guardrail.services.external_text_client import JUDGE_VERDICT_SCHEMA, TextJudgeClient
 
 _VERDICT = (
     '{"is_medical": true, "confidence": 0.93, "context_type": "clinical", '
@@ -133,7 +133,12 @@ async def test_posts_to_the_isolated_judge_lane_with_service_and_tenant_headers(
     # explicitly — `text` never picks a model for the safety plane.
     assert body["provider"] == "lm-studio"
     assert body["model"] == "guardian-1"
-    assert body["response_format"] == {"type": "json_object"}
+    # The structured-output directive is a JSON SCHEMA: `json_object` is not a
+    # member of `text`'s ResponseFormat literal (422) and LM Studio refuses that
+    # wire form outright. Contract pinned in test_task890_judge_response_format.py.
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"] is JUDGE_VERDICT_SCHEMA
+    assert body["response_format"]["strict"] is True
 
 
 @pytest.mark.asyncio
