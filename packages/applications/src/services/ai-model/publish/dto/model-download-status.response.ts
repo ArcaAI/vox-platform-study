@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AiModelDownloadStatus } from '@arcaai/domains';
+import { MODEL_PUBLISH_STATUSES, type ModelPublishStatus } from '../model-download-meta.util';
 
 /**
  * `GET admin/ai-models/:id/download` response body — 200 OK.
@@ -8,16 +8,15 @@ import { AiModelDownloadStatus } from '@arcaai/domains';
  * sha256, localPath, error }`. A parallel lane builds a UI against this
  * shape; do not rename or reshape it.
  *
- * `fileSizeMb`/`sha256`/`localPath` are read straight off the `AiModel` row
- * (`checksum` -> `sha256` in the wire shape); `startedAt`/`finishedAt`/`error`
- * have no dedicated columns and come from `metaData.download` bookkeeping
- * (see `model-download-meta.util.ts`) — `finishedAt` falls back to the row's
- * own `downloadedAt` on a DOWNLOADED row with no bookkeeping (e.g. a row
- * marked downloaded before this endpoint existed).
+ * TASK-890 §3.11 — the SHAPE is unchanged, every SOURCE moved. The four
+ * bookkeeping columns are dropped, so `status` is DERIVED from the measured
+ * `availability` plus the run bookkeeping (`derivePublishStatus`), `fileSizeMb`
+ * comes from that same bookkeeping, `localPath` is derived from the row's bucket
+ * identity, and only `sha256` (`AiModel.checksum`) is still a column read.
  */
 export class ModelDownloadStatusResponse {
-  @ApiProperty({ enum: AiModelDownloadStatus })
-  status: AiModelDownloadStatus;
+  @ApiProperty({ enum: MODEL_PUBLISH_STATUSES })
+  status: ModelPublishStatus;
 
   @ApiPropertyOptional({ description: 'When the most recent download job started.', nullable: true })
   startedAt: Date | null;

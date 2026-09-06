@@ -218,7 +218,7 @@ describe('AiModelService — SYSTEM pin through the base-client lane', () => {
   });
 });
 
-describe('AiModelService — localPath is derived, never typed', () => {
+describe('AiModelService — localPath is derived, never stored (TASK-890 §3.11)', () => {
   it('create with a bucketPrefix derives localPath under the models mount', async () => {
     const { service } = makeService();
     const result = await service.create({ ...CREATE, bucketPrefix: 'arcaai-whisper-large-ml-en-gguf/f16-0123456789ab/', primaryObject: 'ggml-model-f16.bin' });
@@ -226,22 +226,28 @@ describe('AiModelService — localPath is derived, never typed', () => {
     expect(result.localPath).toBe('/mnt/models-bucket/arcaai-whisper-large-ml-en-gguf/f16-0123456789ab/ggml-model-f16.bin');
   });
 
-  it('update re-derives localPath when the bucket identity changes and clears it when the prefix is emptied', async () => {
+  it('update stores the bucket IDENTITY only — the path follows from it, and clearing the prefix clears the path', async () => {
     const { service, repo } = makeService();
     const row = makeRow({ localPath: '/stale/path' });
     repo.findById.mockResolvedValue(row);
 
-    await service.update('row-1', { bucketPrefix: 'medical-ner/abc/', expectedVersion: 3 } as UpdateModelRequest);
-    expect(row.localPath).toBe('/mnt/models-bucket/medical-ner/abc/');
+    const updated = await service.update('row-1', { bucketPrefix: 'medical-ner/abc/', expectedVersion: 3 } as UpdateModelRequest);
+    expect(row.bucketPrefix).toBe('medical-ner/abc/');
+    // The RESPONSE carries the derived path; the row's own stale column is never
+    // written any more, and L2 drops it.
+    expect(updated.localPath).toBe('/mnt/models-bucket/medical-ner/abc/');
+    expect(row.localPath).toBe('/stale/path');
 
-    await service.update('row-1', { bucketPrefix: '', expectedVersion: 4 } as UpdateModelRequest);
+    const cleared = await service.update('row-1', { bucketPrefix: '', expectedVersion: 4 } as UpdateModelRequest);
     expect(row.bucketPrefix).toBeNull();
-    expect(row.localPath).toBeNull();
+    expect(cleared.localPath).toBeNull();
   });
 
-  it('the response derives localPath from bucketPrefix (+ primaryObject) rather than echoing the stored column', async () => {
+  it('the response derives localPath from bucketPrefix (+ primaryObject for a single-file loader), never the stored column', async () => {
     const { service, repo } = makeService();
-    repo.findById.mockResolvedValueOnce(makeRow({ bucketPrefix: 'minicheck-flan-t5-large/q6-k-abc/', primaryObject: 'minicheck.gguf', localPath: '/stale' }));
+    repo.findById.mockResolvedValueOnce(
+      makeRow({ bucketPrefix: 'minicheck-flan-t5-large/q6-k-abc/', primaryObject: 'minicheck.gguf', libraryName: 'llama.cpp', localPath: '/stale' }),
+    );
     const result = await service.getById('row-1');
     expect(result?.localPath).toBe(deriveLocalPath('minicheck-flan-t5-large/q6-k-abc/', 'minicheck.gguf'));
   });

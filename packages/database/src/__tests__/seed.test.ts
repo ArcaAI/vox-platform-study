@@ -297,14 +297,19 @@ describe('Policy Seed Data', () => {
       expect(tenantFullAccess?.scope).toBe(PolicyScope.TENANT);
     });
 
-    // TASK-860: the model registry is a SUPER_ADMIN plane (`manage:all` on the
-    // controller, SYSTEM pin in the service). The tenant-scoped `manage AiModel`
-    // grant that used to open a per-tenant clone is gone — a tenant admin
-    // READS the catalogue through the shared-read widening and never writes it.
-    it('grants NO tenant-scoped AiModel rule in tenant-full-access (registry is super-admin only)', () => {
+    // The model registry stays a SUPER_ADMIN plane (`manage:all` on every write
+    // route, SYSTEM pin + imperative platform-admin assertion in the service).
+    // TASK-890 adds exactly ONE tenant-scoped ability — `read` — for the model
+    // PICKER (`GET admin/ai-models/catalogue`), because an agent author cannot
+    // bind a model it may not see. The assertion is therefore "read and NOTHING
+    // else", not "nothing at all": a `manage`/`create`/`update`/`delete` rule
+    // appearing here would re-open the per-tenant write surface TASK-860 closed.
+    it('grants tenant-full-access READ on AiModel and no other action (registry writes stay super-admin only)', () => {
       const tenantFullAccess = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
-      const rule = tenantFullAccess?.rules.find((r) => r.subject === 'AiModel');
-      expect(rule).toBeUndefined();
+      const rules = tenantFullAccess?.rules.filter((r) => r.subject === 'AiModel') ?? [];
+      expect(rules).toHaveLength(1);
+      expect(rules[0].action).toBe('read');
+      expect(rules[0].conditions).toEqual({ tenantId: '${context.tenantId}' });
     });
 
     it('should include prompt-template-manage policy', () => {

@@ -1,5 +1,13 @@
-import { CreateModelRequest, UpdateModelRequest, ModelResponse, PaginatedModelResponse, SetPlatformDefaultRequest } from './dto';
-import { AiModelDownloadStatus, ModelTaskType } from '@arcaai/domains';
+import {
+  CreateModelRequest,
+  ModelCatalogueFilter,
+  ModelCatalogueResponse,
+  ModelResponse,
+  PaginatedModelResponse,
+  SetPlatformDefaultRequest,
+  UpdateModelRequest,
+} from './dto';
+import { ModelTaskType } from '@arcaai/domains';
 
 /**
  * The model registry service (TASK-860). Every WRITE is platform-admin only
@@ -46,11 +54,13 @@ export interface IAiModelService {
    */
   getByTaskTypeSharedRead(taskType: ModelTaskType): Promise<ModelResponse[]>;
 
-  /** @deprecated TASK-860 — removed in R3. Use `availability`. */
-  getDownloadedModels(): Promise<ModelResponse[]>;
-
-  /** @deprecated TASK-860 — removed in R3. The publish processor writes the row back itself. */
-  updateDownloadStatus(id: string, status: AiModelDownloadStatus, localPath?: string, fileSizeMb?: number, checksum?: string): Promise<ModelResponse>;
+  /**
+   * The TENANT catalogue (TASK-890 §3.7): the picker-shaped, two-group read of
+   * what this tenant may bind — its own BYO connections first, then the single
+   * "Hope provider". A READ: no platform-admin assertion, no probe, and a
+   * projection that carries no storage or operator identity.
+   */
+  getCatalogue(filter?: ModelCatalogueFilter): Promise<ModelCatalogueResponse>;
 
   /** Retire (soft delete) a catalogue row (super admin only). */
   delete(id: string): Promise<void>;

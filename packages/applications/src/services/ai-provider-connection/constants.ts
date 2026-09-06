@@ -1,3 +1,5 @@
+import { ModelTaskType, SYSTEM_TENANT_ID } from '@arcaai/domains';
+
 /**
  * Provider-connection governance vocabulary (UNIFIED plane —, C5).
  *
@@ -171,4 +173,114 @@ export function isCloudByoProvider(a: string, b?: string): boolean {
   const service = (b === undefined ? 'llm' : a) as ProviderService;
   const provider = b === undefined ? a : b;
   return (CLOUD_BYO_PROVIDERS[service] ?? []).includes(provider);
+}
+
+// ===========================================================================
+// TASK-890 §3.7 — the provider CLASS table
+// ===========================================================================
+
+/**
+ * Providers that SERVE weights themselves: an engine process the platform runs
+ * which hosts its own model store. Available whenever their (SYSTEM) connection
+ * row is ENABLED — there is no credential to bring and no bucket to stage.
+ *
+ * Moved here from `agent.service.ts` (TASK-890 L1) because three surfaces read
+ * it now — the tenant catalogue, the agent publish gate and the BYO model
+ * declaration — and a predicate that decides "is this model usable" belongs with
+ * the connection vocabulary it is derived from, not inside one consumer.
+ *
+ * `lmstudio` is the alias the seeded rows still carry beside `lm-studio`; both
+ * are kept deliberately (TASK-890 §3.11 "kept deliberately").
+ */
+export const ENGINE_SERVED_PROVIDERS: ReadonlySet<string> = new Set(['lm-studio', 'lmstudio', 'ollama', 'vllm', 'llama-cpp']);
+
+/**
+ * The SENTINEL provider meaning "one of the platform's OWN services loads these
+ * weights from the models bucket" (`apps/stt`, `apps/nlp`, `apps/tts`) —
+ * 23 of the 33 seeded rows carry it (§2.7 #13). It is deliberately in NEITHER
+ * `ENGINE_SERVED_PROVIDERS` nor `CLOUD_BYO_PROVIDERS`: it is neither an engine
+ * with its own store nor a vendor account, so its usability is the MEASURED
+ * `AiModel.availability`, never a connection.
+ */
+export const PLATFORM_SELF_HOST_MODEL_PROVIDER = 'built-in';
+
+/** The one non-BYO group id in the tenant catalogue (OD-L: "Hope provider", exactly one entry). */
+export const PROVIDER_GROUP_HOPE = 'hope';
+
+/**
+ * Which HALF of the tenant catalogue a provider entry belongs to (§3.7).
+ * A DTO label only: `AiModel.provider` keeps the engine/vendor id that routing
+ * and the usage ledger are keyed on — `hope` is never a provider id.
+ */
+export type ProviderGroup = 'byo' | typeof PROVIDER_GROUP_HOPE;
+
+/**
+ * How a model row is SERVED, which is what decides whether it is usable and how
+ * its readiness is measured (§3.7 class table):
+ *
+ *   `cloud-byo`          the tenant's own vendor account (its own `AiModel` row)
+ *   `cloud-platform`     the platform's vendor account, subject to the cascade + entitlement
+ *   `engine-served`      an engine the platform runs which hosts its own weights
+ *   `platform-self-host` weights the platform's own services load from the bucket
+ */
+export type ProviderClass = 'cloud-byo' | 'cloud-platform' | 'engine-served' | 'platform-self-host';
+
+/**
+ * `AiModel.taskType` → the connection SERVICE that governs it, or `null` when no
+ * connection plane governs that task at all (the NLP classification family is
+ * served by `apps/nlp` from the bucket, with no vendor account and no engine).
+ *
+ * Declared as a total map over the enum so a new task type is a COMPILE error
+ * here rather than a silently unclassified catalogue row.
+ */
+export const MODEL_TASK_TYPE_SERVICE: Readonly<Record<ModelTaskType, ProviderService | null>> = Object.freeze(
+  Object.values(ModelTaskType).reduce(
+    (acc, taskType) => {
+      acc[taskType] = acc[taskType] ?? null;
+      return acc;
+    },
+    {
+      [ModelTaskType.TEXT_GENERATION]: 'llm',
+      [ModelTaskType.TEXT2TEXT_GENERATION]: 'llm',
+      [ModelTaskType.SUMMARIZATION]: 'llm',
+      [ModelTaskType.TRANSLATION]: 'llm',
+      // The guardrail screen IS an LLM (§2.7 #13 — the Hub tags it text-generation).
+      [ModelTaskType.GUARDRAIL]: 'llm',
+      [ModelTaskType.FEATURE_EXTRACTION]: 'embeddings',
+      [ModelTaskType.SENTENCE_SIMILARITY]: 'embeddings',
+      [ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION]: 'stt',
+      [ModelTaskType.VOICE_ACTIVITY_DETECTION]: 'stt',
+      [ModelTaskType.SPEAKER_DIARIZATION]: 'stt',
+      [ModelTaskType.SPEAKER_EMBEDDING]: 'stt',
+      [ModelTaskType.AUDIO_CLASSIFICATION]: 'stt',
+      [ModelTaskType.AUDIO_TO_AUDIO]: 'stt',
+      [ModelTaskType.TEXT_TO_SPEECH]: 'tts',
+      [ModelTaskType.TEXT_TO_AUDIO]: 'tts',
+    } as Record<ModelTaskType, ProviderService | null>,
+  ),
+);
+
+/**
+ * The class of ONE catalogue row (§3.7). `null` = the row names no provider this
+ * platform can serve: hidden from tenants, counted for a super admin
+ * (`unassignedProviderCount`) so an unassigned row is visible to the person who
+ * can fix it rather than silently absent for everyone.
+ *
+ * Order matters. A TENANT-owned row is `cloud-byo` whatever its provider says —
+ * the tenant plane owns no engines and stages no weights, so its rows can only
+ * ever be its own vendor account (§2.7 #9: a tenant `AiModel` row IS the BYO
+ * declaration). Only SYSTEM rows reach the three platform classes.
+ */
+export function providerClassOf(
+  service: ProviderService | null,
+  provider: string | null | undefined,
+  row: { tenantId: string },
+): ProviderClass | null {
+  if (row.tenantId !== SYSTEM_TENANT_ID) return 'cloud-byo';
+  if (!provider) return null;
+  if (provider === PLATFORM_SELF_HOST_MODEL_PROVIDER) return 'platform-self-host';
+  if (service && isPlatformSelfHostProvider(service, provider)) return 'platform-self-host';
+  if (ENGINE_SERVED_PROVIDERS.has(provider)) return 'engine-served';
+  if (service && isCloudByoProvider(service, provider)) return 'cloud-platform';
+  return null;
 }

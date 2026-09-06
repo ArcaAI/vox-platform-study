@@ -57,7 +57,23 @@ export interface ResolvedAgentModel {
   slug: string;
   sourceUri: string;
   sourceRevision: string | null;
+  /**
+   * Where the weights are, for a service that loads them itself.
+   *
+   * DERIVED (TASK-890 §3.11), never a stored column: `/mnt/models-bucket/` +
+   * `AiModel.bucketPrefix` [+ `primaryObject`], computed by `derivedLocalPath`
+   * at resolve time. `null` when the row has no bucket identity, which is the
+   * signal for the consumer to fall back to `sourceUri` scheme dispatch. The
+   * WIRE contract is unchanged — `apps/stt` still reads `local_path` as the
+   * highest-precedence weight location.
+   */
   localPath: string | null;
+  /**
+   * The provider-native id that goes ON THE WIRE for a vendor/engine call
+   * (`AiModel.wireModelId`), as opposed to `sourceUri`, which is the row's
+   * LOCATOR (HF repo, `s3://`). Null on a row that has not declared one yet.
+   */
+  wireModelId: string | null;
   checksum: string | null;
   format: string;
   computeType: string | null;

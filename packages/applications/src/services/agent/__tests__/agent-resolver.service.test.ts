@@ -124,3 +124,64 @@ describe('AgentResolverService.resolve — model metadata and the endpointing ro
     expect(resolved.models.map((m) => [m.role, m.slug])).toContainEqual(['endpointing', 'eou-classifier']);
   });
 });
+
+/**
+ * TASK-890 L1 (H-6 runtime half) — a SYSTEM agent's fallback CHAIN under a
+ * tenant's CLS.
+ *
+ * `AgentModelFallback` is tenant-scoped and NOT shared-read, so
+ * `findByAgentId(entity.id)` executed under the CALLER's tenant filters away
+ * every row of a SYSTEM agent's chain and returns `[]` — a silently
+ * fallback-less resolve, not an error. The fix is CONTEXT, not a widening: the
+ * chain is read under the AGENT's own tenant, exactly as `runInTenantContext`
+ * does for the membership-bounded sync.
+ */
+describe('TASK-890 H-6 — the fallback chain of a SYSTEM agent resolved by a tenant', () => {
+  /** A CLS double that behaves like the real one: `run` inherits, `set` scopes to the run. */
+  function clsDouble(initialTenant: string) {
+    const stack: string[] = [initialTenant];
+    return {
+      current: () => stack[stack.length - 1],
+      get: (key: string) => (key === 'tenantId' ? stack[stack.length - 1] : null),
+      set: (key: string, value: string) => {
+        if (key === 'tenantId') stack[stack.length - 1] = value;
+      },
+      run: async (_opts: unknown, work: () => Promise<unknown>) => {
+        stack.push(stack[stack.length - 1]);
+        try {
+          return await work();
+        } finally {
+          stack.pop();
+        }
+      },
+    };
+  }
+
+  it('materialises the chain the SYSTEM agent actually has', async () => {
+    const cls = clsDouble(TENANT);
+    // The tenant-scope extension, simulated: the chain is only visible while the
+    // ambient tenant IS the agent's own.
+    fallbackRepository.findByAgentId.mockImplementation(async () =>
+      cls.current() === SYSTEM_TENANT_ID ? [{ modelId: 'm-fb', priority: 1, enabled: true }] : [],
+    );
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(published({ slug: 'platform-summarization', tenantId: SYSTEM_TENANT_ID }));
+    aiModelRepository.findById.mockImplementation(async (id: string) =>
+      id === 'm-fb' ? model({ id: 'm-fb', slug: 'fallback-model' }) : model({}),
+    );
+
+    const service = new AgentResolverService(
+      agentRepository as never,
+      fallbackRepository as never,
+      aiModelRepository as never,
+      assignments as never,
+      providerConnections as never,
+      cls as never,
+    );
+    const resolved = await service.resolve({ tenantId: TENANT, agentSlug: 'platform-summarization' });
+
+    expect(resolved.models.map((m) => m.role)).toEqual(['primary', 'fallback']);
+    expect(resolved.models[1]).toMatchObject({ slug: 'fallback-model', priority: 1 });
+    // The caller's own context is restored — the wrap must not leak.
+    expect(cls.current()).toBe(TENANT);
+  });
+});
