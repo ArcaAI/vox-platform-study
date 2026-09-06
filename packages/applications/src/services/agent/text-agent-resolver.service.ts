@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { AgentTask, SYSTEM_TENANT_ID } from '@arcaai/domains';
+import { AgentTask } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import type { ResolvedAgent, ResolvedAgentModel } from '@arcaai/types';
 import { readAgentFallbackGovernance } from '@arcaai/workflow-contract';
@@ -197,14 +197,12 @@ export class TextAgentResolverService {
       for (const model of fallbackModelsOf(agent)) push(await this.candidate(agent, model, 'fallback-model', tenantId));
     }
 
-    if (agent.source !== 'platform-default') {
-      const platform = await this.platformDefaultAgent(tenantId, agent.slug);
-      const model = platform ? primaryModelOf(platform) : undefined;
-      // The explicit fallback agent may BE the platform agent — the same version is never listed twice.
-      if (platform && model && !chain.some((entry) => entry.agent.versionId === platform.agentVersionId)) {
-        push(await this.candidate(platform, model, 'platform-default', tenantId));
-      }
-    }
+    // TASK-890 OD-M — the terminal SYSTEM-assigned candidate is GONE. The chain is the agent's
+    // OWN governance: its `AgentModelFallback` rows, or the `parameters.fallback.agentSlug` it
+    // names, both resolved in the CALLER's tenant. A platform agent still appears here — as the
+    // tenant's own provisioned clone of it — but it is never appended by reading the SYSTEM
+    // tenant's assignment behind the tenant's back. "Fallback" is the tenant's decision (§1.5),
+    // and a tenant that wants the platform default in its chain says so on the agent.
 
     return {
       schemaVersion: RESOLVED_TEXT_SPEC_SCHEMA_VERSION,
@@ -212,21 +210,6 @@ export class TextAgentResolverService {
       primary,
       fallback: { autoSwitch: effectiveAutoSwitch(governance.autoSwitch, primary.fundingTier), chain },
     };
-  }
-
-  /** The SYSTEM tenant's TENANT-scope assignment for the task — the platform default the cascade's last tier reads. */
-  private async platformDefaultAgent(tenantId: string, primarySlug: string): Promise<ResolvedAgent | null> {
-    const assigned = await this.assignments.resolve(SYSTEM_TENANT_ID, AgentTask.TEXT_GENERATION, null);
-    if (!assigned.agentSlug) {
-      this.logger.warn({
-        message: 'No SYSTEM TEXT_GENERATION assignment — the fallback chain ends without a platform default',
-        tenantId,
-        agentSlug: primarySlug,
-      });
-      return null;
-    }
-    // Resolved VISIBLE TO THE CALLER'S tenant (a SYSTEM row is in every tenant's [tenant, SYSTEM] scope) — never a cross-tenant read.
-    return this.tryResolveAgent(tenantId, assigned.agentSlug, 'platform default agent', primarySlug);
   }
 
   private async tryResolveAgent(tenantId: string, slug: string, role: string, primarySlug: string): Promise<ResolvedAgent | null> {

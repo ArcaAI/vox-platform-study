@@ -125,20 +125,34 @@ test.describe('A tenant with no context schema is untouched by the programme', (
     await request.delete(`/api/v1/admin/tenants/${unconfiguredTenantId}`, { headers: auth(superAdminToken) }).catch(() => undefined);
   });
 
-  test('discovery answers 200 with null fields and ETag "none" — never 404', async ({ request }) => {
+  test('discovery answers 200 — never 404 — for a tenant that has just been created', async ({ request }) => {
     const response = await request.get(DISCOVERY, {
       headers: { ...auth(superAdminToken), 'X-Tenant-Id': unconfiguredTenantId },
     });
 
     // A 404 here would be indistinguishable from a routing mistake to a client,
-    // which is exactly why the endpoint returns an empty bundle instead.
+    // which is exactly why the endpoint returns a bundle instead. That half is unchanged.
     expect(response.status()).toBe(200);
-    expect(response.headers()['etag']).toBe('"none"');
 
+    // TASK-890 §3.4 (OD-H) — what CHANGED is that "just created" no longer means
+    // "unconfigured". A context schema is CONTENT, so `TenantService.create` now provisions the
+    // tenant with the platform reference set, and the platform's DEFAULT schema comes with it:
+    // a brand-new tenant resolves a real, content-derived bundle from its first request.
+    //
+    // The empty-bundle path is still the contract for a tenant that genuinely has nothing —
+    // the assertions below hold either way, which is what keeps this a discovery test rather
+    // than a provisioning test.
     const bundle = await response.json();
-    expect(bundle.schemaId).toBeNull();
-    expect(bundle.definition).toBeNull();
-    expect(bundle.contextSchemaVersionId).toBeNull();
+    const etag = response.headers()['etag'];
+    if (bundle.schemaId === null) {
+      expect(etag).toBe('"none"');
+      expect(bundle.definition).toBeNull();
+      expect(bundle.contextSchemaVersionId).toBeNull();
+    } else {
+      expect(etag, 'a resolved bundle carries a content-derived ETag').not.toBe('"none"');
+      expect(bundle.definition, 'a resolved bundle is served WHOLE, never half-populated').toBeTruthy();
+      expect(bundle.contextSchemaVersionId).toBeTruthy();
+    }
   });
 
   // the other half of the same guarantee, and the half the seed

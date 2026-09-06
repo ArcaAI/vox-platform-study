@@ -29,7 +29,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PromptResolutionService, SYSTEM_DEFAULTS } from '../prompt-resolution.service';
 
 const mockDepartmentRepository = { findById: vi.fn() };
-const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn() };
+// TASK-890 §3.4 (OD-M) — a `SYSTEM_DEFAULTS.*` pointer resolves the TENANT's clone of that
+// platform template, matched on `sourceTemplateId`. These fixtures model a PROVISIONED tenant,
+// where the clone stands in for the pointer, so the chain assertions below are unchanged; the
+// unprovisioned case (`PROMPT_DEFAULT_NOT_PROVISIONED`) is pinned in
+// `prompt-resolution.reference-set.task890.test.ts`.
+const provisionedClone = async (_tenantId: string, sourceTemplateId: string) => ({ id: sourceTemplateId });
+const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn(), findByTenantAndSourceTemplateId: vi.fn(provisionedClone) };
 const mockPromptVersionRepository = { findByVersionNumber: vi.fn(), findLatestVersion: vi.fn() };
 const mockWorkflowAssignments = { resolve: vi.fn() };
 const mockWorkflowDefinitionRepository = { findPublishedBySlug: vi.fn() };
@@ -115,7 +121,9 @@ describe('Tier-1a — workflow node config', () => {
       // prompt served as the running-note prompt.
       mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'tenant' });
       mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(
-        definitionWithNodes([{ id: 'note_writer', type: 'consultation.synthesize', config: { taskKey: 'text.finalize', promptTemplateId: FINALIZE_TEMPLATE } }]),
+        definitionWithNodes([
+          { id: 'note_writer', type: 'consultation.synthesize', config: { taskKey: 'text.finalize', promptTemplateId: FINALIZE_TEMPLATE } },
+        ]),
       );
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
         id === SYSTEM_DEFAULTS.livePromptId ? approvedTemplate(SYSTEM_DEFAULTS.livePromptId) : null,
@@ -134,7 +142,9 @@ describe('Tier-1a — workflow node config', () => {
     it('serves the text.finalize node and reports its node id as resolvedAgentId', async () => {
       mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'department' });
       mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(
-        definitionWithNodes([{ id: 'note_writer', type: 'generate.text', config: { taskKey: 'text.finalize', promptTemplateId: FINALIZE_TEMPLATE } }]),
+        definitionWithNodes([
+          { id: 'note_writer', type: 'generate.text', config: { taskKey: 'text.finalize', promptTemplateId: FINALIZE_TEMPLATE } },
+        ]),
       );
       mockPromptTemplateRepository.findById.mockResolvedValue(approvedTemplate(FINALIZE_TEMPLATE, 5));
       mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 5, content: 'NODE FINALIZE PROMPT v5' });
@@ -175,7 +185,9 @@ describe('Tier-1a — workflow node config', () => {
     it('falls through to the department column when the node template is NOT approved', async () => {
       mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'tenant' });
       mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(
-        definitionWithNodes([{ id: 'note_writer', type: 'generate.text', config: { taskKey: 'text.finalize', promptTemplateId: FINALIZE_TEMPLATE } }]),
+        definitionWithNodes([
+          { id: 'note_writer', type: 'generate.text', config: { taskKey: 'text.finalize', promptTemplateId: FINALIZE_TEMPLATE } },
+        ]),
       );
       mockDepartmentRepository.findById.mockResolvedValue({
         id: DEPT,

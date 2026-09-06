@@ -455,7 +455,9 @@ describe('PromptAssemblyService', () => {
 
   describe('NER injection (Phase 1)', () => {
     it('appends recognized clinical entities (text + codes) when the template has no {{context.ner_entities}} placeholder', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -499,7 +501,9 @@ describe('PromptAssemblyService', () => {
     });
 
     it('prefers normalizedText for the entity label when present', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -514,7 +518,9 @@ describe('PromptAssemblyService', () => {
     });
 
     it('does not add a NER section when no entities are provided', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -532,7 +538,9 @@ describe('PromptAssemblyService', () => {
     // groundedness guard makes that absence EXPLICIT instead of silently
     // emitting un-coded entity lines that read as if coding was attempted.
     it('flags the absence of ontology codes when NER entities carry none (groundedness guard)', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -558,7 +566,9 @@ describe('PromptAssemblyService', () => {
     });
 
     it('does NOT flag the absence when at least one ontology code is present (guard disengaged)', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -582,7 +592,9 @@ describe('PromptAssemblyService', () => {
     // goes true in production). The guard code stays for genuinely un-codable
     // spans — proven by the un-coded test above.
     it('emits the real coded block and disengages the guard on linker-coded entities (closed)', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -607,7 +619,9 @@ describe('PromptAssemblyService', () => {
   // ── Clinician notes + attachments injection ──
   describe('clinician notes + attachments injection', () => {
     it('appends clinician notes and attachments blocks when the template has no placeholders', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -651,7 +665,9 @@ describe('PromptAssemblyService', () => {
     });
 
     it('does not add clinician notes / attachments sections when none are provided', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -668,7 +684,9 @@ describe('PromptAssemblyService', () => {
   // ── Doctor highlights injection ──
   describe('doctor highlights injection (Workstream B)', () => {
     it('appends a doctor highlights block when the template has no placeholder', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -702,7 +720,9 @@ describe('PromptAssemblyService', () => {
     });
 
     it('adds no highlights section when none are provided', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -723,7 +743,9 @@ describe('PromptAssemblyService', () => {
   // reach the LLM (the latent no-op the legacy path also suffered).
   describe('pre-summary warm-start injection (Phase C)', () => {
     it('appends the prior-draft block + refinement instruction when the template has no {{context.pre_summary_text}} placeholder', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService(true); // warm-start ON
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -746,7 +768,9 @@ describe('PromptAssemblyService', () => {
     // STAGE 1 (scratchpad), the harness note is STAGE 2 (final), and the transcript
     // stays authoritative on conflict. RED before the block names the two stages.
     it('frames the prior draft as a two-stage scratchpad→final lineage, transcript authoritative on conflict', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService(true); // warm-start ON
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -787,7 +811,9 @@ describe('PromptAssemblyService', () => {
     });
 
     it('adds no prior-draft section when preSummaryText is absent (cold path unchanged)', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService(true); // warm-start ON
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -801,7 +827,9 @@ describe('PromptAssemblyService', () => {
 
     // ── Kill-switch OFF (default) — the load-bearing legacy gate ──
     it('does NOT append the prior-draft block when the flag is OFF (default), even with pre_summary_text present', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService(); // flag OFF (prod default)
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -948,7 +976,9 @@ describe('PromptAssemblyService', () => {
   // ── Spotlighting delimiters around injected data (F-03) ──
   describe('spotlighting delimiters (F-03)', () => {
     it('wraps the transcript and clinician notes in EXTERNAL_DATA data-boundary markers', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService();
       const result = await service.assemble({
         departmentId: 'dept-001',
@@ -970,7 +1000,9 @@ describe('PromptAssemblyService', () => {
     });
 
     it('keeps the warm-start refine INSTRUCTION outside the prior-draft data delimiters', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }));
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+      );
       service = await getService(true); // warm-start ON
       const result = await service.assemble({
         departmentId: 'dept-001',

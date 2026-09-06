@@ -35,6 +35,9 @@ const agentRepository = {
   findPublishedActiveVisible: vi.fn(),
   findPublishedActiveBySlug: vi.fn(async () => null),
   findPublishedVisibleBySlugVersion: vi.fn(async () => null),
+  // TASK-890 L13 — the reference-library read that replaced the shared-read widening.
+  findSystemReferences: vi.fn(async () => []),
+  findSystemReferenceBySlug: vi.fn(async () => null),
   findOwnActiveBySlug: vi.fn(),
   findAllVersionsBySlug: vi.fn(async () => []),
   findMaxVersionNumber: vi.fn(async () => 0),
@@ -42,11 +45,21 @@ const agentRepository = {
   update: vi.fn(async (_id: string, entity: unknown) => entity),
 };
 const fallbackRepository = { findByAgentId: vi.fn(async () => []), create: vi.fn(async (entity: unknown) => entity), deleteAllForAgent: vi.fn() };
-const aiModelRepository = { findById: vi.fn(), findByIdOrNull: vi.fn(), findBySlug: vi.fn(async () => null), findByTaskTypeSharedRead: vi.fn(async () => []) };
+const aiModelRepository = {
+  findById: vi.fn(),
+  findByIdOrNull: vi.fn(),
+  findBySlug: vi.fn(async () => null),
+  findByTaskTypeSharedRead: vi.fn(async () => []),
+};
 const databaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
-const assignments = { resolve: vi.fn(async () => ({ agentSlug: null, source: 'platform-default', selector: [] })) };
+const assignments = { resolve: vi.fn(async () => ({ agentSlug: null, source: 'unassigned', selector: [] })) };
 const providerConnections = { resolveConnection: vi.fn(), resolveTenantCloudOverrides: vi.fn() };
-const promptTemplateRepository = { findById: vi.fn(async () => null), findByName: vi.fn(async () => null) };
+const promptTemplateRepository = {
+  findById: vi.fn(async () => null),
+  findByName: vi.fn(async () => null),
+  findSystemReferenceById: vi.fn(async () => null),
+  findByTenantAndSourceTemplateId: vi.fn(async () => null),
+};
 const promptVersionRepository = { findByVersionNumber: vi.fn() };
 const policyEngine = { buildAbility: vi.fn() };
 const mcpServerRepository = { findEnabledById: vi.fn(async () => null) };
@@ -124,6 +137,8 @@ beforeEach(() => {
   agentRepository.findAllVersionsBySlug.mockResolvedValue([]);
   agentRepository.findPublishedActiveBySlug.mockResolvedValue(null);
   agentRepository.findPublishedVisibleBySlugVersion.mockResolvedValue(null);
+  agentRepository.findSystemReferenceBySlug.mockResolvedValue(null);
+  agentRepository.findSystemReferences.mockResolvedValue([]);
   agentRepository.findMaxVersionNumber.mockResolvedValue(0);
   agentRepository.create.mockImplementation(async (entity: unknown) => entity);
   fallbackRepository.findByAgentId.mockResolvedValue([]);
@@ -142,8 +157,13 @@ beforeEach(() => {
 // ===========================================================================================
 
 describe('clone', () => {
+  // TASK-890 L13 — the platform-library branch is now an EXPLICIT reference read on the
+  // unscoped client (`findSystemReferenceBySlug`) rather than the shared-read widening
+  // `findPublishedActiveBySlug` used to provide. Same set, said out loud.
   it('clones a SYSTEM template into the caller tenant as a DRAFT, recording the full provenance', async () => {
-    agentRepository.findPublishedActiveBySlug.mockResolvedValue(agent({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, slug: 'platform-summarization', versionNumber: 2 }));
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(
+      agent({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, slug: 'platform-summarization', versionNumber: 2 }),
+    );
 
     const cloned = await makeService().clone('platform-summarization', { newSlug: 'clinic-notes' });
 
@@ -264,7 +284,9 @@ describe('exportBySlug', () => {
   });
 
   it('labels a SYSTEM source as the platform TIER, never as a tenant', async () => {
-    agentRepository.findPublishedActiveBySlug.mockResolvedValue(agent({ tenantId: SYSTEM_TENANT_ID, slug: 'platform-summarization', versionNumber: 1 }));
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(
+      agent({ tenantId: SYSTEM_TENANT_ID, slug: 'platform-summarization', versionNumber: 1 }),
+    );
     const bundle = await makeService().exportBySlug('platform-summarization');
     expect(bundle.source.tenantKind).toBe('system');
   });
@@ -342,7 +364,10 @@ describe('importBundle', () => {
     expect(imported.status).toBe(WorkflowDefinitionStatus.DRAFT);
     expect(imported.modelId).toBe('model-llm');
     // A bundle carries no row id and no tenant id, so an import records only what it truly saw.
-    expect({ sourceSlug: imported.sourceSlug, sourceVersionNumber: imported.sourceVersionNumber }).toEqual({ sourceSlug: 'clinic-summarizer', sourceVersionNumber: 3 });
+    expect({ sourceSlug: imported.sourceSlug, sourceVersionNumber: imported.sourceVersionNumber }).toEqual({
+      sourceSlug: 'clinic-summarizer',
+      sourceVersionNumber: 3,
+    });
     expect(imported.sourceAgentId).toBeNull();
     expect(imported.sourceTenantId).toBeNull();
   });
@@ -354,7 +379,9 @@ describe('importBundle', () => {
   });
 
   it('refuses a bundle of the wrong kind, and one from a newer platform, before reading the payload', async () => {
-    await expect(makeService().importBundle({ bundle: bundle({}, { kind: 'workflow' }) })).rejects.toMatchObject({ response: { code: 'BUNDLE_INVALID' } });
+    await expect(makeService().importBundle({ bundle: bundle({}, { kind: 'workflow' }) })).rejects.toMatchObject({
+      response: { code: 'BUNDLE_INVALID' },
+    });
     await expect(makeService().importBundle({ bundle: bundle({}, { schemaVersion: PORTABLE_BUNDLE_SCHEMA_VERSION + 1 }) })).rejects.toMatchObject({
       response: { code: 'BUNDLE_INVALID' },
     });
@@ -396,9 +423,9 @@ describe('importBundle', () => {
   });
 
   it('409s when a tool binding names an MCP server this tenant cannot reach', async () => {
-    await expect(
-      makeService().importBundle({ bundle: bundle({ tools: [{ mcpServerId: 'mcp-1', toolName: 'search' }] }) }),
-    ).rejects.toMatchObject({ response: { code: 'MCP_SERVER_NOT_RESOLVABLE' } });
+    await expect(makeService().importBundle({ bundle: bundle({ tools: [{ mcpServerId: 'mcp-1', toolName: 'search' }] }) })).rejects.toMatchObject({
+      response: { code: 'MCP_SERVER_NOT_RESOLVABLE' },
+    });
   });
 
   it('refuses a bundle whose tags are not `key:value`', async () => {
@@ -446,7 +473,9 @@ describe('syncToTenants', () => {
   // entitled to know SYSTEM exists.)
   it('404s — never 403 — for a target the caller does not manage, and writes NOTHING', async () => {
     manages(PARTNER);
-    await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [PARTNER, STRANGER] })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [PARTNER, STRANGER] })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(agentRepository.create).not.toHaveBeenCalled();
   });
 
@@ -454,7 +483,9 @@ describe('syncToTenants', () => {
   // behind a 404 would conceal nothing and mislead the caller about WHY the push failed.
   it('403s — not 404s — when the target is SYSTEM and the caller is not a platform administrator', async () => {
     manages(PARTNER);
-    await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [SYSTEM_TENANT_ID] })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [SYSTEM_TENANT_ID] })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [SYSTEM_TENANT_ID] })).rejects.toThrow(/platform administrator/);
   });
 
@@ -522,5 +553,123 @@ describe('syncToTenants', () => {
     await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [PARTNER] })).rejects.toMatchObject({
       response: { code: 'MCP_SERVER_NOT_PORTABLE' },
     });
+  });
+});
+
+// ===========================================================================================
+// TASK-890 §3.4 — the REFERENCE-SET copy (`cloneFromSystem`)
+// ===========================================================================================
+
+describe('cloneFromSystem', () => {
+  const systemSource = () =>
+    agent({
+      id: 'sys-1',
+      tenantId: SYSTEM_TENANT_ID,
+      slug: 'platform-transcription',
+      task: AgentTask.SPEECH_TO_TEXT,
+      versionNumber: 2,
+      status: WorkflowDefinitionStatus.PUBLISHED,
+      isActive: true,
+      compiledConfig: { frozen: 'artifact' },
+      compiledConfigChecksum: 'sha256:frozen',
+      instruction: { promptTemplateId: 'sys-template', promptVersionNumber: 4 },
+    });
+
+  it('lands the copy ALREADY PUBLISHED with the source`s compiled artifact — it never re-runs the publish gate', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    // The bound template is SYSTEM-owned, which is what makes the agent portable at all — read
+    // through the explicit reference read now that `PromptTemplate` is not shared-read.
+    promptTemplateRepository.findSystemReferenceById.mockResolvedValue({ id: 'sys-template', tenantId: SYSTEM_TENANT_ID } as never);
+
+    const result = await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    expect(result.created).toBe(true);
+    // The gate asks "is this runnable HERE?", and answers MODEL_UNAVAILABLE in any environment
+    // whose ASR weights are not staged — an environment fact that would leave the tenant with no
+    // ASR assignment at all. The artifact is frozen, so the copy is servable wherever the
+    // original was.
+    const persisted = agentRepository.update.mock.calls.at(-1)![1] as Record<string, unknown>;
+    expect(persisted['status']).toBe(WorkflowDefinitionStatus.PUBLISHED);
+    expect(persisted['isActive']).toBe(true);
+    expect(persisted['compiledConfig']).toEqual({ frozen: 'artifact' });
+    expect(persisted['compiledConfigChecksum']).toBe('sha256:frozen');
+    expect(persisted['tenantId']).toBe(PARTNER);
+    expect(persisted['sourceTenantId']).toBe(SYSTEM_TENANT_ID);
+  });
+
+  it('re-points the prompt binding at the TARGET tenant`s clone, at THAT clone`s approved version', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    promptTemplateRepository.findSystemReferenceById.mockResolvedValue({ id: 'sys-template', tenantId: SYSTEM_TENANT_ID } as never);
+    promptTemplateRepository.findByTenantAndSourceTemplateId.mockResolvedValue({ id: 'tenant-template', approvedVersionNumber: 1 } as never);
+
+    await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    const written = agentRepository.create.mock.calls.at(-1)![0] as Record<string, unknown>;
+    // The SYSTEM id would dangle after the flip, and the SOURCE's pin numbers a version the
+    // clone's restarted lineage does not have.
+    expect(written['instruction']).toEqual({ promptTemplateId: 'tenant-template', promptVersionNumber: 1 });
+  });
+
+  it('is MISSING-ONLY: a tenant that already has a SERVING copy of the slug keeps exactly what it has', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({ id: 'own-1', tenantId: PARTNER, slug: 'platform-transcription', status: WorkflowDefinitionStatus.PUBLISHED, isActive: true }),
+    ] as never);
+
+    const result = await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    expect(result).toEqual({ agentId: 'own-1', created: false, warnings: [] });
+    expect(agentRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('REPAIRS a pristine copy that is not serving — a residue leaves the tenant`s assignment pointing at nothing', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({
+        id: 'residue-1',
+        tenantId: PARTNER,
+        slug: 'platform-transcription',
+        versionNumber: 1,
+        status: WorkflowDefinitionStatus.DRAFT,
+        isActive: false,
+        sourceTenantId: SYSTEM_TENANT_ID,
+        sourceAgentId: 'sys-1',
+        compiledConfig: null,
+      }),
+    ] as never);
+
+    const result = await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    expect(result.created).toBe(false);
+    expect(result.warnings.join(' ')).toContain('re-aligned with the platform source');
+    const persisted = agentRepository.update.mock.calls.at(-1)![1] as Record<string, unknown>;
+    expect(persisted['status']).toBe(WorkflowDefinitionStatus.PUBLISHED);
+    expect(persisted['compiledConfig']).toEqual({ frozen: 'artifact' });
+  });
+
+  it('leaves a copy the TENANT has re-versioned alone — only an untouched v1 residue is repaired', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(systemSource());
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({
+        id: 'tenant-authored',
+        tenantId: PARTNER,
+        slug: 'platform-transcription',
+        versionNumber: 2,
+        status: WorkflowDefinitionStatus.DRAFT,
+        isActive: false,
+        sourceTenantId: SYSTEM_TENANT_ID,
+        sourceAgentId: 'sys-1',
+      }),
+    ] as never);
+
+    const result = await makeService().cloneFromSystem('platform-transcription', PARTNER);
+
+    expect(result).toEqual({ agentId: 'tenant-authored', created: false, warnings: [] });
+    expect(agentRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('404s when the slug names no PUBLISHED SYSTEM agent', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(null);
+    await expect(makeService().cloneFromSystem('nope', PARTNER)).rejects.toBeInstanceOf(NotFoundException);
   });
 });

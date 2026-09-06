@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import type { ClsService } from 'nestjs-cls';
 import {
   AgentEntity,
@@ -67,9 +67,10 @@ function guardrailOf(compiled: AgentCompiledConfig): { enabled: boolean } {
  * sessions — TASK-861) and the harness `core.agent` activity (TASK-864, over
  * `GET /internal/agents/resolve`).
  *
- *  1. explicit slug → the ACTIVE PUBLISHED version visible to the tenant ([tenant, SYSTEM]);
- *     foreign / unknown / unpublished → one 404;
- *  2. else the assignment cascade `department → tenant → SYSTEM`;
+ *  1. explicit slug → the tenant's ACTIVE PUBLISHED version; foreign / unknown / unpublished →
+ *     one 404;
+ *  2. else the assignment cascade `department → tenant` — no SYSTEM tier (TASK-890 OD-M);
+ *     nothing assigned is a named `AGENT_NOT_ASSIGNED` 503, never a silent platform read;
  *  3. materialise: `compiledConfig` + every model row the runtime needs (primary, fallbacks,
  *     ASR auxiliaries) + the provider credential override for a cloud provider, funding tier
  *     derived from the tier that supplied the row.
@@ -104,7 +105,21 @@ export class AgentResolverService {
     } else {
       if (!input.task) throw new BadRequestException('Either agentSlug or task is required.');
       const assigned = await this.assignments.resolve(tenantId, input.task, input.departmentId ?? null);
-      if (!assigned.agentSlug) throw new NotFoundException(`No published ${input.task} agent is assigned for this tenant.`);
+      if (!assigned.agentSlug || assigned.source === 'unassigned') {
+        // TASK-890 §3.4 (OD-M) — the cascade ends at the tenant. Nothing assigned is a NAMED,
+        // fail-closed 503 that says which task, in which tenant, and (when one was given) under
+        // which department: the remedy is an assignment in THIS tenant, or a reference-set
+        // re-sync (`POST /admin/tenants/:id/reference-set/sync`). It is deliberately not a 404 —
+        // the agent is not missing, the tenant's OPINION about which agent serves this task is,
+        // and a caller told "not found" would go looking for the wrong thing.
+        throw new ServiceUnavailableException({
+          code: 'AGENT_NOT_ASSIGNED',
+          message: `No ${input.task} agent is assigned for this tenant. Assign one, or re-sync the platform reference set.`,
+          task: input.task,
+          tenantId,
+          departmentId: input.departmentId ?? null,
+        });
+      }
       entity = await this.agentRepository.findPublishedActiveBySlug(tenantId, assigned.agentSlug);
       if (!entity) throw new NotFoundException('Agent not found');
       source = assigned.source;
