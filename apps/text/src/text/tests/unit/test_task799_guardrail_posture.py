@@ -124,20 +124,32 @@ class TestTenantOverThePlatform:
         assert resolved.require_medical is True
         assert resolved.include_reasoning is True
 
-    def test_a_tenant_cannot_touch_the_platform_half(self, platform):
-        """`enabled` and the retry budget are PLATFORM-scope: no request shape
-        turns a tenant's own moderation off or lengthens its retry budget."""
+    def test_a_tenant_cannot_touch_the_platform_TUNING(self, platform):
+        """The retry budget stays PLATFORM-scope: no request shape lengthens it.
+
+        `enabled` left this list with TASK-890 OD-R — a tenant may opt OUT of screening
+        for its own call — but the fold is asymmetric and the platform switch is still
+        the floor, so "a tenant cannot turn moderation ON" remains true. The opt-out's
+        own contract lives in `test_guardrail_optout_task890.py`.
+        """
         resolved = resolve_posture(
             platform, GuardrailPolicyOverride(require_medical=False, include_reasoning=True)
         )
+        # No opinion on `enabled` ⇒ the platform half is untouched, as before.
         assert resolved.enabled is platform.enabled
         assert resolved.timeout_s == platform.timeout_s
         assert resolved.max_retries == platform.max_retries
 
         assert set(GuardrailPolicyOverride.model_fields) == {
+            "enabled",
             "require_medical",
             "include_reasoning",
         }
+
+    def test_the_platform_switch_is_the_floor_a_tenant_may_only_subtract(self, platform):
+        off = GuardrailPosture(enabled=False)
+        assert resolve_posture(off, GuardrailPolicyOverride(enabled=True)).enabled is False
+        assert resolve_posture(platform, GuardrailPolicyOverride(enabled=False)).enabled is False
 
 
 class TestApplicationToLiveState:

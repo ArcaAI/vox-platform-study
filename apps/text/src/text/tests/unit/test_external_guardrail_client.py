@@ -241,10 +241,26 @@ class TestTenantPolicyFoldsOverThePlatformDefault:
         assert http.calls[0]["json"]["include_reasoning"] is True
 
     @pytest.mark.asyncio
-    async def test_a_tenant_cannot_switch_moderation_off(self) -> None:
-        """`enabled` is PLATFORM-scope: a tenant policy carries no such field, so
-        there is no request shape that turns its own moderation off."""
-        assert "enabled" not in GuardrailPolicyOverride.model_fields
+    async def test_a_tenant_may_switch_ITS_OWN_moderation_off_but_never_on(self) -> None:
+        """TASK-890 OD-R reversed the statement that used to stand here.
+
+        `enabled` was PLATFORM-scope and the tenant block carried no such field, so no
+        request shape could turn moderation off. The owner decided a tenant may opt OUT
+        per agent / workflow / node, so the field exists — and it is ASYMMETRIC: it can
+        only ever subtract. The platform switch stays the floor, which is what makes
+        "the platform runs guardrail" still true wherever the platform says so.
+        Precedence, recording and the distinct `tenant_opted_out` reason are pinned by
+        `test_guardrail_optout_task890.py`.
+        """
+        assert "enabled" in GuardrailPolicyOverride.model_fields
+
+        platform_off = _client(_RecordingClient({"is_medical": True}), enabled=False)
+        verdict = await platform_off.validate(
+            "patient note", tenant_policy=GuardrailPolicyOverride(enabled=True)
+        )
+        # A pushed `True` cannot revive the platform kill switch — and the reason names
+        # the platform, never the tenant.
+        assert verdict["reason"] == "external_guardrail_disabled"
 
 
 # --- headers and body -------------------------------------------------------
