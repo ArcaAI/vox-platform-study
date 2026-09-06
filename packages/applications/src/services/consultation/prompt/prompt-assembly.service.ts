@@ -10,7 +10,7 @@
  * 4. Building the final payload with all parameters for TEXT v2
  */
 
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { PromptResolutionService, PromptResolutionTier, type PromptTypeSelector } from './prompt-resolution.service';
 import { PRE_SUMMARY_TEMPLATE_VARIABLES, buildPreSummaryVariables } from './pre-summary-variables';
@@ -746,24 +746,55 @@ export class PromptAssemblyService {
    * (§1.5): SYSTEM holds the reference set the tenant is CLONED from, and reading it at runtime
    * would serve the platform's copy to a tenant that has its own.
    *
-   * TRANSITION: until the reference-set backfill lands, a tenant may not have a clone yet. That
-   * is WARNed, never fatal — the code-owned value builders still populate `context.*`, so a
-   * live consultation behaves exactly as it does today.
+   * TASK-890 L13 — a tenant with NO clone is now a named, fail-closed
+   * `LEGACY_CONTEXT_SCHEMA_MISSING` rather than a warning. The transition this used to allow
+   * (warn, and assemble from the code-owned variables) is over: the reference set is provisioned
+   * at tenant creation and backfilled for every existing tenant, so a missing clone is a real
+   * provisioning gap and the remedy — a re-sync — is named in the error.
+   *
+   * The distinction that matters: this refuses only when the lookup SUCCEEDS and answers
+   * "nothing". A lookup that FAILS (a database blip) still degrades to `[]` — an infrastructure
+   * error must not be reported to a clinician as a governance defect, and the classification
+   * this list feeds is diagnostic.
+   *
+   * It is reached only when a template actually references variables the assembly did not
+   * populate, which is precisely when the declared set decides whether that is expected
+   * (declared-but-empty) or a defect (undeclared). Every other generation is untouched.
    */
   private async declaredContextNames(params: PromptAssemblyParams): Promise<string[]> {
     const tenantId = params.tenantId ?? this.cls?.get('tenantId');
     if (!tenantId || !this.contextSchemaRepository || !this.contextSchemaVersionRepository) return [];
+
+    let schema: Awaited<ReturnType<NonNullable<typeof this.contextSchemaRepository>['findByTenantAndSlug']>> | null = null;
     try {
-      const schema = await this.contextSchemaRepository.findByTenantAndSlug(tenantId, LEGACY_CONTEXT_SCHEMA_SLUG);
-      if (!schema || schema.pinnedVersionNumber == null) {
-        this.logger.warn({
-          message:
-            'PROMPT_CONTEXT_SCHEMA_UNBOUND — this tenant has no pinned clone of the legacy context schema; assembling from the code-owned variables',
-          tenantId,
-          slug: LEGACY_CONTEXT_SCHEMA_SLUG,
-        });
-        return [];
-      }
+      schema = await this.contextSchemaRepository.findByTenantAndSlug(tenantId, LEGACY_CONTEXT_SCHEMA_SLUG);
+    } catch (error) {
+      // A governance lookup must never fail a generation on an infrastructure error
+      // (the `resolveWarmStartEnabled` rule).
+      this.logger.warn({
+        message: 'Legacy context-schema lookup failed; assembling without the declared-name classification',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+
+    if (!schema || schema.pinnedVersionNumber == null) {
+      this.logger.error({
+        message: 'LEGACY_CONTEXT_SCHEMA_MISSING — this tenant has no pinned clone of the legacy context schema',
+        tenantId,
+        slug: LEGACY_CONTEXT_SCHEMA_SLUG,
+      });
+      throw new ServiceUnavailableException({
+        code: 'LEGACY_CONTEXT_SCHEMA_MISSING',
+        message:
+          'This tenant has not been provisioned with the platform legacy context schema, so the variables this prompt references cannot be validated. Re-sync its reference set (POST /admin/tenants/{id}/reference-set/sync).',
+        slug: LEGACY_CONTEXT_SCHEMA_SLUG,
+        tenantId,
+      });
+    }
+
+    try {
       const version = await this.contextSchemaVersionRepository.findBySchemaAndVersionNumber(schema.id, schema.pinnedVersionNumber);
       if (!version) return [];
       const payloadSchema = payloadSchemaFromDefinition(version.definition);
@@ -772,9 +803,8 @@ export class PromptAssemblyService {
         properties !== null && typeof properties === 'object' ? (properties as { properties?: Record<string, unknown> }).properties : undefined;
       return fields ? Object.keys(fields) : [];
     } catch (error) {
-      // A governance lookup must never fail a generation (the `resolveWarmStartEnabled` rule).
       this.logger.warn({
-        message: 'Legacy context-schema lookup failed; assembling from the code-owned variables',
+        message: 'Legacy context-schema version lookup failed; assembling without the declared-name classification',
         tenantId,
         error: error instanceof Error ? error.message : String(error),
       });

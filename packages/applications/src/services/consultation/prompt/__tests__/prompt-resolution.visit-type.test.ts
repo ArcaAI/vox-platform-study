@@ -25,7 +25,13 @@ const DEPARTMENT = {
 } as unknown as DepartmentEntity;
 
 const departmentRepository = { findById: vi.fn() };
-const promptTemplateRepository = { findById: vi.fn(), findAll: vi.fn() };
+// TASK-890 §3.4 (OD-M) — a `SYSTEM_DEFAULTS.*` pointer resolves the TENANT's clone of that
+// platform template, matched on `sourceTemplateId`. These fixtures model a PROVISIONED tenant,
+// where the clone stands in for the pointer, so the chain assertions below are unchanged; the
+// unprovisioned case (`PROMPT_DEFAULT_NOT_PROVISIONED`) is pinned in
+// `prompt-resolution.reference-set.task890.test.ts`.
+const provisionedClone = async (_tenantId: string, sourceTemplateId: string) => ({ id: sourceTemplateId });
+const promptTemplateRepository = { findById: vi.fn(), findAll: vi.fn(), findByTenantAndSourceTemplateId: vi.fn(provisionedClone) };
 const promptVersionRepository = { findByVersionNumber: vi.fn(), findLatestVersion: vi.fn() };
 
 function createService(): PromptResolutionService {
