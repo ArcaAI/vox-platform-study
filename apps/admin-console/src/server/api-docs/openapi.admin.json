@@ -515,6 +515,16 @@
             "nullable": true,
             "type": "string"
           },
+          "contextSchemaId": {
+            "description": "TASK-890 §3.4 — the tenant context schema this agent pins; its derived payload schema is frozen into `compiledConfig.contextSchema` at publish.",
+            "nullable": true,
+            "type": "string"
+          },
+          "contextSchemaVersionNumber": {
+            "description": "The pinned schema VERSION; null ⇒ follow the schema’s own pin.",
+            "nullable": true,
+            "type": "number"
+          },
           "createdAt": {
             "description": "ISO timestamp",
             "type": "string"
@@ -812,6 +822,137 @@
           "agentId",
           "slug",
           "versionNumber"
+        ],
+        "type": "object"
+      },
+      "AgentTestAckResponse": {
+        "properties": {
+          "assembledSystemPrompt": {
+            "description": "The rendered system prompt, or null when the agent has none.",
+            "nullable": true,
+            "type": "string"
+          },
+          "assembledUserPrompt": {
+            "description": "The rendered user prompt — exactly the bytes that would go to TEXT.",
+            "type": "string"
+          },
+          "findings": {
+            "description": "Non-blocking findings from compiling the draft in memory.",
+            "items": {
+              "$ref": "#/components/schemas/AgentFindingResponse"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "dry-run",
+              "stream"
+            ],
+            "type": "string"
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/AgentTestTargetResponse"
+          },
+          "streamUrl": {
+            "description": "Stream mode only — the GATEWAY-relative SSE path (never a service-relative one).",
+            "type": "string"
+          },
+          "taskId": {
+            "description": "Stream mode only — the TEXT generation id, and the handle `POST :id/test/finalize` takes.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "findings",
+          "assembledUserPrompt",
+          "resolved"
+        ],
+        "type": "object"
+      },
+      "AgentTestResultResponse": {
+        "properties": {
+          "model": {
+            "description": "The provider-native model id that served it.",
+            "type": "string"
+          },
+          "output": {
+            "description": "The accumulated generation.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "The provider that served it, as TEXT reports it.",
+            "type": "string"
+          },
+          "usage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentTestUsageResponse"
+              }
+            ],
+            "description": "Token counts, when TEXT reported them.",
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "output",
+          "provider",
+          "model"
+        ],
+        "type": "object"
+      },
+      "AgentTestTargetResponse": {
+        "properties": {
+          "fundingTier": {
+            "description": "DERIVED, never stamped: `platform` when the credential that would serve this call comes from the SYSTEM tier, `tenant` when it is the caller’s own. This is the tier the run is billed against.",
+            "enum": [
+              "platform",
+              "tenant"
+            ],
+            "type": "string"
+          },
+          "model": {
+            "description": "The provider-native model id that goes on the wire (`AiModel.sourceUri`).",
+            "type": "string"
+          },
+          "provider": {
+            "description": "The provider as apps/text registers it (`azure` → `azure-openai`).",
+            "type": "string"
+          },
+          "source": {
+            "description": "`row` — the agent’s own bound model. `override` — a `{provider, model}` pair the caller supplied on this request.",
+            "enum": [
+              "row",
+              "override"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "fundingTier",
+          "source"
+        ],
+        "type": "object"
+      },
+      "AgentTestUsageResponse": {
+        "properties": {
+          "completionTokens": {
+            "type": "number"
+          },
+          "promptTokens": {
+            "type": "number"
+          },
+          "totalTokens": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "promptTokens",
+          "completionTokens",
+          "totalTokens"
         ],
         "type": "object"
       },
@@ -1185,6 +1326,13 @@
             "description": "Ceiling — simultaneous in-flight requests. Null = no opinion.",
             "nullable": true,
             "type": "number"
+          },
+          "models": {
+            "description": "Models DECLARED on this connection (TASK-890 §3.7a). Present on the single-row read and on the declaration response; absent from the list read, which does not join the registry. A SYSTEM row never carries any: platform models are declared in `/admin/ai-models`.",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionModelResponse"
+            },
+            "type": "array"
           },
           "provider": {
             "description": "Capability-scoped serving provider identifier.",
@@ -3554,6 +3702,93 @@
         ],
         "type": "object"
       },
+      "ConnectionModelResponse": {
+        "properties": {
+          "capabilities": {
+            "description": "Capability flags for authoring forms.",
+            "type": "object"
+          },
+          "id": {
+            "description": "Registry row id — what an agent binds as `modelId`.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name shown in pickers.",
+            "type": "string"
+          },
+          "slug": {
+            "description": "Server-generated routing key, stable for the life of the row.",
+            "type": "string"
+          },
+          "taskType": {
+            "description": "What this model does.",
+            "enum": [
+              "IMAGE_TEXT_TO_TEXT",
+              "VISUAL_QUESTION_ANSWERING",
+              "DOCUMENT_QUESTION_ANSWERING",
+              "VIDEO_TEXT_TO_TEXT",
+              "ANY_TO_ANY",
+              "DEPTH_ESTIMATION",
+              "IMAGE_CLASSIFICATION",
+              "OBJECT_DETECTION",
+              "IMAGE_SEGMENTATION",
+              "TEXT_TO_IMAGE",
+              "IMAGE_TO_TEXT",
+              "IMAGE_TO_IMAGE",
+              "IMAGE_TO_VIDEO",
+              "UNCONDITIONAL_IMAGE_GENERATION",
+              "VIDEO_CLASSIFICATION",
+              "TEXT_TO_VIDEO",
+              "ZERO_SHOT_IMAGE_CLASSIFICATION",
+              "MASK_GENERATION",
+              "ZERO_SHOT_OBJECT_DETECTION",
+              "TEXT_TO_3D",
+              "IMAGE_TO_3D",
+              "IMAGE_FEATURE_EXTRACTION",
+              "KEYPOINT_DETECTION",
+              "TEXT_CLASSIFICATION",
+              "TOKEN_CLASSIFICATION",
+              "TABLE_QUESTION_ANSWERING",
+              "QUESTION_ANSWERING",
+              "ZERO_SHOT_CLASSIFICATION",
+              "TRANSLATION",
+              "SUMMARIZATION",
+              "FEATURE_EXTRACTION",
+              "TEXT_GENERATION",
+              "TEXT2TEXT_GENERATION",
+              "FILL_MASK",
+              "SENTENCE_SIMILARITY",
+              "GUARDRAIL",
+              "TEXT_TO_SPEECH",
+              "TEXT_TO_AUDIO",
+              "AUTOMATIC_SPEECH_RECOGNITION",
+              "AUDIO_TO_AUDIO",
+              "AUDIO_CLASSIFICATION",
+              "VOICE_ACTIVITY_DETECTION",
+              "SPEAKER_DIARIZATION",
+              "SPEAKER_EMBEDDING",
+              "TABULAR_CLASSIFICATION",
+              "TABULAR_REGRESSION",
+              "TIME_SERIES_FORECASTING",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          },
+          "wireModelId": {
+            "description": "The provider-native id that goes on the wire.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "wireModelId",
+          "taskType",
+          "capabilities"
+        ],
+        "type": "object"
+      },
       "ConsentGrantResponse": {
         "properties": {
           "createdAt": {
@@ -4495,6 +4730,16 @@
       },
       "CreateAgentRequest": {
         "properties": {
+          "contextSchemaId": {
+            "description": "TASK-890 §3.4 — pin one of THIS tenant’s consultation context schemas. Its derived payload schema is FROZEN into `compiledConfig.contextSchema` at publish, so `{{context.*}}` resolves against the declaration that was in force then and the runtime never re-reads the row. A SYSTEM or foreign id is not resolvable: a schema is cloned into a tenant, never shared from the platform tier.",
+            "nullable": true,
+            "type": "string"
+          },
+          "contextSchemaVersionNumber": {
+            "description": "Pin a specific published version of that schema. Omitted ⇒ the schema’s own pinned version.",
+            "nullable": true,
+            "type": "number"
+          },
           "description": {
             "description": "Free-text description.",
             "type": "string"
@@ -5837,8 +6082,11 @@
             "type": "array"
           },
           "variables": {
-            "description": "Template variable definitions (JSON)",
-            "type": "object"
+            "description": "Typed prompt-variable declarations",
+            "items": {
+              "$ref": "#/components/schemas/PromptVariableDeclarationDto"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -6770,6 +7018,124 @@
           "limit",
           "data"
         ],
+        "type": "object"
+      },
+      "DeclareConnectionModelsRequest": {
+        "properties": {
+          "models": {
+            "description": "Every model this connection serves. An empty array withdraws them all.",
+            "items": {
+              "$ref": "#/components/schemas/DeclaredConnectionModelDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "models"
+        ],
+        "type": "object"
+      },
+      "DeclaredConnectionModelDto": {
+        "properties": {
+          "capabilities": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeclaredModelCapabilitiesDto"
+              }
+            ],
+            "description": "Capability flags for authoring forms."
+          },
+          "name": {
+            "description": "Display name shown in pickers.",
+            "example": "GPT-4o mini (production)",
+            "type": "string"
+          },
+          "slug": {
+            "description": "Override the SERVER-GENERATED slug. Supply this ONLY to accept the `suggestedSlug` a `BYO_SLUG_SHADOWS_PLATFORM` conflict offered; otherwise leave it out and let the server name the row.",
+            "example": "byo-azure-gpt-4o-mini",
+            "type": "string"
+          },
+          "taskType": {
+            "description": "What this model does. Must be a task the connection service governs.",
+            "enum": [
+              "IMAGE_TEXT_TO_TEXT",
+              "VISUAL_QUESTION_ANSWERING",
+              "DOCUMENT_QUESTION_ANSWERING",
+              "VIDEO_TEXT_TO_TEXT",
+              "ANY_TO_ANY",
+              "DEPTH_ESTIMATION",
+              "IMAGE_CLASSIFICATION",
+              "OBJECT_DETECTION",
+              "IMAGE_SEGMENTATION",
+              "TEXT_TO_IMAGE",
+              "IMAGE_TO_TEXT",
+              "IMAGE_TO_IMAGE",
+              "IMAGE_TO_VIDEO",
+              "UNCONDITIONAL_IMAGE_GENERATION",
+              "VIDEO_CLASSIFICATION",
+              "TEXT_TO_VIDEO",
+              "ZERO_SHOT_IMAGE_CLASSIFICATION",
+              "MASK_GENERATION",
+              "ZERO_SHOT_OBJECT_DETECTION",
+              "TEXT_TO_3D",
+              "IMAGE_TO_3D",
+              "IMAGE_FEATURE_EXTRACTION",
+              "KEYPOINT_DETECTION",
+              "TEXT_CLASSIFICATION",
+              "TOKEN_CLASSIFICATION",
+              "TABLE_QUESTION_ANSWERING",
+              "QUESTION_ANSWERING",
+              "ZERO_SHOT_CLASSIFICATION",
+              "TRANSLATION",
+              "SUMMARIZATION",
+              "FEATURE_EXTRACTION",
+              "TEXT_GENERATION",
+              "TEXT2TEXT_GENERATION",
+              "FILL_MASK",
+              "SENTENCE_SIMILARITY",
+              "GUARDRAIL",
+              "TEXT_TO_SPEECH",
+              "TEXT_TO_AUDIO",
+              "AUTOMATIC_SPEECH_RECOGNITION",
+              "AUDIO_TO_AUDIO",
+              "AUDIO_CLASSIFICATION",
+              "VOICE_ACTIVITY_DETECTION",
+              "SPEAKER_DIARIZATION",
+              "SPEAKER_EMBEDDING",
+              "TABULAR_CLASSIFICATION",
+              "TABULAR_REGRESSION",
+              "TIME_SERIES_FORECASTING",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          },
+          "wireModelId": {
+            "description": "The provider-native model id that goes ON THE WIRE — an Azure DEPLOYMENT name, an OpenAI/Anthropic model id. It is also the row locator: for a vendor model the two are the same string.",
+            "example": "gpt-4o-mini",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wireModelId",
+          "name",
+          "taskType"
+        ],
+        "type": "object"
+      },
+      "DeclaredModelCapabilitiesDto": {
+        "properties": {
+          "supportedGenerationParams": {
+            "description": "Generation parameters this deployment honours. Only what `apps/text` can actually deliver reaches a provider.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supportsSsml": {
+            "description": "Whether the deployment accepts SSML (speech models).",
+            "type": "boolean"
+          }
+        },
         "type": "object"
       },
       "DeleteBucketResponse": {
@@ -8409,6 +8775,18 @@
           "key",
           "size",
           "contentType"
+        ],
+        "type": "object"
+      },
+      "FinalizeAgentTestRequest": {
+        "properties": {
+          "taskId": {
+            "description": "The `taskId` the stream acknowledgement returned.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
         ],
         "type": "object"
       },
@@ -13965,6 +14343,10 @@
             "description": "Prompt content text",
             "type": "string"
           },
+          "contentPreview": {
+            "description": "Server-truncated (400 chars) preview of `content`, for list/picker surfaces",
+            "type": "string"
+          },
           "createdAt": {
             "description": "Creation timestamp",
             "type": "string"
@@ -13972,6 +14354,13 @@
           "currentVersionNumber": {
             "description": "Current version number",
             "type": "number"
+          },
+          "declaredVariables": {
+            "description": "Typed prompt-variable declarations",
+            "items": {
+              "$ref": "#/components/schemas/PromptVariableDeclarationDto"
+            },
+            "type": "array"
           },
           "departmentId": {
             "description": "Department ID",
@@ -14032,7 +14421,7 @@
             "type": "string"
           },
           "variables": {
-            "description": "Template variable definitions",
+            "description": "Template variable definitions (raw, as stored)",
             "type": "object"
           },
           "version": {
@@ -14047,6 +14436,7 @@
           "content",
           "category",
           "status",
+          "declaredVariables",
           "currentVersionNumber",
           "createdAt",
           "updatedAt",
@@ -14282,6 +14672,73 @@
         },
         "required": [
           "totalUsages"
+        ],
+        "type": "object"
+      },
+      "PromptVariableDeclarationDto": {
+        "properties": {
+          "default": {
+            "description": "Default value (as a string; coerced to `type` at render time) used when the caller supplies none",
+            "type": "string"
+          },
+          "description": {
+            "description": "Human-readable description shown in the console variables editor",
+            "type": "string"
+          },
+          "name": {
+            "description": "Variable name — a bare identifier referenced in the template as `{{name}}`",
+            "example": "patientAge",
+            "type": "string"
+          },
+          "required": {
+            "description": "Whether a test run / invocation must supply a value when no default is declared",
+            "type": "boolean"
+          },
+          "source": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PromptVariableSourceDto"
+              }
+            ],
+            "description": "Where this variable is expected to be sourced from (informational)"
+          },
+          "type": {
+            "description": "The value shape this variable carries",
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "date",
+              "json"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "required"
+        ],
+        "type": "object"
+      },
+      "PromptVariableSourceDto": {
+        "properties": {
+          "kind": {
+            "description": "Where this variable is sourced from",
+            "enum": [
+              "context",
+              "static"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "description": "Dotted path into the consultation-context scope, when kind=context",
+            "example": "context.patientAge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
         ],
         "type": "object"
       },
@@ -18972,6 +19429,36 @@
         ],
         "type": "object"
       },
+      "TestAgentRequest": {
+        "properties": {
+          "context": {
+            "description": "Consultation context — validated against the agent’s bound context schema when it pins one; reachable as `context.*` and `trigger.*`.",
+            "type": "object"
+          },
+          "dryRun": {
+            "default": true,
+            "description": "Default TRUE. A dry run assembles and returns the prompts and the resolved target and generates NOTHING — no job, no tokens, no quota. Pass `false` to actually run it.",
+            "type": "boolean"
+          },
+          "input": {
+            "description": "The invocation body — validated against the agent’s `inputSchema`; reachable as `input.*`.",
+            "type": "object"
+          },
+          "model": {
+            "description": "Override the resolved provider-native model id. Must be supplied together with `provider`.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Override the resolved provider. Must be supplied together with `model`.",
+            "type": "string"
+          },
+          "variables": {
+            "description": "Bare-name variable overrides. Overlays the agent’s own `instruction.variables` bindings — the caller wins, as it does at invocation.",
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "TestConnectionResponse": {
         "properties": {
           "error": {
@@ -19017,6 +19504,10 @@
           "model": {
             "description": "Caller-selected LLM model, forwarded to TEXT verbatim (must be paired with `provider`).",
             "example": "medgemma-27b",
+            "type": "string"
+          },
+          "modelId": {
+            "description": "TASK-890 §3.7 — a tenant-catalogue `AiModel` row id (the console picker). The server resolves the ACTUAL wire `{provider, model}` from this row — its routing identifier is never exposed to the browser (the catalogue DTO deliberately omits it). Mutually exclusive with `provider`/`model`; either selector wins over the resolved agent.",
             "type": "string"
           },
           "provider": {
@@ -19067,6 +19558,13 @@
       },
       "TestProviderConnectionResponse": {
         "properties": {
+          "discoveredModels": {
+            "description": "Model / deployment ids the vendor listed during this probe (TASK-890 §3.7) — the input for \"derive models from provider\" in the models editor. ABSENT (never `[]`) when the vendor exposes no listing, the probe failed, or the response could not be parsed: an empty array would promise a list that was never obtained.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "message": {
             "description": "Human-readable probe result",
             "type": "string"
@@ -19596,6 +20094,16 @@
       },
       "UpdateAgentRequest": {
         "properties": {
+          "contextSchemaId": {
+            "description": "TASK-890 §3.4 — pin (or, with `null`, unpin) one of THIS tenant’s consultation context schemas. Frozen into `compiledConfig.contextSchema` at publish.",
+            "nullable": true,
+            "type": "string"
+          },
+          "contextSchemaVersionNumber": {
+            "description": "Pin a specific published version of that schema; `null` ⇒ follow the schema’s own pin.",
+            "nullable": true,
+            "type": "number"
+          },
           "description": {
             "type": "string"
           },
@@ -21053,8 +21561,11 @@
             "type": "array"
           },
           "variables": {
-            "description": "Template variable definitions (JSON)",
-            "type": "object"
+            "description": "Typed prompt-variable declarations",
+            "items": {
+              "$ref": "#/components/schemas/PromptVariableDeclarationDto"
+            },
+            "type": "array"
           }
         },
         "type": "object"
@@ -25970,6 +26481,152 @@
           }
         ],
         "summary": "Publish an agent version (fails closed)",
+        "tags": [
+          "admin-agents"
+        ],
+        "x-hope-abilities": [
+          "manage:Agent"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:agent:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/{id}/test": {
+      "post": {
+        "description": "Compiles the DRAFT in memory through the SAME checks `publish` runs — nothing is persisted — renders its prompt over the runtime variable scope (`context.*` / `trigger.*`, `input.*`, and the bare names from `instruction.variables` overlaid by this request’s `variables`), and reports the resolved `{provider, model, fundingTier}`. `dryRun` DEFAULTS TO TRUE: a dry run generates nothing, costs nothing and meters nothing. With `dryRun: false` the run is charged to the tenant’s own `monthlyLlmTokens` quota (checked BEFORE anything is sent) and answers a `taskId` + gateway-relative `streamUrl`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentAdminController_test",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTestAckResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Blocking findings (same `code` + `findings` shape as publish), an unresolved prompt variable (`PROMPT_VARIABLE_UNRESOLVED`, naming the path), a context payload that violates the agent’s bound schema (`CONTEXT_SCHEMA_VIOLATION`), a partial `{provider, model}` pair, or a non-TEXT_GENERATION agent asked for a live run."
+          },
+          "404": {
+            "description": "Not found (also returned for another tenant’s agent, and for a SYSTEM template)."
+          },
+          "409": {
+            "description": "The row is PUBLISHED/DEPRECATED — a published agent is INVOKED, not tested."
+          },
+          "429": {
+            "description": "Rate limited, or the tenant’s `monthlyLlmTokens` allowance is exhausted."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Assemble (and optionally run) a DRAFT agent without publishing it",
+        "tags": [
+          "admin-agents"
+        ],
+        "x-hope-abilities": [
+          "manage:Agent"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:agent:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/{id}/test/finalize": {
+      "post": {
+        "description": "The output is read SERVER-SIDE by `taskId` and never accepted from the request body. Records `generate.stream` against the tenant with `trigger: AGENT_TEST`. Nothing is written to the agent row — a draft test is an authoring aid, not a version fact.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentAdminController_finalizeTest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeAgentTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTestResultResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The generation has not reached a terminal completed state (the state is named)."
+          },
+          "404": {
+            "description": "Not found (also returned for another tenant’s agent), or an unknown `taskId`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read a finished draft-test generation back from TEXT and record its usage",
         "tags": [
           "admin-agents"
         ],
@@ -40009,7 +40666,7 @@
     },
     "/api/v1/admin/prompt-templates/{id}/test": {
       "post": {
-        "description": "Assembles the prompt, resolves the `text.test` provider/model and submits a STREAMING generation job to TEXT, returning an ack in well under a second. Open the returned `streamUrl` over SSE for tokens, then call `POST :id/test/finalize` with the `taskId` to score and persist. `dryRun: true` returns the assembled prompt and generates NOTHING. This route no longer writes, so it carries NO `If-Match` requirement.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:prompt-template:manage`).\n\n**Abilities** — `update:PromptTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Renders the prompt through the ONE `{{ path | default() }}` grammar (a missing required declared variable is a 400 before any TEXT call), resolves the model — a catalogue `modelId` (TASK-890 §3.7), an explicit `provider`+`model` pair, or (omitting both) the tenant's ASSIGNED TEXT_GENERATION agent — asserts the `monthlyLlmTokens` quota, and submits a STREAMING generation job to TEXT, returning an ack in well under a second. Open the returned `streamUrl` over SSE for tokens, then call `POST :id/test/finalize` with the `taskId` to score, meter and persist. `dryRun: true` skips the quota check and generates NOTHING — it returns the assembled prompt only. This route itself no longer writes, so it carries NO `If-Match` requirement.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:prompt-template:manage`).\n\n**Abilities** — `update:PromptTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "PromptManagementController_testTemplate",
         "parameters": [
           {
@@ -40044,10 +40701,13 @@
             "description": "Creating a PromptTestAckResponse by id"
           },
           "400": {
-            "description": "No `text.test` model configured, or an invalid provider/model pair."
+            "description": "No TEXT_GENERATION agent is assigned, an invalid/ambiguous provider selector, or an unresolved required variable."
           },
           "404": {
-            "description": "Template not found"
+            "description": "Template not found, or `modelId` names an unknown/cross-tenant model."
+          },
+          "429": {
+            "description": "The tenant`s monthlyLlmTokens quota is exhausted."
           }
         },
         "security": [
@@ -40083,7 +40743,7 @@
     },
     "/api/v1/admin/prompt-templates/{id}/test/finalize": {
       "post": {
-        "description": "Fetches the finished generation from TEXT SERVER-SIDE by `taskId` (the generated text is never accepted from the request body), scores it, and persists `lastTestScore/lastTestOutput/lastTestAt`. This is the optimistic-concurrency write of the test flow: the `If-Match` header is REQUIRED and folds over any body-supplied `expectedVersion`. Version drift → 412.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:prompt-template:manage`).\n\n**Abilities** — `update:PromptTemplate`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Fetches the finished generation from TEXT SERVER-SIDE by `taskId` (the generated text is never accepted from the request body), scores it, records the run's LLM usage (`trigger: PROMPT_TEST`, best-effort — a metering failure never fails this write), and persists `lastTestScore/lastTestOutput/lastTestAt`. This is the optimistic-concurrency write of the test flow: the `If-Match` header is REQUIRED and folds over any body-supplied `expectedVersion`. Version drift → 412.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:prompt-template:manage`).\n\n**Abilities** — `update:PromptTemplate`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "PromptManagementController_finalizeTestTemplate",
         "parameters": [
           {
@@ -40846,6 +41506,109 @@
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "admin",
         "x-hope-requires-if-match": true,
+        "x-hope-service-account-scopes": [
+          "svc:admin:ai-provider:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/{service}/{provider}/models": {
+      "put": {
+        "description": "Bring provider AND model together (TASK-890): the connection says WHERE the vendor account is, this says WHICH models it serves. Each entry becomes a TENANT-OWNED registry row visible only in this tenant’s catalogue, bindable by an agent. The body is the WHOLE list — an entry that leaves it is soft-deleted (an agent still bound to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable; a generated slug that would shadow a platform model is refused with `409 BYO_SLUG_SHADOWS_PLATFORM`, which names the platform row and a `byo-` prefixed `suggestedSlug` to re-send. No `If-Match`: this writes registry rows, not the connection row, so it carries no version of its own. Platform models are declared in `/admin/ai-models`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ProviderConnectionController_declareModels",
+        "parameters": [
+          {
+            "description": "Capability the connection serves.",
+            "in": "path",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "enum": [
+                "llm",
+                "stt",
+                "tts",
+                "embeddings",
+                "rerank",
+                "vector",
+                "model-registry"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Capability-scoped provider identifier, e.g. `azure`.",
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeclareConnectionModelsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiProviderConnectionResponse"
+                }
+              }
+            },
+            "description": "The connection, with its declared `models[]`."
+          },
+          "400": {
+            "description": "Unknown service, a task type the capability does not serve, or a duplicated model id."
+          },
+          "403": {
+            "description": "A SYSTEM connection, or a provider this tenant may not hold a row for."
+          },
+          "404": {
+            "description": "No connection row yet — save the credential before declaring its models."
+          },
+          "409": {
+            "description": "A generated slug would shadow a platform model (`BYO_SLUG_SHADOWS_PLATFORM`)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Declare the models this tenant's connection serves.",
+        "tags": [
+          "admin-provider-connections"
+        ],
+        "x-hope-abilities": [
+          "manage:GlobalSetting"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": [
           "svc:admin:ai-provider:manage"
         ]

@@ -540,6 +540,52 @@
     },
     {
       "controller": "AgentAdminController",
+      "handler": "test",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{id}/test",
+      "routePath": "/admin/agents/:id/test",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "finalizeTest",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{id}/test/finalize",
+      "routePath": "/admin/agents/:id/test/finalize",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
       "handler": "validate",
       "method": "POST",
       "path": "/api/v1/admin/agents/{id}/validate",
@@ -5392,6 +5438,29 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ProviderConnectionController",
+      "handler": "declareModels",
+      "method": "PUT",
+      "path": "/api/v1/admin/providers/{service}/{provider}/models",
+      "routePath": "/admin/providers/:service/:provider/models",
+      "svcScopes": [
+        "svc:admin:ai-provider:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
       "apiExcluded": false
     },
     {

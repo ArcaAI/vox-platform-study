@@ -13,6 +13,7 @@ import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
 import type {
   AiProviderConnectionResponse,
+  DeclareConnectionModelsRequest,
   TestProviderConnectionRequest,
   TestProviderConnectionResponse,
   UpsertAiProviderConnectionRequest,
@@ -26,7 +27,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller ProviderConnectionController
- * (5 routes). Several controllers sharing one scope share one
+ * (6 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -105,6 +106,29 @@ export class AdminAiProviderResource extends AdminResource {
       query: options.query,
       body,
       ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Declare the models this tenant's connection serves.
+   *
+   * Bring provider AND model together (TASK-890): the connection says WHERE the vendor account is, this says WHICH models it serves. Each entry becomes a TENANT-OWNED registry row visible only in this tenant’s catalogue, bindable by an agent. The body is the WHOLE list — an entry that leaves it is soft-deleted (an agent still bound to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable; a generated slug that would shadow a platform model is refused with `409 BYO_SLUG_SHADOWS_PLATFORM`, which names the platform row and a `byo-` prefixed `suggestedSlug` to re-send. No `If-Match`: this writes registry rows, not the connection row, so it carries no version of its own. Platform models are declared in `/admin/ai-models`.
+   *
+   * `PUT /api/v1/admin/providers/{service}/{provider}/models` — `ProviderConnectionController.declareModels`.
+   */
+  declareModels(
+    service: string,
+    provider: string,
+    body: DeclareConnectionModelsRequest,
+    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
+  ): Promise<AiProviderConnectionResponse> {
+    return this.request<AiProviderConnectionResponse>({
+      method: 'PUT',
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}/models`,
+      query: options.query,
+      body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
