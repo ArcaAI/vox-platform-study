@@ -36,7 +36,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useDeleteTemplate, useDepartments, useTemplates, useUsageStats } from '../api/hooks';
 import type { ListTemplatesParams, PromptTemplate, PromptTemplateCategory, PromptTemplateScope, PromptTemplateStatus } from '../api/types';
 import { AgentDetailDrawer } from './agent-detail';
-import { ApprovalPin, TemplateStatusBadge } from './approval-pin';
+import { ApprovalPin, TemplateOriginBadge, TemplateStatusBadge } from './approval-pin';
 
 /**
  * `APPROVED` is now a filterable status. It was missing even though it is the
@@ -225,6 +225,21 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
             </span>
           );
         },
+      },
+      /**
+       * Provenance. A tenant's prompt library is CLONED from the platform
+       * reference set at provisioning, so "did we write this, or did it come
+       * from the platform (and is it locked)" is invisible without the badge —
+       * the same question `/agents` answers with `sourceTenantId`.
+       */
+      {
+        id: 'origin',
+        header: 'Origin',
+        enableSorting: false,
+        enableHiding: false,
+        size: 140,
+        meta: { label: 'Origin' },
+        cell: ({ row }) => <TemplateOriginBadge template={row.original} />,
       },
       {
         accessorKey: 'category',

@@ -33,6 +33,9 @@ function template(overrides: Partial<PromptTemplate> = {}): PromptTemplate {
     status: 'PUBLISHED',
     currentVersionNumber: 7,
     approvedVersionNumber: null,
+    // Hand-written by the tenant: the gateway answers explicit nulls here.
+    sourceTemplateId: null,
+    templateLocked: false,
     departmentId: 'd-1',
     createdAt: '2026-05-01T10:00:00.000Z',
     updatedAt: '2026-07-02T10:00:00.000Z',
@@ -58,6 +61,14 @@ const PRE_SUMMARY = template({
   approvedVersionNumber: 3,
   createdAt: '2026-04-01T10:00:00.000Z',
   version: 5,
+});
+
+/** A row CLONED from the SYSTEM reference set at provisioning, and locked by the platform. */
+const CLONED = template({
+  id: 'pt-clone',
+  name: 'ArcaAI SOAP Summary',
+  sourceTemplateId: 'sys-tpl-1',
+  templateLocked: true,
 });
 
 const TEMPLATES: PromptTemplate[] = [
@@ -227,6 +238,20 @@ function stubTemplates(custom: FetchHandler = () => undefined): RecordedCall[] {
 }
 
 const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;
+
+/** The default list plus the cloned row, with its detail read. */
+function stubWithClone(custom: FetchHandler = () => undefined): RecordedCall[] {
+  return stubTemplates((call) => {
+    const path = pathOf(call);
+    if (call.method === 'GET' && path === '/api/hope/admin/prompt-templates') {
+      return Response.json({ data: [...TEMPLATES, CLONED], count: TEMPLATES.length + 1, limit: 10, page: 1 });
+    }
+    if (call.method === 'GET' && path === `/api/hope/admin/prompt-templates/${CLONED.id}`) {
+      return Response.json(CLONED, { headers: { etag: `"${CLONED.version}"` } });
+    }
+    return custom(call);
+  });
+}
 
 /** Open the detail drawer for a row and wait for its detail read to land. */
 async function openRow(name: string) {
@@ -502,6 +527,30 @@ describe('PromptTemplatesScreen', () => {
     const badges = [...dialog.querySelectorAll('[data-slot="badge"]')].map((badge) => badge.textContent);
     expect(badges.some((label) => label === 'Published')).toBe(false);
     expect(badges.some((label) => label?.includes('serving v3'))).toBe(true);
+  });
+
+  /**
+   * TASK-890 J2-5 — reference-set provenance. Every tenant's prompt library is
+   * CLONED from the SYSTEM reference set, and 17/17 ARCAAI rows are stamped and
+   * locked; without the badge a platform clone is indistinguishable from a
+   * prompt the tenant wrote, which is also why a refused edit looks arbitrary.
+   */
+  describe('reference-set provenance', () => {
+    it('badges a cloned row "Platform origin" in the grid and the others "Tenant"', async () => {
+      stubWithClone();
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates' });
+
+      expect(await screen.findByText(/Platform origin/)).toBeDefined();
+      expect(screen.getAllByText('Tenant').length).toBe(TEMPLATES.length);
+    });
+
+    it('says the clone is locked in the drawer header', async () => {
+      stubWithClone();
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates&template=pt-clone' });
+
+      const dialog = await screen.findByRole('dialog');
+      expect(await within(dialog).findByText(/Platform origin · locked/)).toBeDefined();
+    });
   });
 
   /**
