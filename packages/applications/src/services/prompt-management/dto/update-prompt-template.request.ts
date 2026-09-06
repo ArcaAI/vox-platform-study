@@ -1,6 +1,8 @@
-import { IsString, IsOptional, IsArray, IsInt, MaxLength, Min, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsInt, MaxLength, Min, IsIn, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ResourceStatusType } from '@arcaai/domains';
+import { PromptVariableDeclarationDto } from './prompt-variable-declaration.dto';
 
 export class UpdatePromptTemplateRequest {
   @ApiPropertyOptional({ description: 'Template name' })
@@ -30,9 +32,13 @@ export class UpdatePromptTemplateRequest {
   @IsIn(['DRAFT', 'PUBLISHED'])
   status?: 'DRAFT' | 'PUBLISHED';
 
-  @ApiPropertyOptional({ description: 'Template variable definitions (JSON)' })
+  // See CreatePromptTemplateRequest — an ARRAY, never the retired legacy map.
+  @ApiPropertyOptional({ description: 'Typed prompt-variable declarations', type: [PromptVariableDeclarationDto] })
   @IsOptional()
-  variables?: Record<string, unknown>;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PromptVariableDeclarationDto)
+  variables?: PromptVariableDeclarationDto[];
 
   @ApiPropertyOptional({ description: 'Tags for search/filtering', type: [String] })
   @IsOptional()

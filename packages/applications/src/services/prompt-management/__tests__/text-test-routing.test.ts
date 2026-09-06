@@ -27,7 +27,10 @@ describe('prompt-test model resolution runs on the ASSIGNED agent', () => {
   const template = {
     id: 'tpl-1',
     tenantId: 'tenant-1',
-    content: 'Summarize {{topic}}',
+    // No undeclared/unresolved `{{...}}` reference — these tests exercise
+    // MODEL ROUTING, not variable rendering (renderTemplate errors on an
+    // unresolved reference with no default, TASK-890 §3.2).
+    content: 'Summarize the transcript',
     category: 'SYSTEM',
     variables: null,
     version: 1,

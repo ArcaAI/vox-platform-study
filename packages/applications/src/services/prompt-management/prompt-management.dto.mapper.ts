@@ -1,20 +1,27 @@
 import { PromptTemplateEntity, PromptVersionEntity } from '@arcaai/domains';
 import { PromptTemplateResponse } from './dto/prompt-template.response';
 import { PromptVersionResponse } from './dto/prompt-version.response';
+import { parsePromptVariableDeclarations } from './dto/prompt-variable-declaration.dto';
+
+/** §3.6 — the list/picker projection truncates `content` at this length. */
+const CONTENT_PREVIEW_LENGTH = 400;
 
 export class PromptManagementDtoMapper {
   static toTemplateResponse(entity: PromptTemplateEntity): PromptTemplateResponse {
+    const content = entity.content ?? '';
     return {
       id: entity.id,
       name: entity.name ?? '',
       description: entity.description ?? undefined,
-      content: entity.content ?? '',
+      content,
       category: entity.category ?? '',
       // Expose scope for the doctor "My Prompts" UI.
       scope: entity.scope ?? undefined,
       // Surface the real status; pre-migration rows default DRAFT.
       status: (entity.status as 'DRAFT' | 'PUBLISHED' | 'APPROVED') ?? 'DRAFT',
       variables: entity.variables ?? undefined,
+      contentPreview: content.length > CONTENT_PREVIEW_LENGTH ? content.slice(0, CONTENT_PREVIEW_LENGTH) : content,
+      declaredVariables: parsePromptVariableDeclarations(entity.variables),
       currentVersionNumber: entity.currentVersionNumber ?? 1,
       // The snapshot resolution actually serves. Without it the console cannot
       // distinguish "approved and running v3" from "edited to v5 since".

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ResourceStatusType } from '@arcaai/domains';
+import { PromptVariableDeclarationDto } from './prompt-variable-declaration.dto';
 
 export class PromptTemplateResponse {
   @ApiProperty({ description: 'Template ID' })
@@ -33,8 +34,21 @@ export class PromptTemplateResponse {
   @ApiProperty({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED', 'APPROVED'], default: 'DRAFT' })
   status: 'DRAFT' | 'PUBLISHED' | 'APPROVED';
 
-  @ApiPropertyOptional({ description: 'Template variable definitions' })
+  @ApiPropertyOptional({ description: 'Template variable definitions (raw, as stored)' })
   variables?: Record<string, unknown>;
+
+  /**
+   * Server-truncated (400 chars) copy of `content` (TASK-890 §3.6) — the
+   * picker/list projection so a row list never has to ship every template's
+   * full (up to 50,000-char) body just to render a preview. The full `content`
+   * field above stays populated on `GET :id`.
+   */
+  @ApiPropertyOptional({ description: 'Server-truncated (400 chars) preview of `content`, for list/picker surfaces' })
+  contentPreview?: string;
+
+  /** Typed variable declarations, parsed from `variables` (§3.6). Always an array, empty when none are declared. */
+  @ApiProperty({ description: 'Typed prompt-variable declarations', type: [PromptVariableDeclarationDto] })
+  declaredVariables: PromptVariableDeclarationDto[];
 
   @ApiProperty({ description: 'Current version number' })
   currentVersionNumber: number;
