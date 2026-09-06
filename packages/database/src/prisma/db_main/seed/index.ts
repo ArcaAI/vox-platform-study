@@ -20,6 +20,7 @@ import { seedLiveAgentDefaults } from './07c-live-agent-defaults';
 import { seedDeptFreePreSummaryDefault } from './07d-dept-free-pre-summary-default';
 import { seedConsultationLoopDefaults } from './07e-consultation-loop-defaults';
 import { seedArcaaiDepartmentContextSchemas } from './07f-arcaai-department-context-schemas';
+import { seedConsultationLegacyContextSchema } from './07g-consultation-legacy-context-schema';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
@@ -225,6 +226,11 @@ export const seed = async () => {
       await seedArcaaiDepartmentContextSchemas(client);
       console.log('');
     }
+    // TASK-890 §3.4 — the SYSTEM REFERENCE row for the v1 prompt vocabulary. Not a
+    // tenant's schema and never resolved from SYSTEM at run time: the reference set CLONES
+    // it into each tenant, and the prompt path reads that clone. CREATE-ONLY.
+    await seedConsultationLegacyContextSchema(client);
+    console.log('');
 
     // Phase 4: Depends on Phase 3
     // Demo accounts (*@example.com) with a documented default password. In

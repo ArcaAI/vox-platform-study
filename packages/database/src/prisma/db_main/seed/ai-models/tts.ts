@@ -26,10 +26,10 @@ import {
  *   `sourceUri`  the provider-native model id on the wire — what
  *                `tts.sarvam.model` ('bulbul:v3'), `tts.indicParler.hfModel` and
  *                `tts.indicF5.hfModel` used to hold.
- *   `localPath`  the ungated internal mirror — `tts.{indicParler,indicF5}.modelPath`.
- *                DEPLOYMENT-SPECIFIC, so it is deliberately NOT seeded: an empty
- *                value means "pull from the Hub", exactly as the retired keys'
- *                empty defaults did.
+ *   the mount path  the ungated internal mirror — `tts.{indicParler,indicF5}.modelPath`.
+ *                DERIVED from `bucketPrefix` at resolve time since TASK-890 dropped the
+ *                stored column, and never seeded: no bucket identity means "pull from
+ *                the Hub", exactly as the retired keys' empty defaults did.
  *   `metaData.artifacts`
  *                auxiliary loader paths beside the weights — today only
  *                `descEncoderPath` (the Parler description tokenizer, formerly
