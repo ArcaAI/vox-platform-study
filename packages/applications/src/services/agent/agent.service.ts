@@ -209,14 +209,19 @@ export class AgentService extends BaseService implements IAgentService {
   // Reads
   // ============================================================
 
-  async list(task?: AgentTask, includeTemplates = false): Promise<AgentResponse[]> {
+  /**
+   * The caller tenant's OWN agents.
+   *
+   * TASK-890 L13 (OD-M) — `includeTemplates` is ACCEPTED AND IGNORED. It used to append the
+   * SYSTEM library to a tenant's list, which is the shared-read posture §1.5 retires: an agent
+   * is CONTENT, so a tenant sees the copies it was PROVISIONED with, each carrying
+   * `sourceTenantId = SYSTEM` for the console's "from platform" badge. The parameter survives
+   * one release so the console's `includeTemplates: 'true'` keeps working as a no-op while L5
+   * removes it; nothing reads the SYSTEM library on a tenant-facing path any more.
+   */
+  async list(task?: AgentTask, _includeTemplates = false): Promise<AgentResponse[]> {
     const tenantId = this.requireTenant();
-    const own = await this.agentRepository.findAllForTenant(tenantId, task);
-    const templates =
-      includeTemplates && tenantId !== SYSTEM_TENANT_ID
-        ? (await this.agentRepository.findPublishedActiveVisible(tenantId, task)).filter((row) => row.tenantId === SYSTEM_TENANT_ID)
-        : [];
-    const rows = [...own, ...templates];
+    const rows = await this.agentRepository.findAllForTenant(tenantId, task);
     this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { task: task ?? null, count: rows.length } });
     return this.respondMany(rows);
   }
@@ -784,6 +789,89 @@ export class AgentService extends BaseService implements IAgentService {
     return this.respondCopy(saved, fallbacks);
   }
 
+  /**
+   * TASK-890 §3.4 (OD-H / OD-M) — the REFERENCE-SET copy: land the SYSTEM agent `slug` in
+   * `targetTenantId` as that tenant's OWN published agent.
+   *
+   * This is `clone` seen from provisioning rather than from a console: no caller ability is
+   * consulted (the route above it is `@CanManage('Tenant')`, and `TenantService.create` has no
+   * caller ability in a customer tenant at all), the target is named explicitly, and the copy
+   * is PUBLISHED — a DRAFT reference set would leave every tenant's assignment pointing at a
+   * slug that `findPublishedActiveBySlug` cannot serve, which after the flip is exactly the
+   * fail-closed hole provisioning exists to prevent.
+   *
+   * MISSING-ONLY by lineage: a tenant that already carries the slug — cloned earlier, or
+   * authored itself — keeps precisely what it has. Re-copying a pristine clone is the
+   * `refresh-locked` mode of the re-sync, an explicit act, never a side effect of provisioning.
+   *
+   * `promptTemplateId` is the one reference REWRITTEN rather than copied: the caller resolves
+   * the tenant's own clone of the bound SYSTEM template and passes it, because after step v the
+   * SYSTEM row is not readable from inside the tenant and a copied id would dangle.
+   */
+  async cloneFromSystem(
+    slug: string,
+    targetTenantId: string,
+    binding?: { promptTemplateId: string; promptVersionNumber: number | null },
+  ): Promise<{ agentId: string; created: boolean; warnings: string[] }> {
+    const source = await this.agentRepository.findSystemReferenceBySlug(slug, this.databaseService.baseClient);
+    if (!source) {
+      throw new NotFoundException(`No PUBLISHED SYSTEM agent '${slug}' to clone from.`);
+    }
+
+    return runInTenantContext(this.clsService, targetTenantId, async () => {
+      const existing = await this.agentRepository.findAllVersionsBySlug(targetTenantId, slug);
+      if (existing.length > 0) {
+        const live = existing.find((row) => row.isActive && row.status === WorkflowDefinitionStatus.PUBLISHED) ?? existing[0];
+        return { agentId: live.id, created: false, warnings: [] };
+      }
+
+      const instruction = this.referenceInstruction(source, binding);
+      const { saved, warnings } = await this.copyInto(source, targetTenantId, {
+        slug: source.slug,
+        name: source.name,
+        description: source.description ?? null,
+        tags: source.tags ?? [],
+        ...(instruction !== undefined ? { instruction } : {}),
+      });
+
+      // Publishing recompiles under the TARGET tenant — its models, its connections, its prompt
+      // clone — so the artifact the runtime reads was validated where it will run, never
+      // inherited from SYSTEM's compile.
+      await this.publish(saved.id, { activate: true } as PublishAgentRequest);
+
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: saved.id,
+        createdAt: saved.createdAt,
+        data: {
+          action: 'reference-set-clone',
+          slug: saved.slug,
+          versionNumber: saved.versionNumber,
+          sourceTenantId: source.tenantId,
+          sourceAgentId: source.id,
+          targetTenantId,
+          warnings,
+        },
+      });
+      return { agentId: saved.id, created: true, warnings };
+    });
+  }
+
+  /** The instruction a reference copy stores: the source's, with the prompt binding re-pointed at the tenant's clone. */
+  private referenceInstruction(
+    source: AgentEntity,
+    binding?: { promptTemplateId: string; promptVersionNumber: number | null },
+  ): Record<string, unknown> | null | undefined {
+    const declared = asRecord(source.instruction);
+    if (!binding) return undefined;
+    const next: Record<string, unknown> = { ...(declared ?? {}) };
+    next[PROMPT_TEMPLATE_ID_KEY] = binding.promptTemplateId;
+    // The clone's version lineage restarts at 1, so the SOURCE's pin numbers a version that does
+    // not exist in the target. Carrying it would pin the agent to a missing snapshot.
+    if (binding.promptVersionNumber === null) delete next[PROMPT_VERSION_NUMBER_KEY];
+    else next[PROMPT_VERSION_NUMBER_KEY] = binding.promptVersionNumber;
+    return next;
+  }
+
   async exportBySlug(slug: string, versionNumber?: number): Promise<AgentBundleResponse> {
     const source = await this.resolveVisibleSource(slug, versionNumber);
     const model = await this.aiModelRepository.findByIdOrNull(source.modelId).catch(() => null);
@@ -1001,11 +1089,15 @@ export class AgentService extends BaseService implements IAgentService {
     if (own.length > 0) {
       return this.pickVersion(own, slug, versionNumber);
     }
-    const shared =
-      versionNumber !== undefined
-        ? await this.agentRepository.findPublishedVisibleBySlugVersion(tenantId, slug, versionNumber)
-        : await this.agentRepository.findPublishedActiveBySlug(tenantId, slug);
+    // TASK-890 L13 — the PLATFORM-LIBRARY branch, now an explicit reference read on the
+    // unscoped client rather than the shared-read widening `findPublishedActiveBySlug` used to
+    // provide. Same set as before (SYSTEM, PUBLISHED + ACTIVE), said out loud; a foreign
+    // tenant's slug still resolves to nothing and leaves as one 404.
+    const shared = await this.agentRepository.findSystemReferenceBySlug(slug, this.databaseService.baseClient);
     if (!shared) throw new NotFoundException('Agent not found');
+    if (versionNumber !== undefined && shared.versionNumber !== versionNumber) {
+      throw new NotFoundException(`Agent '${slug}' has no version ${versionNumber}`);
+    }
     return shared;
   }
 
@@ -1030,7 +1122,15 @@ export class AgentService extends BaseService implements IAgentService {
   private async loadBoundTemplate(entity: AgentEntity): Promise<PromptTemplateEntity | null> {
     const templateId = asRecord(entity.instruction)?.[PROMPT_TEMPLATE_ID_KEY];
     if (typeof templateId !== 'string' || templateId.length === 0 || !this.promptTemplateRepository) return null;
-    return this.promptTemplateRepository.findById(templateId).catch(() => null);
+    const own = await this.promptTemplateRepository.findById(templateId).catch(() => null);
+    if (own) return own;
+    // TASK-890 L13 — `PromptTemplate` leaves `SYSTEM_SHARED_READ_MODELS` (§1.5), so the scoped
+    // read above no longer answers for a SYSTEM row. The reference library is still readable,
+    // explicitly, on the unscoped client — and this is exactly the caller that needs it: the
+    // portability check has to be able to SEE that a bound template is platform-owned before it
+    // decides the agent is not portable. Without this, every SYSTEM template would read as
+    // "missing" and every clone of a platform agent would refuse.
+    return this.promptTemplateRepository.findSystemReferenceById(templateId, this.databaseService.baseClient).catch(() => null);
   }
 
   /** A model slug the CALLER's tenant can bind: its own row shadows SYSTEM's. `null` ⇒ the caller must be told which slug failed. */
@@ -1139,7 +1239,7 @@ export class AgentService extends BaseService implements IAgentService {
   private async copyInto(
     source: AgentEntity,
     targetTenantId: string,
-    overrides: { slug: string; name?: string; description?: string | null; tags?: string[] },
+    overrides: { slug: string; name?: string; description?: string | null; tags?: string[]; instruction?: Record<string, unknown> | null },
   ): Promise<{ saved: AgentEntity; fallbacks: AgentModelFallbackEntity[]; warnings: string[] }> {
     if (targetTenantId !== source.tenantId) await this.assertPortableAcrossTenants(source);
     // TASK-890 H-6, the CLONE half. `AgentModelFallback` is a plain tenant-scoped model — it is
@@ -1154,7 +1254,13 @@ export class AgentService extends BaseService implements IAgentService {
   private async writeCopy(
     source: AgentEntity,
     targetTenantId: string,
-    overrides: { slug: string; name?: string; description?: string | null; tags?: string[] },
+    /**
+     * `instruction`, when present, REPLACES the source's — the reference-set copy uses it to
+     * re-point a platform agent's prompt binding at the TARGET tenant's own clone of that
+     * template (§3.4: references are rewritten to the tenant's clones, never left pointing at
+     * SYSTEM). Absent ⇒ the source's instruction is copied as it always was.
+     */
+    overrides: { slug: string; name?: string; description?: string | null; tags?: string[]; instruction?: Record<string, unknown> | null },
     tx: unknown,
     /**
      * The source agent's fallback chain, when the CALLER already read it in the source tenant's
@@ -1175,8 +1281,9 @@ export class AgentService extends BaseService implements IAgentService {
     const fallbackModelIds: string[] = [];
     for (const row of sourceFallbacks) fallbackModelIds.push(await this.resolveModelIdForTarget(row.modelId, targetTenantId, tx));
 
-    const instruction = { ...(asRecord(source.instruction) ?? {}) };
-    const hadInstruction = asRecord(source.instruction) !== undefined;
+    const overridden = overrides.instruction !== undefined;
+    const instruction = { ...(overridden ? (overrides.instruction ?? {}) : (asRecord(source.instruction) ?? {})) };
+    const hadInstruction = overridden ? overrides.instruction !== null : asRecord(source.instruction) !== undefined;
     if (crossTenant && EVAL_GATE_KEY in instruction) {
       delete instruction[EVAL_GATE_KEY];
       warnings.push(
