@@ -8,6 +8,7 @@ import {
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiModelAdminController } from './ai-model-admin.controller';
+import { AiModelCatalogueController } from './ai-model-catalogue.controller';
 import { AiModelDiscoveryController } from './ai-model-discovery.controller';
 import { AiModelDiscoveryService } from './ai-model-discovery.service';
 
@@ -41,8 +42,9 @@ import { AiModelDiscoveryService } from './ai-model-discovery.service';
   // and `AiModelAdminController` carries `GET ':id'` — if it registers first it
   // captures `GET admin/ai-models/discovery` as id="discovery" (404). The
   // discovery controller's static paths must register BEFORE the `:id` family
-  // (same static-route-wins rule as the settings registry).
-  controllers: [AiModelDiscoveryController, AiModelAdminController],
+  // (same static-route-wins rule as the settings registry). TASK-890's
+  // `GET admin/ai-models/catalogue` is static for the same reason and joins them.
+  controllers: [AiModelDiscoveryController, AiModelCatalogueController, AiModelAdminController],
   providers: [AiModelDiscoveryService],
 })
 export class AiModelModule {}
