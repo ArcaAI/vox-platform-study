@@ -108,6 +108,32 @@ export function isKnownProvider(value: unknown): value is KnownProvider {
 }
 
 /**
+ * The provider ids the platform runs on its OWN hardware.
+ *
+ * The SAME group `KNOWN_PROVIDERS` lists under "self-hosted server connection
+ * ids", named here so a caller that must derive `AiDeploymentKind` reads the
+ * canonical membership rather than restating it. (Two older restatements exist
+ * — `consultation/summary/text-usage.ts` and `agent-trajectory/harness-usage.mapper.ts`
+ * — and should converge here when either is next touched; they are not this
+ * lane's files.)
+ */
+export const SELF_HOSTED_PROVIDER_IDS: ReadonlySet<string> = new Set(['ollama', 'lm-studio', 'vllm', 'llama-cpp', 'built-in']);
+
+/**
+ * Derive the deployment kind of an LLM call from its provider and its FUNDING.
+ *
+ * Funding is DERIVED, never stamped (rule 09 §Tenant-first): a call served on a
+ * tenant's own credential is `BYOK` whichever vendor answered it, and only when
+ * nobody's credential was borrowed does the provider decide self-hosted vs
+ * cloud. Getting this backwards mis-bills silently — a BYOK call charged as
+ * CLOUD bills a tenant for tokens it already paid the vendor for.
+ */
+export function classifyLlmDeployment(provider: string, byok: boolean): 'BYOK' | 'SELF_HOSTED' | 'CLOUD' {
+  if (byok) return 'BYOK';
+  return SELF_HOSTED_PROVIDER_IDS.has(provider) ? 'SELF_HOSTED' : 'CLOUD';
+}
+
+/**
  * Lowercase id shape: `[a-z0-9]` then up to 63 of `[a-z0-9._-]`.
  *
  * Lowercase is enforced, not normalised: silently down-casing would hide the
