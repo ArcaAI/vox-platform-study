@@ -3497,7 +3497,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (!this.usageLedger) return;
     const usage = parseTextUsageDetail((data as { usage_detail?: unknown } | null)?.usage_detail);
     if (!usage) return;
-    const batch = withUsageTrigger(buildLlmUsageInput({ usage, tenantId, operation: 'generate', consultationId: consultationId ?? null }), 'CONSULTATION');
+    const batch = withUsageTrigger(
+      buildLlmUsageInput({ usage, tenantId, operation: 'generate', consultationId: consultationId ?? null }),
+      'CONSULTATION',
+    );
     if (!batch) return;
     void this.usageLedger.recordUsage(batch).catch((error: unknown) => {
       this.logger.warn({
