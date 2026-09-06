@@ -267,21 +267,33 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // them, exactly as `DepartmentAgent` does.
   'ConsultationContextSchema',
   'ConsultationContextSchemaVersion',
-  // document-template.prisma — the tenant's clinical-document SHAPE catalog
-  // BOTH the mutable head and its immutable version snapshots are
-  // ordinary tenant-owned rows, deliberately NOT added to
-  // SYSTEM_SHARED_READ_MODELS: a tenant reads only its own templates, and the
-  // platform's SOAP/discharge shapes reach a tenant by the golden-library CLONE
-  // path, never by a shared read — exactly the posture
-  // `ConsultationContextSchema` records above.
+  // document-template.prisma — the tenant's clinical-document SHAPE catalog.
+  // BOTH the mutable head and its immutable version snapshots are ordinary
+  // tenant-owned rows, deliberately NOT added to SYSTEM_SHARED_READ_MODELS: a
+  // tenant reads only its own templates.
+  //
+  // ⚠ There is NO clone path behind this one today, and no SYSTEM rows for a
+  // clone path to carry: `DocumentTemplate` is absent from the seed, from
+  // `TenantReferenceSetService` and from the `POST /admin/tenants/:id/
+  // reference-set/sync` route, and `document-template.service.ts` names
+  // `SYSTEM_TENANT_ID` nowhere. The platform's SOAP shape reaches a tenant as a
+  // CODE-level fail-open default (`SOAP_NOTE_SHAPE` /`SOAP_NOTE_SLUG` in
+  // `platform-document-shapes.ts`, read by `live-documentation.service.ts`),
+  // never as a copied row. Keep this model out of the shared-read set — but do
+  // not cite a provisioning path that does not exist.
   'DocumentTemplate',
   'DocumentTemplateVersion',
-  // workflow-definition.prisma — the workflow substrate's persistence floor
+  // workflow-definition.prisma — the workflow substrate's persistence floor.
   // Rows ARE versions (no separate head/version split).
-  // Deliberately NOT added to SYSTEM_SHARED_READ_MODELS: a tenant reads
-  // only its own definitions, and the SYSTEM-tenant platform-default rows
-  // reach a tenant via the seed's clone path, not shared read — the same
-  // posture ConsultationContextSchema records above.
+  // Deliberately NOT added to SYSTEM_SHARED_READ_MODELS: a tenant reads only
+  // its own definitions.
+  //
+  // ⚠ The SYSTEM platform-default rows reach a tenant through the SERVICE, NOT
+  // the seed: `WorkflowDefinitionService.cloneFromSystem` (a DRAFT, missing-only
+  // by slug), driven by `TenantReferenceSetService` behind
+  // `POST /admin/tenants/:id/reference-set/sync`. `seed/26-tenant-reference-set.ts`
+  // copies prompt templates and agents ONLY — it has never copied a workflow
+  // definition, so a freshly seeded tenant owns none until that route is run.
   'WorkflowDefinition',
   // consent.prisma — ordinary tenant-owned rows, keyed
   // (tenantId, externalPatientId, purpose). No SYSTEM row and no widening:
