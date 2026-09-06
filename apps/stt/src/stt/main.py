@@ -19,6 +19,7 @@ from stt.core.messaging.broker import close_redis, initialize_redis
 from stt.core.storage.minio_client import close_minio, initialize_minio
 from stt.health.api.routes import internal_router
 from stt.health.api.routes import router as health_router
+from stt.models.resolvable_routes import router as model_resolvable_router
 from stt.streaming._runtime import (
     get_redis_client as get_streaming_redis_client,
 )
@@ -274,6 +275,10 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     # Register routers
     app.include_router(health_router, prefix="/api/v1", tags=["Health"])
     app.include_router(internal_router, tags=["Internal"])
+    # TASK-890 J1 MAJOR-A — the runtime resolvability probe the gateway readiness
+    # sweep asks. Its own `/api/v1/internal/models` prefix; service-token gated
+    # like every non-exempt route.
+    app.include_router(model_resolvable_router)
     app.include_router(transcription_router, tags=["Transcription"])
     app.include_router(streaming_router, tags=["Streaming"])
     app.include_router(voice_profile_router, tags=["Voice Profile"])

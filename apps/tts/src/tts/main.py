@@ -268,12 +268,16 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         )
 
     from tts.api.endpoints.health import router as health_router
+    from tts.api.endpoints.models import router as model_resolvable_router
     from tts.api.endpoints.providers import router as providers_router
     from tts.api.endpoints.speech import router as speech_router
     from tts.api.endpoints.stream_ws import router as stream_ws_router
     from tts.api.endpoints.voices import router as voices_router
 
     app.include_router(health_router, prefix="/api/v1")
+    # TASK-890 J1 MAJOR-A — the runtime resolvability probe the gateway readiness
+    # sweep asks. Service-token gated like every other non-exempt route.
+    app.include_router(model_resolvable_router, prefix="/api/v1")
     app.include_router(providers_router, prefix="/api/v1")
     app.include_router(voices_router, prefix="/api/v1")
     app.include_router(speech_router, prefix="/api/v1")
