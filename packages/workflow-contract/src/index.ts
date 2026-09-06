@@ -97,6 +97,14 @@ export {
 } from './template';
 export type { DeclaredNamespaces, RenderTemplateOptions, TemplateReference } from './template';
 
+// TASK-890 §3.14 (OD-R clause 3) — the guardrail opt-out's ONE precedence function
+// (node > workflow > agent > `true`), mirrored in Python by the harness's `guardrail_optout.py`
+// and held to `tests/contracts/guardrail-optout.fixture.json`. Guardrail POLICY is untouched:
+// this answers only "does the platform's guardrail run for THIS call", and a tenant may only
+// opt OUT.
+export { GUARDRAIL_DECISION_SOURCES, guardrailOptOutOf, resolveGuardrailDecision } from './guardrail-optout';
+export type { GuardrailDecision, GuardrailDecisionSource, GuardrailOptOutInputs } from './guardrail-optout';
+
 export {
   AGENTIC_NODE_TYPES,
   AGENTIC_PALETTE_KEY,
