@@ -78,7 +78,7 @@ import type {
 import { IInferenceReadinessService } from '../ai-readiness/IInferenceReadinessService';
 import type { IInferenceReadinessService as IInferenceReadinessServicePort } from '../ai-readiness/IInferenceReadinessService';
 import { modelReadinessFrom } from '../ai-readiness/inference-readiness.types';
-import type { InferenceReadinessSnapshot } from '../ai-readiness/inference-readiness.types';
+import type { InferenceReadinessSnapshot, ModelReadiness } from '../ai-readiness/inference-readiness.types';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { buildAgentPromptScope } from './agent-prompt-scope';
 import { textWireProvider } from './text-generation-spec';
@@ -1760,7 +1760,7 @@ export class AgentService extends BaseService implements IAgentService {
    *
    * | Class | usable when |
    * |---|---|
-   * | `platform-self-host` | the MEASURED `availability` is AVAILABLE / NOT_APPLICABLE — a HOPE service loads these weights from the bucket, so presence IS usability |
+   * | `platform-self-host` | EITHER measurement finds the weights: the bucket inventory says AVAILABLE / NOT_APPLICABLE, **or** the readiness sweep says `ready` |
    * | `engine-served` | the SYSTEM engine connection resolves (ENABLED). There is no credential to bring, so ENABLED is the whole test — but it IS a test: a disabled engine row is a deliberate platform veto |
    * | `cloud-byo` | the tenant's own connection is ENABLED **and carries key material** — the "resolves but never delivers" split |
    * | `cloud-platform` | the cascade resolved a KEYED connection (tenant row wins, SYSTEM on absence, `null` on veto or a withheld platform-credential entitlement) |
@@ -1786,7 +1786,10 @@ export class AgentService extends BaseService implements IAgentService {
 
     const service: ProviderService | null = MODEL_TASK_TYPE_SERVICE[model.taskType as ModelTaskType] ?? AGENT_TASK_SERVICE[task];
     const providerClass = providerClassOf(service, model.provider ?? null, model);
-    const unusable = await this.unusableReason(providerClass, service, model, tenantId);
+    // The SAME readiness verdict feeds both axes: it can only ever ADD a way for a self-hosted
+    // row to be usable (below), and it is the sole input to the advisory WARNING.
+    const readiness = snapshot ? modelReadinessFrom(snapshot, model.id).readiness : 'unknown';
+    const unusable = await this.unusableReason(providerClass, service, model, tenantId, readiness);
     if (unusable) {
       return [{ severity: 'ERROR', code: 'MODEL_UNAVAILABLE', path, message: `Model \`${model.slug}\`: ${unusable}` }];
     }
@@ -1799,14 +1802,32 @@ export class AgentService extends BaseService implements IAgentService {
     service: ProviderService | null,
     model: AiModelEntity,
     tenantId: string,
+    readiness: ModelReadiness,
   ): Promise<string | null> {
     if (providerClass === null) {
       return `its provider \`${model.provider ?? '(none)'}\` is not one this platform serves, so nothing would run it.`;
     }
 
     if (providerClass === 'platform-self-host') {
-      const staged = model.availability === AiModelAvailability.AVAILABLE || model.availability === AiModelAvailability.NOT_APPLICABLE;
-      return staged ? null : `it has no staged weights (availability is ${model.availability}); publish is refused until the weights are available.`;
+      // TWO measurements, either one sufficient — the SAME rule the tenant catalogue answers
+      // from (`AiModelService.usabilityOf`: `bucketHasIt || readiness === 'ready'`). They are not
+      // redundant, they look in different places: `availability` is the MinIO bucket inventory,
+      // and `readiness` is the serving service answering about its own filesystem. Most of the
+      // self-hosted catalogue is resolved out of the HuggingFace cache and never staged in the
+      // bucket, so reading `availability` alone made the gate refuse rows the catalogue was
+      // simultaneously offering as usable — no tenant could publish an ASR agent at all.
+      //
+      // `unknown` stays a refusal: nobody looked is not "probably fine". And readiness only ever
+      // ADDS usability here — it never subtracts, because a row the bucket HAS stays publishable
+      // through a transient engine outage (that outage is the advisory WARNING below, and the
+      // 503 at run time).
+      const bucketHasIt = model.availability === AiModelAvailability.AVAILABLE || model.availability === AiModelAvailability.NOT_APPLICABLE;
+      if (bucketHasIt || readiness === 'ready') return null;
+      return (
+        `it has no staged weights (availability is ${model.availability}) and the last readiness check ` +
+        `${readiness === 'unknown' ? 'never measured it' : `reported \`${readiness}\``}; ` +
+        'publish is refused until the weights are available.'
+      );
     }
 
     // TASK-890 §3.1 (L10) — a routed row must name what goes ON THE WIRE.
