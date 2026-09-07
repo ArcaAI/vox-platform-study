@@ -60,6 +60,7 @@ import {
   LiveDocEngineConfigResponse,
   LiveDocRealtimeCapabilitiesResponse,
   type LiveDocRealtimeAssignmentSource,
+  LiveDocNodeDegradeResponse,
   LiveDocSessionStatsResponse,
   LiveDocSessionsListResponse,
   LiveSummaryEntityDto,
@@ -110,11 +111,13 @@ import {
   PLATFORM_REALTIME_LANE,
   buildRealtimeLane,
   canonicalRealtimeNodeType,
+  realtimeDocumentTemplateSlug,
   realtimeNodeIsTogglable,
   runRealtimeLane,
   type RealtimeCapabilities,
   type RealtimeLane,
   type RealtimeRunResult,
+  type SectionPatchDto,
 } from './realtime';
 import { readGoverningEngineMarker, tenantWorkflowGoverns } from '../governing-engine';
 // lane A — the consultation's OWN workflow selection, durable from create.
@@ -132,6 +135,10 @@ import {
   AGENTIC_CONTEXT_KEY_PREFIX,
   type AgenticTranscriptMode,
 } from '../../settings-registry/descriptors/agentic-context.descriptors';
+import {
+  CONSULTATION_REALTIME_DEFAULTS,
+  CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY,
+} from '../../settings-registry/descriptors/consultation-realtime.descriptors';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 
@@ -408,6 +415,14 @@ interface LiveSession {
   lockRenewalTimer?: ReturnType<typeof setInterval>;
   /** Monotonic flush id; only the latest generation may publish. */
   generation: number;
+  /**
+   * TASK-891 B3 — true while a generation is running. The single-flight gate: a
+   * non-forced flush requested while this is set coalesces instead of starting a
+   * competing generation.
+   */
+  inFlight?: boolean;
+  /** TASK-891 B3 — a flush was requested mid-generation; run one trailing re-run on completion. */
+  coalescedFlush?: boolean;
   /** Aborts the in-flight TEXT/NLP HTTP calls when a newer flush supersedes them. */
   abortController?: AbortController;
   /** How many `transcriptParts` have already been folded into `lastPayload` (incremental prompt cursor, P0-B). */
@@ -559,6 +574,25 @@ function storedNumber(result: { value: unknown; sourceScope: string }): number |
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/**
+ * TASK-891 B5 — the PHI-safe reason a flush produced no note, or `undefined` when nothing
+ * degraded.
+ *
+ * The SUMMARY node's reason wins over any other node's: it is the one that decides whether
+ * there is a document at all, and reporting an entity-extraction failure as the reason the
+ * case note is blank would send a reader after the wrong service. (In the traced session
+ * both degraded at once — TEXT on a 20 s timeout, NLP on `ECONNREFUSED` — and only the
+ * first explains the empty note.)
+ *
+ * `RealtimeDegradeEvent.reason` is contractually a reason code or an error name, never
+ * clinical text, which is what makes it safe to put on the clinician's feed.
+ */
+function realtimeDegradeReason(run: RealtimeRunResult): string | undefined {
+  if (run.events.length === 0) return undefined;
+  const event = run.events.find((e) => canonicalRealtimeNodeType(e.type) === 'consultation.realtimeSummary') ?? run.events[0];
+  return `${event.status}: ${event.reason}`;
+}
+
 function storedMode(result: { value: unknown; sourceScope: string }): AgenticTranscriptMode | undefined {
   if (result.sourceScope === 'code-default') return undefined;
   return result.value === 'windowed' || result.value === 'whole' ? result.value : undefined;
@@ -633,7 +667,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly minIntervalMs: number;
   private readonly durableSnapshotMs: number;
   private readonly textMaxTokens: number;
-  private readonly textTimeoutMs: number;
+  /**
+   * TASK-891 B1 — the ENV OVERRIDE for the realtime TEXT budget, or `undefined` when
+   * unset. Captured here, never used as the effective value: the authority is the
+   * `consultation.realtime.textTimeoutMs` descriptor, resolved per flush.
+   */
+  private readonly envTextTimeoutMs?: number;
+  /**
+   * TASK-891 B1 — the EFFECTIVE realtime TEXT budget for the flush in progress
+   * (stored value → env override → descriptor code default), refreshed by
+   * {@link resolveTextTimeoutMs} on every flush. Seeded from env/default so the
+   * value before the first flush is the same one the flush would resolve.
+   */
+  private textTimeoutMs: number;
   private readonly textProvider?: string;
   private readonly textModel?: string;
   private readonly statsTtl: number;
@@ -775,7 +821,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.durableSnapshotMs = Number(this.configService.get('LIVE_DOC_DURABLE_SNAPSHOT_MS') ?? 30000);
     // Bounded live-generation params (P0-B).
     this.textMaxTokens = Number(this.configService.get('LIVE_DOC_TEXT_MAX_TOKENS') ?? 8192);
-    this.textTimeoutMs = Number(this.configService.get('LIVE_DOC_TEXT_TIMEOUT_MS') ?? 20000);
+    // TASK-891 B1 — the env value is an OVERRIDE, not the answer, and it loses to a
+    // stored registry value. The old hard-coded `?? 20000` fallback sat below the
+    // measured p50 of the generation it bounded, so every realtime flush timed out.
+    this.envTextTimeoutMs = readNumericEnv(this.configService, 'LIVE_DOC_TEXT_TIMEOUT_MS');
+    this.textTimeoutMs = this.envTextTimeoutMs ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY];
     this.textProvider = this.configService.get<string>('LIVE_DOC_TEXT_PROVIDER') || undefined;
     this.textModel = this.configService.get<string>('LIVE_DOC_TEXT_MODEL') || undefined;
     // TTL on the per-session Redis stats snapshot + active set. A
@@ -930,10 +980,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `start()` stays synchronous for the recording controller; `flush()` awaits
     // the memoized promise, which is already settled by the second flush.
     session.agentPromise = this.ensureAgentResolved(session);
-    // Same fire-and-forget shape, same reason: freeze the document
-    // shape at session start so a mid-consultation publish cannot change the
-    // note being produced. `flush()` awaits the memoized promise.
-    session.templatePromise = this.ensureTemplateResolved(session);
     // task 13 — the lane the flush will walk, and the SUBSTRATE GATE.
     // Same fire-and-forget shape as the two above so `start()` stays synchronous
     // for the recording controller; `flush()` awaits the memoized promises, and
@@ -945,6 +991,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // promise must exist before the gate can await it. Kicking both off here rather than
     // chaining them keeps the lane resolving concurrently with the gate's own consultation read.
     session.lanePromise = this.ensureLaneResolved(session);
+    // Same fire-and-forget shape, same reason: freeze the document
+    // shape at session start so a mid-consultation publish cannot change the
+    // note being produced. `flush()` awaits the memoized promise.
+    //
+    // TASK-891 D7 — AFTER the lane, and that order is load-bearing: the note's shape is
+    // named by the governing workflow's realtime summary node, so the template cannot be
+    // resolved until the lane it is named on exists.
+    session.templatePromise = this.ensureTemplateResolved(session);
     session.substratePromise = this.ensureSubstrateResolved(session);
 
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
@@ -1076,7 +1130,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const resolved = await this.documentTemplateService.resolveForGeneration(session.tenantId);
+      // TASK-891 D7 — the slug the GOVERNING WORKFLOW names on its realtime summary node.
+      // `resolveForGeneration` has always accepted it; nothing passed it, which is why the
+      // traced session logged `templateId: null` and fell through to the platform shape
+      // while its own workflow named a template. `null` keeps the previous behaviour
+      // exactly: the tenant's default template, then the platform fallback.
+      const lane = session.laneSnapshot !== undefined ? session.laneSnapshot : await (session.lanePromise ?? this.ensureLaneResolved(session));
+      const laneSlug = realtimeDocumentTemplateSlug(lane);
+      const resolved = await this.documentTemplateService.resolveForGeneration(session.tenantId, laneSlug ?? undefined);
       session.templateSnapshot = resolved;
       this.logger.log({
         message: 'Froze the live document template for this session',
@@ -1084,6 +1145,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         templateId: resolved.templateId,
         slug: resolved.slug,
         versionNumber: resolved.versionNumber,
+        // WHERE the shape came from: the workflow's own node, or the tenant default.
+        requestedSlug: laneSlug,
       });
       return resolved;
     } catch (error) {
@@ -1790,15 +1853,68 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------
 
   /**
-   * Recompute the running summary + entities and publish them. Public so the
-   * debounce paths and `stop()` can invoke it (and so it is unit-testable).
+   * TASK-891 B3 — the SINGLE-FLIGHT gate in front of {@link runFlush}.
+   *
+   * ## The starvation this closes
+   *
+   * `runFlush` claims a new generation and aborts the previous one on every entry, and
+   * the min-interval throttle measures from the previous flush's START. A realtime SOAP
+   * generation takes 14 s idle and 20–52 s under load against a 4 s interval, so every
+   * transcript delta superseded a generation that was still running. Measured on
+   * `hope-v2-dev`: 55 generations in 10½ minutes, **53 dropped as stale, 2 completed**,
+   * and `DocumentSection` empty cluster-wide. The engine was busy continuously and
+   * produced nothing.
+   *
+   * ## The rule
+   *
+   * ONE generation in flight per session. A flush requested while one is running records
+   * a coalesce and returns the note the clinician is already reading; the trailing re-run
+   * is scheduled when the in-flight generation completes, so the newer transcript is
+   * folded into the NEXT generation rather than starting a competing one. **A slow model
+   * degrades the cadence, never the output.**
+   *
+   * `force` (the final flush from `stop()`) deliberately bypasses the gate: there is no
+   * later flush for it to coalesce into, so it must still supersede. That is the genuine
+   * supersession `isStale()` exists for, and it is unchanged.
+   */
+  async flush(consultationId: string, opts?: { force?: boolean }): Promise<LiveSummaryEventDto | null> {
+    const session = this.sessions.get(consultationId);
+    if (!session) return null;
+
+    if (opts?.force) return this.runFlush(consultationId, opts);
+
+    if (session.inFlight) {
+      session.coalescedFlush = true;
+      // The last published note, not null: this is a caller asking for the current
+      // state while a fresher one is being produced, which is exactly what it holds.
+      return session.lastPayload ?? null;
+    }
+
+    session.inFlight = true;
+    try {
+      return await this.runFlush(consultationId, opts);
+    } finally {
+      session.inFlight = false;
+      if (session.coalescedFlush) {
+        session.coalescedFlush = false;
+        // Only for a session that still exists: a `stop()` racing the completion must
+        // not leave a timer behind.
+        if (this.sessions.get(consultationId) === session) this.scheduleThrottledFlush(session);
+      }
+    }
+  }
+
+  /**
+   * Recompute the running summary + entities and publish them. Reached through the
+   * single-flight gate above; `stop()`'s forced final flush is the one caller that
+   * bypasses it.
    *
    * `force` (used by `stop`) bypasses the min-interval throttle for the final flush.
    * Overlapping flushes are made safe by a per-session generation id: a newer flush
    * aborts the prior in-flight TEXT/NLP call and only the latest generation may
    * publish, advance the incremental cursor, or persist.
    */
-  async flush(consultationId: string, opts?: { force?: boolean }): Promise<LiveSummaryEventDto | null> {
+  private async runFlush(consultationId: string, opts?: { force?: boolean }): Promise<LiveSummaryEventDto | null> {
     const session = this.sessions.get(consultationId);
     if (!session) return null;
     this.clearTimer(session);
@@ -1866,6 +1982,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // redeploy. It also refreshes the snapshot the synchronous ingest/debounce
     // paths read.
     const agenticContext = await this.resolveAgenticContext(session.tenantId);
+    // TASK-891 B1 — the realtime TEXT budget, resolved for THIS flush by the same
+    // control-plane contract: a super admin's write governs the next flush, no redeploy.
+    await this.resolveTextTimeoutMs(session.tenantId);
 
     // Supersede any in-flight generation: abort its HTTP calls and claim a new id.
     const myGeneration = ++session.generation;
@@ -2256,6 +2375,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         groundedness,
         template,
         generation: myGeneration,
+        // TASK-891 B5 — WHY this flush produced nothing, when it produced nothing. The
+        // summary node's own reason wins over any other node's: it is the one that
+        // decides whether there is a note at all.
+        degradeReason: realtimeDegradeReason(graph.run),
       });
     }
 
@@ -2293,6 +2416,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       entityCount: entities.length,
       sectionCount: sections.length,
       summaryChars: runningSummary.length,
+      // TASK-891 B4 — WHICH node degraded and why, beside the two boolean stage flags.
+      // Empty on a clean flush and on the legacy engine, which has no nodes.
+      nodeDegrades: graph ? graph.run.events.map(({ nodeId, type, status, reason }) => ({ nodeId, type, status, reason })) : [],
     });
 
     // Emit the ordered per-flush trajectory. Non-fatal: a
@@ -2538,9 +2664,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       groundedness?: LiveSummaryGroundednessDto;
       template: ResolvedDocumentTemplate;
       generation: number;
+      /**
+       * TASK-891 B5 — PHI-safe reason this flush's realtime lane did not produce a note.
+       * Only consulted when there are NO sections to write; a flush that produced content
+       * publishes content, whatever else degraded alongside it.
+       */
+      degradeReason?: string;
     },
   ): Promise<void> {
-    if (ctx.sections.length === 0) return;
+    if (ctx.sections.length === 0) {
+      await this.publishSectionDegrade(session, ctx.template, ctx.degradeReason);
+      return;
+    }
 
     // The document this lane is producing. One document today; the key is what
     // makes a second one addressable without reshaping anything.
@@ -2587,6 +2722,56 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+  }
+
+  /**
+   * TASK-891 B5 — tell the console that a flush FAILED, rather than leaving it to infer.
+   *
+   * ## The defect
+   *
+   * `case-note-column.tsx:120` renders `state === 'empty'` as a `<Skeleton />` — correctly,
+   * because an unpopulated section of an in-progress note IS normal. But a node that failed
+   * publishes NOTHING at all (this method's caller used to `return` on an empty section
+   * list), so "still generating" and "generation failed" were the same pixels forever. The
+   * owner watched that skeleton for ten minutes.
+   *
+   * ## What this publishes, and what it deliberately does not
+   *
+   * A transient `section.patch` per compiled section carrying `state: 'empty'`,
+   * `revision: 0` and the reason. It writes NO row, takes NO version and touches the store's
+   * staleness watermark not at all, so the CONFIRMED-is-never-overwritten-by-a-flush rule is
+   * untouched — there is no write for it to govern. `revision: 0` is the second guard: the
+   * DTO's mandatory "discard a patch whose revision is not greater than the one you hold"
+   * rule makes this patch inert for any section a client already has content for, and
+   * meaningful for exactly the sections that have never been written — which are the ones
+   * showing the skeleton.
+   *
+   * Silent when nothing degraded: an empty section list with no reason is a flush that
+   * legitimately had nothing to say (an empty transcript, a skipped node), not a failure.
+   */
+  private async publishSectionDegrade(session: LiveSession, template: ResolvedDocumentTemplate, degradeReason?: string): Promise<void> {
+    if (!degradeReason) return;
+
+    const titles = new Map(template.compiled.checklist.map((entry) => [entry.key, entry.title]));
+    const updatedAt = new Date().toISOString();
+
+    for (const [idx, sectionKey] of template.compiled.sectionKeys.entries()) {
+      const patch: SectionPatchDto = {
+        event: 'section.patch',
+        consultationId: session.consultationId,
+        documentKey: template.slug,
+        sectionKey,
+        title: titles.get(sectionKey) ?? sectionKey,
+        idx,
+        revision: 0,
+        state: 'empty',
+        content: '',
+        documentTemplateVersionId: template.documentTemplateVersionId ?? null,
+        degradeReason,
+        updatedAt,
+      };
+      await this.safeChannelPublish(this.channel(session.consultationId), JSON.stringify(patch));
     }
   }
 
@@ -3303,6 +3488,39 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * TASK-891 B1 — resolve the EFFECTIVE realtime TEXT budget for this flush and cache it
+   * on the instance for the three HTTP hops that read it (`postTextGenerate`,
+   * `proposeCorrections`, `extractImportantFindings`), all of which run inside the flush
+   * that resolved it.
+   *
+   * Precedence, matching the `agentic.context.*` siblings: STORED VALUE → env override →
+   * descriptor code default. Env deliberately LOSES to a stored value, because the
+   * registry is the control plane and a budget that needs a redeploy to move is the
+   * defect this key exists to fix.
+   *
+   * Never throws: a settings-backend failure keeps the env/default budget for this flush
+   * rather than failing the note the clinician is waiting for.
+   */
+  private async resolveTextTimeoutMs(tenantId: string): Promise<number> {
+    const fallback = this.envTextTimeoutMs ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY];
+    if (!this.effectiveSettings) {
+      this.textTimeoutMs = fallback;
+      return fallback;
+    }
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY, { tenantId });
+      this.textTimeoutMs = storedNumber(resolved) ?? fallback;
+    } catch (error) {
+      this.logger.warn({
+        message: 'consultation.realtime.textTimeoutMs resolution failed — keeping the env/code default for this flush',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.textTimeoutMs = fallback;
+    }
+    return this.textTimeoutMs;
+  }
+
   /** The env-override → code-default knobs, i.e. the pre-B1 resolution. */
   private envFallbackContext(): AgenticContextKnobs {
     return {
@@ -3513,7 +3731,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // The decision goes on the wire EXPLICITLY in both directions, so TEXT can tell "screened by
     // this tenant's opinion" from "no opinion, platform posture governs".
     if (guardrail) this.textRequestEnrichment?.applyGuardrailDecision(payload, guardrail);
-    const result = await this.postTextGenerate(payload, tenantId, signal, consultationId, guardrail);
+    // TASK-891 C2 — `generation` already carries the node's `overrides.generation` layered
+    // over the agent's own, so the reasoning posture follows the same precedence every other
+    // hyper-parameter on this call does.
+    const result = await this.postTextGenerate(payload, tenantId, signal, consultationId, guardrail, generation);
     return {
       text: result.text,
       stats: result.stats
@@ -3590,6 +3811,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     signal?: AbortSignal,
     consultationId?: string | null,
     guardrail?: { enabled: boolean },
+    // TASK-891 C2 — the RESOLVED agent's `parameters.generation`, when this hop is made on
+    // behalf of one. Its `reasoning` block becomes the `extra` ride-along. Absent on the
+    // non-agent paths, where there is no agent to have an opinion.
+    generation?: unknown,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null }> {
     // fold in the caller tenant's resolved provider credential
     // (`provider_overrides`) through the ONE shared implementation. Not
@@ -3599,10 +3824,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // resolver error injects nothing and the call proceeds, while a POLICY
     // refusal (tenant veto / missing entitlement) still throws so the outage is
     // attributable instead of surfacing as TEXT's unattributable 503.
-    // layer the platform admin's runtime profile (hyperparameters + engine
-    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
-    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
-    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload);
+    // layer the resolved agent's engine ride-alongs (TASK-891 C2: the reasoning posture of
+    // `parameters.generation.reasoning`, sent as `extra.reasoning_effort` and forwarded by
+    // TEXT as `extra_body`) BEFORE the credential fold, exactly as the TEXT proxy does.
+    // Caller-set fields win; an agent with no opinion injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload, generation);
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload);
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
@@ -4072,6 +4298,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       entityCount: number;
       sectionCount: number;
       summaryChars: number;
+      /** TASK-891 B4 — the lane's non-success node outcomes for this flush (empty on the legacy engine). */
+      nodeDegrades?: LiveDocNodeDegradeResponse[];
     },
   ): Promise<void> {
     const snapshot: LiveDocSessionStatsResponse = {
@@ -4090,6 +4318,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       entityCount: metrics.entityCount,
       sectionCount: metrics.sectionCount,
       summaryChars: metrics.summaryChars,
+      // Omitted entirely when nothing degraded, so a healthy session's snapshot keeps the
+      // shape it had before B4.
+      ...(metrics.nodeDegrades && metrics.nodeDegrades.length > 0 ? { nodeDegrades: metrics.nodeDegrades } : {}),
     };
 
     try {

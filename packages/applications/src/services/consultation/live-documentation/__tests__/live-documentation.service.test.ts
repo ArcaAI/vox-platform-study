@@ -774,7 +774,12 @@ describe('LiveDocumentationService', () => {
       service.ingestSegment(CID, { text: 'first', isFinal: true, segmentId: 's1' });
       const p1 = service.flush(CID); // generation 1 — TEXT hangs
       service.ingestSegment(CID, { text: 'second', isFinal: true, segmentId: 's2' });
-      const p2 = service.flush(CID); // generation 2 — supersedes; TEXT resolves immediately
+      // TASK-891 B3 — `force`, because an ordinary flush no longer supersedes an in-flight
+      // one (it coalesces into a trailing re-run; see
+      // `live-documentation.single-flight.task891.test.ts`). The invariant asserted below —
+      // a late generation never publishes over a fresher one — is unchanged, and `force`
+      // (the final flush from `stop()`) is the path on which supersession still happens.
+      const p2 = service.flush(CID, { force: true }); // generation 2 — supersedes; TEXT resolves immediately
       await p2;
 
       deferred.resolve(); // release the stale first call AFTER the fresh one published

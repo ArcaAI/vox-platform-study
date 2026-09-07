@@ -2,6 +2,37 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
+ * TASK-891 B4 — ONE realtime-lane node that did not succeed on the last flush.
+ *
+ * The traced 2026-09-07 session degraded `consultation.realtimeSummary` on
+ * `timeout of 20000ms exceeded` and `consultation.extractEntities` on
+ * `connect ECONNREFUSED …:8864`, 55 times. Both reasons existed only in a gateway WARN
+ * line, so the admin console showed a session flushing healthily while it produced zero
+ * sections. This is the same typed `RealtimeDegradeEvent` the control channel already
+ * carries, mirrored into the stats snapshot so the failure mode is legible from the
+ * admin surface without pod access.
+ *
+ * PHI-safe by construction: node identity, an outcome status and a reason CODE or error
+ * name — never clinical text.
+ */
+export class LiveDocNodeDegradeResponse {
+  @ApiProperty({ description: 'Node id as authored in the graph' })
+  nodeId: string;
+
+  @ApiProperty({ description: 'Registered node type, e.g. `consultation.realtimeSummary`' })
+  type: string;
+
+  @ApiProperty({
+    description: 'Non-success outcome of that node on the last flush',
+    enum: ['degraded', 'failed', 'skipped', 'timed-out', 'stale'],
+  })
+  status: string;
+
+  @ApiProperty({ description: 'PHI-safe reason code or error name — never clinical text' })
+  reason: string;
+}
+
+/**
  * Per-session live-documentation engine stats.
  *
  * The PHI-safe snapshot the {@link LiveDocumentationService} publishes to Redis
@@ -53,6 +84,13 @@ export class LiveDocSessionStatsResponse {
 
   @ApiProperty({ description: 'Character length of the last running summary (size only, no text)' })
   summaryChars: number;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-891 B4 — the realtime lane nodes that did NOT succeed on the last flush, with their reasons. `textFailed`/`nlpFailed` say THAT the two legacy stages failed; this says WHICH node and WHY, which is the difference between reading this endpoint and reading pod logs. Empty/absent on a clean flush and on the legacy (non-graph) engine, which has no nodes.',
+    type: [LiveDocNodeDegradeResponse],
+  })
+  nodeDegrades?: LiveDocNodeDegradeResponse[];
 }
 
 /** A tenant's active live-documentation sessions (`GET /admin/harness/live/sessions`). */

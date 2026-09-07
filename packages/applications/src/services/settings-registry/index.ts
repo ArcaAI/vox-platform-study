@@ -7,6 +7,9 @@ export * from './effective-settings.module';
 export * from './registry';
 export * from './descriptors/entitlements.descriptors';
 export * from './descriptors/agentic-context.descriptors';
+// TASK-891 B1 — the realtime TEXT budget; the live-documentation consumer reads
+// `CONSULTATION_REALTIME_DEFAULTS` as its code default.
+export * from './descriptors/consultation-realtime.descriptors';
 export * from './descriptors/agentic-eval.descriptors';
 export * from './descriptors/agentic-fewshot.descriptors';
 // Batch upload ceilings — the gateway reads `BATCH_TRANSCRIPTION_DEFAULTS` as

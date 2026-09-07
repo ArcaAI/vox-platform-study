@@ -86,6 +86,7 @@ import { textWireProvider } from './text-generation-spec';
 import type { CompiledModelRef } from './agent-wire-model';
 import { AgentDtoMapper } from './agent.dto.mapper';
 import { codeForConfigProblem, hasBlocking, type AgentFinding, type AgentValidationReport } from './agent-findings';
+import { agentReasoningProblems } from './agent-reasoning';
 import {
   agentBundlePayloadProblems,
   buildAgentBundlePayload,
@@ -1753,6 +1754,13 @@ export class AgentService extends BaseService implements IAgentService {
     const parameters = asRecord(view.parameters);
     if (parameters) {
       for (const problem of jsonSchemaValueProblems(AGENT_PARAMETER_SCHEMAS[view.task], parameters, 'parameters')) {
+        findings.push({ severity: 'ERROR', code: 'SCHEMA', path: 'parameters', message: problem });
+      }
+      // TASK-891 C1 (OD-4) — `generation.reasoning`, refused with a message that NAMES the
+      // four efforts. The schema gate above refuses the same values and says only "matches
+      // none of the `enum`", which is a puzzle rather than a refusal for someone who wrote
+      // `effort: "max"`.
+      for (const problem of agentReasoningProblems(parameters)) {
         findings.push({ severity: 'ERROR', code: 'SCHEMA', path: 'parameters', message: problem });
       }
     }
