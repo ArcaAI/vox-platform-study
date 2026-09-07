@@ -67,7 +67,9 @@ import { AgenticProvider, useArca } from '@arcaai/vox';
 
 const config = {
   api: {
-    baseUrl: 'https://api.arcaai.example.com',
+    // The `/api/v1` prefix is PART of baseUrl — every SDK route is relative to it.
+    // Omit it and each call answers the gateway's root 404 with nothing thrown.
+    baseUrl: 'https://api.arcaai.example.com/api/v1',
     accessToken: 'jwt-from-your-auth-flow', // or apiKey for system keys (business plane only — @arcaai/vox carries no admin hooks)
     tenantId: 'tenant-id',
   },

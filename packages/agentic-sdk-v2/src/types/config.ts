@@ -204,7 +204,17 @@ export interface AgenticConfig {
  * API Configuration
  */
 export interface ApiConfig {
-  /** Base URL for the API (e.g., 'https://api.arcaai.com') */
+  /**
+   * Base URL for the API, INCLUDING the gateway's `/api/v1` prefix — e.g.
+   * `https://api.arcaai.com/api/v1`, or `http://localhost:8868/api/v1` in local dev.
+   *
+   * The prefix is part of this value, not something the client appends: every route constant
+   * in the SDK is relative to it (`/agents`, `/consultations`, `/auth/me`), and
+   * `getStreamBaseUrl()` re-derives the prefix for a split gateway on the same assumption.
+   * Omitting it is silent — nothing throws, and every call answers the gateway's root-level
+   * 404 (`Cannot GET /agents?task=SPEECH_TO_TEXT`). TASK-890 black-box J6 lost a session to
+   * exactly that, following the example this comment used to carry.
+   */
   baseUrl: string;
   /** JWT/OAuth2 access token sent as Authorization: Bearer (for user identity) */
   accessToken?: string;
