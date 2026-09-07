@@ -3636,13 +3636,24 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     // TEXT is a stateless gateway with no model default. Since TASK-876 the tenant's ASSIGNED
     // TEXT_GENERATION agent (`department → tenant → SYSTEM`) selects the model, through the ONE
-    // fail-closed seam every TS text caller shares (`resolveTextSelection`). The `live` task is
-    // telemetry (`task_key`), not a selector. Fall back to env only when the resolver is not
-    // wired (kept for non-DI construction paths).
+    // fail-closed seam every TS text caller shares (`resolveTextSelection`).
+    //
+    // TASK-891 — `live` is a SELECTOR again, not merely the `task_key` telemetry this comment
+    // used to claim: it rides the cascade as the reserved `phase:live` assignment tag, so a
+    // tenant can assign a distinct live-tier agent beside its finalize one. That is the whole
+    // point of the split — one agent holds one reasoning posture, and the realtime note needs
+    // the opposite of what the finalize synthesis wants.
+    //
+    // `generation` is that agent's authored `parameters.generation`, carried out of the seam so
+    // its reasoning posture can ride the `extra` ride-along below. Without it the live agent was
+    // selected and inert. Only the posture is read here: the token budget stays this lane's own
+    // (`this.textMaxTokens`), as it was before the split.
+    // Fall back to env only when the resolver is not wired (kept for non-DI construction paths).
     let provider = this.textProvider;
     let model = this.textModel;
+    let generation: unknown;
     if (this.harnessPolicyService) {
-      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+      ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic sectioned object (parsed by parseDocumentJson); ollama ignores it so we
@@ -3668,7 +3679,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // of being forbidden to emit anything but a string.
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
     };
-    const stats = await this.postTextGenerate(payload, tenantId, signal, consultationId);
+    const stats = await this.postTextGenerate(payload, tenantId, signal, consultationId, undefined, generation);
     // Stamp WHICH routing task served this flush (`text.live`, never `text.finalize` — this
     // method is the live tier exclusively). TEXT itself has no notion of this key; it only
     // echoes back the provider/model it actually ran, so the tier provenance is stamped here.
@@ -3894,9 +3905,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Same LIVE tier the running note uses, and fail-CLOSED the same way: provider/model
     // SELECTION is never substituted with an env default — the tenant's assigned
     // TEXT_GENERATION agent selects (TASK-876; the node `llmBinding` is retired).
+    // TASK-891 — and the same agent's `generation`, so this hop obeys the reasoning posture the
+    // running note obeys. It shares the flush's budget; a posture honoured on one of the three
+    // live hops and ignored on the others buys back a fraction of the saving.
     let provider = this.textProvider;
     let model = this.textModel;
-    if (this.harnessPolicyService) ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    let generation: unknown;
+    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     const payload = {
       // The entity spans are DETECTOR HINTS: they tell the model where a clinical term was found
@@ -3908,10 +3923,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       max_tokens: this.textMaxTokens,
       stream: false as const,
     };
-    // layer the platform admin's runtime profile (hyperparameters + engine
-    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
-    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
-    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
+    // layer the SELECTED agent's engine ride-alongs (its reasoning posture, as
+    // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
+    // Caller-set fields win; an agent with no opinion injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
@@ -3991,10 +4006,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const { sourceText, context, entities, tenantId, config } = input;
     const systemPrompt = await this.resolveGovernedNodePrompt(config, 'findings');
 
-    // same selection as the grammar pass: the tenant's assigned TEXT_GENERATION agent.
+    // same selection as the grammar pass: the tenant's assigned TEXT_GENERATION agent, and
+    // (TASK-891) the `generation` block that agent authored, so this hop honours the same
+    // reasoning posture as the other two on the flush.
     let provider = this.textProvider;
     let model = this.textModel;
-    if (this.harnessPolicyService) ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    let generation: unknown;
+    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     const payload = {
       // The context the owner's sentence names, handed over as authored. Entity spans ride along
@@ -4010,10 +4028,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       max_tokens: this.textMaxTokens,
       stream: false as const,
     };
-    // layer the platform admin's runtime profile (hyperparameters + engine
-    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
-    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
-    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
+    // layer the SELECTED agent's engine ride-alongs (its reasoning posture, as
+    // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
+    // Caller-set fields win; an agent with no opinion injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — Lane N's mining call is a generation too. It carries no consultation id

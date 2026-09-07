@@ -14,11 +14,13 @@
  *  4. **The frozen context schema is ENFORCING** (orchestrator decision, TASK-859 invariant 3): a
  *     call omitting a required context kind is refused, and the refusal NAMES what is missing.
  */
+import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { AgentTask, ResourceStatusType, SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { AgentService } from '../agent.service';
 import { AgentDraftTestService } from '../agent-draft-test.service';
+import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 
@@ -280,6 +282,19 @@ describe('testDraft — a non-dry run', () => {
     );
   });
 
+  /**
+   * TASK-891 (OD-4) — the bench is where an author CHECKS the reasoning control they just set, so
+   * it must obey it. `AgentService` compiles the draft and holds its `parameters.generation`; the
+   * transport builds the body. The block has to cross that boundary or the toggle looks broken on
+   * the one screen built to prove it works.
+   */
+  it('hands the compiled draft`s generation block to the transport, so the bench obeys the reasoning control', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ parameters: { generation: { temperature: 0.1, reasoning: { enabled: false } } } }));
+    await makeService().testDraft('agent-1', { dryRun: false, context: { clinic: 'Ward B' }, input: { text: 'Summarise this.' } });
+
+    expect(mockDraftTest.submit).toHaveBeenCalledWith(expect.objectContaining({ generation: { temperature: 0.1, reasoning: { enabled: false } } }));
+  });
+
   it('finalize re-checks the agent (a taskId alone is not authorisation) and delegates the read-back', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
     mockDraftTest.finalize.mockResolvedValue({ output: 'done', provider: 'lm-studio', model: 'gemma', usage: null });
@@ -354,6 +369,50 @@ describe('AgentDraftTestService — metering (§3.13, OD-E)', () => {
         common: expect.objectContaining({ operation: 'generate.stream', attributesJson: expect.objectContaining({ trigger: 'AGENT_TEST' }) }),
       }),
     );
+  });
+
+  /**
+   * The other half of the same crossing, asserted against the REAL `TextRequestEnrichmentService`
+   * rather than a double: the claim is about the body that service builds. `reasoning` is the one
+   * hyper-parameter with no first-class field on `GenerateRequest`, so it rides `extra` — which
+   * `apps/text` forwards as `extra_body`.
+   */
+  describe('TASK-891 — the draft`s reasoning posture rides `extra`', () => {
+    function makeWiredTransport() {
+      return new AgentDraftTestService(
+        cls as never,
+        httpService as never,
+        configService as never,
+        undefined as never,
+        new TextRequestEnrichmentService({ get: vi.fn().mockReturnValue(TENANT) } as never, undefined, undefined) as never,
+        entitlements as never,
+        usageLedger as never,
+      );
+    }
+
+    const base = { tenantId: TENANT, prompt: 'p', systemPrompt: null, provider: 'lm-studio', model: 'gemma', guardrailEnabled: true };
+
+    beforeEach(() => {
+      // A quota rejection from a sibling case survives `clearAllMocks` (it clears calls, not
+      // implementations), and would stop the post this spec is about ever happening.
+      entitlements.assertMeterQuota.mockResolvedValue(undefined);
+      // The meta frame `readGenerationId` waits for, so `submit` completes instead of timing out.
+      post.mockImplementation(async () => ({ data: Readable.from(['data: {"generation_id":"task-1"}\n\n']) }));
+    });
+
+    const sentBody = () => post.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+
+    it('a draft that disables reasoning instructs the engine not to reason', async () => {
+      await makeWiredTransport().submit({ ...base, generation: { reasoning: { enabled: false } } });
+
+      expect(sentBody().extra).toEqual({ reasoning_effort: 'minimal' });
+    });
+
+    it('a draft with no reasoning opinion sends no `extra` key at all', async () => {
+      await makeWiredTransport().submit({ ...base, generation: { temperature: 0.1 } });
+
+      expect(Object.keys(sentBody())).not.toContain('extra');
+    });
   });
 
   it('refuses to finalize a task that has not completed, naming the state', async () => {

@@ -49,6 +49,51 @@ import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest 
 export type TextRoutingTask = 'live' | 'finalize' | 'test';
 
 /**
+ * What a text SELECTION is: the endpoint to call, plus the generation block the agent that was
+ * selected actually authored.
+ *
+ * `generation` closes TASK-891's other half. The task became a real selector (above), and the
+ * live-tier agent is seeded with `parameters.generation.reasoning = { enabled: false }` — but
+ * this method returned `{ provider, model }` alone, so the block was resolved during the cascade
+ * and then DISCARDED. Every assigned-agent caller therefore passed nothing as `generation` to
+ * `TextRequestEnrichmentService.applyTextRuntimeProfile`, and the agent's posture was selected
+ * and inert. Measured on `gemma-4-e2b-it-qat`: `reasoning_effort` unset costs 5168 ms / 184
+ * reasoning tokens where `minimal` costs 1237 ms / 30, against a 20 s live-flush budget.
+ *
+ * Two properties are load-bearing:
+ *
+ *   - IT IS THE BLOCK VERBATIM, not a reasoning-shaped extract. This is the same value
+ *     `callTextCandidate` builds for a `core.agent` node and the same argument
+ *     `applyTextRuntimeProfile` takes, so both live paths speak one shape and a future
+ *     ride-along on `parameters.generation.*` needs no change here.
+ *   - IT IS OPTIONAL, AND ABSENT WHEN UNAUTHORED. Selection is `failMode: closed` and has
+ *     callers well outside this seam (`dna-writing-style.processor.ts`, the finalize
+ *     processors, the TEXT proxy and compat controller); an agent with no opinion must yield
+ *     exactly the shape they already destructure, with no `generation: undefined` key to be
+ *     spread onto a wire by accident.
+ *
+ * What the caller then DOES with it stays the caller's decision: the assigned-agent live path
+ * reads only the reasoning posture from it and keeps its own token budget.
+ */
+export interface TextSelection {
+  provider: string;
+  model: string;
+  /** `parameters.generation` of the agent that served, when it authored one. */
+  generation?: Record<string, unknown>;
+}
+
+/**
+ * The authored `parameters.generation` of a resolved candidate, or `undefined` when it has none
+ * to state. Lenient by design — this runs on the live flush path, where a malformed block must
+ * degrade to "no opinion" rather than fail a consultation over a hyper-parameter (the same
+ * posture `readAgentReasoning` takes one layer down).
+ */
+function generationOf(candidate: { parameters?: Record<string, unknown> }): Record<string, unknown> | undefined {
+  const generation = candidate.parameters?.generation;
+  return typeof generation === 'object' && generation !== null && !Array.isArray(generation) ? (generation as Record<string, unknown>) : undefined;
+}
+
+/**
  * The reserved selector KEY the routing task travels as (TASK-884 grammar: lower-case
  * `key:value`, compared by equality everywhere).
  *
@@ -549,11 +594,7 @@ export class HarnessPolicyService {
    * Throws (fail-closed) when nothing is assigned or the resolver is not wired — selection is
    * `failMode: closed`; a tenant veto of the primary provider propagates unchanged.
    */
-  async resolveTextSelection(
-    tenantId?: string,
-    task: TextRoutingTask = 'finalize',
-    departmentId?: string | null,
-  ): Promise<{ provider: string; model: string }> {
+  async resolveTextSelection(tenantId?: string, task: TextRoutingTask = 'finalize', departmentId?: string | null): Promise<TextSelection> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
     if (!this.textAgents) {
@@ -567,7 +608,8 @@ export class HarnessPolicyService {
         departmentId: departmentId ?? null,
         selectorTags: textPhaseSelectorTags(task),
       });
-      return { provider: spec.primary.provider, model: spec.primary.model };
+      const generation = generationOf(spec.primary);
+      return { provider: spec.primary.provider, model: spec.primary.model, ...(generation ? { generation } : {}) };
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw new BadRequestException(
@@ -585,7 +627,7 @@ export class HarnessPolicyService {
    * thing that must never happen instead is the retired `HarnessPolicy` columns passing through
    * as a selection. A veto (or any non-`BadRequestException`) still propagates.
    */
-  private async resolveTextSelectionOrNull(tenantId: string): Promise<{ provider: string; model: string } | null> {
+  private async resolveTextSelectionOrNull(tenantId: string): Promise<TextSelection | null> {
     try {
       // No department: this route is reached with a tenant and (optionally) a CONSULTATION id,
       // and deriving the consultation's department here would mean a consultation read this
@@ -616,12 +658,17 @@ export class HarnessPolicyService {
    * (the primary IS the platform default), the resolver is un-wired, or the lookup faults. A
    * `null` means the caller runs no fallback. The per-tenant `text.*.fallback` AiTaskDefault
    * keys are no longer read.
+   *
+   * TASK-891 — the candidate's OWN `generation` rides along, exactly as on the primary. A
+   * fallback exists to survive a provider outage, not to change how hard the engine thinks: one
+   * that silently reasons where the primary declined is the same defect one layer down, and the
+   * only way a caller can honour the switched-to agent's posture is to be handed it.
    */
   async resolveTextFallbackSelection(
     tenantId?: string,
     task: Exclude<TextRoutingTask, 'test'> = 'finalize',
     departmentId?: string | null,
-  ): Promise<{ provider: string; model: string } | null> {
+  ): Promise<TextSelection | null> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid || !this.textAgents) return null;
     try {
@@ -634,7 +681,9 @@ export class HarnessPolicyService {
       });
       if (!spec.fallback.autoSwitch) return null;
       const next = spec.fallback.chain[0];
-      return next ? { provider: next.provider, model: next.model } : null;
+      if (!next) return null;
+      const generation = generationOf(next);
+      return { provider: next.provider, model: next.model, ...(generation ? { generation } : {}) };
     } catch (error) {
       this.logger.warn({
         message: `Text fallback resolution failed for the '${task}' task — no fallback runs`,
