@@ -8,6 +8,8 @@ import {
   AgentTask,
   ConsultationContextSchemaRepository,
   CoreDatabaseService,
+  DocumentTemplateRepository,
+  DocumentTemplateVersionRepository,
   PipelinePolicyScope,
   PromptTemplateRepository,
   ResourceType,
@@ -22,6 +24,7 @@ import { IAgentService } from '../../agent/IAgentService';
 import { IAgentAssignmentService } from '../../agent-assignment/IAgentAssignmentService';
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../../agent-assignment/IAgentAssignmentService';
 import { IConsultationContextSchemaService } from '../../consultation-context-schema/IConsultationContextSchemaService';
+import { IDocumentTemplateService } from '../../document-template/IDocumentTemplateService';
 import { IPromptManagementService } from '../../prompt-management/IPromptManagementService';
 import { IWorkflowDefinitionService } from '../../workflow-definition/IWorkflowDefinitionService';
 import {
@@ -35,7 +38,7 @@ import {
 } from './ITenantReferenceSetService';
 
 /**
- * The four collaborators, narrowed to the ONE method this service needs of each.
+ * The five collaborators, narrowed to the method(s) this service needs of each.
  *
  * Declared here rather than widened onto `IAgentService` / `IPromptManagementService` /
  * `IWorkflowDefinitionService`, because a port should say what its CONSUMER requires: this
@@ -56,6 +59,25 @@ interface WorkflowClonePort {
 }
 interface ContextSchemaClonePort {
   cloneFromSystem(slug: string, tenantId: string): Promise<{ id: string }>;
+}
+/**
+ * `DocumentTemplateService` has no `cloneFromSystem`, so this is the only port assembled from
+ * the owning service's ORDINARY surface rather than from a bespoke clone method. It is the same
+ * two steps `ConsultationContextSchemaService.cloneFromSystem` performs internally — create the
+ * head, then publish v1 from the source's pinned shape — run here instead, under the target
+ * tenant's context. Reusing `create` + `publish` rather than writing rows directly is what keeps
+ * shape validation, compilation, the pin move and the single-default rule in ONE place.
+ */
+interface DocumentTemplateClonePort {
+  create(dto: {
+    slug: string;
+    name: string;
+    description?: string;
+    isDefault?: boolean;
+    sourceTemplateSlug?: string;
+    templateLocked?: boolean;
+  }): Promise<{ id: string }>;
+  publish(id: string, dto: { shape: Record<string, unknown>; changeReason?: string }): Promise<unknown>;
 }
 
 const EMPTY: ReferenceSetKindOutcome = { added: 0, skipped: 0, failed: 0 };
@@ -78,11 +100,13 @@ function isRefusal(error: unknown): boolean {
  *
  * ## Why a service and not five call sites
  *
- * The five kinds are ORDERED, and the order carries meaning rather than convenience: an agent's
+ * The six kinds are ORDERED, and the order carries meaning rather than convenience: an agent's
  * instruction is re-pointed at the tenant's prompt clone, so prompts precede agents; an
  * assignment names a slug that must already resolve to a PUBLISHED agent in the tenant, so
- * agents precede assignments. Spreading that across `TenantService.create` would make the order
- * an accident of statement sequence.
+ * agents precede assignments; a workflow's generation node binds a document template by ROW ID
+ * that the clone re-points by slug, so document templates precede workflow definitions.
+ * Spreading that across `TenantService.create` would make the order an accident of statement
+ * sequence.
  *
  * ## What it is NOT
  *
@@ -116,9 +140,11 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
     private readonly assignmentRepository: AgentAssignmentRepository,
     private readonly workflowDefinitionRepository: WorkflowDefinitionRepository,
     private readonly contextSchemaRepository: ConsultationContextSchemaRepository,
+    private readonly documentTemplateRepository: DocumentTemplateRepository,
+    private readonly documentTemplateVersionRepository: DocumentTemplateVersionRepository,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     /**
-     * The four kind-owning services are resolved from the CONTAINER at call time rather than
+     * The five kind-owning services are resolved from the CONTAINER at call time rather than
      * injected, because importing their modules here closes a pre-existing module cycle that
      * stops the gateway booting (see this module's doc comment). `strict: false` looks the token
      * up across the whole application, which is exactly right: this service does not care WHICH
@@ -168,6 +194,7 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
         promptTemplates: { ...EMPTY },
         agents: { ...EMPTY },
         agentAssignments: { ...EMPTY },
+        documentTemplates: { ...EMPTY },
         workflowDefinitions: { ...EMPTY },
       },
       warnings: [],
@@ -214,6 +241,8 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
         return this.copyAgents(tenantId, summary);
       case 'agentAssignments':
         return this.copyAgentAssignments(tenantId, summary);
+      case 'documentTemplates':
+        return this.copyDocumentTemplates(tenantId, summary);
       case 'workflowDefinitions':
         return this.copyWorkflowDefinitions(tenantId, summary);
     }
@@ -369,6 +398,108 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
             error,
           );
         }
+      }
+    }
+  }
+
+  /**
+   * TASK-891 — every SYSTEM `DocumentTemplate`, with the SHAPE of its pinned version.
+   *
+   * ## Why this kind has to exist at all
+   *
+   * `DocumentTemplate` is CONTENT (`00-project-context.md` §"Content is cloned; configuration
+   * cascades"): it is deliberately absent from `SYSTEM_SHARED_READ_MODELS`, and
+   * `DocumentTemplateService.resolveForGeneration` reads the REQUEST tenant only. A SYSTEM row
+   * is therefore INVISIBLE to a tenant holding no copy — there is no cascade to widen into. The
+   * SYSTEM rows have existed since `seed/27-document-template-library.ts`, which also clones
+   * them into the already-seeded tenants; this is the same copy for a tenant created at runtime,
+   * and the only way the `reference-set/sync` route can repair one that missed it.
+   *
+   * ## The copy
+   *
+   * Two steps, exactly the ones `ConsultationContextSchemaService.cloneFromSystem` performs for
+   * the head/version pair it owns: `create` the tenant's own head, then `publish` v1 from the
+   * SOURCE's pinned shape, which validates it, compiles the artifacts and moves the pin — so the
+   * clone is servable the moment provisioning finishes. The clone's lineage restarts at 1: a
+   * tenant's version history is its own.
+   *
+   * Three deliberate choices:
+   *
+   *  - **`isDefault: false`, never mirrored from the source.** `DocumentTemplateService.create`
+   *    DEMOTES the tenant's existing default when asked for a new one, and a provisioning step
+   *    must never silently change a choice the tenant made. The selector is the workflow node's
+   *    `documentTemplateSlug`, so an unnamed lane keeps falling open to the platform SOAP shape —
+   *    the same reasoning `27-document-template-library.ts` records.
+   *  - **CREATE-ONLY, keyed on the SLUG** (`@@unique([tenantId, slug])` is the row's real
+   *    identity). A tenant that already carries the slug — provisioned earlier, or authored and
+   *    then edited — is SKIPPED without its row being read for content, patched or re-published.
+   *    That is what makes "a re-sync cannot clobber a tenant edit" a property of the control
+   *    flow rather than a promise. Fast-forwarding a still-`templateLocked` clone is the
+   *    `refresh-locked` mode, which is declared and not implemented.
+   *  - **An unpinned SOURCE is a REFUSAL, not a silent half-copy.** An unservable reference row
+   *    would produce a clone `isServable` skips; naming the platform defect here is the point of
+   *    the warnings list.
+   *
+   * A failure BETWEEN the create and the publish leaves an unservable DRAFT that a later
+   * re-sync will skip on the slug — reported by name, and the same exposure
+   * `ConsultationContextSchemaService.cloneFromSystem` carries. Repairing it is a deliberate
+   * publish by the tenant, not something provisioning may guess at.
+   */
+  private async copyDocumentTemplates(tenantId: string, summary: ReferenceSetSummary): Promise<void> {
+    const outcome = summary.kinds.documentTemplates;
+    const templates = this.port<DocumentTemplateClonePort>(IDocumentTemplateService);
+    if (!templates) {
+      outcome.failed += 1;
+      summary.warnings.push('documentTemplates: the document-template service is not wired, so no template was provisioned.');
+      return;
+    }
+
+    // Read under SYSTEM's own context: this model is not SYSTEM-shared-read, so there is no
+    // widening to lean on and none is wanted — naming the tenant each step means is the
+    // `syncToTenants` discipline.
+    const sources = await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, () =>
+      this.documentTemplateRepository.findAll({ where: { tenantId: SYSTEM_TENANT_ID } }),
+    );
+
+    for (const source of sources) {
+      try {
+        const existing = await runInTenantContext(this.clsService, tenantId, () =>
+          this.documentTemplateRepository.findByTenantAndSlug(tenantId, source.slug),
+        );
+        if (existing) {
+          outcome.skipped += 1;
+          continue;
+        }
+
+        const pinnedVersionNumber = source.pinnedVersionNumber;
+        const pinned =
+          pinnedVersionNumber == null
+            ? null
+            : await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, () =>
+                this.documentTemplateVersionRepository.findByTemplateAndVersionNumber(source.id, pinnedVersionNumber),
+              );
+        if (!pinned) {
+          throw new Error('the reference row carries no pinned version, so the clone would never be servable');
+        }
+
+        await runInTenantContext(this.clsService, tenantId, async () => {
+          const created = await templates.create({
+            slug: source.slug,
+            name: source.name,
+            description: source.description ?? undefined,
+            isDefault: false,
+            sourceTemplateSlug: source.slug,
+            templateLocked: true,
+          });
+          await templates.publish(created.id, {
+            shape: pinned.shape as Record<string, unknown>,
+            changeReason: 'Provisioned from the platform reference set',
+          });
+        });
+        outcome.added += 1;
+      } catch (error) {
+        outcome.failed += 1;
+        this.warn(summary, `documentTemplates: '${source.slug}' was not provisioned`, { tenantId, slug: source.slug }, error);
       }
     }
   }
