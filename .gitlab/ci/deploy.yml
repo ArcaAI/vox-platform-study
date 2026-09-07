@@ -58,9 +58,42 @@
     - git config --global user.name "GitLab CI"
     - |
       set -eu
+      # ── KUSTOMIZE COMES OUT OF A REGISTRY IMAGE, NOT OFF GITHUB ─────────────
+      # This used to `curl` the release tarball from github.com. On 2026-09-07
+      # that call hung and job 16852 died with
+      #   curl: (28) Failed to connect to github.com port 443 after 135337 ms
+      #   tar: kustomize: not found in archive
+      # — a green pipeline (every build, lint and scan passed) whose ONLY
+      # failure was fetching a build tool, so the digests never reached
+      # hope-v2-deployment and the dev cluster silently stayed a build behind.
+      # deploy-runner-01 had reached github.com fine four days earlier in
+      # pipeline #1121, which is what makes this the wrong dependency to carry:
+      # the promotion step is the last mile of a deploy and must not fail on a
+      # host nothing else in the deploy path needs.
+      #
+      # `image: docker:28` + `.buildx-registry-login` mean this job already has
+      # a Docker daemon and is already authenticated, so the binary can be
+      # lifted straight out of the upstream image — the same
+      # `registry.k8s.io/kustomize/kustomize` that hope-v2-deployment's own
+      # `render` CI job runs as its job image, i.e. a registry these runners
+      # already pull from on every deployment-repo pipeline.
+      #
+      # KUSTOMIZE_IMAGE is overridable so this can point at the internal mirror
+      # ("$REGISTRY/mirror/kustomize:v5.4.3") once the image is mirrored, which
+      # removes the last external host from the promotion path entirely.
       KUSTOMIZE_VERSION="5.4.3"
-      curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
-        | tar xz -C /usr/local/bin kustomize
+      KUSTOMIZE_IMAGE="${KUSTOMIZE_IMAGE:-registry.k8s.io/kustomize/kustomize:v${KUSTOMIZE_VERSION}}"
+      n=0
+      until docker pull -q "$KUSTOMIZE_IMAGE"; do
+        n=$((n+1))
+        [ "$n" -ge 3 ] && { echo "[kustomize] cannot pull $KUSTOMIZE_IMAGE after $n attempts" >&2; exit 1; }
+        echo "[kustomize] pull failed, retry $n/3 in $((n*5))s" >&2
+        sleep $((n*5))
+      done
+      cid="$(docker create "$KUSTOMIZE_IMAGE")"
+      docker cp "$cid:/app/kustomize" /usr/local/bin/kustomize
+      docker rm -f "$cid" >/dev/null
+      chmod +x /usr/local/bin/kustomize
       export PATH="/usr/local/bin:$PATH"
       kustomize version
   script:
