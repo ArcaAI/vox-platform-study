@@ -1,8 +1,8 @@
 /**
  * The Agent entity's TASK-TYPED configuration contract (TASK-863 §3.2).
  *
- * An Agent performs exactly one task — `SPEECH_TO_TEXT`, `TEXT_GENERATION` or `TEXT_TO_SPEECH`
- * — on ONE registered model (plus ordered fallbacks of the same task). Its `parameters` and
+ * An Agent performs exactly one task — `SPEECH_TO_TEXT`, `TEXT_GENERATION`, `TEXT_TO_SPEECH` or
+ * `NAMED_ENTITY_RECOGNITION` (TASK-930) — on ONE registered model (plus ordered fallbacks of the same task). Its `parameters` and
  * `instruction` are typed per task, and its `inputSchema` / `outputSchema` default per task so a
  * workflow `core.agent` node (TASK-864), an SDK caller (TASK-865) and the generated OpenAPI all
  * agree on what goes in and what comes out.
@@ -25,20 +25,30 @@
  * schema must outlive it.
  */
 import { FORBIDDEN_CONFIG_KEYS, hyperparameterCapabilityProblems, type ProviderGenerationCapabilities } from './agentic-contract';
+import { canonicalJson } from './canonical-json';
 import type { NodeConfigSchema } from './node-config-schemas';
 
 // =============================================================================================
 // Task taxonomy
 // =============================================================================================
 
-export const AGENT_TASKS = Object.freeze(['SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_TO_SPEECH'] as const);
+export const AGENT_TASKS = Object.freeze(['SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_TO_SPEECH', 'NAMED_ENTITY_RECOGNITION'] as const);
 export type AgentTask = (typeof AGENT_TASKS)[number];
 
-/** The `AiProviderConnection.service` an agent's credential resolves under, per task. */
-export const AGENT_TASK_SERVICE: Readonly<Record<AgentTask, 'stt' | 'llm' | 'tts'>> = Object.freeze({
+/**
+ * The `AiProviderConnection.service` an agent's credential resolves under, per task.
+ *
+ * `null` for `NAMED_ENTITY_RECOGNITION` (TASK-930): token classification is served by
+ * `apps/nlp` from platform-hosted weights, and `AiProviderConnection.service` has exactly three
+ * members (`stt` / `llm` / `tts`). A NER agent therefore has no BYO credential tier — it is
+ * always `platform-self-host`, and a resolver must SKIP the override lookup rather than invent a
+ * service for it. `MODEL_TASK_TYPE_SERVICE[TOKEN_CLASSIFICATION]` is `null` for the same reason.
+ */
+export const AGENT_TASK_SERVICE: Readonly<Record<AgentTask, 'stt' | 'llm' | 'tts' | null>> = Object.freeze({
   SPEECH_TO_TEXT: 'stt',
   TEXT_GENERATION: 'llm',
   TEXT_TO_SPEECH: 'tts',
+  NAMED_ENTITY_RECOGNITION: null,
 });
 
 /** The registry `AiModel.taskType` a model must carry to back an agent of each task. */
@@ -46,6 +56,7 @@ export const AGENT_TASK_MODEL_TASK_TYPE: Readonly<Record<AgentTask, string>> = O
   SPEECH_TO_TEXT: 'AUTOMATIC_SPEECH_RECOGNITION',
   TEXT_GENERATION: 'TEXT_GENERATION',
   TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
+  NAMED_ENTITY_RECOGNITION: 'TOKEN_CLASSIFICATION',
 });
 
 /**
@@ -63,6 +74,9 @@ export const AGENT_PROTOCOLS: Readonly<Record<AgentTask, readonly AgentProtocol[
   SPEECH_TO_TEXT: Object.freeze(['http', 'socket'] as const),
   TEXT_GENERATION: Object.freeze(['http', 'http-sse'] as const),
   TEXT_TO_SPEECH: Object.freeze(['http', 'http-sse'] as const),
+  // TASK-930 — one-shot: the whole document is classified in a single pass, so there is nothing
+  // to stream and no session to hold open. `?mode=stream` on a NER agent is refused, not degraded.
+  NAMED_ENTITY_RECOGNITION: Object.freeze(['http'] as const),
 });
 
 export function isAgentTask(value: unknown): value is AgentTask {
@@ -463,10 +477,36 @@ const TEXT_TO_SPEECH_PARAMETERS: NodeConfigSchema = Object.freeze({
  */
 export const ASR_ENDPOINTING_MODEL_SLUG_PATH: readonly string[] = Object.freeze(['streaming', 'semantic', 'modelSlug']);
 
+/**
+ * TASK-930 — the two knobs `apps/nlp`'s `POST /api/v1/classify/tokens` actually acts on.
+ *
+ * No `model`, no `labels` (that is the INSTRUCTION — what to look for, not how hard to look),
+ * and no fallback governance: token classification is a single platform-hosted pass with no
+ * provider to fail over to, so a `fallback` block here would be a dead knob.
+ */
+const NAMED_ENTITY_RECOGNITION_PARAMETERS: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    threshold: Object.freeze({
+      type: 'number',
+      minimum: 0,
+      maximum: 1,
+      description: 'Minimum span confidence to emit. Unset = the checkpoint`s own default.',
+    }),
+    aggregation: Object.freeze({
+      type: 'string',
+      enum: Object.freeze(['simple', 'first', 'max', 'average']),
+      description: 'How sub-token scores are combined into one span score (the token-classification aggregation strategy).',
+    }),
+  }),
+});
+
 export const AGENT_PARAMETER_SCHEMAS: Readonly<Record<AgentTask, NodeConfigSchema>> = Object.freeze({
   SPEECH_TO_TEXT: SPEECH_TO_TEXT_PARAMETERS,
   TEXT_GENERATION: TEXT_GENERATION_PARAMETERS,
   TEXT_TO_SPEECH: TEXT_TO_SPEECH_PARAMETERS,
+  NAMED_ENTITY_RECOGNITION: NAMED_ENTITY_RECOGNITION_PARAMETERS,
 });
 
 // =============================================================================================
@@ -541,10 +581,32 @@ const SPEECH_TO_TEXT_INSTRUCTION: NodeConfigSchema = Object.freeze({
   }),
 });
 
+/**
+ * TASK-930 — a NER agent's instruction is its LABEL SET, and nothing else.
+ *
+ * Zero-shot checkpoints (GLiNER-style) take the list on the wire; fixed-label checkpoints
+ * (`medical-ner`) ignore it and emit their own schema. Declaring it either way is deliberate:
+ * the agent says what the author is looking for, and the model row decides whether that request
+ * is honoured — the same reference-only posture the other three tasks have.
+ */
+const NAMED_ENTITY_RECOGNITION_INSTRUCTION: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    labels: Object.freeze({
+      type: 'array',
+      maxItems: 64,
+      items: Object.freeze({ type: 'string', minLength: 1, maxLength: 64 }),
+      description: 'The entity types to extract. Honoured by zero-shot checkpoints; ignored by fixed-label ones.',
+    }),
+  }),
+});
+
 export const AGENT_INSTRUCTION_SCHEMAS: Readonly<Record<AgentTask, NodeConfigSchema | null>> = Object.freeze({
   SPEECH_TO_TEXT: SPEECH_TO_TEXT_INSTRUCTION,
   TEXT_GENERATION: TEXT_GENERATION_INSTRUCTION,
   TEXT_TO_SPEECH: null,
+  NAMED_ENTITY_RECOGNITION: NAMED_ENTITY_RECOGNITION_INSTRUCTION,
 });
 
 // =============================================================================================
@@ -653,6 +715,42 @@ export const AGENT_IO_DEFAULTS: Readonly<Record<AgentTask, AgentIoDefaults>> = O
           }),
         }),
         durationMs: Object.freeze({ type: 'integer', minimum: 0 }),
+      }),
+    }),
+  }),
+  // TASK-930 §2.3 — character OFFSETS into the submitted text, not a re-serialised copy of it.
+  // `score` is optional because a fixed-label checkpoint may emit spans without one; everything
+  // that locates the span is required, because a span the caller cannot find is not a finding.
+  NAMED_ENTITY_RECOGNITION: Object.freeze({
+    inputSchema: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['text']),
+      properties: Object.freeze({
+        text: Object.freeze({ type: 'string', minLength: 1, description: 'The document to extract entities from.' }),
+        language: Object.freeze({ type: 'string', minLength: 2, maxLength: 16 }),
+      }),
+    }),
+    outputSchema: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['entities']),
+      properties: Object.freeze({
+        entities: Object.freeze({
+          type: 'array',
+          items: Object.freeze({
+            type: 'object',
+            additionalProperties: false,
+            required: Object.freeze(['text', 'label', 'start', 'end']),
+            properties: Object.freeze({
+              text: Object.freeze({ type: 'string' }),
+              label: Object.freeze({ type: 'string' }),
+              start: Object.freeze({ type: 'integer', minimum: 0 }),
+              end: Object.freeze({ type: 'integer', minimum: 0 }),
+              score: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
+            }),
+          }),
+        }),
       }),
     }),
   }),
@@ -859,6 +957,20 @@ export function agentConfigProblems(view: AgentConfigView, context: AgentConfigC
     }
   } else if (task === 'TEXT_GENERATION') {
     if (instruction !== undefined) textGenerationInstructionProblems(instruction, problems);
+  } else if (task === 'NAMED_ENTITY_RECOGNITION') {
+    // TASK-930 — the label set, and nothing else. Named explicitly rather than left to the
+    // SPEECH_TO_TEXT fall-through below, which would have told a NER author to write `hotwords`.
+    if (instruction !== undefined) {
+      const allowed = new Set(Object.keys((NAMED_ENTITY_RECOGNITION_INSTRUCTION.properties as Record<string, unknown>) ?? {}));
+      const stray = Object.keys(instruction).filter((key) => !allowed.has(key));
+      if (stray.length > 0) {
+        problems.push({
+          severity: 'ERROR',
+          path: 'instruction',
+          message: `A NAMED_ENTITY_RECOGNITION instruction carries only \`labels\`; found ${stray.map((key) => `\`${key}\``).join(', ')}.`,
+        });
+      }
+    }
   } else if (instruction !== undefined) {
     const allowed = new Set(Object.keys((SPEECH_TO_TEXT_INSTRUCTION.properties as Record<string, unknown>) ?? {}));
     const stray = Object.keys(instruction).filter((key) => !allowed.has(key));
@@ -913,6 +1025,45 @@ export function agentConfigProblems(view: AgentConfigView, context: AgentConfigC
 
 export function hasBlockingAgentProblems(problems: readonly AgentConfigProblem[]): boolean {
   return problems.some((problem) => problem.severity === 'ERROR');
+}
+
+// =============================================================================================
+// TASK-930 §5 — `Agent.outputSchema` is ENFORCED, not decorative
+// =============================================================================================
+
+/**
+ * The `json_schema` response format a declared `outputSchema` implies — the one thing that turns
+ * the column from documentation into a constraint the engine actually honours.
+ *
+ * Three deliberate silences, each returning `undefined`:
+ *   - the declared schema IS the task default (nothing was declared, so nothing is enforced);
+ *   - it is not an object schema with at least one property (an engine cannot constrain to it,
+ *     and half a constraint is worse than none because it looks like one);
+ *   - `parameters.responseFormat` is set — an explicit hyper-parameter is an author's decision
+ *     and always wins, including when it says `text`.
+ *
+ * The three consumers (the gateway invocation service, the harness `_run_text_generation` and the
+ * realtime `core.agent` handler) share this ONE rule so that an agent cannot behave differently
+ * depending on which lane happens to run it.
+ */
+export function outputSchemaResponseFormat(
+  slug: string,
+  outputSchema: unknown,
+  parameters: Record<string, unknown> | null | undefined,
+): { type: 'json_schema'; json_schema: { name: string; schema: Record<string, unknown>; strict: true } } | undefined {
+  if (parameters?.responseFormat !== undefined) return undefined;
+  if (!isPlainObject(outputSchema)) return undefined;
+  if (outputSchema.type !== 'object') return undefined;
+  const properties = outputSchema.properties;
+  if (!isPlainObject(properties) || Object.keys(properties).length === 0) return undefined;
+  const declared = canonicalJson(outputSchema);
+  for (const defaults of Object.values(AGENT_IO_DEFAULTS)) {
+    if (canonicalJson(defaults.outputSchema) === declared) return undefined;
+  }
+  return {
+    type: 'json_schema',
+    json_schema: { name: `${slug.replace(/[^a-z0-9_]/gi, '_')}_output`, schema: outputSchema, strict: true },
+  };
 }
 
 // =============================================================================================
