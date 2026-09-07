@@ -417,6 +417,30 @@ class NLPServiceConfig(BaseSettings):
     # emptying this list, not by editing code.
     inference_device_cpu_only_modules: str = Field(default="count_embed.gru")
 
+    # ── How many threads execute them ───────────────────────────
+    #
+    # PROCESS-BOOTSTRAP, and env-tier for a reason no other tier can satisfy:
+    # `OMP_NUM_THREADS` is read by the OpenMP runtime when torch is IMPORTED, so
+    # the value must be known before the first import and cannot change without
+    # a restart. That is exactly rule 09 §Configuration Tiers L1 ("anything that
+    # must change without a restart is not an env var" — and its converse). A
+    # control-plane pull would arrive long after the pool exists. It is also not
+    # a model/provider SELECTION, so the no-hardcoded-configuration rule is not
+    # engaged: the default here is `0`, meaning "measure, do not assume".
+    #
+    # `0` = auto, and auto reads the CONTAINER's CFS quota
+    # (`hope_env.cpu.effective_cpu_quota`) — never `os.cpu_count()`, which
+    # reports the NODE. On `hope-nlp` that difference was 2 vs 48 and cost a
+    # measured 11.7x on BERT-base FFN shapes, with the pod spending 7,292 s
+    # frozen on the quota against 573 s executing (TASK-892 §2.2). Read by
+    # `nlp.torch_runtime.configure_torch_threading`, which runs from
+    # `nlp/__init__.py` before any torch import.
+    torch_num_threads: int = Field(default=0, ge=0)
+    # `0` = auto, which is ONE inter-op thread: this service runs sequential
+    # encoder forward passes, so a second pool adds no parallelism and contends
+    # for the same quota.
+    torch_num_interop_threads: int = Field(default=0, ge=0)
+
     # Model-cache retention.
     #
     # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane
