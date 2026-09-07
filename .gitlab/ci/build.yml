@@ -401,13 +401,15 @@ build-tts:
 
 build-stt:
   extends: .build-template
-  # The two STT images are the only ones pulling the 846.9 MiB `torch` wheel, and
-  # this runner's link to PyPI is measurably unreliable (pipeline #1135, 2026-09-07:
-  # two runs cancelled mid-download at the 30-minute default). `UV_HTTP_TIMEOUT` in
-  # apps/stt/docker/Dockerfile stops uv restarting the transfer from zero; this wall
-  # is the second half — even an uninterrupted pull needs more than 30 minutes when
-  # the link is slow. Remove it once `torch` is baked into a base image.
-  timeout: 1h
+  # The two STT images are the only ones pulling the 846.9 MiB `torch` wheel.
+  # Measured in job 17000 (2026-09-07): 30m19s for that single wheel while a
+  # sibling build shared the link, then ~6MB/s for everything else once the
+  # sibling was cancelled. Three things keep this job inside its wall, and all
+  # three are needed: `UV_HTTP_TIMEOUT` (apps/stt/docker/Dockerfile) stops uv
+  # restarting the transfer from zero, build-stt-worker is serialised behind
+  # this job so the two never split the link, and this wall covers a fully cold
+  # cache. Remove all three once `torch` is baked into a base image.
+  timeout: 90m
   needs:
     - job: warm-up-base-images
       optional: true
@@ -428,18 +430,21 @@ build-stt:
 
 build-stt-worker:
   extends: .build-template
-  # The two STT images are the only ones pulling the 846.9 MiB `torch` wheel, and
-  # this runner's link to PyPI is measurably unreliable (pipeline #1135, 2026-09-07:
-  # two runs cancelled mid-download at the 30-minute default). `UV_HTTP_TIMEOUT` in
-  # apps/stt/docker/Dockerfile stops uv restarting the transfer from zero; this wall
-  # is the second half — even an uninterrupted pull needs more than 30 minutes when
-  # the link is slow. Remove it once `torch` is baked into a base image.
-  timeout: 1h
+  # Serialised behind build-stt ON PURPOSE. This target is `FROM ml-runtime`
+  # (apps/stt/docker/Dockerfile:436) — literally build-stt's own image plus a
+  # few layers — so run concurrently the two jobs rebuilt the same `ml-builder`
+  # stage and pulled the 846.9 MiB `torch` wheel twice over one link, halving
+  # each other's bandwidth. That is what walled pipelines #1135 and #1138. Run
+  # after, every shared layer is a cache hit and this job costs almost nothing.
+  # `artifacts: false` — this is an ordering edge, not a data one.
+  timeout: 90m
   needs:
     - job: warm-up-base-images
       optional: true
     - job: test-stt
       optional: true
+    - job: build-stt
+      artifacts: false
   variables:
     SERVICE_NAME: stt-worker
     # Root context: Dockerfile now references apps/stt/* paths + workspace lock.
