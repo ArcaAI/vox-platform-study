@@ -95,7 +95,7 @@ describe('DD-11 prompt pin — round-trip survival', () => {
 
   it('renders a field for the pin, so it is visible and editable rather than silently carried', async () => {
     renderWithProviders(
-      <InspectorPanel node={node()} configSchema={NODE_CONFIG_SCHEMAS['prompt.template_ref']} problems={[]} onConfigChange={vi.fn()} />,
+      <InspectorPanel tab="config" onTabChange={vi.fn()} node={node()} configSchema={NODE_CONFIG_SCHEMAS['prompt.template_ref']} problems={[]} onConfigChange={vi.fn()} />,
     );
 
     const field = (await screen.findByLabelText(/Prompt Version Number/i)) as HTMLInputElement;
@@ -105,7 +105,7 @@ describe('DD-11 prompt pin — round-trip survival', () => {
   it('KEEPS the pin when an UNRELATED field on the same node is edited and saved', async () => {
     const onConfigChange = vi.fn();
     renderWithProviders(
-      <InspectorPanel
+      <InspectorPanel tab="config" onTabChange={vi.fn()}
         node={node({ config: { promptTemplateId: TEMPLATE_ID, promptVersionNumber: PINNED_VERSION, variableBindings: {} } })}
         configSchema={NODE_CONFIG_SCHEMAS['prompt.template_ref']}
         problems={[]}
@@ -134,7 +134,7 @@ describe('DD-11 prompt pin — round-trip survival', () => {
       vi.fn(async () => Response.json({ data: [{ id: TEMPLATE_ID, name: 'SOAP note' }, { id: 'tpl-2', name: 'Discharge' }], count: 2 })),
     );
     const onConfigChange = vi.fn();
-    renderWithProviders(<InspectorPanel node={node()} configSchema={undefined} problems={[]} onConfigChange={onConfigChange} />);
+    renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={node()} configSchema={undefined} problems={[]} onConfigChange={onConfigChange} />);
 
     const trigger = await screen.findByLabelText('Prompt template');
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
