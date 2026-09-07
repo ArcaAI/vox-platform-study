@@ -18,7 +18,6 @@ import {
   getTranscriptions,
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
-  listDnaStyleOptions,
   liveSummaryStreamPath,
   loopStreamPath,
   listScopingDepartments,
@@ -54,15 +53,6 @@ export function useScopingDepartments() {
   return useQuery({
     queryKey: [...playgroundConsultationKeys.root, 'scoping-departments'],
     queryFn: listScopingDepartments,
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
-}
-
-export function useDnaStyleOptions() {
-  return useQuery({
-    queryKey: [...playgroundConsultationKeys.root, 'dna-style-options'],
-    queryFn: listDnaStyleOptions,
     retry: false,
     staleTime: 5 * 60_000,
   });
