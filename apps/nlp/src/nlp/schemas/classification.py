@@ -135,6 +135,27 @@ class TokenClassificationRequest(BaseModel):
         default=None,
         description="Optional local weights directory (gateway-injected AiModel.localPath)",
     )
+    # F14 — the OPEN taxonomy an EXTRACTOR checkpoint needs.
+    # `apps/nlp` hosts two token-level runtimes behind this one route (see
+    # `nlp.core.checkpoint_family`): the transformers pipeline carries its own
+    # closed BIO label set and IGNORES this field, while a `gliner2` extractor
+    # has no labels of its own and REFUSES (503) without them. The caller
+    # resolves them — the workflow node's declared labels, else the registry
+    # row's `AiModel._metadata.labelTaxonomy` — exactly as `/guard/pii` already
+    # receives its taxonomy. Never defaulted here.
+    labels: list[str] | None = Field(
+        default=None,
+        description="Entity labels for an open-taxonomy extractor checkpoint (caller-resolved; ignored by closed-taxonomy checkpoints)",
+    )
+    # The caller's confidence floor for an extractor. Absent => no floor: the
+    # model's own answer rides through and the caller filters at its own
+    # threshold, rather than being clipped at one chosen in this service.
+    threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence floor applied by an open-taxonomy extractor; absent => no floor",
+    )
 
 
 class Vitals(BaseModel):

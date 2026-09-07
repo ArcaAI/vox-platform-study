@@ -44,6 +44,7 @@ from harness.temporal.activities import _api_client, _nlp_client, _phi_redactor,
 from harness.temporal.claim_check import open_store, should_offload, store_blob
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
 from harness.temporal.interpreter.guardrail_optout import (
+    GuardrailDecision,
     guardrail_opt_out_of,
     resolve_guardrail_decision,
 )
@@ -62,6 +63,7 @@ from harness.temporal.interpreter.nodes._shared import (
     STATUS_OK,
     now,
     record_and_flush,
+    record_generation_and_flush,
     resolve_dotted_path,
 )
 from harness.temporal.interpreter.nodes._text_fallback import (
@@ -331,6 +333,46 @@ def _catch_all_class(classes: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def _extractor_labels(
+    classes: list[dict[str, Any]], label_taxonomy: dict[str, Any] | None
+) -> list[str]:
+    """The label set an OPEN-taxonomy extractor is asked to look for (pure).
+
+    F14 — a `gliner2` checkpoint carries no labels of its own, so `apps/nlp` fails closed
+    without them. Two honest sources, in order:
+
+    1. the node's OWN ``classes[].labels`` — the author naming the MODEL labels each declared
+       class claims (the same field `_pick_class` scores by);
+    2. the registry row's ``_metadata.labelTaxonomy.labels``, gateway-resolved on the same
+       tenant -> SYSTEM cascade that chose the model.
+
+    A class KEY is deliberately NOT a fallback: `pii_present` is the author's semantic bucket,
+    not an entity type the model was trained on, and asking an extractor for it would return
+    nothing forever. That is what `_catch_all_class` reads on the way back. Neither source ⇒
+    an EMPTY list, which the caller omits — a closed-taxonomy checkpoint needs none, and for
+    an extractor "nobody configured a taxonomy" must surface as nlp's 503, not as an invented
+    list from here.
+    """
+    labels: list[str] = []
+    for declared in classes:
+        raw_labels = declared.get("labels")
+        if not isinstance(raw_labels, list):
+            continue
+        for label in raw_labels:
+            if isinstance(label, str) and label and label not in labels:
+                labels.append(label)
+    if labels:
+        return labels
+    taxonomy_labels = (label_taxonomy or {}).get("labels")
+    if not isinstance(taxonomy_labels, list):
+        return []
+    return [
+        label
+        for index, label in enumerate(taxonomy_labels)
+        if isinstance(label, str) and label and label not in taxonomy_labels[:index]
+    ]
+
+
 def _class_of_label(classes: list[dict[str, Any]]) -> dict[str, str]:
     """model label → the FIRST declared class claiming it (pure)."""
     owner: dict[str, str] = {}
@@ -468,6 +510,11 @@ async def interpreter_core_classify(payload: NodeActivityInput) -> NodeActivityR
                 tenant_id=payload.tenant_id,
                 model_name=model.source_uri,
                 model_path=model.local_path,
+                # F14 — the OPEN taxonomy an extractor checkpoint needs, and the node's own
+                # floor so the model's answer is filtered once, at the threshold the author
+                # declared. Both omitted when absent (a closed-taxonomy checkpoint ignores them).
+                labels=_extractor_labels(classes, model.label_taxonomy) or None,
+                threshold=threshold,
             )
         else:
             response = await nlp.classify_text(
@@ -715,6 +762,62 @@ def _system_prompt(
     )
 
 
+#: OD-E's closed `trigger` vocabulary, mirrored from
+#: `packages/applications/src/services/usageLedger/usage-attributes.ts` (`USAGE_TRIGGERS`). A
+#: value outside that list is dropped by the ledger's attribute allow-list, so the two spellings
+#: have to stay in step; every generation on this lane is caused by one product activity.
+USAGE_TRIGGER_WORKFLOW_RUN = "WORKFLOW_RUN"
+
+#: The screening dispositions the same file declares (`GUARDRAIL_DISPOSITIONS`). Only the two
+#: this lane can honestly decide: `platform_off` is Text's own kill-switch state and is not
+#: observable from here.
+GUARDRAIL_DISPOSITION_SCREENED = "screened"
+GUARDRAIL_DISPOSITION_OPTED_OUT = "opted_out"
+
+
+def _generation_stats(
+    result: Any,
+    *,
+    provider: str,
+    model: str,
+    funding_tier: str | None,
+    guardrail: GuardrailDecision,
+) -> dict[str, Any]:
+    """The AD-1 ``GenerationStats`` block, plus the three dimensions this lane owns (pure).
+
+    Mirrors ``activities.py::generate`` exactly on the first part: Text's own stats VERBATIM (so
+    whatever cache/engine-native counters it reports reach the rollups untouched), with
+    ``provider``/``model`` backfilled only when Text itself named none — a legacy cache hit
+    returns no stats block at all, and the gateway's mapper refuses to bill a step it cannot
+    attribute (``if (!rawProvider) return null``).
+
+    The three additions are what a WORKFLOW-lane generation knows and the consultation lane does
+    not:
+
+    * ``trigger`` — OD-E's closed vocabulary. A ledger row without it cannot answer "why did
+      this tenant's spend double".
+    * ``funding_tier`` — the tier the GATEWAY derived for the candidate that actually served
+      (``textPrimary.fundingTier`` / the fallback candidate's own). It is DERIVED, never stamped:
+      absent stays absent, because a guessed tier converts tenant-funded spend into platform
+      COGS with one wrong literal.
+    * ``guardrail`` — the disposition the node folded ONCE for the whole fallback walk. Only the
+      two levels this lane decides are expressible; ``platform_off`` is Text's own kill-switch
+      state and is not observable from here, so it is never claimed.
+    """
+    stats: dict[str, Any] = dict(getattr(result, "stats", None) or {})
+    if not stats.get("provider"):
+        stats["provider"] = getattr(result, "provider", None) or provider
+    if not stats.get("model"):
+        stats["model"] = getattr(result, "model", None) or model
+    stats["trigger"] = USAGE_TRIGGER_WORKFLOW_RUN
+    if funding_tier:
+        stats["funding_tier"] = funding_tier
+    stats["guardrail"] = (
+        GUARDRAIL_DISPOSITION_SCREENED if guardrail.enabled else GUARDRAIL_DISPOSITION_OPTED_OUT
+    )
+    return stats
+
+
 async def _run_text_generation(
     payload: NodeActivityInput,
     resolved: ResolvedAgent,
@@ -931,7 +1034,20 @@ async def _run_text_generation(
                 output["data"] = json.loads(result.content)
             except (TypeError, ValueError):
                 output["data"] = None
-        await record_and_flush(payload, status=STATUS_OK, started=started)
+        # F14 — the LLM_CALL step this generation is BILLED from. Before it, every
+        # interpreter node persisted `stats = null` and the gateway's co-emission hook
+        # (`buildHarnessUsageEvent`) had nothing to bill: a real generation, zero ledger rows.
+        await record_generation_and_flush(
+            payload,
+            started=started,
+            stats=_generation_stats(
+                result,
+                provider=provider,
+                model=model,
+                funding_tier=candidate.funding_tier,
+                guardrail=guardrail_decision,
+            ),
+        )
         return NodeActivityResult(status="SUCCEEDED", output=output)
 
     if exhausted:

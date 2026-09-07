@@ -23,6 +23,7 @@ from nlp.schemas.classification import (
     TopicClassificationResponse,
 )
 from nlp.services.external_text_client import ExternalTextClient, ExternalTextUnavailableError
+from nlp.services.gliner_token_classifier import ExtractorLabelsUnavailable
 from nlp.services.model_cache import ModelUnavailableError
 
 logger = get_logger(__name__)
@@ -176,6 +177,15 @@ async def classify_tokens(
                 result = await service.process(request)
             logger.info(f"Token classification extracted {len(result.entities)} entities")
             return result
+    except ExtractorLabelsUnavailable as e:
+        # F14 — the MODEL loaded; the caller-resolved taxonomy it needs did not
+        # arrive. Unserviceable, so 503 like every other fail-closed selection
+        # gap on this router (`/guard/pii`, `/classify/topic`) — and the cause
+        # stays legible instead of surfacing as a 500.
+        logger.error(f"Token classification taxonomy unavailable: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail="Token classification labels not configured for this model"
+        ) from e
     except ModelUnavailableError as e:
         logger.error(f"Token classification model load failed: {str(e)}")
         raise HTTPException(
