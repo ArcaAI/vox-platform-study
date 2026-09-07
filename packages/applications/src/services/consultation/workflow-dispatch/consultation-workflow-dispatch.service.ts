@@ -7,6 +7,7 @@ import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
 import { SttPipelineResolverService } from '../../workflow-definition/resolvers/stt-pipeline-resolver.service';
 import { withGoverningEngineMarker } from '../governing-engine';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { CONSULTATION_PALETTE_KEY, consultationSelectionViolation } from './consultation-selection-policy';
 import { SelectableConsultationWorkflowListResponse } from './dto';
 import {
@@ -47,6 +48,11 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // "exported for a future consumer, injected nowhere". `@Optional()` so unit fixtures still
     // construct; production DI (WorkflowDefinitionServiceModule) supplies it.
     @Optional() private readonly sttPipelineResolver?: SttPipelineResolverService,
+    // TASK-891 — derives the reserved `visit-type:<key>` selector tag (OD-2/OD-3). Holds no
+    // state and no dependency (see the class header on `VisitTypeService`), so `@Optional()`
+    // with the shared `DEFAULT_VISIT_TYPE_SERVICE` fallback follows the same pattern every
+    // other consumer of this service already uses.
+    @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {}
 
   /**
@@ -145,11 +151,15 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   }
 
   async dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult> {
-    const { consultationId, tenantId, departmentId, userId, externalPatientId, workflowDefinitionSlug } = input;
+    const { consultationId, tenantId, departmentId, userId, externalPatientId, workflowDefinitionSlug, parentConsultationId } = input;
 
     // resolved FIRST, and unconditionally, because the two palettes are separate
     // assignments: a tenant may assign an `stt` graph and no `consultation` graph. Putting this
     // after the early return below would silently skip the STT lane for exactly that tenant.
+    //
+    // Deliberately NOT tagged with the visit-type selector below: visit-type/department tags
+    // select a documentation TEMPLATE (OD-2/OD-3), an axis the STT palette — which picks an ASR
+    // pipeline — has no opinion about.
     const sttPipelineId = await this.resolveSttPipelineId(tenantId, departmentId ?? null);
 
     // point 5 — a caller selection REPLACES the consultation-palette cascade.
@@ -158,7 +168,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // the one that ran.
     const resolved: { workflowDefinitionSlug: string | null; source: ConsultationWorkflowDispatchResult['source'] } = workflowDefinitionSlug
       ? { workflowDefinitionSlug, source: 'caller-selected' }
-      : await this.assignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId ?? null);
+      : await this.assignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId ?? null, this.visitTypeSelectorTags(tenantId, parentConsultationId));
 
     // No tier assigned anything -> Substrate A keeps the consultation. This is the DEFAULT and
     // must stay the default: a tenant that has authored nothing sees today's behaviour exactly.
@@ -326,5 +336,22 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       this.logger.warn({ message: 'STT pipeline resolution failed — falling back to default pipeline resolution', tenantId, reason });
       return null;
     }
+  }
+
+  /**
+   * TASK-891 — the reserved `visit-type:<key>` selector tag for the consultation-palette
+   * cascade (OD-2/OD-3). `parentConsultationId` is threaded in by the caller rather than
+   * re-read here (see `DispatchForConsultationInput.parentConsultationId`); an absent value
+   * means "not a follow-up", so this never fails — it degrades to `visit-type:new-visit`,
+   * exactly `VisitTypeService.forConsultation`'s own fallback for a consultation with no
+   * recorded visit type and no parent link.
+   *
+   * Pure and synchronous: `VisitTypeService` holds no state and does no I/O (see its own
+   * header — the tenant-managed catalogue it used to read was retired by TASK-882), so this
+   * cannot change the best-effort failure profile of the caller above it.
+   */
+  private visitTypeSelectorTags(tenantId: string, parentConsultationId: string | null | undefined): string[] {
+    const visitType = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: Boolean(parentConsultationId) });
+    return [`visit-type:${visitType.key}`];
   }
 }

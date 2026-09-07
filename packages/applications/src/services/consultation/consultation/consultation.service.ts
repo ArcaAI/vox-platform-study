@@ -408,6 +408,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
         externalPatientId: saved.patientId,
         // Already authorized above; the dispatcher re-verifies rather than trusts.
         workflowDefinitionSlug: request.workflowDefinitionSlug,
+        // TASK-891 — threaded in, not re-read by the dispatcher: it derives the reserved
+        // `visit-type:<key>` selector tag (OD-2/OD-3) from this, and dispatch is best-effort by
+        // contract, so a DB read inside it would change its failure profile. `saved` already
+        // carries this fact (set a few lines above), so no extra read is needed here either.
+        parentConsultationId: saved.parentConsultationId ?? null,
       });
       this.logger.log({
         message: dispatch.dispatched

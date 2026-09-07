@@ -138,7 +138,10 @@ describe('dispatchForConsultation — honouring the caller selection over the ca
   it('falls back to the cascade when no selection is supplied — today behaviour, unchanged', async () => {
     const result = await dispatch();
 
-    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT);
+    // TASK-891 — no `parentConsultationId` was passed to `dispatch()` here, so the cascade
+    // call now also carries the reserved `visit-type:new-visit` tag; the fallback OUTCOME
+    // (slug + source) is exactly what it was before that tag existed.
+    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:new-visit']);
     expect(result.workflowDefinitionSlug).toBe('cascade_assigned_v1');
     expect(result.source).toBe('tenant');
   });
