@@ -57,15 +57,27 @@ const modelRef = (slug: string): SeedModelRef => ({ id: `model-${slug}`, slug, .
 const ALL_SPECS: SeedAgentSpec[] = [...PLATFORM_AGENT_SPECS, ...GLOBAL_AGENT_SPECS];
 
 describe('TASK-863 — seeded agent specs', () => {
-  it('SYSTEM carries the seven platform defaults, all PUBLISHED and ACTIVE, one per (tenant, slug)', () => {
-    expect(PLATFORM_AGENT_SPECS).toHaveLength(7);
+  it('SYSTEM carries the eight platform defaults, all PUBLISHED and ACTIVE, one per (tenant, slug)', () => {
+    expect(PLATFORM_AGENT_SPECS).toHaveLength(8);
     for (const spec of PLATFORM_AGENT_SPECS) {
       expect(spec.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(spec.status).toBe('PUBLISHED');
       expect(spec.isActive).toBe(true);
     }
     expect(PLATFORM_AGENT_SPECS.map((spec) => spec.slug).sort()).toEqual(
-      ['platform-discharge-summary', 'platform-grammar-correction', 'platform-important-findings', 'platform-presummarization', 'platform-summarization', 'platform-transcription', 'platform-tts'].sort(),
+      [
+        'platform-discharge-summary',
+        'platform-grammar-correction',
+        'platform-important-findings',
+        'platform-presummarization',
+        'platform-summarization',
+        // TASK-891 — the REALTIME tier of the SOAP summary: same model, same prompt, engine
+        // reasoning OFF. Reached by the `phase:live` assignment selector, never by the
+        // unqualified row, so it is additive to every tenant that has authored nothing.
+        'platform-summarization-live',
+        'platform-transcription',
+        'platform-tts',
+      ].sort(),
     );
     const keys = ALL_SPECS.map((spec) => `${spec.tenantId}/${spec.slug}`);
     expect(new Set(keys).size).toBe(keys.length);
@@ -74,8 +86,8 @@ describe('TASK-863 — seeded agent specs', () => {
 
   it('Global (the playground tenant) carries the same set as published examples plus an Azure and a Sarvam ASR DRAFT; ArcaAI carries nothing', () => {
     const global = GLOBAL_AGENT_SPECS.filter((spec) => spec.tenantId === SEED_TENANT_ID);
-    expect(global).toHaveLength(9);
-    expect(global.filter((spec) => spec.status === 'PUBLISHED' && spec.isActive)).toHaveLength(7);
+    expect(global).toHaveLength(10);
+    expect(global.filter((spec) => spec.status === 'PUBLISHED' && spec.isActive)).toHaveLength(8);
     const drafts = global.filter((spec) => spec.status === 'DRAFT');
     expect(drafts.map((spec) => spec.modelSlug).sort()).toEqual(['azure-speech-stt', 'sarvam-saaras-v4']);
     for (const draft of drafts) expect(draft.isActive).toBe(false);
@@ -96,8 +108,23 @@ describe('TASK-863 — seeded agent specs', () => {
     for (const key of Object.keys(spec.parameters)) expect(declared).toContain(key);
   });
 
-  it('every platform default is a TENANT-scope SYSTEM assignment target for its task, one per task', () => {
-    expect(PLATFORM_AGENT_ASSIGNMENTS.map((a) => a.task).sort()).toEqual(['SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_TO_SPEECH']);
+  // AMENDED by TASK-891: no longer ONE row per task. A task may hold several rows that differ
+  // by TASK-884 selector, and `AgentAssignmentService.resolve` tries the most specific matching
+  // one first with the unqualified row last. What must stay true is that exactly one row per
+  // task is UNQUALIFIED — that row is what every caller naming no selector resolves, so a
+  // second one would make the tier's default ambiguous.
+  it('every platform default is a TENANT-scope SYSTEM assignment target for its task, exactly one of them unqualified', () => {
+    expect(PLATFORM_AGENT_ASSIGNMENTS.map((a) => a.task).sort()).toEqual(['SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_GENERATION', 'TEXT_TO_SPEECH']);
+    expect(PLATFORM_AGENT_ASSIGNMENTS.filter((a) => !a.selectorKey).map((a) => a.task).sort()).toEqual([
+      'SPEECH_TO_TEXT',
+      'TEXT_GENERATION',
+      'TEXT_TO_SPEECH',
+    ]);
+    expect(PLATFORM_AGENT_ASSIGNMENTS.find((a) => a.selectorKey)).toMatchObject({
+      task: 'TEXT_GENERATION',
+      agentSlug: 'platform-summarization-live',
+      selectorKey: 'phase:live',
+    });
     for (const assignment of PLATFORM_AGENT_ASSIGNMENTS) {
       const target = PLATFORM_AGENT_SPECS.find((spec) => spec.slug === assignment.agentSlug);
       expect(target?.task).toBe(assignment.task);
@@ -165,24 +192,25 @@ describe('TASK-863 — seedAgents against an in-memory client', () => {
     return { client, agents, fallbacks, assignments };
   }
 
-  it('seeds every SYSTEM default with its resolved (pinned) template, the fallback links and the three SYSTEM assignments; a second run is a no-op', async () => {
+  it('seeds every SYSTEM default with its resolved (pinned) template, the fallback links and the four SYSTEM assignments; a second run is a no-op', async () => {
     const { client, agents, fallbacks, assignments } = fakeClient();
     const first = await seedAgents(client);
-    expect(first).toEqual({ created: 16, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 3 });
+    expect(first).toEqual({ created: 18, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 4 });
     const summarization = agents.get(PLATFORM_AGENT_SPECS.find((s) => s.slug === 'platform-summarization')!.id);
     expect(summarization.compiledConfig.resolvedPrompt).toMatchObject({ source: 'template', promptVersionNumber: 1 });
     expect(summarization.compiledConfig.resolvedPrompt.content).toContain('v1 of');
     expect(summarization.compiledConfigChecksum).toMatch(/^sha256:/);
     expect(fallbacks.filter((f) => f.agentId === PLATFORM_AGENT_SPECS[0]!.id)).toHaveLength(1);
-    expect([...assignments.values()].map((a) => [a.scope, a.task, a.agentSlug])).toEqual([
-      ['TENANT', 'SPEECH_TO_TEXT', 'platform-transcription'],
-      ['TENANT', 'TEXT_GENERATION', 'platform-summarization'],
-      ['TENANT', 'TEXT_TO_SPEECH', 'platform-tts'],
+    expect([...assignments.values()].map((a) => [a.scope, a.task, a.agentSlug, a.selectorKey])).toEqual([
+      ['TENANT', 'SPEECH_TO_TEXT', 'platform-transcription', ''],
+      ['TENANT', 'TEXT_GENERATION', 'platform-summarization', ''],
+      ['TENANT', 'TEXT_TO_SPEECH', 'platform-tts', ''],
+      ['TENANT', 'TEXT_GENERATION', 'platform-summarization-live', 'phase:live'],
     ]);
     for (const row of assignments.values()) expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
 
     const second = await seedAgents(client);
-    expect(second).toEqual({ created: 0, skippedExisting: 16, skippedUnresolvable: 0, assignmentsCreated: 0 });
+    expect(second).toEqual({ created: 0, skippedExisting: 18, skippedUnresolvable: 0, assignmentsCreated: 0 });
   });
 
   it('fails closed: a spec whose model is missing from the SYSTEM registry, or whose template is not APPROVED, is skipped — never seeded broken', async () => {
@@ -190,13 +218,16 @@ describe('TASK-863 — seedAgents against an in-memory client', () => {
     const result = await seedAgents(missingKokoro.client);
     expect(result.skippedUnresolvable).toBe(2); // platform-tts + example-tts
     expect([...missingKokoro.agents.values()].some((row) => row.task === 'TEXT_TO_SPEECH')).toBe(false);
-    // The TTS assignment cannot point at an agent that was not seeded.
-    expect(result.assignmentsCreated).toBe(2);
+    // The TTS assignment cannot point at an agent that was not seeded; the other three (two of
+    // them TEXT_GENERATION, one per selector) still do.
+    expect(result.assignmentsCreated).toBe(3);
 
     const unapproved = fakeClient({ approvedTemplates: false });
     const result2 = await seedAgents(unapproved.client);
-    // 4 template-bound LLM agents per tenant x 2 tenants are refused; inline-prompt, ASR and TTS agents still seed.
-    expect(result2.skippedUnresolvable).toBe(8);
+    // 5 template-bound LLM agents per tenant x 2 tenants are refused (TASK-891 added the live
+    // summarization tier, which binds the same SOAP template); inline-prompt, ASR and TTS
+    // agents still seed.
+    expect(result2.skippedUnresolvable).toBe(10);
     expect(result2.created).toBe(8);
   });
 });
