@@ -120,7 +120,7 @@ const RUN_EVENT_ENVELOPE_SCHEMA = Object.freeze({
  */
 export function inputSchemaOf(graph: Pick<WorkflowGraph, 'nodes'>, compiledConfig?: unknown): Record<string, unknown> | null {
   const frozen = compiledConfig === undefined ? null : compiledTriggerContextSchema(compiledConfig);
-  return frozen ?? ((declaredIoSchemas(graph).input as Record<string, unknown> | null) ?? null);
+  return frozen ?? (declaredIoSchemas(graph).input as Record<string, unknown> | null) ?? null;
 }
 
 /**
