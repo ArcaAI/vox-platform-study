@@ -91,8 +91,10 @@ _CONFIG_LOAD_RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(
 
 # Stride between per-node trajectory-seq bases — same idiom as `workflows.py`'s
 # `_SEQ_STRIDE`: a workflow-owned monotonic counter stands in for a clock/UUID
-# (determinism). No interpreter node activity emits more than one trajectory step today, so a
-# small stride is enough headroom without claiming a wall-clock-derived value.
+# (determinism). A `core.agent` node emits TWO steps (the NODE step plus the LLM_CALL step the
+# usage ledger bills from — F14, `nodes/_shared.record_generation_and_flush`); the stride is the
+# headroom that keeps every node's steps inside its own base without claiming a
+# wall-clock-derived value.
 _SEQ_STRIDE = 4
 
 # Deterministic, idempotent-on-start workflow id — mirrors
