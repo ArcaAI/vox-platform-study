@@ -699,7 +699,12 @@ class ResolvedAgent(BaseModel):
             by_slug = {row.get("slug"): row for row in rows}
             if selected:
                 lifted["fallbacks"] = [
-                    {**s, **{k: v for k, v in by_slug.get(s.get("slug"), {}).items() if v is not None}}
+                    {
+                        **s,
+                        **{
+                            k: v for k, v in by_slug.get(s.get("slug"), {}).items() if v is not None
+                        },
+                    }
                     for s in selected
                 ]
             elif rows:
@@ -718,6 +723,13 @@ class ResolvedClassificationModel(BaseModel):
     task_type: str = Field(alias="taskType")
     source_uri: str | None = Field(default=None, alias="sourceUri")
     local_path: str | None = Field(default=None, alias="localPath")
+    #: F14 — `AiModel._metadata.labelTaxonomy`, resolved by the gateway on the SAME
+    #: tenant -> SYSTEM cascade that chose the model. An OPEN-taxonomy extractor
+    #: (a `gliner2` checkpoint) has no label set of its own and `apps/nlp` fails
+    #: closed without one, so this is what the node sends when the graph names no
+    #: labels of its own. Absent for a closed-taxonomy checkpoint, whose labels
+    #: are its own — never substituted here.
+    label_taxonomy: dict[str, Any] | None = Field(default=None, alias="labelTaxonomy")
 
 
 class ReviewGateInput(BaseModel):

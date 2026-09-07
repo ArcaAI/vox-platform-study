@@ -7,6 +7,7 @@ from typing import Any, cast
 import structlog
 from fastapi import Request
 
+from nlp.core.checkpoint_family import is_gliner_checkpoint, read_checkpoint_config
 from nlp.core.concurrency import (
     ResizableSemaphore,
     refresh_inference_limit,
@@ -169,10 +170,49 @@ async def _weights_source(model_name: str, model_path: str | None) -> str:
 
 
 async def _create_token_classifier(cache_key: str) -> TokenClassifier:
+    """The token-level runtime THIS checkpoint needs.
+
+    F14 — `/classify/tokens` serves both families this service hosts and the
+    choice is the CHECKPOINT's, read from its own `config.json`
+    (`nlp.core.checkpoint_family`), never from a slug or a vendor prefix. A
+    GLiNER-family checkpoint on the transformers pipeline raises "has model type
+    `extractor` but Transformers does not recognize this architecture" — which
+    is the 503 every workflow-lane PII node hit.
+    """
     model_name, model_path = _split_cache_key(cache_key)
     source = await _weights_source(model_name, model_path)
+
+    # Blocking (filesystem / a small cached download) — never on the event loop.
+    config = await asyncio.to_thread(read_checkpoint_config, source)
+    if is_gliner_checkpoint(config):
+        return await _create_gliner_token_classifier(model_name, source)
+
     configs = TokenClassificationConfig(model_name=source, tokenizer_name=source)
     instance = TransformerTokenClassifier(configs=configs)
+    await instance.initialize()
+    return instance
+
+
+async def _create_gliner_token_classifier(model_name: str, source: str) -> TokenClassifier:
+    """The `gliner2` extractor behind the token-classification contract.
+
+    Placement is decided HERE, from configuration, before a tensor executes —
+    the same rule `_create_gliner2_guard` follows, and for the same reason: an
+    op the accelerator does not support aborts the PROCESS rather than raising.
+    """
+    from nlp.core.config import settings
+    from nlp.core.device import parse_cpu_only_modules, resolve_inference_device
+    from nlp.services.gliner2_guard import Gliner2GuardService
+    from nlp.services.gliner_token_classifier import Gliner2TokenClassifier
+
+    runtime = Gliner2GuardService(
+        weights_source=source,
+        model_id=model_name,
+        device=resolve_inference_device(settings.service.inference_device),
+        cpu_only_modules=parse_cpu_only_modules(settings.service.inference_device_cpu_only_modules),
+    )
+    await asyncio.to_thread(runtime.load)
+    instance = Gliner2TokenClassifier(model_name=model_name, runtime=runtime)
     await instance.initialize()
     return instance
 

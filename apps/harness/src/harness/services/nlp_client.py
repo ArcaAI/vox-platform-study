@@ -69,6 +69,8 @@ class NlpClient:
         tenant_id: str,
         model_name: str | None = None,
         model_path: str | None = None,
+        labels: list[str] | None = None,
+        threshold: float | None = None,
         language: str = "en",
         aggregation_strategy: str | None = None,
     ) -> dict[str, Any]:
@@ -80,6 +82,13 @@ class NlpClient:
         ``sourceUri``/``localPath`` the gateway resolved — the NLP service fails closed (503)
         without a model, and this client never invents one. Both are omitted when absent so the
         NER sensors' body stays byte-identical to what it always sent.
+
+        F14 — ``labels``/``threshold`` are the OPEN taxonomy a `gliner2` EXTRACTOR
+        checkpoint needs: it carries no label set of its own, so `apps/nlp` fails closed
+        (503) without one and never invents a default. The CALLER resolves them (the node's
+        declared labels, else the registry row's ``labelTaxonomy``). Both are omitted when
+        absent, so a closed-taxonomy checkpoint — whose labels ARE its own — keeps the body
+        it has always received.
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError(
@@ -95,6 +104,10 @@ class NlpClient:
             body["model_name"] = model_name
         if model_path:
             body["model_path"] = model_path
+        if labels:
+            body["labels"] = labels
+        if threshold is not None:
+            body["threshold"] = threshold
         # NLP's ServiceAuthMiddleware requires X-Service-Token whenever NLP_SERVICE_TOKEN
         # is configured — omitted when unset so local dev-bypass keeps working.
         headers: dict[str, str] = {"X-Tenant-Id": tenant_id.strip()}
