@@ -204,24 +204,56 @@ def build_single_language_prompt(language: str) -> str:
     return _SINGLE_LANGUAGE_PROMPT_TEMPLATE.format(language=_language_name(language))
 
 
-# TEMPORARY kill-switch: the whisper.cpp priming prompt is an instruction-style
+# TEMPORARY kill-switches: the whisper.cpp priming prompt is an instruction-style
 # ``initial_prompt``, which degrades raw whisper.cpp decoding — Whisper conditions
 # on it as prior context, not as an instruction, and the fine-tuned ml-en GGUF
 # already code-switches natively. Disabled while we evaluate quality. whisper.cpp
 # STILL serves the modes (no cloud fallback); it just resolves to the language
-# settings with NO prompt. Flip to True to re-enable the priming-prompt path.
-WHISPER_CPP_PRIMING_PROMPT_ENABLED = False
+# settings with NO prompt.
+#
+# TASK-891 A3 — this used to be ONE flag covering both prompt shapes, so the two
+# could not be evaluated apart. They are not the same experiment:
+#
+# * The PAIR prompt is the code-switch mode's ONLY bias correction. A pair pins
+#   no language (pinning the primary biases the secondary's script), so with the
+#   prompt off the decoder gets no language signal at all and re-runs its own LID
+#   independently on every decode window — the measured "half Malayalam, half
+#   English inside one sentence".
+# * The SINGLE-language prompt sits on top of an already-pinned ``language=``
+#   token, so it is largely redundant and mostly adds the risk that Whisper
+#   transcribes the instruction text into the output.
+#
+# Both still default OFF: turning either on is a DECODE-QUALITY change and needs
+# a measured A/B on held-out English AND Malayalam recordings on this exact
+# ml-en fine-tune — which is why they were switched off in the first place.
+# Flip one at a time; the behaviour of each is covered by its own test.
+WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False
+WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED = False
 
 
-def _is_prompt_capable(engine: AiModelFormat) -> bool:
-    """Whether *engine* is primed via an ``initial_prompt`` (whisper.cpp).
+def _is_pair_prompt_capable(engine: AiModelFormat) -> bool:
+    """Whether *engine* takes the BILINGUAL priming prompt (whisper.cpp).
 
-    Gated by :data:`WHISPER_CPP_PRIMING_PROMPT_ENABLED` — while the prompt is
-    temporarily disabled this returns ``False`` for every engine, so single-mode
-    resolution emits no prompt (the capability matrix itself is unaffected: the
-    engine still SERVES the code-switch modes).
+    Gated by :data:`WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED`; while that is off
+    a code-switch pair resolves with no prompt. The capability matrix itself is
+    unaffected — the engine still SERVES the code-switch modes.
     """
-    return WHISPER_CPP_PRIMING_PROMPT_ENABLED and _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
+    return (
+        WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED
+        and _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
+    )
+
+
+def _is_single_prompt_capable(engine: AiModelFormat) -> bool:
+    """Whether *engine* takes the SINGLE-LANGUAGE priming prompt (whisper.cpp).
+
+    Gated by :data:`WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED`, independently of
+    the pair switch above.
+    """
+    return (
+        WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED
+        and _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
+    )
 
 
 @dataclass(frozen=True)
@@ -317,7 +349,7 @@ def resolve_mode_for_engine(mode_id: str, engine: AiModelFormat) -> ResolvedInfe
         # engine relies on the pinned language token alone.
         single_prompt = (
             build_single_language_prompt(mode.primary_language)
-            if _is_prompt_capable(engine)
+            if _is_single_prompt_capable(engine)
             else None
         )
         return ResolvedInference(
@@ -345,7 +377,7 @@ def resolve_mode_for_engine(mode_id: str, engine: AiModelFormat) -> ResolvedInfe
         assert mode.primary_language is not None and mode.secondary_language is not None
         pair_prompt = (
             build_code_switch_prompt(mode.primary_language, mode.secondary_language)
-            if WHISPER_CPP_PRIMING_PROMPT_ENABLED
+            if _is_pair_prompt_capable(engine)
             else None
         )
         return ResolvedInference(

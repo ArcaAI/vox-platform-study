@@ -1008,6 +1008,13 @@ class SessionManager:
                 # Persisted so crash recovery rebuilds the chain from the spec,
                 # not from a database read (TASK-861).
                 resolved_spec_json=json.dumps(resolved_spec) if resolved_spec is not None else "",
+                # TASK-891 — persist the effective language mode (the end user's
+                # declaration, or the agent's own when nothing was declared) so a
+                # worker restart resolves the SAME mode. `_session_language_modes`
+                # alone is process-local, and recovery without it fell through to
+                # the spec's mapped primary subtag — pinning `ml` on an `ml-en`
+                # session that was deliberately left unpinned.
+                language_mode=language_mode or "",
             )
 
             # Create session object
@@ -4170,9 +4177,10 @@ class SessionManager:
                     session_id_for_cleanup = meta.session_id
                     # TASK-861 — a spec-driven session rebuilds from its persisted
                     # spec; a corrupt one is skipped rather than guessed.
+                    recovered_bundle = None
                     if isinstance(meta.resolved_spec_json, str) and meta.resolved_spec_json:
                         try:
-                            self._register_resolved_spec(
+                            recovered_bundle = self._register_resolved_spec(
                                 meta.session_id, json.loads(meta.resolved_spec_json)
                             )
                         except Exception as spec_exc:  # noqa: BLE001 — recovery must not crash the sweep
@@ -4203,6 +4211,21 @@ class SessionManager:
                         )
                         continue
                     acquired_capacity_slot = True
+
+                    # TASK-891 — restore the session's language mode BEFORE the
+                    # ASR pipeline is rebuilt: `_load_asr_pipeline` resolves it
+                    # against the loaded engine, and an absent entry silently
+                    # falls through to the spec's mapped primary subtag (`ml` for
+                    # an `ml-en` pair) instead of the mode the session opened on.
+                    # After the ownership/status gates above, so a session this
+                    # worker does not claim never leaves an entry behind.
+                    recovered_mode = meta.language_mode or (
+                        recovered_bundle.spec.decoding.language_mode
+                        if recovered_bundle is not None
+                        else None
+                    )
+                    if recovered_mode:
+                        self._session_language_modes[meta.session_id] = recovered_mode
 
                     session = StreamSession(metadata=meta, redis=self._redis)
 

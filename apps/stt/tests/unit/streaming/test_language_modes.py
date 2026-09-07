@@ -175,12 +175,26 @@ def test_resolve_whisper_cpp_single_pins_prompt_disabled() -> None:
     assert auto.initial_prompt is None
 
 
-def test_whisper_cpp_priming_prompt_when_reenabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Guard the prompt-building path so flipping the kill-switch back on is a
-    # one-line, still-tested change.
+def test_task891_both_priming_prompts_default_off() -> None:
+    """TASK-891 A3 — the ONE kill-switch became TWO, and both still default OFF.
+
+    The pair prompt is code-switch's only bias correction (a pair pins no
+    language), and the single prompt is redundant on top of a pinned language.
+    They are therefore evaluated separately, which the single flag made
+    impossible — flipping it moved both at once."""
     import stt.pipeline.language_modes as lm
 
-    monkeypatch.setattr(lm, "WHISPER_CPP_PRIMING_PROMPT_ENABLED", True)
+    assert lm.WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED is False
+    assert lm.WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED is False
+
+
+def test_task891_pair_priming_prompt_is_independently_switchable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Turning the PAIR prompt on must not turn the single-language one on."""
+    import stt.pipeline.language_modes as lm
+
+    monkeypatch.setattr(lm, "WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED", True)
 
     pair = lm.resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
     assert pair.language is None
@@ -188,11 +202,44 @@ def test_whisper_cpp_priming_prompt_when_reenabled(monkeypatch: pytest.MonkeyPat
     assert "Malayalam" in pair.initial_prompt
     assert "English" in pair.initial_prompt
 
+    # The single-language switch is untouched, so a declared language still
+    # reaches the decoder as a pin and nothing else.
+    single = lm.resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
+    assert single.language == "en"
+    assert single.initial_prompt is None
+
+
+def test_task891_single_priming_prompt_is_independently_switchable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Turning the SINGLE-language prompt on must not turn the pair one on."""
+    import stt.pipeline.language_modes as lm
+
+    monkeypatch.setattr(lm, "WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED", True)
+
     single = lm.resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
     assert single.language == "en"
     assert single.initial_prompt is not None
     assert "English" in single.initial_prompt
     assert "Malayalam" not in single.initial_prompt
+
+    pair = lm.resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
+    assert pair.language is None
+    assert pair.initial_prompt is None
+
+
+def test_task891_neither_prompt_reaches_a_non_prompt_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both switches are whisper.cpp-only: an engine that is not primed by an
+    ``initial_prompt`` never receives one, whatever the flags say."""
+    import stt.pipeline.language_modes as lm
+
+    monkeypatch.setattr(lm, "WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED", True)
+    monkeypatch.setattr(lm, "WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED", True)
+
+    assert lm.resolve_mode_for_engine("en", AiModelFormat.FASTER_WHISPER).initial_prompt is None
+    assert lm.resolve_mode_for_engine("ml-en", AiModelFormat.SARVAM).initial_prompt is None
 
 
 def test_single_language_never_prompts_non_prompt_engines() -> None:

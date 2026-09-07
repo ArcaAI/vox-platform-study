@@ -42,6 +42,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from stt.models.base_loader import LoadedModel  # noqa: E402
+from stt.pipeline import language_modes  # noqa: E402
 from stt.pipeline.dto import AiModelFormat  # noqa: E402
 from stt.streaming.whisper_cpp_asr import WhisperCppAsrAdapter  # noqa: E402
 
@@ -108,7 +109,21 @@ def main() -> int:
     ap.add_argument("--language", default="ml-en")
     ap.add_argument("--max-audio-seconds", type=float, default=None)
     ap.add_argument("--out", default=None)
+    # TASK-891 A3 — the two priming-prompt kill-switches are now independent, and
+    # this is the instrument that decides whether either should default ON. Both
+    # OFF reproduces the committed baseline exactly.
+    ap.add_argument("--pair-priming-prompt", action="store_true",
+                    help="enable the BILINGUAL priming prompt for a code-switch pair")
+    ap.add_argument("--single-priming-prompt", action="store_true",
+                    help="enable the SINGLE-LANGUAGE priming prompt")
+    # TASK-891 A4 — the adapter refuses word-splitting when the decode may emit a
+    # non-space-delimited script; pass this to measure the refusal's effect.
+    ap.add_argument("--word-timestamps", action="store_true",
+                    help="request per-word timestamps (max_len=1 word-split decode)")
     args = ap.parse_args()
+
+    language_modes.WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = args.pair_priming_prompt
+    language_modes.WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED = args.single_priming_prompt
 
     if not args.gguf:
         ap.error("--gguf (or WHISPER_MLEN_GGUF) is required")
@@ -126,12 +141,25 @@ def main() -> int:
     # (from `AiModel._metadata.asr.maxDecodeWindowSec`), not the deleted env var
     # `WHISPER_CPP_MAX_AUDIO_SECONDS`. `0.0` disables the split guard, matching a row
     # that declares no window.
+    # Resolve the language mode the way the streaming session manager does, so the
+    # priming-prompt switches above actually govern this run. A `--language` that
+    # is not a catalog mode id (e.g. a raw "ml-IN") keeps the previous behaviour:
+    # handed to the adapter as-is, with no prompt.
+    try:
+        resolved = language_modes.resolve_mode_for_engine(args.language, AiModelFormat.WHISPER_CPP)
+        decode_language: str | None = resolved.language
+        priming_prompt: str | None = resolved.initial_prompt
+    except (KeyError, language_modes.LanguageModeUnsupportedError):
+        decode_language, priming_prompt = args.language, None
+
     inference_config = type(
         "C",
         (),
-        {"language": args.language, "max_decode_window_sec": args.max_audio_seconds or 0.0},
+        {"language": decode_language, "max_decode_window_sec": args.max_audio_seconds or 0.0},
     )()
-    adapter = WhisperCppAsrAdapter(loaded, inference_config, want_word_timestamps=False)
+    adapter = WhisperCppAsrAdapter(
+        loaded, inference_config, want_word_timestamps=args.word_timestamps
+    )
 
     clips = _discover(args.clips_dir)
     if not clips:
@@ -142,7 +170,7 @@ def main() -> int:
     for cid, wav, lab in clips:
         audio, sr = _read_wav(wav)
         ref = Path(lab).read_text(encoding="utf-8").strip()
-        hyp = adapter(audio, sr)["text"]
+        hyp = adapter(audio, sr, prompt=priming_prompt)["text"]
         score = cer(ref, hyp)
         rows.append({"id": cid, "clip": os.path.basename(wav),
                      "duration_s": round(len(audio) / sr, 1), "cer": round(score, 4),
@@ -158,6 +186,12 @@ def main() -> int:
 
     scorecard = {"model": os.path.basename(args.gguf), "language": args.language,
                  "max_audio_seconds": args.max_audio_seconds or "disabled",
+                 # TASK-891 — recorded so an A/B pair of scorecards says which
+                 # configuration produced which number.
+                 "pair_priming_prompt": args.pair_priming_prompt,
+                 "single_priming_prompt": args.single_priming_prompt,
+                 "word_timestamps": args.word_timestamps,
+                 "word_split_applied": adapter._want_word_timestamps,
                  "mean_cer": round(mean, 4), "clips": rows}
     if args.out:
         Path(args.out).write_text(json.dumps(scorecard, ensure_ascii=False, indent=2), encoding="utf-8")

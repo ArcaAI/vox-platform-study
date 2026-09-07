@@ -342,6 +342,13 @@ class SessionMetadata:
     # assembled from, persisted so crash recovery rebuilds the engine chain
     # WITHOUT a database read. Empty on the deprecated pipeline_id path.
     resolved_spec_json: str = ""
+    # TASK-891 — the END USER's declared language mode (OD-1: absent means "use
+    # the agent's mode", never a default language). Persisted because it is
+    # session state: it used to live only in ``SessionManager._session_language_modes``,
+    # so a worker restart lost the declaration and crash recovery re-resolved the
+    # spec's mapped PRIMARY subtag instead — turning a declared-English session
+    # into a Malayalam-pinned one, silently. Empty = nothing declared.
+    language_mode: str = ""
     closed_at: str | None = None  # ISO-8601 (set when status=closed)
     raw_audio_uri: str | None = None
     processed_audio_uri: str | None = None
@@ -379,6 +386,8 @@ class SessionMetadata:
             d["last_stream_id"] = self.last_stream_id
         if self.resolved_spec_json:
             d["resolved_spec_json"] = self.resolved_spec_json
+        if self.language_mode:
+            d["language_mode"] = self.language_mode
         if self.closed_at:
             d["closed_at"] = self.closed_at
         if self.raw_audio_uri:
@@ -435,6 +444,7 @@ class SessionMetadata:
             sample_rate=int(_get("sample_rate") or "16000"),
             pipeline_config_json=_get("pipeline_config_json"),
             resolved_spec_json=_get("resolved_spec_json"),
+            language_mode=_get("language_mode"),
             closed_at=closed_at,
             raw_audio_uri=raw_audio_uri,
             processed_audio_uri=processed_audio_uri,
