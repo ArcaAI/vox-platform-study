@@ -744,7 +744,9 @@ describe('NAV_DOMAINS', () => {
   // knowledge-agents 5 -> 8 (+ `/tools-mcp`, `/workflow-studio`, `/workflow-studio/assignments`);
   // workflow-harness 7 -> 5; platform-ops 8 -> 11.
   // TASK-863: knowledge-agents 8 -> 9 (/agents).
-  it('partitions the 61 rail routes exactly as the ticket Domain Model does (3·6·8·9·4·5·7·11·6, AI Platform +2)', () => {
+  // TASK-893: 59 -> 58. `/playground/workbench` left the rail — running a definition moved into
+  // the Workflow Studio's Run tab and the route is now only a redirect.
+  it('partitions the rail routes exactly as the ticket Domain Model does', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -753,7 +755,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES).toHaveLength(58);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

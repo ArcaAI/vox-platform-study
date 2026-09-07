@@ -1,13 +1,14 @@
 'use client';
 
 /**
- * `DefinitionMetadataForm` — "Honesty gap: only the
- * `graph` field autosaves in this pass"). A SHORT Dialog (rule 11 §1: dialogs stay for short
- * confirmations — two fields qualifies) over the definition's `name`/`description`. Controlled
- * state only, no `react-hook-form` ( Deliberately fires `onNameChange`/
- * `onDescriptionChange` on every keystroke rather than gating behind a Save button — the caller
- * (`WorkflowStudioEditor`) feeds those straight into the SAME debounced `useAutosave.schedule`
- * the graph uses, so name/description edits autosave exactly like graph edits do.
+ * `DefinitionMetadataForm` — a SHORT Dialog (rule 11 §1: dialogs stay for short confirmations —
+ * two fields qualifies) over the definition's `name`/`description`. Controlled state only, no
+ * `react-hook-form`.
+ *
+ * Fires `onNameChange`/`onDescriptionChange` on every keystroke rather than gating behind its own
+ * Save button. TASK-893 OD-7 removed autosave, so those no longer feed a debounced schedule —
+ * they STAGE the edit (the caller marks the definition dirty) and it is written by the studio's
+ * one explicit Save, alongside the graph. One Save for the whole definition, not two.
  */
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, Input } from '@arcaai/ui';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';

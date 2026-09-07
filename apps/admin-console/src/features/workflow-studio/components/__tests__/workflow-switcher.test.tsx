@@ -3,7 +3,7 @@
  * ONLY way to reach another workflow from inside the studio, so it has to name the open one even
  * when the list page it reads does not contain it.
  */
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';

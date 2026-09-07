@@ -327,7 +327,11 @@ describe('WorkflowStudioEditor — save model (TASK-893 OD-7)', () => {
     fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: 'Discharge Summary v2' } });
 
     expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    // The dialog is MODAL, so Radix marks the rest of the page `aria-hidden` and the toolbar is
+    // unreachable by role while it is open — as it should be. Close it the way an admin does, then
+    // press the one Save that writes the name and the graph together.
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patchBodies(calls)[0]?.name).toBe('Discharge Summary v2'));
   });
 
@@ -458,5 +462,49 @@ describe('WorkflowStudioEditor — the inspector composition (TASK-893 §6.8)', 
     installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[]} />);
     expect(screen.queryByRole('link', { name: /workbench/i })).toBeNull();
+  });
+});
+
+/**
+ * Collapsing the node chrome to one input dot and one output dot deleted the `after`/`next`
+ * handles. React Flow drops an edge whose named handle does not exist, so an ORDERING edge
+ * rendered as nothing — the graph looked disconnected while the wire data was intact. Every
+ * seeded graph is built out of `next -> after` edges, so this was the common case, not an edge
+ * case. Caught against the running app, not by a unit test, because the fixtures here all wired
+ * `out -> in`; this is that gap closed.
+ */
+describe('WorkflowStudioEditor — ordering edges survive the socket collapse (TASK-893)', () => {
+  function definitionWithOrderingEdge(): WorkflowDefinition {
+    const base = definition();
+    return {
+      ...base,
+      graph: {
+        nodes: [
+          { id: 'n1', type: 'core.trigger', config: {}, position: { x: 0, y: 0 } },
+          { id: 'n2', type: 'core.note', config: {}, position: { x: 200, y: 0 } },
+        ],
+        edges: [{ id: 'e1', from: 'n1', fromPort: 'next', to: 'n2', toPort: 'after' }],
+      },
+    } as WorkflowDefinition;
+  }
+
+  it('renders an ordering edge on the primary handles the canvas actually has', () => {
+    installFetchMock();
+    renderWithProviders(<WorkflowStudioEditor definition={definitionWithOrderingEdge()} etag='"1"' registryNodes={[TRIGGER, NOTE]} />);
+
+    // The canvas stub records the edges it was handed. `next`/`after` must have been projected
+    // onto `out`/`in`; leaving them verbatim is what made the edge disappear.
+    const edge = capturedCanvasProps?.edges?.[0];
+    expect(edge).toMatchObject({ id: 'e1', source: 'n1', target: 'n2', sourceHandle: 'out', targetHandle: 'in' });
+  });
+
+  it('leaves the STORE edge on its real wire sockets — only the drawing is projected', async () => {
+    const installedCalls = installFetchMock();
+    renderWithProviders(<WorkflowStudioEditor definition={definitionWithOrderingEdge()} etag='"1"' registryNodes={[TRIGGER, NOTE]} />);
+
+    // The canvas gets the projection; the graph the editor would SAVE keeps the real sockets.
+    fireEvent.click(screen.getByRole('button', { name: 'palette add' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patchBodies(installedCalls)[0]?.graph?.edges?.[0]).toMatchObject({ fromPort: 'next', toPort: 'after' }));
   });
 });

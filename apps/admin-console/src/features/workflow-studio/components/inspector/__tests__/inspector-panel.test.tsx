@@ -297,7 +297,10 @@ describe('InspectorPanel — tabs (TASK-893 B4)', () => {
   it('clicking a tab reports the change — the panel does not manage its own tab state', () => {
     const onTabChange = vi.fn();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={onTabChange} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole('tab', { name: /^Problems/ }));
+    // Radix `Tabs` defaults to `activationMode="automatic"`, i.e. it activates on FOCUS. A real
+    // click focuses first; jsdom's synthetic `click` does not, so focus is what has to be fired
+    // here for this to exercise the same path a pointer does.
+    fireEvent.focus(screen.getByRole('tab', { name: /^Problems/ }));
     expect(onTabChange).toHaveBeenCalledWith('problems');
   });
 
@@ -370,15 +373,25 @@ describe('InspectorPanel — secondary input bindings (TASK-893 B5)', () => {
         onConfigChange={vi.fn()}
         secondaryInputs={[{ name: 'context', primitive: 'text', required: false }]}
         upstreamNodes={UPSTREAM}
+        secondaryBindings={{}}
+        onSecondaryInputChange={vi.fn()}
       />,
     );
     expect(await screen.findByLabelText(/^Context/)).toBeTruthy();
   });
 
-  it('choosing an upstream node writes inputs.<portName>.fromNodeId, leaving the rest of the config untouched', async () => {
+  /**
+   * A secondary binding is an EDGE, not config. The harness interpreter resolves data flow from
+   * `node.inputs` — the compiler-derived EDGE bindings — and never reads `config.inputs`, so a
+   * config-shaped binding would validate, render as bound, and thread nothing into the run. The
+   * panel therefore reports INTENT and the editor does the edge arithmetic; `onConfigChange` must
+   * stay untouched, which is what this pins.
+   */
+  it('choosing an upstream node reports the binding and does NOT write it into config', async () => {
     stubAgentsFetchForSecondaryInputs();
     if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
     const onConfigChange = vi.fn();
+    const onSecondaryInputChange = vi.fn();
     renderWithProviders(
       <InspectorPanel
         tab="config"
@@ -389,13 +402,35 @@ describe('InspectorPanel — secondary input bindings (TASK-893 B5)', () => {
         onConfigChange={onConfigChange}
         secondaryInputs={[{ name: 'context', primitive: 'text', required: false }]}
         upstreamNodes={UPSTREAM}
+        secondaryBindings={{}}
+        onSecondaryInputChange={onSecondaryInputChange}
       />,
     );
     const trigger = await screen.findByLabelText(/^Context/);
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     const listbox = await screen.findByRole('listbox');
     fireEvent.click(within(listbox).getByRole('option', { name: '2. Extract entities' }));
-    expect(onConfigChange).toHaveBeenCalledWith(expect.objectContaining({ agentRef: { slug: 'discharge' }, inputs: { context: { fromNodeId: 'extract-1' } } }));
+    expect(onSecondaryInputChange).toHaveBeenCalledWith('context', 'extract-1');
+    expect(onConfigChange).not.toHaveBeenCalled();
+  });
+
+  it('shows the node an existing binding names, read back from the graph edges', async () => {
+    stubAgentsFetchForSecondaryInputs();
+    renderWithProviders(
+      <InspectorPanel
+        tab="config"
+        onTabChange={vi.fn()}
+        node={{ id: 'agent-1', type: 'core.agent', position: { x: 0, y: 0 }, safetyClasses: [], config: { agentRef: { slug: 'discharge' } } }}
+        configSchema={NODE_CONFIG_SCHEMAS['core.agent']}
+        problems={[]}
+        onConfigChange={vi.fn()}
+        secondaryInputs={[{ name: 'context', primitive: 'text', required: false }]}
+        upstreamNodes={UPSTREAM}
+        secondaryBindings={{ context: 'trigger-1' }}
+        onSecondaryInputChange={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText('1. Trigger')).toBeTruthy();
   });
 
   it('renders no secondary-input fields for a node type with none declared', () => {

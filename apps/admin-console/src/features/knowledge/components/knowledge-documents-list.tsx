@@ -1,10 +1,11 @@
 'use client';
 
 /**
- * Knowledge documents list — `GET admin/knowledge/documents`, offset
- * paginated. Follows `features/workflow-studio/components/definitions-list-screen.tsx`
- * closely (same `ScreenTemplate` + `VirtualizedDataGrid` shape, /
- * in the same program).
+ * Knowledge documents list — `GET admin/knowledge/documents`, offset paginated. Follows
+ * `features/workflow-runs/components/workflow-runs-screen.tsx` closely (same `ScreenTemplate` +
+ * `VirtualizedDataGrid` shape). It used to cite the Workflow Studio's definitions grid as the
+ * exemplar; TASK-893 deleted that screen — the studio has no list interface any more — so the
+ * pointer moved to the sibling that still ships the pattern.
  */
 
 import { useState } from 'react';

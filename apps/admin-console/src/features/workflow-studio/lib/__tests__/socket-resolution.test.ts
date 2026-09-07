@@ -147,3 +147,45 @@ describe('ANTI-LAUNDERING — the collapse must not widen the lattice', () => {
     }
   });
 });
+
+/**
+ * TASK-893 integration — the canvas renders the primary output with the literal handle id `out`
+ * (Contract A), so React Flow reports `sourceHandle: 'out'` for EVERY ordinary link and the
+ * editor forwards it as the hint. Before this was handled, that pinned resolution to the data
+ * pair and made the ordering fallback unreachable: the anti-laundering pair below was refused
+ * outright instead of degrading. Lane A predicted it from the canvas side; Lane D's own sweep ran
+ * hint-free and could not see it. Every case here is the hinted twin of one above, and must agree.
+ */
+describe('the primary handle id is not an explicit grab', () => {
+  const SOURCE = at('consultation.synthesize');
+  const TARGET = at('consultation.extractEntities');
+
+  it('still degrades the anti-laundering pair to an ordering edge when hinted with `out`', () => {
+    expect(resolvePrimarySockets(REGISTRY, SOURCE, TARGET, 'out')).toEqual({ sourceHandle: 'next', targetHandle: 'after' });
+  });
+
+  it('resolves the data pair identically with and without the `out` hint', () => {
+    const unhinted = resolvePrimarySockets(REGISTRY, at('core.trigger'), at('core.action'));
+    expect(resolvePrimarySockets(REGISTRY, at('core.trigger'), at('core.action'), 'out')).toEqual(unhinted);
+  });
+
+  it('agrees with the unhinted answer for every pair in the registry', () => {
+    const types = [...REGISTRY.keys()];
+    for (const sourceType of types) {
+      for (const targetType of types) {
+        const unhinted = resolvePrimarySockets(REGISTRY, at(sourceType), at(targetType));
+        const hinted = resolvePrimarySockets(REGISTRY, at(sourceType), at(targetType), 'out');
+        expect(hinted, `${sourceType} -> ${targetType}`).toEqual(unhinted);
+      }
+    }
+  });
+
+  it('a REAL branch grab is still fixed to the socket the user took', () => {
+    // `core.condition.else` is a control branch: it may only ever land on an ordering input, and
+    // must never be silently re-resolved to the node's `out`.
+    expect(resolvePrimarySockets(REGISTRY, at('core.condition'), at('core.action'), 'else')).toEqual({
+      sourceHandle: 'else',
+      targetHandle: 'after',
+    });
+  });
+});

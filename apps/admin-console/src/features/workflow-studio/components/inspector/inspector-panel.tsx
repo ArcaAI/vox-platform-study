@@ -39,11 +39,13 @@
  * scrolls, whichever tab is active.
  *
  * TASK-893 B5 (INTERFACES.md Contract B §4.2) — `secondaryInputs` renders one
- * `SecondaryInputBindingField` per entry, reading/writing `config.inputs.<portName> =
- * { fromNodeId }` (`secondaryInputValue`/`withSecondaryInput` below own that shape). Rendered
- * right after the node-type-specific bindings (agent/trigger/action) and before the generic
- * schema-driven fields, in both the schema-backed and raw-JSON-fallback branches — a secondary
- * input is a PORT fact, not a JSON-schema fact, so it does not depend on a config schema existing.
+ * `SecondaryInputBindingField` per entry. Each binding is a real EDGE on the wire, not config:
+ * this panel receives them as `secondaryBindings` and reports changes through
+ * `onSecondaryInputChange`, and the editor owns the edge arithmetic (see the note above
+ * `SecondaryInputsSection` for why config would have been a lie). Rendered right after the
+ * node-type-specific bindings (agent/trigger/action) and before the generic schema-driven fields,
+ * in both the schema-backed and raw-JSON-fallback branches — a secondary input is a PORT fact,
+ * not a JSON-schema fact, so it does not depend on a config schema existing.
  */
 import {
   Badge,
@@ -102,7 +104,8 @@ const CONTEXT_SCHEMA_PATH = 'contextSchema';
 const GUARDRAIL_PATH = 'guardrail';
 /** TASK-890 §3.10 — `core.agent`'s per-node prompt-variable overrides, nested under `overrides`. */
 const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
-/** TASK-893 B5 — secondary DATA inputs live at `config.inputs.<portName>`. */
+/** Namespace for a secondary input's DOM id and its finding path. Not a config key: the binding
+ *  itself is an edge (see the note above `SecondaryInputsSection`), so nothing is written here. */
 const SECONDARY_INPUTS_ROOT = 'inputs';
 
 /** TASK-893 B4 — the inspector's three tabs (INTERFACES.md Contract B §4.1). */
@@ -150,36 +153,30 @@ export interface InspectorPanelProps {
   upstreamNodes?: UpstreamNodeOption[];
   /** TASK-893 B5 — secondary data inputs to render as binding fields (from `secondaryInputsFor`). */
   secondaryInputs?: { name: string; primitive: string; required: boolean }[];
+  /** Port name -> the upstream node id currently bound to it, derived by the editor from the
+   *  graph's EDGES (see the note above `SecondaryInputsSection`). Absent = nothing bound. */
+  secondaryBindings?: Readonly<Record<string, string | null>>;
+  /** Bind/unbind one secondary input. The editor turns this into an edge add/replace/remove;
+   *  absent = the pickers are not rendered at all. */
+  onSecondaryInputChange?: (portName: string, fromNodeId: string | null) => void;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** TASK-893 B5 — the bound upstream node id for one secondary input, or `null` when unbound. */
-function secondaryInputValue(config: Record<string, unknown>, portName: string): string | null {
-  const entry = getAtPath(config, `${SECONDARY_INPUTS_ROOT}.${portName}`);
-  return isPlainObject(entry) && typeof entry.fromNodeId === 'string' ? entry.fromNodeId : null;
-}
-
-/** TASK-893 B5 — writes/clears one secondary-input binding. Clearing OMITS the key entirely
- *  (never left as an explicit `undefined`/`null` residue), and drops the whole `inputs` object
- *  once it is empty, so a node with no bindings serializes with no `inputs` key at all — the
- *  same "omit rather than null out" discipline `PromptTemplateSection` already follows below. */
-function withSecondaryInput(config: Record<string, unknown>, portName: string, fromNodeId: string | null): Record<string, unknown> {
-  const current = getAtPath(config, SECONDARY_INPUTS_ROOT);
-  const next: Record<string, unknown> = isPlainObject(current) ? { ...current } : {};
-  if (fromNodeId === null) {
-    delete next[portName];
-  } else {
-    next[portName] = { fromNodeId };
-  }
-  if (Object.keys(next).length === 0) {
-    const { [SECONDARY_INPUTS_ROOT]: _omit, ...rest } = config;
-    return rest;
-  }
-  return setAtPath(config, SECONDARY_INPUTS_ROOT, next);
-}
+/**
+ * TASK-893 integration — a secondary binding is an EDGE, not config.
+ *
+ * B5 originally wrote `config.inputs.<portName> = { fromNodeId }`. The harness interpreter does
+ * not read that: `_resolve_bound_inputs` (`apps/harness/.../interpreter/workflow.py`) iterates
+ * `node.inputs` — "the compiler-derived edge bindings" — and resolves data flow purely from
+ * EDGES. A config-shaped binding would validate, render as bound, and thread nothing into the
+ * run: a field that lies. So the binding stays a real typed edge on the wire (`fromPort` ->
+ * `toPort: <portName>`), and the only thing that changed is that the CANVAS does not draw it —
+ * the editor filters those edges out and renders them here instead. The wire contract, the
+ * compiler and the port lattice are all untouched, which is the whole point of §3.1.
+ *
+ * This panel therefore takes the bindings as data (`secondaryBindings`) and reports changes as
+ * intent (`onSecondaryInputChange`); the editor owns the edge arithmetic, because only it can
+ * resolve the producing socket and run the compatibility check.
+ */
 
 function errorsForPath(problems: WorkflowFinding[], path: string): string[] {
   return problems.filter((problem) => (problem.path ?? '') === path).map((problem) => problem.message);
@@ -294,19 +291,21 @@ function ActionKeySection({
 function SecondaryInputsSection({
   node,
   secondaryInputs,
+  secondaryBindings,
+  onSecondaryInputChange,
   upstreamNodes,
-  onConfigChange,
   problems,
   readOnly,
 }: {
   node: GraphStoreNode;
   secondaryInputs: { name: string; primitive: string; required: boolean }[] | undefined;
   upstreamNodes: UpstreamNodeOption[] | undefined;
-  onConfigChange: (config: Record<string, unknown>) => void;
+  secondaryBindings: Readonly<Record<string, string | null>> | undefined;
+  onSecondaryInputChange: ((portName: string, fromNodeId: string | null) => void) | undefined;
   problems: WorkflowFinding[];
   readOnly?: boolean;
 }) {
-  if (!secondaryInputs || secondaryInputs.length === 0) return null;
+  if (!secondaryInputs || secondaryInputs.length === 0 || !onSecondaryInputChange) return null;
   return (
     <div className="flex flex-col gap-4">
       {secondaryInputs.map((input) => (
@@ -317,12 +316,11 @@ function SecondaryInputsSection({
           primitive={input.primitive}
           required={input.required}
           upstreamNodes={upstreamNodes ?? []}
-          value={secondaryInputValue(node.config, input.name)}
-          onChange={(fromNodeId) => onConfigChange(withSecondaryInput(node.config, input.name, fromNodeId))}
-          errors={[
-            ...errorsForPath(problems, `${SECONDARY_INPUTS_ROOT}.${input.name}`),
-            ...errorsForPath(problems, `${SECONDARY_INPUTS_ROOT}.${input.name}.fromNodeId`),
-          ]}
+          value={secondaryBindings?.[input.name] ?? null}
+          onChange={(fromNodeId) => onSecondaryInputChange(input.name, fromNodeId)}
+          // A refused binding surfaces the same way a refused canvas drag does — the store's
+          // `connect` reason, toasted by the editor — so there is no config path to look up here.
+          errors={errorsForPath(problems, `${SECONDARY_INPUTS_ROOT}.${input.name}`)}
           disabled={readOnly}
         />
       ))}
@@ -349,6 +347,8 @@ export function InspectorPanel({
   problemCount,
   upstreamNodes,
   secondaryInputs,
+  secondaryBindings,
+  onSecondaryInputChange,
 }: InspectorPanelProps) {
   // Hooks run unconditionally, ahead of every branch (rules of hooks) — `enabled` gates
   // the actual network read to `core.agent` nodes only. `useAgentOptions` is the SAME query
@@ -401,7 +401,8 @@ export function InspectorPanel({
           node={node}
           secondaryInputs={secondaryInputs}
           upstreamNodes={upstreamNodes}
-          onConfigChange={onConfigChange}
+          secondaryBindings={secondaryBindings}
+          onSecondaryInputChange={onSecondaryInputChange}
           problems={problems}
           readOnly={readOnly}
         />
@@ -505,7 +506,8 @@ export function InspectorPanel({
           node={node}
           secondaryInputs={secondaryInputs}
           upstreamNodes={upstreamNodes}
-          onConfigChange={onConfigChange}
+          secondaryBindings={secondaryBindings}
+          onSecondaryInputChange={onSecondaryInputChange}
           problems={problems}
           readOnly={readOnly}
         />

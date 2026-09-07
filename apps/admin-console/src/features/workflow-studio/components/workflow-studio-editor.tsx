@@ -56,7 +56,7 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { GatewayError } from '@/shared/api';
 import { SandboxNodeTrace, SandboxRunPanel, useSandboxNodeStates } from '@/shared/sandbox';
 import { useStudioShortcuts, useUnsavedChangesGuard } from '../hooks';
-import { useSaveModel } from '../hooks/use-save-model';
+import { useSaveModel, type SaveDefinitionPatch } from '../hooks/use-save-model';
 import {
   useCloneWorkflowDefinition,
   useCreateWorkflowDefinition,
@@ -174,6 +174,14 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const canUndo = useGraphStore(selectCanUndo);
   const canRedo = useGraphStore(selectCanRedo);
 
+  /**
+   * The canvas's FULL selection (OD-5: "the loop must be able to wrap one or many node").
+   * `selectedNodeId` in the store stays the PRIMARY — it drives the inspector, which shows one
+   * node — while this drives the multi-node commands. Held here rather than in the graph store
+   * because it is viewport state, not authored graph data: box-selecting three nodes changes
+   * nothing about the workflow and must never mark it dirty.
+   */
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [currentEtag, setCurrentEtag] = useState(etag);
   const [report, setReport] = useState<WorkflowValidationReport | null>(definition.validationReport);
   const [validating, setValidating] = useState(false);
@@ -365,12 +373,17 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   // thing standing between an admin and a closed tab full of lost edits.
   useUnsavedChangesGuard(!readOnly && (dirty || metadataDirty));
 
-  const canSave = !readOnly && (storeCanSave || (metadataDirty && saveState !== 'saving'));
+  // `!save.paused` is load-bearing, not defensive. `useSaveModel.save()` is deliberately a NO-OP
+  // while paused, so that a 412 is never retried without an explicit decision — which means a Save
+  // button left enabled after a conflict does nothing at all when pressed, the worst kind of dead
+  // control. The `OccConflictAlert` above is the way out: Reload, or Overwrite (which calls
+  // `save.resume()`), and only then does Save come back.
+  const canSave = !readOnly && !save.paused && (storeCanSave || (metadataDirty && saveState !== 'saving'));
   const canDiscard = !readOnly && (storeCanDiscard || metadataDirty);
 
   const handleSave = useCallback(() => {
     const { nodes: current, edges: currentEdges } = storeApi.getState();
-    const patch: { graph?: unknown; name?: string; description?: string } = { graph: toWorkflowGraph(current, currentEdges) };
+    const patch: SaveDefinitionPatch = { graph: toWorkflowGraph(current, currentEdges) };
     if (metadataDirty) {
       patch.name = name;
       patch.description = description;
@@ -448,6 +461,15 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   // `onSelectionChange` on this callback, and React Flow re-emits the current selection every
   // time that handler's identity changes — an inline arrow here looped selection into
   // "Maximum update depth exceeded".
+  // Same discipline as `onSelect`: React Flow re-announces the current selection whenever this
+  // handler's identity changes, so it is memoized, and an unchanged set returns the SAME array so
+  // the controlled `selectedNodeIds` prop does not churn the canvas memo every announcement.
+  const handleSelectionChange = useCallback((nodeIds: string[]) => {
+    setSelectedNodeIds((previous) =>
+      previous.length === nodeIds.length && previous.every((id, index) => id === nodeIds[index]) ? previous : nodeIds,
+    );
+  }, []);
+
   const selectNodeById = useCallback((nodeId: string | null) => storeApi.getState().selectNode(nodeId), [storeApi]);
   const focusNode = useFocusNode({ onSelect: selectNodeById });
 
@@ -640,12 +662,15 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         handleNodeParentChange(selectedNode.id, loopId, { x: 24 + siblings * 260, y: 56 });
       },
       onWrapInLoop: () => {
-        const result = storeApi.getState().wrapInLoop([selectedNode.id]);
+        // The whole selection when the admin box- or shift-selected several nodes; otherwise just
+        // the primary. `wrapInLoop` refuses a set it cannot legally group and says why.
+        const target = selectedNodeIds.length > 1 && selectedNodeIds.includes(selectedNode.id) ? selectedNodeIds : [selectedNode.id];
+        const result = storeApi.getState().wrapInLoop(target);
         if (!result.ok) {
           toast.error(result.reason);
           return;
         }
-        toast.success('Wrapped in a loop.');
+        toast.success(target.length === 1 ? 'Wrapped in a loop.' : `Wrapped ${target.length} nodes in a loop.`);
         if (result.loopId) storeApi.getState().selectNode(result.loopId);
       },
       onUnwrapLoop:
@@ -659,7 +684,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       onDuplicate: () => handleDuplicate(selectedNode.id),
       onDelete: () => handleDeleteRequest(selectedNode.id),
     };
-  }, [selectedNode, orderedNodes, nodes, stepOf, commitConnection, handleNodeParentChange, handleDuplicate, handleDeleteRequest, storeApi]);
+  }, [selectedNode, selectedNodeIds, orderedNodes, nodes, stepOf, commitConnection, handleNodeParentChange, handleDuplicate, handleDeleteRequest, storeApi]);
 
   // TASK-864 B1 — auto layout (built-in layered engine; an ELK engine can be injected later),
   // JSON export and undoable JSON import. Layout moves mark the graph dirty like any other edit;
@@ -803,13 +828,51 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           : undefined,
     };
   });
-  const canvasEdges: WorkflowCanvasEdge[] = edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    sourceHandle: edge.sourceHandle,
-    target: edge.target,
-    targetHandle: edge.targetHandle,
-  }));
+  /**
+   * The set of `(nodeId, portName)` pairs the inspector binds instead of the canvas drawing them
+   * — the whole of "one link instead of split handles" (§3.1). A secondary binding is still a
+   * REAL typed edge on the wire (the interpreter resolves data flow from edges and nothing else,
+   * `_resolve_bound_inputs`); it is only the DRAWING that moves into a form field. So the canvas
+   * is handed every edge except those, and the inspector is handed exactly those.
+   */
+  const secondaryPortsByNode = useMemo(() => {
+    const byNode = new Map<string, Set<string>>();
+    for (const node of nodes) {
+      const ports = secondaryInputsFor(descriptorByType, node.type, node.config);
+      if (ports.length > 0) byNode.set(node.id, new Set(ports.map((port) => port.name)));
+    }
+    return byNode;
+  }, [nodes, descriptorByType]);
+  const isSecondaryBinding = useCallback(
+    (edge: { target: string; targetHandle: string }) => secondaryPortsByNode.get(edge.target)?.has(edge.targetHandle) === true,
+    [secondaryPortsByNode],
+  );
+
+  /**
+   * The inverse of `resolvePrimarySockets`: wire sockets projected back onto the handles the
+   * canvas actually renders.
+   *
+   * Collapsing the node chrome to one input dot and one output dot removed the `after`/`next`
+   * handles, and React Flow silently DROPS an edge whose named handle does not exist — so an
+   * ordering edge (`next -> after`) rendered as nothing at all. Every seeded graph is built out of
+   * those, which is how a whole chain could look disconnected while the wire data was perfectly
+   * intact. Branch handles keep their own id (they are really rendered); everything else lands on
+   * the primary pair. The store is untouched — this is presentation only.
+   */
+  const canvasEdges: WorkflowCanvasEdge[] = edges
+    .filter((edge) => !isSecondaryBinding(edge))
+    .map((edge) => {
+      const source = nodes.find((node) => node.id === edge.source);
+      const isBranch =
+        source !== undefined && branchHandlesFor(descriptorByType, source.type, source.config).some((branch) => branch.id === edge.sourceHandle);
+      return {
+        id: edge.id,
+        source: edge.source,
+        sourceHandle: isBranch ? edge.sourceHandle : 'out',
+        target: edge.target,
+        targetHandle: 'in',
+      };
+    });
 
   /** Upstream nodes the inspector's secondary-input pickers offer, in execution order (§4.1). */
   const upstreamNodes = useMemo(() => {
@@ -823,6 +886,42 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const secondaryInputs = useMemo(
     () => (selectedNode ? secondaryInputsFor(descriptorByType, selectedNode.type, selectedNode.config) : undefined),
     [descriptorByType, selectedNode],
+  );
+
+  /** Port name -> the upstream node currently bound to it, read back off the graph's edges. */
+  const secondaryBindings = useMemo(() => {
+    if (!selectedNode) return undefined;
+    const bound: Record<string, string | null> = {};
+    for (const edge of edges) {
+      if (edge.target !== selectedNode.id) continue;
+      if (!isSecondaryBinding(edge)) continue;
+      bound[edge.targetHandle] = edge.source;
+    }
+    return bound;
+  }, [edges, selectedNode, isSecondaryBinding]);
+
+  /**
+   * Bind/unbind one secondary input. A port holds at most one binding, so this REPLACES: the
+   * existing edge into that port is dropped first, then the new one is proposed through the same
+   * `connect` the canvas uses — so the port lattice refuses an incompatible pick here exactly as
+   * it would refuse the drag, with the same reason surfaced the same way.
+   */
+  const handleSecondaryInputChange = useCallback(
+    (portName: string, fromNodeId: string | null) => {
+      if (!selectedNode || readOnly) return;
+      const state = storeApi.getState();
+      const existing = state.edges.find((edge) => edge.target === selectedNode.id && edge.targetHandle === portName);
+      if (existing) state.disconnectEdge(existing.id);
+      if (fromNodeId === null) return;
+      const source = state.nodes.find((node) => node.id === fromNodeId);
+      if (!source) return;
+      const sockets = resolvePrimarySockets(descriptorByType, { type: source.type, config: source.config }, { type: selectedNode.type, config: selectedNode.config });
+      const result = storeApi
+        .getState()
+        .connect({ source: fromNodeId, sourceHandle: sockets?.sourceHandle ?? 'out', target: selectedNode.id, targetHandle: portName }, descriptorByType);
+      if (!result.ok) toast.error(result.reason);
+    },
+    [selectedNode, readOnly, storeApi, descriptorByType],
   );
 
   return (
@@ -1005,6 +1104,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             nodeTypes={CORE_NODE_RENDERERS}
             readOnly={readOnly}
             selectedNodeId={selectedNodeId}
+            selectedNodeIds={selectedNodeIds}
+            onSelectionChange={handleSelectionChange}
             onSelect={selectNodeById}
             onPaneDrop={handlePaneDrop}
             isValidConnection={isValidConnection}
@@ -1069,6 +1170,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               problemCount={findings.length}
               upstreamNodes={upstreamNodes}
               secondaryInputs={secondaryInputs}
+              secondaryBindings={secondaryBindings}
+              onSecondaryInputChange={handleSecondaryInputChange}
               problemsSlot={
                 <div className="flex flex-col gap-4">
                   <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />

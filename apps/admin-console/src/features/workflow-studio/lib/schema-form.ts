@@ -20,6 +20,15 @@ export interface FieldDescriptorBase {
   label: string;
   required: boolean;
   description?: string;
+  /**
+   * TASK-893 §3.5 — the field's one-line, plain-language summary, carried alongside (never
+   * instead of) `description`. The inspector renders THIS inline and puts `description` behind a
+   * `?` popover: the schema descriptions are normative contract text — the `enabled` field's runs
+   * to ~500 characters of MUST/never phrasing — which is exactly right for the API docs and
+   * unreadable in a form. Absent for any field whose schema has not been annotated yet, where the
+   * inspector falls back to a one-line truncation of `description`.
+   */
+  summary?: string;
 }
 
 export interface StringFieldDescriptor extends FieldDescriptorBase {
@@ -150,7 +159,8 @@ function compileField(key: string, rawSchema: unknown, required: boolean, path: 
 
   const label = labelFor(key, rawSchema);
   const description = typeof rawSchema.description === 'string' ? rawSchema.description : undefined;
-  const base: FieldDescriptorBase = { path, label, required, description };
+  const summary = typeof rawSchema.summary === 'string' ? rawSchema.summary : undefined;
+  const base: FieldDescriptorBase = { path, label, required, description, summary };
 
   if (Array.isArray(rawSchema.enum) && rawSchema.enum.every((v): v is string => typeof v === 'string')) {
     return {

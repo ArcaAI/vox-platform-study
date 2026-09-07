@@ -122,8 +122,7 @@ const GENERATION_PROPERTY: NodeConfigSchema = Object.freeze({
         enabled: Object.freeze({ type: 'boolean' }),
         effort: Object.freeze({ type: 'string', enum: Object.freeze(['minimal', 'low', 'medium', 'high']) }),
       }),
-      description:
-        'Whether the engine is asked to reason, and how hard. Rides `GenerateRequest.extra.reasoning_effort` -> `extra_body`.',
+      description: 'Whether the engine is asked to reason, and how hard. Rides `GenerateRequest.extra.reasoning_effort` -> `extra_body`.',
     }),
   }),
   description: 'Generation hyper-parameters. Every key is capability-gated against the bound provider configuration — never silently dropped.',
