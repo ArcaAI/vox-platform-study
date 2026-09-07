@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import {
   ConsultationRepository,
@@ -24,7 +24,7 @@ import {
   ResourceStatusType,
   NotificationType,
 } from '@arcaai/domains';
-import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { BusinessException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { attachSegmentEvidence, extractAndStripSegmentCitationMarkers, type SegmentOffsetRef } from '../lib/transcript-segments';
 import { HarnessAuditService } from '../../harness-audit';
 // Imported from the leaf modules rather than the package barrel: the barrel
@@ -495,6 +495,33 @@ export class HarnessInternalService {
   private assertConsultationWritable(consultation: Pick<ConsultationEntity, 'resourceStatus'> | null | undefined): void {
     if (!consultation || consultation.resourceStatus !== ResourceStatusType.ENABLED) {
       throw new NotFoundException('Resource not found');
+    }
+  }
+
+  /**
+   * `transitionTo`, with the state-machine refusal mapped to a NAMED 409.
+   *
+   * `ConsultationEntity.transitionTo` throws a bare `BusinessException` (packages/domains has
+   * no HTTP awareness), and the gateway's `ExceptionInterceptor` maps the whole
+   * `BusinessException` family to 500 — most of it IS ordinary entity validation, so
+   * reclassifying it globally would be wrong. `ConsultationService.applyTransition` set the
+   * precedent of catching it at the call sites that ticket controlled; this is the same
+   * mapping for the call sites on the harness-internal surface.
+   *
+   * Why it matters more HERE than on a human-driven route: every caller of this surface is a
+   * Temporal activity carrying `_API_RETRY` (3 attempts). A 500 is retryable by definition, so
+   * a permanent state conflict burned the whole budget on an identical request and then failed
+   * the workflow — J5-F7's measured shape. 409 is terminal for the call and, paired with
+   * `ApiClientError` on the harness side, is not retried at all.
+   */
+  private applyTransition(consultation: ConsultationEntity, next: ConsultationStatus, actor: string, reason: string): boolean {
+    try {
+      return consultation.transitionTo(next, actor, reason);
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
     }
   }
 
@@ -1061,17 +1088,51 @@ export class HarnessInternalService {
 
         // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable,
         // assurance pending, NOT signable). LEGACY -> PENDING_REVIEW
-        // (clinician confirm-before-commit). Legal predecessor is now
-        // DRAINING — a draft arriving while the
-        // consultation is still RECORDING is a real ordering bug and
-        // `transitionTo` throws rather than papering over it.
+        // (clinician confirm-before-commit). The matrix's legal predecessors for both are
+        // DRAINING / REOPENED (plus DRAFT_PENDING_SENSORS for the second phase).
+        //
+        // J5-F7 — the advance is LEGALITY-GUARDED, not unconditional. It used to
+        // call `transitionTo` blind, on the reasoning that a draft arriving while the
+        // consultation is still RECORDING is an ordering bug worth throwing over. Measured
+        // live, that reasoning cost more than it bought:
+        //
+        //   * The BATCH entry point reaches here with the consultation still OPEN, entirely
+        //     legitimately. `sttInternal.service.ts` creates the TRANSCRIPT ContextItem and
+        //     emits `TranscriptionCreated`; it never touches the lifecycle, and nothing else
+        //     on that path does either. `OPEN -> PENDING_REVIEW` is not in the matrix.
+        //   * There is no transaction around `persistDraft`. Steps 1 and 2 have ALREADY
+        //     committed the note and its SummaryMeta by the time we get here, so throwing
+        //     keeps the draft and loses the workflow — the worst of both. Temporal then
+        //     retried the identical request twice more and marked the run FAILED (the seed's
+        //     own `harness-doc-90000000-...-01` has been FAILED since 2026-09-06 for this).
+        //
+        // So a draft persisted for a consultation with no legal path to the draft state lands
+        // as a draft in the state the consultation IS in: the artifact is kept, the lifecycle
+        // is left alone, and the skip is logged with both states named. That is the same
+        // degrade-and-continue posture the adoption branch above already takes on OCC drift,
+        // and for the same reason — a clinical artifact is not the right thing to sacrifice to
+        // a lifecycle disagreement. `transitionTo` remains the ONLY writer of `status`, and
+        // `applyTransition` still maps a genuine refusal to 409 if the matrix and
+        // `canTransitionTo` ever disagree.
         if (consultation) {
           const draftTarget = isEarly ? ConsultationStatus.DRAFT_PENDING_SENSORS : ConsultationStatus.PENDING_REVIEW;
-          const expectedConsultationVersion = consultation.version;
-          const applied = consultation.transitionTo(draftTarget, userId, 'persistDraft');
-          if (applied) {
-            consultation.updatedBy = userId;
-            await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
+          if (!consultation.canTransitionTo(draftTarget)) {
+            this.logger.warn({
+              message:
+                'Harness draft persisted WITHOUT advancing the consultation lifecycle — the target state is not reachable from the current one. ' +
+                'The draft is on the consultation; its status is unchanged.',
+              consultationId,
+              contextItemId,
+              currentStatus: consultation.status,
+              draftTarget,
+            });
+          } else {
+            const expectedConsultationVersion = consultation.version;
+            const applied = this.applyTransition(consultation, draftTarget, userId, 'persistDraft');
+            if (applied) {
+              consultation.updatedBy = userId;
+              await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
+            }
           }
         }
 
@@ -1492,7 +1553,7 @@ export class HarnessInternalService {
         // Non-terminal GATE_ESCALATED writes no status, as before.
         if (isTerminalAbandon && consultation) {
           const expectedConsultationVersion = consultation.version;
-          const applied = consultation.transitionTo(ConsultationStatus.TIMED_OUT, 'system', 'recordEscalation');
+          const applied = this.applyTransition(consultation, ConsultationStatus.TIMED_OUT, 'system', 'recordEscalation');
           if (applied) {
             await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
 

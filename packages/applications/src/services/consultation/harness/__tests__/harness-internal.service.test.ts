@@ -11,7 +11,7 @@
  * the harness calls these out-of-band of the API edge ClsModule middleware.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ConsultationEntity, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE } from '../dto';
@@ -1422,6 +1422,134 @@ describe('HarnessInternalService', () => {
   // the test below pins that as a regression guard: if a future change adds
   // emission here by mistake, this test catches it immediately.
   // =========================================================================
+  // =========================================================================
+  // J5-F7 — a draft whose lifecycle target is ILLEGAL from the consultation's
+  // current state must not fail the workflow, and must never leave the gateway as a 500.
+  //
+  // Measured live 2026-09-07: a BATCH transcription attached to an OPEN consultation emits
+  // `TranscriptionCreated` → `HarnessDocWorkflow` → `persist_draft`. The batch path never
+  // touches the lifecycle (`sttInternal.service.ts` creates the TRANSCRIPT ContextItem and
+  // emits, nothing more), so the consultation is still OPEN — and `OPEN → PENDING_REVIEW`
+  // is not in `CONSULTATION_TRANSITIONS`. `transitionTo` threw a bare `BusinessException`,
+  // which the gateway's `ExceptionInterceptor` maps to 500 through its generic
+  // `BaseException` branch; the Temporal activity retried it 3x and the workflow FAILED.
+  // The seed's own `harness-doc-90000000-…-01` run has been FAILED since 2026-09-06 for
+  // exactly this reason.
+  //
+  // The draft itself is already persisted by the time the transition is attempted (there is
+  // no transaction around `persistDraft`), so throwing here loses the workflow and keeps the
+  // note — the worst of both. The guard is therefore the same degrade-and-continue posture
+  // this method already takes on an OCC-drifted adoption: persist the draft, leave the
+  // lifecycle where the consultation actually is, and say so in the log.
+  // =========================================================================
+  describe('persistDraft — the lifecycle advance is legality-guarded', () => {
+    const draftBody = () => ({
+      tenantId: 'tenant-1',
+      userId: 'doctor-1',
+      jobId: 'job-1',
+      content: 'S: chest pain O: BP 120/80 A: stable P: review',
+      modelName: 'gpt-x',
+      promptVersion: '3',
+    });
+
+    const inState = (status: ConsultationStatus) =>
+      consultationFixture({
+        id: 'consultation-1',
+        tenantId: 'tenant-1',
+        doctorId: 'doctor-1',
+        status,
+        resourceStatus: ResourceStatusType.ENABLED,
+      });
+
+    it('persists the draft and does NOT throw when the consultation is still OPEN (batch entry point)', async () => {
+      consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.OPEN));
+
+      const result = await service.persistDraft('consultation-1', draftBody());
+
+      // the clinical artifact still lands
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+      expect(summaryMetaRepository.create).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+    });
+
+    it('leaves the consultation in the state it IS in — no status write, no version bump', async () => {
+      consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.OPEN));
+
+      await service.persistDraft('consultation-1', draftBody());
+
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(consultationRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('still writes the GENERATE WORM audit for the un-advanced consultation', async () => {
+      consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.OPEN));
+
+      await service.persistDraft('consultation-1', draftBody());
+
+      const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
+      expect(actions).toContain(HarnessAuditAction.GENERATE);
+    });
+
+    it('applies the transition normally from a LEGAL predecessor (DRAINING → PENDING_REVIEW)', async () => {
+      consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.DRAINING));
+
+      await service.persistDraft('consultation-1', draftBody());
+
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
+        'consultation-1',
+        expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
+        expect.any(Number),
+      );
+    });
+
+    it('skips (does not throw) from RECORDING too — the draft is kept and the ordering is logged, not lost', async () => {
+      consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.RECORDING));
+
+      await expect(service.persistDraft('consultation-1', draftBody())).resolves.toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    });
+
+    it('EARLY phase is guarded the same way (OPEN → DRAFT_PENDING_SENSORS is illegal too)', async () => {
+      consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.OPEN));
+
+      await expect(service.persistDraft('consultation-1', { ...draftBody(), phase: HARNESS_DRAFT_PHASE.EARLY } as any)).resolves.toEqual({
+        contextItemId: 'ctx-draft-1',
+      });
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // J5-F7 (a) — a state-machine violation that DOES reach `transitionTo` on this
+  // internal surface must leave the gateway as a NAMED 409, never a 500.
+  //
+  // 500 is what made the Temporal retry loop pathological: the activity cannot tell an
+  // infrastructure blip from a permanent state conflict, so it burned its whole budget on an
+  // answer that could not change. `ConsultationService.applyTransition` already established
+  // the mapping (`BusinessException` → `ConflictException`) at the one call site IT controls;
+  // this is the same mapping at the harness-internal call sites, for the same reason — and
+  // deliberately still NOT a global reclassification of `BusinessException`.
+  // =========================================================================
+  describe('a state-machine violation on the harness surface is a 409, not a 500', () => {
+    it('recordEscalation answers ConflictException when TIMED_OUT is illegal from the current state', async () => {
+      consultationRepository.findById.mockResolvedValue(
+        consultationFixture({
+          id: 'consultation-1',
+          tenantId: 'tenant-1',
+          doctorId: 'doctor-1',
+          // gate_sla_abandoned targets TIMED_OUT, whose only legal predecessor is
+          // PENDING_REVIEW. From DRAINING the matrix refuses.
+          status: ConsultationStatus.DRAINING,
+          resourceStatus: ResourceStatusType.ENABLED,
+        }),
+      );
+
+      await expect(
+        service.recordEscalation('consultation-1', { tenantId: 'tenant-1', reason: 'gate_sla_abandoned', jobId: 'harness-doc-1' } as any),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
   describe('persistDraft — never calls the usage ledger (double-bill guard)', () => {
     const draftBody = () => ({
       tenantId: 'tenant-1',
