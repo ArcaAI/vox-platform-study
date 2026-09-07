@@ -90,21 +90,31 @@ beforeEach(() => {
 describe('resolveTextSelection — the assigned TEXT_GENERATION agent is the ONE selection seam', () => {
   it('returns the resolved primary {provider, model} for the caller tenant', async () => {
     await expect(makeService().resolveTextSelection(TENANT, 'live')).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null, selectorTags: ['phase:live'] });
   });
 
   it('falls back to the CLS tenant when the caller passes none (the no-arg callers)', async () => {
     await makeService().resolveTextSelection();
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null, selectorTags: ['phase:finalize'] });
   });
 
-  it('the routing task no longer SELECTS — live, finalize and test resolve the same assigned agent (AgentAssignment has no role dimension)', async () => {
+  // AMENDED by TASK-891. TASK-876 recorded here that the task no longer selected — it was
+  // declared and then used only inside error strings. It selects again, as ONE `phase:` selector
+  // tag on the cascade (`AgentAssignment.selectorKey`, TASK-884), because the live flush needs
+  // reasoning OFF and finalize plausibly wants it ON, and one agent holds one posture.
+  //
+  // What TASK-876 removed stays removed, and this test still pins it: no `text.*` routing key is
+  // read, and a tenant that authored no qualified row resolves the SAME agent for all three
+  // phases — the tier's unqualified row satisfies every selector. Coverage of the qualified case
+  // is `harness-policy.phase-selector.task891.test.ts`, which drives the real cascade.
+  it('the task selects by TAG, not by a routing key — with no qualified row assigned, all three phases resolve the same agent', async () => {
     const svc = makeService();
     const live = await svc.resolveTextSelection(TENANT, 'live');
     const finalize = await svc.resolveTextSelection(TENANT, 'finalize');
     const test = await svc.resolveTextSelection(TENANT, 'test');
     expect(live).toEqual(finalize);
     expect(finalize).toEqual(test);
+    expect(textAgents.resolve.mock.calls.map(([input]) => input.selectorTags)).toEqual([['phase:live'], ['phase:finalize'], ['phase:test']]);
     // No text routing key is consulted any more (the judge key is a different selection).
     expect(routingPolicies.resolveDefault).not.toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/^text\./), expect.anything());
   });
@@ -169,16 +179,18 @@ describe('the DEPARTMENT tier of the cascade is reachable', () => {
   // `AgentAssignment` could never win however it was configured.
   it('threads the caller`s department into the assignment cascade', async () => {
     await makeService().resolveTextSelection(TENANT, 'finalize', 'dept-1');
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: 'dept-1' });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: 'dept-1', selectorTags: ['phase:finalize'] });
     await makeService().resolveTextFallbackSelection(TENANT, 'finalize', 'dept-1');
-    expect(textAgents.resolve).toHaveBeenLastCalledWith({ tenantId: TENANT, departmentId: 'dept-1' });
+    expect(textAgents.resolve).toHaveBeenLastCalledWith({ tenantId: TENANT, departmentId: 'dept-1', selectorTags: ['phase:finalize'] });
+    // TASK-891 — the worker-lane chain read takes no task, so it carries no phase and resolves
+    // the tier's unqualified row: the durable documentation lane IS the finalize lane.
     await makeService().resolveTextFallbackChain(TENANT, 'dept-1');
     expect(textAgents.resolve).toHaveBeenLastCalledWith({ tenantId: TENANT, departmentId: 'dept-1' });
   });
 
   it('passes null — never a fabricated department — when the call site has none', async () => {
     await makeService().resolveTextSelection(TENANT);
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null, selectorTags: ['phase:finalize'] });
   });
 });
 
@@ -211,7 +223,7 @@ describe('getEffectivePolicy — the assigned-agent overlay is UNCONDITIONAL (th
     const resp = await makeService().getEffectivePolicy(TENANT, { taskKey: 'text.live' });
     expect(resp.textProvider).toBe('lm-studio');
     expect(resp.textModel).toBe('gemma-4-e2b-it-qat');
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null, selectorTags: ['phase:finalize'] });
   });
 
   it('with a taskKey and NO assigned agent, the columns are NULLED so the Python node degrades `no_text_selection` (fail closed)', async () => {
@@ -240,7 +252,7 @@ describe('getEffectivePolicy — the assigned-agent overlay is UNCONDITIONAL (th
     const resp = await makeService().getEffectivePolicy(TENANT);
     expect(resp.textProvider).toBe('lm-studio');
     expect(resp.textModel).toBe('gemma-4-e2b-it-qat');
-    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null });
+    expect(textAgents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, departmentId: null, selectorTags: ['phase:finalize'] });
   });
 
   it('WITHOUT a taskKey and no agent anywhere, the columns are NULLED (a configuration error, never a silent pass-through)', async () => {
