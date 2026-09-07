@@ -11,6 +11,13 @@
  * `--workflow-canvas-*` names are the composite's own semantic layer (consumed directly by
  * `workflow-node.tsx` / `workflow-edge.tsx`), mapped from HOPE tokens once here so both the
  * xyflow bridge and this composite's own chrome stay in sync.
+ *
+ * Structural rules below are load-bearing, not theming. `tsup` extracts this file into a
+ * sibling CSS that the built JS does not re-import; routing it through `globals.css` is what
+ * actually ships it. The same pipeline is the only reliable way xyflow's pane geometry reaches
+ * admin-console — a JS `import '@xyflow/react/dist/style.css'` is not always kept as a CSS
+ * side-effect across the tsup + Next transpile. Without `position: absolute` on
+ * `.react-flow__node`, nodes stack in document flow and cannot be dragged or laid out.
  */
 .workflow-canvas {
   --workflow-canvas-node-bg: var(--card);
@@ -23,6 +30,34 @@
   --workflow-canvas-handle-control: var(--primary);
   --workflow-canvas-group-bg: color-mix(in oklab, var(--muted) 55%, transparent);
   --workflow-canvas-group-border: var(--border);
+}
+
+/* Pane geometry — React Flow requires a box with a real height; `min-h-0` on the wrapper
+   let the pane collapse and left nodes unmeasured (`visibility: hidden`) or piled. */
+.workflow-canvas,
+.workflow-canvas .react-flow {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 26rem;
+}
+
+/* If xyflow's own stylesheet is missing, nodes must still be absolutely positioned or they
+   stack as ordinary blocks and a drag pans the pile instead of moving one node. Scoped under
+   `.workflow-canvas` so this wins over a later Tailwind utility of equal specificity. */
+.workflow-canvas .react-flow__viewport {
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+.workflow-canvas .react-flow__nodes {
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+.workflow-canvas .react-flow__node {
+  position: absolute;
+  pointer-events: all;
+  transform-origin: 0 0;
 }
 
 /* Per-port handles (TASK-864 B1) sit inline in their port row rather than at React Flow's
@@ -73,4 +108,3 @@
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-

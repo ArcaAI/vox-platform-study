@@ -161,6 +161,7 @@ export function WorkflowCanvas({
   onPaneDrop,
   emptyState,
   minimap = true,
+  fitViewKey,
   className,
   'aria-label': ariaLabel,
 }: WorkflowCanvasProps) {
@@ -293,11 +294,16 @@ export function WorkflowCanvas({
     [onConnect],
   );
 
+  React.useEffect(() => {
+    if (fitViewKey === undefined) return;
+    instanceRef.current?.fitView({ duration: reducedMotion ? 0 : 400, padding: 0.2 });
+  }, [fitViewKey, reducedMotion]);
+
   return (
     <div
       data-slot="workflow-canvas"
       data-reduced-motion={reducedMotion ? 'true' : 'false'}
-      className={cn('workflow-canvas relative size-full min-h-0', className)}
+      className={cn('workflow-canvas relative h-full min-h-[26rem] w-full', className)}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >

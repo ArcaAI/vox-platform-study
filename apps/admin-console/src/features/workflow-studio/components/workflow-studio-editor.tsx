@@ -38,6 +38,7 @@ import { useAutosave, useStudioShortcuts, useUnsavedChangesGuard } from '../hook
 import { useCreateWorkflowDefinition, useExportWorkflowDefinition } from '../api';
 import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/client';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
+import { layoutClusteredGraph } from '../lib/ensure-canvas-layout';
 import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
 import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
 import { readContextSchemaBinding } from '../lib/context-schema-ref';
@@ -151,6 +152,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   // publish starts back on the confirm step.
   const [justPublished, setJustPublished] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
+  /** Bumped after a layout pass so the canvas re-fits; `fitView` on mount would otherwise stay zoomed into the origin pile. */
+  const [fitViewKey, setFitViewKey] = useState(0);
   const [name, setName] = useState(definition.name);
   const [description, setDescription] = useState(definition.description ?? '');
   const [metadataDirty, setMetadataDirty] = useState(false);
@@ -222,6 +225,31 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     onStateChange: (state) => storeApi.getState().setAutosaveState(state),
     onMissingPrecondition: () => toast.error('Stale tab — the request went out without If-Match. Refresh the page.'),
   });
+
+  // Seeded graphs omit `position`, so hydrate piles every node at the origin. Spread them
+  // once per definition — a separate effect so React Strict Mode's cancelled first invoke
+  // cannot skip the layout the way a combined hydrate+layout effect would (hydratedRef
+  // already set, second invoke returns, first invoke's promise aborted).
+  useEffect(() => {
+    const { nodes: current, edges: currentEdges } = storeApi.getState();
+    let cancelled = false;
+    void layoutClusteredGraph(current, currentEdges).then((positions) => {
+      if (cancelled || !positions) return;
+      for (const node of current) {
+        const position = positions[node.id];
+        if (position) storeApi.getState().moveNode(node.id, position);
+      }
+      setFitViewKey((key) => key + 1);
+      if (!readOnly) {
+        const { nodes: moved, edges: unchanged } = storeApi.getState();
+        autosave.schedule({ graph: toWorkflowGraph(moved, unchanged) });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one spread per definition id; autosave.schedule is stable
+  }, [definition.id, storeApi, readOnly]);
 
   // Debounced graph-shape autosave. The hook's own debounce coalesces rapid re-schedules, so
   // re-firing on every `nodes`/`edges` change while `dirty` is exactly the intended path, not
@@ -388,6 +416,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       const position = result.positions[node.id];
       if (position) storeApi.getState().moveNode(node.id, position);
     }
+    setFitViewKey((key) => key + 1);
     if (!readOnly) {
       const { nodes: moved, edges: unchanged } = storeApi.getState();
       autosave.schedule({ graph: toWorkflowGraph(moved, unchanged) });
@@ -428,8 +457,21 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       imported.map((node) => ({ ...node, safetyClasses: descriptorByType.get(node.type)?.classes ?? node.safetyClasses })),
       importedEdges,
     );
+    void layoutClusteredGraph(imported, importedEdges).then((positions) => {
+      if (!positions) return;
+      for (const node of imported) {
+        const position = positions[node.id];
+        if (position) storeApi.getState().moveNode(node.id, position);
+      }
+      setFitViewKey((key) => key + 1);
+    });
     toast.success(`Imported ${imported.length} node${imported.length === 1 ? '' : 's'} — validate before publishing.`);
   }
+  const handleDeleteRequest = useCallback((nodeId: string) => {
+    const result = storeApi.getState().deleteNode(nodeId);
+    if (!result.ok) toast.error(result.reason);
+  }, [storeApi]);
+
   const problemsByNodeId = useMemo(() => findingsByNodeId(report?.findings ?? []), [report]);
 
   async function handleValidate() {
@@ -582,7 +624,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         <aside className="min-h-0 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Node palette panel">
           <PaletteRail descriptors={registryNodes} onAddNode={handleAddNode} />
         </aside>
-        <div className="min-h-[26rem] [@media(min-width:64rem)_and_(min-height:32rem)]:min-h-0">
+        <div className="h-[26rem] [@media(min-width:64rem)_and_(min-height:32rem)]:h-full">
           {viewMode === 'canvas' ? (
             <WorkflowCanvas
               aria-label={`${name} graph, canvas view`}
@@ -594,6 +636,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               onSelect={selectNodeById}
               onPaneDrop={handlePaneDrop}
               isValidConnection={isValidConnection}
+              fitViewKey={fitViewKey}
               emptyState={
                 <Empty>
                   <EmptyMedia variant="icon">
@@ -603,10 +646,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                   <EmptyDescription>Add a node from the palette on the left, or switch to the list view for a pointer-free path.</EmptyDescription>
                 </Empty>
               }
-              onDeleteRequest={(nodeId) => {
-                const result = storeApi.getState().deleteNode(nodeId);
-                if (!result.ok) toast.error(result.reason);
-              }}
+              onDeleteRequest={handleDeleteRequest}
               onConnect={(connection) => {
                 const result = storeApi.getState().connect(
                   {
@@ -689,7 +729,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
  DD-11 — the "new version available" affordance, in the
               editor an admin already has open. An out-of-band prompt edit moves
               no node's pin by design; without this rail that guarantee is
-              invisible and the two-path design decays into "nothing updates". 
+              invisible and the two-path design decays into "nothing updates".
 */}
           <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
         </aside>
