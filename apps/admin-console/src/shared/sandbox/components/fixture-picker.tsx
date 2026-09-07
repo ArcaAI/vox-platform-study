@@ -18,10 +18,12 @@ import { useCreateFixture, useDeleteFixture, useFixtures } from '../api/hooks';
 const NONE = '__none__';
 
 /**
- * Per-tenant saved synthetic Workbench test input — picker + minimal create/delete manager
- * . Full edit-in-place is left to a follow-up; create/delete/pick cover the
- * ticket's stated scope ("create / edit / pick / delete") for the picker's own remit — the
- * `WorkflowTestFixtureController` PATCH route already exists for a later edit-in-place pass.
+ * Per-tenant saved synthetic test input — picker + minimal create/delete manager. Moved from
+ * `features/workbench/components/fixture-picker.tsx` (TASK-893) and restacked (full-width,
+ * vertical) so it reads acceptably in a narrow (~360px) inspector rail instead of a full-width
+ * toolbar row. Full edit-in-place is left to a follow-up; create/delete/pick cover this picker's
+ * own remit — the `WorkflowTestFixtureController` PATCH route (and `useUpdateFixture`) already
+ * exist for a later edit-in-place pass.
  */
 export function FixturePicker({
   workflowDefinitionId,
@@ -83,39 +85,46 @@ export function FixturePicker({
   }
 
   if (fixturesQuery.isLoading) {
-    return <Skeleton className="h-9 w-64" />;
+    return <Skeleton className="h-16 w-full" />;
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1.5">
       <Label htmlFor="fixture-picker" className="text-muted-foreground text-xs">
         Fixture
       </Label>
-      <Select value={value ?? NONE} onValueChange={(next) => onChange(next === NONE ? null : next)}>
-        <SelectTrigger id="fixture-picker" className="w-56">
-          <SelectValue placeholder="No fixture (empty input)" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE}>No fixture (empty input)</SelectItem>
-          {applicable.map((fixture) => (
-            <SelectItem key={fixture.id} value={fixture.id}>
-              {fixture.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {value && applicable.some((f) => f.id === value) ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Delete selected fixture"
-          onClick={() => handleDelete(value)}
-          disabled={deleteFixture.isPending}
-        >
-          {deleteFixture.isPending ? <Spinner className="size-4" /> : <IconTrash className="size-4" aria-hidden />}
-        </Button>
-      ) : null}
+      <div className="flex items-center gap-2">
+        <Select value={value ?? NONE} onValueChange={(next) => onChange(next === NONE ? null : next)}>
+          <SelectTrigger id="fixture-picker" className="w-full min-w-0">
+            <SelectValue placeholder="No fixture (empty input)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NONE}>No fixture (empty input)</SelectItem>
+            {applicable.map((fixture) => (
+              <SelectItem key={fixture.id} value={fixture.id}>
+                {fixture.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {value && applicable.some((f) => f.id === value) ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            aria-label="Delete selected fixture"
+            onClick={() => handleDelete(value)}
+            disabled={deleteFixture.isPending}
+          >
+            {deleteFixture.isPending ? <Spinner className="size-4" /> : <IconTrash className="size-4" aria-hidden />}
+          </Button>
+        ) : null}
+      </div>
+      <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setDialogOpen(true)}>
+        <IconPlus className="size-4" aria-hidden />
+        New fixture
+      </Button>
       <Dialog
         open={dialogOpen}
         onOpenChange={(next) => {
@@ -151,10 +160,6 @@ export function FixturePicker({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Button type="button" variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-        <IconPlus className="size-4" aria-hidden />
-        New fixture
-      </Button>
     </div>
   );
 }
