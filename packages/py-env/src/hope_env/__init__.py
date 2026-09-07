@@ -55,6 +55,15 @@ from hope_env.build_info import (
     BuildInfoReader,
     format_untagged_version,
 )
+from hope_env.cpu import (
+    CGROUP_V1_CPU_PERIOD,
+    CGROUP_V1_CPU_QUOTA,
+    CGROUP_V2_CPU_MAX,
+    OMP_NUM_THREADS_VAR,
+    CpuAllowance,
+    effective_cpu_quota,
+    resolve_cpu_allowance,
+)
 from hope_env.placeholders import (
     PLACEHOLDER_SENTINEL,
     first_real_secret,
@@ -81,18 +90,24 @@ from hope_env.settings_sources import (
 )
 
 __all__ = [
+    "CGROUP_V1_CPU_PERIOD",
+    "CGROUP_V1_CPU_QUOTA",
+    "CGROUP_V2_CPU_MAX",
     "DEFAULT_BUILD_INFO_PATH",
     "PLACEHOLDER_SENTINEL",
     "DEFAULT_HEARTBEAT_INTERVAL_S",
     "DEFAULT_REGISTER_TIMEOUT_S",
     "DEFAULT_SECRETS_DIR",
     "ENV_FILE_BY_NODE_ENV",
+    "OMP_NUM_THREADS_VAR",
     "SECRETS_DIR_ENV_VAR",
     "BuildInfo",
     "BuildInfoReader",
+    "CpuAllowance",
     "LoadEnvResult",
     "build_hope_sources",
     "build_payload",
+    "effective_cpu_quota",
     "find_monorepo_root",
     "format_untagged_version",
     "hope_settings_sources",
@@ -104,6 +119,7 @@ __all__ = [
     "normalize_environment",
     "register_settings_cache",
     "reload_secrets",
+    "resolve_cpu_allowance",
     "resolve_secrets_dir",
     "start_registration",
     "stop_registration",
