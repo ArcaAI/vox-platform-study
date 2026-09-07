@@ -368,7 +368,10 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
     };
 
     const matched = await list(uniqueTag);
-    expect(matched.map((row) => row.id), 'the unique tag must select exactly the throwaway row').toEqual([promptId]);
+    expect(
+      matched.map((row) => row.id),
+      'the unique tag must select exactly the throwaway row',
+    ).toEqual([promptId]);
 
     // `hasEvery`: adding a tag the row does not carry must empty the result, not widen it.
     expect(await list(`${uniqueTag},not-a-tag-on-this-row`)).toHaveLength(0);
