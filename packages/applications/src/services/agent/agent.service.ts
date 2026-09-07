@@ -611,6 +611,9 @@ export class AgentService extends BaseService implements IAgentService {
       provider: resolved.provider,
       model: resolved.model,
       guardrailEnabled: compiled.guardrail?.enabled ?? true,
+      // TASK-891 (OD-4) — the draft's reasoning posture travels with the run. The bench is where
+      // an author checks the control they just set, so it has to be the run that obeys it.
+      generation: asRecord(compiled.parameters)?.generation,
     });
     return { ...ack, mode: 'stream', taskId: submission.taskId, streamUrl: submission.streamUrl };
   }

@@ -48,6 +48,14 @@ export interface DraftTestSubmitInput {
   model: string;
   /** §3.14 — the agent's own guardrail decision, carried on the wire like every other TEXT post. */
   guardrailEnabled: boolean;
+  /**
+   * TASK-891 (OD-4) — the draft's own `parameters.generation`, so the bench obeys the reasoning
+   * control an author sets on the very screen they set it. Only the REASONING posture is read
+   * from it, by `applyTextRuntimeProfile`: `provider`, `model` and the token budget are already
+   * resolved by `AgentService` and passed as their own fields. Optional, because a draft that
+   * authored no block has nothing to say and must produce the body it produced before.
+   */
+  generation?: unknown;
 }
 
 /**
@@ -126,7 +134,7 @@ export class AgentDraftTestService {
     if (input.systemPrompt) body.system_prompt = input.systemPrompt;
 
     if (this.textRequestEnrichment) {
-      await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string });
+      await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string }, input.generation);
       await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
     }
 
