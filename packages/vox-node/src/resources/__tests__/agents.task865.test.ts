@@ -112,14 +112,20 @@ describe('AgentsResource — discovery', () => {
 });
 
 describe('AgentsResource — invocation', () => {
-  it('invokes blocking by default: POST …/invocations?mode=blocking with { input }', async () => {
+  // TASK-890 black-box J6: the gateway's invocation body is FLAT — `AgentInvocationBody` is
+  // `{ text, context?, variables? }` and `agent.controller.ts#invoke` validates it against the
+  // agent's `inputSchema` after withholding `context`. An `{ input: … }` envelope therefore
+  // fails that check on every call (observed live: 400 "The invocation body does not match the
+  // agent’s inputSchema"), while the workflow plane — a DIFFERENT contract — does take `{ input }`.
+  // This assertion used to pin the envelope, which is why the mismatch survived to a live run.
+  it('invokes blocking by default: POST …/invocations?mode=blocking with the FLAT body', async () => {
     const { fetch, calls } = stubFetch([() => json({ output: { text: 'SOAP…' } })]);
 
-    const result = await client(fetch).agents.invoke('note-writer', { note: 'hello' });
+    const result = await client(fetch).agents.invoke('note-writer', { text: 'hello', context: { safe_age: '70' } });
 
     expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/agents/note-writer/invocations?mode=blocking');
     expect(calls[0]!.init.method).toBe('POST');
-    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ input: { note: 'hello' } });
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ text: 'hello', context: { safe_age: '70' } });
     expect(result.output).toEqual({ text: 'SOAP…' });
   });
 
@@ -144,9 +150,11 @@ describe('AgentsResource — invocation', () => {
     ]);
 
     const events = [];
-    for await (const event of client(fetch).agents.invokeAndStream('note-writer', { note: 'hello' })) events.push(event);
+    for await (const event of client(fetch).agents.invokeAndStream('note-writer', { text: 'hello' })) events.push(event);
 
     expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/agents/note-writer/invocations?mode=stream');
+    // Same flat body as the blocking call — one contract, two modes.
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ text: 'hello' });
     expect(new Headers(calls[0]!.init.headers).get('Accept')).toBe('text/event-stream');
     expect(events.map((event) => event.type)).toEqual(['agent.invocation.progress', 'agent.invocation.completed']);
     expect(events[1]!.resumeToken).toBe('c2');

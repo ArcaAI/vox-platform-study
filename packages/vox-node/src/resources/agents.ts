@@ -125,6 +125,14 @@ export class AgentsResource {
    * agent's `inputSchema` server-side. Throws {@link GatewayTimeoutError} at the
    * gateway's ceiling — which means the invocation is still going, not that it
    * failed; prefer {@link invokeAndStream} for anything long.
+   *
+   * `input` IS the body — `{ text, context?, variables? }`, sent flat. TASK-890 black-box J6:
+   * this used to wrap it as `{ input }`, which the gateway validates against the agent's
+   * `inputSchema` (`additionalProperties: false`, `{ text, variables }`) and refuses with a 400
+   * on EVERY call. The `{ input }` envelope belongs to the WORKFLOW plane
+   * (`POST /workflows/{slug}/runs`), which is a different contract; `context` in particular is
+   * withheld from the schema check here and validated against the agent's frozen context schema
+   * instead, so it may only travel at the top level.
    */
   async invoke<TOutput = Record<string, unknown>>(
     slug: string,
@@ -137,7 +145,7 @@ export class AgentsResource {
       method: 'POST',
       path: `${agentPath(slug)}/invocations`,
       query: { mode: 'blocking' },
-      body: { input },
+      body: input,
       headers,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
@@ -166,7 +174,7 @@ export class AgentsResource {
       method: 'POST',
       path: `${agentPath(slug)}/invocations`,
       query: { mode: 'stream' },
-      body: { input },
+      body: input,
       headers: { Accept: 'text/event-stream', ...(idempotencyHeaders(options) ?? {}) },
       signal: options.signal,
       timeoutMs: options.timeoutMs,
