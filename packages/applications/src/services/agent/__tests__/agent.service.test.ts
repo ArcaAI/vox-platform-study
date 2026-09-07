@@ -257,6 +257,17 @@ describe('publish — fails closed', () => {
     );
   });
 
+  // TASK-890 F9 — the ROUTED id is FROZEN like the resolved prompt, so a published version names
+  // what goes on the wire without a second catalogue read. Before this the artifact carried only
+  // `{id, slug, provider, taskType}` and the invocation lane sent the SLUG, which LM Studio
+  // answered with `Invalid model identifier "lms-gemma-4-e2b-it-qat"` (a 502 at the gateway).
+  it('freezes the model`s ROUTED wire id into compiledConfig.model', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    const published = await makeService().publish('agent-1', {});
+    expect(published.compiledConfig).toMatchObject({ model: { slug: 'lms-gemma-4-e2b-it-qat', wireModelId: 'gemma-4-e2b-it-qat' } });
+  });
+
   it('refuses MODEL_UNAVAILABLE for bucket-staged weights that are not present (the nemotron proof)', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(
       agent({ task: AgentTask.SPEECH_TO_TEXT, modelId: 'model-asr', instruction: null, parameters: null }),

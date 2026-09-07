@@ -50,7 +50,9 @@ function resolved(over: Partial<Record<string, unknown>> = {}): ResolvedAgent {
   const compiled = {
     task: 'TEXT_GENERATION',
     service: 'llm',
-    model: { id: 'm1', slug: 'gpt-x', provider: 'openai', taskType: 'TEXT_GENERATION' },
+    // TASK-890 F9 — a published artifact freezes the ROUTED id beside the reference, and the
+    // invocation refuses to post without one, so every fixture here carries it.
+    model: { id: 'm1', slug: 'gpt-x', provider: 'openai', taskType: 'TEXT_GENERATION', wireModelId: 'gpt-x-2026-05' },
     fallbacks: [],
     instruction: { systemPrompt: 'x', variables: { ward: '3' } },
     resolvedPrompt: { source: 'inline', content: 'PROMPT' },

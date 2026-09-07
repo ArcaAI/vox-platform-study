@@ -146,6 +146,16 @@ describe('testDraft — dry run (the default)', () => {
     expect(ack.resolved).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', fundingTier: 'platform', source: 'row' });
   });
 
+  // TASK-890 F9 — the bench resolved the target off `sourceUri`, the row's LOCATOR, which §3.1
+  // retired as a routing input. A row whose locator differs from its provider-native id (every
+  // Hub-sourced or Azure row) benched against a name the engine does not know.
+  it('resolves the target off the ROUTED wireModelId, not the locator sourceUri', async () => {
+    mockAiModelRepository.findById.mockResolvedValue({ ...LLM_MODEL, sourceUri: 'google/gemma-4-E2B-it', wireModelId: 'gemma-4-e2b-it-qat' });
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' } });
+    expect(ack.resolved).toMatchObject({ model: 'gemma-4-e2b-it-qat' });
+  });
+
   it('takes a caller `{provider, model}` pair verbatim and marks the target `override`', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
     const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' }, provider: 'azure-openai', model: 'gpt-5.4-mini' });

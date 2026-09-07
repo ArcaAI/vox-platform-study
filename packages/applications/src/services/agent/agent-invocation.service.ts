@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import type { Readable } from 'node:stream';
@@ -12,6 +12,7 @@ import { TextRequestEnrichmentService } from '../text-request/text-request-enric
 import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
 import { soleContextKindSchema, unwrapSingleKindContextPayload } from '../consultation-context-schema/context-schema-definition';
 import { buildAgentPromptScope } from './agent-prompt-scope';
+import { wireModelIdOf } from './agent-wire-model';
 
 export interface AgentTextInvocationResult {
   text: string;
@@ -147,11 +148,16 @@ export class AgentInvocationService {
       return compiled.resolvedPrompt ? renderTemplate(compiled.resolvedPrompt.content, scope, { templateRef: `agent:${resolved.slug}` }) : undefined;
     });
 
+    // TASK-890 F9 — what goes on the wire is the ROUTED id (`AiModel.wireModelId`), never the
+    // catalogue slug. Resolved BEFORE the body is built so an unroutable row is a named refusal
+    // here rather than a 502 relayed from an engine that was handed a name it does not know.
+    const wireModel = this.requireWireModelId(resolved);
+
     const body: Record<string, unknown> = {
       prompt: String(input.text ?? ''),
       ...(systemPrompt ? { system_prompt: systemPrompt } : {}),
       ...(compiled.model.provider ? { provider: compiled.model.provider } : {}),
-      model: compiled.model.slug,
+      model: wireModel,
       ...(typeof generation.temperature === 'number' ? { temperature: generation.temperature } : {}),
       ...(typeof generation.maxTokens === 'number' ? { max_tokens: generation.maxTokens } : {}),
       ...(typeof generation.topP === 'number' ? { top_p: generation.topP } : {}),
@@ -201,9 +207,32 @@ export class AgentInvocationService {
     return {
       text: data.content ?? data.summary ?? '',
       provider: data.provider ?? compiled.model.provider ?? null,
-      model: data.model ?? compiled.model.slug,
+      model: data.model ?? wireModel,
       usage: data.usage ? { promptTokens: data.usage.prompt_tokens ?? null, completionTokens: data.usage.completion_tokens ?? null } : null,
     };
+  }
+
+  /**
+   * The provider-native id for this agent's primary model, or a NAMED refusal.
+   *
+   * Every provider `apps/text` serves is engine-served or cloud (lm-studio, ollama, vllm,
+   * llama-cpp, azure, bedrock) and each routes by a vendor id, so a TEXT_GENERATION agent whose
+   * row declares none cannot be invoked at all — which is what `toTextCandidate` already says by
+   * DROPPING such a candidate, and what the publish gate says by refusing the publish. Saying it
+   * here too keeps a version published before that gate from failing as an opaque upstream 502.
+   *
+   * 409 rather than 400: the caller's request is well formed; the agent's binding is not.
+   */
+  private requireWireModelId(resolved: ResolvedAgent): string {
+    const wireModel = wireModelIdOf(resolved);
+    if (wireModel) return wireModel;
+    throw new ConflictException({
+      message:
+        `Agent '${resolved.slug}' binds model '${resolved.compiledConfig.model.slug}', which declares no wire model id, ` +
+        `so there is nothing to send as the model name for provider '${resolved.compiledConfig.model.provider ?? '(none)'}'. ` +
+        'Set `wireModelId` on the catalogue row, then re-resolve.',
+      code: 'AGENT_MODEL_WIRE_ID_MISSING',
+    });
   }
 
   /**
@@ -273,7 +302,10 @@ export class AgentInvocationService {
         : {}),
       ...(typeof parameters.speed === 'number' ? { speed: parameters.speed } : {}),
       ...(typeof parameters.language === 'string' ? { language: parameters.language } : {}),
-      model: resolved.compiledConfig.model.slug,
+      // The ROUTED id when the row declares one; the slug otherwise. No refusal here: a
+      // `built-in` TTS row (kokoro, indic-parler) legitimately declares none, and `apps/tts`
+      // routes off `resolved_spec` rather than this field.
+      model: wireModelIdOf(resolved) ?? resolved.compiledConfig.model.slug,
       ...(ssml ? { ssml: true } : {}),
     };
   }
