@@ -532,14 +532,82 @@ commands that prove success + the return contract. Plus these repo-specific haza
 - Evidence or it did not happen: paste real command output; "tests pass" with nothing pasted is not a result.
 - Out-of-scope suites (`apps/compat-playground`, `apps/quick-compat-app`, `packages/ui`) are not gates.
 
-## 8. Implementation Summary
+## 8. Findings from Wave 1
+
+### 8.1 W1 — A3 decided: the pair priming prompt stays OFF (decoupling only)
+
+The brief asked W1 to re-enable the bilingual priming prompt as the missing code-switch bias
+correction. **It should not be re-enabled, and the evidence is already in the repo:**
+
+- `apps/stt/tests/integration/mlen_scorecard_baseline.json` states its own provenance: the
+  committed `mean_cer 0.325` (ceiling `0.40`) was measured on *"greedy + language auto + clean
+  decode"* — i.e. **with the prompt OFF and no word-split**. Turning the prompt on invalidates the
+  number the platform holds itself to until it is re-measured.
+- TASK-594 already flipped `WHISPER_CPP_PRIMING_PROMPT_ENABLED = True` and it was **reverted with
+  owner approval** on measured evidence (prompt on injected `baş)!�` junk and broke clusters).
+
+Two further reasons the prompt is not obviously the right correction: the bilingual template is
+written **entirely in English**, and a Whisper `initial_prompt` biases output toward the prompt's
+own language — so as a code-switch corrector it is not neutral; and at ~70 tokens it consumes a
+third of the 224-token prior-context budget on every chunk, displacing the per-utterance
+carry-forward.
+
+**Delivered instead:** the single kill-switch is split into
+`WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED` and `WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED`, both
+defaulting OFF, so each can be A/B'd independently. `mlen_scorecard.py` gains the matching flags.
+The A/B needs the private clinical clips (`STT_MLEN_EVAL_DIR`, `WHISPER_MLEN_GGUF`), which are not
+on this machine — **flip a default only if `mean_cer` beats 0.325 with no clip regressing past the
+committed `per_clip_tolerance` of 0.08.**
+
+### 8.2 W1 — the real A1/A2 defect was durability, not the declaration
+
+The declaration already reaches `pywhispercpp` correctly at session create. The defect is that the
+effective mode lived only in the process-local `_session_language_modes`: after a worker restart
+`_recover_sessions` rebuilt the spec but not the mode, so resolution fell through to
+`spec.py::_language_from_mode`, which maps `ml-en` to its **primary subtag `ml`** — silently
+converting a declared-English or deliberately-unpinned session into a **Malayalam-pinned** one.
+Fixed by persisting `SessionMetadata.language_mode` through Redis.
+
+### 8.3 W1 — language is TWO channels, and that is correct
+
+`language_mode` (the end user's declaration) travels beside `resolved_spec.decoding.languageMode`
+(the agent's) on the same POST; it does not overwrite it. Overwriting would erase the agent's own
+declaration from the record crash recovery rebuilds from. The §4 A1 wording implied one channel and
+was wrong; a TS test now locks the two-channel contract.
+
+### 8.4 NEW DEFECT — the BATCH path pins Malayalam (not fixed, needs a decision)
+
+Measured off the committed contract fixture, same agent and engine:
+
+```
+BATCH     inference.language = 'ml'    (spec.py::_language_from_mode maps ml-en -> primary)
+STREAMING resolved.language  = None    (resolve_mode_for_engine('ml-en', WHISPER_CPP))
+```
+
+So **batch transcription of a code-switch agent is Malayalam-pinned** — the same class of defect as
+§8.2, on a path this ticket does not cover. It also makes `WhisperCppAsrAdapter`'s pair-detection
+branch dead code. Correct fix is per-engine mode resolution on the batch path
+(`batch_service.py`); `_language_from_mode` is engine-independent, so simply returning the pair id
+would hand `"ml-en"` to the Sarvam and Azure adapters, which normalise single codes. **Out of scope
+here — needs its own ticket.**
+
+### 8.5 Orchestration defect (mine)
+
+Wave 0 ran `pnpm install` in each worktree but not `pnpm db:generate`. The generated Prisma client
+is gitignored, so it does not follow a worktree and every TypeScript build fails with
+`TS2307: Cannot find module './generated/core-prisma-client/client.js'`. Corrected mid-wave in all
+four worktrees. **Add `db:generate` to the worktree bootstrap for any future fan-out.**
+
+
+## 9. Implementation Summary
 
 *(to be filled during Phase 4)*
 
-## 9. Change History
+## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-07 | Ticket opened. Live diagnosis of consultation `01a07ae9-2497-…` on `hope-v2-dev` recorded in §2; plan drafted; OD-1…OD-6 raised. |
 | 2026-09-07 | **Owner answered OD-1…OD-5.** OD-1 reversed: the default language is EMPTY (code-switch always on), a specific language must be declared — D1 withdrawn, D2 re-scoped, Lane A rewritten. OD-2: the proposed `DocumentTemplateAssignment` table was rejected as unjustified; corrected to one `selectorKey` column on `WorkflowAssignment` plus a `documentTemplateSlug` on the realtime node config, reusing the parameter `resolveForGeneration` already accepts. OD-4: per-agent `parameters.generation.reasoning`, not a settings descriptor. OD-5: all three dropdowns removed; the workflow names the ASR, summarization and DNA-redaction agents. Follow-up F-1 raised (live vs finalize redaction). Status stays `Pending` — awaiting go-ahead on sequencing. |
 | 2026-09-07 | Owner said **go**. Wave 0 complete: plan committed at `f6aa16cf9`; four worktrees created off `dev-2.2` (`task-891/{stt,livedoc,data,console}`) with `pnpm install` and env files done by the orchestrator; `task-891/dev-fixes` branched in the deployment repo. Wave 1 launched — W1 `opus`, W2 `opus`/high, W3 `sonnet`/high, W4 `sonnet`, W5 `sonnet`. F1 (`INTERNAL_ACCESS_TOKEN` in `hope-secrets`) held back for the owner: a shared credential is not a subagent's job. |
+| 2026-09-07 | **W5 landed** (`c78cb89`, unpushed): nlp probe timeouts 1s->5s + failureThreshold 2->3 + cpu 2->4, `LIVE_DOC_TEXT_TIMEOUT_MS=60000`, `LMS_CONTEXT` 8192->32768 — overlay only, base untouched, repo CI gates green locally. **W1 landed** (`cd6e439fb`): A1/A2 durability fix, A3 decoupled and left OFF with evidence (§8.1), A4 adapter refuses `max_len=1` on unpinned/non-space-delimited decodes. New batch defect recorded in §8.4. |
