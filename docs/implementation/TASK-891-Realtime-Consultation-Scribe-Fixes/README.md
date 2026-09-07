@@ -746,6 +746,47 @@ with it.
   nothing is listening on 8006), so this is left for the owner.
 - The real fix for all of the above is baking `torch` into a base image so no CI job ever pulls it.
 
+### 11.7 Deployed — pipeline #1138, and what the reset proved
+
+`build-stt` finished in **3360.5s**, four minutes inside its wall; `build-stt-worker` was retried
+by GitLab after I cancelled it to free bandwidth, restarted at 15:17:12 — seconds after 17000
+finished `ml-builder` — and found the whole stage `CACHED`. `promote-dev` digest-pinned 40 images
+into `arca/hope-v2-deployment@1cb2e07`; Argo synced; all 33 workloads report Healthy with
+`unavailable: 0`, and `GET /health` on the gateway answers `0.0.0-dev-2-2.56503f89`.
+
+The only red job is `github-backup` — `Failed to connect to github.com port 443 after 134402 ms`.
+That is the GitHub mirror, not the deploy path.
+
+**`hope-reset` could not have worked before it ran.** `MINIO_USE_SSL` is `"true"` and `hope-minio`
+serves a leaf from the ARCAAI Internal CA, but the Job mounted no CA and set no
+`NODE_EXTRA_CA_CERTS` — so `05b-tenant-bucket-provision.ts` would have failed TLS, taken its
+warn-and-skip branch, and left `TenantBucket` rows with no bucket behind them (`NoSuchBucket` at
+request time, not at seed time). `hope-db-seed.yaml` has carried that mount all along;
+`docs/database-fresh-init.md` §2.2 names the trap but says both Jobs pass no MinIO variables at
+all, which TASK-858 already fixed for the four `MINIO_*` values — the CA half was still missing.
+Fixed in the deployment repo at `e729563`, and the seed log then proves it:
+
+```
+Provisioning physical MinIO buckets for tenant buckets...
+Provisioned 0 new bucket(s), 6 already existed (6 total)
+Seeded platform-default storage config (provider=MINIO, endpoint=https://hope-minio:9000, ...)
+```
+
+Enumerating six existing buckets is only possible over a trusted TLS connection, and
+`0 new` is the evidence that MinIO's data was left alone as the owner required.
+
+The reset was also genuinely necessary, not merely authorised. Measured before it ran:
+`DocumentTemplate=0`. The two new SYSTEM templates arrive only from a seed, and
+`hope-db-seed.yaml` is guarded on the SYSTEM tenant's presence, so on an already-seeded database
+it exits 0 and writes nothing. After: `DocumentTemplate=6` and `Agent` 30 -> 34 — two SYSTEM
+originals plus one clone per customer tenant carrying `sourceTemplateSlug`, which is the
+"content is cloned, configuration cascades" rule behaving correctly.
+
+Still open: `hope-reset.yaml` has no equivalent of `hope-db-seed.yaml`'s init container that
+PROVES MinIO is reachable before seeding, so a future misconfiguration fails silently again.
+Three `UnexpectedAdmissionError` pods from 4d ago (`hope-stt`, `hope-stt-worker`, `hope-lmstudio`)
+are stale litter from an old GPU admission failure, unrelated to this rollout.
+
 ## 10. Change History
 
 | Date | Change |
@@ -757,3 +798,4 @@ with it.
 | 2026-09-07 | **Wave 3 merged** — W3, W2, W1, W4 into `dev-2.2`, zero conflicts. Migration authored and proven; local dev DB synced with explicit owner consent. Orchestrator added the `reasoning` property to `GENERATION_PROPERTY` (both W2 and W4 had blocked on it) and fixed the duplicate-control regression it caused. Five artifacts regenerated. **Wave 4 launched**: W6 template (`opus`/high), W7 agentsplit (`opus`), W8 visittype (`sonnet`/high). TASK-892 was already taken, so the live/finalize agent split is folded into this ticket rather than spun out. |
 | 2026-09-07 | **Waves 3-5 complete.** Thirteen lanes merged, zero conflicts. Migration proven and applied. Reasoning reaches six surfaces; live/finalize split on a `phase:` tag; two visit-type note shapes wired; reference-set parity restored to one provisioning entry point. Final gates green except `sdk-version`, which an owner commit broke. Status stays `In Progress` pending the boot smoke, the runtime gate, and the caller-selected-workflow decision. |
 | 2026-09-07 | **Deploy blocked by the STT image builds; five CI defects found and fixed** — see §11. The 1800s wall was `.build-template`, not the runner; uv's 30s `UV_HTTP_TIMEOUT` restarted the 846.9 MiB `torch` wheel from zero; `COPY apps/stt/src` above the torch install invalidated that layer on every source change; BuildKit's default GC policy caps cache mounts at 488.3 MiB, below the size of the wheel itself; and the two STT jobs split one uplink. Job 17000 confirms the uv fix: one download line, `DONE 1827.1s`. My first diagnosis (runner contention) was wrong and is recorded as such. |
+| 2026-09-07 | **Deployed to `hope-v2-dev` and re-seeded.** Pipeline #1138 green except `github-backup` (GitHub egress); `promote-dev` pinned 40 digests at `1cb2e07`; Argo synced; 33/33 workloads Healthy on `0.0.0-dev-2-2.56503f89`. Found and fixed a silent-failure hazard in `hope-reset.yaml` BEFORE running it — no CA mount meant bucket provisioning would fail TLS and warn-skip (deployment repo `e729563`). Reset then verified: `DocumentTemplate` 0 -> 6, `Agent` 30 -> 34, `Provisioned 0 new bucket(s), 6 already existed` — MinIO untouched, as required. See §11.7. |
