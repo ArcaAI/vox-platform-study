@@ -48,7 +48,7 @@ describe('TASK-885 — a new tenant refers to the SYSTEM template, it does not r
   });
 
   it('a tenant with no assignment row has NO OPINION and resolves the platform default', async () => {
-    const assignmentRepository = { findForScope: async () => null };
+    const assignmentRepository = { findForScope: async () => null, findAllForScope: async () => [] };
     const service = new WorkflowAssignmentService(
       assignmentRepository as never,
       { create: () => undefined } as never,
@@ -62,6 +62,7 @@ describe('TASK-885 — a new tenant refers to the SYSTEM template, it does not r
     await expect(service.resolve('brand-new-tenant', 'consultation', null)).resolves.toEqual({
       workflowDefinitionSlug: null,
       source: 'platform-default',
+      selector: [],
     });
   });
 });

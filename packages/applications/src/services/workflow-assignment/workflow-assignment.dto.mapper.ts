@@ -10,6 +10,7 @@ export class WorkflowAssignmentDtoMapper {
       scopeId: entity.scopeId ?? null,
       paletteKey: entity.paletteKey,
       workflowDefinitionSlug: entity.workflowDefinitionSlug,
+      selectorTags: entity.selectorKey ? entity.selectorKey.split(',') : [],
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
       version: entity.version,

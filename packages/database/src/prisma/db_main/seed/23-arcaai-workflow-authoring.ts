@@ -630,6 +630,7 @@ export const ARCAAI_WORKFLOW_ASSIGNMENTS = [
     scopeId: null as string | null,
     paletteKey: 'consultation',
     workflowDefinitionSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
+    selectorKey: '',
     createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
   },
   {
@@ -639,6 +640,35 @@ export const ARCAAI_WORKFLOW_ASSIGNMENTS = [
     scopeId: SEED_DEPARTMENT_IDS.RHEUM_ARCAAI as string | null,
     paletteKey: 'consultation',
     workflowDefinitionSlug: ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG,
+    selectorKey: '',
+    createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
+  },
+  // TASK-891 (D8b) — a visit-type-qualified pair alongside the existing unqualified TENANT
+  // row above, proving the selector cascade end to end (`WorkflowAssignmentService.resolve`,
+  // TASK-891's mirror of AgentAssignment's TASK-884 walk): a request tagged
+  // `visit-type:new-visit` / `visit-type:revisit` now matches the more specific row before
+  // falling back to the unqualified one. Both point at the SAME SOAP definition as the
+  // unqualified row today — this seed's job is to prove the PLUMBING, not to invent a visit-
+  // type-specific graph nobody asked for; a tenant admin can repoint either row at a
+  // different PUBLISHED `consultation`-palette definition later without a code change.
+  {
+    id: '9a000000-0000-0000-0001-000000000003',
+    tenantId: ARCAAI,
+    scope: 'TENANT' as const,
+    scopeId: null as string | null,
+    paletteKey: 'consultation',
+    workflowDefinitionSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
+    selectorKey: 'visit-type:new-visit',
+    createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
+  },
+  {
+    id: '9a000000-0000-0000-0001-000000000004',
+    tenantId: ARCAAI,
+    scope: 'TENANT' as const,
+    scopeId: null as string | null,
+    paletteKey: 'consultation',
+    workflowDefinitionSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
+    selectorKey: 'visit-type:revisit',
     createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
   },
 ];
@@ -671,6 +701,35 @@ export const ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES = [
     beforeSlug: null as string | null,
     afterSlug: ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG,
     reason: 'Seeded day-1 Rheumatology department override .',
+  },
+  // TASK-891 (D8b) — change rows for the two new visit-type-qualified assignments above.
+  // NOTE: `WorkflowAssignmentChange` (unlike its `AgentAssignmentChange` sibling, TASK-884)
+  // carries no `selectorKey` column, so these rows are identified by content
+  // (`afterSlug`/`reason`) rather than by a queryable selector key — see the report for the
+  // follow-up this leaves open.
+  {
+    id: '9a000000-0000-0001-0001-000000000003',
+    tenantId: ARCAAI,
+    scope: 'TENANT' as const,
+    scopeId: null as string | null,
+    paletteKey: 'consultation',
+    changedBy: SEED_USER_IDS.ARCAAI_ADMIN,
+    assignmentVersion: 1,
+    beforeSlug: null as string | null,
+    afterSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
+    reason: 'Seeded day-1 visit-type:new-visit selector assignment (TASK-891 D8b).',
+  },
+  {
+    id: '9a000000-0000-0001-0001-000000000004',
+    tenantId: ARCAAI,
+    scope: 'TENANT' as const,
+    scopeId: null as string | null,
+    paletteKey: 'consultation',
+    changedBy: SEED_USER_IDS.ARCAAI_ADMIN,
+    assignmentVersion: 1,
+    beforeSlug: null as string | null,
+    afterSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
+    reason: 'Seeded day-1 visit-type:revisit selector assignment (TASK-891 D8b).',
   },
 ];
 

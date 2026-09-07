@@ -12,6 +12,7 @@ export class WorkflowAssignment extends BaseTenantDataModel {
   public scopeId: string | null;
   public paletteKey: string;
   public workflowDefinitionSlug: string;
+  public selectorKey: string;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -22,6 +23,7 @@ export class WorkflowAssignment extends BaseTenantDataModel {
     this.scopeId = data.scopeId;
     this.paletteKey = data.paletteKey;
     this.workflowDefinitionSlug = data.workflowDefinitionSlug;
+    this.selectorKey = data.selectorKey;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
