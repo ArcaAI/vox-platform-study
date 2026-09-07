@@ -3,8 +3,15 @@
  *
  * Two SYSTEM-tenant `DocumentTemplate` rows (+ their pinned v1
  * `DocumentTemplateVersion` snapshots) that declare the SHAPE of the live
- * running case note for the platform's two visit types, plus the clone of that
- * pair into every non-SYSTEM tenant.
+ * running case note for the platform's two visit types.
+ *
+ * This phase seeds the SOURCE CONTENT only. Copying it into a tenant is
+ * PROVISIONING, and provisioning has exactly one seed-side owner:
+ * `26-tenant-reference-set.ts`, whose `copyDocumentTemplates` is the mirror of
+ * `TenantReferenceSetService.copyDocumentTemplates`. This file used to carry a
+ * second per-tenant clone loop of its own, which meant the reference set was
+ * provisioned from two places that nothing compared — the divergence
+ * `tenant-reference-set-parity.contract.test.ts` exists to catch.
  *
  * ## Why two shapes and not one
  *
@@ -98,18 +105,18 @@
  * `DocumentTemplate` is CONTENT (`00-project-context.md`), it is not in
  * `SYSTEM_SHARED_READ_MODELS`, and `resolveForGeneration` reads the REQUEST
  * tenant only. A SYSTEM row is therefore invisible to a tenant at runtime — it
- * is a reference row to be COPIED, never resolved across the boundary. This
- * phase does that copy for the seeded tenants, following
- * `26-tenant-reference-set.ts` step for step: ids derived from
- * `(targetTenant, sourceId)` so a re-seed is a no-op, create-only so a tenant's
- * own edit survives, and the same provenance columns (`sourceTemplateSlug`,
- * `templateLocked: true`) the runtime copier writes.
+ * is a reference row to be COPIED, never resolved across the boundary.
  *
- * ⚠ `TenantReferenceSetService` does NOT yet copy document templates, so a
- * tenant created through `POST /admin/tenants` gets none. That service, the
- * `reference-set/sync` route and `26-tenant-reference-set.ts` all need the same
- * addition; none of them is in this lane's path boundary. Until then the seeded
- * tenants are provisioned and an API-created one is not.
+ * All three copiers now do that copy, from the same set in the same order: the
+ * runtime `TenantReferenceSetService` (so a tenant created through
+ * `POST /admin/tenants` is born with the pair), the `reference-set/sync` route
+ * (so an existing tenant can be repaired), and seed phase 26 (so the directly
+ * written seed tenants, Global and ArcaAI, are provisioned too). Each is
+ * create-only on `(tenantId, slug)`, so a tenant admin's own edit survives.
+ *
+ * Because phase 26 reads these rows OUT OF THE DATABASE, this phase runs
+ * BEFORE it in `index.ts` — the SYSTEM library has to exist before a tenant can
+ * be provisioned from it.
  *
  * ## The compiler port
  *
@@ -633,17 +640,6 @@ export const DOCUMENT_TEMPLATE_LIBRARY: readonly DocumentTemplateLibraryEntry[] 
 // Seeding
 // =============================================================================
 
-/**
- * A STABLE id for the clone of `sourceId` in `tenantId` — the same construction
- * `26-tenant-reference-set.ts` uses, under its own namespace so the two can
- * never collide. Derived rather than random so the phase is idempotent by
- * primary key.
- */
-function cloneId(tenantId: string, kind: string, sourceId: string): string {
-  const hex = createHash('sha256').update(`task-891:${kind}:${tenantId}:${sourceId}`).digest('hex');
-  return [hex.slice(0, 8), hex.slice(8, 12), `8${hex.slice(13, 16)}`, `8${hex.slice(17, 20)}`, hex.slice(20, 32)].join('-');
-}
-
 /** Upsert-by-id the SYSTEM reference rows. */
 async function seedSystemLibrary(client: CorePrismaClient): Promise<void> {
   for (const item of DOCUMENT_TEMPLATE_LIBRARY) {
@@ -683,61 +679,11 @@ async function seedSystemLibrary(client: CorePrismaClient): Promise<void> {
 }
 
 /**
- * Copy the SYSTEM reference pair into one tenant. CREATE-ONLY on the slug: a
- * tenant that already owns a template with that slug keeps it, edits and all.
+ * Seed the SYSTEM reference library. The per-tenant clone is NOT here: phase 26
+ * (`provisionTenantReferenceSet`) owns provisioning for every kind, this one
+ * included, so the seed has one copier to keep in step with the runtime service
+ * rather than two.
  */
-export async function provisionTenantDocumentTemplates(client: CorePrismaClient, tenantId: string): Promise<number> {
-  if (!tenantId || tenantId === SYSTEM_TENANT_ID) {
-    throw new Error('The SYSTEM tenant is the reference library; it cannot be provisioned from itself.');
-  }
-
-  let added = 0;
-  for (const item of DOCUMENT_TEMPLATE_LIBRARY) {
-    // Deliberately NOT filtered by `resourceStatus`: `@@unique([tenantId, slug])`
-    // is absolute, so a SOFT-DELETED row still occupies the slug and a create
-    // would violate the constraint. (`26-tenant-reference-set.ts` filters on
-    // ENABLED because `PromptTemplate` carries no such unique.)
-    const existing = await client.documentTemplate.findFirst({ where: { tenantId, slug: item.slug }, select: { id: true } });
-    if (existing) continue;
-
-    const id = cloneId(tenantId, 'document-template', item.id);
-    await client.documentTemplate.create({
-      data: {
-        id,
-        tenantId,
-        slug: item.slug,
-        name: item.name,
-        description: item.description,
-        status: 'PUBLISHED' as DocumentTemplateStatus,
-        pinnedVersionNumber: 1,
-        // Never the tenant default — the workflow's `documentTemplateSlug` is the
-        // selector, and an unnamed lane must keep falling open to the platform shape.
-        isDefault: false,
-        sourceTemplateSlug: item.slug,
-        templateLocked: true,
-        createdBy: SYSTEM_USER_ID,
-      },
-    });
-    await client.documentTemplateVersion.create({
-      data: {
-        id: cloneId(tenantId, 'document-template-version', item.versionId),
-        tenantId,
-        templateId: id,
-        // The clone's history restarts at 1 — a tenant's version lineage is its own.
-        versionNumber: 1,
-        shape: item.shape as never,
-        compiled: item.compiled as never,
-        compilerVersion: SEED_DOCUMENT_TEMPLATE_COMPILER_VERSION,
-        checksum: item.checksum,
-        changeReason: 'Provisioned from the platform reference set',
-        createdBy: SYSTEM_USER_ID,
-      },
-    });
-    added += 1;
-  }
-  return added;
-}
-
 export const seedDocumentTemplateLibrary = async (client: CorePrismaClient): Promise<void> => {
   console.log('Seeding the platform document-template reference library ...');
 
@@ -745,19 +691,5 @@ export const seedDocumentTemplateLibrary = async (client: CorePrismaClient): Pro
   console.log(
     `  SYSTEM: ${DOCUMENT_TEMPLATE_LIBRARY.length} reference template(s) + v1 snapshot(s) [${DOCUMENT_TEMPLATE_LIBRARY.map((t) => t.slug).join(', ')}]`,
   );
-
-  const tenants = await client.tenant.findMany({
-    where: { id: { not: SYSTEM_TENANT_ID }, resourceStatus: 'ENABLED' },
-    select: { id: true, key: true },
-    orderBy: { key: 'asc' },
-  });
-  let provisioned = 0;
-  for (const tenant of tenants) {
-    const added = await provisionTenantDocumentTemplates(client, tenant.id);
-    if (added > 0) provisioned += 1;
-    console.log(`  ${tenant.id}: +${added} document template(s)`);
-  }
-  if (tenants.length === 0) console.log('  (no non-SYSTEM tenants to provision)');
-
-  console.log(`Document-template library seeded; ${provisioned} of ${tenants.length} tenant(s) gained rows.`);
+  console.log('  (tenant copies are provisioned by 26-tenant-reference-set)');
 };
