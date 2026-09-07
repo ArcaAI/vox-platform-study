@@ -382,7 +382,13 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     };
     if (!this.webhookSecretRepository || !input.signature || !input.timestamp) refuse();
 
-    const row = await this.webhookSecretRepository!.findById(hookId).catch(() => null);
+    // UNSCOPED by construction (black-box J6). This route is `@Public()`, so there is no CLS
+    // tenant — and `WorkflowWebhookSecret` is a tenant-scoped model, so the ordinary
+    // `findById` does not merely miss, it THROWS `TenantScope: tenant context required` and
+    // every signed delivery was refused ~1 ms in, before the HMAC was ever compared. The row
+    // being read is the only thing that can name the tenant, so it cannot also be filtered by
+    // one; possession of the secret, verified below, is what authenticates the caller.
+    const row = await this.webhookSecretRepository!.findByHookIdUnscoped(hookId).catch(() => null);
     if (!row) refuse();
 
     // Replay window on the SIGNED timestamp.

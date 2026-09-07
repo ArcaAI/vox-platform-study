@@ -17,7 +17,9 @@ const harness = { startWorkflowRun: vi.fn(), getWorkflowRun: vi.fn(), cancelWork
 const runs = { getRun: vi.fn(), recordRunStarted: vi.fn(), recordRunFinished: vi.fn() };
 const config = { getConfigValue: vi.fn((key: string) => (key === 'WORKFLOW_EXPOSURE_ENABLED' ? true : undefined)) };
 const s3 = { putFile: vi.fn().mockResolvedValue(undefined) };
-const secrets = { findById: vi.fn(), findByTenantSlug: vi.fn(), create: vi.fn(), updateWithVersion: vi.fn() };
+// `findByHookIdUnscoped`, not `findById`: the public hook route carries no tenant, and this
+// model is tenant-scoped — see `workflow-exposure.webhook-tenantless.bbj6.test.ts` (J6).
+const secrets = { findByHookIdUnscoped: vi.fn(), findByTenantSlug: vi.fn(), create: vi.fn(), updateWithVersion: vi.fn() };
 const secretsService = { getSecretOptional: vi.fn().mockResolvedValue(undefined) };
 
 function coreGraph(protocols: string[], kinds: string[] = ['api', 'webhook']) {
@@ -121,7 +123,7 @@ describe('the inbound webhook trigger', () => {
   const now = () => String(Math.floor(Date.now() / 1000));
 
   it('a correctly signed body starts a run under the secret`s tenant with trigger=webhook', async () => {
-    secrets.findById.mockResolvedValue(row);
+    secrets.findByHookIdUnscoped.mockResolvedValue(row);
     definitions.findPublishedBySlug.mockResolvedValue(definition());
     const ts = now();
     const result = await service().triggerByWebhook('hook-1', { tenantId: '', rawBody: raw, signature: signWebhookTrigger(secret, ts, raw), timestamp: ts });
@@ -137,7 +139,7 @@ describe('the inbound webhook trigger', () => {
     ['a missing signature', (ts: string) => ({ signature: undefined, timestamp: ts })],
     ['a tampered body', (ts: string) => ({ signature: signWebhookTrigger(secret, ts, raw + ' '), timestamp: ts })],
   ])('%s is the same 404 — the public plane discloses nothing', async (_name, headers) => {
-    secrets.findById.mockResolvedValue(row);
+    secrets.findByHookIdUnscoped.mockResolvedValue(row);
     definitions.findPublishedBySlug.mockResolvedValue(definition());
     const ts = now();
     await expect(service().triggerByWebhook('hook-1', { tenantId: '', rawBody: raw, ...headers(ts) })).rejects.toBeInstanceOf(NotFoundException);
@@ -145,12 +147,12 @@ describe('the inbound webhook trigger', () => {
   });
 
   it('an unknown hook id is a 404', async () => {
-    secrets.findById.mockResolvedValue(null);
+    secrets.findByHookIdUnscoped.mockResolvedValue(null);
     await expect(service().triggerByWebhook('nope', { tenantId: '', rawBody: raw, signature: 'sha256=x', timestamp: now() })).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('a Trigger without the webhook kind refuses a signed request', async () => {
-    secrets.findById.mockResolvedValue(row);
+    secrets.findByHookIdUnscoped.mockResolvedValue(row);
     definitions.findPublishedBySlug.mockResolvedValue(definition({ graph: coreGraph(['http-sse'], ['api']) }));
     const ts = now();
     await expect(service().triggerByWebhook('hook-1', { tenantId: '', rawBody: raw, signature: signWebhookTrigger(secret, ts, raw), timestamp: ts })).rejects.toBeInstanceOf(NotFoundException);
