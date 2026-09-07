@@ -13,6 +13,7 @@ import { AI_READINESS_SETTINGS } from './descriptors/ai-readiness.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
+import { CONSULTATION_REALTIME_SETTINGS } from './descriptors/consultation-realtime.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
 import { GUARDRAIL_JUDGE_SETTINGS } from './descriptors/guardrail-judge.descriptors';
@@ -154,6 +155,10 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // carries a deliberate BEHAVIOUR CHANGE — `OCR_ENABLED` defaulted ON, and a
   // kill-switch must default OFF.
   ...CONSULTATION_GATE_SETTINGS,
+  // TASK-891 B1 — the realtime scribe's own runtime budget. `LIVE_DOC_TEXT_TIMEOUT_MS`
+  // was a raw env read whose hard-coded 20 s default sat below the measured p50 of the
+  // generation it bounded, so every realtime flush timed out.
+  ...CONSULTATION_REALTIME_SETTINGS,
   // `consultation.endpoint.actions` was here. TASK-882 moved the stage onto the assigned graph
   // (endpoint nodes, presence + `enabled`, in edge order).
 
