@@ -6,6 +6,7 @@
 | **Type** | `refactor` + `feature` (studio UX) / `infrastructure` (registry + seed retirement) |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-07 |
+| **Memory snapshot** | [`MEMORY.md`](./MEMORY.md) — verbatim copies of the orchestrator memory files governing this ticket (decisions, hazards, working rules) |
 | **Supersedes / touches** | TASK-864 (core vocabulary), TASK-885 (import/export), TASK-890 (studio black-box fixes) |
 
 ---

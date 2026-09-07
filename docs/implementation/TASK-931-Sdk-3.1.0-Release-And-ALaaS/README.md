@@ -6,6 +6,7 @@
 | **Type** | `feature` (SDK surface) + `infrastructure` (release mechanics) + `docs` |
 | **Branch** | `dev-2.2` (lane K worktree `../hope-v2-t931-k`, branch `task-931-sdk`) |
 | **Raised** | 2026-09-08 |
+| **Memory snapshot** | [`MEMORY.md`](./MEMORY.md) — verbatim copies of the orchestrator memory files governing this ticket (decisions, hazards, working rules) |
 | **Related** | TASK-930 (the gateway changes the SDK consumes — INTERFACES §2–§5), TASK-890 J6 (black-box developer journey), TASK-898 / TASK-914 (socket lane, closed by this release), TASK-928 (49-vs-52 doc drift, closed here) |
 | **Lane contract** | [`../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md`](../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md) §9 |
 
