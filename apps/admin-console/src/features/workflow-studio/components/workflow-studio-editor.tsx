@@ -620,6 +620,18 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                 if (!result.ok) toast.error(result.reason);
               }}
               onNodesChange={(next) => {
+                // React Flow reports EVERY node on every change and re-emits the current positions
+                // whenever the controlled `nodes` prop is re-synced, so most reports move nothing.
+                // Only a report that actually changes a position may touch the store or schedule a
+                // save: treating the no-op reports as edits churned `nodes` on each emission, which
+                // re-rendered the canvas, which re-emitted — a real drag ended in "Maximum update
+                // depth exceeded" and the error boundary, losing the move (TASK-890 black-box J5).
+                const before = storeApi.getState().nodes;
+                const movedSomething = next.some((node) => {
+                  const current = before.find((candidate) => candidate.id === node.id);
+                  return current !== undefined && (current.position.x !== node.position.x || current.position.y !== node.position.y);
+                });
+                if (!movedSomething) return;
                 for (const node of next) storeApi.getState().moveNode(node.id, node.position);
                 // `moveNode` deliberately leaves `dirty` alone (layout is display bookkeeping,
                 // not graph shape — `create-graph-store.ts`), and the graph autosave effect
