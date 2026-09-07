@@ -204,7 +204,13 @@ export function createGraphStore(): GraphStoreApi {
       // Layout is client-only bookkeeping (definition-api.contract.md: `WorkflowGraphNode` has
       // no server-side position field) — moving a node does NOT mark the graph dirty or push an
       // undo step, so dragging nodes around never triggers an autosave PATCH by itself.
+      // A move to the position the node already holds is not a move. `onNodesChange` reports EVERY
+      // node on every canvas change, and React Flow re-emits the current positions whenever the
+      // controlled `nodes` prop is re-synced — rebuilding the array for those made a fresh `nodes`
+      // identity each time, which re-rendered the canvas, which re-emitted (TASK-890 black-box J5).
       moveNode: (nodeId, position) => {
+        const current = get().nodes.find((node) => node.id === nodeId);
+        if (!current || (current.position.x === position.x && current.position.y === position.y)) return;
         set((state) => ({ nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, position } : node)) }));
       },
 

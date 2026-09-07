@@ -274,6 +274,54 @@ describe('WorkflowStudioEditor — a canvas node drag persists (TASK-890/BB4)', 
 });
 
 /**
+ * TASK-890 black-box J5 — a canvas change that moved nothing must not schedule a save.
+ *
+ * React Flow reports EVERY node on every change, and re-emits the current positions each time
+ * the controlled `nodes` prop is re-synced. Scheduling a PATCH for those no-op reports churned
+ * the store on every emission, which re-rendered the canvas, which re-emitted: a real mouse
+ * drag ended in "Maximum update depth exceeded" and the editor's error boundary ("This
+ * definition failed to load"), losing the move it had just made.
+ */
+describe('WorkflowStudioEditor — a canvas report that moved nothing is inert (TASK-890/BBJ5)', () => {
+  it('does not schedule a graph PATCH when every reported position is the one already held', async () => {
+    vi.useFakeTimers();
+    const calls = installFetchMock();
+    const withNode = definition({
+      graph: { version: 1, nodes: [{ id: 'n1', type: 'core.note', config: {}, position: { x: 40, y: 60 } }], edges: [] },
+    });
+    renderWithProviders(
+      <WorkflowStudioEditor
+        definition={withNode}
+        etag='"1"'
+        registryNodes={[
+          {
+            type: 'core.note',
+            implemented: true,
+            classes: ['annotation'],
+            paletteKey: 'core',
+            deprecated: false,
+            entitlementKey: null,
+            inputs: [],
+            outputs: [],
+          } as never,
+        ]}
+      />,
+      {},
+    );
+
+    act(() => {
+      capturedOnNodesChange?.([{ id: 'n1', position: { x: 40, y: 60 } }]);
+      capturedOnNodesChange?.([{ id: 'n1', position: { x: 40, y: 60 } }]);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
+  });
+});
+
+/**
  * TASK-890 black-box J4-F1 — drop-from-palette.
  *
  * The canvas contributes the projected drop point; the editor decides what the payload means. A

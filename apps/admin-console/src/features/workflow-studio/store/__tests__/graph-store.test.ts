@@ -197,6 +197,24 @@ describe('createGraphStore', () => {
     expect(state.nodes[0].position).toEqual({ x: 9, y: 9 });
   });
 
+  /**
+   * TASK-890 black-box J5 — a node move that changes nothing must change nothing.
+   *
+   * `onNodesChange` reports EVERY node on every canvas change, and React Flow re-emits the
+   * current positions whenever the controlled `nodes` prop is re-synced. A `moveNode` that
+   * rebuilt the array for an identical position made every one of those a fresh `nodes`
+   * identity, which re-rendered the canvas, which re-emitted — "Maximum update depth exceeded"
+   * tore the editor down mid-drag. Identity stability is the loop's off switch.
+   */
+  it('moveNode to the position a node already has leaves the nodes array identity untouched', () => {
+    const store = createGraphStore();
+    const id = store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
+    store.getState().moveNode(id, { x: 9, y: 9 });
+    const before = store.getState().nodes;
+    store.getState().moveNode(id, { x: 9, y: 9 });
+    expect(store.getState().nodes).toBe(before);
+  });
+
   it('markSaved clears dirty and records the version', () => {
     const store = createGraphStore();
     store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
