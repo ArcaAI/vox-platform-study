@@ -238,6 +238,7 @@ export {
   canonicalAgentTags,
   hasBlockingAgentProblems,
   isAgentTask,
+  outputSchemaResponseFormat,
   parseAgentTag,
   readAgentFallbackGovernance,
 } from './agent-schemas';
