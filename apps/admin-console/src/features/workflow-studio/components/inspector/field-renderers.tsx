@@ -9,7 +9,6 @@
 import {
   Field,
   FieldContent,
-  FieldDescription,
   FieldError,
   FieldLabel,
   FieldLegend,
@@ -23,9 +22,10 @@ import {
   Switch,
 } from '@arcaai/ui';
 import type { FieldDescriptor } from '../../lib/schema-form';
+import { CelExpressionField } from './cel-expression-field';
+import { FieldCopy, summaryOf } from './field-copy';
 import { getAtPath, setAtPath } from './field-path';
 import { RawJsonField } from './raw-json-field';
-import { CelExpressionField } from './cel-expression-field';
 
 /** One field's render context, handed to a `fieldOverrides` entry — everything a specialized
  *  control needs and nothing it would otherwise have to re-derive. */
@@ -77,7 +77,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
           {descriptor.label}
           {descriptor.required ? ' *' : ''}
         </FieldLegend>
-        {descriptor.description ? <FieldDescription>{descriptor.description}</FieldDescription> : null}
+        <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
         <div className="flex flex-col gap-4 pl-4">
           {descriptor.fields.map((field) => (
             <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} />
@@ -97,6 +97,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
           {descriptor.label}
           {descriptor.required ? ' *' : ''}
         </FieldLegend>
+        <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
         <Field>
           <FieldLabel htmlFor={branchDescriptorId}>{descriptor.discriminatorProperty}</FieldLabel>
           <Select value={currentBranch?.value ?? ''} onValueChange={(next) => set({ [descriptor.discriminatorProperty]: next })}>
@@ -135,7 +136,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
           {descriptor.label}
           {descriptor.required ? ' *' : ''}
         </FieldLabel>
-        {descriptor.description ? <FieldDescription>{descriptor.description}</FieldDescription> : null}
+        <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
         <Select value={typeof value === 'string' ? value : descriptor.default} onValueChange={(next) => set(next)}>
           <SelectTrigger id={id}>
             <SelectValue placeholder="Select…" />
@@ -162,7 +163,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
             {descriptor.label}
             {descriptor.required ? ' *' : ''}
           </FieldLabel>
-          {descriptor.description ? <FieldDescription>{descriptor.description}</FieldDescription> : null}
+          <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
         </FieldContent>
         <Switch id={id} checked={checked} onCheckedChange={(next) => set(next)} />
         <FieldError errors={errors?.map((message) => ({ message }))} />
@@ -178,7 +179,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
           {descriptor.label}
           {descriptor.required ? ' *' : ''}
         </FieldLabel>
-        {descriptor.description ? <FieldDescription>{descriptor.description}</FieldDescription> : null}
+        <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
         <Input
           id={id}
           type="number"
@@ -204,7 +205,8 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
           {descriptor.label}
           {descriptor.required ? ' *' : ''}
         </FieldLabel>
-        <FieldDescription>{descriptor.description ? `${descriptor.description} Comma-separated values.` : 'Comma-separated values.'}</FieldDescription>
+        <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
+        <p className="text-muted-foreground text-xs">Comma-separated values.</p>
         <Input
           id={id}
           value={tags.join(', ')}
@@ -229,6 +231,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
       <CelExpressionField
         id={id}
         label={descriptor.label}
+        summary={summaryOf(descriptor)}
         description={descriptor.description}
         required={descriptor.required}
         value={typeof value === 'string' ? value : ''}
@@ -244,7 +247,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
         {descriptor.label}
         {descriptor.required ? ' *' : ''}
       </FieldLabel>
-      {descriptor.description ? <FieldDescription>{descriptor.description}</FieldDescription> : null}
+      <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
       <Input
         id={id}
         value={typeof value === 'string' ? value : (descriptor.default ?? '')}

@@ -108,7 +108,7 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
   it('renders the real control, NOT the two raw schema fields it replaces', async () => {
     stubCatalog();
     renderWithProviders(
-      <InspectorPanel
+      <InspectorPanel tab="config" onTabChange={vi.fn()}
         node={node({ taskKey: 'text.finalize', documentTemplateId: TEMPLATE_ID, documentVersionNumber: PINNED_VERSION })}
         configSchema={NODE_CONFIG_SCHEMAS['generate.text']}
         problems={[]}
@@ -126,7 +126,7 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
     stubCatalog();
     const onConfigChange = vi.fn();
     renderWithProviders(
-      <InspectorPanel
+      <InspectorPanel tab="config" onTabChange={vi.fn()}
         node={node({ taskKey: 'text.finalize', documentTemplateId: TEMPLATE_ID, documentVersionNumber: PINNED_VERSION })}
         configSchema={NODE_CONFIG_SCHEMAS['generate.text']}
         problems={[]}
@@ -146,7 +146,7 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
     stubCatalog();
     const onConfigChange = vi.fn();
     renderWithProviders(
-      <InspectorPanel
+      <InspectorPanel tab="config" onTabChange={vi.fn()}
         node={node({ taskKey: 'text.finalize', promptTemplateId: '11111111-1111-4111-8111-111111111111', promptVersionNumber: 4 })}
         configSchema={NODE_CONFIG_SCHEMAS['generate.text']}
         problems={[]}
