@@ -59,6 +59,13 @@ strict = true
 
 [tool.pytest.ini_options]
 minversion = "9.0"
+# Resolved relative to rootdir (= this directory), and applied at
+# `pytest_load_initial_conftests` — earlier than anything that could import
+# `hope_env`. Without it, a run inside a git worktree imported the PRIMARY
+# checkout's `hope_env` through the conda env's `__editable__.hope_env-0.1.0.pth`
+# and reported a result about source it had not touched. `tests/conftest.py`
+# proves the entry held; see scripts/pytest-support/hope_worktree_guard.py.
+pythonpath = ["src", "../../scripts/pytest-support"]
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
