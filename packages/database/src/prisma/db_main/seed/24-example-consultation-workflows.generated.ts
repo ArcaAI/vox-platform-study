@@ -14,7 +14,7 @@
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-example-consultation-workflow-seed.ts
  */
 
-export const REGISTRY_CHECKSUM: string = "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d" as const;
+export const REGISTRY_CHECKSUM: string = "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881" as const;
 
 export const GRAMMAR_FIX_GRAPH_CHECKSUM: string = "587578c368221b4212cbf8c580065ac41a1fa47029f3d8152544dbe8cbfdcb6b" as const;
 
@@ -23,7 +23,7 @@ export const GRAMMAR_FIX_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "evaluatedAt": "2026-09-03T00:00:00.000Z"
 } as const;
 
@@ -36,7 +36,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -47,7 +47,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.start",
           "activity": "interpreter.core_start",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -67,7 +67,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.consentGate",
           "activity": "interpreter.consultation_consent_gate",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -97,7 +97,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "persistSnapshot": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -127,7 +127,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "taskKey": "text.live",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 20,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -150,7 +150,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -182,7 +182,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "onError": "degrade",
             "enabled": false
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -251,7 +251,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "conversationLanguage": "en",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -281,7 +281,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "producesCode": false,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -309,7 +309,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -338,7 +338,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "occ": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -371,7 +371,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -407,7 +407,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.end",
           "activity": "interpreter.core_end",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -448,7 +448,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "31193d1c559723da9bec3f017cc2d1fd72deeec1ccde6a3bbc9805fe8d03f4be"
+  "checksum": "e6f40fa90711dc66a957734f6c2294493338fca01438ddeb85cb9d6f494c8fb1"
 } as const;
 
 export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
@@ -460,7 +460,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -471,7 +471,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.start",
           "activity": "interpreter.core_start",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -491,7 +491,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.consentGate",
           "activity": "interpreter.consultation_consent_gate",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -521,7 +521,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "persistSnapshot": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -551,7 +551,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "taskKey": "text.live",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 20,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -574,7 +574,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -606,7 +606,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "onError": "degrade",
             "enabled": false
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -675,7 +675,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "conversationLanguage": "en",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -705,7 +705,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "producesCode": false,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -733,7 +733,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -762,7 +762,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "occ": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -795,7 +795,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -831,7 +831,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.end",
           "activity": "interpreter.core_end",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -872,7 +872,7 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "ab9bcdc717b48b4df2e20f3aadadbbf90242f13248ae53707b5806ea52af0f38"
+  "checksum": "69fd80ea0bad897280793f5978abd44d0d0895280dc6f35c344514f8b6856e68"
 } as const;
 
 export const MEDICAL_NER_GRAPH_CHECKSUM: string = "fa5ea9f83c81f059af24ea7ccfbb4ba3601531baab2ac7c85051b3f60cd5655b" as const;
@@ -882,7 +882,7 @@ export const MEDICAL_NER_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "evaluatedAt": "2026-09-03T00:00:00.000Z"
 } as const;
 
@@ -895,7 +895,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -906,7 +906,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.start",
           "activity": "interpreter.core_start",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -926,7 +926,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.consentGate",
           "activity": "interpreter.consultation_consent_gate",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -956,7 +956,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "persistSnapshot": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -984,7 +984,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1015,7 +1015,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "requiresFinalized": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1079,7 +1079,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "conversationLanguage": "en",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1109,7 +1109,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "producesCode": false,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1137,7 +1137,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1166,7 +1166,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "occ": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1199,7 +1199,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1235,7 +1235,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.end",
           "activity": "interpreter.core_end",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1276,7 +1276,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "493be06ea5023f89200670508f6669a9a9cc6bbfc327cf3892e1f3c5b2fce7d1"
+  "checksum": "0baf21dc8c8dc434a476c3b804f3afec2dfd08bee5c3226e4f1d631f71e4c786"
 } as const;
 
 export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
@@ -1288,7 +1288,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -1299,7 +1299,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.start",
           "activity": "interpreter.core_start",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1319,7 +1319,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.consentGate",
           "activity": "interpreter.consultation_consent_gate",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1349,7 +1349,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "persistSnapshot": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1377,7 +1377,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1408,7 +1408,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "requiresFinalized": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1472,7 +1472,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "conversationLanguage": "en",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1502,7 +1502,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "producesCode": false,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1530,7 +1530,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1559,7 +1559,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
             "occ": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1592,7 +1592,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1628,7 +1628,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.end",
           "activity": "interpreter.core_end",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1669,7 +1669,7 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "f67cbfa607ce42948b149eda2cb9eafa83d45190b5b1fae39adab529ce0aa340"
+  "checksum": "43053f8703db36e76c0d9d8e7bf4f15c62fa7b09f5a6172b720607e03cfc4344"
 } as const;
 
 export const NER_GRAMMAR_FIX_GRAPH_CHECKSUM: string = "bbcccd033d624c5053636c3dd872ead001e056004de1a64edada3732d9fbcfc3" as const;
@@ -1679,7 +1679,7 @@ export const NER_GRAMMAR_FIX_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "evaluatedAt": "2026-09-03T00:00:00.000Z"
 } as const;
 
@@ -1692,7 +1692,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -1703,7 +1703,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
           "type": "core.start",
           "activity": "interpreter.core_start",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1723,7 +1723,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
           "type": "consultation.consentGate",
           "activity": "interpreter.consultation_consent_gate",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1753,7 +1753,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
             "persistSnapshot": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1783,7 +1783,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
             "taskKey": "text.live",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 20,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1806,7 +1806,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1837,7 +1837,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
             "requiresFinalized": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1906,7 +1906,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
             "conversationLanguage": "en",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1936,7 +1936,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
             "producesCode": false,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1964,7 +1964,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1993,7 +1993,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
             "occ": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2026,7 +2026,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2062,7 +2062,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
           "type": "core.end",
           "activity": "interpreter.core_end",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2103,7 +2103,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "f2b1348491c8171de8e68854f26cfb3fb275965932dbc6929cab809a50c49d8a"
+  "checksum": "e9bbf2cf1e17199b6235a964a2bbc10d9e08a7e46172033be981eb05dfbcac08"
 } as const;
 
 export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
@@ -2115,7 +2115,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-09-03T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -2126,7 +2126,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.start",
           "activity": "interpreter.core_start",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2146,7 +2146,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.consentGate",
           "activity": "interpreter.consultation_consent_gate",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2176,7 +2176,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "persistSnapshot": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2206,7 +2206,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "taskKey": "text.live",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 20,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2229,7 +2229,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2260,7 +2260,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "requiresFinalized": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2329,7 +2329,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "conversationLanguage": "en",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2359,7 +2359,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "producesCode": false,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2387,7 +2387,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2416,7 +2416,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
             "occ": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2449,7 +2449,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2485,7 +2485,7 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.end",
           "activity": "interpreter.core_end",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -2526,5 +2526,5 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "cfb26cc95f6bdd18395bc12918bc92b230eb974af950d3503054ce3593babfff"
+  "checksum": "337a2ecec0aeaab6f3376604853dd86c728a77985a13b5fc31b2d1fd537d88d7"
 } as const;

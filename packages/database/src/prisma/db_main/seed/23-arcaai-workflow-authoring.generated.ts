@@ -14,7 +14,7 @@
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-arcaai-consultation-workflow-seed.ts
  */
 
-export const REGISTRY_CHECKSUM: string = "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d" as const;
+export const REGISTRY_CHECKSUM: string = "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881" as const;
 
 export const GEN_GRAPH_CHECKSUM: string = "97f152b396e1ce07f4473f3fa011222c0df6aa15c6b3b9cab1ace199b7f98272" as const;
 
@@ -23,7 +23,7 @@ export const GEN_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -36,7 +36,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -47,7 +47,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.start",
           "activity": "interpreter.core_start",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -67,7 +67,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.consentGate",
           "activity": "interpreter.consultation_consent_gate",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -97,7 +97,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "persistSnapshot": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -127,7 +127,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "taskKey": "text.live",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 25,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -152,7 +152,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "taskKey": "text.live",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 20,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -175,7 +175,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -206,7 +206,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "requiresFinalized": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -251,7 +251,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "unmappedOutputKey": "unmappedTerms",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -308,7 +308,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -332,7 +332,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "retrievalEnabled": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -357,7 +357,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "promptTemplateId": "71000000-0000-0000-0001-000000000024",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -385,7 +385,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -415,7 +415,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "conversationLanguage": "en",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -460,7 +460,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "producesCode": false,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -513,7 +513,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "promptTemplateId": "71000000-0000-0000-0000-000000000045",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -542,7 +542,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "promptTemplateId": "71000000-0000-0000-0000-000000000044",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -577,7 +577,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             ],
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -605,7 +605,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -644,7 +644,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             "occ": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -677,7 +677,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -713,7 +713,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.end",
           "activity": "interpreter.core_end",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -754,7 +754,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "d514a00fc83418e1ea33458e54e469c876ebd293ecd3fc62663740feca1511c1"
+  "checksum": "868baec631dbb03518f0e79d4cece9e079972cab57fc6be87bea7326d1eb0911"
 } as const;
 
 export const RHEUM_GRAPH_CHECKSUM: string = "de02e57a19de1b00675a1e3bb46d60878e29ce08a665f06efc859a9f69e40393" as const;
@@ -764,7 +764,7 @@ export const RHEUM_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -777,7 +777,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "5631d0da5335fa858b649bf8e4f95320a9f2a6201c61ea8f8116b52d9a44b06d",
+  "registryChecksum": "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -788,7 +788,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.start",
           "activity": "interpreter.core_start",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -808,7 +808,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.consentGate",
           "activity": "interpreter.consultation_consent_gate",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -838,7 +838,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "persistSnapshot": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -868,7 +868,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "taskKey": "text.live",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 25,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -893,7 +893,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "taskKey": "text.live",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 20,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -916,7 +916,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -947,7 +947,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "requiresFinalized": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -992,7 +992,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "unmappedOutputKey": "unmappedTerms",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1049,7 +1049,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1073,7 +1073,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "retrievalEnabled": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1098,7 +1098,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "promptTemplateId": "71000000-0000-0000-0001-000000000024",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1126,7 +1126,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1157,7 +1157,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "dnaStyleId": "73000000-0000-0000-0001-000000000003",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1202,7 +1202,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "producesCode": false,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1255,7 +1255,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "promptTemplateId": "71000000-0000-0000-0000-000000000045",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1284,7 +1284,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "promptTemplateId": "71000000-0000-0000-0000-000000000044",
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1319,7 +1319,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             ],
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1347,7 +1347,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1385,7 +1385,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 600,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1419,7 +1419,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             "occ": true,
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1457,7 +1457,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "config": {
             "onError": "degrade"
           },
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 150,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1498,7 +1498,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "core.end",
           "activity": "interpreter.core_end",
           "config": {},
-          "timeoutSeconds": 60,
+          "timeoutSeconds": 30,
           "retry": {
             "maximumAttempts": 1,
             "initialIntervalSeconds": 1,
@@ -1539,5 +1539,5 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "0d77362b3686b7e901c4cdca1f839641e227e3bfc912989b6177325d097ead12"
+  "checksum": "0f4c47c55327fbbdc7141812f6b35a03dfbf5d2cde17da132106b51504635df6"
 } as const;
