@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/vad",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Voice Activity Detection plugin for @arcaai/room using Silero VAD v5 with ONNX Runtime",
   "deprecated": "DEPRECATED (TASK-865) — removed in R4, two releases after R2. Client-side VAD is retired; the tenant's ASR Agent runs VAD server-side. The browser never runs a model. See docs/operations/deprecation-register.md.",
   "private": false,

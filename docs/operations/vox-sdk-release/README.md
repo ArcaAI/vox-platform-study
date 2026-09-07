@@ -52,12 +52,12 @@ it still reads `ArcaAI/project-hope` before publishing** if it's been a while.
 
 ```bash
 # Bump all SDK packages together (recommended so workspace:* rewrites stay aligned)
-for p in agentic-sdk-v2 room stt vad noise-filter med-ner pipeline; do
+for p in agentic-sdk-v2 room stt vad noise-filter med-ner pipeline vox-codegen vox-node vox-node-codegen; do
   node -e "
     const fs = require('fs');
     const path = 'packages/$p/package.json';
     const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-    pkg.version = '2.0.2';
+    pkg.version = '3.0.1';
     fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
     console.log(pkg.name + ' -> ' + pkg.version);
   "
@@ -75,6 +75,7 @@ pnpm --filter @arcaai/med-ner publish --no-git-checks
 
 # 3. Publish vox last
 pnpm --filter @arcaai/vox publish --no-git-checks
+pnpm --filter @arcaai/vox-node publish --no-git-checks
 
 # 4. (Optional, separate — not a vox dependency)
 pnpm --filter @arcaai/pipeline build
