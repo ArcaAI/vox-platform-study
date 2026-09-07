@@ -780,3 +780,41 @@ export interface HarnessProviderCredentialResponse {
   model?: string;
   funding?: HarnessCredentialFunding;
 }
+
+/**
+ * One resolved registry model in the shape the durable `core.classify` node
+ * consumes (F11 — `GET /internal/harness/models/resolve`).
+ *
+ * `apps/harness` holds no DB handle by design, so the catalogue row a node
+ * REFERENCES by slug is resolved on the gateway side and injected, exactly as
+ * `resolveMcpToken` / `resolveProviderCredential` already do for their planes.
+ * The node loads the classifier by `sourceUri` (its `model_name`) and the
+ * DERIVED `localPath` — registry facts, never authored on a node.
+ *
+ * There is no "not found" member: an unresolvable slug is a 404, because
+ * model SELECTION fails CLOSED and nothing may be substituted for it.
+ */
+export interface HarnessResolvedModelResponse {
+  slug: string;
+  /** The row's OWN `ModelTaskType`, so the caller can see what it actually got. */
+  taskType: string;
+  /** Which tier supplied the row: the caller's tenant (BYO) or SYSTEM. */
+  tenantId: string;
+  sourceUri: string;
+  sourceRevision: string | null;
+  /** DERIVED from the bucket identity (TASK-890 §3.11), never a column read. */
+  localPath: string | null;
+  /** The ROUTED vendor id for a CLOUD row, beside the locator `sourceUri`. */
+  wireModelId: string | null;
+  /** The workload that executes the model (`nlp`, `stt`, …). */
+  servedBy: string;
+  provider: string | null;
+  format: string;
+  computeType: string | null;
+  /**
+   * The row's declared `_metadata.labelTaxonomy`, forwarded VERBATIM. Absent
+   * when the row declares none — the executor's own fail posture then applies;
+   * a taxonomy is never invented here (rule 00: a label set is configuration).
+   */
+  labelTaxonomy?: Record<string, unknown>;
+}

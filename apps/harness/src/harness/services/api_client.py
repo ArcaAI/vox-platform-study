@@ -487,12 +487,28 @@ class ApiClient:
     ) -> dict[str, Any]:
         """TASK-864 `core.classify` -> the registry-model resolve (TASK-860 catalogue).
 
-        Contract coded against (the route is a thin projection of ``AiModelService`` the
-        orchestrator wires; reported in the TASK-864 README):
+        F11: the route this method has always called did not exist until now —
+        ``apps/api/route-manifest.json`` carried ``/internal/agents/resolve`` and
+        ``/internal/harness/prompt-templates/{id}/resolved`` and nothing that resolves a
+        registry model by slug, so every ``core.classify`` node degraded here. Contract,
+        verified against ``apps/api/src/modules/consultation/harness-internal.controller.ts``:
 
             GET /api/v1/internal/harness/models/resolve?tenantId=<uuid>&slug=<slug>[&taskType=T]
-            200 -> { slug, taskType, provider?, sourceUri?, localPath? }
-            400/404 -> unknown, disabled, or wrong-task slug (fails CLOSED here)
+            headers: X-Service-Token (the class-level ``HarnessServiceTokenGuard``)
+            200 -> { slug, taskType, tenantId, sourceUri, sourceRevision, localPath,
+                     wireModelId, servedBy, provider, format, computeType,
+                     labelTaxonomy? }
+            400 -> `slug` or `tenantId` missing (a tenant-less resolve is a CALLER defect:
+                   it could only mean "read SYSTEM unconditionally")
+            404 -> unknown, disabled, foreign-tenant, or (with ``taskType``) wrong-task slug
+                   — one answer, 404-over-403. Selection fails CLOSED on it.
+
+        The cascade is the platform's standard one: the tenant's own BYO row wins on
+        presence, the SYSTEM catalogue answers on ABSENCE only.
+
+        ``task_type`` is an OPTIONAL filter and ``core.classify`` deliberately sends none —
+        the node's schema accepts a TEXT_CLASSIFICATION *or* TOKEN_CLASSIFICATION slug, so
+        the row's own task rides back on the response instead.
 
         The NLP service loads a classifier by ``sourceUri`` (its ``model_name``) and an optional
         ``localPath`` — registry facts, gateway-injected, never authored on a node.

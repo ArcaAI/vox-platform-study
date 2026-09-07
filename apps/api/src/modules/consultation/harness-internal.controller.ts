@@ -32,6 +32,7 @@ import {
   HarnessProgressService,
   HarnessProviderCredentialResponse,
   HarnessRealtimeDeliveryAck,
+  HarnessResolvedModelResponse,
   IActiveUserContext,
   IAgentTrajectoryService,
   ILoopConfigService,
@@ -443,6 +444,46 @@ export class HarnessInternalController {
       }
       return { found: true, approved: true, content: approved.content, versionNumber: approved.versionNumber };
     });
+  }
+
+  /**
+   * F11 — resolve ONE registry model by slug for the durable
+   * `core.classify` node, tenant BYO → SYSTEM catalogue.
+   *
+   * The node has called this path since TASK-864 and it did not exist: the
+   * gateway carried `/internal/agents/resolve` and
+   * `/internal/harness/prompt-templates/:id/resolved`, and nothing that
+   * resolves a registry model by slug — so every classify node degraded on a
+   * 404 at model resolution (and, since J5-F7 made a non-408/429 4xx terminal,
+   * did so without a retry storm to hide it).
+   *
+   * Same boundary rule as `mcp-token` / `provider-credential` above: the
+   * harness holds no DB handle, so the row a node REFERENCES by slug is
+   * resolved here and injected. `tenantId` is REQUIRED — a tenant-less resolve
+   * could only mean "read SYSTEM unconditionally", the widen-without-absence
+   * bug the two-tier rule exists to prevent. `taskType` is an OPTIONAL filter:
+   * `core.classify`'s own schema accepts a TEXT_CLASSIFICATION *or*
+   * TOKEN_CLASSIFICATION slug, so the row's task rides on the response instead
+   * of being pinned by the caller.
+   */
+  @Get('models/resolve')
+  @ApiOperation({ summary: 'Resolve a registry model by slug (tenant BYO → SYSTEM) for the worker core.classify node' })
+  @ApiQuery({ name: 'slug', required: true, description: 'The `AiModel.slug` the node references.' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the harness is acting on behalf of. Never optional.' })
+  @ApiQuery({
+    name: 'taskType',
+    required: false,
+    description: 'Optional ModelTaskType filter; a mismatch answers 404 rather than a row the caller cannot use.',
+  })
+  async resolveRegistryModel(
+    @Query('slug') slug?: string,
+    @Query('tenantId') tenantId?: string,
+    @Query('taskType') taskType?: string,
+  ): Promise<HarnessResolvedModelResponse> {
+    if (!slug || !tenantId) {
+      throw new BadRequestException('slug and tenantId query parameters are both required');
+    }
+    return this.harnessInternalService.resolveRegistryModel(slug, tenantId, taskType);
   }
 
   /**
