@@ -83,6 +83,7 @@ import type { InferenceReadinessSnapshot, ModelReadiness } from '../ai-readiness
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { buildAgentPromptScope } from './agent-prompt-scope';
 import { textWireProvider } from './text-generation-spec';
+import type { CompiledModelRef } from './agent-wire-model';
 import { AgentDtoMapper } from './agent.dto.mapper';
 import { codeForConfigProblem, hasBlocking, type AgentFinding, type AgentValidationReport } from './agent-findings';
 import {
@@ -700,7 +701,7 @@ export class AgentService extends BaseService implements IAgentService {
   /**
    * What the run would go to, and who pays. `override` is the caller's explicit `{provider,
    * model}` pair (verbatim, as the prompt bench accepts one); `row` is the agent's own bound
-   * model, sent as the wire provider apps/text registers and the provider-native `sourceUri`.
+   * model, sent as the wire provider apps/text registers and the provider-native `wireModelId`.
    *
    * Funding is DERIVED exactly as production derives it: the SYSTEM tier paying makes it
    * `platform`, the tenant's own row makes it `tenant`. Nothing here stamps a `test` tier — a
@@ -708,7 +709,9 @@ export class AgentService extends BaseService implements IAgentService {
    */
   private async testTarget(entity: AgentEntity, model: AiModelEntity, dto: TestAgentRequest): Promise<AgentTestAckResponse['resolved']> {
     const provider = dto.provider ?? textWireProvider(model.provider ?? '');
-    const wireModel = dto.model ?? model.sourceUri ?? model.slug;
+    // TASK-890 F9 — the ROUTED id, not the locator `sourceUri` (§3.1). The slug stays the last
+    // resort for a `built-in` row that declares neither, which only a dry run ever reaches.
+    const wireModel = dto.model ?? model.wireModelId ?? model.slug;
     const source: 'row' | 'override' = dto.provider ? 'override' : 'row';
 
     let fundingTier: 'platform' | 'tenant' = entity.tenantId === SYSTEM_TENANT_ID ? 'platform' : 'tenant';
@@ -2044,10 +2047,23 @@ export class AgentService extends BaseService implements IAgentService {
   ): AgentCompiledConfig {
     const byId = new Map(fallbackModels.map((row) => [row.id, row]));
     const defaults = AGENT_IO_DEFAULTS[entity.task];
+    // Built as a variable so the additive `wireModelId` rides along: `AgentCompiledConfig['model']`
+    // in `@arcaai/types` declares the four required members and the artifact is JSON.
+    const compiledModel: CompiledModelRef = {
+      id: model.id,
+      slug: model.slug,
+      provider: model.provider ?? null,
+      taskType: String(model.taskType),
+      wireModelId: model.wireModelId ?? null,
+    };
     return {
       task: entity.task,
       service: AGENT_TASK_SERVICE[entity.task],
-      model: { id: model.id, slug: model.slug, provider: model.provider ?? null, taskType: String(model.taskType) },
+      // TASK-890 F9 — the ROUTED id (`AiModel.wireModelId`) is FROZEN beside the reference, so a
+      // published version names what goes on the wire without a second catalogue read, exactly as
+      // `resolvedPrompt` freezes the instruction. A version published before this carries none and
+      // routes off the live row instead (`wireModelIdOf`) — there is no republish.
+      model: compiledModel,
       fallbacks: [...fallbackRows]
         .filter((row) => row.enabled)
         .sort((a, b) => a.priority - b.priority)

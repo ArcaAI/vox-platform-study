@@ -10,6 +10,7 @@ export * from './tts-spec';
 export * from './tts-agent-resolver.service';
 export * from './tts-agent-resolver.service.module';
 export * from './agent-invocation.service';
+export * from './agent-wire-model';
 export * from './agent.service.module';
 
 // The resolver contract shape lives in @arcaai/types; re-exported so apps/api needs no direct dependency on that package.
