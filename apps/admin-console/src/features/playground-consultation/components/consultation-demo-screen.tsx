@@ -30,7 +30,6 @@ import {
   useArcaLiveSummary,
   useArcaSttLanguageModes,
   useConsultationWorkflow,
-  useSelectableAsrAgents,
   useSelectableConsultationWorkflows,
   useStoreApi,
 } from '@arcaai/vox';
@@ -38,7 +37,6 @@ import { toast } from 'sonner';
 import { GatewayError } from '@/shared/api';
 import { PURPOSE_META, grantLifecycle, isConsentDenied, usePatientConsentGrants } from '@/features/consent/api';
 import { RecordConsentDialog } from '@/features/consent/components/record-consent-dialog';
-import type { ModelOption } from '@arcaai/ui/components/custom/model-selector';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@arcaai/ui/components/shadcn/resizable';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { publicEnv } from '@/config/public-env';
@@ -52,7 +50,6 @@ import {
   useApproveSummary,
   useCancelConsultationJob,
   useConsultationLoopStream,
-  useDnaStyleOptions,
   useGenerateSummaryAsync,
   useHarnessAssuranceStream,
   useHarnessProgressStream,
@@ -228,19 +225,16 @@ function ScribeWorkspace() {
   const [consultation, setConsultation] = useState<ConsultationListRow | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [approved, setApproved] = useState(false);
-  // which published ASR Agent transcribes the next capture. EMPTY IS THE
-  // DEFAULT and means "send no slug": the department → tenant AgentAssignment
-  // cascade decides (same rule as `workflowChoice` below). The tenant default
-  // is surfaced in the picker as a hint, never preselected.
-  const [agentChoice, setAgentChoice] = useState('');
-  // end-user STT language mode. Empty ⇒ pipeline default. The
-  // backend guarantees the chosen mode fits the session's engines (422 otherwise).
+  // end-user STT language mode. TASK-891 OD-1: EMPTY IS THE DELIBERATE
+  // DEFAULT — code-switch stays always on unless a language is declared. No
+  // opinion here ever resolves to English; the picker labels the empty
+  // selection honestly instead of defaulting it away (A6, `scribe-footer.tsx`).
+  // The backend guarantees an explicit mode fits the session's engines (422 otherwise).
   const [languageMode, setLanguageMode] = useState('');
-  // W2 — the two scoping inputs found were never supplied.
+  // W2 — the department scoping input found was never supplied.
   // `departmentId` is bound at OPEN (it is a property of the consultation and
-  // feeds the workflow-assignment cascade); `dnaStyleId` is bound at GENERATE.
+  // feeds the workflow-assignment cascade).
   const [departmentId, setDepartmentId] = useState('');
-  const [dnaStyleId, setDnaStyleId] = useState('');
   // which PUBLISHED consultation workflow governs the session being opened.
   // Bound at OPEN like `departmentId` (it is a property of the consultation, not of the
   // capture). EMPTY IS THE DEFAULT and means "send no slug": the department → tenant
@@ -254,8 +248,6 @@ function ScribeWorkspace() {
   // column's evidence panel).
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
 
-  // Tri-state like `selectableWorkflows`: `null` could-not-ask vs `[]` none published.
-  const asrAgents = useSelectableAsrAgents();
   const departments = useScopingDepartments();
   /**
    * the selectable workflow set and the governing read-back, both from
@@ -265,9 +257,13 @@ function ScribeWorkspace() {
    * published) and both hooks fail OPEN — a discovery read must never stop a consultation.
    * Nothing is preselected: the default is to send no slug and let the assignment cascade
    * decide. `tenantDefault` is surfaced in the picker as a HINT about the tenant tier.
+   *
+   * TASK-891 OD-5 — this is now the ONLY selector in the workspace: it names the ASR agent,
+   * the partial/finalize summarization agents and the DNA writing-style redaction agent. The
+   * former separate ASR-agent and DNA-writing-style pickers (`useSelectableAsrAgents`,
+   * `useDnaStyleOptions`) were removed from this screen along with their footer dropdowns.
  */
   const selectableWorkflows = useSelectableConsultationWorkflows();
-  const dnaStyles = useDnaStyleOptions();
 
   const recordingStart = useStartRecording();
   const recordingStop = useStopRecording();
@@ -453,7 +449,9 @@ function ScribeWorkspace() {
     }
     setCaptureBusy(true);
     try {
-      await audio.start({ ...(agentChoice ? { agentSlug: agentChoice } : {}), ...(languageMode ? { languageMode } : {}) });
+      // TASK-891 OD-5 — no more `agentSlug`: the workflow picked at open already names the
+      // ASR agent, so the assignment cascade decides here, same as before that workflow existed.
+      await audio.start({ ...(languageMode ? { languageMode } : {}) });
       const sessionId = (await resolveStreamingSessionId(storeApi)) ?? undefined;
       const state = await recordingStart.mutateAsync({ consultationId: consultation.id, sessionId });
       setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
@@ -532,8 +530,11 @@ function ScribeWorkspace() {
 
   function handleGenerate() {
     if (!consultation) return;
+    // TASK-891 OD-5 — no more `dnaStyleId`: the workflow's DNA writing-style redaction agent
+    // (authored from the doctor's own DNA writing-style report) applies at finalize, per the
+    // workflow that governs this consultation — not a per-generation override from this screen.
     summaryAsync.mutate(
-      { consultationId: consultation.id, body: dnaStyleId ? { dnaStyleId } : undefined },
+      { consultationId: consultation.id },
       {
         onSuccess: (job) => setSummaryJobId(job.jobId),
         onError: (error) => toast.error(errorMessage(error, 'Note generation failed')),
@@ -595,25 +596,6 @@ function ScribeWorkspace() {
   // manual generate action then (avoids the generate-vs-auto-harness race).
   const harnessActive = !!progress.snapshot && (progress.snapshot.stages?.length ?? 0) > 0;
 
-  const transcriptionModels: ModelOption[] = useMemo(
-    () =>
-      (asrAgents.agents ?? []).map((agent) => ({
-        id: agent.slug,
-        name: agent.isTenantDefault ? `${agent.name} \u00b7 tenant default` : agent.name,
-        source: 'backend' as const,
-        description: agent.description ?? undefined,
-      })),
-    [asrAgents.agents],
-  );
-
-  // The note model isn't a picker endpoint yet — surface the model that
-  // actually produced the current draft (real provenance) as the selection.
-  const noteModelName = draft.data?.structuredData?.modelName;
-  const noteModels: ModelOption[] = useMemo(
-    () => (noteModelName ? [{ id: noteModelName, name: noteModelName, source: 'backend' as const }] : []),
-    [noteModelName],
-  );
-
   return (
     // `ScreenTemplate` in `fill` mode (rule 11 §1): the resizable 3-column
     // group owns the remaining height and each column scrolls internally, so
@@ -636,20 +618,10 @@ function ScribeWorkspace() {
       }
       footer={
         <ScribeFooter
-          transcriptionModels={transcriptionModels}
-          selectedTranscriptionId={agentChoice}
-          onTranscriptionChange={setAgentChoice}
-          transcriptionLoading={asrAgents.isLoading}
           languageModes={languageModes.modes}
           selectedLanguageMode={languageMode}
           onLanguageModeChange={setLanguageMode}
           languageModesLoading={languageModes.isLoading}
-          noteModels={noteModels}
-          selectedNoteId={noteModelName ?? ''}
-          onNoteChange={() => undefined}
-          dnaStyles={dnaStyles.data ?? []}
-          selectedDnaStyleId={dnaStyleId}
-          onDnaStyleChange={setDnaStyleId}
           metrics={{ tokensPerSecond: metrics.tokensPerSecond, latencyP95Ms: metrics.latencyP95Ms, uplinkBitsPerSecond: audio.uplinkBitrate || null }}
         />
       }

@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import { ParametersForm } from '../parameters-form';
 
@@ -176,6 +177,58 @@ describe('ParametersForm', () => {
       expect(onChange).toHaveBeenLastCalledWith({ guards: { enabled: false } });
       fireEvent.click(screen.getByLabelText('Guardrail screening'));
       expect(onChange).toHaveBeenLastCalledWith({});
+    });
+  });
+
+  /**
+   * TASK-891 C4/OD-4 — per-agent reasoning control, next to temperature/maxTokens inside the
+   * same "Generation" fieldset. Unlike guardrail screening, "off" is a real explicit value
+   * (`enabled: false` — instruct the engine not to reason), never inferred from absence.
+   */
+  describe('TEXT_GENERATION reasoning control (TASK-891)', () => {
+    it('renders inside the Generation fieldset, off by default, with an effort select', () => {
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} />);
+      const generation = within(screen.getByRole('group', { name: 'Generation' }));
+      const toggle = generation.getByLabelText('Enable reasoning');
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+      const effort = generation.getByLabelText('Reasoning effort') as HTMLButtonElement;
+      expect(effort.disabled).toBe(true);
+    });
+
+    it('enabling writes an explicit enabled: true; disabling writes an explicit enabled: false', () => {
+      const onChange = vi.fn();
+      render(<Host task="TEXT_GENERATION" onChange={onChange} />);
+      fireEvent.click(screen.getByLabelText('Enable reasoning'));
+      expect(onChange).toHaveBeenLastCalledWith({ generation: { reasoning: { enabled: true } } });
+      fireEvent.click(screen.getByLabelText('Enable reasoning'));
+      expect(onChange).toHaveBeenLastCalledWith({ generation: { reasoning: { enabled: false } } });
+    });
+
+    it('picking an effort implies enabled: true', () => {
+      const onChange = vi.fn();
+      render(<Host task="TEXT_GENERATION" onChange={onChange} />);
+      fireEvent.click(screen.getByLabelText('Enable reasoning'));
+      fireEvent.keyDown(screen.getByLabelText('Reasoning effort'), { key: 'ArrowDown' });
+      fireEvent.click(screen.getByText('Minimal'));
+      expect(onChange).toHaveBeenLastCalledWith({ generation: { reasoning: { enabled: true, effort: 'minimal' } } });
+    });
+
+    it('SPEECH_TO_TEXT and TEXT_TO_SPEECH agents get no reasoning control — the property only exists on TEXT_GENERATION', () => {
+      render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={() => undefined} />);
+      expect(screen.queryByLabelText('Enable reasoning')).toBeNull();
+      cleanup();
+      render(<ParametersForm task="TEXT_TO_SPEECH" value={{}} onChange={() => undefined} />);
+      expect(screen.queryByLabelText('Enable reasoning')).toBeNull();
+    });
+
+    it('has no axe violations, off or with the effort select active', async () => {
+      const { container } = render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} />);
+      expect(await axe(container)).toHaveNoViolations();
+      cleanup();
+      const { container: enabledContainer } = render(
+        <ParametersForm task="TEXT_GENERATION" value={{ generation: { reasoning: { enabled: true, effort: 'medium' } } }} onChange={() => undefined} />,
+      );
+      expect(await axe(enabledContainer)).toHaveNoViolations();
     });
   });
 });
