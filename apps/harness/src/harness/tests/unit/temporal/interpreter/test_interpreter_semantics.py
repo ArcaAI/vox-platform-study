@@ -210,7 +210,10 @@ class TestDegradeAndContinue:
         assert by_id["ok1"].status == "SUCCEEDED"
         assert by_id["ok2"].status == "SUCCEEDED"
         assert by_id["bad"].status == "DEGRADED"
-        assert by_id["bad"].reason == "activity_error"
+        # F13 — the ActivityError's cause travels onto the reason.
+        assert by_id["bad"].reason == (
+            "activity_error: RuntimeError: interpreter.noop: simulated failure for node bad"
+        )
         assert result.status == "DEGRADED"
 
 

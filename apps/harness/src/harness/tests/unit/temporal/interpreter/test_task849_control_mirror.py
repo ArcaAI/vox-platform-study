@@ -198,7 +198,11 @@ class TestTheRunPushesItsOwnProgress:
         failed = [e for e in events if e["type"] == EVENT_NODE_FAILED]
         assert len(failed) == 1
         assert failed[0]["payload"]["nodeId"] == "bad"
-        assert failed[0]["payload"]["reason"] == "activity_error"
+        # F13 — the reason NAMES the cause; a bare `activity_error` said only that
+        # something failed, which is how two live blockers stayed invisible.
+        assert failed[0]["payload"]["reason"] == (
+            "activity_error: RuntimeError: interpreter.noop: simulated failure for node bad"
+        )
         assert events[-1]["payload"]["status"] == "FAILED"
 
     @pytest.mark.asyncio
@@ -214,7 +218,9 @@ class TestTheRunPushesItsOwnProgress:
         assert [e["type"] for e in events if e["type"] == EVENT_NODE_FAILED] == []
         settled = next(e for e in events if e["type"] == EVENT_NODE_COMPLETED)
         assert settled["payload"]["status"] == "DEGRADED"
-        assert settled["payload"]["reason"] == "activity_error"
+        assert settled["payload"]["reason"] == (
+            "activity_error: RuntimeError: interpreter.noop: simulated failure for node soft"
+        )
 
     @pytest.mark.asyncio
     async def test_a_node_the_walk_declines_is_never_announced_as_started(self, fake_stream):

@@ -99,15 +99,35 @@ class _StubApi:
 
 
 class _StubNlp:
+    """`_ROW` is TOKEN_CLASSIFICATION, so the activity takes the token route (F13) — the
+    sequence route is stubbed too, and staying uncalled is part of what this pins."""
+
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.text_calls: list[dict[str, Any]] = []
 
     async def classify_text(self, text: str, **kwargs: Any) -> dict[str, Any]:
-        self.calls.append({"text": text, **kwargs})
+        self.text_calls.append({"text": text, **kwargs})
         return {
             "predicted_label": "person",
             "confidence": 0.91,
             "probabilities": {"person": 0.91, "email": 0.02},
+        }
+
+    async def classify_tokens_raw(self, text: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append({"text": text, **kwargs})
+        return {
+            "entities": [
+                {
+                    "id": "e1",
+                    "text": "555-0100",
+                    "normalized_text": "555-0100",
+                    "entity_type": "person",
+                    "confidence": 0.91,
+                    "position": {"start": 12, "end": 20},
+                }
+            ],
+            "model_version": "1",
         }
 
 
@@ -155,6 +175,8 @@ class TestCoreClassifyResolution:
         assert api.calls == [{"slug": _ROW["slug"], "tenant_id": _TENANT}]
         assert result.status == "SUCCEEDED"
         assert result.taken_handle == "pii"
+        # F13 — the row's task chose the route; the sequence route was never called.
+        assert nlp.text_calls == []
         # The registry facts the gateway resolved reach the NLP call unaltered.
         assert nlp.calls[0]["model_name"] == _ROW["sourceUri"]
         assert nlp.calls[0]["model_path"] == _ROW["localPath"]
