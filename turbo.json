@@ -358,6 +358,7 @@
         "HARNESS_URL",
         "HARNESS_VERDICT_CACHE_HMAC_KEY",
         "HF_HOME",
+        "HF_HUB_CACHE",
         "HF_HUB_OFFLINE",
         "HIGHLIGHT_BACKEND_URL",
         "HIGHLIGHT_OTLP_ENDPOINT",
