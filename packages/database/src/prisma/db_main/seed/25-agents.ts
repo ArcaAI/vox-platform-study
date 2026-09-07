@@ -103,7 +103,14 @@ export const assignmentId = (n: number) => `9c000000-0000-0000-0004-${String(n).
 
 const ASR_PARAMETERS = {
   audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 250, minSilenceMs: 500 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
-  decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: true, beamSize: 5, temperature: 0 },
+  // TASK-891 (A4) — `wordTimestamps` was `true`. The whisper.cpp adapter's own comment
+  // (`whisper_cpp_asr.py:500-505`) calls per-word timestamp mode "a lossy,
+  // script-corrupting hack": it forces `max_len=1, split_on_word=True`, which
+  // space-joins Malayalam's non-space-delimited script into orphaned combining marks
+  // (`ൽ`, `ും`, `്ട്`) — measurably destroying this agent's own output. `false` runs a
+  // clean sentence-level decode instead; nothing downstream of this agent (case note,
+  // NER) consumes per-word timing.
+  decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: false, beamSize: 5, temperature: 0 },
   postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-punctuation' }, disfluency: true, stabilizer: true },
   streaming: { partialIntervalMs: 500, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
@@ -191,7 +198,13 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
       instruction: { promptTemplateId: TEMPLATE_IDS.LIVE_GRAMMAR_SYSTEM, promptVersionNumber: 1 },
-      parameters: { generation: { temperature: 0, maxTokens: 1024 }, responseFormat: 'text' },
+      // TASK-891 (C3) — this agent runs on every LIVE flush (`agent.grammar`, always in the
+      // realtime branch — see `n_grammar` in 24-example-consultation-workflows.ts and
+      // 23-arcaai-workflow-authoring.ts). Reasoning measured at 70-78% of the completion
+      // token budget on this class of call, and the output is a short deterministic
+      // correction pass, not a task reasoning improves. `effort` is omitted: `enabled:
+      // false` alone instructs the engine not to reason at all.
+      parameters: { generation: { temperature: 0, maxTokens: 1024, reasoning: { enabled: false } }, responseFormat: 'text' },
       status,
       isActive: published,
       tags: [tier, 'task:llm', 'capability:grammar'],
@@ -206,7 +219,12 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
       instruction: { promptTemplateId: TEMPLATE_IDS.IMPORTANT_FINDINGS_SYSTEM, promptVersionNumber: 1 },
-      parameters: { generation: { temperature: 0, maxTokens: 1024 }, responseFormat: 'json' },
+      // TASK-891 (C3) — the realtime important-findings highlight (`consultation.extractFindings`
+      // in `realtime-node-registry.ts`), called on every live flush. Same rationale as
+      // grammar-correction: the note/output here is JSON-shaped (`responseFormat: 'json'`),
+      // and reasoning tokens do not improve a structured extraction the model is not asked
+      // to argue about.
+      parameters: { generation: { temperature: 0, maxTokens: 1024, reasoning: { enabled: false } }, responseFormat: 'json' },
       status,
       isActive: published,
       tags: [tier, 'task:llm', 'capability:important-findings'],

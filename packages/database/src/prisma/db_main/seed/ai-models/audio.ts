@@ -117,15 +117,24 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     architecture: 'whisper',
     memorySizeMb: 1700,
     computeType: 'f16',
-    // TASK-880 — the decode geometry that used to be the platform keys
-    // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
-    // ONE number to every engine on the box; they describe THIS runtime, so they ride
-    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
-    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
-    // not segment continuous clinical speech); 6s is the matching force-emit window, so
-    // the last partial and the final decode the SAME audio and the final stops visibly
-    // rephrasing the partial.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
+    // TASK-880 established the decode geometry that used to be the platform keys
+    // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` — model facts,
+    // not box facts, so they ride the row and travel on `ResolvedAsrSpec.models.asr.metadata`.
+    //
+    // TASK-891 (A5) raises both from 7/6 to 30/30, matched. The original 7s figure was this
+    // fine-tune's measured accuracy window; in production it means a 19s clinical utterance
+    // decodes as THREE blind, independently language-auto-detected 7s fragments —
+    // `session_manager.py:430-435`'s own comment says `partialWindowSec` and
+    // `maxDecodeWindowSec` MUST match "so the last partial and the final decode the SAME
+    // audio", and 6≠7 broke that. 30s is the model's REAL context: whisper's encoder always
+    // processes a fixed 30s mel-spectrogram window regardless of the actual audio length
+    // (shorter input is zero-padded to it), so raising the window to 30s does not add a
+    // meaningful per-decode cost — it lets one continuous utterance decode in ONE pass
+    // instead of several arbitrarily-truncated ones. Measured over the 87 stored
+    // `TranscriptSegment` rows from the diagnosed session, longer utterances lost 65-80% of
+    // their words to the 7s split (idx 4: 16.99s -> 4.1 chars/s; idx 36: 6.08s -> 0.8
+    // chars/s) — this is the mechanical fix for that, not merely a number bump.
+    metaData: { asr: { maxDecodeWindowSec: 30, partialWindowSec: 30 } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {

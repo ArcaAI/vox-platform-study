@@ -235,15 +235,22 @@ describe('the platform model catalogue (33 SYSTEM rows)', () => {
 
   it('gives every whisper.cpp row the decode geometry that used to be a platform key (TASK-880)', () => {
     // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` applied ONE
-    // number to every engine on the box. They are model facts — the ml-en fine-tune is
-    // accurate to ~6-7s, the CT2 turbo row is not — so they ride the row and travel on
-    // `ResolvedAsrSpec.models.asr.metadata`. Every WHISPER_CPP row must declare them, or
-    // that engine silently loses its split guard when the key goes.
+    // number to every engine on the box. They are model facts — so they ride the row and
+    // travel on `ResolvedAsrSpec.models.asr.metadata`. Every WHISPER_CPP row must declare
+    // a MATCHED pair (maxDecodeWindowSec === partialWindowSec — session_manager.py's own
+    // comment: "so the last partial and the final decode the SAME audio"), or that engine
+    // silently loses its split guard when the key goes.
+    //
+    // TASK-891 (A5) raised `arcaai-whisper-large-ml-en-gguf` specifically from 7/6 to
+    // 30/30 — matched, and toward the model's real 30s context — because the 7s window was
+    // measurably truncating long clinical utterances into blind fragments. Every other
+    // WHISPER_CPP row is untouched at 7/6.
     const whisperCpp = catalog.filter((m) => m.format === AiModelFormat.WHISPER_CPP);
     expect(whisperCpp.length).toBeGreaterThan(0);
     whisperCpp.forEach((m) => {
-      expect(m.metaData?.asr?.maxDecodeWindowSec, m.slug).toBe(7);
-      expect(m.metaData?.asr?.partialWindowSec, m.slug).toBe(6);
+      const [expectedMax, expectedPartial] = m.slug === 'arcaai-whisper-large-ml-en-gguf' ? [30, 30] : [7, 6];
+      expect(m.metaData?.asr?.maxDecodeWindowSec, m.slug).toBe(expectedMax);
+      expect(m.metaData?.asr?.partialWindowSec, m.slug).toBe(expectedPartial);
     });
   });
 

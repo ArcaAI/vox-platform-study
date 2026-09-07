@@ -284,22 +284,32 @@ describe(' W2 — WorkflowAssignment is gated on the Substrate-A exclusivity mec
     expect(message).toMatch(/exclusiv/i);
   });
 
-  it('writes both assignment rows and their WORM change rows once enabled', async () => {
+  it('writes all four assignment rows and their WORM change rows once enabled', async () => {
     const calls: string[] = [];
     await seedArcaaiWorkflowAuthoring(mockClient(calls), { assignmentsEnabled: true });
-    expect(calls.filter((c) => c === 'workflowAssignment.upsert')).toHaveLength(2);
-    expect(calls.filter((c) => c === 'workflowAssignmentChange.create')).toHaveLength(2);
+    expect(calls.filter((c) => c === 'workflowAssignment.upsert')).toHaveLength(4);
+    expect(calls.filter((c) => c === 'workflowAssignmentChange.create')).toHaveLength(4);
   });
 
-  it('binds one assignment to the tenant and one to the Rheumatology department', () => {
-    expect(ARCAAI_WORKFLOW_ASSIGNMENTS).toHaveLength(2);
-    const tenantScoped = ARCAAI_WORKFLOW_ASSIGNMENTS.find((a) => a.scope === 'TENANT');
+  it('binds one assignment to the tenant, one to the Rheumatology department, and a visit-type-qualified pair alongside the tenant default (TASK-891 D8b)', () => {
+    expect(ARCAAI_WORKFLOW_ASSIGNMENTS).toHaveLength(4);
+    const tenantScoped = ARCAAI_WORKFLOW_ASSIGNMENTS.find((a) => a.scope === 'TENANT' && a.selectorKey === '');
     const deptScoped = ARCAAI_WORKFLOW_ASSIGNMENTS.find((a) => a.scope === 'DEPARTMENT');
+    const newVisit = ARCAAI_WORKFLOW_ASSIGNMENTS.find((a) => a.selectorKey === 'visit-type:new-visit');
+    const revisit = ARCAAI_WORKFLOW_ASSIGNMENTS.find((a) => a.selectorKey === 'visit-type:revisit');
 
     expect(tenantScoped?.scopeId).toBeNull();
     expect(tenantScoped?.workflowDefinitionSlug).toBe('arcaai-consultation-soap');
     expect(deptScoped?.scopeId).toBe(SEED_DEPARTMENT_IDS.RHEUM_ARCAAI);
     expect(deptScoped?.workflowDefinitionSlug).toBe('arcaai-rheum-consultation-soap');
+    expect(deptScoped?.selectorKey).toBe('');
+
+    // Both selector-qualified rows sit on the TENANT tier, alongside (not replacing) the
+    // unqualified default — the backwards-compatibility guarantee the resolver relies on.
+    expect(newVisit?.scope).toBe('TENANT');
+    expect(newVisit?.scopeId).toBeNull();
+    expect(revisit?.scope).toBe('TENANT');
+    expect(revisit?.scopeId).toBeNull();
 
     for (const assignment of ARCAAI_WORKFLOW_ASSIGNMENTS) {
       expect(assignment.tenantId).toBe(SEED_CUSTOMER_TENANT_IDS.ARCAAI);
@@ -308,10 +318,15 @@ describe(' W2 — WorkflowAssignment is gated on the Substrate-A exclusivity mec
       // on this palette". Assert the seed cannot violate its own precondition.
       expect(ARCAAI_WORKFLOW_DEFINITIONS.some((d) => d.slug === assignment.workflowDefinitionSlug && d.status === 'PUBLISHED')).toBe(true);
     }
+
+    // Every row's `(scope, scopeId, paletteKey, selectorKey)` tuple is unique — the DB
+    // `@@unique` this seed must not violate.
+    const keys = ARCAAI_WORKFLOW_ASSIGNMENTS.map((a) => `${a.scope}:${a.scopeId ?? ''}:${a.paletteKey}:${a.selectorKey}`);
+    expect(new Set(keys).size).toBe(ARCAAI_WORKFLOW_ASSIGNMENTS.length);
   });
 
   it('records a creation entry in the append-only change log for each assignment', () => {
-    expect(ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES).toHaveLength(2);
+    expect(ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES).toHaveLength(4);
     for (const change of ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES) {
       expect(change.beforeSlug).toBeNull();
       expect(change.afterSlug).toBeTruthy();
