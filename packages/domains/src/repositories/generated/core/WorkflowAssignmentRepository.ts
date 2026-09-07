@@ -20,9 +20,17 @@ export class WorkflowAssignmentRepository extends Repository<WorkflowAssignmentE
   }
 
   /**
-   * The single assignment row for one cascade tier, or `null` when that tier
-   * has no opinion. `null` is the COMMON case (an unset tier inherits), so this
-   * never throws — the base `findFirst` does, hence the tolerant wrapper below.
+   * The UNQUALIFIED assignment row for one cascade tier, or `null` when that
+   * tier has no opinion (the COMMON case — an unset tier inherits). `null` is
+   * never thrown for a miss — the base `findFirst` does, hence the tolerant
+   * wrapper below.
+   *
+   * TASK-891 — `selectorKey: ''` is part of the filter since a tier may now
+   * hold several rows (mirrors `AgentAssignmentRepository.findForScope`):
+   * without it this read would return whichever TAG-QUALIFIED row the
+   * database happened to order first — silently serving a visit-type-scoped
+   * workflow to a request that named no visit type. A caller that wants the
+   * whole tier asks `findAllForScope`.
    */
   async findForScope(
     tenantId: string,
@@ -35,15 +43,42 @@ export class WorkflowAssignmentRepository extends Repository<WorkflowAssignmentE
       scope,
       scopeId,
       paletteKey,
+      selectorKey: '',
       resourceStatus: ResourceStatusType.ENABLED,
     });
+  }
+
+  /** One tier's rows — the unqualified one plus every tag-qualified variant (TASK-891). */
+  async findAllForScope(tenantId: string, scope: PipelinePolicyScope, scopeId: string | null, paletteKey: string): Promise<WorkflowAssignmentEntity[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw delegate shape isn't exposed through DomainModel typings.
+    const rows: WorkflowAssignment[] | null = await (this.db as any).findMany({
+      where: { tenantId, scope, scopeId, paletteKey, resourceStatus: ResourceStatusType.ENABLED },
+      orderBy: [{ selectorKey: 'desc' }],
+    });
+    const mapper = WorkflowAssignmentEntityMapper.getInstance();
+    return (rows ?? []).filter((row) => row.tenantId === tenantId).map((row) => mapper.toDomainEntity(row));
+  }
+
+  /**
+   * ONE tier row addressed by its full uniqueness key, selector included — what
+   * an upsert needs so a tag-qualified write never overwrites the unqualified
+   * row of the same tier.
+   */
+  async findForScopeSelector(
+    tenantId: string,
+    scope: PipelinePolicyScope,
+    scopeId: string | null,
+    paletteKey: string,
+    selectorKey: string,
+  ): Promise<WorkflowAssignmentEntity | null> {
+    return this.findFirstTolerant({ tenantId, scope, scopeId, paletteKey, selectorKey, resourceStatus: ResourceStatusType.ENABLED });
   }
 
   /** Every live assignment a tenant holds for one palette (the matrix read). */
   async findAllForPalette(tenantId: string, paletteKey: string): Promise<WorkflowAssignmentEntity[]> {
     return this.findAll({
       filters: { tenantId, paletteKey, resourceStatus: ResourceStatusType.ENABLED },
-      sort: [{ scope: 'asc' }, { scopeId: 'asc' }],
+      sort: [{ scope: 'asc' }, { scopeId: 'asc' }, { selectorKey: 'asc' }],
     });
   }
 

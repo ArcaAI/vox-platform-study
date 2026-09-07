@@ -17,6 +17,13 @@ export interface IWorkflowAssignmentEntity extends IBaseTenantEntity {
   scopeId?: string | null;
   paletteKey: string;
   workflowDefinitionSlug: string;
+  /**
+   * TASK-891 — the canonical (de-duplicated, sorted, comma-joined) `key:value` tag
+   * selector this assignment is qualified by; `''` = unqualified. Part of the row's
+   * uniqueness key, so a tier can carry one row per selector. Mirrors
+   * `AgentAssignmentEntity.selectorKey` (TASK-884).
+   */
+  selectorKey: string;
 }
 
 export class WorkflowAssignmentEntity extends BaseTenantEntity {
@@ -24,6 +31,7 @@ export class WorkflowAssignmentEntity extends BaseTenantEntity {
   private _scopeId?: IWorkflowAssignmentEntity['scopeId'];
   private _paletteKey: IWorkflowAssignmentEntity['paletteKey'];
   private _workflowDefinitionSlug: IWorkflowAssignmentEntity['workflowDefinitionSlug'];
+  private _selectorKey: IWorkflowAssignmentEntity['selectorKey'];
 
   constructor(init: IWorkflowAssignmentEntity) {
     super(init);
@@ -31,6 +39,7 @@ export class WorkflowAssignmentEntity extends BaseTenantEntity {
     this._scopeId = init.scopeId;
     this._paletteKey = init.paletteKey;
     this._workflowDefinitionSlug = init.workflowDefinitionSlug;
+    this._selectorKey = init.selectorKey ?? '';
   }
 
   get scope(): IWorkflowAssignmentEntity['scope'] {
@@ -63,6 +72,14 @@ export class WorkflowAssignmentEntity extends BaseTenantEntity {
 
   set workflowDefinitionSlug(value: IWorkflowAssignmentEntity['workflowDefinitionSlug']) {
     this.setProperty('workflowDefinitionSlug', value);
+  }
+
+  get selectorKey(): IWorkflowAssignmentEntity['selectorKey'] {
+    return this._selectorKey;
+  }
+
+  set selectorKey(value: IWorkflowAssignmentEntity['selectorKey']) {
+    this.setProperty('selectorKey', value);
   }
 
   /**

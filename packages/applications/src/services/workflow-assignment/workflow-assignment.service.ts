@@ -14,10 +14,9 @@ import {
   WorkflowAssignmentRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
-import { WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
+import { agentTagProblems, agentTagsSatisfy, canonicalAgentTags, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
 import { UpsertWorkflowAssignmentRequest, WorkflowAssignmentResponse } from './dto';
 import { IWorkflowAssignmentService, ResolvedWorkflowAssignment, WorkflowAssignmentSource } from './IWorkflowAssignmentService';
 import { WorkflowAssignmentDtoMapper } from './workflow-assignment.dto.mapper';
@@ -47,9 +46,11 @@ const WRITABLE_SCOPES: ReadonlySet<PipelinePolicyScope> = new Set([PipelinePolic
  * WHICH workflow definition governs a scope for a palette.
  *
  * Two responsibilities: OCC-guarded CRUD with referential validation at WRITE
- * time, and `resolve()` — the `department → tenant → platform default` walk,
- * delegated to the shared `walkCascade` primitive so there is exactly one
- * cascade semantics in this repo.
+ * time, and `resolve()` — the `department → tenant → platform default` walk.
+ * TASK-891 adds an optional TAG SELECTOR within the department/tenant tiers
+ * (mirrors `AgentAssignmentService`'s TASK-884 selector), so the platform
+ * default remains the ONLY tier `walkCascade` would still describe; the two
+ * real tiers are now walked candidate-by-candidate here instead.
  */
 @Injectable()
 export class WorkflowAssignmentService extends BaseService implements IWorkflowAssignmentService {
@@ -71,42 +72,73 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
   // Resolution
   // ---------------------------------------------------------------------
 
-  async resolve(tenantId: string, paletteKey: string, departmentId?: string | null): Promise<ResolvedWorkflowAssignment> {
-    const tiers: CascadeTier<WorkflowAssignmentSource>[] = [];
+  async resolve(
+    tenantId: string,
+    paletteKey: string,
+    departmentId?: string | null,
+    selectorTags: readonly string[] = [],
+  ): Promise<ResolvedWorkflowAssignment> {
+    const requestTags = canonicalAgentTags([...selectorTags]);
+    const candidates: Array<{ source: WorkflowAssignmentSource; slug: string; selector: string[] }> = [];
 
+    // TIER order: department → tenant → platform default. WITHIN each tier, TASK-891's
+    // selector applies (mirrors AgentAssignmentService.resolve's TASK-884 walk): the rows
+    // whose `key:value` selector is a SUBSET of the request's tags, most specific first,
+    // unqualified last — so a request carrying no tags sees exactly the one unqualified
+    // row each tier always had.
     if (departmentId) {
-      const departmentRow = await this.assignmentRepository.findForScope(tenantId, PipelinePolicyScope.DEPARTMENT, departmentId, paletteKey);
-      tiers.push({ source: 'department', value: departmentRow?.workflowDefinitionSlug ?? null });
+      candidates.push(...(await this.tierCandidates(tenantId, PipelinePolicyScope.DEPARTMENT, departmentId, paletteKey, requestTags, 'department')));
     }
+    candidates.push(...(await this.tierCandidates(tenantId, PipelinePolicyScope.TENANT, null, paletteKey, requestTags, 'tenant')));
 
-    const tenantRow = await this.assignmentRepository.findForScope(tenantId, PipelinePolicyScope.TENANT, null, paletteKey);
-    tiers.push({ source: 'tenant', value: tenantRow?.workflowDefinitionSlug ?? null });
-
-    // `null` is the code default: NO tier assigned anything, so the caller
-    // keeps its own platform-default resolution. Falling back to it is the
-    // declared last tier, not a silent substitution.
-    const walked = walkCascade<WorkflowAssignmentSource, string | null>(tiers, null);
-    if (walked.value === null) {
-      return { workflowDefinitionSlug: null, source: 'platform-default' };
-    }
-
-    // An assignment is a REFERENCE, and a reference can rot: the definition it
-    // names may have been deprecated or soft-deleted since. Falling back is
-    // right; falling back SILENTLY is not.
-    const published = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, walked.value);
-    if (!published || published.paletteKey !== paletteKey) {
+    // First-match-wins, but a matched row must also RESOLVE: an assignment is a REFERENCE
+    // and a reference can rot (the definition was deprecated or soft-deleted since). Skip
+    // it with a warning and keep walking — never serve a stale slug, never silently
+    // substitute one either.
+    for (const candidate of candidates) {
+      const published = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, candidate.slug);
+      if (published && published.paletteKey === paletteKey) {
+        return { workflowDefinitionSlug: candidate.slug, source: candidate.source, selector: candidate.selector };
+      }
       this.logger.warn({
-        message: 'Workflow assignment points at a slug with no ACTIVE PUBLISHED definition — falling back to the platform default',
+        message: 'Workflow assignment points at a slug with no ACTIVE PUBLISHED definition — skipping this tier',
         tenantId,
         paletteKey,
         departmentId: departmentId ?? null,
-        workflowDefinitionSlug: walked.value,
-        assignedAt: walked.source,
+        workflowDefinitionSlug: candidate.slug,
+        assignedAt: candidate.source,
+        selector: candidate.selector,
       });
-      return { workflowDefinitionSlug: null, source: 'platform-default' };
     }
 
-    return { workflowDefinitionSlug: walked.value, source: walked.source as WorkflowAssignmentSource };
+    // `null` is the code default: NO tier assigned anything resolvable, so the caller
+    // keeps its own platform-default resolution. Falling back to it is the declared last
+    // tier, not a silent substitution.
+    return { workflowDefinitionSlug: null, source: 'platform-default', selector: [] };
+  }
+
+  /**
+   * One tier's rows that the request's tags SATISFY, ordered most specific first.
+   *
+   * Specificity is the selector's length, and ties are broken by the canonical selector
+   * string so the order is total and deterministic — two equally specific selectors must
+   * not resolve differently between two identical requests. Mirrors
+   * `AgentAssignmentService.tierCandidates` (TASK-884).
+   */
+  private async tierCandidates(
+    tenantId: string,
+    scope: PipelinePolicyScope,
+    scopeId: string | null,
+    paletteKey: string,
+    requestTags: readonly string[],
+    source: WorkflowAssignmentSource,
+  ): Promise<Array<{ source: WorkflowAssignmentSource; slug: string; selector: string[] }>> {
+    const rows = await this.assignmentRepository.findAllForScope(tenantId, scope, scopeId, paletteKey);
+    return rows
+      .map((row) => ({ row, selector: row.selectorKey ? row.selectorKey.split(',') : [] }))
+      .filter(({ selector }) => agentTagsSatisfy(requestTags, selector))
+      .sort((a, b) => b.selector.length - a.selector.length || a.row.selectorKey.localeCompare(b.row.selectorKey))
+      .map(({ row, selector }) => ({ source, slug: row.workflowDefinitionSlug, selector }));
   }
 
   // ---------------------------------------------------------------------
@@ -152,9 +184,15 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
     await this.assertDepartmentInTenant(scope, scopeId);
     await this.assertSlugPublished(tenantId, dto.paletteKey, dto.workflowDefinitionSlug);
 
+    // TASK-891 — the selector is part of the row's IDENTITY, not one of its editable
+    // fields: it is in the uniqueness key, so a different selector addresses a DIFFERENT
+    // assignment. Canonicalising here is what makes `{a,b}` and `{b,a}` one row rather
+    // than two rows competing for the same tier (mirrors `AgentAssignmentService.upsert`).
+    const selectorKey = this.canonicalSelector(dto.selectorTags);
+
     const changedBy = this.requestUserId ?? null;
     const reason = dto.reason ?? null;
-    const existing = await this.assignmentRepository.findForScope(tenantId, scope, scopeId, dto.paletteKey);
+    const existing = await this.assignmentRepository.findForScopeSelector(tenantId, scope, scopeId, dto.paletteKey, selectorKey);
 
     if (existing) {
       const beforeSlug = existing.workflowDefinitionSlug;
@@ -194,6 +232,7 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
       scopeId,
       paletteKey: dto.paletteKey,
       workflowDefinitionSlug: dto.workflowDefinitionSlug,
+      selectorKey,
       createdBy: changedBy,
     });
     entity.validate();
@@ -210,7 +249,7 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: created.id,
-      data: { scope, scopeId, paletteKey: created.paletteKey, workflowDefinitionSlug: created.workflowDefinitionSlug },
+      data: { scope, scopeId, paletteKey: created.paletteKey, workflowDefinitionSlug: created.workflowDefinitionSlug, selectorKey },
     });
     return WorkflowAssignmentDtoMapper.toResponse(created);
   }
@@ -265,6 +304,21 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
       throw new NotFoundException('Workflow assignment not found');
     }
     return entity;
+  }
+
+  /**
+   * The stored form of a selector: validated against the `key:value` grammar, de-duplicated,
+   * sorted and comma-joined. A bare key is REFUSED rather than dropped — a silently dropped
+   * tag changes which assignment the row is, and therefore which workflow a request
+   * resolves. Mirrors `AgentAssignmentService.canonicalSelector` (TASK-884).
+   */
+  private canonicalSelector(selectorTags?: readonly string[]): string {
+    if (!selectorTags || selectorTags.length === 0) return '';
+    const problems = agentTagProblems([...selectorTags], 'selectorTags');
+    if (problems.length > 0) {
+      throw new BadRequestException({ message: 'An assignment selector must be `key:value` tags.', code: 'TAG_GRAMMAR', findings: problems });
+    }
+    return canonicalAgentTags([...selectorTags]).join(',');
   }
 
   private async assertDepartmentInTenant(scope: PipelinePolicyScope, scopeId: string | null): Promise<void> {

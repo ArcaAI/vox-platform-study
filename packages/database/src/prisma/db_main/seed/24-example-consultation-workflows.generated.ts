@@ -16,7 +16,7 @@
 
 export const REGISTRY_CHECKSUM: string = "74e1db0dfa06e263bf18e3674c4d431f07918fcaee4ec83b246a65ff5f4c0881" as const;
 
-export const GRAMMAR_FIX_GRAPH_CHECKSUM: string = "587578c368221b4212cbf8c580065ac41a1fa47029f3d8152544dbe8cbfdcb6b" as const;
+export const GRAMMAR_FIX_GRAPH_CHECKSUM: string = "5cb273433337366894f579f9700066a19315e8040e7d420c6b445ce1d5d1a390" as const;
 
 export const GRAMMAR_FIX_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
@@ -148,7 +148,8 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.realtimeSummary",
           "activity": "interpreter.consultation_realtime_summary",
           "config": {
-            "onError": "degrade"
+            "onError": "degrade",
+            "documentTemplateSlug": "soap_note"
           },
           "timeoutSeconds": 150,
           "retry": {
@@ -448,7 +449,7 @@ export const PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "e6f40fa90711dc66a957734f6c2294493338fca01438ddeb85cb9d6f494c8fb1"
+  "checksum": "7f02d3825b68a27097cefc1164317b0f193cc0daa714a9038057891246a745f5"
 } as const;
 
 export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
@@ -572,7 +573,8 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.realtimeSummary",
           "activity": "interpreter.consultation_realtime_summary",
           "config": {
-            "onError": "degrade"
+            "onError": "degrade",
+            "documentTemplateSlug": "soap_note"
           },
           "timeoutSeconds": 150,
           "retry": {
@@ -872,10 +874,10 @@ export const ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "69fd80ea0bad897280793f5978abd44d0d0895280dc6f35c344514f8b6856e68"
+  "checksum": "983e099fe4bb28eba3a77caa17cc58a20897f1e4ea8bc3cbd4799d6dfcfb4065"
 } as const;
 
-export const MEDICAL_NER_GRAPH_CHECKSUM: string = "fa5ea9f83c81f059af24ea7ccfbb4ba3601531baab2ac7c85051b3f60cd5655b" as const;
+export const MEDICAL_NER_GRAPH_CHECKSUM: string = "61946be664e752d93ccd12dacb87fb9c7d0c64851ca3b1ca6b31edd1d4f5577c" as const;
 
 export const MEDICAL_NER_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
@@ -982,7 +984,8 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.realtimeSummary",
           "activity": "interpreter.consultation_realtime_summary",
           "config": {
-            "onError": "degrade"
+            "onError": "degrade",
+            "documentTemplateSlug": "soap_note"
           },
           "timeoutSeconds": 150,
           "retry": {
@@ -1276,7 +1279,7 @@ export const PLATFORM_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "0baf21dc8c8dc434a476c3b804f3afec2dfd08bee5c3226e4f1d631f71e4c786"
+  "checksum": "4b73f5078e05efe21e48c20fca2629de6938dc3dacc2df77ca0c1aaa6a5b3570"
 } as const;
 
 export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
@@ -1375,7 +1378,8 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.realtimeSummary",
           "activity": "interpreter.consultation_realtime_summary",
           "config": {
-            "onError": "degrade"
+            "onError": "degrade",
+            "documentTemplateSlug": "soap_note"
           },
           "timeoutSeconds": 150,
           "retry": {
@@ -1669,10 +1673,10 @@ export const ARCAAI_MEDICAL_NER_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "43053f8703db36e76c0d9d8e7bf4f15c62fa7b09f5a6172b720607e03cfc4344"
+  "checksum": "717ba83e79f3035b6331876fc0a43b8f9e78a4f658c4c8f33bbbea0ff4cdcdcb"
 } as const;
 
-export const NER_GRAMMAR_FIX_GRAPH_CHECKSUM: string = "bbcccd033d624c5053636c3dd872ead001e056004de1a64edada3732d9fbcfc3" as const;
+export const NER_GRAMMAR_FIX_GRAPH_CHECKSUM: string = "5dc918f6e28c3616311db4fb46c96e9c48780edb5d25b899be34bfd2853250bb" as const;
 
 export const NER_GRAMMAR_FIX_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
@@ -1804,7 +1808,8 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
           "type": "consultation.realtimeSummary",
           "activity": "interpreter.consultation_realtime_summary",
           "config": {
-            "onError": "degrade"
+            "onError": "degrade",
+            "documentTemplateSlug": "soap_note"
           },
           "timeoutSeconds": 150,
           "retry": {
@@ -2103,7 +2108,7 @@ export const PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> =
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "e9bbf2cf1e17199b6235a964a2bbc10d9e08a7e46172033be981eb05dfbcac08"
+  "checksum": "920ef012f80b1cbb23f3dd6c4829e4efeb44365c0bbb9505f1bd3c200470969e"
 } as const;
 
 export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
@@ -2227,7 +2232,8 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.realtimeSummary",
           "activity": "interpreter.consultation_realtime_summary",
           "config": {
-            "onError": "degrade"
+            "onError": "degrade",
+            "documentTemplateSlug": "soap_note"
           },
           "timeoutSeconds": 150,
           "retry": {
@@ -2526,5 +2532,5 @@ export const ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "337a2ecec0aeaab6f3376604853dd86c728a77985a13b5fc31b2d1fd537d88d7"
+  "checksum": "7f9c8dd1b9f356ad6ef2845d8235efb416a4b0eff900fff1d23de97ba28b6f52"
 } as const;
