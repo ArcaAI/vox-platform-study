@@ -194,7 +194,19 @@ const consultationNodes = (options: ExampleGraphOptions) => [
   // wait for NER, serialising two calls that the platform-default lane runs
   // concurrently — and in the grammar-fix workflow NER is switched off, so the
   // note would wait on a node that never runs.
-  { id: 'n_realtime', type: 'consultation.realtimeSummary', config: { onError: 'degrade' } },
+  // TASK-891 (D8a) — `documentTemplateSlug` names the case-note SHAPE this workflow
+  // predefines (OD-2: "one column, one migration, three wire-ups" — this is wire-up #3).
+  // `ensureTemplateResolved` (`live-documentation.service.ts`) reads it off the frozen
+  // lane's `consultation.realtimeSummary` node config and passes it to
+  // `DocumentTemplateService.resolveForGeneration(tenantId, slug)`, whose `slug` parameter
+  // already existed and nothing passed it before this. `'soap_note'` is `SOAP_NOTE_SLUG`
+  // (`platform-document-shapes.ts`) — today the only document shape the platform knows,
+  // and the code-default `resolveForGeneration` already falls open to when no tenant row
+  // shadows it, so this makes the workflow's intent EXPLICIT rather than incidental.
+  // Undeclared in `CONSULTATION_REALTIME_SUMMARY_SCHEMA` on purpose — that schema is never
+  // enforced by `validate()`/`compile()` (only surfaced to the UI), and `config` is
+  // `Record<string, unknown>` on the node type (no schema change per OD-2).
+  { id: 'n_realtime', type: 'consultation.realtimeSummary', config: { onError: 'degrade', documentTemplateSlug: 'soap_note' } },
   // The MEDICAL NER agent (`blaze999/Medical-NER` through `nlp.ner`).
   //
   // `requiresFinalized: true` is WF-CONS-017 — extraction reads the FINALIZED
