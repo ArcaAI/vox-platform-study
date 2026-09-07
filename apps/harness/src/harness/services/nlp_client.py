@@ -54,12 +54,47 @@ class NlpClient:
                 "nlp classify_tokens requires a tenant_id : pass the "
                 "consultation's tenant, or an explicit 'tenantless:<reason>' marker."
             )
+        data = await self.classify_tokens_raw(
+            text,
+            tenant_id=tenant_id,
+            language=language,
+            aggregation_strategy=aggregation_strategy,
+        )
+        return [self._to_entity(e) for e in data.get("entities", [])]
+
+    async def classify_tokens_raw(
+        self,
+        text: str,
+        *,
+        tenant_id: str,
+        model_name: str | None = None,
+        model_path: str | None = None,
+        language: str = "en",
+        aggregation_strategy: str | None = None,
+    ) -> dict[str, Any]:
+        """The RAW ``TokenClassificationResponse`` (``entities``, ``model_version``, ``vitals``).
+
+        F13 — `core.classify` needs each span's own ``entity_type``/``confidence``/offsets to map
+        a TOKEN_CLASSIFICATION model onto its declared classes, which the :class:`NEREntity`
+        projection above drops. ``model_name``/``model_path`` are the registry row's
+        ``sourceUri``/``localPath`` the gateway resolved — the NLP service fails closed (503)
+        without a model, and this client never invents one. Both are omitted when absent so the
+        NER sensors' body stays byte-identical to what it always sent.
+        """
+        if not tenant_id or not tenant_id.strip():
+            raise ValueError(
+                "nlp classify_tokens requires a tenant_id : pass the "
+                "consultation's tenant, or an explicit 'tenantless:<reason>' marker."
+            )
         url = f"{self._base_url}/api/v1/classify/tokens"
-        body = {
-            "text": text,
-            "aggregation_strategy": aggregation_strategy,
-            "language": language,
-        }
+        body: dict[str, Any] = {"text": text}
+        if aggregation_strategy is not None:
+            body["aggregation_strategy"] = aggregation_strategy
+        body["language"] = language
+        if model_name:
+            body["model_name"] = model_name
+        if model_path:
+            body["model_path"] = model_path
         # NLP's ServiceAuthMiddleware requires X-Service-Token whenever NLP_SERVICE_TOKEN
         # is configured — omitted when unset so local dev-bypass keeps working.
         headers: dict[str, str] = {"X-Tenant-Id": tenant_id.strip()}
@@ -72,7 +107,7 @@ class NlpClient:
             except httpx.HTTPError as exc:
                 raise NlpServiceError(f"nlp classify/tokens failed: {exc}") from exc
             data = resp.json()
-        return [self._to_entity(e) for e in data.get("entities", [])]
+        return data if isinstance(data, dict) else {}
 
     async def classify_text(
         self,

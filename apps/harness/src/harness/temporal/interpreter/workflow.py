@@ -190,6 +190,46 @@ def _configured_realtime(node: CompiledNode) -> bool:
     return isinstance(execution, dict) and execution.get("lane") == "realtime"
 
 
+#: Ceiling for a formatted activity-error reason. Long enough for a provider's own message,
+#: short enough that a reason line stays a line — a node result is a REPORT, not a log sink.
+_ACTIVITY_REASON_MAX_CHARS = 320
+
+
+def _activity_error_reason(error: BaseException) -> str:
+    """``activity_error[: <Type>[: <message>]]`` — the cause of an ``ActivityError``, bounded.
+
+    PURE, and deliberately so: this runs inside the workflow body, where the same failure must
+    format to the same string on the original run and on every replay. It reads only what the
+    failure converter already put on the exception — no clock, no environment, no payloads (an
+    activity's arguments never reach here, so nothing carrying PHI or a credential can).
+
+    A typed ``ApplicationError`` names the activity's own exception class (``TextServiceError``,
+    ``ApiServiceError``, …); a ``TimeoutError`` names WHICH timeout fired. Anything else falls
+    back to the cause's class name.
+    """
+    cause = error.__cause__
+    if cause is None:
+        return "activity_error"
+
+    declared = getattr(cause, "type", None)
+    if isinstance(declared, str) and declared:
+        kind = declared
+    else:
+        kind = type(cause).__name__
+        variant = getattr(declared, "name", None)
+        if isinstance(variant, str) and variant:
+            kind = f"{kind}({variant})"
+
+    raw = getattr(cause, "message", None)
+    message = " ".join(str(raw if isinstance(raw, str) else cause).split())
+    if not message:
+        return f"activity_error: {kind}"
+    reason = f"activity_error: {kind}: {message}"
+    if len(reason) <= _ACTIVITY_REASON_MAX_CHARS:
+        return reason
+    return reason[: _ACTIVITY_REASON_MAX_CHARS - 3] + "..."
+
+
 @workflow.defn(name="WorkflowInterpreter")
 class WorkflowInterpreter:
     """Linear stage walk + single-level fan-out with an all-settled join. Nothing else (v1)."""
@@ -645,15 +685,16 @@ class WorkflowInterpreter:
                 start_to_close_timeout=timedelta(seconds=timeout_seconds),
                 retry_policy=RetryPolicy(maximum_attempts=max_attempts),
             )
-        except ActivityError:
+        except ActivityError as exc:
             # Timeout OR an application-raised exception both surface here identically
-            # (contracts/ example).
+            # (contracts/ example) — so the CAUSE is the only thing that says which, and it
+            # travels onto the reason rather than being discarded (F13).
             degraded_status: NodeStatus = "FAILED" if spec.critical else "DEGRADED"
             return NodeResult(
                 node_id=node.node_id,
                 node_type=node.type,
                 status=degraded_status,
-                reason="activity_error",
+                reason=_activity_error_reason(exc),
             )
 
         if result.status == "SUCCEEDED":

@@ -277,6 +277,98 @@ async def interpreter_core_evaluate(payload: EvaluateExpressionInput) -> Evaluat
 # ---------------------------------------------------------------------------------------------
 
 
+#: The registry task whose models emit SPANS rather than a class distribution. The other
+#: accepted task (TEXT_CLASSIFICATION) is a sequence classifier; `core.classify`'s own config
+#: schema accepts either, and the ROUTE must follow the row's own task — nlp answers 503
+#: "Text classification model not available" for a token checkpoint on `/classify/text`.
+TOKEN_CLASSIFICATION = "TOKEN_CLASSIFICATION"
+
+
+def _confidence_of(entity: dict[str, Any]) -> float:
+    value = entity.get("confidence")
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def _kept_entities(entities: Any, threshold: float | None) -> list[dict[str, Any]]:
+    """The spans that clear the node's threshold (absent threshold ⇒ every span). Pure."""
+    kept: list[dict[str, Any]] = []
+    for entity in _as_list(entities):
+        if not isinstance(entity, dict):
+            continue
+        if threshold is not None and _confidence_of(entity) < threshold:
+            continue
+        kept.append(entity)
+    return kept
+
+
+def _entity_type_scores(kept: list[dict[str, Any]]) -> dict[str, float]:
+    """Per ENTITY TYPE, the best confidence the model reported — the token model's answer in
+    the same shape `_pick_class` reads for a sequence model's `probabilities`. Pure."""
+    scores: dict[str, float] = {}
+    for entity in kept:
+        entity_type = entity.get("entity_type")
+        if not isinstance(entity_type, str) or not entity_type:
+            continue
+        scores[entity_type] = max(scores.get(entity_type, 0.0), _confidence_of(entity))
+    return scores
+
+
+def _catch_all_class(classes: list[dict[str, Any]]) -> str | None:
+    """The first declared class that names NO model labels of its own, or ``None``.
+
+    A token classifier's labels ARE entity types, so a class that names some (`labels: [...]`)
+    is scored by label exactly like a sequence model's class. A class that names NONE cannot be
+    scored that way — for a sequence model it falls back to "the key IS the label", which for a
+    token model would never match anything. It is read here as the author's other honest
+    intent: *did the model find anything at all?* Absence stays absence — when nothing clears
+    the threshold no class is taken and `otherwise` fires, which is the handle that means it.
+    """
+    for declared in classes:
+        key = declared.get("key")
+        labels = declared.get("labels")
+        if isinstance(key, str) and key and not (isinstance(labels, list) and labels):
+            return key
+    return None
+
+
+def _class_of_label(classes: list[dict[str, Any]]) -> dict[str, str]:
+    """model label → the FIRST declared class claiming it (pure)."""
+    owner: dict[str, str] = {}
+    for declared in classes:
+        key = declared.get("key")
+        if not isinstance(key, str) or not key:
+            continue
+        raw_labels = declared.get("labels")
+        labels = raw_labels if isinstance(raw_labels, list) else [key]
+        for label in labels:
+            if isinstance(label, str) and label:
+                owner.setdefault(label, key)
+    return owner
+
+
+def _spans_of(kept: list[dict[str, Any]], classes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The matched spans, each tagged with the class that claims it (pure)."""
+    owner = _class_of_label(classes)
+    catch_all = _catch_all_class(classes)
+    spans: list[dict[str, Any]] = []
+    for entity in kept:
+        entity_type = entity.get("entity_type")
+        raw_position = entity.get("position")
+        position: dict[str, Any] = raw_position if isinstance(raw_position, dict) else {}
+        claimed = owner.get(entity_type) if isinstance(entity_type, str) else None
+        spans.append(
+            {
+                "text": entity.get("text"),
+                "type": entity_type,
+                "start": position.get("start"),
+                "end": position.get("end"),
+                "confidence": entity.get("confidence"),
+                "class": claimed if claimed is not None else catch_all,
+            }
+        )
+    return spans
+
+
 def _pick_class(
     classes: list[dict[str, Any]], probabilities: dict[str, float], threshold: float | None
 ) -> tuple[str | None, dict[str, float]]:
@@ -360,40 +452,81 @@ async def interpreter_core_classify(payload: NodeActivityInput) -> NodeActivityR
             status="DEGRADED", reason=f"core.classify: model `{slug}` resolved with no sourceUri"
         )
 
+    classes = [c for c in (config.get("classes") or []) if isinstance(c, dict)]
+    raw_threshold = config.get("threshold")
+    threshold = float(raw_threshold) if isinstance(raw_threshold, (int, float)) else None
+    is_token = model.task_type == TOKEN_CLASSIFICATION
+    nlp = _nlp_client(settings)
+
     try:
-        response = await _nlp_client(settings).classify_text(
-            text,
-            tenant_id=payload.tenant_id,
-            model_name=model.source_uri,
-            model_path=model.local_path,
-        )
+        # F13 — the ROUTE follows the row's own task. A TOKEN_CLASSIFICATION checkpoint on
+        # `/classify/text` is a 503 ("Text classification model not available"), which is what
+        # both seeded classify rows hit; the registry facts are identical either way.
+        if is_token:
+            response = await nlp.classify_tokens_raw(
+                text,
+                tenant_id=payload.tenant_id,
+                model_name=model.source_uri,
+                model_path=model.local_path,
+            )
+        else:
+            response = await nlp.classify_text(
+                text,
+                tenant_id=payload.tenant_id,
+                model_name=model.source_uri,
+                model_path=model.local_path,
+            )
     except NlpServiceError as exc:
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="classify_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"core.classify: {exc}")
+    response = response if isinstance(response, dict) else {}
 
-    probabilities = response.get("probabilities") if isinstance(response, dict) else None
-    probabilities = probabilities if isinstance(probabilities, dict) else {}
-    classes = [c for c in (config.get("classes") or []) if isinstance(c, dict)]
-    threshold = config.get("threshold")
-    category, scores = _pick_class(
-        classes, probabilities, threshold if isinstance(threshold, (int, float)) else None
-    )
-    taken = category or "otherwise"
+    classification: dict[str, Any]
+    if is_token:
+        kept = _kept_entities(response.get("entities"), threshold)
+        by_type = _entity_type_scores(kept)
+        category, scores = _pick_class(classes, by_type, threshold)
+        if category is None and kept:
+            catch_all = _catch_all_class(classes)
+            if catch_all is not None:
+                scores[catch_all] = max(_confidence_of(entity) for entity in kept)
+                category = catch_all
+        top_label = max(by_type, key=lambda label: by_type[label]) if by_type else None
+        classification = {
+            "category": category,
+            "scores": scores,
+            "label": top_label,
+            "confidence": by_type.get(top_label) if top_label is not None else None,
+        }
+        if config.get("spans") is True:
+            # A possibly-EMPTY list when the node asked for spans: "the model found nothing"
+            # and "nobody looked" are different answers and must read differently.
+            classification["spans"] = _spans_of(kept, classes)
+    else:
+        probabilities = response.get("probabilities")
+        category, scores = _pick_class(
+            classes, probabilities if isinstance(probabilities, dict) else {}, threshold
+        )
+        classification = {
+            "category": category,
+            "scores": scores,
+            "label": response.get("predicted_label"),
+            "confidence": response.get("confidence"),
+        }
+
+    # The classified TEXT rides through on `out` beside the verdict. `out` is an `object` port
+    # keyed `classification`, so without this a node bound downstream (another classify, or an
+    # agent reading `context`) is handed a verdict with no text in it and degrades with "no text
+    # arrived on the `in` port" — which is how a PII node quietly took the whole chain with it.
+    classification["text"] = text
 
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(
         status="SUCCEEDED",
-        output={
-            "classification": {
-                "category": category,
-                "scores": scores,
-                "label": response.get("predicted_label") if isinstance(response, dict) else None,
-                "confidence": response.get("confidence") if isinstance(response, dict) else None,
-            }
-        },
-        taken_handle=taken,
+        output={"classification": classification},
+        taken_handle=category or "otherwise",
     )
 
 
@@ -753,7 +886,11 @@ async def _run_text_generation(
         if response_format == "json_schema" and isinstance(response_schema, dict):
             wire_format = {"type": "json_schema", "json_schema": response_schema}
         elif response_format == "json":
-            wire_format = {"type": "json_object"}
+            # F13 — `apps/text` declares its OWN vocabulary
+            # (`ResponseFormat.type: Literal["text","json","json_schema"]`), so the OpenAI
+            # spelling `json_object` was a 422 at the wire model before any provider was
+            # reached. The gateway's contract is the one to speak here.
+            wire_format = {"type": "json"}
 
         try:
             result = await _text_client(settings).generate(
