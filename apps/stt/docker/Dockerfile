@@ -144,8 +144,6 @@ COPY apps/tts/pyproject.toml ./apps/tts/
 COPY packages/py-runtime-models ./packages/py-runtime-models
 COPY packages/py-env ./packages/py-env
 COPY packages/py-otel ./packages/py-otel
-COPY apps/stt/src ./apps/stt/src
-
 # Generate overrides that tell uv to skip most nvidia-* pip packages and triton.
 #
 # Why this is safe (verified by codebase audit of apps/stt/src/):
@@ -197,6 +195,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python --only-binary flash-attn \
         "flash-attn>=2.8.3" \
     || echo "WARNING: flash-attn prebuilt wheel not available, skipping (attention will use default PyTorch SDPA path)"
+
+# LAYER ORDER IS LOAD-BEARING: the source is copied HERE, below the 846.9 MiB
+# `torch` install above, not above it. `torch` is pinned and changes only when
+# uv.lock does; the source changes on every commit. With the COPY above the
+# install, ANY edit under apps/stt/src invalidated the registry layer cache for
+# torch and forced a fresh 846.9 MiB pull — which is exactly what took pipeline
+# #1135 down on 2026-09-07 (13 lanes of STT source changes -> cache miss -> the
+# download could not finish inside the job wall). The non-ML `builder` stage in
+# this same file already gets this right (deps via --no-install-project, source
+# after); this stage now matches it. Only the local-package install below needs
+# the source, so nothing above it does.
+COPY apps/stt/src ./apps/stt/src
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python \

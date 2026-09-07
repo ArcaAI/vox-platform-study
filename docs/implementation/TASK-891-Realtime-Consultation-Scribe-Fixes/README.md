@@ -682,6 +682,70 @@ Not yet run: the API **boot smoke** (unit suites never boot `main.ts`, and this 
 startup if a route lacks `@Public()` or a permission decorator) and the §5 **runtime gate** on
 `hope-v2-dev`, which needs the deployment commit pushed first.
 
+## 11. Deployment — the STT image builds, and why they kept walling
+
+Pushing this work to `dev-2.2` exposed a build defect that has nothing to do with the scribe but
+blocked every deploy of it. `build-stt` and `build-stt-worker` failed at exactly 1800s in pipeline
+#1135, and again in #1138. Three causes, each verified in a job trace, each fixed separately.
+
+### 11.1 The 30-minute wall was `.build-template`, not the runner
+
+`build-runner-01` sets **no `maximum_timeout`** (read from `/home/dell/.gitlab-runner/config.toml`
+on VM 411), so the 1800s was `timeout: 30m` on `.build-template` in `.gitlab/ci/templates.yml`.
+Raising it per job is what let the download finish at all.
+
+### 11.2 uv restarted the 846.9 MiB `torch` wheel from zero
+
+`UV_HTTP_TIMEOUT` is a per-read deadline defaulting to **30s**. On this link a stall longer than
+that aborts the transfer and uv starts over — job traces showed two `Downloading torch (846.9MiB)`
+lines in a single job, at 1.2s and 563.7s, so the wheel could never land inside any wall.
+`UV_HTTP_TIMEOUT=900` in `apps/stt/docker/Dockerfile` and `infrastructure/docker/python-base/Dockerfile`
+fixes it, and job 17000 proves it: **one** download line, `Downloaded torch` at 1820.3s, `DONE 1827.1s`.
+
+My first diagnosis of #1135 was runner contention. That was wrong — the retry on an idle runner
+failed identically, which is what pointed at uv.
+
+### 11.3 The layer order forced that download on every source change
+
+`COPY apps/stt/src` sat ABOVE the `torch` install in the `ml-builder` stage, so any edit under
+`apps/stt/src` invalidated the 846.9 MiB layer. Thirteen lanes of STT source changes therefore
+guaranteed a cold pull. The COPY now sits below the install, matching what the non-ML `builder`
+stage in the same file already did. Only the local-package install needs the source.
+
+### 11.4 The wheel cache could never have rescued it either
+
+The `cibuilder` buildx instance runs BuildKit's DEFAULT GC policy, which its own bootstrap output
+prints:
+
+```
+GC Policy rule#0:
+ Filters:        type==source.local,type==exec.cachemount,type==source.git.checkout
+ Max Used Space: 488.3MiB
+```
+
+`exec.cachemount` — which is what `--mount=type=cache,target=/root/.cache/uv` is — shares a
+**488.3 MiB** budget. That is smaller than the single 846.9 MiB wheel, so `/root/.cache/uv` could
+never hold `torch` no matter how often it was downloaded. `.buildx-registry-login` wrote a
+`buildkitd.toml` containing only a `[registry]` section, so nothing overrode the default. Cache
+mounts now get their own 24GB budget. Because `--config` is read only at builder CREATION, the
+instance name carries a revision (`cibuilder-r2`) — bump it when the config changes.
+
+### 11.5 The two STT jobs were splitting one link
+
+Both build the same Dockerfile and share its `ml-builder` stage, so run concurrently they pulled
+`torch` twice over one connection. Measured in #1138: with both running, `torch` averaged
+**0.47 MB/s**; cancelling the sibling took the survivor's remaining downloads to **~6 MB/s**.
+`build-stt-worker` now `needs: build-stt`, so it hits the shared stage warm instead of competing
+with it.
+
+### 11.6 Not fixed here
+
+- `build-runner-01` runs `limit = 6` with `concurrent = 24`. Lowering it to 2-3 would stop six
+  image builds sharing one uplink. It needs a config edit and `gitlab-runner restart` on VM 411,
+  and the Proxmox MCP tunnel is currently down (the container SSHes to `host.docker.internal` and
+  nothing is listening on 8006), so this is left for the owner.
+- The real fix for all of the above is baking `torch` into a base image so no CI job ever pulls it.
+
 ## 10. Change History
 
 | Date | Change |
@@ -692,3 +756,4 @@ startup if a route lacks `@Public()` or a permission decorator) and the §5 **ru
 | 2026-09-07 | **W5 landed** (`c78cb89`, unpushed): nlp probe timeouts 1s->5s + failureThreshold 2->3 + cpu 2->4, `LIVE_DOC_TEXT_TIMEOUT_MS=60000`, `LMS_CONTEXT` 8192->32768 — overlay only, base untouched, repo CI gates green locally. **W1 landed** (`cd6e439fb`): A1/A2 durability fix, A3 decoupled and left OFF with evidence (§8.1), A4 adapter refuses `max_len=1` on unpinned/non-space-delimited decodes. New batch defect recorded in §8.4. |
 | 2026-09-07 | **Wave 3 merged** — W3, W2, W1, W4 into `dev-2.2`, zero conflicts. Migration authored and proven; local dev DB synced with explicit owner consent. Orchestrator added the `reasoning` property to `GENERATION_PROPERTY` (both W2 and W4 had blocked on it) and fixed the duplicate-control regression it caused. Five artifacts regenerated. **Wave 4 launched**: W6 template (`opus`/high), W7 agentsplit (`opus`), W8 visittype (`sonnet`/high). TASK-892 was already taken, so the live/finalize agent split is folded into this ticket rather than spun out. |
 | 2026-09-07 | **Waves 3-5 complete.** Thirteen lanes merged, zero conflicts. Migration proven and applied. Reasoning reaches six surfaces; live/finalize split on a `phase:` tag; two visit-type note shapes wired; reference-set parity restored to one provisioning entry point. Final gates green except `sdk-version`, which an owner commit broke. Status stays `In Progress` pending the boot smoke, the runtime gate, and the caller-selected-workflow decision. |
+| 2026-09-07 | **Deploy blocked by the STT image builds; five CI defects found and fixed** — see §11. The 1800s wall was `.build-template`, not the runner; uv's 30s `UV_HTTP_TIMEOUT` restarted the 846.9 MiB `torch` wheel from zero; `COPY apps/stt/src` above the torch install invalidated that layer on every source change; BuildKit's default GC policy caps cache mounts at 488.3 MiB, below the size of the wheel itself; and the two STT jobs split one uplink. Job 17000 confirms the uv fix: one download line, `DONE 1827.1s`. My first diagnosis (runner contention) was wrong and is recorded as such. |

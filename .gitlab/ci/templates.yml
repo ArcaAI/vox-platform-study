@@ -124,14 +124,69 @@
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
     - |
-      printf '[registry."%s"]\nhttp = true\ninsecure = true\n' "$REGISTRY" > /tmp/buildkitd.toml
-      if ! docker buildx inspect cibuilder >/dev/null 2>&1; then
-        docker buildx create --name cibuilder --driver docker-container \
+      # BUILDER_REV: bump this whenever the buildkitd.toml below changes. `docker
+      # buildx create --config` is read ONCE, at creation, so an existing builder
+      # keeps its original config forever; the revision suffix is what forces a
+      # rebuild of the instance. Old instances are left in place on purpose —
+      # removing one discards its layer cache, and a concurrent job may still be
+      # using it. Reclaim them by hand: `docker buildx rm cibuilder-r<old>`.
+      BUILDER_REV=2
+      builder="cibuilder-r${BUILDER_REV}"
+
+      # GC policy: defining ANY gcpolicy replaces BuildKit's whole default set, so
+      # rules 2-4 below restate the observed defaults verbatim (10GB reserved /
+      # 100GB max / 49GB min-free) and only rule 1 is new.
+      #
+      # The default policy lumps exec.cachemount in with source.local under a
+      # ~488MiB cap. That is SMALLER THAN THE SINGLE 846.9MiB torch wheel, so
+      # /root/.cache/uv could never retain it and every STT build re-pulled torch
+      # from PyPI over a ~0.5MB/s link (30m19s, measured in job 17000 on
+      # 2026-09-07). Cache mounts get their own, much larger budget here.
+      cat > /tmp/buildkitd.toml <<TOML
+      [registry."${REGISTRY}"]
+        http = true
+        insecure = true
+
+      [worker.oci]
+        gc = true
+
+        [[worker.oci.gcpolicy]]
+          filters = ["type==source.local", "type==source.git.checkout"]
+          keepDuration = "48h"
+          maxUsedSpace = "512MB"
+
+        [[worker.oci.gcpolicy]]
+          filters = ["type==exec.cachemount"]
+          keepDuration = "168h"
+          maxUsedSpace = "24GB"
+
+        [[worker.oci.gcpolicy]]
+          keepDuration = "1440h"
+          reservedSpace = "10GB"
+          maxUsedSpace = "100GB"
+          minFreeSpace = "49GB"
+
+        [[worker.oci.gcpolicy]]
+          reservedSpace = "10GB"
+          maxUsedSpace = "100GB"
+          minFreeSpace = "49GB"
+
+        [[worker.oci.gcpolicy]]
+          all = true
+          reservedSpace = "10GB"
+          maxUsedSpace = "100GB"
+          minFreeSpace = "49GB"
+      TOML
+
+      if ! docker buildx inspect "$builder" >/dev/null 2>&1; then
+        # `|| true`: build jobs run concurrently on this runner, so two can race
+        # here and the loser must not fail the pipeline.
+        docker buildx create --name "$builder" --driver docker-container \
           --config /tmp/buildkitd.toml \
           --driver-opt network=host \
-          --driver-opt "env.BUILDKIT_STEP_LOG_MAX_SIZE=52428800"
+          --driver-opt "env.BUILDKIT_STEP_LOG_MAX_SIZE=52428800" || true
       fi
-      docker buildx use cibuilder
+      docker buildx use "$builder"
       docker buildx inspect --bootstrap
 
 .build-template:
