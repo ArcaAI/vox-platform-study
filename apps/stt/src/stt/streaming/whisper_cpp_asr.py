@@ -73,6 +73,25 @@ logger = structlog.get_logger(__name__)
 # applied it twice. One prompt channel, owned by the agent.
 
 
+# TASK-891 — languages whose decode may be word-split without corrupting the text.
+#
+# The whisper.cpp word-timestamp technique (``max_len=1, split_on_word=True``)
+# cuts at TOKEN boundaries and the transcript is then rebuilt by SPACE-joining
+# the trimmed pieces. That is only lossless for a Latin-script, space-delimited
+# language, where whisper's byte-BPE boundaries line up with word breaks. On
+# Malayalam it shatters grapheme clusters and injects spaces between a base
+# character and its combining marks — measured in production as 20-35% of the
+# expected characters surviving, with orphaned marks (``ൽ``, ``ും``, ``്ട്``)
+# strewn through the output.
+#
+# An allow-list, deliberately, not a deny-list: an UNPINNED decode (auto-detect,
+# or a code-switch pair, both of which reach here as ``None``) may emit any
+# script the model knows, so it is refused too. A language absent from this set
+# is not "unsupported" — it just decodes at sentence level and carries no word
+# timings, which every downstream consumer already treats as optional.
+_WORD_SPLIT_SAFE_LANGUAGES: frozenset[str] = frozenset({"en", "vi"})
+
+
 # Substrings that mark a poisoned ggml/Metal backend in whisper.cpp's native log.
 _POISON_MARKERS = (
     "failed to encode",
@@ -330,7 +349,25 @@ class WhisperCppAsrAdapter:
         # decode and the transcript is rebuilt by native concatenation — the
         # ``max_len=1`` word-splitting is a lossy, script-corrupting hack we only
         # incur when word timings are actually needed.
-        self._want_word_timestamps = want_word_timestamps
+        #
+        # TASK-891 — and only when the decode CANNOT corrupt the script. The
+        # request is honoured for a pinned space-delimited language and REFUSED
+        # otherwise: an intact transcript outranks optional word timings, and the
+        # refusal is what stops a `wordTimestamps: true` agent on a code-switch
+        # model from shredding its own output. Kept as two attributes so the
+        # downgrade is diagnosable rather than invisible.
+        self._word_timestamps_requested = want_word_timestamps
+        self._want_word_timestamps = want_word_timestamps and (
+            self._language in _WORD_SPLIT_SAFE_LANGUAGES
+        )
+        if want_word_timestamps and not self._want_word_timestamps:
+            logger.warning(
+                "Word timestamps requested but refused — the decode may emit a "
+                "script that word-splitting corrupts; falling back to a clean "
+                "sentence-level decode with no word timings",
+                model_slug=loaded_model.model_slug,
+                language=self._language,
+            )
         # Max audio length per decode — longer utterances are split at silence
         # troughs (the ml-en fine-tune truncates on long audio; VAD does not segment
         # continuous clinical speech). 0 disables the guard.
