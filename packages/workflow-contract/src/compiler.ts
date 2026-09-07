@@ -184,6 +184,12 @@ export interface CompilerNodeInfo {
   activity: string;
   /** Registry-declared classes; a node bearing the `gate` class is lifted out of `stages`. */
   classes: readonly string[];
+  /**
+   * The node TYPE's own execution budget, used when the author set no `timeoutSeconds`
+   * (F13). Optional so a caller may supply a registry-free context; absent falls back to
+   * `DEFAULT_TIMEOUT_SECONDS`.
+   */
+  defaultTimeoutSeconds?: number;
 }
 
 export interface CompilerContext {
@@ -210,6 +216,14 @@ export interface CompilerContext {
 
 export type CompileResult = { config: CompiledWorkflowConfig } | { findings: WorkflowFinding[] };
 
+/**
+ * Last-resort budget for a node whose type declares none. Every registered type DOES declare
+ * one (`node-registry.ts` `defaultTimeoutSeconds`, mirrored in the interpreter's `registry.py`
+ * and pinned by `test_node_registry_parity.py`), so this is reached only by a context that
+ * supplies a registry-free `nodeInfo`. It is deliberately NOT the number an `agent` node gets:
+ * 60 s is below the harness's own per-call text budget (`HARNESS_TEXT_TIMEOUT_S`, 120 s), which
+ * is exactly the mismatch that cancelled local-model generations mid-flight.
+ */
 const DEFAULT_TIMEOUT_SECONDS = 60;
 const DEFAULT_RETRY: CompiledRetryPolicy = { maximumAttempts: 1, initialIntervalSeconds: 1, backoffCoefficient: 2 };
 
@@ -255,7 +269,8 @@ function compileNode(
   activity: string,
 ): CompiledNode {
   const config = compiledConfigFor(node, ctx);
-  const requestedTimeout = typeof config.timeoutSeconds === 'number' ? config.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
+  const requestedTimeout =
+    typeof config.timeoutSeconds === 'number' ? config.timeoutSeconds : (ctx.nodeInfo(node.type)?.defaultTimeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS);
   const requestedRetry = typeof config.retry === 'object' && config.retry !== null ? (config.retry as Partial<CompiledRetryPolicy>) : {};
 
   const inputs: CompiledInputBinding[] = incoming

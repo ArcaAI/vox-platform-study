@@ -1963,14 +1963,19 @@ export function paletteOf(nodeType: string): string | undefined {
   return WORKFLOW_NODE_REGISTRY[nodeType]?.paletteKey ?? undefined;
 }
 
-/** The `{ activity, classes }` shape `compile()`'s `CompilerContext.nodeInfo()` expects —
- *  `undefined` for an unregistered or unimplemented type, so the compiler's existing
- *  "not a registered node type" finding also fires for a registered-but-`implemented: false`
- *  entry (mirrors `registry.py`'s "no entry, or `implemented=False`, is an observable skip"). */
+/** The `{ activity, classes, defaultTimeoutSeconds }` shape `compile()`'s
+ *  `CompilerContext.nodeInfo()` expects — `undefined` for an unregistered or unimplemented
+ *  type, so the compiler's existing "not a registered node type" finding also fires for a
+ *  registered-but-`implemented: false` entry (mirrors `registry.py`'s "no entry, or
+ *  `implemented=False`, is an observable skip").
+ *
+ *  `defaultTimeoutSeconds` travels so an untimed node compiles to the budget its own TYPE
+ *  declares rather than to one flat number (F13) — the declaration stays here, in the registry,
+ *  and the compiler stays registry-free. */
 export function nodeInfo(nodeType: string): CompilerNodeInfo | undefined {
   const descriptor = WORKFLOW_NODE_REGISTRY[nodeType];
   if (descriptor === undefined || !descriptor.implemented) return undefined;
-  return { activity: descriptor.activityName, classes: descriptor.classes };
+  return { activity: descriptor.activityName, classes: descriptor.classes, defaultTimeoutSeconds: descriptor.defaultTimeoutSeconds };
 }
 
 /** Satisfies `WorkflowEvaluationContext.registry` (`predicates/context.ts`) — the impure glue
