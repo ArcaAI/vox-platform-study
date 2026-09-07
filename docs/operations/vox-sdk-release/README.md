@@ -75,7 +75,9 @@ pnpm --filter @arcaai/med-ner publish --no-git-checks
 
 # 3. Publish vox last
 pnpm --filter @arcaai/vox publish --no-git-checks
+pnpm --filter @arcaai/vox-codegen publish --no-git-checks
 pnpm --filter @arcaai/vox-node publish --no-git-checks
+pnpm --filter @arcaai/vox-node-codegen publish --no-git-checks
 
 # 4. (Optional, separate — not a vox dependency)
 pnpm --filter @arcaai/pipeline build

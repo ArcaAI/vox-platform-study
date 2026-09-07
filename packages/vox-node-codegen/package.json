@@ -63,6 +63,10 @@
     "cli"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ArcaAI/project-hope.git"
