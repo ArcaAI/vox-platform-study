@@ -96,6 +96,37 @@ Tiering: every lane is opus because each one's verdict is acted on (rule 14 §1 
 downshift the deciding stage); effort `high` where the work is cross-language or shape-defining
 (R, N, S), `medium` for the well-specified P and K.
 
+### 4.1 Lane execution log (live — updated by the orchestrator)
+
+All lanes branch from `dev-2.2 @ 7793d09ca` (the plan commit). Bootstrapped 2026-09-08 01:20
+(`pnpm install`, `db:generate`, `build:packages` — 22/22 tasks green in every tree; `.env.dev` /
+`.env.test` copied in). Per rule 14 §5 no worktree is removed before its branch is merged.
+
+| Lane | Ticket | Worktree · branch | Model | State (2026-09-08) |
+|---|---|---|---|---|
+| R | TASK-893 | `../hope-v2-t893-r` · `task-893-retire` | opus | 1st run killed by the account spend limit (HTTP 429) before its first commit; **relaunched** from the clean base, HEAD `7793d09ca` |
+| N | TASK-930 | `../hope-v2-t930-n` · `task-930-ner-plane` | opus | 1st run killed after commit `66241bb57` (enum + migration `20260907182330_task_930_agent_task_ner` + domains enum); its two discovery sub-reports completed and are saved (§4.2); **resumed** from step 2 |
+| P | TASK-930 | `../hope-v2-t930-p` · `task-930-promotion` | opus | 1st run killed before committing (two untracked files left); **relaunched** |
+| S | TASK-930 | `../hope-v2-t930-s` · `task-930-seeds` | opus | 1st run killed during reading; **relaunched** with two extra facts (NER catalogue rows are `built-in` / `TOKEN_CLASSIFICATION`; `25-agents.ts:43-80` hand-copies the contract task maps and must be extended) |
+| K | TASK-931 | `../hope-v2-t931-k` · `task-931-sdk` | opus | 1st run killed after commit `cf62eff3d` (`SDK_VERSION` derived from `package.json`); **resumed** from step 2 with the §4.2 stream-ticket shape |
+| A | TASK-931 | ALaaSv3.0 working tree (no branch, no commits) | sonnet | not in the original table — added because its code edits do not depend on the publish; 1st run killed during reading; **relaunched** |
+
+Merge order stays **N → P → R → S → K**; A lands after the 3.1.0 publish. Every brief is in the
+session scratchpad (`briefs/full-{R,N,P,S,K}.md`, `preamble.md`, `N-discovery.md`).
+
+### 4.2 Mid-flight contract amendments (recorded here, applied in `INTERFACES.md`)
+
+Found by lane N's completed discovery sub-reports before the interruption; every lane was told.
+
+| # | Amendment | Why |
+|---|---|---|
+| A-1 | The run-scoped stream-ticket route (INTERFACES §4) answers `{ ticket, expiresAt (epoch ms), scope, url }`, **not** `expiresIn`. | Matches the gateway's existing `IssueStreamTicketResponse` and `StreamTicketService.issueTicket` (30 s TTL, scope `workflow_run:<runId>`, `@Global` module); `WorkflowWsGateway` checks the scope string by strict equality. K codes against this shape. |
+| A-2 | `svc:*` scopes are **derived**, never hand-written: `service-account-scopes.registry.ts` builds each family from API-key scope sources via `deriveFamilyInto()`; a fourth family (`AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES`) is the sanctioned shape, and it must also be registered in `apps/api/src/bootstrap/service-account-surface-audit.ts` (`declaredNonAdmin`) and the registry test's count. The five API-key scopes already exist (`apikey-scopes.registry.ts:722-753`). | The registry test and boot audit D refuse a literal `svc:` entry. |
+| A-3 | Lane N may regenerate `apps/api/route-manifest.json` in its worktree (only that artifact) because `svc-scope-route-ability-coverage.test.ts` reads the committed manifest; the orchestrator regenerates all five artifacts after merge anyway. | Keeps N's own gate honest without widening artifact ownership. |
+| A-4 | `outputSchemaResponseFormat` (INTERFACES §5) is exported from the package `index.ts` by lane R (owner of `index.ts`), not by N. | Avoids a two-owner edit on `index.ts`. |
+| A-5 | `AGENT_TASK_SERVICE` widens to `'stt' \| 'llm' \| 'tts' \| null` and `AgentCompiledConfig.service` likewise: `MODEL_TASK_TYPE_SERVICE[TOKEN_CLASSIFICATION]` is `null` by design (nlp serves the classification family from the bucket, no connection plane). NER rows are `provider: 'built-in'`, so `providerClassOf` yields `platform-self-host` before the service is consulted and publish is not blocked. | Discovered in `agent.service.ts:1831-1897`; without it every NER publish would fail `MODEL_UNAVAILABLE`. |
+| A-6 | nlp `POST /api/v1/classify/tokens` takes `model_name` = `AiModel.sourceUri` (required) + `model_path` = `localPath`, answers entities as `{ text, entity_type, confidence, position:{start,end} }`; the gateway maps them to the §2.3 output. Usage is recorded with the existing `buildNerUsageEvent` (`operation: 'ner.extract'`) after `assertMeterQuota(tenantId, 'monthlyNlpTextUnits')`. | Reuses the three existing gateway NER callers' contract instead of inventing a fourth. |
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
@@ -136,4 +167,5 @@ _Pending — filled at close with per-lane evidence, merge commits, gates and th
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (later) | Six lanes spawned (R N P S K + A); all six killed by the account spend limit (HTTP 429, limit resets Sep 11) — N and K after one commit each, the rest before committing; all six relaunched/resumed. Lane log §4.1, contract amendments A-1..A-6 §4.2 (applied to `INTERFACES.md`). |
 | 2026-09-08 | Created from the owner's four-part brief. Five discovery lanes measured the current state (§2); ten decisions recorded (§3); five-lane plan with a written contract (`INTERFACES.md`). Status `In Progress`. |
