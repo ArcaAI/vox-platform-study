@@ -1,17 +1,24 @@
 /**
  * Atomic selectors over `GraphStore` — kept out of the components that use
- * them so canvas, list editor, palette rail and validation rail all read the same derivations.
+ * them so canvas, toolbar, palette rail and validation rail all read the same derivations.
  */
 import type { WorkflowFinding } from '../api/types';
 import type { GraphStore } from './create-graph-store';
-import type { GraphStoreNode } from './types';
+import type { GraphStoreNode, SaveState } from './types';
 
 export const selectNodes = (state: GraphStore): GraphStoreNode[] => state.nodes;
 export const selectEdges = (state: GraphStore) => state.edges;
 export const selectSelectedNodeId = (state: GraphStore) => state.selectedNodeId;
-export const selectViewMode = (state: GraphStore) => state.viewMode;
 export const selectDirty = (state: GraphStore) => state.dirty;
-export const selectAutosaveState = (state: GraphStore) => state.autosaveState;
+export const selectSaveState = (state: GraphStore): SaveState => state.saveState;
+
+/** Save is offered only for real, unsaved work, and never while a PATCH is already in flight —
+ *  the toolbar button and any keyboard Save path both read this, so a disabled button and a
+ *  no-op shortcut can never disagree (same posture as `selectCanUndo`). */
+export const selectCanSave = (state: GraphStore): boolean => state.dirty && state.saveState !== 'saving';
+/** Discard needs somewhere to revert TO: a graph that was never hydrated or saved has no
+ *  baseline, and reverting to nothing would delete the user's only copy of it. */
+export const selectCanDiscard = (state: GraphStore): boolean => state.dirty && state.baseline !== null;
 
 export function selectSelectedNode(state: GraphStore): GraphStoreNode | null {
   return state.nodes.find((node) => node.id === state.selectedNodeId) ?? null;
