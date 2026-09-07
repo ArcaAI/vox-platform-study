@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 352,
+  "distinctNames": 355,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -2216,6 +2216,30 @@
           "description": ""
         },
         {
+          "name": "NLP_TORCH_NUM_INTEROP_THREADS",
+          "aliases": [],
+          "class": "NLPServiceConfig",
+          "field": "torch_num_interop_threads",
+          "prefix": "NLP_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 0,
+          "description": "`0` = auto, which is ONE inter-op thread: this service runs sequential encoder forward passes, so a second pool adds no parallelism and contends for the same quota."
+        },
+        {
+          "name": "NLP_TORCH_NUM_THREADS",
+          "aliases": [],
+          "class": "NLPServiceConfig",
+          "field": "torch_num_threads",
+          "prefix": "NLP_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 0,
+          "description": "`0` = auto, and auto reads the CONTAINER's CFS quota (`hope_env.cpu.effective_cpu_quota`) \u2014 never `os.cpu_count()`, which reports the NODE. On `hope-nlp` that difference was 2 vs 48 and cost a measured 11.7x on BERT-base FFN shapes, with the pod spending 7,292 s frozen on the quota against 573 s executing (TASK-892 \u00a72.2). Read by `nlp.torch_runtime.configure_torch_threading`, which runs from `nlp/__init__.py` before any torch import."
+        },
+        {
           "name": "NLP_TRACES_ENABLED",
           "aliases": [
             "OTEL_TRACES_ENABLED"
@@ -3797,6 +3821,9 @@
     ],
     "HARNESS_VERDICT_CACHE_HMAC_KEY": [
       "apps/harness/src/harness/sensors/inferential/verdict_cache.py"
+    ],
+    "HF_HUB_CACHE": [
+      "packages/py-runtime-models/src/hope_runtime_models/resolvable.py"
     ],
     "HF_HUB_OFFLINE": [
       "apps/harness/src/harness/models/source_resolver.py",
