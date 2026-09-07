@@ -116,6 +116,12 @@ export interface WorkflowCanvasProps {
   onPaneDrop?: (event: DragEvent<HTMLDivElement>, position: { x: number; y: number }) => void;
   /** Render the overview minimap (bottom-right). Default `true`; pass `false` for tiny embeds. */
   minimap?: boolean;
+  /**
+   * Re-run `fitView` when this value changes. Needed after a post-mount layout pass: the
+   * boolean `fitView` prop only fits on init, which is the origin pile for graphs that
+   * stored no positions.
+   */
+  fitViewKey?: number;
   'aria-label': string;
   className?: string;
 }

@@ -4,3 +4,4 @@ export * from './assignment-cascade';
 export * from './port-compatibility';
 export * from './document-binding';
 export * from './bundle-io';
+export * from './ensure-canvas-layout';
