@@ -36,7 +36,10 @@ export class TenantReferenceSetController {
     summary: "Re-provision a tenant from the platform's SYSTEM reference set",
     description:
       'Copies the platform reference set — context schemas, prompt templates, agents (with ' +
-      'their TENANT assignments) and workflow definitions — into one tenant. `missing-only` ' +
+      'their TENANT assignments), document templates and workflow definitions — into one ' +
+      'tenant. Document templates are copied BEFORE workflow definitions: a workflow node ' +
+      'pins `documentTemplateId` and the clone re-points it by slug, so the template must ' +
+      'already exist in the destination tenant. `missing-only` ' +
       '(the default) adds what the tenant lacks and touches nothing it already has; ' +
       '`refresh-locked` is accepted but NOT IMPLEMENTED yet — it behaves as `missing-only` and ' +
       'the response says so in `warnings`. Idempotent: a second run reports zero added. ' +
