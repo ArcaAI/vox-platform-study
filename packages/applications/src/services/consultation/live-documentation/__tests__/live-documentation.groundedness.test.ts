@@ -449,7 +449,12 @@ describe('LiveDocumentationService — output groundedness gate', () => {
     const p1 = service.flush(CID); // generation 1 — hangs inside the groundedness check
     await new Promise((r) => setTimeout(r, 10)); // let gen 1 reach /guardrail/ground
     service.ingestSegment(CID, { text: 'second', isFinal: true, segmentId: 's2' });
-    const p2 = service.flush(CID); // generation 2 — supersedes
+    // TASK-891 B3 — `force`, because an ordinary flush no longer supersedes an in-flight
+    // one (it coalesces; see `live-documentation.single-flight.task891.test.ts`). The
+    // out-of-order invariant this case exists for is unchanged and still reachable: a
+    // FORCED final flush from `stop()` genuinely supersedes, and that is the path a
+    // generation can still be stale on.
+    const p2 = service.flush(CID, { force: true }); // generation 2 — supersedes
     await p2;
 
     releaseFirstGround(); // stale gate resolves AFTER the fresh publish
