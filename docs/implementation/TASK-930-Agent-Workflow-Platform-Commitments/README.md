@@ -6,6 +6,7 @@
 | **Type** | `feature` (agent task, invocation plane, promotion) + `infrastructure` (seed rebuild) |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-08 |
+| **Memory snapshot** | [`MEMORY.md`](./MEMORY.md) — verbatim copies of the orchestrator memory files governing this ticket (decisions, hazards, working rules) |
 | **Related** | TASK-893 (legacy vocabulary retirement — Phases 2–4 run as lane R of this wave), TASK-931 (SDK 3.1.0 + ALaaS), TASK-890 (the journeys these commitments come from) |
 | **Lane contract** | [`INTERFACES.md`](./INTERFACES.md) — file ownership + every cross-lane signature |
 
