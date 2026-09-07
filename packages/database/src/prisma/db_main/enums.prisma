@@ -950,6 +950,7 @@ enum AgentTask {
   SPEECH_TO_TEXT
   TEXT_GENERATION
   TEXT_TO_SPEECH
+  NAMED_ENTITY_RECOGNITION
 
   @@schema("core")
 }
