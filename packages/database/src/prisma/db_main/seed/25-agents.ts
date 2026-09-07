@@ -7,6 +7,8 @@
  * cascade's last tier):
  *   platform-transcription        SPEECH_TO_TEXT   arcaai-whisper-large-ml-en-gguf (+ faster-whisper CT2 fallback, silero-vad, cadence punctuation)
  *   platform-summarization        TEXT_GENERATION  elected text model + the APPROVED live SOAP template
+ *   platform-summarization-live   TEXT_GENERATION  the same, with engine reasoning OFF — the REALTIME tier,
+ *                                                  reached by the `phase:live` assignment selector (TASK-891)
  *   platform-presummarization     TEXT_GENERATION  + the APPROVED pre-summary default template
  *   platform-discharge-summary    TEXT_GENERATION  + an inline system prompt (no APPROVED SYSTEM discharge template exists on this base)
  *   platform-grammar-correction   TEXT_GENERATION  + the APPROVED live transcript-corrections template
@@ -230,6 +232,34 @@ function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: nu
       tags: [tier, 'task:llm', 'capability:important-findings'],
     },
     {
+      // Ids 8 and 9 are RESERVED for the two Global-tenant ASR drafts below, which are declared
+      // outside this catalogue and already hold `glob(8)` / `glob(9)`.
+      id: ids(10),
+      tenantId,
+      slug: `${prefix}-summarization-live`,
+      name: prefix === 'platform' ? 'Platform summarization — live (SOAP)' : 'Example summarization — live (SOAP)',
+      description:
+        'The REALTIME tier of the SOAP summary: the same model, prompt and decoding as the finalize agent, with engine reasoning switched OFF for the live flush budget.',
+      task: 'TEXT_GENERATION',
+      modelSlug: 'lms-gemma-4-e2b-it-qat',
+      fallbackModelSlugs: [],
+      instruction: { promptTemplateId: SYSTEM_LIVE_SOAP_TEMPLATE_ID, promptVersionNumber: 1 },
+      // TASK-891 (owner decision: "separate live and finalize agents"). Everything here is
+      // byte-identical to `${prefix}-summarization` EXCEPT `reasoning` — the split exists so
+      // ONE difference is expressible, and keeping the rest identical is what makes it
+      // auditable. Measured on `gemma-4-e2b-it-qat` (LM Studio, cluster idle, 2026-09-07):
+      // reasoning unset = 5168 ms / 199 completion tokens of which 184 (92%) were reasoning;
+      // `minimal` = 1237 ms / 45 / 30. The live flush is a 20 s budget on a JSON-shaped note,
+      // so the reasoning is bought and thrown away. Finalize keeps the engine default.
+      parameters: { generation: { temperature: 0.2, maxTokens: 2048, reasoning: { enabled: false } }, responseFormat: 'text' },
+      status,
+      isActive: published,
+      // `phase:live` is the SELECTOR the assignment below matches (`AgentAssignment.selectorKey`,
+      // TASK-884). On the agent itself it is alignment vocabulary — the console facet and the
+      // admin's copy template — not something the cascade reads.
+      tags: [tier, 'task:llm', 'capability:summarization', 'phase:live'],
+    },
+    {
       id: ids(7),
       tenantId,
       slug: `${prefix}-tts`,
@@ -283,11 +313,24 @@ export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = [
   },
 ];
 
-/** SYSTEM TENANT-scope assignments — the platform default per task (the cascade's last tier). */
-export const PLATFORM_AGENT_ASSIGNMENTS: Array<{ id: string; task: SeedAgentTask; agentSlug: string }> = [
+/**
+ * SYSTEM TENANT-scope assignments — the platform reference set a tenant is provisioned FROM
+ * (TASK-890 OD-M: content is CLONED, so these are never read at runtime for a customer tenant).
+ *
+ * `selectorKey` is TASK-884's tag selector, canonical and comma-joined; `''` is the UNQUALIFIED
+ * row, which satisfies every request because an empty selector is a subset of anything. A task
+ * may therefore hold several rows, and `AgentAssignmentService.resolve` tries the most specific
+ * matching one first with the unqualified row last.
+ */
+export const PLATFORM_AGENT_ASSIGNMENTS: Array<{ id: string; task: SeedAgentTask; agentSlug: string; selectorKey?: string }> = [
   { id: assignmentId(1), task: 'SPEECH_TO_TEXT', agentSlug: 'platform-transcription' },
   { id: assignmentId(2), task: 'TEXT_GENERATION', agentSlug: 'platform-summarization' },
   { id: assignmentId(3), task: 'TEXT_TO_SPEECH', agentSlug: 'platform-tts' },
+  // TASK-891 — the REALTIME tier. `HarnessPolicyService.resolveTextSelection` mints
+  // `phase:<task>` from its routing task, so a live flush matches this row and everything else
+  // (finalize, the test bench, any caller that names no phase) keeps matching the unqualified
+  // TEXT_GENERATION row above. Adding a qualified row can only ever ADD a resolution.
+  { id: assignmentId(4), task: 'TEXT_GENERATION', agentSlug: 'platform-summarization-live', selectorKey: 'phase:live' },
 ];
 
 // ----------------------------------------------------------------------------------------------
@@ -509,10 +552,19 @@ export async function seedPlatformAgentAssignments(client: SeedAgentsClient): Pr
       continue;
     }
     await client.agentAssignment.create({
-      data: { id: assignment.id, tenantId: SYSTEM_TENANT_ID, scope: 'TENANT', scopeId: null, task: assignment.task, agentSlug: assignment.agentSlug, createdBy: SYSTEM_USER_ID },
+      data: {
+        id: assignment.id,
+        tenantId: SYSTEM_TENANT_ID,
+        scope: 'TENANT',
+        scopeId: null,
+        task: assignment.task,
+        agentSlug: assignment.agentSlug,
+        selectorKey: assignment.selectorKey ?? '',
+        createdBy: SYSTEM_USER_ID,
+      },
     });
     created += 1;
-    console.log(`  assigned SYSTEM ${assignment.task} → ${assignment.agentSlug}`);
+    console.log(`  assigned SYSTEM ${assignment.task}${assignment.selectorKey ? ` [${assignment.selectorKey}]` : ''} → ${assignment.agentSlug}`);
   }
   return created;
 }
