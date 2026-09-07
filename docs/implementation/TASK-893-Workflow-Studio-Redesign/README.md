@@ -396,7 +396,47 @@ removal.
 
 ## 6. Implementation Summary
 
-*(empty — no code written; this document is the Phase 3 plan gate per `01-development-workflow.md`.)*
+*(Phase 1 is being delivered across five parallel lanes — see `INTERFACES.md`. Each lane appends
+its own record here; the section below is the accessibility record the plan requires from the
+editor-shell lane, and it outlives the ticket because it is the contract that replaced the List
+view.)*
+
+### Keyboard parity (WCAG 2.5.7) — the List view's replacement
+
+Deleting the List view (OD-1) removes what `create-graph-store.ts`'s `reorderNode` comment called
+the pointer-free path: it satisfied 2.5.7 "by construction rather than by adding a keyboard shim to
+a drag interaction". Every mutation therefore keeps a non-drag path **on the canvas**, and this is
+the register of them. A future change that removes one of these without replacing it re-opens the
+accessibility defect, not just a convenience.
+
+| Mutation | Drag path | Non-drag path (WCAG 2.5.7) | Where |
+|---|---|---|---|
+| **Add** a node | drag a palette card onto the pane (`onPaneDrop`) | activate the palette card — it is a real `<button>`, reached by Tab | `palette/palette-item.tsx` → `handleAddNode` |
+| **Add into a loop** | drag onto the group | select the loop, then activate a palette card — the new node joins that loop's body | `handleAddNode`'s `parentId` branch |
+| **Connect** two nodes | drag handle → handle | **Node actions → Connect to…**, listing every other node in execution order | `StudioToolbar` `nodeCommands.onConnectTo` |
+| **Disconnect** | hover-X on the edge, or Delete on a selected edge | Delete/Backspace with the edge selected (canvas `deleteKeyCode`) | `onEdgeDelete` → `disconnectEdge` |
+| **Move into / out of a loop** | drag across the group boundary (`onNodeParentChange`) | **Node actions → Move into…**, offering every `core.loop` plus "Top level" | `nodeCommands.onMoveToLoop` → `setNodeParent` |
+| **Wrap / Unwrap** a loop | — (no drag path at all) | **Node actions → Wrap in loop / Unwrap loop** | `nodeCommands.onWrapInLoop` / `onUnwrapLoop` |
+| **Duplicate** | — | **Node actions → Duplicate**, and `Ctrl/Cmd+D` (`useStudioShortcuts`) | `duplicateNode` |
+| **Delete** a node | — | Delete/Backspace on the selected node, the node's own Remove button, **Node actions → Remove node** | `onDeleteRequest` → `deleteNode` |
+| **Reorder** | — | not an authored property any more: execution order is DERIVED from the graph (`computeStepOrder`), so it changes by connecting/disconnecting, which both have keyboard paths above | `lib/step-order.ts` |
+| **Undo / Redo / Save / Discard** | — | toolbar buttons, plus `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` | `StudioToolbar`, `useStudioShortcuts` |
+| **Focus a problem's node** | — | activate the finding in the Problems tab; selection *and* DOM focus move to the node | `validation/use-focus-node.ts` |
+
+Two consequences worth stating, because they are the parts a reviewer is most likely to undo:
+
+1. **`reorderNode` has no replacement and needs none.** It reordered the `nodes` array, which was
+   the List view's row order and nothing else. The canvas presents execution order as a derived
+   step badge, so there is no authored ordering left to move up and down.
+2. **The "Node actions" menu is not a convenience.** *Connect to…* and *Move into…* have no other
+   non-drag path anywhere in the studio. It is disabled — not hidden — when nothing is selected, so
+   it stays discoverable, and it is absent on a read-only version where no mutation is possible.
+
+Automation covers what it can (the menu's enabled/disabled contract and every store-facing callback
+are unit-tested; each screen is axe-scanned). Radix submenu traversal is not exercised in jsdom, so
+the manual pass in the `web-accessibility` skill — Tab to each control, operate the menu with the
+keyboard only, confirm focus is never obscured at 200 % zoom — remains part of this ticket's
+definition of done.
 
 ---
 

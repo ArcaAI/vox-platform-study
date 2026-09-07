@@ -23,7 +23,6 @@ import {
   IconFileDescription,
   IconFileText,
   IconFingerprint,
-  IconFlask,
   IconFlask2,
   IconFolders,
   IconGauge,
@@ -880,33 +879,11 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/playground/llm', domain: 'playground', label: 'LLM Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
-  // deliberate divergence from the `required: ` convention above.
-  // The five entries before this one are own-account end-user demo planes
-  // whose backend guards are plain @Authorize() (comment above). The
-  // Workbench instead READS and EXECUTES tenant WorkflowDefinition rows — a
-  // resource ability the gateway enforces — so declaring `required: []`
-  // would hide a real gate from the nav. RECONCILED against the real,
-  // now-landed decorators: the definition picker needs
-  // `manage:WorkflowDefinition` (`WorkflowDefinitionController`'s class-level
-  // `@CanManage('WorkflowDefinition')` —), and starting/reading/
-  // canceling a sandbox run needs `manage:WorkflowRun`
-  // (`WorkflowSandboxRunController`'s `@CanCreate`/`@CanRead`/`@CanUpdate('WorkflowRun')`,
-  // all subsumed by the seeded `manage:WorkflowRun` tenant-admin grant —
-  // `packages/database/src/prisma/db_main/seed/01-policy.ts`). `canAny`
-  // (OR) means either alone shows the entry; both are seeded together for
-  // every tenant admin, so this is not a practical gap.
-  {
-    route: '/playground/workbench',
-    domain: 'playground',
-    label: 'Workbench',
-    tier: '50-59',
-    icon: IconFlask,
-    required: [
-      ['manage', 'WorkflowDefinition'],
-      ['manage', 'WorkflowRun'],
-    ],
-    implemented: true,
-  },
+  // TASK-893 OD-3: `/playground/workbench` RETIRED (redirect stub -> `/workflow-studio`). Running a
+  // definition against a fixture is no longer a separate screen — the Studio's inspector carries
+  // the Run tab, the fixture picker and the per-node trace, so an admin tests the graph they are
+  // editing instead of navigating to a second surface that executes the SAVED one. 59 -> 58, tier
+  // 50-59 6 -> 5, and the tier's `required: []` convention now holds for every entry in it again.
 ];
 
 /**
