@@ -65,16 +65,39 @@ def test_empty_string_token_in_cluster_raises(monkeypatch: pytest.MonkeyPatch) -
         _assert_internal_access_token(settings)
 
 
-def test_absent_token_via_ci_truthy_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    """CI truthy is the other half of "in-cluster" per hope_env's own posture."""
+def test_absent_token_on_dev_cluster_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """THE regression that matters: the dev cluster runs NODE_ENV=development.
+
+    Measured on hope-v2-dev 2026-09-07 — `overlays/dev` patches the platform
+    ConfigMap to `NODE_ENV=development` / `DEPLOYMENT_ENVIRONMENT=dev`, so a gate
+    keyed on `node_env == "production"` is INERT in exactly the environment where
+    the missing token was found. `DEPLOYMENT_ENVIRONMENT` is what must trigger it.
+    """
     from guardrail.main import _assert_internal_access_token
 
-    monkeypatch.setenv("NODE_ENV", "test")
-    monkeypatch.setenv("CI", "true")
+    monkeypatch.setenv("NODE_ENV", "development")  # as the dev overlay sets it
+    monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "dev")
+    monkeypatch.delenv("CI", raising=False)
     settings = _settings_with_token("")
 
     with pytest.raises(RuntimeError, match="INTERNAL_ACCESS_TOKEN"):
         _assert_internal_access_token(settings)
+
+
+def test_absent_token_in_ci_test_job_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A CI *test* job is not a deployment — `CI` truthy alone must NOT refuse.
+
+    Coupling the two would fire the gate inside `test-guardrail` for no benefit;
+    `DEPLOYMENT_ENVIRONMENT` is unset there, which is the whole point.
+    """
+    from guardrail.main import _assert_internal_access_token
+
+    monkeypatch.setenv("NODE_ENV", "test")
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.delenv("DEPLOYMENT_ENVIRONMENT", raising=False)
+    settings = _settings_with_token("")
+
+    _assert_internal_access_token(settings)  # must not raise
 
 
 def test_absent_token_local_dev_logs_once_and_does_not_raise(
@@ -85,6 +108,9 @@ def test_absent_token_local_dev_logs_once_and_does_not_raise(
 
     monkeypatch.setenv("NODE_ENV", "development")
     monkeypatch.setenv("CI", "false")
+    # A developer's shell has no DEPLOYMENT_ENVIRONMENT; delete it explicitly so
+    # this test cannot pass or fail by accident of the runner's own environment.
+    monkeypatch.delenv("DEPLOYMENT_ENVIRONMENT", raising=False)
     settings = _settings_with_token("")
 
     with capture_logs() as logs:
