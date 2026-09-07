@@ -15,7 +15,7 @@ import httpx
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from hope_env import BuildInfoReader
+from hope_env import BuildInfoReader, load_env, real_secret
 from hope_env.service_registration import start_registration, stop_registration
 
 from guardrail.core.breaker import CircuitBreaker, FailPosture
@@ -175,12 +175,73 @@ async def _config_invalidation_listener(app: FastAPI) -> None:
             pass
 
 
+def _in_cluster_environment() -> bool:
+    """Whether this process is running deployed/CI rather than a developer's shell.
+
+    Mirrors `hope_env.load_env()`'s own posture, rather than re-deriving the
+    `NODE_ENV`/`CI` truthy check here: that loader already treats `CI` truthy or
+    `NODE_ENV=production` as "host env only, no dotenv magic" — precisely the
+    same "no operator is watching the console" posture a deployed k8s pod runs
+    under (`06-python-services.md` "Env loading"). `load_env()` is idempotent
+    (it only fills env keys still absent), so calling it again here is a safe,
+    zero-cost read of that same decision via its public `LoadEnvResult`.
+    """
+    result = load_env()
+    return result.is_ci or result.node_env == "production"
+
+
+def _assert_internal_access_token(settings: Settings) -> None:
+    """C3 — refuse to silently run every internal call unauthenticated.
+
+    `INTERNAL_ACCESS_TOKEN` absent from `hope-secrets` (TASK-892 S2.5) currently
+    fails OPEN: the `optional: true` Secret binding lets the container start
+    happily, and every gateway-bound internal call (`effective-config` pull,
+    service-release registration) 401s — the process then silently runs on
+    compiled defaults instead of its resolved tenant -> SYSTEM configuration.
+
+    An empty value is exactly as unconfigured as an absent one here — unlike
+    `X-Service-Token`, where an empty value is the DELIBERATE dev/hermetic-CI
+    auth-bypass sentinel (`06-python-services.md`). `real_secret` also maps the
+    unfilled-secret placeholder (`CHANGE_ME`) onto empty, so a template value
+    left unfilled is never mistaken for a real credential.
+
+    In-cluster this is a hard failure: refuse to start rather than run with the
+    gateway unauthenticated. In local dev it is not fatal — the developer's
+    console is right there — so this logs ONE error-level line naming the
+    variable and lets boot continue.
+    """
+    if real_secret(settings.internal_access_token):
+        return
+
+    if _in_cluster_environment():
+        raise RuntimeError(
+            "INTERNAL_ACCESS_TOKEN is missing or empty. guardrail refuses to start "
+            "in-cluster without it: every internal call to the gateway "
+            "(effective-config pull, service-release registration) would run "
+            "unauthenticated and the service would silently fall back to "
+            "compiled defaults instead of its resolved tenant configuration."
+        )
+
+    logger.error(
+        "guardrail.internal_token.missing",
+        variable="INTERNAL_ACCESS_TOKEN",
+        detail=(
+            "internal calls to the gateway will 401 and this process will run on "
+            "compiled defaults instead of its resolved tenant configuration"
+        ),
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage shared resources: httpx client, Redis, LLM providers."""
     settings: Settings = app.state.settings
 
     setup_logging(settings.log_level)
+
+    # Startup assertion (TASK-892 C3) — before any I/O, so an in-cluster
+    # refusal never opens a connection it cannot authenticate.
+    _assert_internal_access_token(settings)
 
     logger.info(
         "guardrail.starting",
