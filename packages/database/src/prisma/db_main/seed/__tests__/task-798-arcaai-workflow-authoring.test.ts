@@ -37,6 +37,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ARCAAI_CONSULTATION_GRAPH,
+  ARCAAI_NEW_VISIT_CONSULTATION_GRAPH,
+  ARCAAI_REVISIT_CONSULTATION_GRAPH,
   ARCAAI_RHEUM_CONSULTATION_GRAPH,
   ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES,
   ARCAAI_WORKFLOW_ASSIGNMENTS,
@@ -49,6 +51,9 @@ import {
 import { detectSubstrateExclusivityGate } from '../substrate-exclusivity-guard';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SEED_USER_IDS, SYSTEM_USER_ID } from '../00-constants';
 import { ARCAAI_CLINICAL_TEMPLATE_IDS } from '../07b-arcaai-clinical-templates';
+// The seeded note SHAPES the visit-type workflows name. Imported rather than restated so a
+// renamed slug breaks HERE, at the join, instead of silently failing open at flush time.
+import { DOCUMENT_TEMPLATE_LIBRARY, NEW_VISIT_NOTE_SLUG, REVISIT_NOTE_SLUG } from '../27-document-template-library';
 
 /** `SYSTEM_DEFAULTS.preSummaryPromptId` in `PromptResolutionService` — the tier a tenant node
  *  must NOT re-point at. Restated here rather than imported so this seed test does not take a
@@ -98,14 +103,31 @@ const definitionBySlug = (slug: string) => {
   return row;
 };
 
-const graphFor = (slug: string) => (slug === 'arcaai-consultation-soap' ? ARCAAI_CONSULTATION_GRAPH : ARCAAI_RHEUM_CONSULTATION_GRAPH);
+const GRAPH_BY_SLUG = {
+  'arcaai-consultation-soap': ARCAAI_CONSULTATION_GRAPH,
+  'arcaai-rheum-consultation-soap': ARCAAI_RHEUM_CONSULTATION_GRAPH,
+  'arcaai-consultation-new-visit': ARCAAI_NEW_VISIT_CONSULTATION_GRAPH,
+  'arcaai-consultation-revisit': ARCAAI_REVISIT_CONSULTATION_GRAPH,
+} as const;
+
+/** Every seeded slug, so the provenance sweeps below cannot silently skip a new definition. */
+const ALL_SEEDED_SLUGS = Object.keys(GRAPH_BY_SLUG);
+
+const graphFor = (slug: string) => {
+  const graph = GRAPH_BY_SLUG[slug as keyof typeof GRAPH_BY_SLUG];
+  if (!graph) throw new Error(`No seeded graph for slug ${slug}`);
+  return graph;
+};
 
 // ---------------------------------------------------------------------------------------------
 // W1 — a real, tenant-authored consultation workflow
 // ---------------------------------------------------------------------------------------------
 describe(' W1 — tenant-authored consultation WorkflowDefinition', () => {
-  it('seeds exactly two definitions, both on the consultation palette', () => {
-    expect(ARCAAI_WORKFLOW_DEFINITIONS).toHaveLength(2);
+  it('seeds exactly four definitions, all on the consultation palette', () => {
+    // Two department chains (General Medicine, Rheumatology) plus the two TASK-891 visit-type
+    // variants of the General Medicine one.
+    expect(ARCAAI_WORKFLOW_DEFINITIONS).toHaveLength(4);
+    expect(ARCAAI_WORKFLOW_DEFINITIONS.map((d) => d.slug).sort()).toEqual([...ALL_SEEDED_SLUGS].sort());
     for (const row of ARCAAI_WORKFLOW_DEFINITIONS) {
       expect(row.paletteKey).toBe('consultation');
     }
@@ -168,7 +190,7 @@ describe(' W1 — tenant-authored consultation WorkflowDefinition', () => {
 // W1 — PROVENANCE. The blobs are engine output or this suite fails.
 // ---------------------------------------------------------------------------------------------
 describe(' W1 — derived blobs are real compiler output', () => {
-  it.each(['arcaai-consultation-soap', 'arcaai-rheum-consultation-soap'])(
+  it.each(ALL_SEEDED_SLUGS)(
     '%s: graphChecksum equals sha256(canonicalJson(graph)) computed by the real engine',
     (slug) => {
       const row = definitionBySlug(slug);
@@ -179,7 +201,7 @@ describe(' W1 — derived blobs are real compiler output', () => {
     },
   );
 
-  it.each(['arcaai-consultation-soap', 'arcaai-rheum-consultation-soap'])(
+  it.each(ALL_SEEDED_SLUGS)(
     '%s: validate() returns ok with ZERO findings against the FULL rule set',
     (slug) => {
       const report = validate(
@@ -194,7 +216,7 @@ describe(' W1 — derived blobs are real compiler output', () => {
     },
   );
 
-  it.each(['arcaai-consultation-soap', 'arcaai-rheum-consultation-soap'])(
+  it.each(ALL_SEEDED_SLUGS)(
     '%s: the seeded validationReport is byte-identical to what validate() produces now',
     (slug) => {
       const row = definitionBySlug(slug);
@@ -207,7 +229,7 @@ describe(' W1 — derived blobs are real compiler output', () => {
     },
   );
 
-  it.each(['arcaai-consultation-soap', 'arcaai-rheum-consultation-soap'])(
+  it.each(ALL_SEEDED_SLUGS)(
     '%s: the seeded compiledConfig is byte-identical to what compile() produces now',
     (slug) => {
       const row = definitionBySlug(slug);
@@ -291,7 +313,7 @@ describe(' W2 — WorkflowAssignment is gated on the Substrate-A exclusivity mec
     expect(calls.filter((c) => c === 'workflowAssignmentChange.create')).toHaveLength(4);
   });
 
-  it('binds one assignment to the tenant, one to the Rheumatology department, and a visit-type-qualified pair alongside the tenant default (TASK-891 D8b)', () => {
+  it('binds one assignment to the tenant, one to the Rheumatology department, and a visit-type-qualified pair alongside the tenant default (TASK-891 D8)', () => {
     expect(ARCAAI_WORKFLOW_ASSIGNMENTS).toHaveLength(4);
     const tenantScoped = ARCAAI_WORKFLOW_ASSIGNMENTS.find((a) => a.scope === 'TENANT' && a.selectorKey === '');
     const deptScoped = ARCAAI_WORKFLOW_ASSIGNMENTS.find((a) => a.scope === 'DEPARTMENT');
@@ -310,6 +332,14 @@ describe(' W2 — WorkflowAssignment is gated on the Substrate-A exclusivity mec
     expect(newVisit?.scopeId).toBeNull();
     expect(revisit?.scope).toBe('TENANT');
     expect(revisit?.scopeId).toBeNull();
+
+    // TASK-891 (D8) — and each points at ITS OWN visit-type definition, not at the shared SOAP
+    // one D8b parked them on. That repointing is the join: without it the selector resolves a
+    // workflow whose realtime node names a different note shape than the one being signed.
+    expect(newVisit?.workflowDefinitionSlug).toBe('arcaai-consultation-new-visit');
+    expect(revisit?.workflowDefinitionSlug).toBe('arcaai-consultation-revisit');
+    expect(newVisit?.workflowDefinitionSlug).not.toBe(tenantScoped?.workflowDefinitionSlug);
+    expect(revisit?.workflowDefinitionSlug).not.toBe(tenantScoped?.workflowDefinitionSlug);
 
     for (const assignment of ARCAAI_WORKFLOW_ASSIGNMENTS) {
       expect(assignment.tenantId).toBe(SEED_CUSTOMER_TENANT_IDS.ARCAAI);
@@ -453,6 +483,8 @@ describe('Lane R (R2) — a pre-summarization node exists BY DEFAULT (owner ruli
   const GRAPHS = [
     ['arcaai-consultation-soap', ARCAAI_CONSULTATION_GRAPH],
     ['arcaai-rheum-consultation-soap', ARCAAI_RHEUM_CONSULTATION_GRAPH],
+    ['arcaai-consultation-new-visit', ARCAAI_NEW_VISIT_CONSULTATION_GRAPH],
+    ['arcaai-consultation-revisit', ARCAAI_REVISIT_CONSULTATION_GRAPH],
   ] as const;
 
   it.each(GRAPHS)('%s carries an ACTIVE agent.presummarization node with a prompt bound', (_slug, graph) => {
@@ -484,5 +516,149 @@ describe('Lane R (R2) — a pre-summarization node exists BY DEFAULT (owner ruli
     // generation node whose mandatory guard was never wired.
     // `agent.presummarization` requires `guard.groundedness`; this is what proves it is attached.
     expect(workflowPublishProblems(graph)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// TASK-891 (W11) — the visit-type chain, end to end in one assertion.
+//
+// Four pieces landed separately and this suite is the JOIN of them: the dispatcher tags a
+// consultation-palette request `visit-type:new-visit` / `visit-type:revisit`;
+// `WorkflowAssignmentService.resolve` matches a row whose `selectorKey` is a SUBSET of those tags,
+// most specific first and unqualified last; the resolved definition's
+// `consultation.realtimeSummary` node names a `documentTemplateSlug`; and `ensureTemplateResolved`
+// hands that slug to `resolveForGeneration(tenantId, slug)`.
+//
+// Each of those four is already covered where it lives. What NOTHING covered until now is that
+// they LINE UP — that the workflow a visit-type tag actually resolves is the one naming the note
+// shape seeded for that same visit type. That is the defect this ticket exists for: a clinician
+// watched a four-section SOAP note being written and then signed an eleven-section document.
+// ---------------------------------------------------------------------------------------------
+describe('TASK-891 (W11) — a visit-type selector resolves the workflow that names the matching note shape', () => {
+  /**
+   * `SOAP_NOTE_SLUG` — the code-level fail-open shape `resolveForGeneration` returns when the
+   * frozen lane names no `documentTemplateSlug`. Restated rather than imported, for the same
+   * reason `SYSTEM_DEFAULT_PRE_SUMMARY_PROMPT_ID` above is: this seed suite takes no dependency
+   * on `@arcaai/applications`.
+   */
+  const PLATFORM_FALLBACK_NOTE_SLUG = 'soap_note';
+
+  /**
+   * Mirrors `realtimeDocumentTemplateSlug` (`realtime-lane.ts`) composed with
+   * `resolveForGeneration`'s fail-open: the note shape a workflow ACTUALLY produces on the
+   * realtime lane. A blank or non-string value is "the lane named none", exactly as the
+   * production reader treats it.
+   */
+  const realtimeNoteShapeFor = (definitionSlug: string): string => {
+    const graph = definitionBySlug(definitionSlug).graph as unknown as {
+      nodes: ReadonlyArray<{ type: string; config?: Record<string, unknown> }>;
+    };
+    const node = graph.nodes.find((n) => n.type === 'consultation.realtimeSummary');
+    const slug = node?.config?.documentTemplateSlug;
+    return typeof slug === 'string' && slug.trim().length > 0 ? slug.trim() : PLATFORM_FALLBACK_NOTE_SLUG;
+  };
+
+  /**
+   * Mirrors `WorkflowAssignmentService.resolve`'s TENANT-tier walk, step for step:
+   *
+   *   - `agentTagsSatisfy` — a row matches when its selector is a SUBSET of the request tags, and
+   *     the empty selector is the subset of EVERY request (that is what makes the unqualified row
+   *     a fallback rather than a competitor);
+   *   - `tierCandidates`' ordering — specificity is the selector's TAG COUNT, ties broken by the
+   *     canonical selector string. Sorting by character length would agree on today's two rows and
+   *     diverge the moment a two-tag selector is spelled shorter than a one-tag one;
+   *   - resolve's own "a matched row must also RESOLVE" step — `findPublishedBySlug` on the same
+   *     palette, so a row pointing at an unpublished definition is SKIPPED and the walk continues.
+   *     Without this the mirror would claim a resolution the service would not make.
+   */
+  const resolveTenantAssignment = (selectorTags: readonly string[]) => {
+    const requested = new Set(selectorTags);
+    return ARCAAI_WORKFLOW_ASSIGNMENTS.filter((a) => a.scope === 'TENANT')
+      .map((a) => ({ row: a, selector: a.selectorKey ? a.selectorKey.split(',') : [] }))
+      .filter(({ selector }) => selector.every((tag) => requested.has(tag)))
+      .sort((a, b) => b.selector.length - a.selector.length || a.row.selectorKey.localeCompare(b.row.selectorKey))
+      .map(({ row }) => row)
+      .find((row) =>
+        ARCAAI_WORKFLOW_DEFINITIONS.some(
+          (d) => d.slug === row.workflowDefinitionSlug && d.status === 'PUBLISHED' && d.isActive && d.paletteKey === row.paletteKey,
+        ),
+      );
+  };
+
+  // -- THE BACKWARDS-COMPATIBILITY GUARANTEE ----------------------------------------------------
+  // The unqualified row is load-bearing and is deliberately NOT repointed. An empty selector is a
+  // subset of EVERY request, so a tenant that authored nothing keeps resolving exactly what it
+  // resolved before this ticket. If this ever goes red, the visit-type work broke every tenant
+  // that never asked for it.
+  it('leaves an untagged request on today’s definition and today’s note shape, unchanged', () => {
+    const resolved = resolveTenantAssignment([]);
+    expect(resolved?.selectorKey).toBe('');
+    expect(resolved?.workflowDefinitionSlug).toBe('arcaai-consultation-soap');
+    expect(realtimeNoteShapeFor('arcaai-consultation-soap')).toBe(PLATFORM_FALLBACK_NOTE_SLUG);
+  });
+
+  it('leaves the untagged row itself untouched — it names no documentTemplateSlug at all', () => {
+    // Stronger than the shape assertion above: the fail-open is what serves `soap_note` today, and
+    // it must keep being the fail-open rather than an explicit value that merely agrees with it.
+    // An explicit slug here would change the definition's graph checksum and republish it.
+    const graph = definitionBySlug('arcaai-consultation-soap').graph as unknown as {
+      nodes: ReadonlyArray<{ type: string; config?: Record<string, unknown> }>;
+    };
+    const node = graph.nodes.find((n) => n.type === 'consultation.realtimeSummary');
+    expect(node).toBeDefined();
+    expect(node?.config).not.toHaveProperty('documentTemplateSlug');
+  });
+
+  // -- THE CHAIN --------------------------------------------------------------------------------
+  it.each([
+    ['visit-type:new-visit', 'arcaai-consultation-new-visit', NEW_VISIT_NOTE_SLUG],
+    ['visit-type:revisit', 'arcaai-consultation-revisit', REVISIT_NOTE_SLUG],
+  ])('%s resolves %s, whose realtime node names %s', (selectorTag, expectedSlug, expectedNoteSlug) => {
+    const resolved = resolveTenantAssignment([selectorTag]);
+    expect(resolved?.selectorKey).toBe(selectorTag);
+    expect(resolved?.workflowDefinitionSlug).toBe(expectedSlug);
+    // The whole chain in one line: the selector picked a workflow, and that workflow names the
+    // note shape seeded for that same visit type.
+    expect(realtimeNoteShapeFor(expectedSlug)).toBe(expectedNoteSlug);
+  });
+
+  it('names shapes the document-template library actually seeds — never an invented slug', () => {
+    // `resolveForGeneration` fails OPEN: a slug nobody authored resolves the platform SOAP shape
+    // and the mismatch this ticket exists to fix comes back silently. The workflow's slug must
+    // therefore be a row the library really provides.
+    const library = DOCUMENT_TEMPLATE_LIBRARY.map((entry) => entry.slug);
+    for (const slug of ['arcaai-consultation-new-visit', 'arcaai-consultation-revisit']) {
+      expect(library).toContain(realtimeNoteShapeFor(slug));
+    }
+  });
+
+  it('gives the two visit types genuinely different shapes, and neither is the platform SOAP one', () => {
+    // A "template set" whose members are the same shape makes the visit-type axis decorative —
+    // the same objection `27-document-template-library.ts` records against seeding one shape.
+    const newVisit = realtimeNoteShapeFor('arcaai-consultation-new-visit');
+    const revisit = realtimeNoteShapeFor('arcaai-consultation-revisit');
+    expect(newVisit).not.toBe(revisit);
+    expect([newVisit, revisit]).not.toContain(PLATFORM_FALLBACK_NOTE_SLUG);
+  });
+
+  it('varies ONLY the note shape — the visit-type definitions are the tenant default graph otherwise', () => {
+    // "A variant, not a new graph": a second spine would be a second thing to keep in step with
+    // the rule set, and any divergence beyond the note shape is drift rather than intent.
+    const stripNoteShape = (definitionSlug: string) => {
+      const graph = definitionBySlug(definitionSlug).graph as unknown as {
+        nodes: ReadonlyArray<{ id: string; type: string; config?: Record<string, unknown> }>;
+      };
+      return {
+        ...graph,
+        nodes: graph.nodes.map((node) => {
+          if (node.type !== 'consultation.realtimeSummary') return node;
+          const { documentTemplateSlug: _shape, ...rest } = node.config ?? {};
+          return { ...node, config: rest };
+        }),
+      };
+    };
+    const baseline = stripNoteShape('arcaai-consultation-soap');
+    expect(stripNoteShape('arcaai-consultation-new-visit')).toEqual(baseline);
+    expect(stripNoteShape('arcaai-consultation-revisit')).toEqual(baseline);
   });
 });

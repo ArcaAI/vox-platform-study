@@ -38,6 +38,12 @@ import {
   ARCAAI_CONSULTATION_GRAPH,
   ARCAAI_CONSULTATION_SOAP_ID,
   ARCAAI_CONSULTATION_SOAP_SLUG,
+  ARCAAI_NEW_VISIT_CONSULTATION_GRAPH,
+  ARCAAI_NEW_VISIT_CONSULTATION_ID,
+  ARCAAI_NEW_VISIT_CONSULTATION_SLUG,
+  ARCAAI_REVISIT_CONSULTATION_GRAPH,
+  ARCAAI_REVISIT_CONSULTATION_ID,
+  ARCAAI_REVISIT_CONSULTATION_SLUG,
   ARCAAI_RHEUM_CONSULTATION_GRAPH,
   ARCAAI_RHEUM_CONSULTATION_SOAP_ID,
   ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG,
@@ -71,6 +77,11 @@ interface Target {
 const TARGETS: Target[] = [
   { label: 'GEN', id: ARCAAI_CONSULTATION_SOAP_ID, slug: ARCAAI_CONSULTATION_SOAP_SLUG, graph: ARCAAI_CONSULTATION_GRAPH },
   { label: 'RHEUM', id: ARCAAI_RHEUM_CONSULTATION_SOAP_ID, slug: ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG, graph: ARCAAI_RHEUM_CONSULTATION_GRAPH },
+  // TASK-891 (D8) — the two visit-type variants. Appended rather than interleaved so the
+  // generated module's existing declaration order is preserved and a regeneration diff shows
+  // only what actually changed.
+  { label: 'NEW_VISIT', id: ARCAAI_NEW_VISIT_CONSULTATION_ID, slug: ARCAAI_NEW_VISIT_CONSULTATION_SLUG, graph: ARCAAI_NEW_VISIT_CONSULTATION_GRAPH },
+  { label: 'REVISIT', id: ARCAAI_REVISIT_CONSULTATION_ID, slug: ARCAAI_REVISIT_CONSULTATION_SLUG, graph: ARCAAI_REVISIT_CONSULTATION_GRAPH },
 ];
 
 const OUT_PATH = path.resolve(
@@ -172,15 +183,17 @@ function renderModule(values: Record<string, unknown>): string {
 
   const decl = (name: string, value: unknown, type: string) => `export const ${name}: ${type} = ${JSON.stringify(value, null, 2)} as const;\n`;
 
+  // Driven off TARGETS, in TARGETS order: a graph added to that list without a matching triple
+  // here would compile fine and be missing from the module, which is a failure mode worth
+  // designing out rather than remembering.
   return [
     header,
     decl('REGISTRY_CHECKSUM', values.REGISTRY_CHECKSUM, 'string'),
-    decl('GEN_GRAPH_CHECKSUM', values.GEN_GRAPH_CHECKSUM, 'string'),
-    decl('GEN_VALIDATION_REPORT', values.GEN_VALIDATION_REPORT, 'Record<string, unknown>'),
-    decl('GEN_COMPILED_CONFIG', values.GEN_COMPILED_CONFIG, 'Record<string, unknown>'),
-    decl('RHEUM_GRAPH_CHECKSUM', values.RHEUM_GRAPH_CHECKSUM, 'string'),
-    decl('RHEUM_VALIDATION_REPORT', values.RHEUM_VALIDATION_REPORT, 'Record<string, unknown>'),
-    decl('RHEUM_COMPILED_CONFIG', values.RHEUM_COMPILED_CONFIG, 'Record<string, unknown>'),
+    ...TARGETS.flatMap((target) => [
+      decl(`${target.label}_GRAPH_CHECKSUM`, values[`${target.label}_GRAPH_CHECKSUM`], 'string'),
+      decl(`${target.label}_VALIDATION_REPORT`, values[`${target.label}_VALIDATION_REPORT`], 'Record<string, unknown>'),
+      decl(`${target.label}_COMPILED_CONFIG`, values[`${target.label}_COMPILED_CONFIG`], 'Record<string, unknown>'),
+    ]),
   ].join('\n');
 }
 
