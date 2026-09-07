@@ -65,38 +65,49 @@ async function main(): Promise<void> {
       }),
       agents: await client.agent.count({ where: { tenantId: SYSTEM_TENANT_ID, status: 'PUBLISHED', isActive: true, resourceStatus: 'ENABLED' } }),
       assignments: await client.agentAssignment.count({ where: { tenantId: SYSTEM_TENANT_ID, scope: 'TENANT', resourceStatus: 'ENABLED' } }),
+      documentTemplates: await client.documentTemplate.count({ where: { tenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED' } }),
     };
     if (dryRun) {
       console.log(
-        `  reference set on SYSTEM: schemas=${expected.schemas} prompts=${expected.prompts} agents=${expected.agents} assignments=${expected.assignments}\n`,
+        `  reference set on SYSTEM: schemas=${expected.schemas} prompts=${expected.prompts} agents=${expected.agents} ` +
+          `assignments=${expected.assignments} documentTemplates=${expected.documentTemplates}\n`,
       );
     }
 
     let totalWritten = 0;
     for (const tenant of tenants) {
       if (dryRun) {
-        const [schemas, prompts, agents, assignments] = await Promise.all([
+        const [schemas, prompts, agents, assignments, documentTemplates] = await Promise.all([
           client.consultationContextSchema.count({ where: { tenantId: tenant.id, sourceTemplateSlug: { not: null }, resourceStatus: 'ENABLED' } }),
           client.promptTemplate.count({ where: { tenantId: tenant.id, sourceTemplateId: { not: null }, resourceStatus: 'ENABLED' } }),
           client.agent.count({ where: { tenantId: tenant.id, sourceTenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED' } }),
           client.agentAssignment.count({ where: { tenantId: tenant.id, scope: 'TENANT', resourceStatus: 'ENABLED' } }),
+          client.documentTemplate.count({ where: { tenantId: tenant.id, sourceTemplateSlug: { not: null }, resourceStatus: 'ENABLED' } }),
         ]);
-        const gap = schemas < expected.schemas || prompts < expected.prompts || agents < expected.agents || assignments < expected.assignments;
+        const gap =
+          schemas < expected.schemas ||
+          prompts < expected.prompts ||
+          agents < expected.agents ||
+          assignments < expected.assignments ||
+          documentTemplates < expected.documentTemplates;
         const shortfall = (actual: number, want: number): string => (actual < want ? `${actual}/${want}` : String(actual));
         console.log(
           `  ${gap ? 'GAP ' : 'ok  '} ${tenant.key} (${tenant.id}): schemas=${shortfall(schemas, expected.schemas)} ` +
             `prompts=${shortfall(prompts, expected.prompts)} agents=${shortfall(agents, expected.agents)} ` +
-            `assignments=${shortfall(assignments, expected.assignments)}`,
+            `assignments=${shortfall(assignments, expected.assignments)} ` +
+            `documentTemplates=${shortfall(documentTemplates, expected.documentTemplates)}`,
         );
         continue;
       }
 
       const summary = await provisionTenantReferenceSet(client, tenant.id);
-      const written = summary.contextSchemas + summary.promptTemplates + summary.agents + summary.agentAssignments;
+      const written =
+        summary.contextSchemas + summary.promptTemplates + summary.agents + summary.agentAssignments + summary.documentTemplates;
       totalWritten += written;
       console.log(
         `  ${tenant.key} (${tenant.id}): +${summary.contextSchemas} schema(s), +${summary.promptTemplates} prompt(s), ` +
-          `+${summary.agents} agent(s), +${summary.agentAssignments} assignment(s)`,
+          `+${summary.agents} agent(s), +${summary.agentAssignments} assignment(s), ` +
+          `+${summary.documentTemplates} document template(s)`,
       );
     }
 
