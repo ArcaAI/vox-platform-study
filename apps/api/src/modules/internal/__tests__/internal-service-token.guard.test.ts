@@ -57,6 +57,19 @@ describe('InternalServiceTokenGuard', () => {
       );
     });
 
+    it.each([['harness'], ['nlp'], ['guardrail']])(
+      'accepts the ONE shared INTERNAL_ACCESS_TOKEN for service=%s — the token those peers present first (legacy secret stays a fallback)',
+      async (service) => {
+        // `apps/harness` `peer_service_token()` presents the shared token whenever it is
+        // configured and only falls back to HARNESS_SERVICE_TOKEN when it is not; the
+        // harness-specific gateway guard already accepts either. Measured 2026-09-07:
+        // every durable `core.agent` node 401'd on `/internal/agents/resolve` because
+        // this guard admitted only the legacy per-service secret.
+        const guard = guardWith();
+        await expect(guard.canActivate(makeContext({ 'x-service-token': 'shared-token' }, { service }))).resolves.toBe(true);
+      },
+    );
+
     it('rejects a valid token belonging to a DIFFERENT service (no cross-service reads)', async () => {
       const guard = guardWith();
       await expect(guard.canActivate(makeContext({ 'x-service-token': 'nlp-token' }, { service: 'text' }))).rejects.toBeInstanceOf(

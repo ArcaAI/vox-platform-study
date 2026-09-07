@@ -51,6 +51,9 @@ export class InternalServiceTokenGuard implements CanActivate {
     stt: 'API_GATEWAY_KEY',
   };
 
+  /** The ONE shared internal token every peer may present (owner rule: one token for all internal calls). */
+  private static readonly SHARED_SECRET = 'INTERNAL_ACCESS_TOKEN';
+
   /** The one service that authenticates with the alternate header. */
   private static readonly ALT_HEADER_SERVICE = 'stt';
 
@@ -85,13 +88,25 @@ export class InternalServiceTokenGuard implements CanActivate {
       throw new UnauthorizedException('Internal endpoints require an X-Service-Token header');
     }
 
-    const expected = await this.secretsService?.getSecretOptional(secretName);
-    if (!expected) {
+    // The ONE shared internal token is accepted for every service, the per-service
+    // secret stays as the legacy fallback — the same dual acceptance
+    // `HarnessServiceTokenGuard` already applies. Peers present the shared token
+    // FIRST when it is configured (`apps/harness` `peer_service_token()`), so a
+    // guard that admitted only the legacy secret 401'd every durable `core.agent`
+    // node on `/internal/agents/resolve` (measured 2026-09-07).
+    const candidates: string[] = [];
+    for (const name of new Set([InternalServiceTokenGuard.SHARED_SECRET, secretName])) {
+      const value = await this.secretsService?.getSecretOptional(name);
+      if (value) {
+        candidates.push(value);
+      }
+    }
+    if (candidates.length === 0) {
       this.logger.error(`${secretName} is not configured — rejecting internal request for '${service}' (fail-closed)`);
       throw new UnauthorizedException('Internal service authentication is not configured');
     }
 
-    if (!safeEqual(provided, expected)) {
+    if (!candidates.some((expected) => safeEqual(provided, expected))) {
       throw new UnauthorizedException('Invalid X-Service-Token');
     }
 
