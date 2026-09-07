@@ -103,16 +103,19 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // TASK-890: `/ai-services/ollama` and `/ai-services/llama-cpp` join the rail —
   // both engines were already probed by discovery and by the readiness sweep and
   // had no screen — 57 -> 59, tier 10-19 22 -> 24.
-  it('covers the full 59-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(59);
+  // TASK-893: `/playground/workbench` RETIRED (redirect stub -> `/workflow-studio`; the Studio's
+  // inspector owns the sandbox now, OD-3) — 59 -> 58, tier 50-59 6 -> 5.
+  it('covers the full 58-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(58);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(24);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu are accounted for, not lost.
     // TASK-862: 62 -> 60; TASK-863: 60 -> 61 (`/agents` returns to the rail as a real screen);
     // TASK-861: 61 -> 59 (two retired routes). TASK-890: 59 -> 61 (two engines).
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
+    // TASK-893: 61 -> 60 (`/playground/workbench` retired).
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(60);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -221,7 +224,9 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(byTier('50-59').every((entry) => entry.implemented)).toBe(true);
   });
 
-  it('routes every playground entry under /playground; the five demo planes keep an empty ability gate (role-gated instead)', () => {
+  // TASK-893: with the Workbench retired, the tier is five own-account demo planes and NOTHING
+  // else — so the `required: []` convention holds for every entry again, with no carve-out.
+  it('routes every playground entry under /playground; all five demo planes keep an empty ability gate (role-gated instead)', () => {
     const playground = NAV_ENTRIES.filter((entry) => entry.tier === '50-59');
     expect(playground.map((entry) => entry.route)).toEqual([
       '/playground/consultation',
@@ -229,40 +234,14 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
       '/playground/voice-profiles',
       '/playground/dna-writing-style',
       '/playground/llm',
-      '/playground/workbench',
     ]);
-    const demoPlanes = playground.filter((entry) => entry.route !== '/playground/workbench');
-    expect(demoPlanes.every((entry) => entry.required.length === 0)).toBe(true);
+    expect(playground.every((entry) => entry.required.length === 0)).toBe(true);
   });
 
-  // the Workbench deliberately breaks the tier's
-  // `required: []` convention because it reads/executes tenant
-  // WorkflowDefinition/WorkflowRun rows (resource abilities), not an
-  // own-account demo action. Reconciled against the real, now-landed
-  // decorators: WorkflowDefinitionController's class-level
-  // @CanManage('WorkflowDefinition') and WorkflowSandboxRunController's
-  // @CanCreate/@CanRead/@CanUpdate('WorkflowRun') (all subsumed by
-  // manage:WorkflowRun).
-  it('gates the Workbench on WorkflowDefinition/WorkflowRun abilities, unlike its playground siblings', () => {
-    const workbench = NAV_ENTRIES.find((entry) => entry.route === '/playground/workbench');
-    expect(workbench?.tier).toBe('50-59');
-    expect(workbench?.required).toEqual([
-      ['manage', 'WorkflowDefinition'],
-      ['manage', 'WorkflowRun'],
-    ]);
-    expect(workbench?.implemented).toBe(true);
-    // Still requires the admin-tier role check (isAdminTier) like every
-    // other tier-50-59 entry — an ability grant alone is not enough.
-    const workflowAbilityRules: PermissionRule[] = [{ action: 'manage', subject: 'WorkflowDefinition' }];
-    expect(visibleNavEntries(workflowAbilityRules, ['DOCTOR']).map((entry) => entry.route)).not.toContain('/playground/workbench');
-    // An admin role WITHOUT the ability also does not see it (ability gate
-    // still applies on top of the role check) — TENANT_ADMIN_RULES above is
-    // deliberately narrower than the real seed and omits both abilities.
-    expect(visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN']).map((entry) => entry.route)).not.toContain('/playground/workbench');
-    // Either ability alone is sufficient (canAny/OR) — mirrors the seeded
-    // tenant-admin grant, which holds both together.
-    expect(visibleNavEntries(workflowAbilityRules, ['TENANT_ADMIN']).map((entry) => entry.route)).toContain('/playground/workbench');
-  });
+  // TASK-893 OD-3: the Workbench-gating case that stood here is GONE with the route. It existed
+  // to pin the one tier-50-59 entry that carried resource abilities instead of `required: []`;
+  // running a definition is now the Studio's Run tab, behind `/workflow-studio`'s own
+  // `manage:WorkflowDefinition` gate, so the tier has no exception left to pin.
 
   /**
    * Console IA cleanup: `/prompt-studio` folded into `/agents`, `/ai-services`
@@ -620,14 +599,6 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/playground/voice-profiles', '50-59', []],
   ['/playground/dna-writing-style', '50-59', []],
   ['/playground/llm', '50-59', []],
-  [
-    '/playground/workbench',
-    '50-59',
-    [
-      ['manage', 'WorkflowDefinition'],
-      ['manage', 'WorkflowRun'],
-    ],
-  ],
 ];
 
 /** The 9 domains of the ticket's Domain Model, verbatim. */
@@ -709,7 +680,6 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
       '/playground/voice-profiles',
       '/playground/dna-writing-style',
       '/playground/llm',
-      '/playground/workbench',
     ],
   ],
 ];

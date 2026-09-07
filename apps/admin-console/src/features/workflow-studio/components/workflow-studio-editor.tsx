@@ -1,41 +1,69 @@
 'use client';
 
 /**
- * `WorkflowStudioEditor` — the inner, store-bound editor body. Mounted
- * ONLY once the definition + registry queries have resolved (the outer screen gates on
- * loading/error), so `GraphStoreProvider` hydrates from real data at creation, not empty state.
+ * `WorkflowStudioEditor` — the one Workflow Studio (TASK-893 OD-1/OD-3). Mounted ONLY once the
+ * definition + registry queries have resolved (the outer screen gates on loading/error), so
+ * `GraphStoreProvider` hydrates from real data at creation, not empty state.
  *
- * Layout: palette rail (left) — canvas/list (center) — inspector + validation rail (right).
- * `StudioToolbar` + OCC/tenant banners are the `ScreenTemplate` `header`/`statusBanner`/
- * `toolbar` slots; `StatusFooter` is `footer`.
+ * Layout: palette rail (left, collapsible) — canvas (centre) — tabbed inspector (right,
+ * Config · Problems · Run). There is no list view and no definitions grid: the workflow SWITCHER
+ * in the header replaces both, and `/workflow-studio/[definitionId]` stays the canonical deep link.
  *
- * REFLOW (WCAG 1.4.10, fixed 2026-08-19): the frame runs `contentMode="scroll"` in BOTH view
- * modes, and the three-panel row only exists at `EDITOR_WIDE` — at least 64rem wide AND 32rem
- * tall. Below either threshold the panels stack into one column with intrinsic heights and the
- * ScreenTemplate's own content region scrolls, which is what makes the editor usable at 200 %
- * zoom (640×400 CSS px), where the previous fixed-height flex row squeezed palette and canvas
- * to ~59 px. The wide branch adds `h-full` + per-panel `overflow-y-auto`, so exactly one scroll
+ * SAVE MODEL (OD-7). No autosave. Every edit — including a node MOVE — marks the store dirty and
+ * waits for the admin to press Save, which performs the same If-Match PATCH autosave used to
+ * (428 on a missing precondition, 412 -> `OccConflictAlert`). Discard reverts to the last saved
+ * graph. `useUnsavedChangesGuard` is therefore load-bearing, not a backstop.
+ *
+ * READ-ONLY IS A STATE, NOT A SILENCE (§3.8). A PUBLISHED/DEPRECATED version disabled every canvas
+ * gesture behind one `readOnly` flag while the only explanation was a line of muted text — which
+ * is exactly how "cannot move / delete / link / drop any node" was reported against 11 of the 12
+ * seeded definitions. It now renders a lock chip in the header, a prominent banner, an `inert`
+ * palette and a primary "Edit as new draft". `handleAddNode` carries the SAME `readOnly` gate the
+ * drop path has: before this, a palette CLICK mutated the store on a published row and the drop
+ * path refused, so the two paths disagreed about the same rule.
+ *
+ * REFLOW (WCAG 1.4.10, fixed 2026-08-19, preserved here): the three-panel row only exists at
+ * `EDITOR_WIDE` — at least 64rem wide AND 32rem tall. Below either threshold the panels stack
+ * into one column with intrinsic heights and THIS grid scrolls, which is what makes the editor
+ * usable at 200 % zoom (640×400 CSS px), where a fixed-height flex row squeezed palette and canvas
+ * to ~59 px. The frame runs `contentMode="fill"` now (the canvas owns its height instead of being
+ * a `h-[26rem]` box that scrolls off the viewport), and `contentMode="fill"` does NOT scroll its
+ * content region — so the narrow branch's scroll container is this grid's own `overflow-y-auto`,
+ * switched off at the wide breakpoint where each panel scrolls itself. Exactly one scroll
  * container is active per panel in either branch — never nested (rule 11 §1).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
-import { Button, Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@arcaai/ui';
-import { IconPencil, IconPlus, IconTopologyStar3 } from '@tabler/icons-react';
 import {
-  WorkflowCanvas,
-  layoutWorkflowGraph,
-  type WorkflowCanvasEdge,
-  type WorkflowCanvasNode,
-  type WorkflowCanvasPort,
-} from '@arcaai/ui/components/workflow-canvas';
+  Badge,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Empty,
+  EmptyDescription,
+  EmptyMedia,
+  EmptyTitle,
+} from '@arcaai/ui';
+import { IconChevronLeft, IconChevronRight, IconDots, IconLock, IconPencil, IconPlus, IconTopologyStar3, IconX } from '@tabler/icons-react';
+import { WorkflowCanvas, layoutWorkflowGraph, type WorkflowCanvasEdge, type WorkflowCanvasNode } from '@arcaai/ui/components/workflow-canvas';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
-import { useAutosave, useStudioShortcuts, useUnsavedChangesGuard } from '../hooks';
-import { useCreateWorkflowDefinition, useExportWorkflowDefinition } from '../api';
+import { GatewayError } from '@/shared/api';
+import { SandboxNodeTrace, SandboxRunPanel, useSandboxNodeStates } from '@/shared/sandbox';
+import { useStudioShortcuts, useUnsavedChangesGuard } from '../hooks';
+import { useSaveModel } from '../hooks/use-save-model';
+import {
+  useCloneWorkflowDefinition,
+  useCreateWorkflowDefinition,
+  useExportWorkflowDefinition,
+  useImportWorkflowDefinition,
+  useWorkflowTemplates,
+} from '../api';
 import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/client';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
 import { layoutClusteredGraph } from '../lib/ensure-canvas-layout';
@@ -43,55 +71,67 @@ import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/g
 import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
 import { readContextSchemaBinding } from '../lib/context-schema-ref';
 import { readPaletteDragType } from '../lib/palette-drag';
-import { actionKeyOf, effectiveNodePorts } from '../lib/core-ports';
+import { actionKeyOf } from '../lib/core-ports';
 import { nodeDisplayName } from '../lib/node-identity';
 import { humanizeKey } from '../lib/schema-form';
+import { branchHandlesFor, primaryIoFor, secondaryInputsFor } from '../lib/canvas-handles';
+import { computeStepOrder } from '../lib/step-order';
+import { resolvePrimarySockets } from '../lib/socket-resolution';
 import {
   GraphStoreProvider,
   useGraphStore,
   useGraphStoreApi,
   findingsByNodeId,
-  selectAutosaveState,
+  selectCanDiscard,
   selectCanRedo,
+  selectCanSave,
   selectCanUndo,
   selectDirty,
   selectEdges,
   selectNodes,
+  selectSaveState,
   selectSelectedNode,
   selectSelectedNodeId,
-  selectViewMode,
 } from '../store';
-import type { WorkflowStudioViewMode } from '../store/types';
 import type { WorkflowDefinition, WorkflowFinding, WorkflowNodeDescriptor, WorkflowValidationReport } from '../api/types';
-import { InspectorPanel } from './inspector';
+import { InspectorPanel, type InspectorTab } from './inspector';
 import { CORE_NODE_RENDERERS } from './canvas';
 import { PromptBindingsRail } from './prompt-bindings';
 import { PaletteRail } from './palette';
-import { GraphListEditor } from './list-editor';
 import { ValidationRail, publishBlockedReason, useFocusNode } from './validation';
-import { StudioToolbar } from './studio-toolbar';
+import { StudioToolbar, type StudioNodeCommands } from './studio-toolbar';
 import { PublishDialog } from './publish-dialog';
 import { DefinitionMetadataForm } from './definition-metadata-form';
+import { CloneDefinitionDialog, type CloneDefinitionSubmission } from './clone-definition-dialog';
+import { ImportDefinitionDialog, type ImportDefinitionSubmission } from './import-definition-dialog';
+import { WorkflowSwitcher, STATUS_VARIANT } from './workflow-switcher';
 
-const VIEW_MODES = ['canvas', 'list'] as const satisfies readonly WorkflowStudioViewMode[];
 /** The one container node type: its body is the set of nodes naming it as `parentId` (TASK-864). */
 const LOOP_NODE_TYPE = 'core.loop';
 const ACTION_NODE_TYPE = 'core.action';
 
-/** A descriptor's ports for THIS instance, in the canvas's per-handle shape (TASK-864 B1). */
-function canvasPortsFor(
-  descriptorByType: ReadonlyMap<string, WorkflowNodeDescriptor>,
-  type: string,
-  config: Record<string, unknown>,
-): WorkflowCanvasNode['ports'] {
-  const ports = effectiveNodePorts(descriptorByType, type, config);
-  if (!ports) return undefined;
-  const toPort = (port: { name: string; primitive: string }): WorkflowCanvasPort => ({
-    id: port.name,
-    kind: port.primitive === 'control' ? 'control' : 'data',
-    primitive: port.primitive,
-  });
-  return { inputs: ports.inputs.map(toPort), outputs: ports.outputs.map(toPort) };
+/**
+ * The three-panel layout is gated on `[@media(min-width:64rem)_and_(min-height:32rem)]`.
+ * A width breakpoint alone is not enough: 200 % zoom on a 1280×800 desktop yields 640×400 CSS
+ * px, but a wide-and-short window (e.g. 1440×420) squeezes the same three panels just as badly,
+ * so the height is part of the condition.
+ *
+ * Every combination is written out LITERALLY. Tailwind v4 scans source TEXT for candidates, so a
+ * class assembled from a constant (or interpolated from the two booleans) would never be
+ * generated — these strings exist verbatim in this file precisely so that they are.
+ */
+const GRID_COLUMNS = {
+  'palette+rail': '[@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[260px_minmax(0,1fr)_360px]',
+  palette: '[@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[260px_minmax(0,1fr)]',
+  rail: '[@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[3rem_minmax(0,1fr)_360px]',
+  none: '[@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[3rem_minmax(0,1fr)]',
+} as const;
+
+function gridColumnsFor(paletteOpen: boolean, railOpen: boolean): string {
+  if (paletteOpen && railOpen) return GRID_COLUMNS['palette+rail'];
+  if (paletteOpen) return GRID_COLUMNS.palette;
+  if (railOpen) return GRID_COLUMNS.rail;
+  return GRID_COLUMNS.none;
 }
 
 /** Run-context references the CEL editor offers: the trigger, every declared variable, every node. */
@@ -114,15 +154,6 @@ function downloadText(filename: string, text: string): void {
   URL.revokeObjectURL(url);
 }
 
-/**
- * The three-panel layout is gated on `[@media(min-width:64rem)_and_(min-height:32rem)]` below.
- * A width breakpoint alone is not enough: 200 % zoom on a 1280×800 desktop yields 640×400 CSS
- * px, but a wide-and-short window (e.g. 1440×420) squeezes the same three panels just as badly,
- * so the height is part of the condition. The variant is written out literally at each use —
- * Tailwind v4 scans source TEXT for candidates, so a class assembled from a constant would
- * never be generated.
- */
-
 export interface WorkflowStudioEditorProps {
   definition: WorkflowDefinition;
   etag: string | null;
@@ -135,10 +166,11 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const nodes = useGraphStore(selectNodes);
   const edges = useGraphStore(selectEdges);
   const dirty = useGraphStore(selectDirty);
-  const viewMode = useGraphStore(selectViewMode);
   const selectedNode = useGraphStore(selectSelectedNode);
   const selectedNodeId = useGraphStore(selectSelectedNodeId);
-  const autosaveState = useGraphStore(selectAutosaveState);
+  const saveState = useGraphStore(selectSaveState);
+  const storeCanSave = useGraphStore(selectCanSave);
+  const storeCanDiscard = useGraphStore(selectCanDiscard);
   const canUndo = useGraphStore(selectCanUndo);
   const canRedo = useGraphStore(selectCanRedo);
 
@@ -157,10 +189,37 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const [name, setName] = useState(definition.name);
   const [description, setDescription] = useState(definition.description ?? '');
   const [metadataDirty, setMetadataDirty] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(true);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('config');
+  /**
+   * The right rail collapses "entirely when no node is selected" so the canvas gains the width
+   * (§3.5). But Problems and Run are GRAPH-level, not node-level — collapsing on deselect alone
+   * would make them unreachable with nothing selected. So the rail is open when a node is
+   * selected OR the admin explicitly opened it for one of those two tabs; closing it clears both.
+   */
+  const [railPinned, setRailPinned] = useState(false);
+  const railOpen = selectedNodeId !== null || railPinned;
+  /** The sandbox run whose per-node states overlay the canvas. Owned here, driven by Lane C's panel. */
+  const [runId, setRunId] = useState<string | null>(null);
+  const nodeRunStates = useSandboxNodeStates(runId);
+
   const readOnly = definition.status === 'PUBLISHED' || definition.status === 'DEPRECATED';
   const createNewVersion = useCreateWorkflowDefinition();
   // TASK-885 — the portable-bundle export of the SERVER's stored version (see handleExportBundle).
   const exportBundle = useExportWorkflowDefinition();
+
+  // TASK-893 OD-1 — creating a workflow used to be the definitions grid's job. The grid is gone,
+  // so the create affordances (clone / template / import) live in this header instead. One dialog,
+  // two entry points: `cloneSource` null WITH the dialog open is "start from a platform template"
+  // (the dialog renders the library picker); cloning THIS workflow sets the source, so no picker.
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [cloneSource, setCloneSource] = useState<WorkflowDefinition | null>(null);
+  const [cloneError, setCloneError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const templatesQuery = useWorkflowTemplates(cloneOpen && cloneSource === null);
+  const cloneMutation = useCloneWorkflowDefinition();
+  const importMutation = useImportWorkflowDefinition();
 
   // Keyed once per registry fetch, not per hydrate — the inspector needs it live for whichever
   // node is currently selected, not just at hydration time.
@@ -200,6 +259,33 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     return { schemaId: binding.schemaId, versionNumber: binding.versionNumber, inline: binding.inline };
   }, [nodes]);
 
+  /**
+   * TASK-893 OD-4 — execution order, computed once per graph shape and used for THREE things: the
+   * canvas step badges, the order the "Connect to…" menu lists nodes in, and the upstream-node
+   * pickers the inspector binds secondary data inputs with. One derivation, so a node cannot be
+   * "③" on the canvas and second in the inspector.
+   */
+  const stepOrder = useMemo(
+    () =>
+      computeStepOrder(
+        nodes.map((node) => ({ id: node.id, type: node.type })),
+        edges.map((edge) => ({ source: edge.source, target: edge.target })),
+      ),
+    [nodes, edges],
+  );
+  const stepOf = useCallback(
+    (nodeId: string): number | null => {
+      const entry = stepOrder.get(nodeId);
+      return entry && 'step' in entry ? entry.step : null;
+    },
+    [stepOrder],
+  );
+  /** Every node in execution order, unordered ones (cycle / unreachable) last. */
+  const orderedNodes = useMemo(
+    () => [...nodes].sort((a, b) => (stepOf(a.id) ?? Number.MAX_SAFE_INTEGER) - (stepOf(b.id) ?? Number.MAX_SAFE_INTEGER)),
+    [nodes, stepOf],
+  );
+
   const hydratedRef = useRef<string | null>(null);
   useEffect(() => {
     if (hydratedRef.current === definition.id) return;
@@ -214,7 +300,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     setMetadataDirty(false);
   }, [definition.id, definition.graph, definition.name, definition.description, descriptorByType, storeApi]);
 
-  const autosave = useAutosave({
+  const save = useSaveModel({
     definitionId: definition.id,
     getEtag: () => currentEtag,
     onSaved: (saved, nextEtag) => {
@@ -222,77 +308,87 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       storeApi.getState().markSaved(saved.version);
       setMetadataDirty(false);
     },
-    onStateChange: (state) => storeApi.getState().setAutosaveState(state),
+    onStateChange: (state) => storeApi.getState().setSaveState(state),
     onMissingPrecondition: () => toast.error('Stale tab — the request went out without If-Match. Refresh the page.'),
   });
 
-  // Seeded graphs omit `position`, so hydrate piles every node at the origin. Spread them
-  // once per definition — a separate effect so React Strict Mode's cancelled first invoke
-  // cannot skip the layout the way a combined hydrate+layout effect would (hydratedRef
-  // already set, second invoke returns, first invoke's promise aborted).
+  /**
+   * Seeded graphs omit `position`, so hydrate piles every node at the origin. Spread them once
+   * per definition — a separate effect so React Strict Mode's cancelled first invoke cannot skip
+   * the layout the way a combined hydrate+layout effect would (hydratedRef already set, second
+   * invoke returns, first invoke's promise aborted).
+   *
+   * TASK-893 OD-7 — gated on "nothing has a position yet". With autosave gone, `moveNode` marks
+   * the graph DIRTY, so laying out a graph that already has stored positions would open every
+   * workflow with unsaved changes it never asked for. A read-only version is laid out through
+   * `hydrate` instead of `moveNode`: the spread is display bookkeeping there (it can never be
+   * saved), so it must not present itself as an edit.
+   */
   useEffect(() => {
     const { nodes: current, edges: currentEdges } = storeApi.getState();
+    const needsInitialLayout = current.length > 1 && current.every((node) => node.position.x === 0 && node.position.y === 0);
+    if (!needsInitialLayout) return;
     let cancelled = false;
     void layoutClusteredGraph(current, currentEdges).then((positions) => {
       if (cancelled || !positions) return;
-      for (const node of current) {
-        const position = positions[node.id];
-        if (position) storeApi.getState().moveNode(node.id, position);
+      if (readOnly) {
+        storeApi.getState().hydrate(
+          current.map((node) => ({ ...node, position: positions[node.id] ?? node.position })),
+          currentEdges,
+        );
+      } else {
+        for (const node of current) {
+          const position = positions[node.id];
+          if (position) storeApi.getState().moveNode(node.id, position);
+        }
       }
       setFitViewKey((key) => key + 1);
-      if (!readOnly) {
-        const { nodes: moved, edges: unchanged } = storeApi.getState();
-        autosave.schedule({ graph: toWorkflowGraph(moved, unchanged) });
-      }
     });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one spread per definition id; autosave.schedule is stable
   }, [definition.id, storeApi, readOnly]);
 
-  // Debounced graph-shape autosave. The hook's own debounce coalesces rapid re-schedules, so
-  // re-firing on every `nodes`/`edges` change while `dirty` is exactly the intended path, not
-  // redundant work.
-  useEffect(() => {
-    if (readOnly || !dirty) return;
-    autosave.schedule({ graph: toWorkflowGraph(nodes, edges) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `autosave.schedule()` is a stable useCallback; including it would not change behavior
-  }, [nodes, edges, dirty, readOnly]);
-
-  // Name/description autosave — same debounced `schedule()` the graph uses (merges into the
-  // same in-flight patch), driven by `DefinitionMetadataForm`'s controlled fields.
+  // Metadata edits join the SAME explicit save the graph uses — they are staged in local state
+  // and written by the next `Save`, never by a timer.
   function handleNameChange(next: string) {
     setName(next);
     setMetadataDirty(true);
-    if (!readOnly) autosave.schedule({ name: next });
   }
   function handleDescriptionChange(next: string) {
     setDescription(next);
     setMetadataDirty(true);
-    if (!readOnly) autosave.schedule({ description: next });
   }
 
-  // Unsaved-changes guard ( flow) — combines the store's graph-shape `dirty` with
-  // the local metadata-form `dirty` flag; a read-only (published) row is never dirty.
+  // Unsaved-changes guard — combines the store's graph-shape `dirty` with the local metadata-form
+  // flag; a read-only (published) row is never dirty. With no autosave behind it this is the only
+  // thing standing between an admin and a closed tab full of lost edits.
   useUnsavedChangesGuard(!readOnly && (dirty || metadataDirty));
 
-  // `?view=` URL sync (Task 16 remainder) — the URL is the shareable source of truth; the store
-  // stays the single graph-editing state per rule 08 §Store, kept in lockstep both ways so a
-  // shared link (`?view=list`) and the toolbar toggle agree.
-  const [urlView, setUrlView] = useQueryState('view', parseAsStringLiteral(VIEW_MODES).withDefault('canvas'));
-  useEffect(() => {
-    if (urlView !== viewMode) storeApi.getState().setViewMode(urlView);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-sync when the URL param itself changes (e.g. back/forward, shared link)
-  }, [urlView]);
-  function handleViewModeChange(mode: WorkflowStudioViewMode) {
-    storeApi.getState().setViewMode(mode);
-    void setUrlView(mode);
-  }
+  const canSave = !readOnly && (storeCanSave || (metadataDirty && saveState !== 'saving'));
+  const canDiscard = !readOnly && (storeCanDiscard || metadataDirty);
 
-  // "Create new version from this" ( 1: "published rows immutable — edits create
-  // versions") — a PUBLISHED/DEPRECATED row offers no edit affordance; this is the branch action
-  // instead. Clones the frozen graph into a fresh DRAFT in the same (tenantId, slug) lineage.
+  const handleSave = useCallback(() => {
+    const { nodes: current, edges: currentEdges } = storeApi.getState();
+    const patch: { graph?: unknown; name?: string; description?: string } = { graph: toWorkflowGraph(current, currentEdges) };
+    if (metadataDirty) {
+      patch.name = name;
+      patch.description = description;
+    }
+    void save.save(patch);
+  }, [save, storeApi, metadataDirty, name, description]);
+
+  const handleDiscard = useCallback(() => {
+    storeApi.getState().discard();
+    setName(definition.name);
+    setDescription(definition.description ?? '');
+    setMetadataDirty(false);
+    setFitViewKey((key) => key + 1);
+    toast.success('Unsaved changes discarded.');
+  }, [storeApi, definition.name, definition.description]);
+
+  // "Edit as new draft" (published rows are immutable — edits create versions). Clones the frozen
+  // graph into a fresh DRAFT in the same (tenantId, slug) lineage.
   async function handleCreateNewVersion() {
     try {
       const created = await createNewVersion.mutateAsync({
@@ -310,12 +406,50 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     }
   }
 
+  function openClone(source: WorkflowDefinition | null) {
+    setCloneSource(source);
+    setCloneError(null);
+    setCloneOpen(true);
+  }
+
+  async function handleClone({ sourceId, targetSlug, name: cloneName }: CloneDefinitionSubmission) {
+    setCloneError(null);
+    try {
+      const created = await cloneMutation.mutateAsync({ sourceId, body: { targetSlug, name: cloneName } });
+      setCloneOpen(false);
+      toast.success(`Cloned into “${created.name}”.`);
+      router.push(`/workflow-studio/${encodeURIComponent(created.id)}`);
+    } catch (cause) {
+      // The gateway's own message is the useful one here — it names the colliding slug, the
+      // exceeded quota, or the nodes whose bindings block a template clone.
+      const message = cause instanceof GatewayError ? cause.message : 'Failed to clone the workflow.';
+      setCloneError(message);
+      toast.error(message);
+    }
+  }
+
+  async function handleImportBundle({ targetSlug, name: importName, bundle }: ImportDefinitionSubmission) {
+    setImportError(null);
+    try {
+      const created = await importMutation.mutateAsync({ targetSlug, name: importName, bundle });
+      setImportOpen(false);
+      toast.success(`Imported “${created.name}” as a draft — validate it before publishing.`);
+      router.push(`/workflow-studio/${encodeURIComponent(created.id)}`);
+    } catch (cause) {
+      // Surfaced VERBATIM: the gateway's 409 names the references this tenant is missing, and a
+      // paraphrase would drop exactly the part that makes it actionable.
+      const message = cause instanceof GatewayError ? cause.message : 'Failed to import the workflow.';
+      setImportError(message);
+      toast.error(message);
+    }
+  }
+
   // Stable identity is load-bearing for the canvas: `WorkflowCanvas` memoizes its
   // `onSelectionChange` on this callback, and React Flow re-emits the current selection every
   // time that handler's identity changes — an inline arrow here looped selection into
   // "Maximum update depth exceeded".
   const selectNodeById = useCallback((nodeId: string | null) => storeApi.getState().selectNode(nodeId), [storeApi]);
-  const focusNode = useFocusNode({ viewMode, onSelect: selectNodeById });
+  const focusNode = useFocusNode({ onSelect: selectNodeById });
 
   const handleUndo = useCallback(() => storeApi.getState().undo(), [storeApi]);
   const handleRedo = useCallback(() => storeApi.getState().redo(), [storeApi]);
@@ -328,41 +462,90 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     [storeApi],
   );
   const duplicateSelected = useCallback(() => handleDuplicate(storeApi.getState().selectedNodeId), [handleDuplicate, storeApi]);
-  // Drag-time guard: the SAME store predicate (`canConnect`, port-lattice check included via
-  // `descriptorByType`) the committed `connect` below runs, so drag-time and commit-time can
-  // never disagree (`@arcaai/ui`'s `workflow-canvas/types.ts:64-69`). React Flow refuses an
-  // invalid drop target visually, but a color change alone doesn't say WHY — so this also
-  // toasts the store's reason (e.g. "`document` cannot feed an input expecting `transcript`."),
-  // deduped per attempted (source, target) pair so hovering the same invalid handle doesn't
-  // spam the user while the pointer is still moving (11-ux-ui-principles.md §5: feedback within
-  // 100ms, never silent, but not noisy either).
+
+  /**
+   * TASK-893 OD-4 — ONE user-drawn link, sockets resolved underneath. `resolvePrimarySockets`
+   * picks the primary data pair (`out` -> `in`), falling back to the control pair
+   * (`next` -> `after`); a branch handle the admin actually grabbed wins over both. `null` means
+   * these two nodes cannot be linked at all — which is a refusal with a reason, never a silent
+   * no-op (rule 11 §5).
+   */
+  const resolveConnection = useCallback(
+    (connection: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) => {
+      const current = storeApi.getState().nodes;
+      const source = current.find((node) => node.id === connection.source);
+      const target = current.find((node) => node.id === connection.target);
+      if (!source || !target) return null;
+      return resolvePrimarySockets(
+        descriptorByType,
+        { type: source.type, config: source.config },
+        { type: target.type, config: target.config },
+        connection.sourceHandle,
+      );
+    },
+    [descriptorByType, storeApi],
+  );
+
+  // Drag-time guard: the SAME resolution + the SAME store predicate (`canConnect`, port-lattice
+  // check included via `descriptorByType`) the committed `connect` below runs, so drag-time and
+  // commit-time can never disagree. React Flow refuses an invalid drop target visually, but a
+  // colour change alone doesn't say WHY — so this also toasts the store's reason, deduped per
+  // attempted (source, target) pair so hovering the same invalid handle doesn't spam the user
+  // while the pointer is still moving (rule 11 §5: feedback within 100ms, never silent, but not
+  // noisy either).
   const lastRefusedConnectionRef = useRef<string | null>(null);
+  const refuseConnection = useCallback((key: string, reason: string) => {
+    if (lastRefusedConnectionRef.current === key) return;
+    lastRefusedConnectionRef.current = key;
+    toast.error(reason);
+  }, []);
   const isValidConnection = useCallback(
     (connection: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) => {
-      const request = {
-        source: connection.source,
-        sourceHandle: connection.sourceHandle ?? 'out',
-        target: connection.target,
-        targetHandle: connection.targetHandle ?? 'in',
-      };
-      const result = storeApi.getState().canConnect(request, descriptorByType);
+      const key = `${connection.source}:${connection.sourceHandle ?? ''}->${connection.target}:${connection.targetHandle ?? ''}`;
+      const sockets = resolveConnection(connection);
+      if (!sockets) {
+        refuseConnection(key, 'These two nodes have no compatible ports to connect.');
+        return false;
+      }
+      const result = storeApi
+        .getState()
+        .canConnect({ source: connection.source, sourceHandle: sockets.sourceHandle, target: connection.target, targetHandle: sockets.targetHandle }, descriptorByType);
       if (result.ok) {
         lastRefusedConnectionRef.current = null;
         return true;
       }
-      const key = `${request.source}:${request.sourceHandle}->${request.target}:${request.targetHandle}`;
-      if (lastRefusedConnectionRef.current !== key) {
-        lastRefusedConnectionRef.current = key;
-        toast.error(result.reason);
-      }
+      refuseConnection(key, result.reason);
       return false;
     },
-    [storeApi, descriptorByType],
+    [resolveConnection, refuseConnection, storeApi, descriptorByType],
   );
 
-  // Palette CLICK — the pointer-free path (WCAG 2.5.7), and the one that nests.
+  /** The one commit path for a new edge — shared by the canvas drag and the keyboard "Connect to…". */
+  const commitConnection = useCallback(
+    (request: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) => {
+      const sockets = resolveConnection(request);
+      if (!sockets) {
+        toast.error('These two nodes have no compatible ports to connect.');
+        return;
+      }
+      const result = storeApi
+        .getState()
+        .connect({ source: request.source, sourceHandle: sockets.sourceHandle, target: request.target, targetHandle: sockets.targetHandle }, descriptorByType);
+      if (!result.ok) toast.error(result.reason);
+    },
+    [resolveConnection, storeApi, descriptorByType],
+  );
+
+  /**
+   * Palette CLICK — the pointer-free path (WCAG 2.5.7), and the one that nests.
+   *
+   * TASK-893 §3.8: gated on `readOnly` exactly as `handlePaneDrop` is. Before this, clicking a
+   * palette card on a PUBLISHED definition mutated the store and marked it dirty for an edit that
+   * could never be saved, while the drop path refused — two paths, one rule, opposite answers.
+   */
   const handleAddNode = useCallback(
     (descriptor: WorkflowNodeDescriptor) => {
+      if (readOnly) return;
       // TASK-864 B1 — with a loop selected, the new node joins its body (pointer-free
       // nesting: no drag-into-group is ever required).
       const parent = selectedNode?.type === LOOP_NODE_TYPE ? selectedNode : undefined;
@@ -372,7 +555,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         .getState()
         .addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position, parent ? { parentId: parent.id } : undefined);
     },
-    [nodes, selectedNode, storeApi],
+    [readOnly, nodes, selectedNode, storeApi],
   );
 
   /**
@@ -383,11 +566,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
    * itself would refuse.
    *
    * Deliberately TOP-LEVEL: a drop names a point, not a container. Nesting into a `core.loop`
-   * body stays the click path's job (select the loop, click the type), where the intent is
-   * explicit and no group hit-testing has to be guessed at.
-   *
-   * `addNode` marks the graph dirty, so the existing autosave effect persists it — unlike a MOVE,
-   * which has to schedule its own patch (see `onNodesChange` below).
+   * body stays the click path's job (select the loop, click the type) and the "Move into…"
+   * command's, where the intent is explicit and no group hit-testing has to be guessed at.
    */
   const handlePaneDrop = useCallback(
     (event: { dataTransfer: DataTransfer | null }, position: { x: number; y: number }) => {
@@ -401,11 +581,89 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     [readOnly, descriptorByType, storeApi],
   );
 
+  const handleDeleteRequest = useCallback(
+    (nodeId: string) => {
+      const result = storeApi.getState().deleteNode(nodeId);
+      if (!result.ok) toast.error(result.reason);
+    },
+    [storeApi],
+  );
+
+  /** TASK-893 §6.7 — deleting a connection. Until now this was possible ONLY in the List view. */
+  const handleEdgeDelete = useCallback(
+    (edgeId: string) => {
+      storeApi.getState().disconnectEdge(edgeId);
+    },
+    [storeApi],
+  );
+
+  /** TASK-893 OD-5 — a node dragged into, out of, or between loop groups. */
+  const handleNodeParentChange = useCallback(
+    (nodeId: string, parentId: string | null, position: { x: number; y: number }) => {
+      storeApi.getState().setNodeParent(nodeId, parentId, position);
+    },
+    [storeApi],
+  );
+
   useStudioShortcuts({ enabled: !readOnly, onUndo: handleUndo, onRedo: handleRedo, onDuplicate: duplicateSelected });
 
+  /**
+   * TASK-893 §6.8 — every node mutation, as a keyboard-reachable command (WCAG 2.5.7). The List
+   * view carried this contract before it was deleted; connect and move-into-loop have NO other
+   * non-drag path, so this menu is not a convenience.
+   */
+  const nodeCommands: StudioNodeCommands | null = useMemo(() => {
+    if (!selectedNode) return null;
+    const label = (node: { id: string; type: string; config?: Record<string, unknown> }) => {
+      const step = stepOf(node.id);
+      return step === null ? nodeDisplayName(node) : `${step}. ${nodeDisplayName(node)}`;
+    };
+    return {
+      nodeLabel: nodeDisplayName(selectedNode),
+      connectTargets: orderedNodes.filter((node) => node.id !== selectedNode.id).map((node) => ({ id: node.id, label: label(node) })),
+      onConnectTo: (targetId: string) => commitConnection({ source: selectedNode.id, target: targetId }),
+      loopTargets: nodes.filter((node) => node.type === LOOP_NODE_TYPE && node.id !== selectedNode.id).map((node) => ({ id: node.id, label: nodeDisplayName(node) })),
+      currentParentId: selectedNode.parentId ?? null,
+      onMoveToLoop: (loopId: string | null) => {
+        // A group child's `position` is relative to its parent, a top-level node's is absolute —
+        // so re-parenting has to restate the position in the NEW frame, which is exactly what
+        // `setNodeParent` stores verbatim.
+        const parent = selectedNode.parentId ? nodes.find((node) => node.id === selectedNode.parentId) : undefined;
+        if (loopId === null) {
+          const absolute = parent
+            ? { x: parent.position.x + selectedNode.position.x, y: parent.position.y + selectedNode.position.y }
+            : selectedNode.position;
+          handleNodeParentChange(selectedNode.id, null, absolute);
+          return;
+        }
+        const siblings = nodes.filter((node) => node.parentId === loopId).length;
+        handleNodeParentChange(selectedNode.id, loopId, { x: 24 + siblings * 260, y: 56 });
+      },
+      onWrapInLoop: () => {
+        const result = storeApi.getState().wrapInLoop([selectedNode.id]);
+        if (!result.ok) {
+          toast.error(result.reason);
+          return;
+        }
+        toast.success('Wrapped in a loop.');
+        if (result.loopId) storeApi.getState().selectNode(result.loopId);
+      },
+      onUnwrapLoop:
+        selectedNode.type === LOOP_NODE_TYPE
+          ? () => {
+              const result = storeApi.getState().unwrapLoop(selectedNode.id);
+              if (!result.ok) toast.error(result.reason);
+              else toast.success('Loop unwrapped.');
+            }
+          : null,
+      onDuplicate: () => handleDuplicate(selectedNode.id),
+      onDelete: () => handleDeleteRequest(selectedNode.id),
+    };
+  }, [selectedNode, orderedNodes, nodes, stepOf, commitConnection, handleNodeParentChange, handleDuplicate, handleDeleteRequest, storeApi]);
+
   // TASK-864 B1 — auto layout (built-in layered engine; an ELK engine can be injected later),
-  // JSON export and undoable JSON import. Layout moves are persisted through the same autosave
-  // path as a drag would be.
+  // JSON export and undoable JSON import. Layout moves mark the graph dirty like any other edit;
+  // the admin presses Save (OD-7).
   async function handleAutoLayout() {
     const { nodes: current, edges: currentEdges } = storeApi.getState();
     const result = await layoutWorkflowGraph(
@@ -417,11 +675,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       if (position) storeApi.getState().moveNode(node.id, position);
     }
     setFitViewKey((key) => key + 1);
-    if (!readOnly) {
-      const { nodes: moved, edges: unchanged } = storeApi.getState();
-      autosave.schedule({ graph: toWorkflowGraph(moved, unchanged) });
-    }
-    toast.success('Graph arranged.');
+    toast.success('Graph arranged — Save to keep it.');
   }
   function handleExport() {
     const { nodes: current, edges: currentEdges } = storeApi.getState();
@@ -446,7 +700,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       toast.error(cause instanceof Error ? cause.message : 'Failed to export the workflow bundle.');
     }
   }
-  function handleImport(text: string) {
+  function handleImportGraph(text: string) {
     const parsed = parseGraphJson(text);
     if (!parsed.ok) {
       toast.error(`Import refused: ${parsed.reason}`);
@@ -467,10 +721,6 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     });
     toast.success(`Imported ${imported.length} node${imported.length === 1 ? '' : 's'} — validate before publishing.`);
   }
-  const handleDeleteRequest = useCallback((nodeId: string) => {
-    const result = storeApi.getState().deleteNode(nodeId);
-    if (!result.ok) toast.error(result.reason);
-  }, [storeApi]);
 
   const problemsByNodeId = useMemo(() => findingsByNodeId(report?.findings ?? []), [report]);
 
@@ -479,8 +729,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     try {
       const updated = await validateWorkflowDefinition(definition.id);
       setReport(updated.validationReport);
+      setInspectorTab('problems');
+      setRailPinned(true);
       toast[updated.validationReport?.ok ? 'success' : 'error'](
-        updated.validationReport?.ok ? 'Validation passed.' : 'Validation found problems — see the rail.',
+        updated.validationReport?.ok ? 'Validation passed.' : 'Validation found problems — see the Problems tab.',
       );
     } catch {
       toast.error('Validate failed.');
@@ -503,32 +755,54 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     }
   }
 
+  function openRail(tab: InspectorTab) {
+    setInspectorTab(tab);
+    setRailPinned(true);
+  }
+  function closeRail() {
+    setRailPinned(false);
+    selectNodeById(null);
+  }
+
   const findings = report?.findings ?? [];
   const errorCount = findings.filter((finding) => finding.severity === 'ERROR').length;
   const warningCount = findings.filter((finding) => finding.severity === 'WARNING').length;
 
-  const canvasNodes: WorkflowCanvasNode[] = nodes.map((node) => ({
-    id: node.id,
-    type: node.type,
-    // TASK-890 black-box J4-F3 — the header names the NODE (label, else type + short id), so two
-    // `core.agent` boxes are tellable apart on the canvas and in their Remove buttons.
-    label: nodeDisplayName(node),
-    position: node.position,
-    safetyClasses: node.safetyClasses,
-    config: node.config,
-    ports: canvasPortsFor(descriptorByType, node.type, node.config),
-    kind: node.type === LOOP_NODE_TYPE ? 'group' : 'node',
-    parentId: node.parentId,
-    deprecated: descriptorByType.get(node.type)?.deprecated === true,
-    problem: (() => {
-      const findings = problemsByNodeId.get(node.id);
-      if (!findings || findings.length === 0) return undefined;
-      return {
-        severity: findings.some((f: WorkflowFinding) => f.severity === 'ERROR') ? ('ERROR' as const) : ('WARNING' as const),
-        messages: findings.map((f: WorkflowFinding) => f.message),
-      };
-    })(),
-  }));
+  const canvasNodes: WorkflowCanvasNode[] = nodes.map((node) => {
+    const entry = stepOrder.get(node.id);
+    const run = nodeRunStates.get(node.id);
+    const io = primaryIoFor(descriptorByType, node.type);
+    const nodeFindings = problemsByNodeId.get(node.id);
+    return {
+      id: node.id,
+      type: node.type,
+      // TASK-890 black-box J4-F3 — the header names the NODE (label, else type + short id), so two
+      // `core.agent` boxes are tellable apart on the canvas and in their Remove buttons.
+      label: nodeDisplayName(node),
+      position: node.position,
+      safetyClasses: node.safetyClasses,
+      config: node.config,
+      kind: node.type === LOOP_NODE_TYPE ? 'group' : 'node',
+      parentId: node.parentId,
+      deprecated: descriptorByType.get(node.type)?.deprecated === true,
+      // TASK-893 OD-4 — one input dot, one output dot, plus the labelled branch outputs that are
+      // the ONE place several handles earn their space. The old 14-handle port grid is gone.
+      hasInput: io.hasInput,
+      hasOutput: io.hasOutput,
+      branches: branchHandlesFor(descriptorByType, node.type, node.config),
+      stepNumber: entry && 'step' in entry ? entry.step : null,
+      stepMarker: entry && 'marker' in entry ? entry.marker : undefined,
+      runState: run?.state,
+      runDurationMs: run?.durationMs,
+      problem:
+        nodeFindings && nodeFindings.length > 0
+          ? {
+              severity: nodeFindings.some((finding: WorkflowFinding) => finding.severity === 'ERROR') ? ('ERROR' as const) : ('WARNING' as const),
+              messages: nodeFindings.map((finding: WorkflowFinding) => finding.message),
+            }
+          : undefined,
+    };
+  });
   const canvasEdges: WorkflowCanvasEdge[] = edges.map((edge) => ({
     id: edge.id,
     source: edge.source,
@@ -537,48 +811,106 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     targetHandle: edge.targetHandle,
   }));
 
+  /** Upstream nodes the inspector's secondary-input pickers offer, in execution order (§4.1). */
+  const upstreamNodes = useMemo(() => {
+    if (!selectedNode) return [];
+    const selectedStep = stepOf(selectedNode.id);
+    return orderedNodes
+      .filter((node) => node.id !== selectedNode.id)
+      .map((node) => ({ id: node.id, label: nodeDisplayName(node), step: stepOf(node.id) }))
+      .filter((candidate) => selectedStep === null || candidate.step === null || candidate.step < selectedStep);
+  }, [orderedNodes, selectedNode, stepOf]);
+  const secondaryInputs = useMemo(
+    () => (selectedNode ? secondaryInputsFor(descriptorByType, selectedNode.type, selectedNode.config) : undefined),
+    [descriptorByType, selectedNode],
+  );
+
   return (
     <ScreenTemplate
-      contentMode="scroll"
+      contentMode="fill"
       header={
         <PageHeader
           title={name}
           meta={
-            <span className="font-mono text-xs">
-              {definition.slug} · v{definition.versionNumber} · {definition.status}
-            </span>
+            <>
+              <span className="font-mono text-xs">
+                {definition.slug} · v{definition.versionNumber}
+              </span>
+              <Badge variant={STATUS_VARIANT[definition.status]}>{definition.status}</Badge>
+              {readOnly ? (
+                <Badge variant="outline" className="gap-1">
+                  <IconLock aria-hidden="true" className="size-3" />
+                  Locked
+                </Badge>
+              ) : null}
+              {definition.needsReview ? (
+                <Badge variant="destructive" title="Published against an older node registry — re-publish to clear.">
+                  Needs review
+                </Badge>
+              ) : null}
+            </>
           }
           actions={
-            <Button type="button" variant="outline" size="sm" onClick={() => setMetadataOpen(true)}>
-              <IconPencil aria-hidden />
-              Edit details
-            </Button>
+            <>
+              <WorkflowSwitcher current={definition} />
+              {readOnly ? (
+                <Button type="button" size="sm" onClick={() => void handleCreateNewVersion()} disabled={createNewVersion.isPending}>
+                  <IconPlus aria-hidden="true" />
+                  {createNewVersion.isPending ? 'Creating…' : 'Edit as new draft'}
+                </Button>
+              ) : null}
+              <Button type="button" variant="outline" size="sm" onClick={() => router.push('/workflow-studio/new')}>
+                <IconPlus aria-hidden="true" />
+                New
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setMetadataOpen(true)}>
+                <IconPencil aria-hidden="true" />
+                Edit details
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="icon-sm" aria-label="More workflow actions">
+                    <IconDots aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onSelect={() => openClone(definition)}>Clone this workflow</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => openClone(null)}>Start from a template</DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setImportError(null);
+                      setImportOpen(true);
+                    }}
+                  >
+                    Import a bundle…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           }
         />
       }
       statusBanner={
         <>
-          {autosave.paused ? (
-            <OccConflictAlert error={autosave.lastError} onReload={() => router.refresh()} onOverwrite={() => autosave.resume()} />
-          ) : null}
+          {save.paused ? <OccConflictAlert error={save.lastError} onReload={() => router.refresh()} onOverwrite={() => save.resume()} /> : null}
           {readOnly ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p role="status" className="text-muted-foreground text-sm">
-                This version is {definition.status.toLowerCase()} and read-only. Create a new version to keep editing.
-              </p>
-              <Button type="button" variant="outline" size="sm" onClick={() => void handleCreateNewVersion()} disabled={createNewVersion.isPending}>
-                <IconPlus aria-hidden />
-                {createNewVersion.isPending ? 'Creating…' : 'Create new version'}
-              </Button>
+            <div role="status" className="border-warning/40 bg-warning/10 text-warning-strong flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
+              <IconLock aria-hidden="true" className="size-4 shrink-0" />
+              <span>
+                This version is {definition.status.toLowerCase()}, so the canvas and palette are locked. Create a new draft to keep editing — the
+                graph, its bindings and its history come with it.
+              </span>
             </div>
           ) : null}
         </>
       }
       toolbar={
         <StudioToolbar
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
-          autosaveState={autosaveState}
+          saveState={saveState}
+          canSave={canSave}
+          canDiscard={canDiscard}
+          onSave={handleSave}
+          onDiscard={handleDiscard}
           onValidate={() => void handleValidate()}
           validating={validating}
           onPublish={() => setPublishOpen(true)}
@@ -589,27 +921,35 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           canRedo={canRedo}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          sandboxDefinitionId={definition.id}
+          problemCount={findings.length}
+          onOpenProblems={() => openRail('problems')}
+          onOpenRun={() => openRail('run')}
           onAutoLayout={() => void handleAutoLayout()}
           onExport={handleExport}
-          onImport={handleImport}
+          onImport={handleImportGraph}
           onExportBundle={() => void handleExportBundle()}
           exportingBundle={exportBundle.isPending}
+          nodeCommands={nodeCommands}
         />
       }
       footer={
         <StatusFooter
           start={
             <>
-              <span>{dirty ? 'Unsaved changes — autosaving…' : 'All changes saved.'}</span>
+              <span>{readOnly ? 'Read-only version.' : dirty || metadataDirty ? 'Unsaved changes — press Save.' : 'All changes saved.'}</span>
               <span>
                 {nodes.length} node{nodes.length === 1 ? '' : 's'} · {edges.length} connection{edges.length === 1 ? '' : 's'}
               </span>
-              <span className={errorCount > 0 ? 'text-destructive' : undefined}>
-                {report
-                  ? `${errorCount} error${errorCount === 1 ? '' : 's'}, ${warningCount} warning${warningCount === 1 ? '' : 's'}`
-                  : 'Not yet validated'}
-              </span>
+              {/* The report summary is the Problems tab's opener, so the count is not a dead end. */}
+              <button
+                type="button"
+                onClick={() => openRail('problems')}
+                className={`hover:text-foreground focus-visible:ring-ring rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none ${
+                  errorCount > 0 ? 'text-destructive' : ''
+                }`}
+              >
+                {report ? `${errorCount} error${errorCount === 1 ? '' : 's'}, ${warningCount} warning${warningCount === 1 ? '' : 's'}` : 'Not yet validated'}
+              </button>
             </>
           }
           end={
@@ -620,120 +960,150 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         />
       }
     >
-      <div className="grid min-h-0 grid-cols-1 gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:h-full [@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[240px_1fr_320px]">
-        <aside className="min-h-0 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Node palette panel">
-          <PaletteRail descriptors={registryNodes} onAddNode={handleAddNode} />
+      <div
+        className={`grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto [@media(min-width:64rem)_and_(min-height:32rem)]:grid-rows-[minmax(0,1fr)] [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-hidden ${gridColumnsFor(paletteOpen, railOpen)}`}
+      >
+        <aside className="flex min-h-0 flex-col gap-2 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Node palette panel">
+          <div className="flex items-center justify-between gap-1">
+            {paletteOpen ? <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Nodes</h2> : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-expanded={paletteOpen}
+              aria-label={paletteOpen ? 'Collapse the node palette' : 'Expand the node palette'}
+              title={paletteOpen ? 'Collapse the node palette' : 'Expand the node palette'}
+              onClick={() => setPaletteOpen((open) => !open)}
+            >
+              {paletteOpen ? <IconChevronLeft aria-hidden="true" /> : <IconChevronRight aria-hidden="true" />}
+            </Button>
+          </div>
+          {paletteOpen ? (
+            <>
+              {readOnly ? (
+                <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                  <IconLock aria-hidden="true" className="size-3.5 shrink-0" />
+                  Palette locked on a {definition.status.toLowerCase()} version.
+                </p>
+              ) : null}
+              {/* `inert` (React 19) takes the whole rail out of the tab order and the accessibility
+                  tree on a read-only version, so a locked palette cannot be reached and then do
+                  nothing. The REASON stays announced above it, outside the inert subtree —
+                  `handleAddNode`'s own `readOnly` gate is the second layer. */}
+              <div inert={readOnly || undefined} className={readOnly ? 'opacity-60' : undefined}>
+                <PaletteRail descriptors={registryNodes} onAddNode={handleAddNode} />
+              </div>
+            </>
+          ) : null}
         </aside>
-        <div className="h-[26rem] [@media(min-width:64rem)_and_(min-height:32rem)]:h-full">
-          {viewMode === 'canvas' ? (
-            <WorkflowCanvas
-              aria-label={`${name} graph, canvas view`}
-              nodes={canvasNodes}
-              edges={canvasEdges}
-              nodeTypes={CORE_NODE_RENDERERS}
-              readOnly={readOnly}
-              selectedNodeId={selectedNodeId}
-              onSelect={selectNodeById}
-              onPaneDrop={handlePaneDrop}
-              isValidConnection={isValidConnection}
-              fitViewKey={fitViewKey}
-              emptyState={
-                <Empty>
-                  <EmptyMedia variant="icon">
-                    <IconTopologyStar3 aria-hidden="true" />
-                  </EmptyMedia>
-                  <EmptyTitle>No nodes yet</EmptyTitle>
-                  <EmptyDescription>Add a node from the palette on the left, or switch to the list view for a pointer-free path.</EmptyDescription>
-                </Empty>
-              }
-              onDeleteRequest={handleDeleteRequest}
-              onConnect={(connection) => {
-                const result = storeApi.getState().connect(
-                  {
-                    source: connection.source,
-                    sourceHandle: connection.sourceHandle ?? 'out',
-                    target: connection.target,
-                    targetHandle: connection.targetHandle ?? 'in',
-                  },
-                  descriptorByType,
-                );
-                if (!result.ok) toast.error(result.reason);
-              }}
-              onNodesChange={(next) => {
-                // React Flow reports EVERY node on every change and re-emits the current positions
-                // whenever the controlled `nodes` prop is re-synced, so most reports move nothing.
-                // Only a report that actually changes a position may touch the store or schedule a
-                // save: treating the no-op reports as edits churned `nodes` on each emission, which
-                // re-rendered the canvas, which re-emitted — a real drag ended in "Maximum update
-                // depth exceeded" and the error boundary, losing the move (TASK-890 black-box J5).
-                const before = storeApi.getState().nodes;
-                const movedSomething = next.some((node) => {
-                  const current = before.find((candidate) => candidate.id === node.id);
-                  return current !== undefined && (current.position.x !== node.position.x || current.position.y !== node.position.y);
-                });
-                if (!movedSomething) return;
-                for (const node of next) storeApi.getState().moveNode(node.id, node.position);
-                // `moveNode` deliberately leaves `dirty` alone (layout is display bookkeeping,
-                // not graph shape — `create-graph-store.ts`), and the graph autosave effect
-                // early-returns while `!dirty`. So a drag has to schedule its own patch, exactly
-                // as `handleAutoLayout` does; without this the node moves on screen, the footer
-                // still reads "All changes saved", and a reload restores the old position.
-                if (!readOnly) {
-                  const { nodes: moved, edges: unchanged } = storeApi.getState();
-                  autosave.schedule({ graph: toWorkflowGraph(moved, unchanged) });
-                }
-              }}
-            />
-          ) : (
-            <GraphListEditor
-              nodes={nodes}
-              edges={edges}
-              selectedNodeId={selectedNodeId}
-              problemsByNodeId={problemsByNodeId}
-              readOnly={readOnly}
-              onSelect={selectNodeById}
-              onDeleteRequest={(nodeId) => {
-                const result = storeApi.getState().deleteNode(nodeId);
-                if (!result.ok) toast.error(result.reason);
-                return result;
-              }}
-              onMove={(nodeId, direction) => storeApi.getState().reorderNode(nodeId, direction)}
-              onDuplicate={handleDuplicate}
-              onConnect={(source, target) => {
-                const result = storeApi.getState().connect({ source, sourceHandle: 'out', target, targetHandle: 'in' }, descriptorByType);
-                if (!result.ok) toast.error(result.reason);
-                return result;
-              }}
-              onDisconnect={(edgeId) => storeApi.getState().disconnectEdge(edgeId)}
-            />
-          )}
-        </div>
-        <aside
-          className="flex min-h-0 flex-col gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto"
-          aria-label="Inspector and validation panel"
-        >
-          <InspectorPanel
-            node={selectedNode}
-            configSchema={selectedNodeConfigSchema}
-            problems={selectedNode ? (problemsByNodeId.get(selectedNode.id) ?? []) : []}
-            onConfigChange={(config) => selectedNode && storeApi.getState().updateNodeConfig(selectedNode.id, config)}
+
+        <div className="h-[26rem] min-h-0 [@media(min-width:64rem)_and_(min-height:32rem)]:h-full">
+          <WorkflowCanvas
+            aria-label={`${name} graph`}
+            nodes={canvasNodes}
+            edges={canvasEdges}
+            nodeTypes={CORE_NODE_RENDERERS}
             readOnly={readOnly}
-            references={celReferences}
-            actionOptions={selectedNode?.type === ACTION_NODE_TYPE ? actionOptions : undefined}
-            actionSchema={selectedActionSchema}
-            workflowGuardrailEnabled={triggerGuardrailEnabled}
-            triggerContextBinding={triggerContextBinding}
+            selectedNodeId={selectedNodeId}
+            onSelect={selectNodeById}
+            onPaneDrop={handlePaneDrop}
+            isValidConnection={isValidConnection}
+            fitViewKey={fitViewKey}
+            emptyState={
+              <Empty>
+                <EmptyMedia variant="icon">
+                  <IconTopologyStar3 aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyTitle>No nodes yet</EmptyTitle>
+                <EmptyDescription>
+                  Add a node from the palette on the left — click a card, or drag it onto the canvas. Every action here also has a keyboard path under
+                  “Node actions”.
+                </EmptyDescription>
+              </Empty>
+            }
+            onDeleteRequest={handleDeleteRequest}
+            onEdgeDelete={handleEdgeDelete}
+            onNodeParentChange={handleNodeParentChange}
+            onConnect={(connection) => commitConnection(connection)}
+            onNodesChange={(next) => {
+              // React Flow reports EVERY node on every change and re-emits the current positions
+              // whenever the controlled `nodes` prop is re-synced, so most reports move nothing.
+              // Only a report that actually changes a position may touch the store: treating the
+              // no-op reports as edits churned `nodes` on each emission, which re-rendered the
+              // canvas, which re-emitted — a real drag ended in "Maximum update depth exceeded"
+              // and the error boundary, losing the move (TASK-890 black-box J5).
+              const before = storeApi.getState().nodes;
+              const movedSomething = next.some((node) => {
+                const current = before.find((candidate) => candidate.id === node.id);
+                return current !== undefined && (current.position.x !== node.position.x || current.position.y !== node.position.y);
+              });
+              if (!movedSomething) return;
+              // `moveNode` now marks the graph dirty (TASK-893 §3.7). It deliberately did not
+              // before, because layout rode an autosave side-channel; with no autosave, a move
+              // that is never dirty is a move that is silently lost on reload.
+              for (const node of next) storeApi.getState().moveNode(node.id, node.position);
+            }}
           />
-          <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
-          {/*
- DD-11 — the "new version available" affordance, in the
-              editor an admin already has open. An out-of-band prompt edit moves
-              no node's pin by design; without this rail that guarantee is
-              invisible and the two-path design decays into "nothing updates".
-*/}
-          <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
-        </aside>
+        </div>
+
+        {railOpen ? (
+          <aside className="flex min-h-0 flex-col gap-2 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-hidden" aria-label="Node inspector panel">
+            <div className="flex shrink-0 items-center justify-end">
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Close the inspector" title="Close the inspector" onClick={closeRail}>
+                <IconX aria-hidden="true" />
+              </Button>
+            </div>
+            <InspectorPanel
+              node={selectedNode}
+              configSchema={selectedNodeConfigSchema}
+              problems={selectedNode ? (problemsByNodeId.get(selectedNode.id) ?? []) : []}
+              onConfigChange={(config) => selectedNode && storeApi.getState().updateNodeConfig(selectedNode.id, config)}
+              readOnly={readOnly}
+              references={celReferences}
+              actionOptions={selectedNode?.type === ACTION_NODE_TYPE ? actionOptions : undefined}
+              actionSchema={selectedActionSchema}
+              workflowGuardrailEnabled={triggerGuardrailEnabled}
+              triggerContextBinding={triggerContextBinding}
+              tab={inspectorTab}
+              onTabChange={setInspectorTab}
+              problemCount={findings.length}
+              upstreamNodes={upstreamNodes}
+              secondaryInputs={secondaryInputs}
+              problemsSlot={
+                <div className="flex flex-col gap-4">
+                  <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
+                  {/*
+                    DD-11 — the "new prompt version available" affordance, in the editor an admin
+                    already has open. An out-of-band prompt edit moves no node's pin by design;
+                    without this rail that guarantee is invisible and the two-path design decays
+                    into "nothing updates".
+
+                    It sits in the PROBLEMS tab rather than its own rail because the tabbed
+                    inspector keeps exactly one scroll container (rule 11 §1), and "a binding of
+                    yours has drifted" is the same class of thing as a validation finding: something
+                    about this workflow that wants your attention.
+                  */}
+                  <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
+                </div>
+              }
+              runSlot={
+                <div className="flex flex-col gap-4">
+                  {/* A sandbox run executes the SERVER's stored graph, not the editor buffer, so
+                      unsaved edits are a stated reason to withhold Run rather than a silent
+                      mismatch between what is on the canvas and what the interpreter executes. */}
+                  <SandboxRunPanel
+                    definitionId={definition.id}
+                    blockedReason={dirty || metadataDirty ? 'Save your changes first — a sandbox run executes the saved definition.' : null}
+                    onRunIdChange={setRunId}
+                  />
+                  <SandboxNodeTrace runId={runId} nodeId={selectedNodeId} />
+                </div>
+              }
+            />
+          </aside>
+        ) : null}
       </div>
+
       <PublishDialog
         open={publishOpen}
         onOpenChange={(next) => {
@@ -753,6 +1123,29 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         onNameChange={handleNameChange}
         onDescriptionChange={handleDescriptionChange}
         readOnly={readOnly}
+      />
+      <CloneDefinitionDialog
+        open={cloneOpen}
+        onOpenChange={(next) => {
+          setCloneOpen(next);
+          if (!next) setCloneError(null);
+        }}
+        source={cloneSource}
+        templates={templatesQuery.data ?? []}
+        templatesLoading={templatesQuery.isLoading}
+        onConfirm={(submission) => void handleClone(submission)}
+        confirming={cloneMutation.isPending}
+        error={cloneError}
+      />
+      <ImportDefinitionDialog
+        open={importOpen}
+        onOpenChange={(next) => {
+          setImportOpen(next);
+          if (!next) setImportError(null);
+        }}
+        onConfirm={(submission) => void handleImportBundle(submission)}
+        confirming={importMutation.isPending}
+        error={importError}
       />
     </ScreenTemplate>
   );
