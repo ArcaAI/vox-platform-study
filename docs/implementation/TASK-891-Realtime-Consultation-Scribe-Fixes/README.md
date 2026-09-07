@@ -599,6 +599,37 @@ is gitignored, so it does not follow a worktree and every TypeScript build fails
 four worktrees. **Add `db:generate` to the worktree bootstrap for any future fan-out.**
 
 
+### 8.6 Wave 3 (merge) — what integration caught
+
+All four writer branches merged into `dev-2.2` with **zero conflicts**; the path partition held
+exactly. Three things only became visible at merge:
+
+1. **A duplicate control.** W4 hand-rendered `ReasoningField` *because* `GENERATION_PROPERTY` did
+   not declare `reasoning`. Once the orchestrator added the property, the generic schema walker
+   rendered a second copy — `Found multiple elements with the text of: Enable reasoning`. Two
+   correct changes, one broken result. Fixed by skipping `generation.reasoning` in the walker: a
+   boolean + enum pair belongs in a switch and a select, not a generic nested-object fieldset.
+2. **`prisma migrate dev` cannot run non-interactively.** It demands a TTY to prompt about the
+   unique-constraint warning, so the recipe in `02-database-prisma.md` §"Authoring a migration"
+   is unusable from an agent session. `migrate diff --from-config-datasource --to-schema --script`
+   against the ledger-replayed shadow produces the same SQL and still supports the empty-diff
+   proof. **Worth adding to rule 02.**
+3. **Generated-artifact drift was exactly as predicted** — `LiveDocNodeDegradeResponse` /
+   `nodeDegrades` (W2) and `selectorTags` (W3) in `openapi.json` and the vox-node admin schemas.
+   `route-manifest.json` unchanged, since no route was added or altered.
+
+**Migration:** `20260907101216_task_891_workflow_assignment_selector`, authored against a throwaway
+shadow DB with the full ledger replayed. The generated SQL is **byte-identical** to the SQL W3
+hand-derived from the TASK-884 precedent, and `migrate diff` afterwards prints
+`-- This is an empty migration.`
+
+**Gates on the merged tree:** applications **12172 passed / 0 failed**; domains, database and
+workflow-contract (1665) green; admin-console **2498 passed** after the fix above; all eight API
+steps green including `api:openapi:check`, `api:portal:check` and `gen:admin:check`. The one
+failing *suite* is `membership-bounded-sync.integration.test.ts`, which wants a live test DB on
+port 5433 — pre-existing, flagged independently by two writers, zero individual tests failing.
+
+
 ## 9. Implementation Summary
 
 *(to be filled during Phase 4)*
@@ -611,3 +642,4 @@ four worktrees. **Add `db:generate` to the worktree bootstrap for any future fan
 | 2026-09-07 | **Owner answered OD-1…OD-5.** OD-1 reversed: the default language is EMPTY (code-switch always on), a specific language must be declared — D1 withdrawn, D2 re-scoped, Lane A rewritten. OD-2: the proposed `DocumentTemplateAssignment` table was rejected as unjustified; corrected to one `selectorKey` column on `WorkflowAssignment` plus a `documentTemplateSlug` on the realtime node config, reusing the parameter `resolveForGeneration` already accepts. OD-4: per-agent `parameters.generation.reasoning`, not a settings descriptor. OD-5: all three dropdowns removed; the workflow names the ASR, summarization and DNA-redaction agents. Follow-up F-1 raised (live vs finalize redaction). Status stays `Pending` — awaiting go-ahead on sequencing. |
 | 2026-09-07 | Owner said **go**. Wave 0 complete: plan committed at `f6aa16cf9`; four worktrees created off `dev-2.2` (`task-891/{stt,livedoc,data,console}`) with `pnpm install` and env files done by the orchestrator; `task-891/dev-fixes` branched in the deployment repo. Wave 1 launched — W1 `opus`, W2 `opus`/high, W3 `sonnet`/high, W4 `sonnet`, W5 `sonnet`. F1 (`INTERNAL_ACCESS_TOKEN` in `hope-secrets`) held back for the owner: a shared credential is not a subagent's job. |
 | 2026-09-07 | **W5 landed** (`c78cb89`, unpushed): nlp probe timeouts 1s->5s + failureThreshold 2->3 + cpu 2->4, `LIVE_DOC_TEXT_TIMEOUT_MS=60000`, `LMS_CONTEXT` 8192->32768 — overlay only, base untouched, repo CI gates green locally. **W1 landed** (`cd6e439fb`): A1/A2 durability fix, A3 decoupled and left OFF with evidence (§8.1), A4 adapter refuses `max_len=1` on unpinned/non-space-delimited decodes. New batch defect recorded in §8.4. |
+| 2026-09-07 | **Wave 3 merged** — W3, W2, W1, W4 into `dev-2.2`, zero conflicts. Migration authored and proven; local dev DB synced with explicit owner consent. Orchestrator added the `reasoning` property to `GENERATION_PROPERTY` (both W2 and W4 had blocked on it) and fixed the duplicate-control regression it caused. Five artifacts regenerated. **Wave 4 launched**: W6 template (`opus`/high), W7 agentsplit (`opus`), W8 visittype (`sonnet`/high). TASK-892 was already taken, so the live/finalize agent split is folded into this ticket rather than spun out. |
