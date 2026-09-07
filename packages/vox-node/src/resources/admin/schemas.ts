@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 409 component schemas the generated surface transitively
+ * Only the 410 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2830,6 +2830,17 @@ export interface LiveDocEngineConfigResponse {
   updatedBy?: string;
 }
 
+export interface LiveDocNodeDegradeResponse {
+  /** Node id as authored in the graph */
+  nodeId: string;
+  /** PHI-safe reason code or error name — never clinical text */
+  reason: string;
+  /** Non-success outcome of that node on the last flush */
+  status: 'degraded' | 'failed' | 'skipped' | 'timed-out' | 'stale';
+  /** Registered node type, e.g. `consultation.realtimeSummary` */
+  type: string;
+}
+
 export interface LiveDocRealtimeCapabilitiesResponse {
   /** Which tier supplied the definition. `consultation` means THIS consultation selected the workflow at open and it beat the cascade; `department`/`tenant` are the assignment cascade; `platform-default` means no tier had an opinion, or the resolved definition could not be used. */
   assignmentSource: 'consultation' | 'department' | 'tenant' | 'platform-default';
@@ -2887,6 +2898,8 @@ export interface LiveDocSessionStatsResponse {
   nlpFailed: boolean;
   /** NLP entity-extraction latency of the last flush (ms) */
   nlpLatencyMs: number;
+  /** TASK-891 B4 — the realtime lane nodes that did NOT succeed on the last flush, with their reasons. `textFailed`/`nlpFailed` say THAT the two legacy stages failed; this says WHICH node and WHY, which is the difference between reading this endpoint and reading pod logs. Empty/absent on a clean flush and on the legacy (non-graph) engine, which has no nodes. */
+  nodeDegrades?: LiveDocNodeDegradeResponse[];
   /** Number of summary sections in the last published summary */
   sectionCount: number;
   /** STT streaming session id bound to this recording */
@@ -6374,6 +6387,8 @@ export interface UpsertWorkflowAssignmentRequest {
   scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
   /** The department id for a DEPARTMENT-scope assignment; omitted (or null) for TENANT scope. */
   scopeId?: string;
+  /** TASK-891 — the optional `key:value` tag selector this assignment is qualified by, e.g. `["visit-type:revisit"]`. A tier may hold one row per selector plus one unqualified row; resolution tries the most specific MATCHING selector first and the unqualified row last. Omitted (or empty) = the tier’s unqualified assignment. A bare key is refused. The selector identifies the row: changing it addresses a DIFFERENT assignment, it does not re-tag this one. */
+  selectorTags?: string[];
   /** Lineage slug of the assigned definition. Must resolve to a PUBLISHED definition on this palette in the caller tenant. */
   workflowDefinitionSlug: string;
 }
@@ -6640,6 +6655,8 @@ export interface WorkflowAssignmentResponse {
   paletteKey: string;
   scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
   scopeId?: string | null;
+  /** TASK-891 — the canonical `key:value` selector qualifying this assignment; empty = the tier’s unqualified row. */
+  selectorTags: string[];
   tenantId: string;
   /** ISO timestamp */
   updatedAt: string;
