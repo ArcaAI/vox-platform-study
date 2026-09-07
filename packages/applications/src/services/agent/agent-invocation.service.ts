@@ -167,7 +167,12 @@ export class AgentInvocationService {
     };
     // The same enrichment order every sanctioned `/api/v1/generate` caller uses: hyper-parameter
     // profile first, then the tenant → SYSTEM credential fold (`provider_overrides`, funding).
-    await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string });
+    // TASK-891 — `generation` is passed because the agent's REASONING posture (OD-4) is the one
+    // hyper-parameter with no first-class field on `GenerateRequest`: it travels on the `extra`
+    // ride-along, which is what this call builds. Without it an agent whose author turned
+    // reasoning off still reasoned here — on the very surface a tenant admin uses to check the
+    // control they just set.
+    await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string }, generation);
     await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
     // TASK-890 §3.14 (OD-R) — the guardrail decision for THIS call. A standalone invocation has
     // no workflow and no node, so the AGENT tier is the whole precedence: `ResolvedAgent.guardrail`

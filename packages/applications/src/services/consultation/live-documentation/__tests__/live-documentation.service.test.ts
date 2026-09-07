@@ -578,8 +578,11 @@ describe('LiveDocumentationService', () => {
       });
     });
 
-    // `task_key` is the live TIER this flush belongs to (`text.live`, not `text.finalize`) —
-    // telemetry since TASK-876, not a selector. `selection_source` says WHAT chose the model:
+    // `task_key` is the live TIER this flush belongs to (`text.live`, not `text.finalize`). The
+    // STAMPED FIELD is telemetry — it is read back, never resolved from. The routing task it
+    // names does select again since TASK-891 (it rides the cascade as the `phase:live`
+    // assignment tag), so the two facts are not in tension: the stat records which tier served,
+    // the tag chose it. `selection_source` says WHAT chose the model:
     // on this legacy (non-`core.agent`) flush it is the tenant's ASSIGNED TEXT_GENERATION
     // agent. It read `task-default` until TASK-876 — the name of the retired `AiTaskDefault`
     // tier, which no longer selects anything.
