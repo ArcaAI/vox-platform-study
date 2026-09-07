@@ -99,7 +99,7 @@ refuses to start if an admin controller adopts it.
 
 **Rules P1/P2 (admin-plane relocation).** No handler was created or deleted and no gate changed; two handlers changed class and two controllers changed prefix, so the class total is **105** and the handler total stays **605**. `MonitoringController` `api/v1/monitoring` → `api/v1/admin/monitoring` (4 handlers, still JWT-only). `ApiHealthController` drops from 6 handlers to 4 and stops being _Mixed_; the 2 CASL-gated handlers become `AdminHealthServicesController` at `api/v1/admin/health/services` (JWT-only). Both moved surfaces were already `@ForbidApiKey()`, so the _count_ of API-key-reachable handlers is unchanged — what changes is the REASON: "undeclared, therefore closed" becomes "admin plane, therefore closed" (A2). Hard move, no alias: the pre-move paths 404.
 
-Largest HTTP surfaces: `ConsultationController` 51, `HarnessAdminController` 26, `UserController` 21, `TranscriptionJobController` 20, `HarnessInternalController` 18.
+Largest HTTP surfaces: `ConsultationController` 51, `HarnessAdminController` 26, `UserController` 21, `TranscriptionJobController` 20, `HarnessInternalController` 19.
 
 ---
 
@@ -113,7 +113,7 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | HarnessAdminController                   | `api/v1/admin/harness`                                                     |   26 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | per-method HarnessPolicy / Eval / Workflow / Audit  | Policy, golden sets, Temporal workflow ops, live sessions.                                                                               |
 | UserController                           | `api/v1/admin/users`                                                       |   21 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:User (assign-role → UserRoleAssignment)      | Shares prefix with UserDepartments + AdminImpersonation.                                                                                 |
 | TranscriptionJobController               | `api/v1/audio/transcription-jobs`                                          |   20 | JWT + API key                                | stt:transcription:write                                                                 | @Authorize()                                        | 1 @Sse() job stream. Stream session CRUD + TenantOwnedResource.                                                                          |
-| HarnessInternalController                | `api/v1/internal/harness`                                                  |   18 | Service token                                | n/a — X-Service-Token (HarnessServiceTokenGuard)                                        | skipped (@Public)                                   | Harness worker callbacks. UnifiedAuth skipped.                                                                                           |
+| HarnessInternalController                | `api/v1/internal/harness`                                                  |   19 | Service token                                | n/a — X-Service-Token (HarnessServiceTokenGuard)                                        | skipped (@Public)                                   | Harness worker callbacks. UnifiedAuth skipped.                                                                                           |
 | PromptManagementController               | `api/v1/admin/prompt-templates`                                            |   16 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:PromptTemplate (method Can* overrides)       | Approve is SYSTEM-row SUPER_ADMIN in service. Assign-department uses manage:Department.                                                  |
 | TenantController                         | `api/v1/admin/tenants`                                                     |   15 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage\|update:Tenant (lifecycle = manage)          | Shares prefix with provision + pipeline-resync.                                                                                          |
 | AudioPipelineController                  | `api/v1/admin/audio/pipelines`                                             |   14 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:AsrPipeline                                  | YAML validate, clone, tenant assign, versions.                                                                                           |
@@ -388,13 +388,14 @@ Every live HTTP `@Controller` class. Paths include `/api/v1` except prefix-exclu
 
 - **File:** `src/modules/consultation/harness-internal.controller.ts`
 - **Prefix:** `internal/harness` → `api/v1/internal/harness`
-- **api_count:** 18
+- **api_count:** 19
 - **Auth model:** Service token
 - **API key:** `n/a — X-Service-Token (HarnessServiceTokenGuard)`
 - **JWT / other:** skipped (@Public)
 - **Notes:** Harness worker callbacks. UnifiedAuth skipped.
 
 - `GET /api/v1/internal/harness/policy` — skipped (@Public) — n/a — X-Service-Token (HarnessServiceTokenGuard) — `getEffectivePolicy`
+- `GET /api/v1/internal/harness/models/resolve` — skipped (@Public) — n/a — X-Service-Token (HarnessServiceTokenGuard) — `resolveModel` (TASK-890 black-box F11; `@ApiExcludeEndpoint`)
 - `GET /api/v1/internal/harness/prompt-templates/:id/resolved` — skipped (@Public) — n/a — X-Service-Token (HarnessServiceTokenGuard) — `getResolvedPromptTemplate`
 - `GET /api/v1/internal/harness/mcp-token` — skipped (@Public) — n/a — X-Service-Token (HarnessServiceTokenGuard) — `resolveMcpToken`
 - `POST /api/v1/internal/harness/consultations/:id/entities` — skipped (@Public) — n/a — X-Service-Token (HarnessServiceTokenGuard) — `persistEntities`

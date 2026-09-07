@@ -94,6 +94,43 @@ substituted value can never smuggle a placeholder into the prompt. An unresolved
 **400 naming the path**, on every renderer — the realtime and durable lanes no longer disagree
 about the same node.
 
+## 2a. Driven end to end before the release (2026-09-06/07)
+
+Everything above was then exercised as a user, against a **reset development database and a full
+local stack**, through the admin console in a browser, the REST and SSE planes, a WebSocket, a
+signed webhook and both SDKs. Seven journeys — platform provider/model administration, tenant
+prompt management by tag, building the two named agents, building the consultation workflow in
+the Studio, running a consultation end to end, third-party developer access, and a seed-parity /
+release-readiness sweep. Twenty-six fixes landed from it; the ones a reader of this note will
+notice:
+
+**A tenant admin can now finish the journeys that were blocked.** An APPROVED prompt template is
+editable (the drawer used to post the row's own status, which the update DTO refused); prompts
+carry **tags** end to end — a tag column, a tag editor, a tag filter in the shared picker and a
+`?tags=` filter on the list route — which is what makes managing prompts by `dept:*` tag possible
+now that departments are being retired; a cloned platform template is labelled as one; and a
+tenant admin can govern (approve/publish) its OWN templates in the console, which the server had
+always allowed. In the Studio: drag a type from the palette onto the canvas, move a node without
+tearing the editor down, see every node by name rather than by type alone, and a referenced
+trigger context schema now TYPES the published input contract.
+
+**Published means callable.** The workflow plane ships **on** (its feature flag used to default
+off, so every `/workflows` route 404'd out of the box); a correctly signed inbound webhook starts
+a run instead of answering 404; an agent invocation puts the routed model id on the wire rather
+than the catalogue slug; and the Node SDK sends the invocation body flat — the shape the gateway
+validates — so `hope.agents.invoke` works for the same body that worked over `curl`.
+
+**The clinical journey completes.** A consultation walks `OPEN → PRIMED → RECORDING → DRAINING →
+PENDING_REVIEW → SIGNED` with live transcription, PII and medical entity extraction, an
+incremental pre-summary that picks up a plain-text work note, key-point extraction and a human
+review decision. On the durable lane, the classify node resolves its model over a route that now
+exists, calls the endpoint its model's task declares, and an agent whose response format is
+`json` reaches LM Studio in the only JSON form it accepts.
+
+**Nothing inference is free any more.** The last unmetered path — a generation on the workflow
+lane — now writes its ledger row (`trigger: WORKFLOW_RUN`), as do SSE invocations and both test
+benches.
+
 ## 3. Breaking changes
 
 ### 3.1 Prompt `variables` is a typed ARRAY, not a map (TASK-890, OD-K)
@@ -222,11 +259,39 @@ None blocks the release; each carries a recommendation already written down.
 
 ## 8. Known gaps carried into this release
 
-- **`usable` in the model catalogue follows bucket inventory, not runtime reachability.** A model
-  whose weights resolve from a local HF cache rather than the platform bucket is reported
-  unusable. Under investigation with the readiness sweep.
-- **Six harness replay tests fail** (`task-355`) and are pre-existing by construction.
+- **The outbound guardrail screen can reject long clinical output as toxic.** A 945-token
+  clinical JSON key-points completion was blocked with `response_toxicity`, which is a false
+  positive: the SYSTEM `TenantGuardrailPolicy` carries no threshold for that check, so the
+  classifier's own default decides. Two mitigations exist today — a platform admin tunes or
+  disables `response_toxicity` in the SYSTEM policy, and a tenant admin opts the node out — but
+  the threshold is a tuning decision nobody has made yet.
+- **The `socket` protocol is unreachable with an API key.** `POST /auth/stream-ticket` is
+  `@ForbidApiKey()`, so the socket lane a published workflow advertises can only be opened with an
+  admin JWT. HTTP, SSE and the webhook plane are unaffected.
+- **A realtime STT session is not metered.** Batch transcription writes `AUDIO_SECOND`; the
+  streaming lane writes nothing. Agent invocations, workflow runs, consultations and both benches
+  are metered.
+- **`resultRef` is null on a DEGRADED workflow run**, even when the nodes before the degraded one
+  succeeded — the successful payload is visible per node on the run, not through the result
+  pointer.
+- **`blocking` is advertised for graphs containing a human-review gate**, where it can only ever
+  reach the gateway's 60-second ceiling. Use `async` or `stream` for such a workflow.
+- **A workflow assignment is silently retargeted.** `POST /admin/workflow-assignments` for a scope
+  that already has one answers 201 with the pre-existing id and a bumped version rather than a
+  409.
+- **A consultation-palette workflow is what the consultation plane resolves**, not a `core`-palette
+  workflow whose trigger declares the `consultation` kind — such a workflow is reachable only
+  through `POST /workflows/{slug}/runs`. Whether the consultation plane should resolve by trigger
+  KIND is an open owner question.
+- **`assignRole` on a human-review node is descriptive, not enforced.** Deciding the gate needs
+  `update:WorkflowRun`; the clinician role the node names does not hold it.
+- **Six harness replay tests fail** (`task-355`) and are pre-existing by construction; two `apps/nlp`
+  metrics tests likewise.
 - **Four admin-console e2e specs and two Studio a11y findings are stale/known** (TASK-911,
   TASK-912); they predate this work and need a live stack to run.
 - The `publish-sdk` CI job still calls Changesets, which is not initialized — SDK versions remain
   hand-maintained (carried from `ALL-3.0.0`).
+
+**Closed since the draft:** the model catalogue's `usable` no longer follows bucket inventory
+alone — the readiness sweep asks each serving service whether the weights resolve on its own
+runtime path, so a model held in a local cache rather than the platform bucket reads correctly.

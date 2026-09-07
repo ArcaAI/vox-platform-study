@@ -88,6 +88,23 @@ network call. **`hope.admin.*` here, with a service-account credential, is the s
 replacement** (the other being the admin console). No API-key integration is affected: every
 `/admin/*` route is `@ForbidApiKey()`, so a key could never have reached them.
 
+### Fixed — TASK-890 black-box J6: `hope.agents.invoke` sends the body the gateway validates
+
+`invoke()` and `invokeAndStream()` wrapped the caller's object as `{ input }`. The gateway's
+invocation body is **flat** — `{ text, context?, variables? }` — and it is validated against the
+agent's own `inputSchema` (`additionalProperties: false` over `{ text, variables }`), so the
+envelope failed that check on **every** call: a body that answered 200 over `curl` answered 400
+through this SDK. The `{ input }` envelope belongs to the WORKFLOW plane
+(`POST /workflows/{slug}/runs`), which is a different contract.
+
+`context` is why it cannot be nested at all — the controller withholds it from the `inputSchema`
+check and validates it against the agent's frozen context schema instead, so it is only
+expressible at the top level.
+
+**This is a behaviour change for callers**: the argument is now the body itself. A caller that had
+worked around the bug by passing `{ input: {...} }` must unwrap it. The TASK-865 test that had
+asserted the envelope now pins the flat body for both modes.
+
 ### Added — packaging
 
 `CHANGELOG.md` is included in the published tarball (`package.json#files`).

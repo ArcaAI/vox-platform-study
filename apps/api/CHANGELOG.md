@@ -119,6 +119,63 @@ can be attributed to an activity rather than guessed at. Every seeded allowance 
 (unlimited), so the prechecks are no-ops until a platform admin sets a ceiling; a breach is the
 existing 409/429 contract.
 
+### Fixed / Changed — TASK-890 black-box release phase (2026-09-06/07)
+
+Seven journeys were driven against a reset dev database through the admin console, the REST and
+SSE planes, a WebSocket, a signed webhook and both SDKs. The wire-visible results:
+
+**Reachability**
+
+- `WORKFLOW_EXPOSURE_ENABLED` now defaults **on**, so `GET /workflows`, `/workflows/{slug}/schema`
+  and the run routes answer out of the box instead of 404-ing on a flag no environment set.
+- The inbound webhook trigger reads its own hook row. `POST /hooks/workflows/{hookId}` is
+  `@Public()`, and the tenant-scoped read behind it made every correctly signed delivery answer
+  **404**; a signed delivery now answers **202** and starts a run. Unsigned, mis-signed and stale
+  deliveries still answer 404 (existence is not disclosed).
+- `GET /admin/prompt-templates?tags=` is honoured (`hasEvery`); the controller's inline query type
+  had dropped it while the service already supported it.
+
+**Invocation**
+
+- An agent invocation puts the **routed** model id on the wire (`AiModel.wireModelId`), not the
+  catalogue slug — the slug is not a model any engine knows. When no tier of the resolved agent
+  carries one, the call is refused with **409 `AGENT_MODEL_WIRE_ID_MISSING`** naming the remedy,
+  instead of a 502 from the engine.
+- A context schema with exactly ONE kind whose key is `context` is accepted **flat**
+  (`{"context": {...}}`), the shape its own templates read. The nested envelope stays valid.
+- The publish gate accepts the same two weight measurements the catalogue does, so an agent whose
+  model resolves from the runtime cache is publishable rather than `MODEL_UNAVAILABLE`.
+
+**Responses**
+
+- `PromptTemplateResponse` carries `sourceTemplateId` and `templateLocked`, so a cloned platform
+  template can be labelled as one (the agent response already exposed its provenance).
+- An illegal consultation state transition answers **409**, not 500. `POST
+  /internal/harness/consultations/{id}/draft` and the escalation route were returning a 500 that
+  Temporal then retried three times before failing the workflow.
+
+**Metering**
+
+- SSE invocations are metered: the usage tee scans the wire `apps/text` actually writes (CRLF),
+  not LF-LF.
+- Both test benches record from the field the task read-back actually carries (`usage_detail`),
+  and stamp the funding tier from the resolved deployment rather than assuming `CLOUD`.
+- A workflow-lane generation is metered: the interpreter records an `LLM_CALL` trajectory step
+  carrying the text service's usage stats, `trigger: WORKFLOW_RUN`, the funding tier (never
+  guessed) and the guardrail disposition, which is what `harness:step:*` bills from.
+
+**Internal plane**
+
+- Added `GET /internal/harness/models/resolve?tenantId&slug[&taskType]` (`HarnessServiceTokenGuard`,
+  excluded from the docs like its four siblings) — the registry-model resolve the durable
+  `core.classify` node had always called and which did not exist. Tenant BYO → SYSTEM by slug;
+  404 on a foreign, unknown or disabled row. The manifest goes 734 → 735 routes; the other four
+  artifacts are unchanged.
+- `InternalServiceTokenGuard` accepts the ONE shared `INTERNAL_ACCESS_TOKEN` every Python peer
+  presents, with the legacy per-service secret as the fallback and fail-closed when neither is
+  configured — the same dual acceptance `HarnessServiceTokenGuard` already had. Callers must
+  still name themselves (`?service=harness`).
+
 ### BREAKING — TASK-757 (the admin plane is JWT only)
 
 `/api/v1/admin/*` no longer accepts API keys. 65 controllers / 386 handlers now answer **403**

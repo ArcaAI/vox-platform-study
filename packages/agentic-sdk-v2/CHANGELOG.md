@@ -38,6 +38,13 @@ Zero first-party consumers imported any of the removed hooks or constants (verif
 (service-account credential) or the admin console — see
 [Business plane only](README.md#business-plane-only-no-management-surface).
 
+### Docs — TASK-890 black-box J6: `api.baseUrl` carries the gateway's `/api/v1` prefix
+
+`AgenticConfig.api.baseUrl` is the FULL base the SDK appends resource paths to, prefix included
+(`http://host:8868/api/v1`) — the SDK adds no version segment of its own. A value without it
+answers the gateway's root 404 on every call, with nothing in the SDK to say why. Documented on
+the type and in the README; no behaviour change.
+
 ### Note — service-account credentials are not supported by this SDK
 
 The gateway gained a third credential class in `ALL-3.0.0` (service accounts, bearer tokens with
