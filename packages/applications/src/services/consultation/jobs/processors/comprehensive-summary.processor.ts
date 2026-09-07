@@ -435,9 +435,13 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       // Resolve the tenant's effective {provider, model} and merge as the
       // base so a caller-supplied model wins.
       let options = request.options;
+      // TASK-891 — the resolved selection's `generation` block, carried alongside
+      // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
+      let generation: Record<string, unknown> | undefined;
       if (this.harnessPolicyService) {
-        const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize');
-        options = { textProvider: provider, textModel: model, ...request.options };
+        const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize');
+        options = { textProvider: selection.provider, textModel: selection.model, ...request.options };
+        generation = selection.generation;
       }
       const textPayload = buildTextGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
@@ -458,7 +462,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       // layer the platform admin's runtime profile (hyperparameters + engine
       // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
       // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
-      await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
+      // TASK-891 — `generation` carries the resolved agent's reasoning posture (OD-4) onto the
+      // `extra` ride-along; an agent with no opinion injects nothing.
+      await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string }, generation);
       await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
       // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY — `tenantId` is in
