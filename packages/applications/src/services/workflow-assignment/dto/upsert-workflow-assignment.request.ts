@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { PipelinePolicyScope } from '@arcaai/domains';
 
 export class UpsertWorkflowAssignmentRequest {
@@ -32,6 +32,20 @@ export class UpsertWorkflowAssignmentRequest {
   @IsString()
   @MaxLength(128)
   workflowDefinitionSlug!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-891 — the optional `key:value` tag selector this assignment is qualified by, e.g. `["visit-type:revisit"]`. ' +
+      'A tier may hold one row per selector plus one unqualified row; resolution tries the most specific MATCHING selector ' +
+      'first and the unqualified row last. Omitted (or empty) = the tier’s unqualified assignment. A bare key is refused. ' +
+      'The selector identifies the row: changing it addresses a DIFFERENT assignment, it does not re-tag this one.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(24)
+  @IsString({ each: true })
+  selectorTags?: string[];
 
   @ApiPropertyOptional({ description: 'Why the assignment changed — recorded verbatim on the WORM change row.' })
   @IsOptional()

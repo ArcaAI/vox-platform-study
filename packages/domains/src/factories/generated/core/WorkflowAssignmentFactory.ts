@@ -11,6 +11,8 @@ export interface CreateWorkflowAssignmentProps extends BaseEntityFactoryCreatePr
   scopeId?: IWorkflowAssignmentEntity['scopeId'];
   paletteKey: IWorkflowAssignmentEntity['paletteKey'];
   workflowDefinitionSlug: IWorkflowAssignmentEntity['workflowDefinitionSlug'];
+  /** Canonical `key:value` tag selector; omitted / `''` = the tier's unqualified assignment. */
+  selectorKey?: IWorkflowAssignmentEntity['selectorKey'];
 
   createdAt?: IWorkflowAssignmentEntity['createdAt'];
   updatedAt?: IWorkflowAssignmentEntity['updatedAt'];
@@ -36,6 +38,7 @@ export class WorkflowAssignmentFactory {
       scopeId: props.scopeId ?? null,
       paletteKey: props.paletteKey,
       workflowDefinitionSlug: props.workflowDefinitionSlug,
+      selectorKey: props.selectorKey ?? '',
     });
   }
 }

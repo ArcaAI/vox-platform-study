@@ -57,6 +57,18 @@ model WorkflowAssignment {
   // validation).
   workflowDefinitionSlug String
 
+  // TASK-891 — the optional TAG SELECTOR, byte-for-byte the same shape as
+  // `AgentAssignment.selectorKey` (agent.prisma): the assignment's `key:value` tags
+  // de-duplicated, sorted and comma-joined; `''` = UNQUALIFIED, which is the fallback
+  // every tier already had. A tier may now carry several rows — one per selector — and
+  // the cascade tries the most specific matching selector first, the unqualified row
+  // last. Stored as the derived scalar rather than a `String[]` because it is part of
+  // the uniqueness key and Prisma cannot put a list field in `@@unique`. The reserved
+  // selector this ticket introduces is the consultation's visit type
+  // (`visit-type:new-visit` | `visit-type:revisit`), so a workflow's document template
+  // can vary by department (scope) AND visit type (selector) without a second table.
+  selectorKey String @default("")
+
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?
@@ -70,7 +82,7 @@ model WorkflowAssignment {
 
   // constraints + indexes — `map:` names the DB index; `name:` would only set
   // the client-facing compound key (rule 02 §@@unique).
-  @@unique([tenantId, scope, scopeId, paletteKey], map: "WorkflowAssignment_scope_palette_unique")
+  @@unique([tenantId, scope, scopeId, paletteKey, selectorKey], map: "WorkflowAssignment_scope_palette_selector_unique")
   @@index([tenantId], name: "WorkflowAssignment_tenantId_idx")
   @@index([tenantId, paletteKey], name: "WorkflowAssignment_tenant_palette_idx")
   @@schema("core")
