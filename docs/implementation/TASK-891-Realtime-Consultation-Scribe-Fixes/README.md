@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — plan awaiting owner approval |
+| **Status** | `In Progress` — Wave 1 running, five writers spawned 2026-09-07 |
 | **Type** | `bugfix` + `feature` |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-07, from a live diagnosis of consultation `01a07ae9-2497-7858-bb07-39f38d5ffed3` on `hope-v2-dev` |
@@ -542,3 +542,4 @@ commands that prove success + the return contract. Plus these repo-specific haza
 |---|---|
 | 2026-09-07 | Ticket opened. Live diagnosis of consultation `01a07ae9-2497-…` on `hope-v2-dev` recorded in §2; plan drafted; OD-1…OD-6 raised. |
 | 2026-09-07 | **Owner answered OD-1…OD-5.** OD-1 reversed: the default language is EMPTY (code-switch always on), a specific language must be declared — D1 withdrawn, D2 re-scoped, Lane A rewritten. OD-2: the proposed `DocumentTemplateAssignment` table was rejected as unjustified; corrected to one `selectorKey` column on `WorkflowAssignment` plus a `documentTemplateSlug` on the realtime node config, reusing the parameter `resolveForGeneration` already accepts. OD-4: per-agent `parameters.generation.reasoning`, not a settings descriptor. OD-5: all three dropdowns removed; the workflow names the ASR, summarization and DNA-redaction agents. Follow-up F-1 raised (live vs finalize redaction). Status stays `Pending` — awaiting go-ahead on sequencing. |
+| 2026-09-07 | Owner said **go**. Wave 0 complete: plan committed at `f6aa16cf9`; four worktrees created off `dev-2.2` (`task-891/{stt,livedoc,data,console}`) with `pnpm install` and env files done by the orchestrator; `task-891/dev-fixes` branched in the deployment repo. Wave 1 launched — W1 `opus`, W2 `opus`/high, W3 `sonnet`/high, W4 `sonnet`, W5 `sonnet`. F1 (`INTERNAL_ACCESS_TOKEN` in `hope-secrets`) held back for the owner: a shared credential is not a subagent's job. |
