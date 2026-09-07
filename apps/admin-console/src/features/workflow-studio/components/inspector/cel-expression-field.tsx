@@ -11,12 +11,15 @@
  * the context schema stays SERVER-SIDE at publish (`expressionProblems`) — the same posture as
  * the rest of the inspector: the client decides how to RENDER, never whether a value is valid.
  */
-import { Button, Field, FieldDescription, FieldError, FieldLabel, Textarea } from '@arcaai/ui';
+import { Button, Field, FieldError, FieldLabel, Textarea } from '@arcaai/ui';
 import { useId } from 'react';
+import { FieldCopy } from './field-copy';
 
 export interface CelExpressionFieldProps {
   id: string;
   label: string;
+  /** TASK-893 B3 — plain-language copy shown inline; falls back to a truncated `description`. */
+  summary?: string;
   description?: string;
   required?: boolean;
   value: string;
@@ -54,7 +57,7 @@ export function celSyntaxProblem(expression: string): string | null {
   return null;
 }
 
-export function CelExpressionField({ id, label, description, required, value, onChange, errors, references = [], disabled }: CelExpressionFieldProps) {
+export function CelExpressionField({ id, label, summary, description, required, value, onChange, errors, references = [], disabled }: CelExpressionFieldProps) {
   const hintId = useId();
   const syntax = celSyntaxProblem(value);
   const allErrors = [...(syntax ? [syntax] : []), ...(errors ?? [])];
@@ -64,7 +67,7 @@ export function CelExpressionField({ id, label, description, required, value, on
         {label}
         {required ? ' *' : ''}
       </FieldLabel>
-      {description ? <FieldDescription>{description}</FieldDescription> : null}
+      <FieldCopy label={label} summary={summary} description={description} />
       <Textarea
         id={id}
         value={value}

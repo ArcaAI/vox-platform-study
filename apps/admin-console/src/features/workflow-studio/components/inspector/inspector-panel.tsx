@@ -29,10 +29,45 @@
  * unreachable except by hand-editing raw JSON). If a future schema DOES declare
  * `promptTemplateId` itself, the generic `field-renderers.tsx` string control already renders it
  * and this section steps aside rather than offering a second, duplicate control for the same key.
+ *
+ * TASK-893 B4 (INTERFACES.md Contract B §4.1) — the panel is now TABBED: Config (everything
+ * above), Problems (Lane E's `ValidationRail`, passed as `problemsSlot`) and Run (Lane C's
+ * `SandboxRunPanel`, passed as `runSlot`). The tabs are graph-level, not per-node — they stay
+ * switchable even with no node selected, so `!node` degrades only the Config tab's own content
+ * to the "No node selected" empty state rather than hiding the whole panel. There is still
+ * exactly ONE scroll container (rule 11 §1): the `TabsList` is pinned, only the region below it
+ * scrolls, whichever tab is active.
+ *
+ * TASK-893 B5 (INTERFACES.md Contract B §4.2) — `secondaryInputs` renders one
+ * `SecondaryInputBindingField` per entry, reading/writing `config.inputs.<portName> =
+ * { fromNodeId }` (`secondaryInputValue`/`withSecondaryInput` below own that shape). Rendered
+ * right after the node-type-specific bindings (agent/trigger/action) and before the generic
+ * schema-driven fields, in both the schema-backed and raw-JSON-fallback branches — a secondary
+ * input is a PORT fact, not a JSON-schema fact, so it does not depend on a config schema existing.
  */
-import { CodeEditor, Empty, EmptyDescription, EmptyMedia, EmptyTitle, Field, FieldDescription, FieldLabel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton } from '@arcaai/ui';
+import {
+  Badge,
+  CodeEditor,
+  Empty,
+  EmptyDescription,
+  EmptyMedia,
+  EmptyTitle,
+  Field,
+  FieldDescription,
+  FieldLabel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@arcaai/ui';
 import { IconLayoutBoard } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { usePromptTemplateQuickView } from '@/shared/prompt-picker';
 import { toFieldDescriptors, type FieldDescriptor } from '../../lib/schema-form';
 import { triggerVariablePaths } from '../../lib/trigger-variable-paths';
@@ -48,6 +83,7 @@ import { GuardrailField } from './guardrail-field';
 import { PromptTemplatePicker } from './prompt-template-picker';
 import { PromptVariablesField } from './prompt-variables-field';
 import { NO_SCHEMA_REASON } from './raw-json-field';
+import { SecondaryInputBindingField, type UpstreamNodeOption } from './secondary-input-binding-field';
 
 const PROMPT_TEMPLATE_PATH = 'promptTemplateId';
 /** TASK-864 B1 — `core.agent`'s reference, rendered as the agent picker instead of a slug box. */
@@ -66,6 +102,11 @@ const CONTEXT_SCHEMA_PATH = 'contextSchema';
 const GUARDRAIL_PATH = 'guardrail';
 /** TASK-890 §3.10 — `core.agent`'s per-node prompt-variable overrides, nested under `overrides`. */
 const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
+/** TASK-893 B5 — secondary DATA inputs live at `config.inputs.<portName>`. */
+const SECONDARY_INPUTS_ROOT = 'inputs';
+
+/** TASK-893 B4 — the inspector's three tabs (INTERFACES.md Contract B §4.1). */
+export type InspectorTab = 'config' | 'problems' | 'run';
 
 export interface InspectorPanelProps {
   node: GraphStoreNode | null;
@@ -96,6 +137,48 @@ export interface InspectorPanelProps {
    * instead of a bare root. Absent/unbound ⇒ the field shows the kind-key hint instead.
    */
   triggerContextBinding?: { schemaId: string | null; versionNumber: number | null; inline: Record<string, unknown> | null };
+  /** TASK-893 B4 — controlled active tab. */
+  tab: InspectorTab;
+  onTabChange: (tab: InspectorTab) => void;
+  /** TASK-893 B4 — rendered in the Problems tab (Lane E passes the existing `ValidationRail`). */
+  problemsSlot?: ReactNode;
+  /** TASK-893 B4 — rendered in the Run tab (Lane C's `SandboxRunPanel`). */
+  runSlot?: ReactNode;
+  /** TASK-893 B4 — count badge on the Problems tab. */
+  problemCount?: number;
+  /** TASK-893 B5 — upstream nodes offered by the secondary-input pickers, in execution order. */
+  upstreamNodes?: UpstreamNodeOption[];
+  /** TASK-893 B5 — secondary data inputs to render as binding fields (from `secondaryInputsFor`). */
+  secondaryInputs?: { name: string; primitive: string; required: boolean }[];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** TASK-893 B5 — the bound upstream node id for one secondary input, or `null` when unbound. */
+function secondaryInputValue(config: Record<string, unknown>, portName: string): string | null {
+  const entry = getAtPath(config, `${SECONDARY_INPUTS_ROOT}.${portName}`);
+  return isPlainObject(entry) && typeof entry.fromNodeId === 'string' ? entry.fromNodeId : null;
+}
+
+/** TASK-893 B5 — writes/clears one secondary-input binding. Clearing OMITS the key entirely
+ *  (never left as an explicit `undefined`/`null` residue), and drops the whole `inputs` object
+ *  once it is empty, so a node with no bindings serializes with no `inputs` key at all — the
+ *  same "omit rather than null out" discipline `PromptTemplateSection` already follows below. */
+function withSecondaryInput(config: Record<string, unknown>, portName: string, fromNodeId: string | null): Record<string, unknown> {
+  const current = getAtPath(config, SECONDARY_INPUTS_ROOT);
+  const next: Record<string, unknown> = isPlainObject(current) ? { ...current } : {};
+  if (fromNodeId === null) {
+    delete next[portName];
+  } else {
+    next[portName] = { fromNodeId };
+  }
+  if (Object.keys(next).length === 0) {
+    const { [SECONDARY_INPUTS_ROOT]: _omit, ...rest } = config;
+    return rest;
+  }
+  return setAtPath(config, SECONDARY_INPUTS_ROOT, next);
 }
 
 function errorsForPath(problems: WorkflowFinding[], path: string): string[] {
@@ -206,6 +289,47 @@ function ActionKeySection({
   );
 }
 
+/** TASK-893 B5 — one `SecondaryInputBindingField` per declared secondary input, or `null` when
+ *  the node type has none. Shared between the schema-backed and raw-JSON-fallback branches. */
+function SecondaryInputsSection({
+  node,
+  secondaryInputs,
+  upstreamNodes,
+  onConfigChange,
+  problems,
+  readOnly,
+}: {
+  node: GraphStoreNode;
+  secondaryInputs: { name: string; primitive: string; required: boolean }[] | undefined;
+  upstreamNodes: UpstreamNodeOption[] | undefined;
+  onConfigChange: (config: Record<string, unknown>) => void;
+  problems: WorkflowFinding[];
+  readOnly?: boolean;
+}) {
+  if (!secondaryInputs || secondaryInputs.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-4">
+      {secondaryInputs.map((input) => (
+        <SecondaryInputBindingField
+          key={input.name}
+          id={`${node.id}-${SECONDARY_INPUTS_ROOT}-${input.name}`}
+          portName={input.name}
+          primitive={input.primitive}
+          required={input.required}
+          upstreamNodes={upstreamNodes ?? []}
+          value={secondaryInputValue(node.config, input.name)}
+          onChange={(fromNodeId) => onConfigChange(withSecondaryInput(node.config, input.name, fromNodeId))}
+          errors={[
+            ...errorsForPath(problems, `${SECONDARY_INPUTS_ROOT}.${input.name}`),
+            ...errorsForPath(problems, `${SECONDARY_INPUTS_ROOT}.${input.name}.fromNodeId`),
+          ]}
+          disabled={readOnly}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function InspectorPanel({
   node,
   configSchema,
@@ -218,8 +342,15 @@ export function InspectorPanel({
   actionSchema,
   workflowGuardrailEnabled,
   triggerContextBinding,
+  tab,
+  onTabChange,
+  problemsSlot,
+  runSlot,
+  problemCount,
+  upstreamNodes,
+  secondaryInputs,
 }: InspectorPanelProps) {
-  // Hooks run unconditionally, ahead of every early return (rules of hooks) — `enabled` gates
+  // Hooks run unconditionally, ahead of every branch (rules of hooks) — `enabled` gates
   // the actual network read to `core.agent` nodes only. `useAgentOptions` is the SAME query
   // `AgentPickerField` already runs for this task, so this is a cache hit, not a second fetch.
   const isCoreAgentNode = node?.type === 'core.agent';
@@ -239,8 +370,10 @@ export function InspectorPanel({
     isCoreAgentNode && !agentDeclaresVariables ? (referencedAgentForNode?.instruction?.promptTemplateId ?? null) : null,
   );
 
+  let configTabContent: ReactNode;
+
   if (!node) {
-    return (
+    configTabContent = (
       <Empty>
         <EmptyMedia variant="icon">
           <IconLayoutBoard aria-hidden="true" />
@@ -249,10 +382,8 @@ export function InspectorPanel({
         <EmptyDescription>Select a node on the canvas or in the list view to configure it.</EmptyDescription>
       </Empty>
     );
-  }
-
-  if (loading) {
-    return (
+  } else if (loading) {
+    configTabContent = (
       <div className="flex flex-col gap-4" aria-hidden="true">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-9 w-full" />
@@ -262,151 +393,185 @@ export function InspectorPanel({
         <Skeleton className="h-6 w-11" />
       </div>
     );
-  }
-
-  if (configSchema === undefined) {
-    return (
+  } else if (configSchema === undefined) {
+    configTabContent = (
       <div className="flex flex-col gap-4">
         <WholeConfigJsonEditor node={node} onConfigChange={onConfigChange} />
+        <SecondaryInputsSection
+          node={node}
+          secondaryInputs={secondaryInputs}
+          upstreamNodes={upstreamNodes}
+          onConfigChange={onConfigChange}
+          problems={problems}
+          readOnly={readOnly}
+        />
         <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
       </div>
     );
-  }
+  } else {
+    const allDescriptors = toFieldDescriptors(configSchema);
+    // The document binding's own two descriptors are withheld from the generic renderer, not
+    // dropped: `DocumentBindingField` renders both keys, and their paths stay in `knownPaths` so a
+    // server finding at either one is still routed to a field rather than to the graph-level list.
+    // TASK-864 B1 does the same for `core.agent`'s `agentRef` (the picker) and `core.action`'s
+    // `actionKey` + `action` (a select over the catalogue, then the DELEGATE's schema).
+    const isCoreAgent = node.type === 'core.agent';
+    const isCoreAction = node.type === 'core.action' && actionOptions !== undefined;
+    const isCoreTrigger = node.type === 'core.trigger';
+    const withheld = new Set<string>([
+      ...DOCUMENT_BINDING_PATHS,
+      ...(isCoreAgent ? [AGENT_REF_PATH, GUARDRAIL_PATH] : []),
+      ...(isCoreAction ? [ACTION_KEY_PATH, ACTION_CONFIG_PATH] : []),
+      ...(isCoreTrigger ? [CONTEXT_SCHEMA_PATH, GUARDRAIL_PATH] : []),
+    ]);
+    const descriptors = allDescriptors.filter((descriptor) => !withheld.has(descriptor.path));
+    const hasDocumentBinding = allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
+    // The delegate's schema, hoisted under `action.` so every generated path lands in the sub-config.
+    const actionDescriptors = isCoreAction && actionSchema !== undefined ? toFieldDescriptors({ type: 'object', properties: { [ACTION_CONFIG_PATH]: actionSchema } }) : [];
+    const knownPaths = new Set([...flattenPaths(allDescriptors), ...flattenPaths(actionDescriptors), AGENT_SLUG_PATH]);
+    const graphLevelErrors = problems.filter((problem) => !knownPaths.has(problem.path ?? ''));
 
-  const allDescriptors = toFieldDescriptors(configSchema);
-  // The document binding's own two descriptors are withheld from the generic renderer, not
-  // dropped: `DocumentBindingField` renders both keys, and their paths stay in `knownPaths` so a
-  // server finding at either one is still routed to a field rather than to the graph-level list.
-  // TASK-864 B1 does the same for `core.agent`'s `agentRef` (the picker) and `core.action`'s
-  // `actionKey` + `action` (a select over the catalogue, then the DELEGATE's schema).
-  const isCoreAgent = node.type === 'core.agent';
-  const isCoreAction = node.type === 'core.action' && actionOptions !== undefined;
-  const isCoreTrigger = node.type === 'core.trigger';
-  const withheld = new Set<string>([
-    ...DOCUMENT_BINDING_PATHS,
-    ...(isCoreAgent ? [AGENT_REF_PATH, GUARDRAIL_PATH] : []),
-    ...(isCoreAction ? [ACTION_KEY_PATH, ACTION_CONFIG_PATH] : []),
-    ...(isCoreTrigger ? [CONTEXT_SCHEMA_PATH, GUARDRAIL_PATH] : []),
-  ]);
-  const descriptors = allDescriptors.filter((descriptor) => !withheld.has(descriptor.path));
-  const hasDocumentBinding = allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
-  // The delegate's schema, hoisted under `action.` so every generated path lands in the sub-config.
-  const actionDescriptors = isCoreAction && actionSchema !== undefined ? toFieldDescriptors({ type: 'object', properties: { [ACTION_CONFIG_PATH]: actionSchema } }) : [];
-  const knownPaths = new Set([...flattenPaths(allDescriptors), ...flattenPaths(actionDescriptors), AGENT_SLUG_PATH]);
-  const graphLevelErrors = problems.filter((problem) => !knownPaths.has(problem.path ?? ''));
+    // TASK-890 §3.6/§3.10 — the referenced agent's own declared prompt-variable names and
+    // guardrail default, resolved from the SAME `useAgentOptions` read `AgentPickerField` uses
+    // (no second route, §2.7 #6: `GET admin/agents` already returns the full `AgentResponse`).
+    const referencedAgent = isCoreAgent ? (agentOptions.data ?? []).find((agent) => agent.slug === agentSlugValue) : undefined;
+    const declaredVariableNames = referencedAgent?.instruction?.variables ? Object.keys(referencedAgent.instruction.variables) : [];
+    const agentGuardrailEnabled = referencedAgent?.parameters?.guards?.enabled ?? null;
+    // TASK-890 J4-F6 — the fallback list, used by the field ONLY when the agent declares none.
+    const templateVariableNames = (boundTemplate.data?.declaredVariables ?? []).map((declaration) => declaration.name);
+    // TASK-890 J4-F5 — the pinned version when the trigger pins one, else the schema's own latest
+    // (the version list is newest-first); an inline schema is read directly.
+    const boundVersion =
+      triggerContextBinding?.versionNumber != null
+        ? (contextSchemaVersions.data ?? []).find((row) => row.versionNumber === triggerContextBinding.versionNumber)
+        : (contextSchemaVersions.data ?? [])[0];
+    const triggerPaths = triggerVariablePaths({ definition: boundVersion?.definition, inline: triggerContextBinding?.inline });
 
-  // TASK-890 §3.6/§3.10 — the referenced agent's own declared prompt-variable names and
-  // guardrail default, resolved from the SAME `useAgentOptions` read `AgentPickerField` uses
-  // (no second route, §2.7 #6: `GET admin/agents` already returns the full `AgentResponse`).
-  const referencedAgent = isCoreAgent ? (agentOptions.data ?? []).find((agent) => agent.slug === agentSlugValue) : undefined;
-  const declaredVariableNames = referencedAgent?.instruction?.variables ? Object.keys(referencedAgent.instruction.variables) : [];
-  const agentGuardrailEnabled = referencedAgent?.parameters?.guards?.enabled ?? null;
-  // TASK-890 J4-F6 — the fallback list, used by the field ONLY when the agent declares none.
-  const templateVariableNames = (boundTemplate.data?.declaredVariables ?? []).map((declaration) => declaration.name);
-  // TASK-890 J4-F5 — the pinned version when the trigger pins one, else the schema's own latest
-  // (the version list is newest-first); an inline schema is read directly.
-  const boundVersion =
-    triggerContextBinding?.versionNumber != null
-      ? (contextSchemaVersions.data ?? []).find((row) => row.versionNumber === triggerContextBinding.versionNumber)
-      : (contextSchemaVersions.data ?? [])[0];
-  const triggerPaths = triggerVariablePaths({ definition: boundVersion?.definition, inline: triggerContextBinding?.inline });
+    // TASK-890 §3.10 — `overrides.promptVariables` is nested inside `overrides`, so the top-level
+    // `withheld` Set cannot reach it; `fieldOverrides` intercepts it wherever `FieldRenderer`
+    // recurses into the `overrides` group.
+    const fieldOverrides = isCoreAgent
+      ? {
+          [PROMPT_VARIABLES_PATH]: ({ errors: fieldErrors }: FieldRenderContext) => (
+            <PromptVariablesField
+              idPrefix={node.id}
+              config={node.config}
+              onConfigChange={onConfigChange}
+              declaredVariableNames={declaredVariableNames}
+              templateVariableNames={templateVariableNames}
+              triggerPaths={triggerPaths}
+              references={references}
+              errors={fieldErrors}
+              disabled={readOnly}
+            />
+          ),
+        }
+      : undefined;
 
-  // TASK-890 §3.10 — `overrides.promptVariables` is nested inside `overrides`, so the top-level
-  // `withheld` Set cannot reach it; `fieldOverrides` intercepts it wherever `FieldRenderer`
-  // recurses into the `overrides` group.
-  const fieldOverrides = isCoreAgent
-    ? {
-        [PROMPT_VARIABLES_PATH]: ({ errors: fieldErrors }: FieldRenderContext) => (
-          <PromptVariablesField
+    configTabContent = (
+      <fieldset disabled={readOnly} className="flex flex-col gap-4">
+        {isCoreAgent ? (
+          <AgentPickerField
+            id={`${node.id}-${AGENT_SLUG_PATH}`}
+            value={typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : ''}
+            onChange={(slug) => onConfigChange(setAtPath(node.config, AGENT_SLUG_PATH, slug))}
+            errors={[...errorsForPath(problems, AGENT_SLUG_PATH), ...errorsForPath(problems, AGENT_REF_PATH)]}
+            disabled={readOnly}
+          />
+        ) : null}
+        {isCoreTrigger ? (
+          <ContextSchemaRefField
             idPrefix={node.id}
             config={node.config}
             onConfigChange={onConfigChange}
-            declaredVariableNames={declaredVariableNames}
-            templateVariableNames={templateVariableNames}
-            triggerPaths={triggerPaths}
-            references={references}
-            errors={fieldErrors}
+            errors={errorsForPath(problems, CONTEXT_SCHEMA_PATH)}
             disabled={readOnly}
           />
-        ),
-      }
-    : undefined;
+        ) : null}
+        {isCoreAgent || isCoreTrigger ? (
+          <GuardrailField
+            idPrefix={node.id}
+            scope={isCoreAgent ? 'node' : 'workflow'}
+            config={node.config}
+            onConfigChange={onConfigChange}
+            workflowGuardrailEnabled={isCoreAgent ? workflowGuardrailEnabled : undefined}
+            agentGuardrailEnabled={isCoreAgent ? agentGuardrailEnabled : undefined}
+            errors={[...errorsForPath(problems, GUARDRAIL_PATH), ...errorsForPath(problems, `${GUARDRAIL_PATH}.enabled`)]}
+            disabled={readOnly}
+          />
+        ) : null}
+        {isCoreAction ? <ActionKeySection node={node} options={actionOptions} onConfigChange={onConfigChange} errors={errorsForPath(problems, ACTION_KEY_PATH)} /> : null}
+        <SecondaryInputsSection
+          node={node}
+          secondaryInputs={secondaryInputs}
+          upstreamNodes={upstreamNodes}
+          onConfigChange={onConfigChange}
+          problems={problems}
+          readOnly={readOnly}
+        />
+        {actionDescriptors.map((descriptor) => (
+          <FieldRenderer
+            key={descriptor.path}
+            descriptor={descriptor}
+            config={node.config}
+            onConfigChange={onConfigChange}
+            errors={errorsForPath(problems, descriptor.path)}
+            idPrefix={node.id}
+            references={references}
+          />
+        ))}
+        {descriptors.map((descriptor) => (
+          <FieldRenderer
+            key={descriptor.path}
+            descriptor={descriptor}
+            config={node.config}
+            onConfigChange={onConfigChange}
+            errors={errorsForPath(problems, descriptor.path)}
+            idPrefix={node.id}
+            references={references}
+            fieldOverrides={fieldOverrides}
+          />
+        ))}
+        {hasDocumentBinding ? (
+          <DocumentBindingField
+            idPrefix={node.id}
+            config={node.config}
+            onConfigChange={onConfigChange}
+            templateErrors={errorsForPath(problems, DOCUMENT_TEMPLATE_PATH)}
+            versionErrors={errorsForPath(problems, DOCUMENT_VERSION_PATH)}
+          />
+        ) : null}
+        {!knownPaths.has(PROMPT_TEMPLATE_PATH) ? (
+          <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
+        ) : null}
+        {graphLevelErrors.length > 0 ? (
+          <div role="alert" className="text-destructive text-sm">
+            {graphLevelErrors.map((problem) => (
+              <p key={`${problem.ruleId}-${problem.message}`}>{problem.message}</p>
+            ))}
+          </div>
+        ) : null}
+      </fieldset>
+    );
+  }
 
   return (
-    <fieldset disabled={readOnly} className="flex flex-col gap-4">
-      {isCoreAgent ? (
-        <AgentPickerField
-          id={`${node.id}-${AGENT_SLUG_PATH}`}
-          value={typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : ''}
-          onChange={(slug) => onConfigChange(setAtPath(node.config, AGENT_SLUG_PATH, slug))}
-          errors={[...errorsForPath(problems, AGENT_SLUG_PATH), ...errorsForPath(problems, AGENT_REF_PATH)]}
-          disabled={readOnly}
-        />
-      ) : null}
-      {isCoreTrigger ? (
-        <ContextSchemaRefField
-          idPrefix={node.id}
-          config={node.config}
-          onConfigChange={onConfigChange}
-          errors={errorsForPath(problems, CONTEXT_SCHEMA_PATH)}
-          disabled={readOnly}
-        />
-      ) : null}
-      {isCoreAgent || isCoreTrigger ? (
-        <GuardrailField
-          idPrefix={node.id}
-          scope={isCoreAgent ? 'node' : 'workflow'}
-          config={node.config}
-          onConfigChange={onConfigChange}
-          workflowGuardrailEnabled={isCoreAgent ? workflowGuardrailEnabled : undefined}
-          agentGuardrailEnabled={isCoreAgent ? agentGuardrailEnabled : undefined}
-          errors={[...errorsForPath(problems, GUARDRAIL_PATH), ...errorsForPath(problems, `${GUARDRAIL_PATH}.enabled`)]}
-          disabled={readOnly}
-        />
-      ) : null}
-      {isCoreAction ? <ActionKeySection node={node} options={actionOptions} onConfigChange={onConfigChange} errors={errorsForPath(problems, ACTION_KEY_PATH)} /> : null}
-      {actionDescriptors.map((descriptor) => (
-        <FieldRenderer
-          key={descriptor.path}
-          descriptor={descriptor}
-          config={node.config}
-          onConfigChange={onConfigChange}
-          errors={errorsForPath(problems, descriptor.path)}
-          idPrefix={node.id}
-          references={references}
-        />
-      ))}
-      {descriptors.map((descriptor) => (
-        <FieldRenderer
-          key={descriptor.path}
-          descriptor={descriptor}
-          config={node.config}
-          onConfigChange={onConfigChange}
-          errors={errorsForPath(problems, descriptor.path)}
-          idPrefix={node.id}
-          references={references}
-          fieldOverrides={fieldOverrides}
-        />
-      ))}
-      {hasDocumentBinding ? (
-        <DocumentBindingField
-          idPrefix={node.id}
-          config={node.config}
-          onConfigChange={onConfigChange}
-          templateErrors={errorsForPath(problems, DOCUMENT_TEMPLATE_PATH)}
-          versionErrors={errorsForPath(problems, DOCUMENT_VERSION_PATH)}
-        />
-      ) : null}
-      {!knownPaths.has(PROMPT_TEMPLATE_PATH) ? (
-        <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
-      ) : null}
-      {graphLevelErrors.length > 0 ? (
-        <div role="alert" className="text-destructive text-sm">
-          {graphLevelErrors.map((problem) => (
-            <p key={`${problem.ruleId}-${problem.message}`}>{problem.message}</p>
-          ))}
-        </div>
-      ) : null}
-    </fieldset>
+    <Tabs value={tab} onValueChange={(next) => onTabChange(next as InspectorTab)} className="flex h-full min-h-0 flex-col gap-3">
+      <TabsList variant="line" className="shrink-0">
+        <TabsTrigger value="config">Config</TabsTrigger>
+        <TabsTrigger value="problems" className="gap-1.5">
+          Problems
+          {problemCount ? <Badge variant="destructive">{problemCount}</Badge> : null}
+        </TabsTrigger>
+        <TabsTrigger value="run">Run</TabsTrigger>
+      </TabsList>
+      {/* The ONE scroll container for the panel (rule 11 §1) — the tab list above stays pinned;
+          only this region scrolls, whichever tab is active. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <TabsContent value="config">{configTabContent}</TabsContent>
+        <TabsContent value="problems">{problemsSlot}</TabsContent>
+        <TabsContent value="run">{runSlot}</TabsContent>
+      </div>
+    </Tabs>
   );
 }

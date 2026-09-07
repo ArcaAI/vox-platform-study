@@ -538,3 +538,127 @@ describe('DD-2 document-template binding survives a config-schema round-trip', (
     expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], config)).not.toEqual([]);
   });
 });
+
+/**
+ * TASK-893 B2 — plain-language `summary` beside the existing `description`, on every
+ * `core.*` entry `NODE_CONFIG_SCHEMAS` (the 11 active types introduced by TASK-864; the two
+ * deprecated `core.*` markers, `core.start`/`core.end`, are excluded on purpose — see
+ * `docs/implementation/TASK-893-Workflow-Studio-Redesign/README.md` §2.7).
+ *
+ * `description` is asserted UNCHANGED (still the contract/API-docs text) everywhere `summary`
+ * is asserted present, so this file cannot drift into "shortened the contract doc" by accident.
+ */
+describe('core.* summary copy (TASK-893 B2)', () => {
+  const ACTIVE_CORE_NODE_TYPES = [
+    'core.trigger',
+    'core.agent',
+    'core.classify',
+    'core.humanReview',
+    'core.variable',
+    'core.condition',
+    'core.loop',
+    'core.note',
+    'core.output',
+    'core.data',
+    'core.action',
+  ] as const;
+
+  function isPlainSchemaObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  /** Every summary/description-carrying string must be plain UI copy: short, sentence case,
+   *  no ticket ids, no backticks, no shouted MUST/NEVER normative language. */
+  function assertPlainCopy(value: string, label: string): void {
+    expect(value.length, `${label} is empty`).toBeGreaterThan(0);
+    expect(value.length, `${label} exceeds 80 chars: "${value}"`).toBeLessThanOrEqual(80);
+    expect(value, `${label} contains a ticket id`).not.toMatch(/\b(TASK|OD|D)-\d+\b/);
+    expect(value, `${label} contains a backtick`).not.toContain('`');
+    expect(value, `${label} uses shouted MUST/NEVER`).not.toMatch(/\b(MUST|NEVER)\b/);
+  }
+
+  it.each(ACTIVE_CORE_NODE_TYPES)('%s carries a top-level summary (the palette one-line purpose)', (type) => {
+    const schema = NODE_CONFIG_SCHEMAS[type] as { summary?: unknown; description?: unknown };
+    expect(typeof schema.summary, `${type}.summary should be a string`).toBe('string');
+    assertPlainCopy(schema.summary as string, `${type}.summary`);
+  });
+
+  it.each(ACTIVE_CORE_NODE_TYPES)('%s: every field with a description also carries a summary', (type) => {
+    const missing: string[] = [];
+
+    function walk(node: unknown, path: string): void {
+      if (!isPlainSchemaObject(node)) return;
+      if (typeof node.description === 'string') {
+        if (typeof node.summary !== 'string' || node.summary.length === 0) {
+          missing.push(path || '(root)');
+        } else {
+          assertPlainCopy(node.summary, `${type}${path}.summary`);
+        }
+      }
+      if (isPlainSchemaObject(node.properties)) {
+        for (const [key, sub] of Object.entries(node.properties)) walk(sub, `${path}.properties.${key}`);
+      }
+      if (node.items !== undefined) walk(node.items, `${path}.items`);
+    }
+
+    walk(NODE_CONFIG_SCHEMAS[type], '');
+    expect(missing, `${type}: description without a paired summary at ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('the enabled toggle keeps the worked example from the ticket verbatim', () => {
+    // core.agent is an arbitrary, non-graph-boundary pick — every active core.* type except
+    // core.trigger/core.output folds in the same NODE_ENABLED_PROPERTY object (§ADDENDUM above).
+    const properties = NODE_CONFIG_SCHEMAS['core.agent'].properties as Record<string, { summary?: string; description?: string }>;
+    expect(properties.enabled.summary).toBe('Skip this node without removing it.');
+    // `description` is untouched — still the full normative text, never shortened.
+    expect(properties.enabled.description).toContain('TASK-890 D-1');
+  });
+
+  it('deprecated core.* markers (core.start, core.end) get no NEW top-level summary of their own', () => {
+    // They share BOUNDARY_MARKER_SCHEMA, never edited by this ticket — deprecated entries are
+    // migrated away in Phase 3/4, not copy-edited in Phase 1.
+    expect((NODE_CONFIG_SCHEMAS['core.start'] as { summary?: unknown }).summary).toBeUndefined();
+    expect((NODE_CONFIG_SCHEMAS['core.end'] as { summary?: unknown }).summary).toBeUndefined();
+  });
+});
+
+/**
+ * TASK-893 B5 support — `config.inputs.<portName> = { fromNodeId }` (INTERFACES.md Contract B
+ * §4.2) is a NEW config surface the secondary-input inspector field writes. Every schema in
+ * this module sets `additionalProperties: false`, so without a declared `inputs` property the
+ * very first binding an admin makes would fail validation. Declared permissively (no per-port
+ * enumeration — that list is Lane D's `secondaryInputsFor`, derived from the port model, not
+ * from this JSON schema) on the 10 active core.* types that do not share their schema object
+ * with a deprecated type; `core.data` shares `AGENTIC_DATA_SCHEMA` with the deprecated
+ * `agentic.data` and is deliberately excluded (unlike copy, a functional config surface is not
+ * something a deprecated entry should also gain).
+ */
+describe('core.* inputs binding surface (TASK-893 B5 support)', () => {
+  const TYPES_WITH_INPUTS_PROPERTY = [
+    'core.trigger',
+    'core.agent',
+    'core.classify',
+    'core.humanReview',
+    'core.variable',
+    'core.condition',
+    'core.loop',
+    'core.note',
+    'core.output',
+    'core.action',
+  ] as const;
+
+  it.each(TYPES_WITH_INPUTS_PROPERTY)('%s declares an inputs property (additionalProperties: false would else reject it)', (type) => {
+    const properties = NODE_CONFIG_SCHEMAS[type].properties as Record<string, unknown> | undefined;
+    expect(properties?.inputs).toBeDefined();
+  });
+
+  it('core.agent accepts a secondary-input binding at inputs.<portName>', () => {
+    const config = { agentRef: { slug: 'demo-agent' }, inputs: { context: { fromNodeId: 'trigger-1' } } };
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS['core.agent'], config)).toEqual([]);
+  });
+
+  it('core.data does NOT declare inputs — it shares AGENTIC_DATA_SCHEMA with the deprecated agentic.data', () => {
+    const properties = NODE_CONFIG_SCHEMAS['core.data'].properties as Record<string, unknown>;
+    expect(properties.inputs).toBeUndefined();
+  });
+});
