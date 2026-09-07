@@ -5,3 +5,6 @@ export * from './port-compatibility';
 export * from './document-binding';
 export * from './bundle-io';
 export * from './ensure-canvas-layout';
+export * from './canvas-handles';
+export * from './socket-resolution';
+export * from './step-order';

@@ -5,13 +5,14 @@
  * singleton, never exported as an object.
  *
  * Business rules live HERE, on the actions, not duplicated per editor: `deleteNode` refuses a
- * `mandatory` node and returns a reason string both the canvas and the list/tree editor render
- * identically; `connect` refuses a self-edge and a duplicate edge. Server data (the definition,
- * the registry, the validation report) is NOT mirrored into this store — it stays in TanStack
- * Query (`api/hooks.ts`); this store owns only the graph a tenant is actively editing.
+ * `mandatory` node and returns a reason string the canvas renders inline; `connect` refuses a
+ * self-edge and a duplicate edge; `wrapInLoop` refuses a selection it cannot legally group.
+ * Server data (the definition, the registry, the validation report) is NOT mirrored into this
+ * store — it stays in TanStack Query (`api/hooks.ts`); this store owns only the graph a tenant
+ * is actively editing, plus the Save/Discard state machine over it (TASK-893 §3.1-§3.4).
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import type { ActionResult, AutosaveState, ConnectRequest, GraphStoreEdge, GraphStoreNode, WorkflowStudioViewMode } from './types';
+import type { ActionResult, ConnectRequest, GraphStoreEdge, GraphStoreNode, SaveState } from './types';
 import { checkPortCompatibility } from '../lib/port-compatibility';
 import type { WorkflowNodeDescriptor } from '../api/types';
 
@@ -23,20 +24,23 @@ import type { WorkflowNodeDescriptor } from '../api/types';
  */
 type PortLookup = ReadonlyMap<string, WorkflowNodeDescriptor>;
 
-interface GraphSnapshot {
+export interface GraphSnapshot {
   nodes: GraphStoreNode[];
   edges: GraphStoreEdge[];
 }
 
 export interface GraphState extends GraphSnapshot {
   selectedNodeId: string | null;
-  viewMode: WorkflowStudioViewMode;
   dirty: boolean;
+  saveState: SaveState;
   lastSavedVersion: number | null;
-  autosaveState: AutosaveState;
-  /** Bounded undo/redo over graph-shape edits (add/delete/connect/disconnect/config edits) —
-   *  layout-only moves are NOT pushed (README Task 11: position bookkeeping isn't an authored
-   *  change worth an undo step). */
+  /** The last SAVED graph — what `discard()` restores. Set by `hydrate`, `initializeGraph` and
+   *  `markSaved`; `null` only before the editor has any graph at all, which is the one state in
+   *  which `discard()` has nothing to revert TO and is therefore a no-op. */
+  baseline: GraphSnapshot | null;
+  /** Bounded undo/redo over graph-shape edits (add/delete/connect/disconnect/config edits,
+   *  loop grouping) — layout-only moves are NOT pushed: position bookkeeping is not an authored
+   *  change worth an undo step, even now that it marks the graph dirty (see `moveNode`). */
   undoStack: GraphSnapshot[];
   redoStack: GraphSnapshot[];
 }
@@ -69,15 +73,29 @@ export interface GraphActions {
   canConnect: (request: ConnectRequest, portLookup?: PortLookup) => ActionResult;
   connect: (request: ConnectRequest, portLookup?: PortLookup) => ActionResult;
   disconnectEdge: (edgeId: string) => void;
-  /** List-editor-only reorder ("move up/down" buttons, never drag — README Task 13: "satisfying
-   *  2.5.7 by construction rather than by adding a keyboard shim to a drag interaction"). Swaps
-   *  the node's position in the `nodes` array, which is the list editor's row/tab order; it does
-   *  not touch canvas `position` or mark the graph dirty (pure display-order bookkeeping, same
-   *  posture as `moveNode`). */
-  reorderNode: (nodeId: string, direction: 'up' | 'down') => void;
+  /**
+   * TASK-893 §3.2 — creates a `core.loop` sized around `nodeIds` and re-parents them into it.
+   * Refuses an empty selection, a selection containing a `mandatory` node (which includes both
+   * graph boundaries: `core.trigger` and `core.output` are `mandatory`, and the contract's own
+   * structural rule forbids either inside a loop body), and a selection containing a node that
+   * already sits inside a group. Undoable, dirty. Returns the new loop's id on success.
+   */
+  wrapInLoop: (nodeIds: string[]) => ActionResult & { loopId?: string };
+  /** Dissolves the loop: children are re-parented OUT of it (to the loop's own parent, i.e. the
+   *  top level for an unnested loop) with their positions converted back to that scope, then the
+   *  loop node and every edge touching it are removed. Undoable, dirty. */
+  unwrapLoop: (loopId: string) => ActionResult;
+  /** Drag into / out of / between loop groups. `parentId` null = top level. `position` is already
+   *  expressed relative to the NEW parent (Contract A `onNodeParentChange`), so it is stored
+   *  verbatim. Undoable, dirty. */
+  setNodeParent: (nodeId: string, parentId: string | null, position: { x: number; y: number }) => void;
   selectNode: (nodeId: string | null) => void;
-  setViewMode: (mode: WorkflowStudioViewMode) => void;
-  setAutosaveState: (state: AutosaveState) => void;
+  setSaveState: (state: SaveState) => void;
+  /** Reverts nodes/edges to `baseline`, clears both undo stacks and returns the machine to
+   *  `clean`. A no-op when `baseline` is null. */
+  discard: () => void;
+  /** Clears `dirty`, records the version, and SNAPSHOTS the saved graph as the new `baseline`
+   *  (which is what makes the next `discard()` revert to this save rather than to the load). */
   markSaved: (version: number) => void;
   undo: () => void;
   redo: () => void;
@@ -89,8 +107,31 @@ export type GraphStoreApi = StoreApi<GraphStore>;
 const MANDATORY_CLASS = 'mandatory';
 const UNDO_STACK_LIMIT = 50;
 
+/** The registry type a canvas GROUP is: `wrapInLoop` creates one, and every consumer that has to
+ *  decide `kind: 'group'` reads this rather than re-typing the string. */
+export const LOOP_NODE_TYPE = 'core.loop';
+
+/**
+ * Inner padding a group keeps around its children. Mirrors `GROUP_PADDING` in
+ * `@arcaai/ui`'s `workflow-canvas/workflow-canvas.tsx` (which is not exported): a group's extent
+ * is DERIVED from its children's positions plus this padding, so placing the loop origin this
+ * far up-and-left of the selection's bounding box is what makes the wrapped nodes land inside
+ * the box the canvas will draw, instead of clipping through its header.
+ */
+const GROUP_PADDING = { x: 24, top: 56 } as const;
+
 function isMandatory(node: Pick<GraphStoreNode, 'safetyClasses'>): boolean {
   return node.safetyClasses.includes(MANDATORY_CLASS);
+}
+
+/**
+ * The `saveState` an EDIT moves the machine to. `clean`/`saved` become `dirty`; a `conflict` or
+ * an `error` is deliberately NOT cleared by editing — the user resolves it by saving again or
+ * discarding, and clearing it here would hide the `OccConflictAlert` behind the next keystroke.
+ * A `saving` in flight belongs to `useSaveModel`, which will drive it to its own terminal state.
+ */
+function dirtiedSaveState(current: SaveState): SaveState {
+  return current === 'clean' || current === 'saved' ? 'dirty' : current;
 }
 
 let nodeSequence = 0;
@@ -114,24 +155,31 @@ export function createGraphStore(): GraphStoreApi {
       set({ undoStack: next.length > UNDO_STACK_LIMIT ? next.slice(next.length - UNDO_STACK_LIMIT) : next, redoStack: [] });
     }
 
+    /** Every mutation's dirty bookkeeping in one place, so no action can mark `dirty` without
+     *  also advancing the save-state machine (they were two independent fields under autosave;
+     *  since TASK-893 they are one fact reported two ways). */
+    function dirtied(state: GraphState): { dirty: true; saveState: SaveState } {
+      return { dirty: true, saveState: dirtiedSaveState(state.saveState) };
+    }
+
     return {
       nodes: [],
       edges: [],
       selectedNodeId: null,
-      viewMode: 'canvas',
       dirty: false,
+      saveState: 'clean',
       lastSavedVersion: null,
-      autosaveState: 'idle',
+      baseline: null,
       undoStack: [],
       redoStack: [],
 
       hydrate: (nodes, edges) => {
-        set({ nodes, edges, selectedNodeId: null, dirty: false, undoStack: [], redoStack: [], autosaveState: 'idle' });
+        set({ nodes, edges, selectedNodeId: null, dirty: false, saveState: 'clean', baseline: { nodes, edges }, undoStack: [], redoStack: [] });
       },
 
       replaceGraph: (nodes, edges) => {
         snapshotForUndo();
-        set({ nodes, edges, selectedNodeId: null, dirty: true });
+        set((state) => ({ nodes, edges, selectedNodeId: null, ...dirtied(state) }));
       },
 
       initializeGraph: (descriptors) => {
@@ -143,7 +191,9 @@ export function createGraphStore(): GraphStoreApi {
           safetyClasses: descriptor.safetyClasses,
           config: {},
         }));
-        set({ nodes, edges: [], selectedNodeId: null, dirty: false, undoStack: [], redoStack: [] });
+        // The pre-placed set IS this graph's clean state: without a baseline here, the first edit
+        // on a brand-new definition would be dirty with nothing to Discard back to.
+        set({ nodes, edges: [], selectedNodeId: null, dirty: false, saveState: 'clean', baseline: { nodes, edges: [] }, undoStack: [], redoStack: [] });
       },
 
       addNode: (descriptor, position, options) => {
@@ -157,7 +207,7 @@ export function createGraphStore(): GraphStoreApi {
           config: {},
           ...(options?.parentId ? { parentId: options.parentId } : {}),
         };
-        set((state) => ({ nodes: [...state.nodes, node], dirty: true }));
+        set((state) => ({ nodes: [...state.nodes, node], ...dirtied(state) }));
         return id;
       },
 
@@ -168,12 +218,13 @@ export function createGraphStore(): GraphStoreApi {
         snapshotForUndo();
         // A loop body goes with its loop (TASK-864): children naming this node as parent are
         // removed too, so no orphan is ever left pointing at a group that no longer exists.
+        // (`unwrapLoop` is the action that KEEPS the children — deleting a loop deletes its body.)
         const removed = new Set<string>([nodeId, ...get().nodes.filter((candidate) => candidate.parentId === nodeId).map((candidate) => candidate.id)]);
         set((state) => ({
           nodes: state.nodes.filter((candidate) => !removed.has(candidate.id)),
           edges: state.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
           selectedNodeId: state.selectedNodeId !== null && removed.has(state.selectedNodeId) ? null : state.selectedNodeId,
-          dirty: true,
+          ...dirtied(state),
         }));
         return { ok: true };
       },
@@ -182,7 +233,7 @@ export function createGraphStore(): GraphStoreApi {
         snapshotForUndo();
         set((state) => ({
           nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, config } : node)),
-          dirty: true,
+          ...dirtied(state),
         }));
       },
 
@@ -197,21 +248,27 @@ export function createGraphStore(): GraphStoreApi {
           position: { x: node.position.x + 40, y: node.position.y + 60 },
           config: { ...node.config },
         };
-        set((state) => ({ nodes: [...state.nodes, copy], selectedNodeId: copy.id, dirty: true }));
+        set((state) => ({ nodes: [...state.nodes, copy], selectedNodeId: copy.id, ...dirtied(state) }));
         return { ok: true };
       },
 
-      // Layout is client-only bookkeeping (definition-api.contract.md: `WorkflowGraphNode` has
-      // no server-side position field) — moving a node does NOT mark the graph dirty or push an
-      // undo step, so dragging nodes around never triggers an autosave PATCH by itself.
+      // TASK-893 §3.7 — a move now marks the graph DIRTY. It deliberately did not while the
+      // Studio autosaved: layout rode along on whatever PATCH the debounce sent next, so nothing
+      // was lost by leaving it clean. With autosave replaced by an explicit Save/Discard, a move
+      // that never marks dirty is a move the user silently loses — Save stays disabled and the
+      // new position is thrown away on reload. It still pushes NO undo step: position bookkeeping
+      // is not an authored change worth an undo slot (see `GraphState.undoStack`).
+      //
       // A move to the position the node already holds is not a move. `onNodesChange` reports EVERY
       // node on every canvas change, and React Flow re-emits the current positions whenever the
       // controlled `nodes` prop is re-synced — rebuilding the array for those made a fresh `nodes`
       // identity each time, which re-rendered the canvas, which re-emitted (TASK-890 black-box J5).
+      // That early return is now load-bearing twice over: it also stops a re-sync from dirtying a
+      // graph nobody touched.
       moveNode: (nodeId, position) => {
         const current = get().nodes.find((node) => node.id === nodeId);
         if (!current || (current.position.x === position.x && current.position.y === position.y)) return;
-        set((state) => ({ nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, position } : node)) }));
+        set((state) => ({ nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, position } : node)), ...dirtied(state) }));
       },
 
       canConnect: (request, portLookup) => {
@@ -246,30 +303,143 @@ export function createGraphStore(): GraphStoreApi {
         if (!allowed.ok) return allowed;
         snapshotForUndo();
         const edge: GraphStoreEdge = { id: generateEdgeId(), ...request };
-        set((state) => ({ edges: [...state.edges, edge], dirty: true }));
+        set((state) => ({ edges: [...state.edges, edge], ...dirtied(state) }));
         return { ok: true };
-      },
-
-      reorderNode: (nodeId, direction) => {
-        const { nodes } = get();
-        const index = nodes.findIndex((node) => node.id === nodeId);
-        const swapWith = direction === 'up' ? index - 1 : index + 1;
-        if (index === -1 || swapWith < 0 || swapWith >= nodes.length) return;
-        const next = [...nodes];
-        [next[index], next[swapWith]] = [next[swapWith], next[index]];
-        set({ nodes: next });
       },
 
       disconnectEdge: (edgeId) => {
         snapshotForUndo();
-        set((state) => ({ edges: state.edges.filter((edge) => edge.id !== edgeId), dirty: true }));
+        set((state) => ({ edges: state.edges.filter((edge) => edge.id !== edgeId), ...dirtied(state) }));
+      },
+
+      wrapInLoop: (nodeIds) => {
+        const { nodes } = get();
+        const unique = [...new Set(nodeIds)];
+        if (unique.length === 0) return { ok: false, reason: 'Select at least one node to wrap in a loop.' };
+        const selected: GraphStoreNode[] = [];
+        for (const id of unique) {
+          const node = nodes.find((candidate) => candidate.id === id);
+          if (!node) return { ok: false, reason: 'Node not found.' };
+          selected.push(node);
+        }
+        if (selected.some((node) => isMandatory(node))) {
+          // `core.trigger` and `core.output` are both `mandatory`, and the contract refuses either
+          // inside a loop body ("the boundaries belong to the graph, not to an iteration" —
+          // `core-contract.ts`), so this one check covers the structural rule as well.
+          return { ok: false, reason: 'A mandatory node cannot be wrapped in a loop.' };
+        }
+        // The loop is NEW, so any parent a selected node already has is by definition a different
+        // one. Re-wrapping a body node would also break the contract's body-boundary edge rule
+        // (a body node may only be entered from its own loop's `each` handle).
+        if (selected.some((node) => node.parentId !== undefined)) {
+          return { ok: false, reason: 'One or more of these nodes is already inside a loop.' };
+        }
+
+        snapshotForUndo();
+        const originX = Math.min(...selected.map((node) => node.position.x)) - GROUP_PADDING.x;
+        const originY = Math.min(...selected.map((node) => node.position.y)) - GROUP_PADDING.top;
+        const loopId = generateNodeId();
+        const loop: GraphStoreNode = {
+          id: loopId,
+          type: LOOP_NODE_TYPE,
+          position: { x: originX, y: originY },
+          // The registry's own classes for `core.loop` are `['loop']`; they are joined back in on
+          // the next hydrate. None of them is `mandatory`, so an empty set here changes no store
+          // rule and cannot drift from a registry this store deliberately does not hold.
+          safetyClasses: [],
+          config: {},
+        };
+        const wrapped = new Set(unique);
+        set((state) => ({
+          // React Flow requires a parent to precede its children; the canvas re-sorts anyway
+          // (`parentsFirst`), but keeping the loop ahead of its body here means every consumer
+          // sees a well-formed array.
+          nodes: [
+            loop,
+            ...state.nodes.map((node) =>
+              wrapped.has(node.id)
+                ? { ...node, parentId: loopId, position: { x: node.position.x - originX, y: node.position.y - originY } }
+                : node,
+            ),
+          ],
+          selectedNodeId: loopId,
+          ...dirtied(state),
+        }));
+        // Edges that now cross the new body boundary are left EXACTLY as authored. Publish
+        // validation reports them by id (`core-contract.ts`'s body-boundary rule) and the user
+        // rewires them; silently deleting a wire the user drew would be a worse answer than a
+        // finding they can see.
+        return { ok: true, loopId };
+      },
+
+      unwrapLoop: (loopId) => {
+        const { nodes } = get();
+        const loop = nodes.find((candidate) => candidate.id === loopId);
+        if (!loop) return { ok: false, reason: 'Node not found.' };
+        if (loop.type !== LOOP_NODE_TYPE) return { ok: false, reason: 'Only a loop can be unwrapped.' };
+        snapshotForUndo();
+        set((state) => ({
+          nodes: state.nodes
+            .filter((node) => node.id !== loopId)
+            .map((node) => {
+              if (node.parentId !== loopId) return node;
+              // A child's position is relative to the loop, so its position in the loop's OWN
+              // scope is the sum. When the loop is itself unnested that scope is the canvas,
+              // which is what makes this the absolute position; when it is nested, the child
+              // inherits the grandparent and the same sum is correct there too.
+              const position = { x: loop.position.x + node.position.x, y: loop.position.y + node.position.y };
+              return loop.parentId ? { ...node, parentId: loop.parentId, position } : { ...withoutParent(node), position };
+            }),
+          edges: state.edges.filter((edge) => edge.source !== loopId && edge.target !== loopId),
+          selectedNodeId: state.selectedNodeId === loopId ? null : state.selectedNodeId,
+          ...dirtied(state),
+        }));
+        return { ok: true };
+      },
+
+      setNodeParent: (nodeId, parentId, position) => {
+        const { nodes } = get();
+        const node = nodes.find((candidate) => candidate.id === nodeId);
+        if (!node) return;
+        // A node cannot contain itself, directly or through its own descendants — either would
+        // make the canvas recurse and the compiler's `loops[].body` lift never terminate.
+        if (parentId !== null && (parentId === nodeId || isDescendantOf(nodes, parentId, nodeId))) return;
+        const samePlace = (node.parentId ?? null) === parentId && node.position.x === position.x && node.position.y === position.y;
+        if (samePlace) return;
+        snapshotForUndo();
+        set((state) => ({
+          nodes: state.nodes.map((candidate) => {
+            if (candidate.id !== nodeId) return candidate;
+            return parentId === null ? { ...withoutParent(candidate), position } : { ...candidate, parentId, position };
+          }),
+          ...dirtied(state),
+        }));
       },
 
       selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
-      setViewMode: (mode) => set({ viewMode: mode }),
-      setAutosaveState: (state) => set({ autosaveState: state }),
+      setSaveState: (state) => set({ saveState: state }),
 
-      markSaved: (version) => set({ dirty: false, lastSavedVersion: version, autosaveState: 'saved' }),
+      discard: () => {
+        const { baseline } = get();
+        if (!baseline) return;
+        const alive = new Set(baseline.nodes.map((node) => node.id));
+        set((state) => ({
+          nodes: baseline.nodes,
+          edges: baseline.edges,
+          // A node created since the last save no longer exists after a discard; leaving it
+          // selected would render an inspector for a ghost.
+          selectedNodeId: state.selectedNodeId !== null && alive.has(state.selectedNodeId) ? state.selectedNodeId : null,
+          dirty: false,
+          saveState: 'clean',
+          undoStack: [],
+          redoStack: [],
+        }));
+      },
+
+      markSaved: (version) => {
+        const { nodes, edges } = get();
+        set({ dirty: false, lastSavedVersion: version, saveState: 'saved', baseline: { nodes, edges } });
+      },
 
       undo: () => {
         const { undoStack, nodes, edges } = get();
@@ -280,7 +450,7 @@ export function createGraphStore(): GraphStoreApi {
           edges: previous.edges,
           undoStack: undoStack.slice(0, -1),
           redoStack: [...state.redoStack, { nodes, edges }],
-          dirty: true,
+          ...dirtied(state),
         }));
       },
 
@@ -293,9 +463,29 @@ export function createGraphStore(): GraphStoreApi {
           edges: next.edges,
           redoStack: redoStack.slice(0, -1),
           undoStack: [...state.undoStack, { nodes, edges }],
-          dirty: true,
+          ...dirtied(state),
         }));
       },
     };
   });
+}
+
+/** The same node with the `parentId` KEY absent — not present-and-`undefined`, so a graph
+ *  serialized straight after a drag-to-top-level never carries a `parentId: undefined` through
+ *  `toWorkflowGraph`. */
+function withoutParent(node: GraphStoreNode): GraphStoreNode {
+  return { id: node.id, type: node.type, position: node.position, safetyClasses: node.safetyClasses, config: node.config };
+}
+
+/** Is `candidateId` inside `ancestorId`'s subtree? Walks `parentId` upward, bounded by the node
+ *  count so a corrupt graph carrying a parent cycle cannot spin here. */
+function isDescendantOf(nodes: readonly GraphStoreNode[], candidateId: string, ancestorId: string): boolean {
+  let cursor: GraphStoreNode | undefined = nodes.find((node) => node.id === candidateId);
+  for (let hops = 0; cursor !== undefined && hops <= nodes.length; hops += 1) {
+    const parentId: string | undefined = cursor.parentId;
+    if (parentId === undefined) return false;
+    if (parentId === ancestorId) return true;
+    cursor = nodes.find((node) => node.id === parentId);
+  }
+  return false;
 }
