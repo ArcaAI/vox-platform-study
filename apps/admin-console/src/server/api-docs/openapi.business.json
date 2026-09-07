@@ -18584,6 +18584,7 @@
                 "promptTemplates",
                 "agents",
                 "agentAssignments",
+                "documentTemplates",
                 "workflowDefinitions"
               ],
               "type": "string"

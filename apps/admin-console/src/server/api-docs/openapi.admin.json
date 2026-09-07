@@ -18584,6 +18584,7 @@
                 "promptTemplates",
                 "agents",
                 "agentAssignments",
+                "documentTemplates",
                 "workflowDefinitions"
               ],
               "type": "string"
@@ -50985,7 +50986,7 @@
     },
     "/api/v1/admin/tenants/{id}/reference-set/sync": {
       "post": {
-        "description": "Copies the platform reference set — context schemas, prompt templates, agents (with their TENANT assignments) and workflow definitions — into one tenant. `missing-only` (the default) adds what the tenant lacks and touches nothing it already has; `refresh-locked` is accepted but NOT IMPLEMENTED yet — it behaves as `missing-only` and the response says so in `warnings`. Idempotent: a second run reports zero added. Per-row failures are reported in `warnings` rather than aborting the run.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant:write`).\n\n**Abilities** — `manage:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Copies the platform reference set — context schemas, prompt templates, agents (with their TENANT assignments), document templates and workflow definitions — into one tenant. Document templates are copied BEFORE workflow definitions: a workflow node pins `documentTemplateId` and the clone re-points it by slug, so the template must already exist in the destination tenant. `missing-only` (the default) adds what the tenant lacks and touches nothing it already has; `refresh-locked` is accepted but NOT IMPLEMENTED yet — it behaves as `missing-only` and the response says so in `warnings`. Idempotent: a second run reports zero added. Per-row failures are reported in `warnings` rather than aborting the run.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant:write`).\n\n**Abilities** — `manage:Tenant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantReferenceSetController_sync",
         "parameters": [
           {
