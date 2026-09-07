@@ -468,8 +468,145 @@ the live Secret (C1, owner-executed). No agent runs any of these.
 
 ## 7. Implementation Summary
 
-_Not started. To be filled in during Phase 4/5 with actual command output per
-`01-development-workflow.md` §Phase 5._
+**Status: code merged to `dev-2.2`; deployment merge and C1 pending.** Four agents ran in
+parallel per §6b with no file overlap and no merge conflicts.
+
+### 7.1 Merged to `dev-2.2`
+
+| Commit | Lane | Content |
+|---|---|---|
+| `4ff4fdafb` | A1 / E-1 | `hope_env.cpu` — cgroup-aware CPU allowance (v2 `cpu.max`, v1 `cfs_quota_us`, affinity, `os.cpu_count`), 20 tests |
+| `c06ab3d2d` | A2, A3, C3 | NLP sizes torch from the cgroup; `NLP_TORCH_NUM_*` settings; fail-closed token assertion |
+| `179f98d93` | review | **Correction:** gate on `DEPLOYMENT_ENVIRONMENT`, not `NODE_ENV` |
+| `7819b127e` | C3 | Guardrail fail-closed token assertion |
+| `9d3cd1970` | review | **Correction:** same gate fix for guardrail |
+
+**Post-merge gates (re-run on `dev-2.2` after merging, not on the branches):**
+
+```
+pnpm py-env:test        → 112 passed
+CI=true pnpm nlp:test   → 651 passed, 1 skipped, 3 deselected
+pnpm guardrail:test     → 514 passed
+pnpm nlp:lint / guardrail:lint / py-env:lint   → All checks passed!
+pnpm nlp:typecheck      → Success: no issues found in 64 source files
+pnpm guardrail:typecheck→ Success: no issues found in 45 source files
+```
+
+**Torch placement (A2), the highest-risk part.** The hook is at module scope in
+`apps/nlp/src/nlp/__init__.py`, not `main.py` — the image `ENTRYPOINT` is
+`python -m uvicorn --factory nlp.app:get_app`, so **`main.py` is never imported in the
+container**, and a worker-count > 1 re-imports the app string per child. `__init__.py` is the one
+module Python must execute before any `nlp.*` submodule on both paths. Proven by a subprocess test
+that *discriminates*: with the hook neutered the same subprocess reports the host default (12), and
+against the container's real entrypoint `torch.get_num_threads()` honours the setting.
+
+### 7.2 The `DEPLOYMENT_ENVIRONMENT` correction (applies to BOTH services)
+
+The original briefs said to gate on `NODE_ENV=production`. **That gate is inert in `hope-v2-dev`:**
+`base/config/platform.env` sets `NODE_ENV=production`, but `overlays/dev/kustomization.yaml:429`
+patches the generated ConfigMap to `NODE_ENV=development` — the live `hope-platform-config` reads
+`NODE_ENV: development`. A pod with no token would have logged one line and served on
+unauthenticated: today's behaviour exactly.
+
+`DEPLOYMENT_ENVIRONMENT` is set in every deployed environment (base `production`, dev overlay
+`dev`) and unset on a laptop. `CI` was dropped as a trigger — a CI *test* job is not a deployment.
+A-core's `NODE_ENV=test` carve-out was kept and checked first (`.gitlab/ci/test.yml` sets
+`NODE_ENV=test` **and** `CI=true` on every Python job).
+
+Verified identically for both services:
+
+```
+dev cluster (real)     -> refuses to start: True
+staging/prod (base)    -> refuses to start: True
+GitLab CI test job     -> refuses to start: False
+developer laptop       -> refuses to start: False
+```
+
+Consequence: A-core's reported risk *"this image will CrashLoop `hope-nlp` if promoted before C1"*
+was **false** — it reasoned from `base/` without the dev overlay. There is no crashloop risk in
+dev today, and the image is safe to promote before C1.
+
+### 7.3 Ready in `hope-v2-deployment`, branch `task-892/deploy` (NOT merged)
+
+Branched from `c78cb89`, which it preserves (`git merge-base --is-ancestor` passes; the overlay
+file is byte-identical, 0 diff lines, so the `promote-dev` comment-duplication trap is sidestepped).
+
+| Commit | Content | Safe to merge now |
+|---|---|---|
+| `6546081` | `OMP_NUM_THREADS`/`MKL_NUM_THREADS` on `hope-nlp` | ✅ |
+| `64a5647` | `startupProbe` `timeoutSeconds: 5` (it had **none** — 1s default on the heaviest handler; `c78cb89` missed it) | ✅ |
+| `213af0e` | `secret-keys` CI gate + key inventory | ✅ |
+| `b4d20a2` | `optional: false` ×8 | ⛔ **after C1 only** |
+
+Verified with `kubectl kustomize`: tip renders **8×** `optional: false`; `213af0e` renders **0×**
+while still carrying the OMP fix — the Secret dependency is genuinely isolated in the tip commit.
+`timeoutSeconds: 5` appears 21× (c78cb89 preserved).
+
+**Two ticket errors this lane corrected, both on evidence:**
+1. **A5 belongs in `base/`, not the overlay** (§4 said overlay). `base/stt.yaml:287` and
+   `base/tts-v2.yaml:237` *already* ship `OMP_NUM_THREADS`/`MKL_NUM_THREADS`; NLP was the only
+   PyTorch service without them. A container-unaware library default is wrong in every
+   environment, so base is right — and it means every overlay including `eks/*` inherits the fix.
+2. **§4 B4's "1s is copy-pasted across all four" was wrong.** `hope-stt` is already 5–10 s,
+   `hope-tts` 5 s. Guardrail/text probes were deliberately left alone — guardrail holds zero
+   resident model weights and text bans them via an enforced invariant.
+
+**This also corrects §2.2:** STT escapes the 48-thread pathology because it *already ships
+`OMP_NUM_THREADS=8` in base*, **not** because it holds a GPU slice. Its cgroup-blind
+`os.cpu_count()` fallback is simply never reached. A4 remains worth doing but is not urgent.
+
+### 7.4 OPEN CONFLICT — the auto-derived thread count is not the measured optimum
+
+| Source | Value at a 4-CPU quota |
+|---|---|
+| `hope_env.cpu` (rounds quota **down**, clamps ≥1) | **4** |
+| `base/nlp.yaml` `OMP_NUM_THREADS` (A-deploy) | **8** |
+| §2.2 benchmark (measured at a 2-CPU quota) | 8 → 50.0 ms/layer · **4 → 96.5 ms/layer** |
+
+The CFS quota caps CPU-*seconds per period*, not concurrency, and the node has 48 physical cores
+for the parallel section to spread across — so the quota-matching value is not the fastest value.
+A-core's precedence deliberately lets `OMP_NUM_THREADS` win over the derived value, so **8 wins
+today** and the merged state is the fast one.
+
+**Therefore A-core's follow-up #7 — "remove the interim overlay patch so the cgroup decides" — must
+NOT be actioned as written**; it would halve throughput. Resolve with B5 (re-benchmark in-pod at
+the 4-core limit) before changing either value.
+
+### 7.5 New defects found during execution (not in the original register)
+
+| ID | Pri | Finding |
+|---|---|---|
+| **D-8** | P1 | `stt`'s `/health/ready` makes a **blocking synchronous MinIO SDK call inside an `async def`** with no executor offload — it stalls the event loop for the full round-trip, on a probe. Same failure family as this ticket's incident. |
+| **D-9** | P1 | `text`'s `/health/ready` makes outbound HTTP to the same LLM backends `/generate` uses, at `timeoutSeconds: 1` / `failureThreshold: 2` — two slow vLLM responses unpublish it. |
+| **D-10** | P1 | **`apps/nlp` never configures logging on the container path.** `setup_logging()` is called only from `main.py`, which the ENTRYPOINT does not import; uvicorn configures only its own loggers, leaving root at WARNING. **Every `logger.info` from the app is dropped in the cluster** — which is why the pod logs are bare uvicorn access lines. V1 evidence must be an in-pod read, never a log grep. |
+| **D-11** | P2 | No post-load assertion anywhere in the gliner2 guard / token-classifier paths — no `id2label`, output-dimension or `labelTaxonomy` check. An incompatible checkpoint would serve degraded medical NER/PII silently. |
+| **D-12** | P2 | `hope-stt`'s probe paths are inverted: liveness *and* readiness both hit the heavy `/api/v1/health` (incl. D-8's blocking call) while the trivial `/health/live` is used only for startup. |
+| **D-13** | P2 | `GUARDRAIL_SERVICE_TOKEN` and `HARNESS_INTERNAL_SERVICE_TOKEN` still carry the fail-open `optional: true` shape (same as D-3). |
+| **D-14** | P3 | `scripts/generated/python-env-surface.json` was already stale on `dev-2.2` (missing `HF_HUB_CACHE` from TASK-890/F6); regenerated here. `overlays/orbstack` is never rendered by CI and can rot. |
+
+### 7.6 D-5 resolved — OD-4 answered
+
+Reproduced end-to-end against the installed packages: `gliner2_guard.py:110` → `gliner2`'s
+`Extractor.from_pretrained` → `AutoTokenizer.from_pretrained` → `AutoConfig` raises on the unknown
+`extractor` type → falls back to raw `PreTrainedConfig` whose `model_type` is `""` → the warning.
+
+**Intended, not mis-published.** `"extractor"` is `gliner2`'s own `ExtractorConfig.model_type`, and
+`checkpoint_family.py:39` already anticipates it. **Cosmetic** — the mismatched config is transient
+tokenizer-resolution scaffolding, discarded before model construction; it never reaches the weights
+or label map. Fix is one line at startup: `AutoConfig.register("extractor", ExtractorConfig)`. Do
+not re-publish the artifact. The durable fix is upstream in `gliner2`.
+
+*(Caveat: reproduced against `transformers==5.5.4` from the conda env; `uv.lock` pins 4.57.6/5.16.1
+for the container build, so cited line numbers are unverified against the deployed image. The
+fallback mechanism is stable across versions.)*
+
+### 7.7 Remaining work
+
+1. **C1 (owner):** add `INTERNAL_ACCESS_TOKEN` to live `hope-secrets`, then verify non-empty.
+2. Merge `task-892/deploy` `213af0e` → `main` (safe now); merge `b4d20a2` only after step 1.
+3. **B5:** re-benchmark threads in-pod at the 4-core limit; settle §7.4.
+4. **V3–V6:** replay the NER + Guardrail batch, capture `/metrics` before/after.
+5. Triage D-8 … D-14; re-open A4.
 
 ---
 
