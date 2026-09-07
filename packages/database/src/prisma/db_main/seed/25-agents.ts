@@ -281,6 +281,11 @@ export interface SeedModelRef {
   slug: string;
   taskType: string;
   provider: string | null;
+  /**
+   * The provider-native id `AiModel.wireModelId` (TASK-890 §3.1) — what an invocation actually
+   * puts on the wire. `null` on a platform-self-host row, which resolves by locator instead.
+   */
+  wireModelId: string | null;
 }
 
 export type SeedResolvedPrompt =
@@ -306,7 +311,10 @@ export function buildCompiledConfig(spec: SeedAgentSpec, model: SeedModelRef, fa
   return {
     task: spec.task,
     service: AGENT_TASK_SERVICE[spec.task],
-    model: { id: model.id, slug: model.slug, provider: model.provider ?? null, taskType: model.taskType },
+    // TASK-890 black-box F9 — `wireModelId` is FROZEN beside the reference exactly as
+    // `AgentService.compile` freezes it, so a seeded row and a re-published one stay the same
+    // artifact down to the checksum. Present-and-null on a self-host row; never absent.
+    model: { id: model.id, slug: model.slug, provider: model.provider ?? null, taskType: model.taskType, wireModelId: model.wireModelId ?? null },
     fallbacks: fallbacks.map((fallback, priority) => ({ priority, id: fallback.id, slug: fallback.slug, provider: fallback.provider ?? null })),
     instruction: spec.instruction,
     resolvedPrompt,
@@ -391,7 +399,7 @@ export interface SeedAgentsResult {
 
 /** The slice of the Prisma client the seed touches — typed narrowly so the test can hand in a fake. */
 export interface SeedAgentsClient {
-  aiModel: { findMany(args: { where: { tenantId: string } }): Promise<Array<{ id: string; slug: string; taskType: string; provider: string | null }>> };
+  aiModel: { findMany(args: { where: { tenantId: string } }): Promise<Array<{ id: string; slug: string; taskType: string; provider: string | null; wireModelId: string | null }>> };
   promptTemplate: { findUnique(args: { where: { id: string } }): Promise<{ id: string; status: string | null; content: string | null; approvedVersionNumber: number | null; currentVersionNumber: number | null } | null> };
   promptVersion: { findFirst(args: { where: { promptTemplateId: string; versionNumber: number } }): Promise<{ content: string | null } | null> };
   agent: { findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>; create(args: { data: unknown }): Promise<unknown> };

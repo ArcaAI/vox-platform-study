@@ -32,17 +32,22 @@ const CONTRACT_SRC = path.resolve(HERE, '../../../../../../workflow-contract/src
 const contract: any = await import(/* @vite-ignore */ CONTRACT_SRC);
 const { agentConfigProblems, canonicalJson: contractCanonicalJson, AGENT_PARAMETER_SCHEMAS } = contract;
 
-/** The registry rows the specs bind, as the catalogue seed defines them (slug → task type / provider). */
-const REGISTRY: Record<string, { taskType: string; provider: string | null }> = {
-  'arcaai-whisper-large-ml-en-gguf': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'built-in' },
-  'faster-whisper-large-v3-turbo-int8': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'built-in' },
-  'azure-speech-stt': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'azure-speech' },
-  'sarvam-saaras-v4': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'sarvam' },
-  'lms-gemma-4-e2b-it-qat': { taskType: 'TEXT_GENERATION', provider: 'lm-studio' },
-  kokoro: { taskType: 'TEXT_TO_SPEECH', provider: 'built-in' },
+/**
+ * The registry rows the specs bind, as the catalogue seed defines them (slug → task type /
+ * provider / wire id). `wireModelId` is `null` exactly where `seed/ai-models/*` declares none:
+ * the three platform-self-host rows resolve by locator, the LM Studio and cloud rows carry the
+ * provider-native id (`ai-model-registry-seed.test.ts` pins `wireModelId === sourceUri` there).
+ */
+const REGISTRY: Record<string, { taskType: string; provider: string | null; wireModelId: string | null }> = {
+  'arcaai-whisper-large-ml-en-gguf': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'built-in', wireModelId: null },
+  'faster-whisper-large-v3-turbo-int8': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'built-in', wireModelId: null },
+  'azure-speech-stt': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'azure-speech', wireModelId: 'azure://speech-to-text' },
+  'sarvam-saaras-v4': { taskType: 'AUTOMATIC_SPEECH_RECOGNITION', provider: 'sarvam', wireModelId: 'saaras:v4' },
+  'lms-gemma-4-e2b-it-qat': { taskType: 'TEXT_GENERATION', provider: 'lm-studio', wireModelId: 'gemma-4-e2b-it-qat' },
+  kokoro: { taskType: 'TEXT_TO_SPEECH', provider: 'built-in', wireModelId: null },
 };
 /** Non-null registry lookup: a spec naming a slug outside the catalogue is a test failure, not a type hole. */
-function reg(slug: string): { taskType: string; provider: string | null } {
+function reg(slug: string): { taskType: string; provider: string | null; wireModelId: string | null } {
   const entry = REGISTRY[slug];
   if (!entry) throw new Error(`'${slug}' is not a catalogue model the seed may bind`);
   return entry;
@@ -252,5 +257,24 @@ describe('TASK-890 — the seeded agents on the new instruction and compiled sha
     const optedOut: SeedAgentSpec = { ...llm, parameters: { ...llm.parameters, guards: { enabled: false } } };
     const compiled = buildCompiledConfig(optedOut, modelRef(llm.modelSlug), [], null);
     expect(compiled).toMatchObject({ guardrail: { enabled: false } });
+  });
+
+  /**
+   * TASK-890 black-box F9 — `AgentService.compile` freezes the ROUTED id beside the model
+   * reference (`compiledConfig.model.wireModelId`), which is what an invocation puts on the wire.
+   * The seed builds the same artifact by hand, so a seeded row that omitted the member would
+   * differ from a re-published one in both the shape AND the checksum (`canonicalJson` drops no
+   * present key), and a seeded agent bound to an LM Studio row would route off the catalogue slug
+   * on any path that trusts the frozen value.
+   */
+  it('a PUBLISHED row freezes `model.wireModelId` exactly as `AgentService.compile` does — the id where the catalogue has one, `null` where it does not', () => {
+    const llm = PLATFORM_AGENT_SPECS.find((spec) => spec.slug === 'platform-summarization')!;
+    const compiled = buildCompiledConfig(llm, modelRef(llm.modelSlug), [], { source: 'inline', content: 'x' }) as { model: Record<string, unknown> };
+    expect(compiled.model).toEqual({ id: 'model-lms-gemma-4-e2b-it-qat', slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio', taskType: 'TEXT_GENERATION', wireModelId: 'gemma-4-e2b-it-qat' });
+
+    const asr = PLATFORM_AGENT_SPECS.find((spec) => spec.slug === 'platform-transcription')!;
+    const selfHosted = buildCompiledConfig(asr, modelRef(asr.modelSlug), [], null) as { model: Record<string, unknown> };
+    expect(selfHosted.model.wireModelId, 'a platform-self-host row declares no wire id — the member is present and null, never absent').toBeNull();
+    expect(Object.keys(selfHosted.model).sort()).toEqual(['id', 'provider', 'slug', 'taskType', 'wireModelId']);
   });
 });
