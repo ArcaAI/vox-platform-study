@@ -305,6 +305,12 @@ function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: s
       {Object.entries(props(schema)).map(([name, child]) => {
         const childPath = [...path, name];
         const id = `${idPrefix}-${childPath.join('-')}`;
+        // TASK-891 C4 — `generation.reasoning` is rendered explicitly by `ReasoningField`
+        // below, because a boolean + enum pair reads as a switch and a select, not as the
+        // generic nested-object fieldset this walker emits. W4 hand-rendered it while the
+        // shared schema still lacked the property; now that `GENERATION_PROPERTY` declares
+        // it, skipping it here is what stops BOTH from rendering.
+        if (childPath.join('.') === 'generation.reasoning') return null;
         const isObject = child.type === 'object';
         const hasProps = Object.keys(props(child)).length > 0;
         if (isObject && hasProps) {

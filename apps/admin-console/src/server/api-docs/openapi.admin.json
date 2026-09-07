@@ -10664,6 +10664,40 @@
         ],
         "type": "object"
       },
+      "LiveDocNodeDegradeResponse": {
+        "properties": {
+          "nodeId": {
+            "description": "Node id as authored in the graph",
+            "type": "string"
+          },
+          "reason": {
+            "description": "PHI-safe reason code or error name — never clinical text",
+            "type": "string"
+          },
+          "status": {
+            "description": "Non-success outcome of that node on the last flush",
+            "enum": [
+              "degraded",
+              "failed",
+              "skipped",
+              "timed-out",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "description": "Registered node type, e.g. `consultation.realtimeSummary`",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeId",
+          "type",
+          "status",
+          "reason"
+        ],
+        "type": "object"
+      },
       "LiveDocRealtimeCapabilitiesResponse": {
         "properties": {
           "assignmentSource": {
@@ -10816,6 +10850,13 @@
           "nlpLatencyMs": {
             "description": "NLP entity-extraction latency of the last flush (ms)",
             "type": "number"
+          },
+          "nodeDegrades": {
+            "description": "TASK-891 B4 — the realtime lane nodes that did NOT succeed on the last flush, with their reasons. `textFailed`/`nlpFailed` say THAT the two legacy stages failed; this says WHICH node and WHY, which is the difference between reading this endpoint and reading pod logs. Empty/absent on a clean flush and on the legacy (non-graph) engine, which has no nodes.",
+            "items": {
+              "$ref": "#/components/schemas/LiveDocNodeDegradeResponse"
+            },
+            "type": "array"
           },
           "sectionCount": {
             "description": "Number of summary sections in the last published summary",
@@ -22785,6 +22826,13 @@
             "description": "The department id for a DEPARTMENT-scope assignment; omitted (or null) for TENANT scope.",
             "type": "string"
           },
+          "selectorTags": {
+            "description": "TASK-891 — the optional `key:value` tag selector this assignment is qualified by, e.g. `[\"visit-type:revisit\"]`. A tier may hold one row per selector plus one unqualified row; resolution tries the most specific MATCHING selector first and the unqualified row last. Omitted (or empty) = the tier’s unqualified assignment. A bare key is refused. The selector identifies the row: changing it addresses a DIFFERENT assignment, it does not re-tag this one.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "workflowDefinitionSlug": {
             "description": "Lineage slug of the assigned definition. Must resolve to a PUBLISHED definition on this palette in the caller tenant.",
             "example": "radiology-note",
@@ -23753,6 +23801,13 @@
             "nullable": true,
             "type": "string"
           },
+          "selectorTags": {
+            "description": "TASK-891 — the canonical `key:value` selector qualifying this assignment; empty = the tier’s unqualified row.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tenantId": {
             "type": "string"
           },
@@ -23773,6 +23828,7 @@
           "scope",
           "paletteKey",
           "workflowDefinitionSlug",
+          "selectorTags",
           "createdAt",
           "updatedAt",
           "version"
