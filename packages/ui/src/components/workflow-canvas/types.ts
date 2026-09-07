@@ -15,16 +15,21 @@ export interface WorkflowCanvasNodeProblem {
   messages: readonly string[];
 }
 
-/** One declared port on a node INSTANCE — rendered as its own handle (TASK-864 B1). */
-export interface WorkflowCanvasPort {
-  /** The handle id — the edge's `sourceHandle` / `targetHandle`. */
+/**
+ * One labelled BRANCH output — the only case where a node shows more than one source handle
+ * (TASK-893 §3.1). `id` is the React Flow handle id AND the real wire port name (`then`, `else`,
+ * `approved`, `each`, …), so an edge drawn from it already names the socket it leaves by.
+ */
+export interface WorkflowCanvasBranch {
   id: string;
-  /** `control` ports carry sequencing only (branch handles, `next`); everything else carries data. */
-  kind: 'control' | 'data';
-  /** The port primitive, verbatim (`text`, `transcript`, `context<schemaRef>`, `any`, …) — shown as the handle's title. */
-  primitive: string;
-  label?: string;
+  label: string;
 }
+
+/** Per-node sandbox run state, rendered as a status chip in the node header. */
+export type WorkflowCanvasRunState = 'pending' | 'running' | 'ok' | 'failed' | 'skipped';
+
+/** Rendered instead of a step number when a node is not linearly ordered. */
+export type WorkflowCanvasStepMarker = 'cycle' | 'unreachable';
 
 export interface WorkflowCanvasNode {
   id: string;
@@ -34,11 +39,27 @@ export interface WorkflowCanvasNode {
   /** For a child of a group (`parentId` set), RELATIVE to the group's origin — React Flow's own convention, round-tripped verbatim. */
   position: { x: number; y: number };
   /**
-   * Per-instance ports (TASK-864 B1). When present, every port renders as its OWN handle keyed by
-   * `id`, so an edge lands on the socket it names; when absent the node keeps the legacy single
-   * `in`/`out` pair.
+   * Render the single primary TARGET handle (id `"in"`, left edge). Default `true`; `false` for a
+   * graph entry node such as `core.trigger`.
+   *
+   * TASK-893 §3.1: the per-port handle rendering (one handle per declared socket, up to 14 on a
+   * `core.action`) is gone. The canvas shows the main flow — one dot in, one dot out — and the
+   * wire's real `fromPort`/`toPort` are resolved by the consumer on connect. Nothing about the
+   * port contract, the compatibility lattice or the interpreter changed; only the presentation.
    */
-  ports?: { inputs: readonly WorkflowCanvasPort[]; outputs: readonly WorkflowCanvasPort[] };
+  hasInput?: boolean;
+  /** Render the single primary SOURCE handle (id `"out"`, right edge). Default `true`; `false` for a terminal node such as `core.output`. */
+  hasOutput?: boolean;
+  /** Extra labelled SOURCE handles stacked below the primary output. Absent/empty = primary only. */
+  branches?: readonly WorkflowCanvasBranch[];
+  /** 1-based execution order badge. `null`/absent renders no badge. */
+  stepNumber?: number | null;
+  /** Rendered INSTEAD of `stepNumber` when the node is not linearly ordered. */
+  stepMarker?: WorkflowCanvasStepMarker;
+  /** Per-node sandbox run state, rendered as a status chip in the node header. */
+  runState?: WorkflowCanvasRunState;
+  /** Wall time of the last run of this node, rendered beside `runState`. */
+  runDurationMs?: number;
   /** `group`: a container (a `core.loop` body) that other nodes nest inside via `parentId`. */
   kind?: 'node' | 'group';
   /** The enclosing group's id — the node is drawn inside it and moves with it. */
@@ -89,7 +110,30 @@ export interface WorkflowCanvasProps {
   /** Reserved for run-replay overlay (per-node status/timing/confidence badge slots). Not consumed by Studio v1. */
   overlay?: (node: WorkflowCanvasNode) => ReactNode;
   onNodesChange?: (nodes: WorkflowCanvasNode[]) => void;
+  /**
+   * Non-removal edge changes (selection, reconnection). Edge REMOVAL never comes through here —
+   * it is reported once, by id, through `onEdgeDelete`, exactly as node removal is reported
+   * through `onDeleteRequest` rather than through `onNodesChange`.
+   */
   onEdgesChange?: (edges: WorkflowCanvasEdge[]) => void;
+  /**
+   * The ONE deletion channel for edges (TASK-893 §2.2). Called for BOTH the Delete/Backspace key
+   * on a selected edge AND the hover-X affordance on the edge itself. The composite never removes
+   * an edge on its own — the consumer decides, exactly as it does for `onDeleteRequest`.
+   *
+   * Absent, or `readOnly`, means edges are not deletable: the X is not rendered and the delete key
+   * is disarmed.
+   */
+  onEdgeDelete?: (edgeId: string) => void;
+  /**
+   * A node was dragged into, out of, or between loop groups. `parentId` is `null` when the node
+   * was dropped on the bare pane. `position` is already expressed relative to the NEW parent (or
+   * to the pane when `parentId` is `null`), so the consumer stores it verbatim.
+   *
+   * Only fires when the parent actually CHANGED — an ordinary move inside the same parent is a
+   * position change and reaches the consumer through `onNodesChange` alone.
+   */
+  onNodeParentChange?: (nodeId: string, parentId: string | null, position: { x: number; y: number }) => void;
   onConnect?: (connection: WorkflowConnectRequest) => void;
   /**
    * Drag-time connection guard. React Flow calls it while the pointer is still dragging, so an

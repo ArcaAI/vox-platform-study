@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils';
 
 import { CanvasControls } from './canvas-controls';
 import './canvas-tokens.css';
-import { XYFLOW_EDGE_TYPES } from './workflow-edge';
+import { WorkflowEdgeChromeProvider, XYFLOW_EDGE_TYPES } from './workflow-edge';
+import type { WorkflowEdgeChrome } from './workflow-edge';
 import { XYFLOW_NODE_TYPES, problemSummaryId } from './workflow-node';
 import type { WorkflowNodeData } from './workflow-node';
 import type { WorkflowCanvasEdge, WorkflowCanvasNode, WorkflowCanvasProps } from './types';
@@ -30,6 +31,9 @@ function usePrefersReducedMotion(): boolean {
 /** Inner padding a group keeps around its children (matches `layout.ts`'s defaults). */
 const GROUP_PADDING = { x: 24, top: 56, bottom: 24 } as const;
 const GROUP_MIN = { width: 240, height: 120 } as const;
+/** Stand-in extent for a node React Flow has not measured yet (a first frame, or a jsdom test). */
+const DEFAULT_NODE_SIZE: NodeDimensions = { width: 180, height: 80 };
+const ORIGIN = { x: 0, y: 0 } as const;
 
 /**
  * A group's extent is DERIVED — the bounding box of its children's positions and measured
@@ -41,7 +45,7 @@ function groupSize(groupId: string, nodes: readonly WorkflowCanvasNode[], measur
   let bottom = 0;
   for (const child of nodes) {
     if (child.parentId !== groupId) continue;
-    const size = measured[child.id] ?? { width: 180, height: 80 };
+    const size = measured[child.id] ?? DEFAULT_NODE_SIZE;
     right = Math.max(right, child.position.x + size.width);
     bottom = Math.max(bottom, child.position.y + size.height);
   }
@@ -49,6 +53,55 @@ function groupSize(groupId: string, nodes: readonly WorkflowCanvasNode[], measur
     width: Math.max(GROUP_MIN.width, right + GROUP_PADDING.x),
     height: Math.max(GROUP_MIN.height, bottom + GROUP_PADDING.bottom),
   };
+}
+
+/**
+ * Absolute (pane) position of a node. React Flow stores a child's `position` RELATIVE to its
+ * parent, so anything geometric — hit-testing a drop, re-basing a position onto a new parent —
+ * has to lift it out of the group's frame first. The `seen` set makes a malformed parent cycle
+ * terminate instead of hanging the canvas.
+ */
+function absolutePositionOf(nodeId: string, byId: ReadonlyMap<string, WorkflowCanvasNode>): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  const seen = new Set<string>();
+  let current = byId.get(nodeId);
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    x += current.position.x;
+    y += current.position.y;
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return { x, y };
+}
+
+/**
+ * Which group, if any, a point falls inside — hit-tested against each group's DERIVED extent, so
+ * the answer is exactly the box the user sees. The SMALLEST containing group wins, so a nested
+ * layout resolves to the innermost body rather than the outermost.
+ */
+function groupAt(
+  point: { x: number; y: number },
+  nodes: readonly WorkflowCanvasNode[],
+  byId: ReadonlyMap<string, WorkflowCanvasNode>,
+  measured: Record<string, NodeDimensions>,
+  excludeId: string,
+): WorkflowCanvasNode | null {
+  let best: WorkflowCanvasNode | null = null;
+  let bestArea = Number.POSITIVE_INFINITY;
+  for (const candidate of nodes) {
+    if (candidate.kind !== 'group' || candidate.id === excludeId) continue;
+    const origin = absolutePositionOf(candidate.id, byId);
+    const size = groupSize(candidate.id, nodes, measured);
+    if (point.x < origin.x || point.x > origin.x + size.width) continue;
+    if (point.y < origin.y || point.y > origin.y + size.height) continue;
+    const area = size.width * size.height;
+    if (area < bestArea) {
+      best = candidate;
+      bestArea = area;
+    }
+  }
+  return best;
 }
 
 /** React Flow requires a parent to precede its children in the array; groups float to the front. */
@@ -74,6 +127,9 @@ function toXyNode(
     id: node.id,
     type: 'workflowNode',
     position: node.position,
+    // `extent: 'parent'` keeps a loop body's children inside the body they belong to — a child
+    // cannot be dragged out of its own group's box by accident. Re-parenting the other way (a
+    // top-level node dragged ONTO a group) is unconstrained and handled in `handleNodeDragStop`.
     ...(node.parentId ? { parentId: node.parentId, extent: 'parent' as const } : {}),
     ...(extra.groupSize ? { style: { width: extra.groupSize.width, height: extra.groupSize.height } } : {}),
     // React Flow is CONTROLLED here, and `adoptUserNodes` re-reads `measured` off the user node
@@ -90,7 +146,7 @@ function toXyNode(
   };
 }
 
-function toXyEdge(edge: WorkflowCanvasEdge): Edge {
+function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean): Edge {
   return {
     id: edge.id,
     type: 'workflowEdge',
@@ -100,11 +156,23 @@ function toXyEdge(edge: WorkflowCanvasEdge): Edge {
     targetHandle: edge.targetHandle,
     label: edge.label,
     focusable: true,
+    deletable: !readOnly,
   };
 }
 
 function fromXyNode(node: Node<WorkflowNodeData>): WorkflowCanvasNode {
   return { ...node.data.node, position: node.position };
+}
+
+function fromXyEdge(edge: Edge): WorkflowCanvasEdge {
+  return {
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle ?? undefined,
+    targetHandle: edge.targetHandle ?? undefined,
+    label: typeof edge.label === 'string' ? edge.label : undefined,
+  };
 }
 
 interface NodeDimensions {
@@ -133,6 +201,11 @@ function pruneMeasured(previous: Record<string, NodeDimensions>, removedIds: Set
   return Object.fromEntries(remaining.map((id) => [id, previous[id]]));
 }
 
+type ReactFlowProps = React.ComponentProps<typeof ReactFlow>;
+type EdgeChanges = Parameters<NonNullable<ReactFlowProps['onEdgesChange']>>[0];
+type NodeDragHandler = NonNullable<ReactFlowProps['onNodeDragStop']>;
+type EdgeMouseHandler = NonNullable<ReactFlowProps['onEdgeMouseEnter']>;
+
 /**
  * The React Flow canvas, themed and wrapped as a props-in/callbacks-out composite
  * Task 5) — it owns no graph state itself; a consumer (the Studio's Zustand store, Task 11)
@@ -154,6 +227,8 @@ export function WorkflowCanvas({
   overlay,
   onNodesChange,
   onEdgesChange,
+  onEdgeDelete,
+  onNodeParentChange,
   onConnect,
   isValidConnection,
   onSelect,
@@ -169,6 +244,11 @@ export function WorkflowCanvas({
   // Node dimensions as React Flow measured them (see `toXyNode`). Keyed by node id; entries for
   // removed nodes are pruned so a long editing session cannot grow this unboundedly.
   const [measured, setMeasured] = React.useState<Record<string, NodeDimensions>>({});
+  // Which edge the pointer is over, so its delete affordance can reveal itself. Deliberately NOT
+  // a dependency of the `xyNodes`/`xyEdges` memos: hovering an edge must never re-sync the graph.
+  const [hoveredEdgeId, setHoveredEdgeId] = React.useState<string | null>(null);
+
+  const nodeById = React.useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   const xyNodes = React.useMemo(
     () =>
@@ -185,7 +265,7 @@ export function WorkflowCanvas({
       ),
     [nodes, selectedNodeId, readOnly, nodeTypes, onDeleteRequest, overlay, measured],
   );
-  const xyEdges = React.useMemo(() => edges.map(toXyEdge), [edges]);
+  const xyEdges = React.useMemo(() => edges.map((edge) => toXyEdge(edge, readOnly)), [edges, readOnly]);
 
   const handleNodesChange = React.useCallback(
     (changes: NodeChange<Node<WorkflowNodeData>>[]) => {
@@ -208,22 +288,59 @@ export function WorkflowCanvas({
     [xyNodes, onNodesChange, onDeleteRequest],
   );
 
+  /**
+   * Edge removal is reported ONCE, by id, through `onEdgeDelete` — never as a rewritten edge
+   * array — exactly as node removal is reported through `onDeleteRequest`. Before TASK-893 this
+   * handler opened with `if (!onEdgesChange) return;` and the Studio never passed `onEdgesChange`,
+   * so every `remove` change (the Delete key on a selected edge included) was dropped on the
+   * floor and a connection could only be deleted from the List view the redesign removes.
+   */
   const handleEdgesChange = React.useCallback(
-    (changes: Parameters<NonNullable<React.ComponentProps<typeof ReactFlow>['onEdgesChange']>>[0]) => {
-      if (!onEdgesChange) return;
-      const next = applyEdgeChanges(changes, xyEdges);
-      onEdgesChange(
-        next.map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: edge.sourceHandle ?? undefined,
-          targetHandle: edge.targetHandle ?? undefined,
-          label: typeof edge.label === 'string' ? edge.label : undefined,
-        })),
-      );
+    (changes: EdgeChanges) => {
+      const removals = changes.filter((change) => change.type === 'remove');
+      for (const removal of removals) onEdgeDelete?.(removal.id);
+
+      const rest = changes.filter((change) => change.type !== 'remove');
+      if (rest.length === 0 || !onEdgesChange) return;
+      onEdgesChange(applyEdgeChanges(rest, xyEdges).map(fromXyEdge));
     },
-    [xyEdges, onEdgesChange],
+    [xyEdges, onEdgesChange, onEdgeDelete],
+  );
+
+  /**
+   * Re-parenting on drop (TASK-893 §3.3). The node's centre is hit-tested against every group's
+   * derived extent; a hit that differs from the node's current parent is reported with the
+   * position already re-based onto the new frame, so the consumer stores it verbatim.
+   *
+   * A plain move inside the same parent is NOT reported here — that is a position change and it
+   * already reached the consumer through `onNodesChange` during the drag.
+   */
+  const handleNodeDragStop = React.useCallback<NodeDragHandler>(
+    (_event, draggedNode) => {
+      if (readOnly || !onNodeParentChange) return;
+      const model = nodeById.get(draggedNode.id);
+      if (!model) return;
+      // A group drags its whole body with it. Nesting one loop inside another is not an authoring
+      // affordance this ticket adds, and refusing it here also makes a parent cycle impossible.
+      if (model.kind === 'group') return;
+
+      const currentParentId = model.parentId ?? null;
+      // React Flow reports the dragged node's position relative to its CURRENT parent, and the
+      // parent itself did not move — so lifting through the model map stays correct even if the
+      // consumer has not yet re-rendered with the in-drag position updates.
+      const parentOrigin = currentParentId ? absolutePositionOf(currentParentId, nodeById) : ORIGIN;
+      const absolute = { x: parentOrigin.x + draggedNode.position.x, y: parentOrigin.y + draggedNode.position.y };
+      const size = measured[draggedNode.id] ?? DEFAULT_NODE_SIZE;
+      const centre = { x: absolute.x + size.width / 2, y: absolute.y + size.height / 2 };
+
+      const nextParent = groupAt(centre, nodes, nodeById, measured, draggedNode.id);
+      const nextParentId = nextParent?.id ?? null;
+      if (nextParentId === currentParentId) return;
+
+      const nextOrigin = nextParent ? absolutePositionOf(nextParent.id, nodeById) : ORIGIN;
+      onNodeParentChange(draggedNode.id, nextParentId, { x: absolute.x - nextOrigin.x, y: absolute.y - nextOrigin.y });
+    },
+    [readOnly, onNodeParentChange, nodeById, nodes, measured],
   );
 
   // MUST be memoized. React Flow re-subscribes on every new handler identity and re-emits the
@@ -236,6 +353,15 @@ export function WorkflowCanvas({
       onSelect?.(selected[0]?.id ?? null);
     },
     [onSelect],
+  );
+
+  const handleEdgeMouseEnter = React.useCallback<EdgeMouseHandler>((_event, edge) => setHoveredEdgeId(edge.id), []);
+  const handleEdgeMouseLeave = React.useCallback<EdgeMouseHandler>(() => setHoveredEdgeId(null), []);
+
+  const nodeLabelById = React.useMemo(() => new Map(nodes.map((node) => [node.id, node.label])), [nodes]);
+  const edgeChrome = React.useMemo<WorkflowEdgeChrome>(
+    () => ({ readOnly, onEdgeDelete, hoveredEdgeId, nodeLabelById }),
+    [readOnly, onEdgeDelete, hoveredEdgeId, nodeLabelById],
   );
 
   // React Flow hands this an `Edge | Connection`; both carry the four fields the guard needs.
@@ -307,47 +433,57 @@ export function WorkflowCanvas({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {/* The old copy sent screen-reader users to "the structured list view" for a pointer-free
+          path. TASK-893 §3.4 deletes that view, so the hint now names what the CANVAS itself
+          provides and stops promising a screen that no longer exists. */}
       <span className="sr-only">
-        Workflow graph editor. Press Tab to move between nodes. Use the structured list view for a pointer-free way to add, configure, connect,
-        reorder and delete nodes without dragging.
+        Workflow graph editor. Press Tab to move between nodes and connections; each carries a labelled button that removes it without a
+        drag. Adding and configuring nodes stay available outside the canvas.
       </span>
-      <ReactFlow
-        nodes={xyNodes}
-        edges={xyEdges}
-        nodeTypes={XYFLOW_NODE_TYPES}
-        edgeTypes={XYFLOW_EDGE_TYPES}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={handleEdgesChange}
-        onConnect={handleConnect}
-        isValidConnection={handleIsValidConnection}
-        onSelectionChange={handleSelectionChange}
-        onInit={(instance) => {
-          instanceRef.current = instance;
-        }}
-        nodesDraggable={!readOnly}
-        nodesConnectable={!readOnly}
-        edgesReconnectable={!readOnly}
-        elementsSelectable
-        // `selected` is CONTROLLED here (`toXyNode` derives it from `selectedNodeId` on every
-        // sync), so React Flow must not also decide it. Its default select-on-drag did: dragging
-        // an unselected node made React Flow select it, the next prop sync unselected it,
-        // `onSelectionChange` re-announced, and the two fought until React aborted with "Maximum
-        // update depth exceeded" — the consumer's error boundary took the canvas down mid-drag and
-        // the move was lost (TASK-890 black-box J5). Selection stays one-way: React Flow ->
-        // `onSelectionChange` -> `onSelect` -> the consumer's store -> back in as `selected`.
-        selectNodesOnDrag={false}
-        deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
-        fitView
-        fitViewOptions={{ duration: reducedMotion ? 0 : 400, padding: 0.2 }}
-        role="application"
-        aria-label={ariaLabel}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={16} />
-        <CanvasControls showInteractive={!readOnly} />
-        {minimap && nodes.length > 0 ? (
-          <MiniMap position="bottom-right" pannable zoomable className="workflow-canvas-minimap" aria-label="Graph overview" />
-        ) : null}
-      </ReactFlow>
+      <WorkflowEdgeChromeProvider value={edgeChrome}>
+        <ReactFlow
+          nodes={xyNodes}
+          edges={xyEdges}
+          nodeTypes={XYFLOW_NODE_TYPES}
+          edgeTypes={XYFLOW_EDGE_TYPES}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onNodeDragStop={handleNodeDragStop}
+          onEdgeMouseEnter={handleEdgeMouseEnter}
+          onEdgeMouseLeave={handleEdgeMouseLeave}
+          onConnect={handleConnect}
+          isValidConnection={handleIsValidConnection}
+          onSelectionChange={handleSelectionChange}
+          onInit={(instance) => {
+            instanceRef.current = instance;
+          }}
+          nodesDraggable={!readOnly}
+          nodesConnectable={!readOnly}
+          edgesReconnectable={!readOnly}
+          elementsSelectable
+          // `selected` is CONTROLLED here (`toXyNode` derives it from `selectedNodeId` on every
+          // sync), so React Flow must not also decide it. Its default select-on-drag did: dragging
+          // an unselected node made React Flow select it, the next prop sync unselected it,
+          // `onSelectionChange` re-announced, and the two fought until React aborted with "Maximum
+          // update depth exceeded" — the consumer's error boundary took the canvas down mid-drag and
+          // the move was lost (TASK-890 black-box J5). Selection stays one-way: React Flow ->
+          // `onSelectionChange` -> `onSelect` -> the consumer's store -> back in as `selected`.
+          selectNodesOnDrag={false}
+          // Covers edges as well as nodes: a selected edge deleted with the key emits a `remove`
+          // EdgeChange, which `handleEdgesChange` turns into one `onEdgeDelete` call.
+          deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
+          fitView
+          fitViewOptions={{ duration: reducedMotion ? 0 : 400, padding: 0.2 }}
+          role="application"
+          aria-label={ariaLabel}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={16} />
+          <CanvasControls showInteractive={!readOnly} />
+          {minimap && nodes.length > 0 ? (
+            <MiniMap position="bottom-right" pannable zoomable className="workflow-canvas-minimap" aria-label="Graph overview" />
+          ) : null}
+        </ReactFlow>
+      </WorkflowEdgeChromeProvider>
       {emptyState && nodes.length === 0 ? (
         // Non-interactive overlay: the pane underneath stays pannable/zoomable and keeps its
         // `role="application"` semantics; the empty state is purely explanatory copy.
