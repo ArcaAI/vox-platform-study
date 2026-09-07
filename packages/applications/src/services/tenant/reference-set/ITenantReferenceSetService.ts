@@ -7,6 +7,14 @@
  * resolved THROUGH. After L13 step v, no runtime read of content ever widens to SYSTEM: a miss
  * is a named, fail-closed error naming the tenant and the task.
  *
+ * TASK-891 adds `DocumentTemplate` (+ `DocumentTemplateVersion`) to the set. It obeys the same
+ * rule and always did — the model is deliberately absent from `SYSTEM_SHARED_READ_MODELS` and
+ * `DocumentTemplateService.resolveForGeneration` reads the REQUEST tenant only, so a SYSTEM row
+ * is INVISIBLE to a tenant that holds no copy. What was missing was the copier: the SYSTEM rows
+ * exist (`seed/27-document-template-library.ts`, which also clones them into the already-seeded
+ * tenants), but a tenant created at runtime through `POST /admin/tenants` received none and the
+ * sync route could not add them afterwards.
+ *
  * That makes provisioning a hard precondition of the runtime, which is what this port is:
  *
  *  - `provision(tenantId)` runs as a step of `TenantService.create`, so a tenant is born with
@@ -17,14 +25,28 @@
  *    (`packages/database/scripts/backfill-tenant-reference-set.ts`).
  *
  * What is NOT here, and why: `AiModel` (the catalogue is CONFIG and stays SYSTEM-shared-read —
- * OD-O), `GlobalSetting` (platform settings cascade tenant → SYSTEM at read time — OD-P),
+ * OD-O), `GlobalSetting` (platform settings cascade tenant → SYSTEM at read time — OD-P), and
  * `TenantGuardrailPolicy` (excluded precisely so ABSENCE stays meaningful — OD-R; a clone would
- * turn every tenant's "no opinion" into an opinion), and `DocumentTemplate` (already clone-only
- * through its own path).
+ * turn every tenant's "no opinion" into an opinion).
  */
 
-/** The kinds the reference set copies, in the order they MUST be copied. */
-export const REFERENCE_SET_KINDS = ['contextSchemas', 'promptTemplates', 'agents', 'agentAssignments', 'workflowDefinitions'] as const;
+/**
+ * The kinds the reference set copies, in the order they MUST be copied.
+ *
+ * `documentTemplates` sits immediately before `workflowDefinitions` for a load-bearing reason: a
+ * `consultation.realtimeSummary` node binds its shape by ROW ID (`documentTemplateId`), and
+ * `WorkflowDefinitionService.cloneFromSystem` re-points that binding by SLUG in the target tenant
+ * (`documentTemplateRepository.findByTenantAndSlug`). Copy the workflows first and there is
+ * nothing for the binding to resolve to.
+ */
+export const REFERENCE_SET_KINDS = [
+  'contextSchemas',
+  'promptTemplates',
+  'agents',
+  'agentAssignments',
+  'documentTemplates',
+  'workflowDefinitions',
+] as const;
 
 export type ReferenceSetKind = (typeof REFERENCE_SET_KINDS)[number];
 

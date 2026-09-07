@@ -272,15 +272,24 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant-owned rows, deliberately NOT added to SYSTEM_SHARED_READ_MODELS: a
   // tenant reads only its own templates.
   //
-  // ⚠ There is NO clone path behind this one today, and no SYSTEM rows for a
-  // clone path to carry: `DocumentTemplate` is absent from the seed, from
-  // `TenantReferenceSetService` and from the `POST /admin/tenants/:id/
-  // reference-set/sync` route, and `document-template.service.ts` names
-  // `SYSTEM_TENANT_ID` nowhere. The platform's SOAP shape reaches a tenant as a
-  // CODE-level fail-open default (`SOAP_NOTE_SHAPE` /`SOAP_NOTE_SLUG` in
-  // `platform-document-shapes.ts`, read by `live-documentation.service.ts`),
-  // never as a copied row. Keep this model out of the shared-read set — but do
-  // not cite a provisioning path that does not exist.
+  // ⚠ The SYSTEM reference rows reach a tenant by being COPIED, never by being
+  // read across the boundary — `document-template.service.ts` still names
+  // `SYSTEM_TENANT_ID` nowhere, and `resolveForGeneration` reads the REQUEST
+  // tenant only. Two entrances to the same copy, and they agree on every
+  // column: `seed/27-document-template-library.ts` upserts the SYSTEM pair
+  // (+ their pinned v1 snapshots) and clones it into every seeded tenant, and
+  // `TenantReferenceSetService.copyDocumentTemplates` — the `documentTemplates`
+  // kind of `POST /admin/tenants/:id/reference-set/sync`, and a step of
+  // `TenantService.create` — does the same for a tenant created at runtime.
+  // Both are CREATE-ONLY on `@@unique([tenantId, slug])`, so a tenant's own
+  // edit is never overwritten, and both stamp `sourceTemplateSlug` +
+  // `templateLocked: true`.
+  //
+  // Independently of either, the platform's SOAP shape still reaches an
+  // unconfigured tenant as a CODE-level fail-open default (`SOAP_NOTE_SHAPE` /
+  // `SOAP_NOTE_SLUG` in `platform-document-shapes.ts`, read by
+  // `live-documentation.service.ts`) — a compiled constant, not a row. Keep
+  // this model out of the shared-read set: the clone path is what serves it.
   'DocumentTemplate',
   'DocumentTemplateVersion',
   // workflow-definition.prisma — the workflow substrate's persistence floor.
