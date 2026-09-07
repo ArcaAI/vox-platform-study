@@ -38,12 +38,38 @@ router = APIRouter()
 GuardianLike = TextJudgeClient
 
 
+#: The connection blob a caller forwards for the DELEGATED judge (TASK-890).
+#:
+#: Guardrail hosts no engine: `/medical/validate` is answered by a judgement it
+#: delegates to `apps/text`, and `apps/text` holds no endpoint or credential of
+#: its own — every connection reaches it as `provider_overrides` the gateway
+#: resolved. Guardrail is a PEER service with no gateway in front of it, so the
+#: only path that blob has into the judge call is the caller's own request body.
+#: Before this field existed the judge always posted without one and `text`
+#: answered 503 `PROVIDER_CREDENTIALS_MISSING` on every guardrail-enabled
+#: generation.
+#:
+#: OPAQUE in both directions: guardrail never decrypts it, never stores it and
+#: never logs it — `core/dependencies._provider_overrides` lifts it off the parsed
+#: body and the judge client forwards it VERBATIM. ABSENT is meaningful and must
+#: stay absent: it is what makes the resolver fall back to the engine connection
+#: it can read for itself (`core/tenant_config._judge_connection`).
+_PROVIDER_OVERRIDES_FIELD = Field(
+    None,
+    description=(
+        "Connection(s) the caller resolved for the delegated judge, forwarded "
+        "verbatim to apps/text. Never inspected, stored or logged here."
+    ),
+)
+
+
 class MedicalValidationRequest(BaseModel):
     """Request model for medical context validation."""
 
     text: str = Field(..., description="Text to validate for medical context")
     request_id: str | None = Field(None, description="Optional request ID for tracking")
     include_reasoning: bool = Field(False, description="Include reasoning in response")
+    provider_overrides: dict[str, Any] | None = _PROVIDER_OVERRIDES_FIELD
 
 
 class MedicalValidationResponse(BaseModel):
@@ -76,6 +102,7 @@ class BatchMedicalValidationRequest(BaseModel):
 
     texts: list[str] = Field(..., description="List of texts to validate")
     request_id: str | None = Field(None, description="Optional request ID for tracking")
+    provider_overrides: dict[str, Any] | None = _PROVIDER_OVERRIDES_FIELD
 
 
 def _stats_of(result: dict[str, Any]) -> dict[str, Any] | None:
@@ -103,6 +130,14 @@ async def validate_medical_context(
     Use this before sending content to medical documentation services.
 
     Fails closed with 503 when no verdict could be computed (see the module docstring).
+
+    ``provider_overrides`` does not appear in this signature and is not read here:
+    the guardian is built by the dependency ABOVE the handler, so the connection
+    has to reach it earlier than the parsed model does. It travels through
+    `core/dependencies._provider_overrides`, which reads `request.state` first and
+    the already-parsed body second (TASK-890). Declaring the field on the request
+    model is still what makes it part of this route's CONTRACT rather than an
+    undocumented key a caller has to know about.
     """
     start_time = time.monotonic()
 
@@ -148,6 +183,10 @@ async def validate_batch_medical_context(
     Per-element fail-closed, for the same reason as ``/guardrail/analyze/batch``: a
     multiplex cannot collapse to one status code, so an unresolved element is
     ``is_medical=false`` rather than voiding the resolved ones.
+
+    Same body-carried connection, same dependency, as the single route above — a
+    batch judged on a different connection from a single call would be the kind of
+    split the one delegation path exists to prevent.
     """
     start_time = time.monotonic()
 
