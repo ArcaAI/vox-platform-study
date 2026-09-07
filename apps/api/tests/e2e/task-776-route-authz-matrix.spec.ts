@@ -382,6 +382,9 @@ test.describe(' route authorization conformance matrix', () => {
     //   GET /internal/agents/resolve (TASK-863, AgentInternalController),
     //   GET /internal/model-registry-credential (TASK-860, ModelRegistryInternalController),
     //   POST /internal/harness/tts/synthesize (HarnessTtsInternalController) = 33.
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(33);
+    // TASK-890 black-box F11 added the 34th: GET /internal/harness/models/resolve — the
+    // registry-model resolve the durable `core.classify` node had always called, on the same
+    // HarnessServiceTokenGuard as its siblings.
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(34);
   });
 });
