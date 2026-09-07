@@ -359,29 +359,26 @@ export const seed = async () => {
       console.log('');
     }
 
+    // TASK-891 (Lane D / W6) — the platform DOCUMENT-TEMPLATE reference library: two
+    // SYSTEM-tenant `DocumentTemplate` rows (new-visit / revisit case-note SHAPES, section
+    // lists ported from the signed-off department x visit-type prompt corpus). SOURCE CONTENT
+    // only — the per-tenant copy belongs to phase 26 below, which is the seed's single
+    // provisioning entry point. Runs in EVERY seeding mode: the SYSTEM rows are platform
+    // configuration. Ordered BEFORE 26 because 26 reads these rows out of the database.
+    await seedDocumentTemplateLibrary(client);
+    console.log('');
+
     // TASK-890 §3.4 — provision every non-SYSTEM tenant with the platform REFERENCE SET
-    // (context schemas, prompt templates, agents and their TENANT assignments). It runs LAST
-    // among the content phases because it copies what they seeded, and it must run at all
-    // because the seeded tenants are written directly rather than through
-    // `TenantService.create`: after L13 step v nothing widens a CONTENT read to SYSTEM, so an
-    // unprovisioned tenant fails closed on its first consultation. Create-only and idempotent.
+    // (context schemas, prompt templates, agents, their TENANT assignments, and the document
+    // templates seeded just above). It runs LAST among the content phases because it copies
+    // what they seeded, and it must run at all because the seeded tenants are written directly
+    // rather than through `TenantService.create`: after L13 step v nothing widens a CONTENT
+    // read to SYSTEM, so an unprovisioned tenant fails closed on its first consultation.
+    // Create-only and idempotent.
     if (isPhaseEnabled('26-tenant-reference-set', mode)) {
       await seedTenantReferenceSets(client);
       console.log('');
     }
-
-    // TASK-891 (Lane D / W6) — the platform DOCUMENT-TEMPLATE reference library: two
-    // SYSTEM-tenant `DocumentTemplate` rows (new-visit / revisit case-note SHAPES, section
-    // lists ported from the signed-off department x visit-type prompt corpus) plus their
-    // clone into every non-SYSTEM tenant. `DocumentTemplate` is CONTENT and is NOT in
-    // `SYSTEM_SHARED_READ_MODELS`, so a SYSTEM row is invisible to a tenant at runtime —
-    // the copy is what makes it reachable, exactly as for the reference set above. Runs in
-    // EVERY seeding mode: the SYSTEM rows are platform configuration, and the clones carry
-    // `createdBy: SYSTEM_USER_ID` (no fabricated human authorship). CREATE-ONLY per tenant
-    // slug, so a tenant admin's own edit survives a re-seed. Ordered after 26 because it is
-    // the same kind of provisioning step, not because it depends on it.
-    await seedDocumentTemplateLibrary(client);
-    console.log('');
 
     // Phase 5: Depends on Phase 4 — synthetic clinician writing samples and
     // synthetic, Vault-encrypted PHI. Never outside development/test.
