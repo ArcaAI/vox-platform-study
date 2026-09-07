@@ -41,6 +41,7 @@ import { seedArcaaiExampleConsultationWorkflows, seedExampleConsultationWorkflow
 import { seedConsentGrant } from './22-consent-grant';
 import { seedAgents } from './25-agents';
 import { seedTenantReferenceSets } from './26-tenant-reference-set';
+import { seedDocumentTemplateLibrary } from './27-document-template-library';
 import { seedUser } from './91-user';
 import { seedBootstrapAdmin } from './92-bootstrap-admin';
 import { seedBootstrapTenantAdmin } from './93-bootstrap-tenant-admin';
@@ -368,6 +369,19 @@ export const seed = async () => {
       await seedTenantReferenceSets(client);
       console.log('');
     }
+
+    // TASK-891 (Lane D / W6) — the platform DOCUMENT-TEMPLATE reference library: two
+    // SYSTEM-tenant `DocumentTemplate` rows (new-visit / revisit case-note SHAPES, section
+    // lists ported from the signed-off department x visit-type prompt corpus) plus their
+    // clone into every non-SYSTEM tenant. `DocumentTemplate` is CONTENT and is NOT in
+    // `SYSTEM_SHARED_READ_MODELS`, so a SYSTEM row is invisible to a tenant at runtime —
+    // the copy is what makes it reachable, exactly as for the reference set above. Runs in
+    // EVERY seeding mode: the SYSTEM rows are platform configuration, and the clones carry
+    // `createdBy: SYSTEM_USER_ID` (no fabricated human authorship). CREATE-ONLY per tenant
+    // slug, so a tenant admin's own edit survives a re-seed. Ordered after 26 because it is
+    // the same kind of provisioning step, not because it depends on it.
+    await seedDocumentTemplateLibrary(client);
+    console.log('');
 
     // Phase 5: Depends on Phase 4 — synthetic clinician writing samples and
     // synthetic, Vault-encrypted PHI. Never outside development/test.
