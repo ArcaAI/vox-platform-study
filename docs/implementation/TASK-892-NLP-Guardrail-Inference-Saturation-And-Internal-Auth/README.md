@@ -555,7 +555,30 @@ while still carrying the OMP fix — the Secret dependency is genuinely isolated
 `OMP_NUM_THREADS=8` in base*, **not** because it holds a GPU slice. Its cgroup-blind
 `os.cpu_count()` fallback is simply never reached. A4 remains worth doing but is not urgent.
 
-### 7.4 OPEN CONFLICT — the auto-derived thread count is not the measured optimum
+### 7.4 RESOLVED (B5, measured in-pod at the 4-core quota, 2026-09-07)
+
+**`OMP_NUM_THREADS=8` is correct and must stay explicit.** Benchmarked in the live pod after the
+4-core limit landed — 60 iterations × 3 repeats, warmed, median and p90 (a first single-shot run
+with 30 iterations and a mean suggested 4–6 was better; that was noise, and the careful run
+reverses it):
+
+| threads | median ms/layer (3 runs) | p90 |
+|---:|---|---|
+| 4 | 4.15 · 4.45 · 4.23 | 4.4–5.3 |
+| 6 | 3.15 · 3.18 · 3.26 | 3.6–4.0 |
+| **8** | **2.58 · 2.60 · 2.65** | **2.9–3.2** |
+| 12 | 3.32 · 3.21 · 2.01 | **70.4 · 70.0** · 3.4 |
+
+8 is both fastest and most stable. The cgroup-derived **4 is ~65 % slower**, so A-core's
+follow-up #7 ("remove the explicit value and let the cgroup decide") **must not be actioned** —
+it would cost most of the win. And **12 is actively dangerous**: its median looks fine while p90
+blows out to ~70 ms in two of three runs — the CFS throttle stall reappearing, which is the exact
+failure mode that produced this incident. The safe band is ≤ 8, with 8 the optimum.
+
+The `hope_env.cpu` helper remains correct as the **fallback** for any environment that ships no
+explicit value; the precedence (explicit `OMP_NUM_THREADS` wins) is what makes both true at once.
+
+### 7.4b Superseded analysis — the original conflict, kept for the record
 
 | Source | Value at a 4-CPU quota |
 |---|---|
@@ -599,6 +622,42 @@ not re-publish the artifact. The durable fix is upstream in `gliner2`.
 *(Caveat: reproduced against `transformers==5.5.4` from the conda env; `uv.lock` pins 4.57.6/5.16.1
 for the container build, so cited line numbers are unverified against the deployed image. The
 fallback mechanism is stable across versions.)*
+
+### 7.8 Deployed and verified on `hope-v2-dev` (2026-09-07, after `main` was pushed)
+
+Argo synced `e72489a`. `hope-nlp-7687698797-56dhb` replaced `…-tv765` on the **same image**
+(`sha256:7bf3b5dd…`) — the env-only change needed no rebuild, exactly as designed.
+
+**Container state:** `OMP=8 MKL=8`, `cpu.max = 400000 100000` (4 CPUs), **`torch.get_num_threads() = 8`**
+(was 48).
+
+**Throttling — the headline result:**
+
+| | before (2 CPUs, 48 threads) | after (4 CPUs, 8 threads) |
+|---|---|---|
+| `nr_throttled / nr_periods` | 2714 / 22172 = **12.2 %** | 2 / 193 = **1.0 %** |
+| `throttled_usec` | 7,291,815,148 (7,292 s) | 517,022 (**0.52 s**) |
+| `usage_usec` | 573,328,295 (573 s) | 15,507,808 (15.5 s) |
+| **throttle ÷ run** | **12.7× more frozen than running** | **0.033×** |
+
+**Probes and endpoints — the error chain is closed:**
+
+| | before | after |
+|---|---|---|
+| Readiness probe failures | **72** | **0** |
+| Liveness probe failures | **9** | **0** |
+| Startup probe failures | — | 2 (`connection refused` in the first seconds of boot, before the port binds — expected) |
+| Time to `Ready` | flapping | **20 s** (10:49:25 → 10:49:45), `restartCount 0` |
+| `Endpoints` churn | `last-change-trigger-time` being rewritten (09:22:57Z) | annotation **absent**; single stable address |
+| guardrail `503` / `nlp_delegation.failed` | 2 in the window | **0** |
+
+**Still outstanding, as expected:** `POST /internal/service-releases → 401` continues on both
+services — C1 (the Secret write) has not been done, and `INTERNAL_ACCESS_TOKEN` remains bound
+`optional: true` because `b4d20a2` is correctly still unmerged.
+
+**Not yet measured:** end-to-end NER latency. Pod restart reset the counters and no NER traffic has
+arrived since (`model_inference_latency_seconds` is absent; only 2 `models/resolvable` calls). V3
+needs the NER + Guardrail batch replayed.
 
 ### 7.7 Remaining work
 
