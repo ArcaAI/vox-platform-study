@@ -15,7 +15,7 @@ import httpx
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from hope_env import BuildInfoReader
+from hope_env import BuildInfoReader, load_env, real_secret
 from hope_env.service_registration import start_registration, stop_registration
 
 from guardrail.core.breaker import CircuitBreaker, FailPosture
@@ -175,12 +175,83 @@ async def _config_invalidation_listener(app: FastAPI) -> None:
             pass
 
 
+def _in_cluster_environment() -> bool:
+    """Whether this process is a DEPLOYED workload rather than a developer's shell.
+
+    `DEPLOYMENT_ENVIRONMENT` is the discriminator, not `NODE_ENV`. Measured on
+    the live cluster 2026-09-07: `overlays/dev` patches the platform ConfigMap to
+    `NODE_ENV=development` (only `base/config/platform.env` carries
+    `NODE_ENV=production`), so a `node_env == "production"` gate is INERT in
+    `hope-v2-dev` — precisely the environment where the missing token was found.
+    `DEPLOYMENT_ENVIRONMENT` is set in EVERY deployed environment (base
+    `production`, dev overlay `dev`) and is unset on a developer's machine
+    (`.env.dev` ships only commented-out `*_OTEL_DEPLOYMENT_ENVIRONMENT`
+    variants), which is exactly the split this gate needs. It is also the
+    convention already used a few lines below for the service-registration
+    `environment` field, so this keeps one rule in one file.
+
+    `CI` is deliberately NOT a trigger: a CI *test* job is not a deployment, and
+    coupling the two makes the gate fire in `test-guardrail` for no benefit.
+    `NODE_ENV=production` is kept as a belt-and-braces trigger for any deployment
+    that sets it without `DEPLOYMENT_ENVIRONMENT`.
+    """
+    if os.getenv("DEPLOYMENT_ENVIRONMENT", "").strip():
+        return True
+    return load_env().node_env == "production"
+
+
+def _assert_internal_access_token(settings: Settings) -> None:
+    """C3 — refuse to silently run every internal call unauthenticated.
+
+    `INTERNAL_ACCESS_TOKEN` absent from `hope-secrets` (TASK-892 S2.5) currently
+    fails OPEN: the `optional: true` Secret binding lets the container start
+    happily, and every gateway-bound internal call (`effective-config` pull,
+    service-release registration) 401s — the process then silently runs on
+    compiled defaults instead of its resolved tenant -> SYSTEM configuration.
+
+    An empty value is exactly as unconfigured as an absent one here — unlike
+    `X-Service-Token`, where an empty value is the DELIBERATE dev/hermetic-CI
+    auth-bypass sentinel (`06-python-services.md`). `real_secret` also maps the
+    unfilled-secret placeholder (`CHANGE_ME`) onto empty, so a template value
+    left unfilled is never mistaken for a real credential.
+
+    In-cluster this is a hard failure: refuse to start rather than run with the
+    gateway unauthenticated. In local dev it is not fatal — the developer's
+    console is right there — so this logs ONE error-level line naming the
+    variable and lets boot continue.
+    """
+    if real_secret(settings.internal_access_token):
+        return
+
+    if _in_cluster_environment():
+        raise RuntimeError(
+            "INTERNAL_ACCESS_TOKEN is missing or empty. guardrail refuses to start "
+            "in-cluster without it: every internal call to the gateway "
+            "(effective-config pull, service-release registration) would run "
+            "unauthenticated and the service would silently fall back to "
+            "compiled defaults instead of its resolved tenant configuration."
+        )
+
+    logger.error(
+        "guardrail.internal_token.missing",
+        variable="INTERNAL_ACCESS_TOKEN",
+        detail=(
+            "internal calls to the gateway will 401 and this process will run on "
+            "compiled defaults instead of its resolved tenant configuration"
+        ),
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage shared resources: httpx client, Redis, LLM providers."""
     settings: Settings = app.state.settings
 
     setup_logging(settings.log_level)
+
+    # Startup assertion (TASK-892 C3) — before any I/O, so an in-cluster
+    # refusal never opens a connection it cannot authenticate.
+    _assert_internal_access_token(settings)
 
     logger.info(
         "guardrail.starting",
