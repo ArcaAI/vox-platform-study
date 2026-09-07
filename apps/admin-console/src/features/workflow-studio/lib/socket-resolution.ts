@@ -72,7 +72,16 @@ export function resolvePrimarySockets(
   // or the loop's `each`. That socket is FIXED: silently re-resolving it to `out`/`next` would
   // land the wire on a handle the user did not touch, which is a different graph. Only the
   // TARGET socket is still open, and if nothing there fits, the answer is `null`.
-  const hinted = sourceHandleHint ? sourcePorts.outputs.find((port) => port.name === sourceHandleHint) : undefined;
+  //
+  // `out` is the ONE hint that is not a grab. The canvas renders the primary output with the
+  // literal handle id `out` (Contract A), so React Flow reports `sourceHandle: 'out'` for every
+  // ordinary link — never `null`. Treating that as a fixed socket pins resolution to the data
+  // pair and makes the ordering fallback below unreachable: `consultation.synthesize ->
+  // consultation.extractEntities` would be REFUSED (`document` cannot satisfy `transcript`, by
+  // the anti-laundering rule) instead of degrading to `next -> after`, which is what the user
+  // drawing that link meant. So the primary id is filtered out here and resolution falls through.
+  const explicitGrab = sourceHandleHint && sourceHandleHint !== PRIMARY_DATA_OUTPUT ? sourceHandleHint : null;
+  const hinted = explicitGrab ? sourcePorts.outputs.find((port) => port.name === explicitGrab) : undefined;
   if (hinted) {
     // A branch handle carries no payload, so it wants the ordering input; a data handle wants the
     // data input. Both orders are then tried, because the lattice — not this ordering — decides.

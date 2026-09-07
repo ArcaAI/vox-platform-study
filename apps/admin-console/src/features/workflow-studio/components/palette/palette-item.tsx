@@ -22,7 +22,7 @@ import { cn } from '@arcaai/ui';
 import { writePaletteDragType } from '../../lib/palette-drag';
 import { humanizeKey } from '../../lib/schema-form';
 import type { WorkflowNodeDescriptor } from '../../api/types';
-import { iconForNodeType } from './node-type-icon';
+import { NodeTypeIcon } from './node-type-icon';
 import { SafetyClassBadge } from './safety-class-badge';
 
 export interface PaletteItemProps {
@@ -53,7 +53,6 @@ export function PaletteItem({ descriptor, entitled, onAdd }: PaletteItemProps) {
       : null;
   const label = humanizeKey(descriptor.type);
   const purpose = purposeOf(descriptor);
-  const Icon = iconForNodeType(descriptor.type);
 
   return (
     <button
@@ -72,7 +71,7 @@ export function PaletteItem({ descriptor, entitled, onAdd }: PaletteItemProps) {
         'disabled:pointer-events-none disabled:opacity-50',
       )}
     >
-      <Icon aria-hidden="true" className="text-muted-foreground mt-0.5 size-5 shrink-0" />
+      <NodeTypeIcon type={descriptor.type} className="text-muted-foreground mt-0.5 size-5 shrink-0" />
       <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
         <span className="truncate text-sm font-medium">{label}</span>
         {purpose ? <span className="text-muted-foreground line-clamp-1 text-xs">{purpose}</span> : null}

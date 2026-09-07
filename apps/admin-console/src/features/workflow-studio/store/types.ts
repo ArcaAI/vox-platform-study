@@ -43,14 +43,6 @@ export interface GraphStoreEdge {
  */
 export type SaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'conflict' | 'error';
 
-/**
- * @deprecated TASK-893 §3.4 deletes the Canvas/List toggle — there is only a canvas view now, and
- * the store no longer carries a `viewMode`. The type survives ONLY because
- * `components/validation/use-focus-node.ts` and `components/studio-toolbar.tsx` (Lane E's files,
- * not this lane's) still name it; delete it with their last reference.
- */
-export type WorkflowStudioViewMode = 'canvas' | 'list';
-
 export interface ConnectRequest {
   source: string;
   sourceHandle: string;

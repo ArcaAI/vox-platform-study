@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — plan for approval, no code written |
+| **Status** | `Completed` (Phase 1) — merged to `dev-2.2`. Phases 2-4 remain `Pending`. |
 | **Type** | `refactor` + `feature` (studio UX) / `infrastructure` (registry + seed retirement) |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-07 |
@@ -396,10 +396,84 @@ removal.
 
 ## 6. Implementation Summary
 
-*(Phase 1 is being delivered across five parallel lanes — see `INTERFACES.md`. Each lane appends
-its own record here; the section below is the accessibility record the plan requires from the
-editor-shell lane, and it outlives the ticket because it is the contract that replaced the List
-view.)*
+**Phase 1 is complete and merged to `dev-2.2`.** Phases 2-4 (promote the action catalogue, migrate
+the seeded graphs, delete the legacy vocabulary) are unstarted and remain as planned in §4.
+
+### Delivery — five parallel lanes against one written contract
+
+Built in five isolated worktrees with exclusive file ownership and the signatures in
+`INTERFACES.md` agreed up front. **All five merged into `dev-2.2` with zero conflicts**, which is
+the partition working as intended rather than luck: the 767-line editor was touched by nearly every
+task, so it was given a single owner and everyone else coded against the document.
+
+| Lane | Model | Delivered |
+|---|---|---|
+| A — canvas | opus | Single-socket rendering + branch handles, `onEdgeDelete`, step badges, run chips, group drag |
+| B — copy / palette / inspector | sonnet | Palette cards (not pills), 63 plain-language `summary` entries, tabbed inspector, binding fields |
+| C — sandbox | sonnet | `shared/sandbox` extraction, `SandboxRunPanel`, workbench route retired to a redirect |
+| D — store / lib | opus | Save-Discard state machine, loop wrap/unwrap, `computeStepOrder`, `resolvePrimarySockets` |
+| E — editor / routes | opus | One studio, both lists deleted, read-only lock, layout, keyboard parity |
+
+### Defects the cross-lane review caught before they shipped
+
+Each was found because one lane could see what another could not; none would have been caught by
+either lane alone.
+
+| # | Defect | Resolution |
+|---|---|---|
+| **I-1** | `resolvePrimarySockets` treated the canvas's primary handle id `out` as an explicit branch grab, so the `next -> after` ordering fallback was unreachable and `consultation.synthesize -> consultation.extractEntities` was REFUSED rather than degrading. Lane A predicted it from the canvas side; Lane D's own 4761-pair sweep ran hint-free and could not see it. | Primary id filtered out of the hint; pinned by a sweep asserting hinted and unhinted answers agree for every pair. |
+| **I-2** | Secondary-input bindings were written to `config.inputs.<port>`. The interpreter never reads that — `_resolve_bound_inputs` resolves data flow from EDGE bindings only — so a bound field would have validated, rendered as bound, and threaded nothing into the run. | Bindings are real typed edges; only the DRAWING moved into the inspector. The dead config surface (a permissive `object` punched through 10 schemas' `additionalProperties: false`) was reverted and its removal pinned. |
+| **I-3** | `useSaveModel.save()` is a deliberate no-op while `paused`, but `canSave` ignored `paused` — after a 412 the Save button stayed enabled and did nothing. | `!save.paused` added to `canSave`; recovery is the `OccConflictAlert`'s Reload/Overwrite. |
+| **I-4** | `wrapInLoop` accepts many nodes but the canvas exposed single selection only, so OD-5's "one or many" could only ever wrap one. | `selectedNodeIds` / `onSelectionChange` added to the canvas; the editor wraps the whole selection. |
+
+### The defect only the running app could show
+
+**I-5 — ordering edges rendered as nothing.** Collapsing the node chrome to one input and one
+output dot deleted the `after`/`next` handles, and React Flow silently DROPS an edge whose named
+handle does not exist. Every `next -> after` edge therefore vanished from the canvas while the wire
+data was perfectly intact — and every seeded graph is built out of those, so a whole 24-node chain
+would have looked disconnected. Every unit fixture wired `out -> in`, so no suite could see it.
+
+Fixed by projecting wire sockets onto the rendered handles when building `canvasEdges` (the inverse
+of `resolvePrimarySockets`); branch handles keep their own id, everything else lands on the primary
+pair, and the store is untouched. Two regression tests pin both halves: the canvas gets the
+projection, the saved graph keeps the real sockets.
+
+### Verified against the running stack
+
+Logged into the dev console and exercised the paths the owner reported as broken:
+
+| Check | Result |
+|---|---|
+| Node drag on a DRAFT | moves, marks dirty (`translate(12.95, 40.22)` -> `translate(12.95, 91.22)`) |
+| Save / Discard | Discard reverts the position and returns the footer to "All changes saved" behind a confirmation |
+| Edge delete | hover-X removes it — 2 rendered -> 1, footer 3 -> 2 connections, graph dirty. **Impossible before this ticket.** |
+| Ordering edge | renders after I-5 (2 of 3 edges drawn; the third is the secondary binding, shown in the inspector) |
+| Read-only (PUBLISHED) | Locked badge, explanatory banner, `Edit as new draft` primary, locked palette with its reason, no Save/Publish |
+| Palette | real cards, `rounded-md`, icon + name + one-line purpose |
+| Step order | ① ② ③ badges from the topological sort |
+
+### Gates
+
+`@arcaai/workflow-contract` 1701 tests · `@arcaai/ui` 755 tests · `@arcaai/admin-console` 2639 tests
+· `@arcaai/applications` 12254 tests — all green. Lint, typecheck and build clean for all four.
+
+One suite could not run: `agentPromotion/.../membership-bounded-sync.integration.test.ts` needs the
+isolated test infra (Postgres 5433 / Redis 6380), which was not up. Environmental, unrelated to this
+change, and unverified rather than passing.
+
+### Carve-out — per-node run overlays are blocked on the backend
+
+The Run tab and the per-node trace list work in the studio as OD-3 requires. The per-node CANVAS
+overlays do not, and cannot yet: `RunNodeRollupResponse` carries `nodeType` + `order` and
+deliberately no graph node id (its own field doc says so). With two `core.agent` nodes, or any loop
+body, attributing a trace row to a node is a guess — and a wrong "ok" chip on the wrong box is worse
+than none. `useSandboxNodeStates` is wired forward-compatibly and returns an empty map today; the
+rendering is already in place on the canvas. Unblocking it needs the interpreter to stamp a graph
+node id onto trajectory rows, which is outside this ticket.
+
+*(The section below is the accessibility record the plan requires from the editor-shell lane, and it
+outlives the ticket because it is the contract that replaced the List view.)*
 
 ### Keyboard parity (WCAG 2.5.7) — the List view's replacement
 
@@ -445,3 +519,4 @@ definition of done.
 | Date | Change |
 |---|---|
 | 2026-09-07 | Created. Root-caused the four interaction failures to read-only mode on 11/12 seeded PUBLISHED definitions (verified live); found edge deletion unwired in the Studio; found `ACTION_CATALOGUE` derived from the deprecated registry entries, which is why they still exist. Plan drafted in four dependency-ordered phases. |
+| 2026-09-07 | Phase 1 delivered across five parallel worktrees and merged to `dev-2.2` with zero conflicts. Five integration defects caught and fixed (I-1..I-5, §6) — four by cross-lane review, one only by exercising the running app. All gates green; per-node run overlays carved out pending an interpreter change. |

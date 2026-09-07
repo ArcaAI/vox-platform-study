@@ -98,7 +98,7 @@ describe('DD-11 prompt pin — round-trip survival', () => {
       <InspectorPanel tab="config" onTabChange={vi.fn()} node={node()} configSchema={NODE_CONFIG_SCHEMAS['prompt.template_ref']} problems={[]} onConfigChange={vi.fn()} />,
     );
 
-    const field = (await screen.findByLabelText(/Prompt Version Number/i)) as HTMLInputElement;
+    const field = (await screen.findByLabelText(/^Prompt Version Number/i)) as HTMLInputElement;
     expect(field.value).toBe(String(PINNED_VERSION));
   });
 
@@ -115,7 +115,7 @@ describe('DD-11 prompt pin — round-trip survival', () => {
 
     // Edit the prompt TEMPLATE id — the neighbouring field, and the one whose
     // own editor was the original suspect.
-    const templateField = (await screen.findByLabelText(/Prompt Template Id/i)) as HTMLInputElement;
+    const templateField = (await screen.findByLabelText(/^Prompt Template Id/i)) as HTMLInputElement;
     fireEvent.change(templateField, { target: { value: '22222222-2222-4222-8222-222222222222' } });
 
     await waitFor(() => expect(onConfigChange).toHaveBeenCalled());

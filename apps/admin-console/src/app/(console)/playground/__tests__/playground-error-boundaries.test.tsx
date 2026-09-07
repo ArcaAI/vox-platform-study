@@ -1,8 +1,11 @@
 /**
- * five of the six playground routes had no `error.tsx` (only `workbench` did),
- * so a render throw anywhere in consultation / dna-writing-style / live-transcription / llm /
- * voice-profiles took down the whole console shell instead of degrading to that one segment
- * (rule 13: segment-scoped `error.tsx`, same pattern `workbench/error.tsx` already ships).
+ * Five of the six playground routes had no `error.tsx`, so a render throw anywhere in
+ * consultation / dna-writing-style / live-transcription / llm / voice-profiles took down the whole
+ * console shell instead of degrading to that one segment (rule 13: segment-scoped `error.tsx`).
+ *
+ * The sixth was `workbench`, which supplied the pattern. It is gone as of TASK-893 — running a
+ * definition moved into the Workflow Studio's Run tab and the route is now a bare `redirect()`,
+ * which has no render of its own to fail. These five are the whole playground surface now.
  */
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';

@@ -223,6 +223,7 @@ export function WorkflowCanvas({
   edges,
   nodeTypes,
   selectedNodeId = null,
+  selectedNodeIds,
   readOnly = false,
   overlay,
   onNodesChange,
@@ -232,6 +233,7 @@ export function WorkflowCanvas({
   onConnect,
   isValidConnection,
   onSelect,
+  onSelectionChange,
   onDeleteRequest,
   onPaneDrop,
   emptyState,
@@ -250,11 +252,21 @@ export function WorkflowCanvas({
 
   const nodeById = React.useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
+  // `undefined` (not an empty Set) when the consumer supplies no multi-selection, so the
+  // single-`selectedNodeId` behaviour every existing caller relies on is untouched. Keyed on the
+  // joined ids rather than the array identity: a consumer rebuilding an equal array each render
+  // must not re-run the `xyNodes` memo and re-sync the whole graph.
+  const selectedKey = selectedNodeIds?.join('\u0000');
+  const selectedSet = React.useMemo(
+    () => (selectedKey === undefined ? undefined : new Set(selectedKey === '' ? [] : selectedKey.split('\u0000'))),
+    [selectedKey],
+  );
+
   const xyNodes = React.useMemo(
     () =>
       parentsFirst(nodes).map((node) =>
         toXyNode(node, {
-          selected: node.id === selectedNodeId,
+          selected: selectedSet ? selectedSet.has(node.id) : node.id === selectedNodeId,
           readOnly,
           renderer: nodeTypes?.[node.type],
           onDeleteRequest,
@@ -263,7 +275,7 @@ export function WorkflowCanvas({
           groupSize: node.kind === 'group' ? groupSize(node.id, nodes, measured) : undefined,
         }),
       ),
-    [nodes, selectedNodeId, readOnly, nodeTypes, onDeleteRequest, overlay, measured],
+    [nodes, selectedNodeId, selectedSet, readOnly, nodeTypes, onDeleteRequest, overlay, measured],
   );
   const xyEdges = React.useMemo(() => edges.map((edge) => toXyEdge(edge, readOnly)), [edges, readOnly]);
 
@@ -351,8 +363,9 @@ export function WorkflowCanvas({
   const handleSelectionChange = React.useCallback(
     ({ nodes: selected }: { nodes: Node<WorkflowNodeData>[] }) => {
       onSelect?.(selected[0]?.id ?? null);
+      onSelectionChange?.(selected.map((node) => node.id));
     },
-    [onSelect],
+    [onSelect, onSelectionChange],
   );
 
   const handleEdgeMouseEnter = React.useCallback<EdgeMouseHandler>((_event, edge) => setHoveredEdgeId(edge.id), []);
@@ -437,8 +450,8 @@ export function WorkflowCanvas({
           path. TASK-893 §3.4 deletes that view, so the hint now names what the CANVAS itself
           provides and stops promising a screen that no longer exists. */}
       <span className="sr-only">
-        Workflow graph editor. Press Tab to move between nodes and connections; each carries a labelled button that removes it without a
-        drag. Adding and configuring nodes stay available outside the canvas.
+        Workflow graph editor. Press Tab to move between nodes and connections; each carries a labelled button that removes it without a drag. Adding
+        and configuring nodes stay available outside the canvas.
       </span>
       <WorkflowEdgeChromeProvider value={edgeChrome}>
         <ReactFlow

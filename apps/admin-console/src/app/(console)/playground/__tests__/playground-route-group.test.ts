@@ -22,7 +22,8 @@ const APP = join(process.cwd(), 'src/app');
 
 describe('playground routes (tier 50–59) sit outside the tenant-admin route group', () => {
   it('every tier 50–59 entry has a page under (console)/<route> and none under (console)/(tenant)', () => {
-    // Ability gates still apply per entry — /playground/workbench keeps `manage:WorkflowDefinition`.
+    // Ability gates still apply per entry. (/playground/workbench was retired in TASK-893: running
+    // a definition now lives in the Workflow Studio's Run tab, and the route only redirects.)
     const playground = NAV_ENTRIES.filter((entry) => entry.tier === '50-59');
     expect(playground.length).toBeGreaterThan(0);
     for (const entry of playground) {

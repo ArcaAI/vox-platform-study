@@ -1720,12 +1720,6 @@ const CORE_TRIGGER_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: Object.freeze(['kinds']),
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     kinds: Object.freeze({
       type: 'array',
       minItems: 1,
@@ -1776,12 +1770,6 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: Object.freeze(['agentRef']),
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     agentRef: Object.freeze({
       type: 'object',
       additionalProperties: false,
@@ -1855,12 +1843,6 @@ const CORE_CLASSIFY_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: Object.freeze(['modelSlug', 'classes']),
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     modelSlug: Object.freeze({
       type: 'string',
       minLength: 1,
@@ -1923,12 +1905,6 @@ const CORE_HUMAN_REVIEW_SCHEMA: NodeConfigSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     reviewType: Object.freeze({ type: 'string', minLength: 1, maxLength: 64, default: 'approval' }),
     instructions: Object.freeze({
       type: 'string',
@@ -1976,12 +1952,6 @@ const CORE_VARIABLE_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: Object.freeze(['variables']),
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     variables: Object.freeze({
       type: 'array',
       minItems: 1,
@@ -2016,12 +1986,6 @@ const CORE_CONDITION_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: Object.freeze(['branches']),
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     branches: Object.freeze({
       type: 'array',
       minItems: 1,
@@ -2056,12 +2020,6 @@ const CORE_LOOP_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: Object.freeze(['mode', 'bounds']),
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     mode: Object.freeze({ type: 'string', enum: Object.freeze(['foreach', 'while']) }),
     over: Object.freeze({
       type: 'string',
@@ -2094,12 +2052,6 @@ const CORE_NOTE_SCHEMA: NodeConfigSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     text: Object.freeze({ type: 'string', maxLength: 4000 }),
     color: Object.freeze({ type: 'string', enum: Object.freeze(['neutral', 'info', 'warning', 'success']), default: 'neutral' }),
   }),
@@ -2113,12 +2065,6 @@ const CORE_OUTPUT_SCHEMA: NodeConfigSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     outputSchema: TENANT_IO_SCHEMA_PROPERTY,
     protocols: Object.freeze({
       type: 'array',
@@ -2162,12 +2108,6 @@ const CORE_ACTION_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: Object.freeze(['actionKey']),
   properties: Object.freeze({
-    inputs: Object.freeze({
-      type: 'object',
-      summary: 'Values pulled in from earlier steps.',
-      description:
-        'TASK-893 — secondary DATA inputs bound to an upstream node instead of a canvas wire. Keyed by port name; each entry is `{ fromNodeId }`, a reference to the node in this graph that supplies it.',
-    }),
     actionKey: Object.freeze({
       type: 'string',
       minLength: 1,

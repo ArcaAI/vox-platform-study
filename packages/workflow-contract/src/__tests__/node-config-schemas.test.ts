@@ -623,18 +623,22 @@ describe('core.* summary copy (TASK-893 B2)', () => {
 });
 
 /**
- * TASK-893 B5 support — `config.inputs.<portName> = { fromNodeId }` (INTERFACES.md Contract B
- * §4.2) is a NEW config surface the secondary-input inspector field writes. Every schema in
- * this module sets `additionalProperties: false`, so without a declared `inputs` property the
- * very first binding an admin makes would fail validation. Declared permissively (no per-port
- * enumeration — that list is Lane D's `secondaryInputsFor`, derived from the port model, not
- * from this JSON schema) on the 10 active core.* types that do not share their schema object
- * with a deprecated type; `core.data` shares `AGENTIC_DATA_SCHEMA` with the deprecated
- * `agentic.data` and is deliberately excluded (unlike copy, a functional config surface is not
- * something a deprecated entry should also gain).
+ * TASK-893 integration — a secondary input binding is an EDGE, never config.
+ *
+ * Lane B originally declared a permissive `inputs` property on ten core.* schemas so that
+ * `config.inputs.<portName> = { fromNodeId }` would survive `additionalProperties: false`. That
+ * config surface is now removed, because the harness interpreter never reads it:
+ * `_resolve_bound_inputs` (`apps/harness/.../interpreter/workflow.py`) iterates `node.inputs` —
+ * "the compiler-derived edge bindings" — and threads data purely from EDGES. A config-shaped
+ * binding would have validated, rendered as bound, and delivered nothing to the run.
+ *
+ * The inspector's picker therefore writes a real typed edge (`fromPort` -> `toPort: <portName>`);
+ * only the CANVAS treatment changed, in that the editor does not draw those edges. This test
+ * pins the removal so the dead surface cannot quietly come back — re-adding it would also punch
+ * a permissive `object` hole through a deliberate `additionalProperties: false`.
  */
-describe('core.* inputs binding surface (TASK-893 B5 support)', () => {
-  const TYPES_WITH_INPUTS_PROPERTY = [
+describe('secondary inputs are edges, not config (TASK-893 integration)', () => {
+  const CORE_TYPES = [
     'core.trigger',
     'core.agent',
     'core.classify',
@@ -645,20 +649,16 @@ describe('core.* inputs binding surface (TASK-893 B5 support)', () => {
     'core.note',
     'core.output',
     'core.action',
+    'core.data',
   ] as const;
 
-  it.each(TYPES_WITH_INPUTS_PROPERTY)('%s declares an inputs property (additionalProperties: false would else reject it)', (type) => {
+  it.each(CORE_TYPES)('%s declares no `inputs` config property', (type) => {
     const properties = NODE_CONFIG_SCHEMAS[type].properties as Record<string, unknown> | undefined;
-    expect(properties?.inputs).toBeDefined();
+    expect(properties?.inputs).toBeUndefined();
   });
 
-  it('core.agent accepts a secondary-input binding at inputs.<portName>', () => {
+  it('and a config-shaped binding is refused, which is what keeps the lie impossible', () => {
     const config = { agentRef: { slug: 'demo-agent' }, inputs: { context: { fromNodeId: 'trigger-1' } } };
-    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS['core.agent'], config)).toEqual([]);
-  });
-
-  it('core.data does NOT declare inputs — it shares AGENTIC_DATA_SCHEMA with the deprecated agentic.data', () => {
-    const properties = NODE_CONFIG_SCHEMAS['core.data'].properties as Record<string, unknown>;
-    expect(properties.inputs).toBeUndefined();
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS['core.agent'], config)).not.toEqual([]);
   });
 });

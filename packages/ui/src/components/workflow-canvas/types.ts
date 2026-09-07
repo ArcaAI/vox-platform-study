@@ -106,6 +106,14 @@ export interface WorkflowCanvasProps {
   /** Registry-driven inner-content renderers, keyed by node `type`. Unregistered types fall back to a label-only default. */
   nodeTypes?: WorkflowCanvasNodeTypes;
   selectedNodeId?: string | null;
+  /**
+   * The FULL controlled selection. React Flow supports box- and shift-select natively, but
+   * `selected` is controlled here, so reporting only a primary id made the next prop sync
+   * unselect everything else — the consumer could never hold more than one node. Supply this and
+   * membership decides `selected`; omit it and the single `selectedNodeId` still governs, which
+   * is what keeps every existing caller working unchanged.
+   */
+  selectedNodeIds?: readonly string[];
   readOnly?: boolean;
   /** Reserved for run-replay overlay (per-node status/timing/confidence badge slots). Not consumed by Studio v1. */
   overlay?: (node: WorkflowCanvasNode) => ReactNode;
@@ -143,6 +151,9 @@ export interface WorkflowCanvasProps {
    */
   isValidConnection?: (connection: WorkflowConnectRequest) => boolean;
   onSelect?: (nodeId: string | null) => void;
+  /** The whole selection, alongside `onSelect`'s primary. Fires with `[]` when the pane is
+   *  cleared. Needed by any multi-node command — wrapping a set of nodes in a loop, say. */
+  onSelectionChange?: (nodeIds: string[]) => void;
   /** Rendered centred over an EMPTY canvas (no nodes). The composite ships no copy of its own —
    *  the consumer supplies the empty state so it can match the rest of its screen. */
   emptyState?: ReactNode;

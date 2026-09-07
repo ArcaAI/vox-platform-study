@@ -65,14 +65,16 @@ export function SecondaryInputBindingField({
       <FieldDescription>
         A {primitive} value from an earlier step in this workflow{required ? '' : ' — optional'}.
       </FieldDescription>
-      {/* `value ?? NONE_VALUE` is passed straight through, UNCHECKED against `upstreamNodes` —
-          a stale/deleted reference then matches no `SelectItem`, so Radix falls back to
-          `placeholder` and the "not upstream anymore" text actually renders. Coercing it to
-          `NONE_VALUE` here (as an earlier draft did) would always find a match and the
-          placeholder branch would be dead code. */}
+      {/* A binding whose source is no longer UPSTREAM is rendered as its own option rather than
+          left to Radix's `placeholder`: `SelectValue` falls back to the placeholder only when the
+          value is UNSET, so a value matching no `SelectItem` displays as an empty trigger — the
+          binding would silently vanish from the form while the edge still exists on the graph.
+          The reachable case is reordering, not deletion (deleting a node takes its edges with it):
+          bind `context` to an earlier node, then move that node after this one. Kept selectable so
+          it stays the displayed value, and labelled so the admin can see it needs attention. */}
       <Select value={value ?? NONE_VALUE} onValueChange={(next) => onChange(next === NONE_VALUE ? null : next)} disabled={disabled}>
         <SelectTrigger id={id} className="w-full">
-          <SelectValue placeholder={value ? `${value} (not upstream anymore)` : 'None'} />
+          <SelectValue placeholder="None" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={NONE_VALUE}>None</SelectItem>
@@ -81,6 +83,11 @@ export function SecondaryInputBindingField({
               {optionLabel(node)}
             </SelectItem>
           ))}
+          {value !== null && !upstreamNodes.some((node) => node.id === value) ? (
+            <SelectItem value={value} className="text-destructive">
+              {value} (not upstream anymore)
+            </SelectItem>
+          ) : null}
         </SelectContent>
       </Select>
       {errors && errors.length > 0 ? (
