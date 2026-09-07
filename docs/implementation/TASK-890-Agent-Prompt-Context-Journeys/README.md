@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **Completed** 2026-09-07 — all four waves merged into `dev-2.2` and closed by the `opus` wave-close pass of §4.9 (wave 1 `f63f021d7`, wave 2a, wave 2b `faa8730c1`, wave 3 `6eb832fb1`). Fourteen lanes, 209 files in wave 3 alone, four content models out of `SYSTEM_SHARED_READ_MODELS`, five API artifacts regenerated, full API e2e **1181 passed / 0 failed / 49 skipped**. Nine open OWNER questions are listed in §6.4 and seventeen follow-ups in §8 — none of them blocks what shipped |
+| **Status** | **Completed** 2026-09-07 — all four waves merged into `dev-2.2` and closed by the `opus` wave-close pass of §4.9 (wave 1 `f63f021d7`, wave 2a, wave 2b `faa8730c1`, wave 3 `6eb832fb1`). Fourteen lanes, 209 files in wave 3 alone, four content models out of `SYSTEM_SHARED_READ_MODELS`, five API artifacts regenerated, full API e2e **1181 passed / 0 failed / 49 skipped**. Nine open OWNER questions were listed in §6.4 and seventeen follow-ups in §8 — none of them blocks what shipped. **A black-box release phase then drove the product as a user against a reset dev database** (§9, closed 2026-09-07): seven journeys, 52 `fix`/`feat` commits, five BLOCKER-class defects, full API e2e 1181 passed; §6.4 now carries twenty-four owner questions and §8 thirty-four follow-ups (TASK-891..929) |
 | **Type** | feature (with `bugfix` incidentals: the unwired publish gate, the realtime-lane render divergence, the deprecated-column availability read, the unmetered agent-invocation route, the Global-tenant provisioning source, the SYSTEM-template fallback chain silently dropped by BOTH readers (TASK-884 H-6), the legacy settings CRUD missing the SYSTEM-tier guard) |
 | **Branch** | `dev-2.2` (every lane merges here; the orchestrator merges from the primary checkout) |
 | **Created** | 2026-09-06 (round 1) · 2026-09-06 (round 2) — assessment against the twelve owner answers + two targeted discovery lanes (E: BYO / Hope provider / readiness; F: provisioning / quota / scopes / deprecation) · **2026-09-06 (round 3)** — the six round-2 answers + two discovery lanes (G: guardrail management / opt-out surfaces; H: content SYSTEM fallback / settings write gate / catalogue slug shadowing) + a five-point re-verification (§2.7 #18-#25) + the fast-win path (§4.8) |
@@ -1231,8 +1231,9 @@ This is HOW §4.1–§4.8 are executed. It adds nothing to the design; it binds 
 
 ### 6.4 Open owner questions at close (2026-09-07)
 
-Nine questions the four waves raised and did NOT decide. None blocks what shipped; each carries
-the recommendation already given, so an owner answer is a yes/no, not a design round.
+Twenty-four questions: **Q-1 … Q-9** from the four implementation waves, **Q-10 … Q-24** from the
+black-box release phase that followed them (§9). None blocks what shipped; each carries the
+recommendation already given, so an owner answer is a yes/no, not a design round.
 
 | # | Question | Where it came from | Recommendation |
 |---|---|---|---|
@@ -1245,6 +1246,21 @@ the recommendation already given, so an owner answer is a yes/no, not a design r
 | Q-7 | **Azure `deploymentName` is optional on a BYO model declaration.** A tenant can declare an Azure model with no deployment name, which the wire repoint then cannot route. | wave-2b close | Make it required for `provider: 'azure'` at declaration time (one DTO rule), rather than failing at run time |
 | Q-8 | **`DEPARTMENT_ENDPOINTS.PROMPT_CONFIG` had no gateway route.** The wave-3 close removed the SDK's dead read; the DEF-C5 department config tier is therefore absent, not broken. | wave-3 close | Add a self-scoped `GET users/me/department/prompt-config` (the caller's own department, no admin ability) and restore tier 2 against it. TASK-908 |
 | Q-9 | **Two platform workflow templates can never be provisioned** — `platform-consultation-grammar-fix` and `platform-consultation-ner-grammar-fix` pin PLATFORM-owned prompt/document catalogue rows, so `assertNoUnresolvableCatalogBindings` refuses the clone (correctly: the copy would carry references the tenant cannot resolve). Every tenant is therefore provisioned WITHOUT them, and the reference-set summary reports it as a stated skip rather than a failure. | wave-3 close (L13) | Re-point the bindings at the target tenant's own clones by `sourceTemplateId` — exactly what `AgentService.referenceInstruction` already does for an agent's prompt — and refuse only when no clone exists. TASK-909 |
+| Q-10 | **The platform-default election has no `ModelTaskType` → `AiTaskKind` matrix.** Electing a text-generation model as the platform default for `EMBEDDING` is accepted — nothing checks that the model's task type can serve the task kind | black-box J1 (MAJOR-B) | Declare the matrix once and check it at election time; the pairs are already implicit in `AGENT_TASK_MODEL_TASK_TYPE` |
+| Q-11 | **What is the end state for prompt scoping — tags only?** Prompts now carry tags end to end and the console filters on them, which is what makes `dept:<code>` scoping work while departments are retired. `PromptTemplate.departmentId` still exists and still resolves. Does the column go, and when? | black-box J2 | Land the tag convention (`dept:<Department.code lowercased>`, `visit:<key>`, subset/AND — the agent tag grammar), backfill from `departmentId` and the Department pointer columns, then drop the column in the release after |
+| Q-12 | **Should seed phase 26 clone `WorkflowDefinition` rows into a tenant?** The allow-list comment claimed a seed clone path that does not exist (fixed as a comment); whether the SEED should do what the reference-set service does is undecided | black-box J7-3 | Leave the seed alone — `TenantReferenceSetService` is the one copier, and the seed calls it |
+| Q-13 | **`WORKFLOW_EXPOSURE_ENABLED` is an `env`-tier flag.** It now defaults ON, but a flag that must change without a restart is not an env var (rule 09 §Configuration Tiers) | black-box J7-5 | Move it to `redis-flag` with the rest of the kill switches |
+| Q-14 | **Eighteen legacy per-tenant `GlobalSetting` keys have no SYSTEM tier**, so OD-P's platform-tier reasoning finds nothing to protect for them | black-box J7-4 | Either retire them with the TASK-865 block or give each a SYSTEM row at `seed/11-global-setting.ts:440` |
+| Q-15 | **Should the consultation plane resolve a workflow by trigger KIND rather than by palette?** Today only a `consultation`-palette row can govern a consultation, so a `core`-palette workflow declaring `kinds: [consultation]` — assigned at tenant AND department — is reachable only through `POST /workflows/{slug}/runs` | black-box J5-F4 | Resolve by declared trigger kind, with the palette as a tie-break; TASK-916 is written and waiting on this |
+| Q-16 | **May an API key mint a run-scoped stream ticket?** `POST /auth/stream-ticket` is `@ForbidApiKey()`, so the `socket` protocol a published workflow advertises is unreachable for the developer the publish is FOR | black-box J6 | Yes, scoped to one run id and one short TTL — that keeps the admin-plane rule intact while making the advertised protocol true. TASK-914 |
+| Q-17 | **Is the FLAT trigger payload the authoring shape?** `context.*` in an agent prompt resolves against the run payload ROOT while `core.classify` reads `text` off the same root, so a `{text, context:{…}}` payload satisfies neither. J6's workflow declares them flat and works | black-box J6 | Yes — and warn at publish when a trigger schema nests a kind under a namespace an agent node then reads flat |
+| Q-18 | **Should `blocking` be withdrawn from a graph that carries a durable human gate?** It is advertised, and it can only ever reach the gateway's 60 s ceiling | black-box J6 | Withdraw it at publish, in `modesFor`. TASK-919 |
+| Q-19 | **Is `arcaai-whisper-large-ml-en-gguf-q8_0` the right default for English-only consultations?** Batch transcription of English clinical audio truncated one file and returned another's tail as Malayalam glyphs; the resolved spec keeps `languageMode: "ml-en"` / `codeSwitching: true` even when the caller passes `language=en`. The realtime path on the same audio was clean | black-box J5-F5 | Either honour `language=en` by narrowing the resolved spec, or elect a second ASR agent for English-only work |
+| Q-20 | **What threshold should `response_toxicity` carry?** The SYSTEM `TenantGuardrailPolicy` entry is `{enabled: true}` with none, so the classifier's default blocks a 945-token clinical JSON completion as toxic | black-box F14 | Give the policy entry a threshold and tune it against clinical output; the per-node opt-out is the tenant-side mitigation, not the fix. TASK-913 |
+| Q-21 | **Should `resultRef` carry the successful nodes' payload on a DEGRADED run?** It is null today even when every node before the degraded one succeeded | black-box F13/F14 | Carry it, and let the run status say the run degraded. TASK-920 |
+| Q-22 | **Why does the f16 whisper row read `unknown` while the Q8_0 row from the SAME repo reads ready?** `arcaai-whisper-large-ml-en-gguf` never came back from a readiness sweep that answered for its sibling | black-box F6 / cache move | Probably a per-file rather than per-repo resolution; worth one look before the readiness snapshot is trusted for capacity decisions |
+| Q-23 | **`.env.test:1600` still points `HF_HOME` at the external volume.** Only the test API reads it, and that stack does not run models — but it is the same wedge that took two services down in dev | black-box cache move | Point it at the same local cache, or at nothing |
+| Q-24 | **There is no rollback / re-activate endpoint for an already-published agent version.** Returning to v1 after publishing v2 means deprecate + branch + publish, which mints a NEW version number rather than re-activating the one that was fine | black-box J3 | Add an explicit re-activate on a published version. TASK-925 |
 
 ---
 
@@ -1279,9 +1295,10 @@ the recommendation already given, so an owner answer is a yes/no, not a design r
 ## 8. Out of scope — proposed follow-up tickets (PROPOSALS; directories are NOT created)
 
 Numbering re-verified at close (2026-09-07) against `docs/implementation/` (highest existing:
-TASK-890) and `docs/archive/` (highest: TASK-858). **891–912 are free**; the numbers below are
+TASK-890) and `docs/archive/` (highest: TASK-858). **891–929 are free**; the numbers below are
 reserved by this table and nothing else. Two are already dropped (896, 897) and one number is out
-of sequence (902 predates the wave closes) — neither is re-used.
+of sequence (902 predates the wave closes) — neither is re-used. **913–929 were added by the
+black-box release phase** (§9), which ran after the ticket closed.
 
 **Consolidated at close.** Every follow-up raised by the four wave closes is in ONE table. The
 first block is the design/scope work the plan itself deferred; the second is what the wave closes
@@ -1312,6 +1329,23 @@ deferred.
 | TASK-910 | **Implement `refresh-locked`.** `TenantReferenceSetService` accepts the mode and reconciles MISSING-ONLY; since the wave-3 close it SAYS so in `warnings` rather than reporting a fast-forward it did not perform (`tenant-reference-set.service.ts:178-186`). The intent is `PipelineTemplateResyncService`'s: re-copy rows still `templateLocked`, never touch one the tenant edited | wave-3 close (L13 deviation) | proposed |
 | TASK-911 | **Four stale admin-console e2e specs.** Two `ai-models` specs address a form label (`Task type` → `Task (Hugging Face pipeline tag)`) and a header button (`Discover from servers` → `Loaded on engines`) that TASK-860 renamed on 2026-09-04; two `workflow-studio` specs wait for a `Core.start` palette button TASK-864 removed when the palette stopped offering deprecated types. All four fail today and predate this ticket — the console suite needs a live stack, so nothing ran them | wave-3 close (console e2e run) | proposed |
 | TASK-912 | **List view names each node row exactly as the palette button that created it**, so two page-level controls share an accessible name and `expectDistinctControlNames` refuses the view (WCAG 2.5.3 reading). Pre-existing in the Studio; the wave-3 close routed its new a11y scan around it rather than renaming controls it does not own | wave-3 close (console e2e run) | proposed |
+| TASK-913 | **`response_toxicity` has no threshold.** The SYSTEM `TenantGuardrailPolicy.policies.response_toxicity` is `{enabled: true}`, so the classifier's own default decides — and it blocks a 945-token clinical-JSON completion as toxic (`GUARDRAIL_REJECTED`, text 422). Give the policy entry a threshold, tune it against clinical output, and say in the console what a rejected generation means | black-box F14 | **needs an owner value (Q-20)** |
+| TASK-914 | **Run-scoped stream tickets for API keys.** `POST /auth/stream-ticket` is `@ForbidApiKey()`, so the `socket` protocol a published workflow advertises cannot be opened by the developer the publish is for. Scope a ticket to one run id with a short TTL | black-box J6 / Q-16 | **needs the Q-16 answer** |
+| TASK-915 | **Meter the realtime STT streaming session.** Batch transcription writes `AUDIO_SECOND`; the streaming lane writes nothing at all (a 21.9 s, 7-utterance session produced no row). The workflow-lane half of this gap was closed by F14 | black-box J5-F10 | proposed |
+| TASK-916 | **Resolve a consultation's workflow by declared trigger KIND, not by palette.** A `core`-palette workflow declaring `kinds: [consultation]` and assigned at tenant AND department is never chosen by `POST /consultations/open`, and the Scribe's picker lists only `consultation`-palette rows | black-box J5-F4 / Q-15 | **needs the Q-15 answer** |
+| TASK-917 | **`core.humanReview.assignRole` is neither enforced nor honoured.** The decide route requires `update:WorkflowRun`, which the assigned clinician role does not hold, while a role the node never names decides fine | black-box J5-F9 | proposed |
+| TASK-918 | **Workflow-assignment and webhook-secret write contracts.** `POST /admin/workflow-assignments` silently retargets an existing assignment (201, pre-existing id, version 2 — no 409, no `If-Match`); and a webhook secret is issued for a workflow whose trigger declares no `webhook` kind | black-box J6 | proposed |
+| TASK-919 | **Advertise only the modes a graph can actually serve.** `blocking` is offered for graphs containing a durable human gate, where the gateway's 60 s ceiling makes it structurally a 504; and the publish dialog lists three modes while `/schema` returns four | black-box J5-F11 / J6 / Q-18 | proposed |
+| TASK-920 | **`resultRef` on a DEGRADED run.** Null today even when every node before the degraded one succeeded, so a partially successful run yields nothing through the result pointer | black-box F13/F14 / Q-21 | **needs the Q-21 answer** |
+| TASK-921 | **The six `task-355` harness replay-compat failures.** `test_gating_consolidation_replay` ×2 and `test_replay_compat::test_post_*` ×4 — TMPRL1100 patch-marker drift for `task-355-optimistic-delivery`. Pre-existing across every wave of this ticket and reported as such each time; it needs its own lane rather than another footnote | every wave close; black-box F10/F13/F14 | proposed |
+| TASK-922 | **`apps/nlp` housekeeping** — two pre-existing `test_metrics_endpoint_task636` failures, and the package is not `black`-clean on `dev-2.2` (6 files no recent ticket opened) | black-box F2a / F14 | proposed |
+| TASK-923 | **`apps/stt` has a SECOND env loader.** `apps/stt/src/stt/core/config/settings.py:28-30` declares a pydantic `env_file` pointing at a gitignored `apps/stt/.env`, beside the shared `hope_env` contract — exactly the mesh TASK-558 removed everywhere else. It is why an `HF_HOME` change in `.env.dev` did not reach STT. Remove the loader (and settle `.env.test`'s external-volume `HF_HOME`, Q-23) | black-box cache move | proposed |
+| TASK-924 | **`packages/py-runtime-models` has no lint or test script and no CI job**, though it is now on the readiness path of three services; and `pnpm stack:dev down` / the supervisor does not reap the STT Dramatiq worker or the nlp uvicorn, so a restart leaves orphans holding the previous configuration | black-box F2a / F6 / cache move | proposed |
+| TASK-925 | **Re-activate a published agent version.** Returning to v1 after publishing v2 means deprecate + branch + publish, which mints a NEW version number instead of re-activating the one that was fine | black-box J3 / Q-24 | proposed |
+| TASK-926 | **The clinician-facing console gaps J5 found**, as one lane: the Scribe's transcript pane shows "No transcript yet" for a consultation that has transcripts (only the live stream is rendered); `/` redirects to `/dashboard`, which 404s for TENANT_ADMIN and DOCTOR; the Playground nav group is hidden from a DOCTOR so the Scribe is URL-only; `GET /consultations/{id}/workflows` 403s for a DOCTOR; there is no image/PDF attachment affordance in the consultation playground although the owner's brief names them as context items; and the data-grid pager reads "Page 1 of 1" while offering two pages | black-box J2 / J5 | proposed |
+| TASK-927 | **`@IsUUID(7)` on `consultationId`** (`create-job.request.ts:69,150,212`) rejects every SEEDED consultation id (`90000000-…` is not a v7 UUID), so a transcription job cannot be attached to a seeded consultation | black-box J5-F12 | proposed |
+| TASK-928 | **The Studio list view cannot author a non-default port.** Connect hardcodes `sourceHandle: 'out'` / `targetHandle: 'in'` (`workflow-studio-editor.tsx:662`), so `agent.transcript→classify.in` and `classify.out→agent.context` are unauthorable without the canvas, and the refusal offers no port picker. Also: the vox-node package still says "52 areas" (`src/index.ts:88`, `README.md:206`) where the generated tree has 49, and the codegen leaves `AiRoutingPolicyAdminController` (11 routes) and `WorkflowInvariantRuleController` (5) uncovered — possibly unintended | black-box J5-F13 / F2b | proposed |
+| TASK-929 | **`POST /internal/service-releases` 400s continuously from every Python service** (`service_registration.rejected` in the harness and worker logs) — log noise with no functional impact observed, which is exactly how a real registration failure would look | black-box J5-F14 | proposed |
 | (not a ticket) **Rule amendments** — land WITH this ticket, edited by the ORCHESTRATOR in the primary checkout (`.claude/rules/*` is a shared surface — rule 14 §3; no lane touches it), in the same merge commit as the lane that makes each true | `.claude/rules/00-project-context.md` §Configuration Principles (`:73`): one paragraph "Content is cloned, config cascades" = §1.5's two-row table in prose, with the exact entity lists and the named-error rule; `.claude/rules/09-infrastructure-devops.md` §Tenant-first resolution & BYO (`:263`): one line "The tenant → SYSTEM order applies to CONFIG; CONTENT (agents, assignments, prompts, workflows, context schemas) is cloned at tenant creation and never widened at runtime — see rule 00 §Configuration Principles"; `.claude/rules/05-nestjs-api.md` §Imperative Privilege Checks table (`:40-48`): one row for the platform-tier settings guard (§3.15). Rules 03 / 04: nothing (no new pattern). **Rule 06 (`06-python-services.md`): nothing either — D-2 changes a seeded VALUE, not a contract. `text.externalGuardrail.enabled` stays a `global-kv` descriptor pulled through `apps/text`'s `core/effective_config.py` (rule 06 §"Service-level knobs pulled over HTTP"), the guardrail fail posture and the "no `fail_open`" rule are untouched, and `apps/guardrail` is not edited by this ticket at all. The only operational consequence worth a line anywhere is in §3.14b, not in a rule: a deployment that runs TEXT must also run guardrail.** | OD-M, OD-P | rule 05 row with L1's merge (wave 1); rules 00 + 09 with L13 step v (wave 3) |
 
 ## 9. Implementation Summary
@@ -1861,6 +1895,287 @@ verified rather than assumed:
 
 ---
 
+### Black-box release phase — CLOSED 2026-09-07 (J1–J7, F2a–F14)
+
+**The owner's directive, restated.** After the ticket closed, the owner asked for one more pass:
+*"perform more blackbox test by allocate agents (using opus-5 with appropriate effort tier) to run
+e2e test using browser and the admin console and verify the core business"* — reset the dev
+database and start the local environment; check the services, **especially LM Studio on port 1234
+of this Mac**, since the seed was built for the k8s deployment; verify that a platform admin can
+manage provider → model; that prompt/instruction management including **tagging** works for a
+tenant admin *"as we deprecate department"*; that the agent and workflow Studio can create,
+update, drag, drop, move, connect and configure nodes; and then, specifically:
+
+- an agent for realtime transcription on `whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF` Q8_0;
+- an agent for pre-summarization on LM Studio + `gemma-4-e2b-it-qat`;
+- a workflow for realtime consultation — realtime transcription, realtime PII
+  (`fastino/GLiNER2-Guardrails-PII-Multi`) and medical NER (`blaze999/Medical-NER`) highlighted in
+  the playground, incremental partial summarization from a department template chosen by the
+  user's profile, key-point extraction, review & finalize, and **plain-text work notes** as
+  consultation context items the agents actually read;
+- publish both, and prove *"other developer can call published agents/workflow using
+  webhooks/api/http sse/sockets directly or via SDK Vox"*, including a small React app on the
+  browser package;
+- confirm a full seed for ArcaAI and SYSTEM (Global carrying the same as SYSTEM);
+- *"finalize things to be ready for releasing!"*
+
+Seven journeys ran as separate `opus` agents against the REAL product — the admin console in a
+browser, the gateway over `curl`, a WebSocket, a signed webhook and both SDKs — with the
+orchestrator owning every shared surface (the database reset, the stack, merges, artifact
+regeneration). **Fifty-two `fix` / `feat` commits closed what they found** — five BLOCKER-class,
+in five languages' worth of surfaces: the gateway, the console, `packages/ui`, the workflow
+contract, the browser and Node SDKs, and four of the six Python services.
+
+#### The environment, and the one host fact that mattered
+
+The dev database was reset and re-seeded on the owner's explicit consent
+(`RUN_SEED=all`), and the local stack ran the gateway (:8868), the admin console (:5176) and all
+six Python services, with **LM Studio serving `gemma-4-e2b-it-qat` on :1234** — the seeded
+`lms-gemma-4-e2b-it-qat` row and the SYSTEM `lm-studio` provider connection already point at
+`http://localhost:1234/v1`, so no seed edit was needed for this host after all.
+
+**The HuggingFace cache had to move, and that is a finding, not housekeeping.** The cache lived on
+an external **exFAT** volume (`/Volumes/aillusion/huggingface`, macOS FSKit userspace). A plain
+`open()` on it wedges a thread inside the kernel intermittently after service boot, which took
+`apps/stt` and `apps/nlp` dead to ALL callers the first time a readiness probe touched it (F3),
+and survived the first fix because a single-slot semaphore made the stall permanent (F6). The
+cache was rsync'd (6.8 GB, symlinks intact) to a local APFS path, after which every probe answered
+in milliseconds. **Three places pinned the old path and only the first is application config:**
+
+| Where | What it is | Done? |
+|---|---|---|
+| `.env.dev:1646` `HF_HOME` | the app-config tier — the one legitimate owner of the value | edited |
+| `~/.zshrc:149` `export HF_HOME=…` | a HOST env var, and host env beats the file (rule 00 §Environment Files) — so the file edit was silently ignored until the launcher overrode it | **NOT edited** (the owner's shell profile); `.claude/launch.json`'s `stack-dev` entry now launches via `env HF_HOME=…` — uncommitted and machine-specific, deliberately |
+| `apps/stt/.env:96` `HUGGINGFACE_CACHE_DIR` | a gitignored per-service file still read by a pydantic `env_file` in `apps/stt/src/stt/core/config/settings.py:28-30` — **a SECOND env loader beside `hope_env`, TASK-558 residue** | edited; the loader itself is TASK-923 |
+| `.env.test:1600` | the test API still points at the external volume | left as is — owner call, recorded as an open question |
+
+Two further environment facts worth the record: each `preview_stop` of the browser tooling left the
+STT Dramatiq worker and one `nlp` uvicorn behind (three stale workers were alive across restarts,
+still holding the OLD cache path — killed by hand, TASK-924); and **two `scripts/dev-stack.sh`
+supervisors started on 23 August are still alive on this Mac** (pids 28518, 34751), not started by
+this session and left alone.
+
+#### The seven journeys
+
+| # | Journey | Status | The evidence that matters |
+|---|---|---|---|
+| J1 | Platform admin manages provider → model | PASS-WITH-FINDINGS | `/ai-providers`, `/ai-models` and the readiness tab driven in the browser as `super_admin`; the catalogue's `usable` was following bucket inventory ALONE, so 21 of 33 rows — every whisper row, `medical-ner`, `gliner2`, `kokoro` — read unusable while their weights sat in the runtime cache (MAJOR-A → F2a) |
+| J2 | Tenant admin manages prompts by department TAG | PASS-WITH-FINDINGS | 45 ArcaAI rows, 17 of them SYSTEM clones; create with typed variables + tags, version under `If-Match` with a v1⇄v2 diff, approve, dry-run and a live test-run on lm-studio/gemma. Editing ANY `APPROVED` row 400'd (41 of 45 rows) and tags existed end to end with **zero** console surface — both fixed; the tag filter narrows 45 → 1 in the agent wizard |
+| J3 | Tenant admin builds the two named agents | PASS-WITH-FINDINGS | `arcaai-pre-summarization` and `arcaai-realtime-transcription` built in the console. Every guardrail-enabled generation 502'd (the judge sent a `response_format` LM Studio refuses), and no tenant could publish an ASR agent (the gate read bucket availability while the catalogue read readiness) — F7 |
+| J4 | Tenant admin builds the consultation workflow in the Studio | PASS-WITH-FINDINGS | a nine-node graph published from the canvas; drag-from-palette was never implemented, a node move never reached the server, list-view and canvas named nodes by TYPE only, and a referenced trigger schema left the published Input untyped — F5 |
+| J5 | Run the realtime consultation end to end | PASS-WITH-FINDINGS | consultation `01a0796b-…` walked **OPEN → PRIMED → RECORDING → DRAINING → PENDING_REVIEW → SIGNED** with a real WS transcription session, entity highlighting, an incremental summary that picked up a work note, and a decided review. Two BLOCKERs on the way: every durable `core.agent` node degraded on a 401, and a harness draft on an OPEN consultation answered **500** that Temporal then retried into a failed workflow — F10 |
+| J6 | Publish + external developer access | PASS-WITH-FINDINGS | async 202 + poll, SSE with resumable ids, socket 12 frames, signed webhook 202, the review decide route, a `@arcaai/vox-node` script and a **React app on `@arcaai/vox`** rendering a real 13.0 s gemma pre-summary and being refused from `/admin/tenants`. Two Python BLOCKERs (classify called the wrong nlp route; a `json` agent 422'd) — F13 |
+| J7 | Seed parity + release readiness | PASS-WITH-FINDINGS | read-only SQL + API across SYSTEM / `__GLOBAL__` / ARCAAI; the whole `/workflows` plane was 404 behind a feature flag defaulting off, eight generic prompt bodies were authored on the Global tenant and promoted rather than authored on SYSTEM, and the two reference-set copiers disagreed about tags |
+
+#### Every fix, with its gate
+
+Fifty-two `fix` / `feat` commits plus twenty-two documentation, artifact and close-out commits. Each was TDD'd where a test
+applied and gated by the suites its packages own; the shas are on `dev-2.2`.
+
+**F2a / F2b — J1 and J7 (platform administration, seed parity, release documentation)**
+
+| Sha | What | Gate |
+|---|---|---|
+| `5378385b5` | **usability follows the RUNTIME path, not the bucket alone** — a new `hope_runtime_models.resolvable` package plus `GET\|POST /internal/models/resolvable` on stt, nlp and tts; the readiness sweep asks each serving service whether the model's `sourceUri` resolves on its own disk, and `usabilityOf` folds that in | stt/nlp/tts suites; readiness refresh live: usable 16/33, then ready 12 after the cache move |
+| `37864ccf0` | `apps/text` `_probe` reported `probe_status: ok` for an unreachable engine (`providers.py:80-96`) | `pnpm text:test` |
+| `a03a4b365`, `86254824d`, `f4a72e700`, `63b78f021` | model discovery, dead-engine readiness, and the two Azure AI Foundry console gaps | console unit + api unit |
+| `587a8b37c` | an inventory run refreshes what it invalidated, and its report outlives the tab | console unit |
+| `59f33db52` | **the eight generic prompt bodies are authored on SYSTEM**, not authored on Global and promoted — Global was keeping unstamped originals, so it carried 9 clones where SYSTEM had 17 | seed unit; proof #9 re-run → 17 per tenant (`bd94b219b`, `8b496e8d6`) |
+| `882edf231` | ONE tags policy across both reference-set copiers (the seed dropped tags the service kept) | contract parity test |
+| `d5acd85e8` | two `tenant-scope.ts` comments described provisioning paths that do not exist | — (comment) |
+| `cb8231e17` | **the workflow exposure plane ships ON** — `WORKFLOW_EXPOSURE_ENABLED` defaulted false, so every `/workflows` route 404'd out of the box | `pnpm env:sync`; applications unit |
+| `de2878035`, `93e8ad5d6`, `e5e6e321f`, `a21907e65`, `7f9cf415b`, `91378a528`, `d87d64393`, `99e791b43`, `d9fe7f6d8` | the release-documentation pass (vox-node changelog, API changelog, rule 08's SDK version, the register split + R1 pointer, the R1 draft, architecture + traceability) | recorded in §10 |
+
+**F3 / F6 — the model-cache stall (Python)**
+
+| Sha | What | Gate |
+|---|---|---|
+| `bc94205c1` | the resolvable probe reads the cache filesystem-only (both HF layouts, AppleDouble- and dangling-symlink-safe, 60 s memo), off the event loop under a 5 s budget; `null` means "not measured", never a verdict | stt + nlp suites; stt/nlp answered all callers again |
+| `c18f648ad` | a wedged volume costs one probe thread, not the service — a 3-thread daemon pool with a stall cap that reports `degraded`, per-op instrumentation naming the syscall and path, and a boot warm-up | stt + nlp suites; `resolvable_warmup … outcome=ok` in 0.007 s on the local cache |
+
+**F4 — J2 (prompt management and tags)**
+
+| Sha | What | Gate |
+|---|---|---|
+| `fe3dce266` | **an APPROVED template is editable again** (the drawer posted the row's own status, which `UpdatePromptTemplateRequest` refuses) and prompts get their tag surface: grid column, editor in create + edit, tag filter in the shared picker, `tags` (hasEvery) on the service list | console unit + applications unit |
+| `31252feab` | **guardrail stopped selecting the dropped `AiModel."localPath"` column** — an `UndefinedColumnError` on every `validate` resolve made guardrail 503, text fail closed and the gateway answer 502 on EVERY guardrailed generation | guardrail suite + a schema-parity test |
+| `305ea376a` | `GET /admin/prompt-templates?tags=` is honoured | api unit + e2e |
+| `3fe670ca4` | prompt templates carry `sourceTemplateId` / `templateLocked`, so a clone can be badged "Platform origin" as agents already were | applications + console unit |
+| `414eef138` | a tenant admin can govern its OWN templates in the console (the Governance tab was gated on SUPER_ADMIN although the server's OD-3 split gate allows it) | console unit |
+| `8de75bd2c` | three seeded ArcaAI rows were `APPROVED` with `approvedVersionNumber: null`, so clinical resolution skipped them — including the tenant's department-agnostic summary fallback | seed unit |
+| `00ab67cfb`, `191eb50f2`, `9bfe1a452` | `/` lands a tenant admin on a screen it can open; `?create=1` opens the create drawer; typed variables are typed in the test bench too | console unit |
+| `18e8d6aaa` | the five API artifacts regenerated for the above | all three `:check`s |
+
+**F5 — J4 (the Studio canvas)**
+
+| Sha | What | Gate |
+|---|---|---|
+| `d40746a8f` | a canvas node drag reaches the server (a move was never persisted) | console unit |
+| `4bbee6994` | drag a node type from the palette onto the canvas — `palette-item.tsx` promised it and nothing implemented it | `packages/ui` + console unit; verified by eye (11/11 draggable, a real dragstart+drop created a node at the projected flow position) |
+| `9cbdcc37a` | nodes are named by label, else type plus a short id — the list view, canvas headers and the Connect picker showed only the type | console unit (prefix-anchored e2e regexes still match) |
+| `59cd0cce6` | **a referenced trigger context schema TYPES the published Input** — `declaredIoSchemas` read only `contextSchema.inline`, so a ref-bound trigger published an untyped contract | contract + applications unit; J5 confirmed the typed input live with no republish |
+| `8505877e6`, `bd70dd7ef`, `8dd4df3d7` | variable-path chips expanded from the bound schema with a template fallback; a palette-key picker instead of free text; a vacuous canvas assertion replaced | console unit |
+
+**F7 / F8 / F9 — J3 (agents, the judge lane, the wire id)**
+
+| Sha | What | Gate |
+|---|---|---|
+| `b70692472` | **the guardrail judge pins a JSON schema** — it sent `response_format {"type":"json_object"}`, which `apps/text` rejects (422) and LM Studio refuses outright, so the judge was undetermined → validate 503 → text fail-closed → **502 on every guardrail-enabled generation** | guardrail suite + a live 200 |
+| `45daf9e28` | the publish gate accepts the same two weight measurements the catalogue does — no tenant could publish an ASR agent | applications unit |
+| `f0e7ebb59` | the SSE usage tee scans the wire `apps/text` actually writes (CRLF, not LF-LF) — SSE invocations were unmetered | applications unit |
+| `ab4f0c5e2` | both test benches meter from the field the task read-back carries, and stamp the funding tier from the resolved deployment instead of assuming CLOUD | applications unit |
+| `e986d8fe1` | **a single kind keyed `context` is not an envelope** — the bridge schema keyed the payload under `context` while templates read `{{context.x}}` and the scope aliased `context` to the whole envelope, an un-runnable combination; four TS surfaces plus the Python mirror unwrap it | applications + harness + fixture |
+| `d41b90e8f` | the publish report and both pickers say less and mean more (17 findings for 9 placeholders deduped; the Review step names the schema; the picker is approved-only with an include-drafts opt-in) | applications + console unit |
+| `a90efd561` | **the judge's connection reaches it** — forwarded when the caller has one, resolved by guardrail's own tenant → SYSTEM SQL when it does not; cloud stays fail-closed at `require_api_key` | guardrail 504 + text 1657 passed; live: forward 200, fallback 200 (1.2 s), `/generate` with both gates 200 |
+| `c5b0cad75` | **an invocation sends the ROUTED model id** (`AiModel.wireModelId`), not the catalogue slug, with a named 409 when no tier has one | applications 12117 passed; live `POST /agents/arcaai-pre-summarization/invocations?mode=blocking` **200 in 32.9 s** with guardrail ON |
+
+**F10 / F11 / F12 — J5 (the consultation, the durable lane, the internal plane)**
+
+| Sha | What | Gate |
+|---|---|---|
+| `08935fb61`, `75f4b2177`, `3368e5c0c` | dragging an UNSELECTED node crashed the canvas with "Maximum update depth exceeded" and the Studio's error boundary ate the editor (`selected` was controlled AND `selectNodesOnDrag` was on); a no-op change report is now inert | `packages/ui` + console unit |
+| `aecbb47e0` | **the clinician playground is reachable by clinicians again** — `/playground/*` sat under `(console)/(tenant)/`, whose layout `notFound()`s anyone but a tenant admin, so a DOCTOR got "Page not found" on the Scribe | a structural test (rule 13 §Routing) |
+| `cb18d1f1f` | the harness names itself on the guarded agent-resolve route (`?service=harness`, which the guard requires) and a 4xx from `apps/api` stops being retried | harness 2193 passed |
+| `7a814d7bd` | a harness draft lands in the state the consultation IS in, and a state-machine refusal answers **409** instead of a 500 Temporal retries three times before failing the workflow | applications 2373 + api 297 passed |
+| `1eddd7880` | **the registry-model resolve the durable `core.classify` node had always called now exists** (`GET /internal/harness/models/resolve`, tenant BYO → SYSTEM, 404 on foreign/unknown/disabled), and the node stops pinning a task its own schema does not require | api + applications unit + harness; manifest 734 → 735, the other four artifacts unchanged |
+| `74c2f9155` | **the generic internal guard accepts the ONE shared internal token** every Python peer presents, with the per-service secret as fallback and fail-closed when neither is configured — `/internal/agents/resolve` still 401'd after F10 | internal module 91 passed; live 200 |
+
+**F13 / F14 — J6 (the developer plane, classify, metering)**
+
+| Sha | What | Gate |
+|---|---|---|
+| `187491712` | **a signed inbound webhook starts a run** — the hook row was read tenant-scoped under `@Public()`, so every correct delivery answered 404 | api unit; live 202 |
+| `376837df7` | the Node SDK sends the invocation body **flat**, the shape the gateway validates — `{ input }` failed the agent's own `inputSchema` on every call | vox-node 420 passed; live 14.2 s completion |
+| `281af3759` | `api.baseUrl` carries the gateway's `/api/v1` prefix (a value without it 404s silently) | docs/type |
+| `bff2f4837`, `41821f765` | **classify calls the route its model's task declares** (`TOKEN_CLASSIFICATION` → nlp `/classify/tokens`), a `json` agent stops 422-ing, a degraded node names its cause, and an untimed node compiles to the budget its own type declares instead of one flat 60 s | harness 2216 (+23), workflow-contract 1665, applications 259 |
+| `6c68818b9` | nlp `/classify/tokens` serves BOTH token runtimes — a GLiNER/GLiNER2 `extractor` checkpoint through the GLiNER2 runtime with the node's own classes as labels, the transformers path kept for `blaze999/Medical-NER` | nlp 619 passed |
+| `5aaac5a52` | a `json` response format reaches LM Studio as the only JSON wire it accepts (`json_schema`, not `json_object`) | text 1662 passed; live 200 |
+| `a29b5b342` | **a workflow-lane generation is metered** — the interpreter records the `LLM_CALL` trajectory step it is billed from, carrying text's usage stats, `trigger: WORKFLOW_RUN`, the funding tier (never guessed) and the guardrail disposition | harness 2227, applications 514 |
+
+**Close-out (this pass)**
+
+| Sha | What |
+|---|---|
+| `ff40cd21c`, `7ee0c4128` | a seeded agent freezes the same `wireModelId` a published one does (F9's parity tail), with both branches pinned in `task-863-agents.test.ts` |
+| `6f81c4ed7` | the one prettier red left in the api e2e suite, where lint errors are hard |
+| `b25d098ce` | `HF_HUB_CACHE` declared in `turbo.json#globalEnv` — the probe rewrite reads it and `env-sync` was red on both generated artifacts |
+| `c43926af7` | the two committed generated workflow-seed modules regenerated for F13's per-type timeouts (registry checksum `5631d0da…` → `74e1db0d…`) |
+
+#### The five proofs the owner asked for
+
+**(i) A guardrail-ON agent invocation, through the gateway, with the decision on the ledger.**
+`POST /api/v1/agents/arcaai-pre-summarization/invocations?mode=blocking` with a tenant API key
+answered **200 in 32.9 s** with a real gemma pre-summary — the input and output gates both ran
+(guardrail `validate` 200, judge 200), and the ledger row carries
+`trigger: AGENT_INVOCATION, guardrail: screened`. Before this phase the same call was a 502 from
+three separate defects in series (the dropped `localPath` column, the judge's response format, and
+the catalogue slug on the wire).
+
+**(ii) Both named agents PUBLISHED.** `arcaai-pre-summarization` (LM Studio +
+`lms-gemma-4-e2b-it-qat`, instruction from the prompt picker, context schema
+`consultation_legacy_v1`, guardrail ON) and `arcaai-realtime-transcription`
+(`arcaai-whisper-large-ml-en-gguf-q8_0`) — the ASR agent's publish gate passing with **zero
+findings** once the gate read the same readiness the catalogue does and the weights resolved on
+the local cache. Readiness at the close: ready 12 / weights_missing 9 / credential_missing 7 /
+unknown 4 / loadable 1, with whisper Q8_0, silero, ecapa, wespeaker, `medical-ner`,
+`gliner2-guardrails-pii-multi` and gemma all READY.
+
+**(iii) The clinical journey, end to end.** Consultation `01a0796b-3450-78f7-96e1-b3b15b0ddb43`
+(patient `PAT-20260221-101`, General Medicine, `arcaai_doctor`) walked **OPEN → PRIMED → RECORDING
+→ DRAINING → PENDING_REVIEW → SIGNED**: a realtime WS transcription session
+(`01a07970-f540-7de9-ac54-b455c059adc7`) fed 16 kHz PCM from a clinical WAV and returned clean,
+complete transcript segments; PII and medical entities were extracted and highlighted; a
+plain-text **work note** added as a context item was carried into the next summary's assembled
+prompt; key points were extracted; and the human-review gate was decided.
+
+**(iv) The developer surface.** With a tenant API key scoped
+`workflow:{definition:read,run:read,run:write}` + `agent:{definition:read,invocation:write}`:
+`GET /agents` (9) and `GET /workflows` (2, with a TYPED `inputSchema`); `/schema` advertising
+`async blocking stream socket` with OpenAPI and AsyncAPI 3.0; **async** 202 + poll, **SSE** frames
+with resumable ids, **socket** 12 frames, a **signed webhook** 202 (unsigned / mis-signed / stale
+→ 404), and the review decide route 403 for a key without `workflow:run:write` and 200 with it. A
+`@arcaai/vox-node` script exercised `agents.list/invoke`, `workflows.list/schema/run/runAndStream/
+getRun` and `reviews.get/decide`, and `hope.admin.*` refused with a local `PermissionError`. A
+**React app on `@arcaai/vox`** (Vite 7 + React 19, `scratchpad/j6/vox-app`) rendered a real 13.0 s
+gemma pre-summary through `useAgentInvocation`, listed both ASR agents through
+`useSelectableAsrAgents`, and its deliberate `/admin/tenants` fetch answered **403 "This route
+does not accept API-key authentication"** — the browser package is business-plane only, as OD-F
+requires. CORS came from `TenantAllowedOrigin` rows added through the product API, not a config
+file.
+
+**(v) The API-trigger workflow's final run.** `arcaai_api_consultation_summary` v5, run
+`01a07a1a-191d-7806-84e0-4000ad6dcf52`, started with the developer API key: trigger ✓ · **PII
+classify SUCCEEDED** (GLiNER2 returning `full_name` / `first_name` / `phone` / `email` spans) ·
+**Medical-NER classify SUCCEEDED** · **pre-summarization SUCCEEDED** (real gemma) · key points
+DEGRADED (see the open findings) · human review WAITING → decided by API key ✓ · output ✓. The
+ledger carries **two `AiUsageEvent` rows with `trigger: WORKFLOW_RUN, guardrail: screened,
+operation: harness.step`** — the workflow lane is metered, which it was not two commits earlier.
+
+**Cleanup done at the close:** both J6 API keys revoked (one had its plaintext echoed into an agent
+transcript by a shell error — a local dev credential, revoked regardless), the two `:5199`
+allowed-origin rows deleted, and the React app's process stopped with its source kept.
+
+#### Open findings, by severity
+
+Nothing here blocks the release; each is either an owner decision, a tuning value, or a follow-up
+ticket in §8.
+
+| Severity | Finding |
+|---|---|
+| MAJOR (owner tuning, not code) | **The outbound guardrail screen rejects long clinical JSON as toxic.** A 945-token key-points completion from gemma was BLOCKED with `reasons: ["response_toxicity"]` (`guardrail.screen.decided`, nlp `/guard/classify` via gliguard-300M) → text 422 `GUARDRAIL_REJECTED`. The SYSTEM `TenantGuardrailPolicy.policies.response_toxicity` is `{enabled: true}` with **no threshold**, so the classifier's own default decides. A false positive on clinical content. Two mitigations exist today — the platform admin tunes or disables the check in the SYSTEM policy, and the tenant admin's per-node opt-out (J4/J5 opted this node out deliberately) — but nobody has chosen the threshold. TASK-913 |
+| MAJOR (design) | **`socket` is unreachable with an API key**: `POST /auth/stream-ticket` is `@ForbidApiKey()`, so the protocol a published workflow advertises can only be opened with an admin JWT. TASK-914 |
+| MAJOR (billing) | **A realtime STT session is still unmetered** — the 21.9 s / 7-utterance WS session produced no usage row at all; batch transcription meters `AUDIO_SECOND`, streaming meters nothing. (The workflow lane was the other half of this and is now closed.) TASK-915 |
+| MAJOR (design, owner) | **A `core`-palette workflow never governs a consultation.** A workflow whose trigger declares `kinds: [consultation]`, assigned at TENANT *and* DEPARTMENT, is not what `POST /consultations/open` resolves — it chose the seeded `arcaai-consultation-soap` (palette `consultation`), and the Scribe's picker lists only `consultation`-palette rows. Such a workflow is reachable only through `POST /workflows/{slug}/runs`. TASK-916 |
+| MAJOR (authz) | **`assignRole` is neither enforced nor honoured.** The review decide route requires `update:WorkflowRun`; `arcaai_doctor` — the role the node ASSIGNS — gets 403, while `arcaai_admin`, which the node does not name, decides fine. TASK-917 |
+| MAJOR (contract) | `POST /admin/workflow-assignments` **silently retargets** an existing assignment (201 with the pre-existing id, version 2, no 409 and no `If-Match`); and a webhook secret is issued for a workflow whose trigger declares no `webhook` kind (a uniform 404 later). TASK-918 |
+| MAJOR (contract) | **`blocking` is advertised for a graph containing a durable human gate**, where the gateway's 60 s ceiling makes it structurally a 504; and the publish dialog lists `async blocking stream` while `/schema` returns `["async","blocking","stream","socket"]`. TASK-919 |
+| MAJOR (contract) | **`resultRef` stays null on a DEGRADED run**, even when every node before the degraded one succeeded — whether the output should still carry the successful payload is an owner call. TASK-920 |
+| MAJOR (quality) | **Batch transcription of English clinical audio degrades badly** — a 21.9 s file returned only its first 13.6 s, and another returned its tail as Malayalam glyphs which then reached the summary as a drug-history line. The resolved spec keeps `decoding.languageMode: "ml-en"` and `codeSwitching: true` even when the caller passes `language=en` (the worker does pin `inference.language`, so this is model choice, not plumbing). The REALTIME path on the same file was clean. Owner question |
+| MINOR (console) | The Scribe's transcript pane renders "No transcript yet" for a consultation that HAS transcripts (`GET …/context/transcriptions` returns them); only the live in-session stream is rendered. `/` redirects to `/dashboard`, which 404s for TENANT_ADMIN and DOCTOR; the Playground nav group is hidden from a DOCTOR, so the Scribe is reachable only by URL; `GET /consultations/{id}/workflows` 403s for a DOCTOR; there is no image/PDF attachment affordance anywhere in the consultation playground; the grid pager reads "Page 1 of 1" while offering two pages. TASK-926 |
+| MINOR (contract) | `@IsUUID(7)` on `consultationId` (`create-job.request.ts:69,150,212`) rejects every SEEDED consultation id, so a transcription cannot be attached to one. TASK-927 |
+| MINOR (studio) | The list view's Connect hardcodes `sourceHandle: 'out'` / `targetHandle: 'in'`, so the pointer-free path cannot author `agent.transcript→classify.in` or `classify.out→agent.context` and offers no port picker. TASK-928 |
+| MINOR (noise) | `POST /internal/service-releases` 400s continuously from every Python service (`service_registration.rejected` in the harness and worker logs) — log noise, no functional impact observed. TASK-929 |
+| Pre-existing (not this phase) | **Six harness `task-355` replay-compat failures** (`test_gating_consolidation_replay` ×2, `test_replay_compat::test_post_*` ×4 — TMPRL1100 patch-marker drift for `task-355-optimistic-delivery`), unchanged across every wave. TASK-921 |
+| Pre-existing (not this phase) | **Two `apps/nlp` `test_metrics_endpoint_task636` failures**, and `apps/nlp` is not `black`-clean on `dev-2.2` (6 files this phase never opened). TASK-922 |
+| Environment (this host) | The HF cache on the exFAT external volume is the intermittent-stall source (see above); `.env.test:1600` still points at it, and `~/.zshrc:149` still exports the old `HF_HOME` — host env beats the file. `packages/py-runtime-models` has no lint or test script and no CI job (TASK-924). Each `preview_stop` orphaned the STT Dramatiq worker and one nlp uvicorn; two `scripts/dev-stack.sh` supervisors from 23 August are still alive on this Mac (TASK-924) |
+
+#### Owner questions this phase raised
+
+Fifteen, added to §6.4 as **Q-10 … Q-24**. None blocks the release. The ones that decide a
+behaviour rather than a value: whether the consultation plane should resolve by trigger KIND
+rather than by palette (Q-15); whether an API key may mint a run-scoped stream ticket, which is
+the only thing standing between a developer and the `socket` protocol (Q-16); whether the FLAT
+trigger payload is the authoring shape, with a publish-time warning for the nested one (Q-17);
+whether `blocking` should be withdrawn from a graph carrying a durable human gate (Q-18); and what
+threshold `response_toxicity` should carry for clinical output (Q-20).
+
+#### Gates on the merged tree
+
+`pnpm typecheck:all` **EXIT 0**. `pnpm lint` in `apps/api` **0 errors** (65 warnings, none of them
+in a file this phase opened); `pnpm --filter @arcaai/applications lint` **0 errors / 177 warnings**
+— intersecting the 59 warning-bearing files with the 44 this phase touched left exactly ONE new
+warning, which was fixed rather than reported. Unit: root `pnpm test:unit` **24584 passed / 0
+failed / 4 skipped** plus `@arcaai/vox` **3694** and `apps/admin-console` **2493**; by package,
+applications **12142**, domains **1899**, workflow-contract **1665**, vox-node **420**, database
+**1771**. All six artifact checks green (`api:openapi:check`, `api:portal:check`,
+`vox-node gen:admin:check`, `gen:model:check`, `gen:entity:check`, `gen:factory:check` — the last
+also reporting "schema coverage OK" over 105 Prisma models). **Full API e2e against the live test
+API on :8968 with `RESET_DB=false`: 1181 passed / 1 failed / 47 skipped**, the one failure being
+`task-776-route-authz-matrix`'s public-internal-route inventory, which pins the COUNT on purpose
+and which F11 had not moved (33 → 34, fixed, 7 passed). The Python suites were run by the fix
+agents on the code they changed: harness **2227** (+ its six pre-existing `task-355` replay
+reds), text **1662**, nlp **619** (+ two pre-existing `test_metrics_endpoint_task636` reds),
+guardrail **504**, with ruff / black / mypy clean.
+
+Two code items landed in this close beside the documentation: the seed/compile `wireModelId`
+parity F9 left behind, and the one prettier red in the api e2e suite. Two generated artifacts had
+gone stale inside the phase and were regenerated rather than re-asserted: `turbo.json` +
+`env-surface.generated.md` (the probe reads `HF_HUB_CACHE`) and the two committed
+workflow-seed modules (F13 changed every compiled node's timeout and the registry checksum with
+it).
+
+---
+
 ## Ticket close (2026-09-07)
 
 ### Outcome vs requirements
@@ -1961,3 +2276,4 @@ enum value is a schema rewrite, not a column drop — and the register's header 
 | 2026-09-07 (wave 3 close) | **Wave 3 CLOSED** — L13 (in two merges, the flip last), L9, L5 and L6 merged into `dev-2.2` (`92ee847e3`, `d7ca7e5c4`, `886e46eaa`, `ea177e32e`, `6f7407c89`; 218 files, +8.4k/-18.3k), the rule amendments landing with the flip (`a4bad23b6`), then verified, reviewed and bug-fixed on the MERGED tree by the `opus` wave-close pass of §4.9 (`bf3ed1e57`, `6eb832fb1`). **Six hand-offs integrated** — the deferred `/ai-models` unassigned-provider badge; `includeTemplates` removed rather than left as a no-op; `DEPARTMENT_ENDPOINTS.PROMPT_CONFIG` removed with both reads behind it, because the gateway has no such GET route and the DEF-C5 department tier had therefore never applied; two tenant-less prompt calls in a BullMQ processor that the flip would have made fail closed; D-1's advisory presence confirmed already-pinned; and a new cross-package contract test for the two implementations of the reference-set copy. **Seven defects found and fixed**, of which four are product rather than test: `refresh-locked` was accepted and silently downgraded on an admin repair path; both publish dialogs' SDK snippets registered a CONSUMER's `HOPE_API_KEY` as a read of ours (four RED `env-sync` tests on the merged head); the Studio's version picker rendered a failed read as "nothing to pin"; the create wizard named a prompt by UUID; plus a stale import, a stale invariant comment, and three of L5's/L6's new console e2e specs that could never pass — whose repair surfaced a real `aria-prohibited-attr` violation in `packages/ui`'s workflow node. Gates on the merged tree: lint EXIT 0, typecheck EXIT 0, unit 24413 passed, console 2422, vox 3694, vox-node 420, database 1762, domains 1896, ui 719, text 1642, py-workflow-contract 75, harness with exactly its six pre-existing `task-355` replay failures, five artifacts regenerated with all three `:check`s green, boot smoke healthy, e2e `task-890` 69 passed / 11 skipped, authz matrix 7 passed, **FULL e2e 1181 passed / 0 failed / 49 skipped**. **Proof #9 post-flip is clean on BOTH databases** (every tenant carries every kind; the §4.4 spelling of the bridge slug was wrong and is corrected), and the SYSTEM runtime-read audit finds no content-shaped read left. Five follow-ups added (TASK-908..912). Status: `In Progress`. |
 | 2026-09-07 (ticket closed) | **Status `Completed`.** All fourteen lanes across four waves are on `dev-2.2`, each wave closed by its own `opus` pass. §9 gains an "Outcome vs requirements" table mapping REQ-1..REQ-6 to the lane that shipped each and the evidence that proves it, the final gate numbers, the twelve data proofs, the one migration, the three rule amendments, the removed-outright inventory (OD-K), and the seven pre-merge proofs' results. §8 consolidates every follow-up from the four closes into one numbered table (TASK-891..912, three struck through as answered rather than deferred), and a new §6.4 lists the nine OWNER questions still open at close — each with the recommendation already given, none of them blocking what shipped. Not pushed. **Worktrees:** the four wave-3 lane worktrees (`../hope-v2-task-890-l{5,6,9,13}`) were removed by the ORCHESTRATOR during this close, per §4.9 / rule 14 §5, after verifying each branch was an ancestor of `dev-2.2` and its only untracked files were the env copies and the pre-build marker. No work was lost: all fifteen `task-890-l*` branches still exist and every one of them is an ancestor of `dev-2.2`, verified branch by branch at close. |
 | 2026-09-07 (release documentation) | **The release-facing docs catch up with what shipped.** A new [`docs/operations/release-notes/ALL-4.0.0.md`](../../operations/release-notes/ALL-4.0.0.md) drafts R1 (status `Draft — R1 tag to be named by the owner`, TASK-859 OD-2), and the register's header points at it. `apps/api/CHANGELOG.md` gains three TASK-890 `[Unreleased]` sections (OD-K's typed prompt-`variables` array; OD-M's content-is-cloned break with its three named 503s and the `reference-set/sync` remedy; the added catalogue / inventory / BYO-declaration / bench / invocation / review-proxy / readiness routes, the guardrail opt-out and metering parity), each route re-verified against `apps/api/route-manifest.json`. `packages/vox-node` gains its first `CHANGELOG.md` (and `package.json#files`). The TASK-860 `AiModel` register row is split into a `removed` row citing migration `20260906101622_task_890_context_schema_byo_model_provenance` and a still-`marked` enum row. `.claude/rules/08-vox-sdk.md:55` says 3.0.0, the real lockstep version. Architecture docs: the three stale `AiTaskDefaultAdminController` rows are gone (zero such routes in the manifest) and its inventory block reads REMOVED; `environment-configuration-reference.md` states guardrail's `AiRoutingPolicy ⋈ AiModel` + `TenantGuardrailPolicy` resolution and ASR's Agent + `ResolvedAsrSpec` selection; `data-and-domain-model.md` gains the content-vs-config rule, a §5.7a agentic content plane (`Agent`, `AgentModelFallback`, `AgentAssignment`, `ConsultationContextSchema`, `WorkflowDefinition`) and corrected `AiModel` / `PromptTemplate` rows. `docs/traceability/index.md` gains a verified TASK-890 delta mapping six capabilities to their tests. Status stays `Completed`; not pushed. |
+| 2026-09-07 (black-box release phase) | **The product was driven as a user, and it is now releasable.** On the owner's directive after the ticket closed, the dev database was reset and re-seeded, the full local stack started (LM Studio serving `gemma-4-e2b-it-qat` on :1234), and seven `opus` journey agents drove the REAL product — the admin console in a browser, the gateway over `curl`, a WebSocket, a signed webhook, `@arcaai/vox-node` and a purpose-built React app on `@arcaai/vox`. **Fifty-two `fix` / `feat` commits closed what they found, five of them BLOCKER-class**: every guardrailed generation answered 502 (three separate causes in series — guardrail selecting a column wave 2a had dropped, the judge sending a `response_format` LM Studio refuses, and the catalogue slug going on the wire instead of `AiModel.wireModelId`); every durable `core.agent` node degraded on a 401 because the harness did not name itself on the guarded resolve route AND the generic internal guard did not accept the one shared token every peer presents; a harness draft on an OPEN consultation answered 500 that Temporal retried into a failed workflow; the whole `/workflows` plane 404'd behind a feature flag defaulting off; a correctly signed inbound webhook answered 404; `core.classify` called the wrong nlp route for both seeded token-classification models and the registry-resolve route it needed did not exist; and a workflow-lane generation wrote no usage row at all. Also fixed: an APPROVED prompt template could not be edited, prompt TAGS existed end to end with no console surface, the model catalogue reported 21 of 33 rows unusable because usability followed bucket inventory rather than the runtime path, no tenant could publish an ASR agent, the Studio could not drag from the palette and tore its own canvas down on a node move, and the Node SDK sent an invocation envelope the gateway refuses. §9 gains a fifth block with the environment (including the exFAT model-cache stall that took two Python services down, and the three places that pinned the old `HF_HOME`), a table per journey, every fix with its sha and gate, the five proofs the owner asked for — a guardrail-ON invocation 200 with `AGENT_INVOCATION/screened` on the ledger; both named agents PUBLISHED; a consultation walked OPEN → SIGNED with realtime transcription, entity highlighting, a work note the next summary used, and a decided review; the full developer surface incl. the React app and its admin refusal; and an API-triggered workflow run with PII, Medical-NER and pre-summary all SUCCEEDED and two `WORKFLOW_RUN/screened` ledger rows — and the open findings by severity. §6.4 gains fifteen owner questions (Q-10..Q-24) and §8 seventeen follow-ups (TASK-913..929). Gates on the merged tree: `typecheck:all` EXIT 0; lint 0 errors in `apps/api` and in `@arcaai/applications` (the ONE new warning the phase added was fixed, not reported); unit 24584 + vox 3694 + console 2493, applications 12142, domains 1899, workflow-contract 1665, vox-node 420, database 1771; all six artifact `:check`s green; **full API e2e 1181 passed / 1 failed / 47 skipped**, the single red being the public-internal-route inventory F11 had not moved (33 → 34, fixed, matrix 7 passed). Three code items landed in the close itself (the seed/compile `wireModelId` parity F9 left behind; the one prettier red in the api e2e suite; the one new applications lint warning) and two generated artifacts that had gone stale INSIDE the phase were regenerated rather than re-asserted (`turbo.json` + `env-surface.generated.md` for `HF_HUB_CACHE`; the two committed workflow-seed modules for F13's per-type node timeouts, registry checksum `5631d0da…` → `74e1db0d…`). Release surfaces updated: `apps/api/CHANGELOG.md`, `packages/vox-node/CHANGELOG.md` (the flat invocation body is a caller-visible behaviour change), `packages/agentic-sdk-v2/CHANGELOG.md`, the R1 draft `ALL-4.0.0.md` (a new §2a and a rewritten known-gaps list), `docs/traceability/index.md` (rows for the new internal resolve route and the internal-token guard) and two architecture files. Status stays `Completed`; not pushed. |
