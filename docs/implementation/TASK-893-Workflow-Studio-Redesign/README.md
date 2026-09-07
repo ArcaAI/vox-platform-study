@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Completed` (Phase 1) — merged to `dev-2.2`. Phases 2-4 remain `Pending`. |
+| **Status** | `In Progress` — Phase 1 `Completed` (merged 2026-09-07). Phases 2 + 4 run as **lane R** of the TASK-930 wave (2026-09-08); Phase 3 is replaced by the seed rebuild (lane S). Lane contract: [`../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md`](../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md) §7. |
 | **Type** | `refactor` + `feature` (studio UX) / `infrastructure` (registry + seed retirement) |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-07 |
@@ -355,6 +355,9 @@ regenerated and green on both sides.
 
 ### Phase 3 — Migrate the seeded graphs to `core.*`
 
+> **Superseded 2026-09-08 (owner directive, TASK-930 D-8).** The owner asked to delete all old seed data and rebuild it — OD-6's second branch. Lane S authors every seeded graph in `core.*` from scratch (INTERFACES §8); no migration of the 11 legacy graphs happens. The four `WorkflowAssignment` rows are re-seeded against the new slugs under palette `core` (TASK-930 D-6). The text below is the original plan, kept for the record.
+
+
 A one-shot migration driven by each descriptor's own `replacedBy`:
 
 | Legacy | Becomes |
@@ -519,4 +522,5 @@ definition of done.
 | Date | Change |
 |---|---|
 | 2026-09-07 | Created. Root-caused the four interaction failures to read-only mode on 11/12 seeded PUBLISHED definitions (verified live); found edge deletion unwired in the Studio; found `ACTION_CATALOGUE` derived from the deprecated registry entries, which is why they still exist. Plan drafted in four dependency-ordered phases. |
+| 2026-09-08 | Phases 2 + 4 started as lane R of the TASK-930 wave (measured baseline: 72 registry entries / 61 deprecated / 11 `core.*`; rule counts WF-CONS 19, WF-S 7, WF-I 10, WF-SUMM 6, WF-STT 0, WF-CORE 3 — the §2.7/§2.8 figures were approximate). Phase 3 superseded by the seed rebuild. Action catalogue curated to 17 kept / 17 dropped keys (INTERFACES §7.2). |
 | 2026-09-07 | Phase 1 delivered across five parallel worktrees and merged to `dev-2.2` with zero conflicts. Five integration defects caught and fixed (I-1..I-5, §6) — four by cross-lane review, one only by exercising the running app. All gates green; per-node run overlays carved out pending an interpreter change. |
