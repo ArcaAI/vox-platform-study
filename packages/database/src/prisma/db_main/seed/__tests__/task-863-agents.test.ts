@@ -138,7 +138,7 @@ describe('TASK-863 — buildAgentRow / compiledConfig', () => {
 
 describe('TASK-863 — seedAgents against an in-memory client', () => {
   function fakeClient(options: { models?: string[]; approvedTemplates?: boolean } = {}) {
-    const models = (options.models ?? Object.keys(REGISTRY)).map((slug) => ({ id: `model-${slug}`, slug, taskType: reg(slug).taskType, provider: reg(slug).provider }));
+    const models = (options.models ?? Object.keys(REGISTRY)).map((slug) => ({ id: `model-${slug}`, slug, taskType: reg(slug).taskType, provider: reg(slug).provider, wireModelId: reg(slug).wireModelId }));
     const agents = new Map<string, any>();
     const fallbacks: any[] = [];
     const assignments = new Map<string, any>();
