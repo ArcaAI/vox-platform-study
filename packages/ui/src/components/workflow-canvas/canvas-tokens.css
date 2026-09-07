@@ -60,10 +60,11 @@
   transform-origin: 0 0;
 }
 
-/* Per-port handles (TASK-864 B1) sit inline in their port row rather than at React Flow's
-   absolute mid-edge default; control handles are square so kind is never conveyed by colour
-   alone. */
-.workflow-canvas .react-flow__handle.workflow-canvas-port {
+/* Branch handles (TASK-893) sit inline beside their label rather than at React Flow's absolute
+   mid-edge default, so the labelled outputs stack down the node's right edge below the primary
+   `out` dot. They are square where the primary round dots are circles, so "this is a branch" is
+   never conveyed by colour alone. */
+.workflow-canvas .react-flow__handle.workflow-canvas-branch {
   position: relative;
   top: auto;
   left: auto;
@@ -71,10 +72,7 @@
   transform: none;
   width: 10px;
   height: 10px;
-}
-.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-kind='control'] {
   border-radius: 2px;
-  background: var(--workflow-canvas-handle-control);
 }
 
 .workflow-canvas .react-flow {

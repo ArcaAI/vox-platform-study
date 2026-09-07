@@ -79,6 +79,6 @@ describe('WorkflowCanvas — drop-to-add', () => {
 
   it('keeps the pointer-free hint — dragging is an enhancement, not the only path', () => {
     render(<WorkflowCanvas nodes={NODES} edges={[]} aria-label="Workflow canvas" onPaneDrop={vi.fn()} />);
-    expect(screen.getByText(/pointer-free way to add/i)).toBeTruthy();
+    expect(screen.getByText(/removes it without a drag/i)).toBeTruthy();
   });
 });
