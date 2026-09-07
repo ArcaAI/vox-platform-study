@@ -109,6 +109,22 @@ const GENERATION_PROPERTY: NodeConfigSchema = Object.freeze({
     }),
     stopSequences: Object.freeze({ type: 'array', maxItems: 8, items: Object.freeze({ type: 'string', minLength: 1, maxLength: 128 }) }),
     seed: Object.freeze({ type: 'integer', minimum: 0, maximum: 2147483647 }),
+    // TASK-891 C1 (OD-4) — the agent's REASONING posture. `enabled: false` reaches the
+    // engine as `reasoning_effort: 'minimal'` (its own off switch), never as silence.
+    // Measured on gemma-4-e2b-it-qat 2026-09-07: unset -> 5168ms / 184 reasoning tokens;
+    // 'minimal' -> 1237ms / 30. `low` behaves like unset, so on this engine the dial is
+    // effectively binary — do not read the four values as a gradient.
+    reasoning: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['enabled']),
+      properties: Object.freeze({
+        enabled: Object.freeze({ type: 'boolean' }),
+        effort: Object.freeze({ type: 'string', enum: Object.freeze(['minimal', 'low', 'medium', 'high']) }),
+      }),
+      description:
+        'Whether the engine is asked to reason, and how hard. Rides `GenerateRequest.extra.reasoning_effort` -> `extra_body`.',
+    }),
   }),
   description: 'Generation hyper-parameters. Every key is capability-gated against the bound provider configuration — never silently dropped.',
 });
