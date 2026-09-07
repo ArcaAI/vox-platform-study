@@ -69,7 +69,7 @@ describe('ConsultationWorkflowDispatchService', () => {
     expect(deps.workflowRunService.recordRunStarted).not.toHaveBeenCalled();
   });
 
-  it('consults the cascade with the consultation palette and the department', async () => {
+  it('consults the cascade with the consultation palette, the department and the visit-type selector', async () => {
     await makeService(deps).dispatchForConsultation({
       consultationId: CONSULTATION,
       tenantId: TENANT,
@@ -77,7 +77,71 @@ describe('ConsultationWorkflowDispatchService', () => {
       userId: USER,
     });
 
-    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT);
+    // TASK-891 — no `parentConsultationId` means this is a NEW visit, so the reserved
+    // `visit-type:new-visit` tag rides on the same cascade call the department already used.
+    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:new-visit']);
+  });
+
+  // TASK-891 — plumbing for OD-2/OD-3: the reserved `visit-type:<key>` tag lets a
+  // `WorkflowAssignment` row narrow itself to new-visit or revisit within a tier, without
+  // reintroducing a tenant-managed visit-type catalogue (OD-3).
+  describe('TASK-891 — visit-type selector tag on the consultation-palette cascade', () => {
+    it('tags a follow-up consultation visit-type:revisit', async () => {
+      await makeService(deps).dispatchForConsultation({
+        consultationId: CONSULTATION,
+        tenantId: TENANT,
+        departmentId: DEPARTMENT,
+        userId: USER,
+        parentConsultationId: 'parent-1',
+      });
+
+      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:revisit']);
+    });
+
+    it('tags a consultation with no parent link visit-type:new-visit', async () => {
+      await makeService(deps).dispatchForConsultation({
+        consultationId: CONSULTATION,
+        tenantId: TENANT,
+        departmentId: DEPARTMENT,
+        userId: USER,
+        parentConsultationId: null,
+      });
+
+      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:new-visit']);
+    });
+
+    // Regression: a caller that omits `parentConsultationId` altogether (every call site
+    // before this ticket) must resolve EXACTLY what it resolves today. The field is optional
+    // precisely so an absent parent link degrades to "not a follow-up" — never to "the visit
+    // type could not be determined" — which is the one case this ticket must never invent a
+    // new failure mode for.
+    it('treats an omitted parentConsultationId the same as no parent link — visit-type:new-visit, not a failure', async () => {
+      await makeService(deps).dispatchForConsultation({
+        consultationId: CONSULTATION,
+        tenantId: TENANT,
+        departmentId: DEPARTMENT,
+        userId: USER,
+      });
+
+      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:new-visit']);
+    });
+
+    it('does NOT tag the STT-palette resolution — visit type is a consultation/document-template axis, not an ASR axis', async () => {
+      await makeService(deps).dispatchForConsultation({
+        consultationId: CONSULTATION,
+        tenantId: TENANT,
+        departmentId: DEPARTMENT,
+        userId: USER,
+        parentConsultationId: 'parent-1',
+      });
+
+      // The STT lane only resolves when `sttPipelineResolver` is wired (see the
+      // selection.task813 suite, which wires it and asserts this exact 3-arg call). This
+      // service's own fixture leaves it `@Optional()` and unset, so `resolveSttPipelineId`
+      // short-circuits before calling `resolve` at all — asserted here so a future change that
+      // starts tagging that lane cannot ride in unnoticed.
+      expect(deps.assignments.resolve).not.toHaveBeenCalledWith(TENANT, 'stt', DEPARTMENT, expect.anything());
+    });
   });
 
   it("starts a run stamped trigger 'consultation open' when an assignment resolves", async () => {

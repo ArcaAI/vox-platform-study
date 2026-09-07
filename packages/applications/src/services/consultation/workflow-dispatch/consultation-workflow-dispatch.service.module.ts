@@ -5,6 +5,7 @@ import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workf
 import { WorkflowDefinitionServiceModule } from '../../workflow-definition/workflow-definition.service.module';
 import { WorkflowRunServiceModule } from '../../workflow-run/workflow-run.service.module';
 import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
+import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { IConsultationWorkflowDispatchService } from './IConsultationWorkflowDispatchService';
 import { ConsultationWorkflowDispatchService } from './consultation-workflow-dispatch.service';
 
@@ -20,6 +21,8 @@ import { ConsultationWorkflowDispatchService } from './consultation-workflow-dis
  * WorkflowDefinitionServiceModule -> `SttPipelineResolverService`. That module's
  *   own comment called its consumer "a FUTURE, separate wiring pass"; this is that pass — the
  * resolver had no production injector at all until now.
+ * - VisitTypeServiceModule -> `VisitTypeService` (TASK-891), which derives the reserved
+ *   `visit-type:<key>` selector tag for the consultation-palette cascade (OD-2/OD-3).
  */
 @Module({
   imports: [
@@ -29,6 +32,7 @@ import { ConsultationWorkflowDispatchService } from './consultation-workflow-dis
     WorkflowRunServiceModule,
     HarnessGatewayServiceModule,
     WorkflowDefinitionServiceModule,
+    VisitTypeServiceModule,
   ],
   providers: [
     ConsultationWorkflowDispatchService,
