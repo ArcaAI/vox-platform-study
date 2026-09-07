@@ -49,7 +49,7 @@ mirror of `AgentTask` exists there.
 
 ### 2.2 Task ↔ catalogue
 
-`NAMED_ENTITY_RECOGNITION` accepts `AiModel.taskType === 'TOKEN_CLASSIFICATION'` (catalogue rows
+AMENDED A-5: `AGENT_TASK_SERVICE.NAMED_ENTITY_RECOGNITION = null` (type widens to include `null`, as does `AgentCompiledConfig.service`) — the classification family has no connection plane. `NAMED_ENTITY_RECOGNITION` accepts `AiModel.taskType === 'TOKEN_CLASSIFICATION'` (catalogue rows
 `medical-ner`, `gliner2-guardrails-pii-multi`, …). `MODEL_TASK_MISMATCH` otherwise, exactly like
 the other three tasks. The provider class table (`platform-self-host | engine-served | cloud-byo |
 cloud-platform`) applies unchanged.
@@ -93,8 +93,10 @@ SDK `AgentTask` union gains `'NAMED_ENTITY_RECOGNITION'`; `hope.agents.list({ ta
 
 ## 3. Contract N2 — service accounts reach the invocation plane
 
-Scope strings (register in the `svc:*` catalogue N finds — same file family as
-`svc:admin:agent:manage`):
+Scope strings — AMENDED A-2: `svc:*` scopes are DERIVED from API-key scope sources in
+`service-account-scopes.registry.ts` (`deriveFamilyInto`); N adds a fourth family
+`AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES` naming the five existing API-key scopes, registers it in
+`service-account-surface-audit.ts` (`declaredNonAdmin`) and the registry test count:
 
 | Scope | Routes |
 |---|---|
@@ -119,7 +121,8 @@ New route on `workflows.controller.ts`:
 
 ```
 POST /workflows/:slug/runs/:runId/stream-ticket      scope workflow:run:read | svc:workflow:run:read
-→ 201 { ticket: string, expiresIn: number, url: "/ws/workflows?slug=<slug>&runId=<runId>&ticket=<ticket>" }
+→ 201 { ticket: string, expiresAt: number /* epoch ms */, scope: "workflow_run:<runId>", url: "/ws/workflows?slug=<slug>&runId=<runId>&ticket=<ticket>" }
+   (AMENDED A-1, 2026-09-08: `expiresAt` + `scope`, the gateway's existing `IssueStreamTicketResponse` fields, never `expiresIn`)
 ```
 
 Mints the same single-use ticket kind `workflow_run:<runId>` that `POST /auth/stream-ticket`
@@ -132,6 +135,8 @@ add a dependency).
 ---
 
 ## 5. Contract N4 — `Agent.outputSchema` is enforced, not decorative (TEXT_GENERATION)
+
+(AMENDED A-4: the package-`index.ts` export line is added by lane R, owner of `index.ts`; N exports it from `agent-schemas.ts` only.)
 
 Exported from `agent-schemas.ts` (N), imported by the gateway invocation service (N), the harness
 `_run_text_generation` (N) and the realtime `core.agent` handler (R):

@@ -51,6 +51,13 @@ file by file): bump both apps to `3.1.0`, regenerate both `pnpm-lock.yaml`, `use
 → `${GITHUB_TOKEN}` interpolation, `Dockerfile.ui` → BuildKit secret like its sibling. The token
 rotation is the owner's action (TASK-930 Q-3).
 
+## 3.1 Lane log (live)
+
+| Lane | Where | State (2026-09-08) |
+|---|---|---|
+| K | `../hope-v2-t931-k` · `task-931-sdk` (base `7793d09ca`) | first run killed by the account spend limit after `cf62eff3d` (S-1: `SDK_VERSION` derived from `package.json` at build time); resumed from brief step 2 with the amended stream-ticket shape `{ ticket, expiresAt, scope, url }` (TASK-930 §4.2 A-1) |
+| A | ALaaSv3.0 working tree, branch `codeSwitchImplementation`, edits left UNCOMMITTED | first run killed during reading (repo untouched — only the owner's three pre-existing modified files); relaunched. Scope: `useSMR` → `useText`, `sttPipelineId` → `sttAgentSlug` (`VITE_SDK_STT_AGENT_SLUG`, default `realtime-transcription`), pins to `3.1.0` without lockfile regeneration, `.npmrc` token → `${GITHUB_TOKEN}`, `Dockerfile.ui` BuildKit secret; builds verified in throwaway copies against 3.0.1 |
+
 ## 4. Implementation Summary
 
 _Pending._
@@ -59,4 +66,5 @@ _Pending._
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (later) | Lanes K and A killed by the account spend limit (HTTP 429) and relaunched; lane log §3.1; K carries the A-1 stream-ticket amendment. |
 | 2026-09-08 | Created. Discovery findings S-1..S-7 and A-1..A-2; 3.1.0 decided (minor); lane K spawned. |
