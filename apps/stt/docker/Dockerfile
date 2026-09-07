@@ -105,7 +105,16 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.33 /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_NO_INSTALLER_METADATA=1 \
-    UV_PYTHON_INSTALL_DIR=/opt/python
+    UV_PYTHON_INSTALL_DIR=/opt/python \
+    UV_HTTP_TIMEOUT=900
+# UV_HTTP_TIMEOUT is uv's per-read deadline and it defaults to 30s. `torch` is a
+# 846.9 MiB wheel: on a build runner whose link stalls for longer than that, uv
+# aborts and RESTARTS THE DOWNLOAD FROM ZERO, so it can never finish and the job
+# dies at the 30-minute wall having made no progress. Measured on pipeline #1135
+# (2026-09-07): two runs, both cancelled mid-`torch`, the trace showing
+# `Downloading torch (846.9MiB)` printed twice in one job — the restart. The
+# smaller `torchaudio` (3.8 MiB) succeeded both times because it fits between
+# stalls. Raising the JOB timeout alone does not help; it only buys more restarts.
 
 # The venv holds a SYMLINK to this interpreter, so ml-runtime must copy /opt/python
 # alongside /opt/venv at the identical path or the link dangles.

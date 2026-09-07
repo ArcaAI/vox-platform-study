@@ -33,7 +33,11 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONHASHSEED=random \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    UV_HTTP_TIMEOUT=900
+# uv's per-read deadline; the 30s default makes a large wheel restart from zero
+# on a stalling link and never finish (see apps/stt/docker/Dockerfile for the
+# measured case). Inherited by every service that builds on this base.
 
 # libgomp1: required at runtime by onnxruntime (guardrail, stt, nlp).
 # curl: used by container HEALTHCHECKs.
