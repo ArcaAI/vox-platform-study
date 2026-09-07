@@ -15,7 +15,7 @@ import httpx
 import pytest
 
 from harness.sensors.base import NEREntity
-from harness.services.api_client import ApiClient, ApiServiceError
+from harness.services.api_client import ApiClient, ApiClientError, ApiServiceError
 
 
 def _client(handler) -> ApiClient:
@@ -1049,7 +1049,13 @@ class TestSttBatchJobs:
 class TestResolveAgent:
     """TASK-864 `core.agent` -> TASK-863 `GET /internal/agents/resolve`, as the route was merged:
     the slug travels as `agentSlug`, the tenant as BOTH `tenantId` and `X-Tenant-Id`, and no
-    version pin is sent (the route has none — the activity enforces the pin after resolution)."""
+    version pin is sent (the route has none — the activity enforces the pin after resolution).
+
+    The route is a SIBLING mount guarded by `InternalServiceTokenGuard`, not by the harness
+    guard the `/internal/harness/*` prefix uses — and that guard REQUIRES `?service=`
+    (`apps/api/src/modules/internal/internal-service-token.guard.ts`: an absent `service` is a
+    401 before the token is even read). Omitting it made every durable `core.agent` node
+    degrade with a 401 it could not explain."""
 
     @pytest.mark.asyncio
     async def test_asks_by_agent_slug_off_the_sibling_internal_mount(self):
@@ -1064,7 +1070,11 @@ class TestResolveAgent:
         req = seen["req"]
         assert req.method == "GET"
         assert req.url.path == "/api/v1/internal/agents/resolve"
-        assert dict(req.url.params) == {"tenantId": "tenant-1", "agentSlug": "writer"}
+        assert dict(req.url.params) == {
+            "service": "harness",
+            "tenantId": "tenant-1",
+            "agentSlug": "writer",
+        }
         assert req.headers["X-Service-Token"] == "svc-token"
         assert req.headers["X-Tenant-Id"] == "tenant-1"
         assert answer == {"agentId": "a", "slug": "writer", "versionNumber": 2}
@@ -1076,3 +1086,84 @@ class TestResolveAgent:
 
         with pytest.raises(ApiServiceError):
             await _client(handler).resolve_agent(slug="ghost", tenant_id="tenant-1")
+
+
+class TestClientErrorsAreNotRetryable:
+    """A 4xx from apps/api is a CONTRACT or STATE error — retrying it cannot change the
+    answer, and Temporal's default classification (every exception is retryable) turned one
+    into three identical failures before failing the workflow. J5-F7 measured that shape:
+    `persist_draft` on a consultation whose lifecycle target was illegal answered a state
+    conflict, the activity retried it 3x, and `HarnessDocWorkflow` FAILED.
+
+    `ApiClientError` subclasses `ApiServiceError` so every existing `except ApiServiceError`
+    site (fail-closed activities, degrade-and-continue nodes) is unchanged; its class NAME is
+    what `_API_RETRY.non_retryable_error_types` matches on (the Temporal failure converter
+    records `type=exception.__class__.__name__`).
+
+    408 and 429 are the two 4xx that a retry CAN fix, so they stay retryable."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [400, 404, 409, 412, 422])
+    async def test_a_4xx_raises_the_non_retryable_subclass(self, status: int):
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(status, json={"message": "nope"})
+
+        with pytest.raises(ApiClientError) as excinfo:
+            await _client(handler).get_policy("t-1")
+        assert excinfo.value.status_code == status
+        # still an ApiServiceError, so no existing handler changes behaviour
+        assert isinstance(excinfo.value, ApiServiceError)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [408, 429, 500, 502, 503])
+    async def test_a_retryable_status_stays_the_plain_error(self, status: int):
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(status, json={"message": "later"})
+
+        with pytest.raises(ApiServiceError) as excinfo:
+            await _client(handler).get_policy("t-1")
+        assert not isinstance(excinfo.value, ApiClientError)
+
+    @pytest.mark.asyncio
+    async def test_a_transport_failure_stays_retryable(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("refused", request=request)
+
+        with pytest.raises(ApiServiceError) as excinfo:
+            await _client(handler).get_policy("t-1")
+        assert not isinstance(excinfo.value, ApiClientError)
+
+    @pytest.mark.asyncio
+    async def test_the_post_path_classifies_the_same_way(self):
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(409, json={"message": "state conflict"})
+
+        with pytest.raises(ApiClientError):
+            await _client(handler).persist_draft("c-1", tenant_id="t-1", content="note")
+
+    @pytest.mark.asyncio
+    async def test_the_agent_resolve_path_classifies_the_same_way(self):
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"message": "not found"})
+
+        with pytest.raises(ApiClientError):
+            await _client(handler).resolve_agent(slug="ghost", tenant_id="t-1")
+
+
+class TestApiRetryPolicyHonoursTheClassification:
+    """The classification only matters if the retry policy reads it. `_API_RETRY` is the
+    policy every apps/api callback activity carries (`persist_draft` included), so naming
+    `ApiClientError` there is what turns "3 identical 4xx attempts, then FAILED" into one
+    attempt and a workflow that can report the real reason.
+
+    Replay-safe: a retry policy is an activity OPTION, not a command in the recorded
+    sequence (`workflows.py` says so at `_INFERENTIAL_HEARTBEAT_TIMEOUT`, and
+    `test_replay_compat.py` proves it)."""
+
+    def test_api_retry_marks_the_client_error_non_retryable(self):
+        from harness.temporal.workflows import _API_RETRY
+
+        assert _API_RETRY.non_retryable_error_types is not None
+        assert "ApiClientError" in _API_RETRY.non_retryable_error_types
+        # the transient budget is unchanged — this narrows WHAT is retried, not how often
+        assert _API_RETRY.maximum_attempts == 3

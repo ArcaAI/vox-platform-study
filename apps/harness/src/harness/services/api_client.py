@@ -37,6 +37,48 @@ class ApiServiceError(RuntimeError):
     """apps/api was unreachable or returned a non-2xx response."""
 
 
+class ApiClientError(ApiServiceError):
+    """apps/api REFUSED the call with a 4xx — a contract or state error, never transient.
+
+    Temporal classifies every exception as retryable unless it is named in the activity's
+    ``non_retryable_error_types``, so a 4xx used to be attempted three times before the
+    workflow failed. Measured (J5-F7): ``persist_draft`` answered a consultation
+    state conflict, the activity retried it 3x with the identical body, and
+    ``HarnessDocWorkflow`` FAILED — a durable retry loop over an answer that could not change.
+
+    Subclasses :class:`ApiServiceError` on purpose: every existing ``except ApiServiceError``
+    site (the fail-closed activities, the degrade-and-continue interpreter nodes) keeps its
+    behaviour unchanged. Only the class NAME is new, and that is what
+    ``workflows._API_RETRY.non_retryable_error_types`` matches on — the Temporal failure
+    converter records ``type=exception.__class__.__name__``.
+
+    ``408`` and ``429`` are deliberately NOT classified here: they are the two 4xx a retry can
+    actually fix, so they stay on the ordinary retry path.
+    """
+
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+#: 4xx statuses a retry CAN fix — everything else in the 4xx range is terminal for the call.
+_RETRYABLE_CLIENT_STATUSES = frozenset({408, 429})
+
+
+def _api_error(path: str, exc: httpx.HTTPError) -> ApiServiceError:
+    """Classify an httpx failure into the retryable/terminal pair above.
+
+    A transport failure (connect refused, read timeout) is always retryable; a response
+    status is terminal only when it is a non-``408``/``429`` 4xx.
+    """
+    message = f"apps/api {path} failed: {exc}"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if 400 <= status < 500 and status not in _RETRYABLE_CLIENT_STATUSES:
+            return ApiClientError(message, status_code=status)
+    return ApiServiceError(message)
+
+
 class PersistEntitiesResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -341,7 +383,7 @@ class ApiClient:
                 )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
-                raise ApiServiceError(f"apps/api {path} failed: {exc}") from exc
+                raise _api_error(path, exc) from exc
             return cast("dict[str, Any]", resp.json())
 
     async def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -350,7 +392,7 @@ class ApiClient:
                 resp = await client.get(self._url(path), params=params, headers=self._headers())
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
-                raise ApiServiceError(f"apps/api {path} failed: {exc}") from exc
+                raise _api_error(path, exc) from exc
             return cast("dict[str, Any]", resp.json())
 
     async def get_policy(
@@ -391,7 +433,7 @@ class ApiClient:
         (``AgentResolverService.resolve``); this method only asks it. Contract, verified against
         ``apps/api/src/modules/internal/agent-internal.controller.ts`` after the TASK-863 merge:
 
-            GET /api/v1/internal/agents/resolve?tenantId=<uuid>&agentSlug=<slug>
+            GET /api/v1/internal/agents/resolve?service=harness&tenantId=<uuid>&agentSlug=<slug>
             headers: X-Service-Token, X-Tenant-Id
             200 -> ResolvedAgent JSON (`packages/types/src/agent.ts`, mirrored by
                    `interpreter/models.py::ResolvedAgent`). TASK-876: a TEXT_GENERATION
@@ -413,8 +455,19 @@ class ApiClient:
         so the URL is built off the base url directly — the same reason `consent_internal_prefix`
         exists. Raises :class:`ApiServiceError` on any transport/HTTP error; the activity fails
         CLOSED on it (selection is never substituted).
+
+        That sibling mount is ALSO a different guard, and that is the whole reason ``service``
+        is on the query. ``/internal/harness/*`` is gated by ``HarnessServiceTokenGuard`` (one
+        hardcoded secret, no selector); ``/internal/agents/resolve`` is gated by
+        ``InternalServiceTokenGuard``, which validates the presented ``X-Service-Token``
+        against the secret belonging to the service NAMED in ``?service=`` — and rejects a
+        request without it (``401 "Internal effective-config requires a `service` query
+        parameter"``) BEFORE it ever reads the token. Omitting it (J5-F8) made every durable
+        ``core.agent`` node degrade on a 401 it could not explain, with a token that was
+        correct. ``core/effective_config.py`` already sends the same parameter to the other
+        route this guard protects.
         """
-        params: dict[str, Any] = {"tenantId": tenant_id, "agentSlug": slug}
+        params: dict[str, Any] = {"service": "harness", "tenantId": tenant_id, "agentSlug": slug}
         headers = {**self._headers(), "X-Tenant-Id": tenant_id}
         url = f"{self._base_url}/api/v1/internal/agents/resolve"
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
@@ -422,7 +475,7 @@ class ApiClient:
                 resp = await client.get(url, params=params, headers=headers)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
-                raise ApiServiceError(f"apps/api /internal/agents/resolve failed: {exc}") from exc
+                raise _api_error("/internal/agents/resolve", exc) from exc
             return cast("dict[str, Any]", resp.json())
 
     async def resolve_model(

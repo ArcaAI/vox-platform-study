@@ -179,7 +179,16 @@ _INFERENTIAL_TIMEOUT = timedelta(seconds=900)
 _INFERENTIAL_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
 _ESCALATE_TIMEOUT = timedelta(seconds=30)
 _NLP_RETRY = RetryPolicy(maximum_attempts=2)
-_API_RETRY = RetryPolicy(maximum_attempts=3)
+# A 4xx from apps/api is a CONTRACT or STATE error: the same body will get the same answer,
+# so retrying it only turns one failure into three and then fails the workflow. J5-F7 measured
+# exactly that — `persist_draft` hit a consultation state conflict, the activity retried 3x,
+# `HarnessDocWorkflow` FAILED, and the Scribe showed a bare "Finalizing the draft failed".
+# `ApiClient` raises `ApiClientError` for a non-408/429 4xx (and the plain `ApiServiceError`
+# for transport failures and 5xx, which stay retryable); the Temporal failure converter records
+# `type=exception.__class__.__name__`, which is what this name matches.
+# REPLAY SAFETY: a retry policy is an activity OPTION, not a command in the recorded sequence —
+# same rule as `_INFERENTIAL_HEARTBEAT_TIMEOUT` above, and `test_replay_compat.py` proves it.
+_API_RETRY = RetryPolicy(maximum_attempts=3, non_retryable_error_types=["ApiClientError"])
 _GENERATE_RETRY = RetryPolicy(maximum_attempts=2)
 _INFERENTIAL_RETRY = RetryPolicy(maximum_attempts=2)
 # Retrieval degrades internally (never raises for backend outages); its retries
