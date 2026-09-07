@@ -261,7 +261,7 @@ function buildService(rows: Row[], lane: () => unknown = legacyLane) {
     { run: vi.fn((cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() } as never,
     { resolveForSession: vi.fn().mockResolvedValue(snapshot()) } as never,
     // The REAL enrichment service — a double would assert nothing about the wire it builds.
-    (new TextRequestEnrichmentService({ get: vi.fn().mockReturnValue(TENANT) } as never, undefined, undefined) as never),
+    new TextRequestEnrichmentService({ get: vi.fn().mockReturnValue(TENANT) } as never, undefined, undefined) as never,
     undefined,
     { findById: vi.fn(async (id: string) => ({ id, tenantId: TENANT, metadata: null })) } as never,
     { resolve: vi.fn(async (): Promise<ResolvedWorkflowAssignment> => ({ workflowDefinitionSlug: SLUG, source: 'tenant' })) } as never,
