@@ -632,7 +632,55 @@ port 5433 — pre-existing, flagged independently by two writers, zero individua
 
 ## 9. Implementation Summary
 
-*(to be filled during Phase 4)*
+Thirteen writer lanes across two waves, merged into `dev-2.2` with **zero merge conflicts** — the
+path-ownership partition (§7) held every time. Two lanes died mid-flight (a transport error and the
+600 s no-progress watchdog) and both were recovered from their worktrees with no work lost, which is
+the concrete argument for §5's "never prune a worktree".
+
+### What shipped
+
+| Requirement | Delivered |
+|---|---|
+| **R1** language | declaration path proven end-to-end and made durable across a worker restart; the code-switch kill-switch decoupled (pair / single) and left OFF on measured evidence; `wordTimestamps` off; decode window aligned 7/6 → 30/30 |
+| **R2** template | `WorkflowAssignment.selectorKey` + migration; visit-type tag threaded from the consultation; two `DocumentTemplate` shapes derived from the customer's approved heading lists; two visit-type workflow definitions naming them; `TenantReferenceSetService.copyDocumentTemplates` |
+| **R3** incremental | flush made single-flight (was 53 of 55 generations dropped stale); timeout 20 s → governed 60 s; per-node degrade reasons on the admin DTO and the section-patch plane |
+| **R4** reasoning | per-agent `parameters.generation.reasoning`; live/finalize agents split via a `phase:` assignment tag; the posture reaches SIX surfaces — live note, grammar pass, findings miner, agent invocations, the draft-test bench, and the finalize tier |
+| **R5** dropdowns | all three removed; language picker kept and labelled honestly |
+
+### Measured, not asserted
+
+| | |
+|---|---|
+| `reasoning_effort` unset → `minimal` | **5168 ms → 1237 ms**, 184 → 30 reasoning tokens |
+| `low` vs unset | indistinguishable — the dial is binary on `gemma-4-e2b-it-qat`, not a gradient |
+| realtime SOAP flush, idle cluster, 136-token transcript | 14.06 s against a 20 s budget |
+| finals vs duration | 20–35% of expected characters, worse the longer the utterance |
+
+### What integration caught that no lane could
+
+1. A **duplicate reasoning control** — W4 hand-rendered it because the schema lacked the property; adding the property made the generic walker render a second copy.
+2. The **reference-set parity contract** — two writers each added half a copier, each wrote "that's fine", and only the cross-package guard in `tests/contracts/` disagreed. No per-package gate runs it.
+3. A **backfill gap detector** counting four kinds of five — the same failure mode its own comment records having already survived once.
+4. A **false green**: a lane reported `TYPECHECK_EXIT=0` on a file that does not typecheck.
+
+### Open, with the owner
+
+- **Caller-selected workflows bypass the note-shape fix.** Naming a `workflowDefinitionSlug` at session-open short-circuits to `caller-selected` and never consults the assignment cascade, so the visit-type shape never applies. The 2026-09-07 session traced in §2 did exactly this (`arcaai-consultation-medical-ner`), so the originally reported case is not yet closed. Recommendation: make visit type the next tier — a named workflow that declares a slug wins, one that declares none falls to the visit-type shape rather than the platform default.
+- **`SDK_VERSION`** — an owner commit (`6e9c37710`) bumped the SDK family to `3.0.1`; `transport.ts:27` still says `'3.0.0'`, failing `sdk-version.test.ts`. Left alone: it looks like a release in progress.
+- **F1** — `hope-secrets` still has no `INTERNAL_ACCESS_TOKEN`, so `hope-text` runs with `last_refresh_ok: false` and its inbound auth is silently bypassed.
+- **W5's deployment commit** `c78cb89` is unpushed on `task-891/dev-fixes`; it is what actually unblocks the cluster.
+- Follow-up defects recorded but out of scope: the **batch ASR path pins Malayalam** (§8.4), and `prisma migrate dev` cannot run non-interactively (§8.6).
+
+### Gates on the final tree
+
+`build:packages`, `api:build`, all three API drift checks (`api:openapi:check`, `api:portal:check`,
+`gen:admin:check`), all three domain drift checks (`gen:model/entity/factory:check`), and both
+typechecks: **green**. `pnpm test:unit`: **24744 passed**, 1 failed — the `SDK_VERSION` test above,
+from an owner commit outside this work.
+
+Not yet run: the API **boot smoke** (unit suites never boot `main.ts`, and this codebase refuses
+startup if a route lacks `@Public()` or a permission decorator) and the §5 **runtime gate** on
+`hope-v2-dev`, which needs the deployment commit pushed first.
 
 ## 10. Change History
 
@@ -643,3 +691,4 @@ port 5433 — pre-existing, flagged independently by two writers, zero individua
 | 2026-09-07 | Owner said **go**. Wave 0 complete: plan committed at `f6aa16cf9`; four worktrees created off `dev-2.2` (`task-891/{stt,livedoc,data,console}`) with `pnpm install` and env files done by the orchestrator; `task-891/dev-fixes` branched in the deployment repo. Wave 1 launched — W1 `opus`, W2 `opus`/high, W3 `sonnet`/high, W4 `sonnet`, W5 `sonnet`. F1 (`INTERNAL_ACCESS_TOKEN` in `hope-secrets`) held back for the owner: a shared credential is not a subagent's job. |
 | 2026-09-07 | **W5 landed** (`c78cb89`, unpushed): nlp probe timeouts 1s->5s + failureThreshold 2->3 + cpu 2->4, `LIVE_DOC_TEXT_TIMEOUT_MS=60000`, `LMS_CONTEXT` 8192->32768 — overlay only, base untouched, repo CI gates green locally. **W1 landed** (`cd6e439fb`): A1/A2 durability fix, A3 decoupled and left OFF with evidence (§8.1), A4 adapter refuses `max_len=1` on unpinned/non-space-delimited decodes. New batch defect recorded in §8.4. |
 | 2026-09-07 | **Wave 3 merged** — W3, W2, W1, W4 into `dev-2.2`, zero conflicts. Migration authored and proven; local dev DB synced with explicit owner consent. Orchestrator added the `reasoning` property to `GENERATION_PROPERTY` (both W2 and W4 had blocked on it) and fixed the duplicate-control regression it caused. Five artifacts regenerated. **Wave 4 launched**: W6 template (`opus`/high), W7 agentsplit (`opus`), W8 visittype (`sonnet`/high). TASK-892 was already taken, so the live/finalize agent split is folded into this ticket rather than spun out. |
+| 2026-09-07 | **Waves 3-5 complete.** Thirteen lanes merged, zero conflicts. Migration proven and applied. Reasoning reaches six surfaces; live/finalize split on a `phase:` tag; two visit-type note shapes wired; reference-set parity restored to one provisioning entry point. Final gates green except `sdk-version`, which an owner commit broke. Status stays `In Progress` pending the boot smoke, the runtime gate, and the caller-selected-workflow decision. |
