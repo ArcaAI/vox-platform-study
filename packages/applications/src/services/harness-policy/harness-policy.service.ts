@@ -28,18 +28,49 @@ import type { McpServerResponse } from '../mcp-server/dto';
 import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
 
 /**
- * The TEXT routing tasks callers name — INFORMATIONAL since TASK-876:
+ * The TEXT routing tasks callers name:
  *  - `live` → the live-documentation delta summariser.
  *  - `finalize` → the final/comprehensive summary generator.
  *  - `test` → the tenant-admin prompt-template test bench.
  *
- * The task no longer SELECTS a model. Selection is the tenant's assigned TEXT_GENERATION
- * agent (`department → tenant → SYSTEM`, one `AgentAssignment` per scope — the assignment has
- * no role dimension), resolved through `TextAgentResolverService`. A workflow that wants a
- * different model per node binds a `core.agent` with an explicit `agentRef`. The parameter is
- * kept because every caller stamps it as telemetry (`task_key` on the generation stats).
+ * TASK-876 made this INFORMATIONAL — the task was declared, then used only inside error
+ * strings while the body resolved `{ tenantId, departmentId }` with no task at all. TASK-891
+ * makes it SELECT again, because one agent cannot hold two reasoning postures and the two
+ * phases need opposite ones: measured on `gemma-4-e2b-it-qat`, an unset `reasoning_effort`
+ * costs 5168 ms / 184 reasoning tokens where `minimal` costs 1237 ms / 30, against a live
+ * flush budget of 20 s for a JSON-shaped note.
+ *
+ * Selection is still the tenant's assigned TEXT_GENERATION agent through
+ * `TextAgentResolverService`; the task simply rides along as a `phase:` SELECTOR TAG, so the
+ * tier can hold a qualified row beside its unqualified one. A workflow that wants a specific
+ * agent per node still binds a `core.agent` with an explicit `agentRef`, which bypasses the
+ * cascade entirely. Callers also keep stamping the task as telemetry (`task_key`).
  */
 export type TextRoutingTask = 'live' | 'finalize' | 'test';
+
+/**
+ * The reserved selector KEY the routing task travels as (TASK-884 grammar: lower-case
+ * `key:value`, compared by equality everywhere).
+ *
+ * `phase`, not `task`: the agent vocabulary already spends `task:` on the SERVICE
+ * (`task:llm` / `task:stt` / `task:tts`, seeded on every platform agent), and `tier:` on the
+ * provenance (`tier:platform-default`). Reusing either would put two meanings behind one key
+ * and make the facet unfilterable — the precise drift the pair grammar exists to prevent.
+ */
+export const TEXT_PHASE_TAG_KEY = 'phase';
+
+/**
+ * The routing task as cascade selector tags. The VALUE is the `TextRoutingTask` literal
+ * verbatim, so there is no translation table to drift: a new routing task is a new phase tag
+ * by construction.
+ *
+ * A tenant that has authored no qualified row is unaffected — `agentTagsSatisfy` treats an
+ * empty selector as matching everything, so the tier's unqualified row still answers every
+ * phase. That is what keeps this change invisible to every tenant provisioned before it.
+ */
+export function textPhaseSelectorTags(task: TextRoutingTask): string[] {
+  return [`${TEXT_PHASE_TAG_KEY}:${task}`];
+}
 
 /**
  * The SYSTEM-only routing-policy task key that selects the harness
@@ -531,7 +562,11 @@ export class HarnessPolicyService {
       );
     }
     try {
-      const spec = await this.textAgents.resolve({ tenantId: tid, departmentId: departmentId ?? null });
+      const spec = await this.textAgents.resolve({
+        tenantId: tid,
+        departmentId: departmentId ?? null,
+        selectorTags: textPhaseSelectorTags(task),
+      });
       return { provider: spec.primary.provider, model: spec.primary.model };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -590,7 +625,13 @@ export class HarnessPolicyService {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid || !this.textAgents) return null;
     try {
-      const spec = await this.textAgents.resolve({ tenantId: tid, departmentId: departmentId ?? null });
+      // The SAME phase as the primary selection: a chain read under a different phase would be
+      // the OTHER tier's agent's chain, which is not a fallback for anything this caller ran.
+      const spec = await this.textAgents.resolve({
+        tenantId: tid,
+        departmentId: departmentId ?? null,
+        selectorTags: textPhaseSelectorTags(task),
+      });
       if (!spec.fallback.autoSwitch) return null;
       const next = spec.fallback.chain[0];
       return next ? { provider: next.provider, model: next.model } : null;
