@@ -61,6 +61,14 @@ function assignmentStore(rows: Row[]) {
   return { resolve };
 }
 
+/**
+ * The generation block both fixture agents author. `resolveTextSelection` carries it out with the
+ * selection (TASK-891 — the live tier's reasoning posture has to reach the wire, and it was being
+ * resolved and discarded), so it appears in every answer below. Which AGENT answered is still
+ * named by the model id, exactly as before.
+ */
+const GENERATION = { temperature: 0.2, maxTokens: 2048 };
+
 /** Two agents that differ only in the model they bind, so `{ provider, model }` names WHICH one answered. */
 const AGENTS: Record<string, { modelId: string; wireModelId: string }> = {
   'platform-summarization': { modelId: 'm-finalize', wireModelId: 'gemma-4-e2b-it-qat' },
@@ -84,7 +92,7 @@ const agentRepository = {
         fallbacks: [],
         instruction: null,
         resolvedPrompt: null,
-        parameters: { generation: { temperature: 0.2, maxTokens: 2048 }, responseFormat: 'text' },
+        parameters: { generation: GENERATION, responseFormat: 'text' },
         inputSchema: { type: 'object' },
         outputSchema: { type: 'object' },
         tools: [],
@@ -165,8 +173,16 @@ describe('resolveTextSelection — the task SELECTS again', () => {
 
   it('a tenant that authored a `phase:live` assignment gets the LIVE agent on live and the unqualified one on finalize', async () => {
     const { policy } = chain(SPLIT);
-    await expect(policy.resolveTextSelection(TENANT, 'live')).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat-live' });
-    await expect(policy.resolveTextSelection(TENANT, 'finalize')).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
+    await expect(policy.resolveTextSelection(TENANT, 'live')).resolves.toEqual({
+      provider: 'lm-studio',
+      model: 'gemma-4-e2b-it-qat-live',
+      generation: GENERATION,
+    });
+    await expect(policy.resolveTextSelection(TENANT, 'finalize')).resolves.toEqual({
+      provider: 'lm-studio',
+      model: 'gemma-4-e2b-it-qat',
+      generation: GENERATION,
+    });
   });
 
   it('the department stays the tier dimension — the phase rides beside it, never instead of it', async () => {
@@ -177,7 +193,7 @@ describe('resolveTextSelection — the task SELECTS again', () => {
 
   it('the default task is finalize, so a no-arg caller resolves the unqualified row exactly as before', async () => {
     const { policy, assignments } = chain(SPLIT);
-    await expect(policy.resolveTextSelection()).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
+    await expect(policy.resolveTextSelection()).resolves.toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', generation: GENERATION });
     expect(assignments.resolve).toHaveBeenCalledWith(TENANT, AgentTask.TEXT_GENERATION, null, ['phase:finalize']);
   });
 });
@@ -191,7 +207,7 @@ describe('resolveTextSelection — the task SELECTS again', () => {
 describe('backwards compatibility — a tenant with only the unqualified assignment is untouched', () => {
   it('live, finalize and test all resolve the SAME agent it resolves today, and none of them throws', async () => {
     const { policy } = chain(UNQUALIFIED_ONLY);
-    const today = { provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' };
+    const today = { provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', generation: GENERATION };
     await expect(policy.resolveTextSelection(TENANT, 'live')).resolves.toEqual(today);
     await expect(policy.resolveTextSelection(TENANT, 'finalize')).resolves.toEqual(today);
     await expect(policy.resolveTextSelection(TENANT, 'test')).resolves.toEqual(today);
