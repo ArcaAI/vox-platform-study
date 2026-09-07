@@ -351,6 +351,14 @@ The `[tenantId, templateLocked]` index backs the per-tenant locked-copy sweep.
   request and pushes a `ResolvedTtsSpec` to the stateless tts service; BYO
   provider keys live on `AiProviderConnection(service='tts')` with every other
   vendor credential.
+- **Registry resolve for the durable lane** (TASK-890 black-box F11): the harness
+  interpreter's `core.classify` node does not read Postgres. It resolves a catalogue model by
+  slug over `GET /api/v1/internal/harness/models/resolve?tenantId&slug[&taskType]`
+  (`HarnessServiceTokenGuard`), which applies the same visibility rule as the tenant catalogue —
+  the tenant's own BYO row first, the SYSTEM row on absence — and answers 404 for a foreign,
+  unknown or disabled slug. The response carries `taskType`, `sourceUri`, `servedBy` and
+  `provider`, which is what the node then dispatches on (`TOKEN_CLASSIFICATION` → nlp
+  `/classify/tokens`, `TEXT_CLASSIFICATION` → `/classify/text`).
 - **External identity** (`TenantIdentityProvider` + `FederatedIdentity` +
   `TenantIdentityProviderDomain`): per-tenant OIDC federation (v1); client
   secret + directory credentials are Vault-Transit refs. Home-realm discovery

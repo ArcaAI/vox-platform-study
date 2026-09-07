@@ -173,6 +173,13 @@ named 503, not a platform row.
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------ |
 | `AgentTrajectoryStep` | Ordered, typed per-session step stream (`AgentSessionKind` × `AgentStepType` LLM_CALL/TOOL_CALL/SENSOR/RETRIEVAL/GUARDRAIL/THINKING/SIGNAL/GATE/PHASE × `AgentStepStatus`) correlated to the OTel trace. **Stats-first / payload-by-reference**: `stats` holds generation stats, `payloadRef` is a claim-check/encrypted pointer — never plaintext clinical content. Tenant-scoped operational **telemetry**: no soft-delete (`MODELS_WITHOUT_SOFT_DELETE`), no `resourceStatus`, no sys-events; hard-retention prune by age. Unique `[tenantId, sessionId, runId, seq]` (idempotent ingest; `runId` uses a `""` sentinel) | soft ref `consultationId` | `agent-trajectory`, `agent-trajectory-retention` |
 
+**The trajectory step is what a workflow-lane generation is BILLED from** (TASK-890 black-box
+F14). `harness-usage.mapper.ts` turns each `LLM_CALL` step whose `stats` carry token counts into
+an `AiUsageEvent` (`operation: harness.step.*`), reading the funding tier and the guardrail
+disposition off the same `stats` — never guessing either. A durable `core.agent` node that
+recorded no step therefore produced no ledger row at all, which is what made workflow-lane
+generations free until that step was emitted.
+
 Curated-evaluation models (`GoldenSet` / `GoldenCase` / `EvalRun` / `EvalScore`) are catalogued in §5.5.
 
 ### 5.11 Federated learning (dormant)
