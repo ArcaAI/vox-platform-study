@@ -191,7 +191,7 @@ describe('WorkflowCanvas', () => {
 
   it('renders a visually-hidden keyboard usage hint', () => {
     render(<WorkflowCanvas nodes={NODES} edges={EDGES} aria-label="Workflow canvas" />);
-    expect(screen.getByText(/structured list view/i)).toBeInTheDocument();
+    expect(screen.getByText(/labelled button that removes it without a drag/i)).toBeInTheDocument();
   });
 
   it('has zero axe violations in light mode', async () => {
