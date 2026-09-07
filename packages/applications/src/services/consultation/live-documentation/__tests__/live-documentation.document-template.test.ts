@@ -111,7 +111,10 @@ describe('the live loop serves the tenant’s document template', () => {
     service.ingestSegment(CID, { text: 'Admitted with chest pain', isFinal: true, segmentId: 's1' });
     await service.flush(CID);
 
-    expect(templateService.resolveForGeneration).toHaveBeenCalledWith(TENANT);
+    // TASK-891 D7 — the slug argument is now ALWAYS passed, `undefined` when the session's
+    // frozen realtime lane names no `documentTemplateSlug`. This composition wires no
+    // workflow, so it names none and the resolution is identical to before.
+    expect(templateService.resolveForGeneration).toHaveBeenCalledWith(TENANT, undefined);
     const schema = calls[0].response_format?.json_schema;
     expect(schema?.title).toBe('Discharge Summary');
     expect(Object.keys(schema?.properties ?? {})).toEqual(['admission_reason', 'hospital_course', 'follow_up']);

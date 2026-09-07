@@ -138,6 +138,12 @@ export class SectionPatchDto {
   })
   documentTemplateVersionId?: string | null;
 
+  @ApiPropertyOptional({
+    description:
+      'TASK-891 B5 — PHI-safe reason code for a flush that FAILED to produce this section (e.g. `timed-out: timeout of 60000ms exceeded`). Present ONLY on a patch that reports a failed generation; a patch carrying content never has it. Its whole purpose is to let a client tell "still generating" from "generation failed": both render as `state: "empty"`, and before this field a reader had no way to distinguish an unpopulated section of an in-progress note from one the engine could not write. A degrade patch persists NOTHING — it carries `revision: 0`, so the mandatory "discard a patch whose revision is not greater than the one you hold" rule above keeps it from displacing a section that already has content, `confirmed` sections included.',
+  })
+  degradeReason?: string;
+
   @ApiProperty({ description: 'ISO-8601 timestamp of this patch' })
   updatedAt: string;
 }

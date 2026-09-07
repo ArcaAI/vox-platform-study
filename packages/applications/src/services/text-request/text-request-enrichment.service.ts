@@ -8,6 +8,7 @@ import { EffectiveSettingsService } from '../settings-registry/effective-setting
 import { TEXT_GUARDRAIL_POLICY_PUSH_FIELDS } from '../settings-registry/descriptors/text-guardrail-policy.descriptors';
 import type { TextGuardrailPostureKey } from '../settings-registry/descriptors/text-provider-connections.descriptors';
 import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
+import { readAgentReasoning, reasoningExtra } from '../agent/agent-reasoning';
 
 /**
  * The ONE implementation of the enrichments every outgoing TEXT
@@ -286,14 +287,37 @@ export class TextRequestEnrichmentService {
   }
 
   /**
-   * @deprecated TASK-862 — a NO-OP kept for the callers that still chain it
-   * (`prompt-management`, `summary`, `live-documentation`). `AiRuntimeProfile`
-   * is retired; generation hyper-parameters and engine ride-alongs
-   * (`extra_body`, e.g. gemma-4's `reasoning_effort`) are supplied by the
-   * Agent's parameters (TASK-863). Until that lands, a request carries only what
-   * its caller set. Remove the call sites, then this method, in R3.
+   * Layer the ENGINE RIDE-ALONGS a resolved agent authored onto an outbound
+   * `/api/v1/generate` body, as `extra`.
+   *
+   * ## What changed, and what did not
+   *
+   * TASK-862 retired `AiRuntimeProfile` and left this method a NO-OP, with the note that
+   * ride-alongs "are supplied by the Agent's parameters (TASK-863)". TASK-891 C2 is that
+   * sentence made true for the first ride-along anyone actually needs: the reasoning
+   * posture of `parameters.generation.reasoning` (OD-4).
+   *
+   * It adds NO transport. `GenerateRequest.extra` is already declared on `apps/text` and
+   * already forwarded as `extra_body` to the OpenAI-compatible family — its own field
+   * comment names `reasoning_effort` as the example. A caller that passes no `generation`
+   * (every caller but the realtime agent path today) gets the previous no-op exactly.
+   *
+   * ## Merge rules
+   *
+   * The CALLER WINS, per key. A call site that already set `extra.reasoning_effort` has
+   * made a decision about this specific request, and an agent-level default must not
+   * silently overwrite it — the same precedence `applyTenantProviderOverrides` gives a
+   * caller-supplied `provider_overrides`.
    */
-  async applyTextRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
+  async applyTextRuntimeProfile<T extends { provider?: string; model?: string; extra?: Record<string, unknown> }>(
+    target: T,
+    generation?: unknown,
+  ): Promise<T> {
+    const extra = reasoningExtra(readAgentReasoning(generation));
+    if (!extra) return target;
+
+    const existing = isPlainObject(target.extra) ? target.extra : undefined;
+    (target as { extra?: Record<string, unknown> }).extra = { ...extra, ...existing };
     return target;
   }
 }

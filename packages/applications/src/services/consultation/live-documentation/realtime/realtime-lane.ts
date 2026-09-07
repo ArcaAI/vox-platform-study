@@ -42,7 +42,7 @@
  * failing test, not a silent no-op at flush time.
  */
 import type { CompiledInputBinding, CompiledWorkflowConfig } from '@arcaai/workflow-contract';
-import { isRealtimeNode } from './realtime-node-registry';
+import { canonicalRealtimeNodeType, isRealtimeNode } from './realtime-node-registry';
 
 /** One executable node of the realtime lane, derived from a `CompiledNode`. */
 export interface RealtimeNode {
@@ -237,4 +237,34 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
     stages,
     guardrail: compiled.policyBindings?.guardrail?.enabled ?? null,
   };
+}
+
+/**
+ * TASK-891 D7 — the `DocumentTemplate.slug` the governing workflow's realtime summary node
+ * names, or `null` when the lane names none.
+ *
+ * ## Why this read did not exist
+ *
+ * `ensureTemplateResolved` called `resolveForGeneration(session.tenantId)` and passed no
+ * slug, even though the method has ACCEPTED an optional `slug` since it was written. The
+ * traced 2026-09-07 session therefore logged `templateId: null` and produced the platform
+ * shape, while its governing workflow (`arcaai-consultation-medical-ner`) was right there
+ * on the frozen lane. The workflow is where a tenant expresses "this department, this visit
+ * type, this note shape" — reading it is the whole of OD-2's third wire-up.
+ *
+ * A node's `config` is `Readonly<Record<string, unknown>>` by contract, so this needs no
+ * schema change; a non-string or blank value is treated as "the lane named none" rather
+ * than passed on, because `resolveForGeneration` would then look up a slug nobody authored
+ * and fail open to the platform shape anyway — with the cause hidden one layer further in.
+ */
+export function realtimeDocumentTemplateSlug(lane: RealtimeLane | null): string | null {
+  if (!lane) return null;
+  for (const stage of lane.stages) {
+    for (const node of stage.nodes) {
+      if (canonicalRealtimeNodeType(node.type, node.config) !== 'consultation.realtimeSummary') continue;
+      const slug = node.config.documentTemplateSlug;
+      if (typeof slug === 'string' && slug.trim().length > 0) return slug.trim();
+    }
+  }
+  return null;
 }
