@@ -197,6 +197,34 @@ KEY_ENTAILMENT = "entailment"
 KEY_TEMPERATURE = "temperature"
 KEY_MAX_TOKENS = "max-tokens"
 KEY_TIMEOUT_S = "timeout-s"
+#: The ENGINE ENDPOINT for the selected judge provider, read from that provider's
+#: `AiProviderConnection` row through the same two-tier cascade (TASK-890), and
+#: the tenant tier that row came FROM.
+#:
+#: Non-secret, and deliberately the ONLY thing taken off that row.
+#: `encryptedApiKey` is Vault-Transit ciphertext guardrail cannot decrypt and must
+#: never try to — which is exactly why the fallback these two keys feed is
+#: restricted to ENGINE_SERVED_PROVIDERS, whose engines authenticate nobody.
+KEY_PROVIDER_BASE_URL = "provider-base-url"
+KEY_PROVIDER_CONNECTION_TENANT = "provider-connection-tenant"
+
+#: Providers served by an engine the PLATFORM (or the tenant) runs, which take an
+#: address and no credential — mirroring `PLATFORM_SELF_HOST_CONNECTIONS`'s `llm:`
+#: entries in `seed/17-ai-provider-connection.ts`, and the set `apps/text` serves
+#: through `OpenAICompatProvider` (`api_key=... or "not-needed"`).
+#:
+#: This is a CAPABILITY CLASSIFICATION, not configuration: it answers "does this
+#: provider need a credential at all", which is a property of the wire, not a
+#: choice an admin makes. Everything an admin does choose — which provider, which
+#: model, which endpoint — is still resolved from the registry.
+ENGINE_SERVED_PROVIDERS = frozenset({"lm-studio", "ollama", "vllm", "llama-cpp", "built-in"})
+
+#: The capability discriminator on `AiProviderConnection` for an LLM connection.
+#: The judge is an LLM call; the same (tenant, provider) pair can also hold an
+#: `stt`/`tts` row, and reading one of those for a judgement would be a category
+#: error the unique key `(tenantId, service, provider)` exists to prevent.
+_LLM_SERVICE = "llm"
+
 # Weight-source keys carried alongside the model identity.
 _SLUG_TASK_KEY_PREFIX = "slug::"
 KEY_CHECKSUM = "checksum"
@@ -320,6 +348,28 @@ class AiModelRead(_Base):
     source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
 
 
+class AiProviderConnectionRead(_Base):
+    """Read-only mapping of ``core."AiProviderConnection"`` — the ENDPOINT only.
+
+    `encryptedApiKey` and `keyVersion` are deliberately ABSENT from this mapping,
+    not merely unread: a column this class does not name is a column no future
+    edit here can accidentally select. Guardrail resolves an address for a keyless
+    engine and nothing else; a credential reaches `apps/text` only as the opaque
+    blob the gateway (or the caller) injected.
+    """
+
+    __tablename__ = "AiProviderConnection"
+    __table_args__ = {"schema": "core"}
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column("tenantId", String)
+    service: Mapped[str] = mapped_column(String)
+    provider: Mapped[str] = mapped_column(String)
+    base_url: Mapped[str | None] = mapped_column("baseUrl", String)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
+
+
 class TenantGuardrailPolicyRead(_Base):
     """Read-only mapping of ``core."TenantGuardrailPolicy"`` (TASK-886).
 
@@ -361,6 +411,13 @@ class GuardrailTenantConfig:
     #: — "no opinion", which resolves the platform default set. There is no
     #: value of this field that turns screening off.
     availability: dict[str, Any] | None = None
+    #: The selected judge provider's ENGINE ENDPOINT and the tenant tier its
+    #: `AiProviderConnection` row came from (TASK-890). Populated only for
+    #: `ENGINE_SERVED_PROVIDERS`; `None` everywhere else, including for every
+    #: cloud provider, which therefore has no fallback and stays fail-closed
+    #: without an injected credential.
+    provider_base_url: str | None = None
+    provider_connection_tenant_id: str | None = None
     # The tenant the primary lookup targeted (request tenant or default tenant).
     source_tenant_id: str | None = None
     # Tuning off the winning row's ``configJson`` (TASK-862; formerly the
@@ -507,6 +564,8 @@ class TenantConfigResolver:
             policy=_decode_taxonomy(keys.get(KEY_POLICY)),
             entailment=_decode_taxonomy(keys.get(KEY_ENTAILMENT)),
             availability=_decode_taxonomy(keys.get(KEY_AVAILABILITY)),
+            provider_base_url=_clean(keys.get(KEY_PROVIDER_BASE_URL)),
+            provider_connection_tenant_id=_clean(keys.get(KEY_PROVIDER_CONNECTION_TENANT)),
             source_tenant_id=source,
             temperature=_as_float(keys.get(KEY_TEMPERATURE)),
             max_tokens=_as_int(keys.get(KEY_MAX_TOKENS)),
@@ -714,20 +773,34 @@ class TenantConfigResolver:
             )
             rows = result.all()
 
-        def _is_live(r: Any) -> bool:
-            return r.default_resource_status == "ENABLED" and bool(getattr(r, "default_enabled", True))
+            def _is_live(r: Any) -> bool:
+                return r.default_resource_status == "ENABLED" and bool(
+                    getattr(r, "default_enabled", True)
+                )
 
-        # VETO: the tenant's OWN elected row is DISABLED or switched off — fail
-        # closed, never fall through to the SYSTEM row.
-        if tenant_id != SYSTEM_TENANT_ID and any(
-            r.default_tenant_id == tenant_id and not _is_live(r) for r in rows
-        ):
-            raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
+            # VETO: the tenant's OWN elected row is DISABLED or switched off — fail
+            # closed, never fall through to the SYSTEM row.
+            if tenant_id != SYSTEM_TENANT_ID and any(
+                r.default_tenant_id == tenant_id and not _is_live(r) for r in rows
+            ):
+                raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
 
-        enabled_rows = [r for r in rows if _is_live(r)]
-        row = min(enabled_rows, key=lambda r: self._row_rank(r, tenant_id), default=None)
-        if row is None:
-            return {}
+            enabled_rows = [r for r in rows if _is_live(r)]
+            row = min(enabled_rows, key=lambda r: self._row_rank(r, tenant_id), default=None)
+            if row is None:
+                return {}
+
+            # The judge provider's ENGINE ENDPOINT (TASK-890), read in the SAME
+            # session — a second connection per config load would multiply against
+            # a pool_size=5 engine for a value that is cached beside the selection.
+            # Issued ONLY for a keyless engine: a cloud selection needs a credential
+            # this service must not read, so there is nothing to ask for and it does
+            # not ask.
+            connection_rows = (
+                await self._engine_connection_rows(session, row.provider, tenant_id)
+                if row.provider in ENGINE_SERVED_PROVIDERS
+                else []
+            )
 
         keys: dict[str, str] = {}
         if row.provider:
@@ -761,7 +834,67 @@ class TenantConfigResolver:
         # Tuning rides on the WINNING row's configJson (TASK-862) — row-level,
         # never a blend of two tiers, exactly like the selection itself.
         keys.update(self._tuning_from_config(getattr(row, "config_json", None)))
+        keys.update(self._engine_connection_keys(connection_rows, tenant_id, row.provider))
         return keys
+
+    @staticmethod
+    async def _engine_connection_rows(session: Any, provider: str, tenant_id: str) -> list[Any]:
+        """The ``AiProviderConnection`` rows for one keyless engine, both tiers.
+
+        ENABLED *or* DISABLED, so a tenant's refusal is VISIBLE rather than
+        indistinguishable from an absent row — the same reason the selection query
+        above admits both.
+        """
+        result = await session.execute(
+            select(
+                AiProviderConnectionRead.tenant_id.label("connection_tenant_id"),
+                AiProviderConnectionRead.base_url.label("base_url"),
+                AiProviderConnectionRead.enabled.label("connection_enabled"),
+                AiProviderConnectionRead.resource_status.label("connection_resource_status"),
+            ).where(
+                AiProviderConnectionRead.provider == provider,
+                AiProviderConnectionRead.service == _LLM_SERVICE,
+                AiProviderConnectionRead.tenant_id.in_([SYSTEM_TENANT_ID, tenant_id]),
+                AiProviderConnectionRead.resource_status.in_(("ENABLED", "DISABLED")),
+            )
+        )
+        return list(result.all())
+
+    @staticmethod
+    def _engine_connection_keys(rows: list[Any], tenant_id: str, provider: str) -> dict[str, str]:
+        """Elect the engine endpoint from those rows — two tiers, three states.
+
+        * the request tenant's own LIVE row wins;
+        * ABSENT (no tenant row) widens to SYSTEM — the platform's engine;
+        * a tenant row that is DISABLED or switched off is a VETO of the fallback
+          and yields ``{}``. It must NOT widen: a tenant that refused this
+          provider being served the platform's engine behind its back is the
+          precise failure the three-state contract exists to stop. The judge then
+          has no connection and fails closed on `text`'s own 503 — the right
+          answer, because the tenant said no.
+
+        ``{}`` for anything unusable (no row, blank endpoint) — the caller then
+        simply has no fallback to offer.
+        """
+
+        def _live(row: Any) -> bool:
+            return getattr(row, "connection_resource_status", None) == "ENABLED" and bool(
+                getattr(row, "connection_enabled", False)
+            )
+
+        owned = [r for r in rows if getattr(r, "connection_tenant_id", None) == tenant_id]
+        if tenant_id != SYSTEM_TENANT_ID and owned and not any(_live(r) for r in owned):
+            logger.info("guardrail.judge.connection_vetoed", provider=provider, tenant_id=tenant_id)
+            return {}
+
+        for row in owned if any(_live(r) for r in owned) else rows:
+            base_url = str(getattr(row, "base_url", None) or "").strip()
+            if _live(row) and base_url:
+                return {
+                    KEY_PROVIDER_BASE_URL: base_url,
+                    KEY_PROVIDER_CONNECTION_TENANT: str(row.connection_tenant_id),
+                }
+        return {}
 
     @staticmethod
     def _tuning_from_config(config_json: Any) -> dict[str, str]:
@@ -940,6 +1073,11 @@ def build_judge_client(
     The endpoint is `text`'s (bootstrap transport) and the tenant's credential
     travels only as an opaque ``provider_overrides`` blob.
 
+    What the connection map ends up carrying — the injected blob, or the engine
+    endpoint this resolver read for a keyless provider — is `_judge_connection`'s
+    decision, stated there. A CREDENTIAL is still never resolved here: guardrail
+    reads `AiProviderConnection.baseUrl` and nothing else off that row.
+
     Three values that used to be `JudgePolicy` literals are resolved here instead
     (TASK-878). Precedence is UNCHANGED — the winning row's `configJson` tuning
     still wins where it carries one; what moved is what it falls back TO:
@@ -991,6 +1129,51 @@ def build_judge_client(
             if tenant_cfg.timeout_s is not None
             else (DEFAULT_JUDGE_TIMEOUT_S if judge_timeout_s is None else judge_timeout_s)
         ),
-        provider_overrides=provider_overrides,
+        provider_overrides=_judge_connection(provider, provider_overrides, tenant_cfg),
         breaker=breaker,
     )
+
+
+def _judge_connection(
+    provider: str,
+    injected: dict[str, Any] | None,
+    tenant_cfg: GuardrailTenantConfig,
+) -> dict[str, Any] | None:
+    """The connection map the judge call carries — injected, else resolved.
+
+    ``apps/text`` holds no endpoint and no credential of its own, so a judge call
+    with no entry for its own provider is a 503 there and a 502 at the gateway.
+    Two ways one arrives, in strict order:
+
+    1. **INJECTED.** The caller forwarded what the gateway resolved for it. It
+       WINS, always, and is never merged into or second-guessed: the gateway
+       already ran the tenant → SYSTEM cascade with access to the credential, and
+       a value from that resolution beats anything read here.
+    2. **RESOLVED (TASK-890).** The gateway forwards only the entry for the
+       provider the GENERATION selected, so a tenant generating on Azure while the
+       judge runs on the platform's LM Studio arrives with an entry that names
+       another provider — present, and useless to the judge. For an
+       ENGINE-SERVED provider the endpoint alone is a complete connection, and
+       `_load_engine_connection` resolved it through the same two tiers.
+
+    A CLOUD provider gets nothing here, by construction. Its connection is a
+    credential, guardrail cannot decrypt one, and a base_url without a key would
+    only convert a clear "no connection" into a confusing "no key". Fail closed.
+
+    ``funding`` is DERIVED from the tier that supplied the endpoint, never
+    stamped: `09-infrastructure-devops.md` §"Tenant-first resolution & BYO" —
+    a call site that stamps it mis-bills silently.
+    """
+    if injected and provider in injected:
+        return injected
+    base_url = (tenant_cfg.provider_base_url or "").strip()
+    if not provider or provider not in ENGINE_SERVED_PROVIDERS or not base_url:
+        return injected
+    fallback: dict[str, Any] = dict(injected or {})
+    fallback[provider] = {
+        "base_url": base_url,
+        "funding": (
+            "platform" if tenant_cfg.provider_connection_tenant_id == SYSTEM_TENANT_ID else "tenant"
+        ),
+    }
+    return fallback

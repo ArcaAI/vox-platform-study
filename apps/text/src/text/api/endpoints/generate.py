@@ -71,7 +71,7 @@ from text.core.metrics import (
 )
 from text.core.observability import set_generation_span_attributes
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
-from text.models.requests import GenerateRequest
+from text.models.requests import GenerateRequest, serialize_provider_overrides
 from text.models.responses import (
     ErrorResponse,
     GenerateResponse,
@@ -189,6 +189,13 @@ async def _apply_guardrail_gate(
             # over the platform default tenant-first; absent ⇒ the platform
             # posture stands (`core/guardrail_posture.py`).
             tenant_policy=request_body.guardrail_policy,
+            # The connection the gateway injected for THIS generation, forwarded
+            # so guardrail's judge has one (TASK-890). Guardrail delegates its
+            # judgement back to this service, which holds no credential of its
+            # own, so a blob that stops here becomes a 503 two hops away and a
+            # 502 at the gateway. Serialized rather than dumped: `SecretStr`
+            # masks itself on `model_dump()`.
+            provider_overrides=serialize_provider_overrides(request_body.provider_overrides),
         )
         # Lifted BEFORE the allow/deny branch: a REJECTED prompt still burned
         # guardrail tokens, and metering the safety plane is exactly how its cost

@@ -84,12 +84,21 @@ class ExternalGuardrailClient:
         system_prompt: str | None = None,
         tenant_id: str | None = None,
         tenant_policy: Any = None,
+        provider_overrides: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Moderate ``prompt`` under the resolved posture.
 
         ``tenant_policy`` is the request's PUSHED ``guardrail_policy`` block; it
         folds over the platform default tenant-first, widening only on absence
         (`core/guardrail_posture.resolve_posture`).
+
+        ``provider_overrides`` is the connection blob the gateway injected on
+        THIS generation, forwarded so guardrail's judge — which posts back to
+        this service's judge lane, and where the whole chain used to end in a 503
+        `PROVIDER_CREDENTIALS_MISSING` (TASK-890) — has a connection to use. It is
+        an opaque pass-through in both directions: never inspected, never logged.
+        ABSENT stays absent, because absence is what makes guardrail resolve the
+        engine connection itself.
         """
         posture = resolve_posture(self._platform_posture(), tenant_policy)
         if not posture.enabled:
@@ -114,9 +123,13 @@ class ExternalGuardrailClient:
                 "raw": payload,
             }
 
+        body: dict[str, Any] = {"text": text, "include_reasoning": posture.include_reasoning}
+        if provider_overrides:
+            body["provider_overrides"] = provider_overrides
+
         verdict, last_error = await self._post_verdict(
             "/api/medical/validate",
-            {"text": text, "include_reasoning": posture.include_reasoning},
+            body,
             headers=self._headers(tenant_id),
             posture=posture,
             parse=_parse,

@@ -164,7 +164,7 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
             tenant_cfg,
             request.app.state.http_client,
             tenant_id,
-            provider_overrides=_provider_overrides(request),
+            provider_overrides=await _provider_overrides(request),
             breaker=_breaker(request.app.state, "text"),
             judge_timeout_s=await resolve_judge_timeout_s(request.app.state),
         )
@@ -175,15 +175,50 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
         raise HTTPException(status_code=503, detail=exc.as_detail()) from exc
 
 
-def _provider_overrides(request: Request) -> dict[str, Any] | None:
-    """Tenant BYO credentials forwarded by the caller, passed through VERBATIM.
+async def _provider_overrides(request: Request) -> dict[str, Any] | None:
+    """The connection the caller forwarded for the judge, passed through VERBATIM.
 
-    Guardrail never decrypts, stores or logs them: the gateway resolved them, the
-    caller forwarded them, and `text` hands them to the adapter. Absent ⇒ the
-    platform-tier credential `text` resolves for itself.
+    Guardrail never decrypts, stores or logs it: the gateway resolved it, the
+    caller forwarded it, and `text` hands it to the adapter.
+
+    TWO sources, in order, and the second is the one that made this slot real:
+
+    1. ``request.state.provider_overrides`` — the documented carrier, for a
+       middleware or an in-process caller that has already resolved one.
+    2. the request BODY (TASK-890). Nothing ever set (1), so every judge call
+       posted without a connection and `apps/text` — which holds none of its own —
+       answered 503 `PROVIDER_CREDENTIALS_MISSING` on every guardrail-enabled
+       generation. Guardrail is a PEER service with no gateway in front of it, so
+       the caller's body is the only channel a connection has into this service,
+       and the judge is built by a DEPENDENCY, which is solved before the handler
+       ever sees the parsed model. Reading it here is therefore not a shortcut
+       around the model — it is the only point in the request that is both after
+       the body and before the client.
+
+    Safe by construction rather than by luck: FastAPI reads and CACHES the body
+    (`Request._body`) before it solves dependencies, so this is the already-read
+    bytes, not a second read of a consumed stream. A route with no body (the GET
+    health check) raises on decode and answers ``None``.
+
+    Absent ⇒ absent, deliberately: `core/tenant_config._judge_connection` then
+    resolves the engine's own endpoint for a keyless provider, and a cloud
+    provider fails closed.
     """
     overrides = getattr(getattr(request, "state", None), "provider_overrides", None)
-    return overrides if isinstance(overrides, dict) and overrides else None
+    if isinstance(overrides, dict) and overrides:
+        return overrides
+
+    reader = getattr(request, "json", None)
+    if not callable(reader):
+        return None
+    try:
+        payload = await reader()
+    except Exception:  # noqa: BLE001 — no body, or not JSON: there is nothing to forward
+        return None
+    if not isinstance(payload, dict):
+        return None
+    forwarded = payload.get("provider_overrides")
+    return forwarded if isinstance(forwarded, dict) and forwarded else None
 
 
 def _breaker(app_state: Any, peer: str) -> Any:

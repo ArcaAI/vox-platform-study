@@ -39,7 +39,20 @@ class ProviderOverride(BaseModel):
     ``.get_secret_value()`` at the single point it hands the key to the SDK.
     """
 
-    api_key: SecretStr
+    # OPTIONAL, and empty is a real state (TASK-890). An ENGINE-SERVED provider
+    # (LM Studio, Ollama, vLLM, llama.cpp) authenticates nobody, and the one
+    # caller that can resolve its endpoint without the gateway — `apps/guardrail`,
+    # building a fallback connection for its own judge — can supply a `base_url`
+    # and NOTHING else: `AiProviderConnection.encryptedApiKey` is Vault ciphertext
+    # it cannot and must not decrypt. While this field was REQUIRED such an
+    # override was a 422 at the wire model, so the keyless engine that needs no
+    # credential was the one shape the credential field forbade.
+    #
+    # This does NOT weaken the cloud lane: a credential is required by the
+    # ADAPTER, not by the wire (`core/connection.require_api_key` raises
+    # `ProviderCredentialsError` → 503 on an empty key), which is the layer that
+    # knows whether its provider needs one.
+    api_key: SecretStr = SecretStr("")
     base_url: str | None = None
     region: str | None = None
     api_version: str | None = None
@@ -81,6 +94,38 @@ class ProviderOverride(BaseModel):
         silently convert tenant-funded spend into a platform COGS charge.
         """
         return value if value in ("tenant", "platform") else "tenant"
+
+
+def serialize_provider_overrides(
+    overrides: dict[str, ProviderOverride] | None,
+) -> dict[str, dict[str, Any]] | None:
+    """The wire form of an injected connection map, for forwarding it onward.
+
+    `model_dump()` cannot be used: `api_key` is a `SecretStr`, so a dump either
+    hands on the wrapper object (python mode) or the literal mask `'**********'`
+    (json mode). A masked key on the guardrail hop is the same outage as no key
+    at all, with a longer stack trace — so the secret is unwrapped EXPLICITLY,
+    at this one seam, exactly as an adapter unwraps it at the one point it hands
+    it to an SDK.
+
+    Only set fields are emitted, so the far side sees the same shape the gateway
+    sent rather than a wall of nulls. `None`/empty ⇒ `None`: an absent blob must
+    stay absent, because ABSENT is what lets `apps/guardrail` resolve its own
+    engine connection instead of being handed an empty dict that says nothing.
+
+    Forwarded ONLY over the internal peer wire (`X-Service-Token`), never logged,
+    never persisted.
+    """
+    if not overrides:
+        return None
+    wire: dict[str, dict[str, Any]] = {}
+    for provider, override in overrides.items():
+        entry = override.model_dump(exclude_none=True, exclude={"api_key"})
+        key = override.api_key.get_secret_value()
+        if key:
+            entry["api_key"] = key
+        wire[provider] = entry
+    return wire
 
 
 class GuardrailPolicyOverride(BaseModel):
