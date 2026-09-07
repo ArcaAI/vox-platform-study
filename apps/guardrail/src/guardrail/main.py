@@ -176,18 +176,28 @@ async def _config_invalidation_listener(app: FastAPI) -> None:
 
 
 def _in_cluster_environment() -> bool:
-    """Whether this process is running deployed/CI rather than a developer's shell.
+    """Whether this process is a DEPLOYED workload rather than a developer's shell.
 
-    Mirrors `hope_env.load_env()`'s own posture, rather than re-deriving the
-    `NODE_ENV`/`CI` truthy check here: that loader already treats `CI` truthy or
-    `NODE_ENV=production` as "host env only, no dotenv magic" — precisely the
-    same "no operator is watching the console" posture a deployed k8s pod runs
-    under (`06-python-services.md` "Env loading"). `load_env()` is idempotent
-    (it only fills env keys still absent), so calling it again here is a safe,
-    zero-cost read of that same decision via its public `LoadEnvResult`.
+    `DEPLOYMENT_ENVIRONMENT` is the discriminator, not `NODE_ENV`. Measured on
+    the live cluster 2026-09-07: `overlays/dev` patches the platform ConfigMap to
+    `NODE_ENV=development` (only `base/config/platform.env` carries
+    `NODE_ENV=production`), so a `node_env == "production"` gate is INERT in
+    `hope-v2-dev` — precisely the environment where the missing token was found.
+    `DEPLOYMENT_ENVIRONMENT` is set in EVERY deployed environment (base
+    `production`, dev overlay `dev`) and is unset on a developer's machine
+    (`.env.dev` ships only commented-out `*_OTEL_DEPLOYMENT_ENVIRONMENT`
+    variants), which is exactly the split this gate needs. It is also the
+    convention already used a few lines below for the service-registration
+    `environment` field, so this keeps one rule in one file.
+
+    `CI` is deliberately NOT a trigger: a CI *test* job is not a deployment, and
+    coupling the two makes the gate fire in `test-guardrail` for no benefit.
+    `NODE_ENV=production` is kept as a belt-and-braces trigger for any deployment
+    that sets it without `DEPLOYMENT_ENVIRONMENT`.
     """
-    result = load_env()
-    return result.is_ci or result.node_env == "production"
+    if os.getenv("DEPLOYMENT_ENVIRONMENT", "").strip():
+        return True
+    return load_env().node_env == "production"
 
 
 def _assert_internal_access_token(settings: Settings) -> None:
