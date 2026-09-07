@@ -322,6 +322,14 @@ export function WorkflowCanvas({
         nodesConnectable={!readOnly}
         edgesReconnectable={!readOnly}
         elementsSelectable
+        // `selected` is CONTROLLED here (`toXyNode` derives it from `selectedNodeId` on every
+        // sync), so React Flow must not also decide it. Its default select-on-drag did: dragging
+        // an unselected node made React Flow select it, the next prop sync unselected it,
+        // `onSelectionChange` re-announced, and the two fought until React aborted with "Maximum
+        // update depth exceeded" — the consumer's error boundary took the canvas down mid-drag and
+        // the move was lost (TASK-890 black-box J5). Selection stays one-way: React Flow ->
+        // `onSelectionChange` -> `onSelect` -> the consumer's store -> back in as `selected`.
+        selectNodesOnDrag={false}
         deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
         fitView
         fitViewOptions={{ duration: reducedMotion ? 0 : 400, padding: 0.2 }}
