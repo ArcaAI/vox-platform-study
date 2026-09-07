@@ -1,6 +1,11 @@
 /**
- * Graph editing store. Business rules live on the store's actions so both
- * editors (canvas + list/tree, Task 13) get identical refusal behavior — Task 11.
+ * Graph editing store. Business rules live on the store's actions, so the canvas
+ * and the toolbar get identical refusal behavior from one place.
+ *
+ * TASK-893 §3.1-§3.2 rewrote the save half of this store: `AutosaveState` became `SaveState`,
+ * `viewMode`/`autosaveState`/`reorderNode` are gone with the List view, and `moveNode` now marks
+ * the graph dirty. The save/discard machine has its own file
+ * (`graph-store-save-model.test.ts`), loop grouping has `graph-store-loops.test.ts`.
  */
 import { describe, expect, it } from 'vitest';
 import { createGraphStore } from '../create-graph-store';
@@ -11,15 +16,15 @@ function mandatoryNode(id: string) {
 }
 
 describe('createGraphStore', () => {
-  it('starts empty, clean, and in canvas view', () => {
+  it('starts empty and clean, with nothing to discard back to', () => {
     const store = createGraphStore();
     const state = store.getState();
     expect(state.nodes).toEqual([]);
     expect(state.edges).toEqual([]);
     expect(state.selectedNodeId).toBeNull();
-    expect(state.viewMode).toBe('canvas');
     expect(state.dirty).toBe(false);
-    expect(state.autosaveState).toBe('idle');
+    expect(state.saveState).toBe('clean');
+    expect(state.baseline).toBeNull();
   });
 
   it('addNode inserts a node, marks dirty, and returns the new id', () => {
@@ -188,13 +193,23 @@ describe('createGraphStore', () => {
     expect(state.dirty).toBe(true);
   });
 
-  it('moveNode updates position without marking dirty (layout is client-only bookkeeping)', () => {
+  // TASK-893 §3.7 — the inverse of what this test used to assert. Layout rode along on the next
+  // autosave PATCH; with an explicit Save, a move that is not dirty is a move the user loses.
+  it('moveNode updates position AND marks the graph dirty (there is no autosave to carry layout)', () => {
     const store = createGraphStore();
     const id = store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
     store.getState().markSaved(1);
+    expect(store.getState().dirty).toBe(false);
+    const undoDepth = store.getState().undoStack.length;
+
     store.getState().moveNode(id, { x: 9, y: 9 });
+
     const state = store.getState();
     expect(state.nodes[0].position).toEqual({ x: 9, y: 9 });
+    expect(state.dirty).toBe(true);
+    expect(state.saveState).toBe('dirty');
+    // Still not an undo step: position bookkeeping is not an authored change worth a slot.
+    expect(state.undoStack).toHaveLength(undoDepth);
   });
 
   /**
@@ -210,57 +225,43 @@ describe('createGraphStore', () => {
     const store = createGraphStore();
     const id = store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
     store.getState().moveNode(id, { x: 9, y: 9 });
+    store.getState().markSaved(1);
     const before = store.getState().nodes;
     store.getState().moveNode(id, { x: 9, y: 9 });
     expect(store.getState().nodes).toBe(before);
+    // And a re-sync of an unchanged position must not dirty a graph nobody touched.
+    expect(store.getState().dirty).toBe(false);
   });
 
-  it('markSaved clears dirty and records the version', () => {
+  it('markSaved clears dirty, records the version and snapshots the new baseline', () => {
     const store = createGraphStore();
     store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
     store.getState().markSaved(4);
     const state = store.getState();
     expect(state.dirty).toBe(false);
     expect(state.lastSavedVersion).toBe(4);
-    expect(state.autosaveState).toBe('saved');
+    expect(state.saveState).toBe('saved');
+    expect(state.baseline).toEqual({ nodes: state.nodes, edges: state.edges });
   });
 
-  it('hydrate replaces the graph wholesale and resets dirty', () => {
+  it('hydrate replaces the graph wholesale, resets dirty and becomes the baseline', () => {
     const store = createGraphStore();
     store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
     store.getState().hydrate([mandatoryNode('m1')], []);
     const state = store.getState();
     expect(state.nodes).toEqual([mandatoryNode('m1')]);
     expect(state.dirty).toBe(false);
+    expect(state.saveState).toBe('clean');
+    expect(state.baseline).toEqual({ nodes: [mandatoryNode('m1')], edges: [] });
   });
 
-  it('reorderNode swaps display order without marking dirty (list-editor-only bookkeeping)', () => {
-    const store = createGraphStore();
-    const a = store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
-    const b = store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 1, y: 1 });
-    store.getState().markSaved(1);
-    store.getState().reorderNode(b, 'up');
-    const state = store.getState();
-    expect(state.nodes.map((node) => node.id)).toEqual([b, a]);
-    expect(state.dirty).toBe(false);
-  });
-
-  it('reorderNode is a no-op at the boundary (first node "up", last node "down")', () => {
-    const store = createGraphStore();
-    const a = store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
-    store.getState().reorderNode(a, 'up');
-    expect(store.getState().nodes.map((node) => node.id)).toEqual([a]);
-  });
-
-  it('selectNode / setViewMode / setAutosaveState update their own slice only', () => {
+  it('selectNode / setSaveState update their own slice only', () => {
     const store = createGraphStore();
     const id = store.getState().addNode({ type: 'noop', safetyClasses: [] }, { x: 0, y: 0 });
     store.getState().selectNode(id);
-    store.getState().setViewMode('list');
-    store.getState().setAutosaveState('conflict');
+    store.getState().setSaveState('conflict');
     const state = store.getState();
     expect(state.selectedNodeId).toBe(id);
-    expect(state.viewMode).toBe('list');
-    expect(state.autosaveState).toBe('conflict');
+    expect(state.saveState).toBe('conflict');
   });
 });
