@@ -239,6 +239,66 @@ function GuardrailScreeningField({ id, value, onChange }: { id: string; value: u
   );
 }
 
+/** `parameters.generation.reasoning.effort` — the pinned cross-lane contract (TASK-891 C1/C4). */
+const REASONING_EFFORT_OPTIONS = ['minimal', 'low', 'medium', 'high'] as const;
+
+/**
+ * TASK-891 C4/OD-4 — reasoning/thinking control, authored PER AGENT (not a governed settings
+ * descriptor): `parameters.generation.reasoning = { enabled: boolean, effort?: 'minimal' |
+ * 'low' | 'medium' | 'high' }` is the pinned cross-lane contract shape (authored in
+ * `packages/applications` by the agent-service lane, seeded by the data lane). Hand-rendered
+ * here rather than through the generic `AGENT_PARAMETER_SCHEMAS` walker above: the shared JSON
+ * Schema package (`@arcaai/workflow-contract`, `GENERATION_PROPERTY`) does not yet declare this
+ * property and is outside this lane's boundary (`apps/admin-console/**`) to extend.
+ *
+ * "Disabled" is a real, explicit value — instructs the engine not to reason — never inferred
+ * from absence, so the switch only ever writes `true` or `false`, matching OD-4's "disabled
+ * means instruct the engine not to reason", not "unset".
+ */
+function ReasoningField({ id, value, onChange }: { id: string; value: unknown; onChange: (next: unknown) => void }) {
+  const reasoning = value && typeof value === 'object' ? (value as { enabled?: unknown; effort?: unknown }) : {};
+  const enabled = reasoning.enabled === true;
+  const effort = typeof reasoning.effort === 'string' ? reasoning.effort : '';
+
+  return (
+    <fieldset className="flex flex-col gap-3 rounded-md border p-3">
+      <legend className="px-1 text-sm font-medium">Reasoning</legend>
+      <p className="text-muted-foreground text-xs">
+        Extended thinking for this agent&apos;s generations. Off by default — reasoning tokens are billed and add latency.
+      </p>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor={`${id}-enabled`}>Enable reasoning</FieldLabel>
+          <FieldDescription>When off, the engine is instructed not to reason and reasoning tokens are never billed to this agent.</FieldDescription>
+        </FieldContent>
+        <Switch
+          id={`${id}-enabled`}
+          checked={enabled}
+          onCheckedChange={(checked) => onChange(checked ? { enabled: true, ...(effort ? { effort } : {}) } : { enabled: false })}
+        />
+      </Field>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${id}-effort`}>Reasoning effort</Label>
+        <Select value={effort} onValueChange={(next) => onChange({ enabled: true, ...(next ? { effort: next } : {}) })} disabled={!enabled}>
+          <SelectTrigger id={`${id}-effort`} aria-describedby={`${id}-effort-desc`}>
+            <SelectValue placeholder="Engine default" />
+          </SelectTrigger>
+          <SelectContent>
+            {REASONING_EFFORT_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {labelOf(option)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p id={`${id}-effort-desc`} className="text-muted-foreground text-xs">
+          Only applies while reasoning is enabled; leave unset for the engine&apos;s own default.
+        </p>
+      </div>
+    </fieldset>
+  );
+}
+
 function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: string; schema: Schema; path: string[]; value: Value; onChange: (next: Value) => void }) {
   return (
     <>
@@ -253,6 +313,16 @@ function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: s
               <legend className="px-1 text-sm font-medium">{labelOf(name)}</legend>
               {typeof child.description === 'string' ? <p className="text-muted-foreground text-xs">{child.description}</p> : null}
               <SchemaFields idPrefix={idPrefix} schema={child} path={childPath} value={value} onChange={onChange} />
+              {/* TASK-891 C4 — reasoning sits inside the SAME "Generation" fieldset as the
+                  schema-driven temperature/maxTokens controls, next to them per the brief,
+                  rather than as a disconnected section (see ReasoningField's docblock). */}
+              {childPath.join('.') === 'generation' ? (
+                <ReasoningField
+                  id={`${id}-reasoning`}
+                  value={getPath(value, [...childPath, 'reasoning'])}
+                  onChange={(next) => onChange(setPath(value, [...childPath, 'reasoning'], next))}
+                />
+              ) : null}
             </fieldset>
           );
         }

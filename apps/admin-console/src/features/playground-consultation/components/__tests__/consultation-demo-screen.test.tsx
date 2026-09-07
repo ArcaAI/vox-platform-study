@@ -24,9 +24,10 @@ const sdk = vi.hoisted(() => ({
   storeApi: null as any,
   userSettings: null as any,
   liveSummary: null as any,
-  // the two discovery hooks the screen now calls.
+  // TASK-891 OD-5: `useSelectableAsrAgents` is no longer called by the screen — the workflow
+  // picked at open already names the ASR agent, so its double was removed along with the
+  // Transcription agent dropdown it used to feed.
   selectableWorkflows: null as any,
-  asrAgents: null as any,
   governingWorkflow: null as any,
 }));
 /* eslint-enable @typescript-eslint/no-explicit-any -- end of the SDK-double block */
@@ -40,7 +41,6 @@ vi.mock('@arcaai/vox', () => ({
   useArcaLiveSummary: () => sdk.liveSummary,
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn(async () => undefined) }),
   useSelectableConsultationWorkflows: () => sdk.selectableWorkflows,
-  useSelectableAsrAgents: () => sdk.asrAgents,
   useConsultationWorkflow: () => sdk.governingWorkflow,
 }));
 
@@ -57,22 +57,6 @@ function makeSelectableWorkflows(workflows: typeof WORKFLOWS | null = WORKFLOWS,
     isLoading,
     error: null,
     refresh: vi.fn(async () => workflows),
-  };
-}
-
-/** Published ASR agents the tenant may name at audio.start (TASK-865). */
-const ASR_AGENTS = [
-  { slug: 'clinic-asr', name: 'Clinic ASR', description: null, task: 'SPEECH_TO_TEXT' as const, versionNumber: 2, isTenantDefault: true },
-  { slug: 'fast-draft-asr', name: 'Fast Draft', description: null, task: 'SPEECH_TO_TEXT' as const, versionNumber: 1, isTenantDefault: false },
-];
-
-function makeAsrAgents(agents: typeof ASR_AGENTS | null = ASR_AGENTS, isLoading = false) {
-  return {
-    agents,
-    tenantDefault: agents?.find((agent) => agent.isTenantDefault) ?? null,
-    isLoading,
-    error: null,
-    refresh: vi.fn(async () => agents),
   };
 }
 
@@ -209,7 +193,6 @@ beforeEach(() => {
   sdk.userSettings = makeUserSettings();
   sdk.liveSummary = { snapshot: null, status: 'idle', error: null, start: vi.fn(), stop: vi.fn() };
   sdk.selectableWorkflows = makeSelectableWorkflows();
-  sdk.asrAgents = makeAsrAgents();
   sdk.governingWorkflow = makeGoverningWorkflow();
 });
 
@@ -227,7 +210,7 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
     expect(sdk.arca.session.listConsultations).not.toHaveBeenCalled();
   });
 
-  it('renders the three columns, the real consultation list and the footer selectors', async () => {
+  it('renders the three columns, the real consultation list and the footer language picker', async () => {
     stubFetch();
     renderWithProviders(<ConsultationDemoScreen />);
 
@@ -241,11 +224,13 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
     expect(await screen.findByText('P-448')).toBeTruthy();
     expect(screen.getByText('P-702')).toBeTruthy();
 
-    // Footer model selectors.
-    // TASK-865: the ASR picker names the published transcription AGENT; no
-    // `/audio/pipelines` read is made (the fetch stub would throw on it).
-    expect(screen.getByText('Transcription agent')).toBeTruthy();
-    expect(screen.getByText('Note assistant')).toBeTruthy();
+    // TASK-891 OD-5: the Transcription agent, Note assistant and Writing style dropdowns are
+    // GONE — the consultation workflow (picked at session-open) is the single selector. Only
+    // the language picker remains in the footer, defaulted to the honest "Auto (code-switch)"
+    // option rather than a bare, unselected placeholder (A6/OD-1).
+    expect(screen.queryByText('Transcription agent')).toBeNull();
+    expect(screen.queryByText('Note assistant')).toBeNull();
+    expect(screen.getByText('Auto (code-switch)')).toBeTruthy();
   });
 
   /**
