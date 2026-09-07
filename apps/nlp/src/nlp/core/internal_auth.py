@@ -36,7 +36,6 @@ __all__ = [
 
 INTERNAL_ACCESS_TOKEN_VAR = "INTERNAL_ACCESS_TOKEN"
 
-_TRUTHY = frozenset({"true", "1"})
 
 _MESSAGE = (
     f"{INTERNAL_ACCESS_TOKEN_VAR} is unset or empty. This service cannot authenticate to "
@@ -56,23 +55,34 @@ class MissingInternalAccessToken(RuntimeError):
 def is_deployed(environ: Mapping[str, str] | None = None) -> bool:
     """Is this a DEPLOYED process, i.e. one that must fail closed?
 
-    `NODE_ENV=production` is the unambiguous signal. A truthy `CI` is the other
-    one, because it means the same thing a pod means — host environment only, no
-    env file (`hope_env.load_env`).
+    `DEPLOYMENT_ENVIRONMENT` is the signal, NOT `NODE_ENV`. Measured on the live
+    cluster 2026-09-07: `base/config/platform.env` does set `NODE_ENV=production`,
+    but `overlays/dev/kustomization.yaml` PATCHES the generated ConfigMap to
+    `NODE_ENV=development` / `DEPLOYMENT_ENVIRONMENT=dev` — the live
+    `hope-platform-config` in `hope-v2-dev` reads `NODE_ENV: development`. So a
+    `node_env == "production"` rule is INERT in the very cluster where the missing
+    token was found: the pod would log one line and serve on unauthenticated,
+    which is exactly today's behaviour and exactly what this exists to stop.
 
-    `NODE_ENV=test` overrides both. `.gitlab/ci/test.yml` sets `NODE_ENV: "test"`
-    AND `CI: "true"` on every Python job, so without this carve-out a fail-closed
-    posture would abort the hermetic suite that proves the posture works — and a
-    unit test run is not a deployment however its host is shaped. The run declares
-    itself; we believe the declaration.
+    `DEPLOYMENT_ENVIRONMENT` is set in EVERY deployed environment (base
+    `production`, dev overlay `dev`) and unset on a developer's machine, which is
+    precisely the split this needs. `NODE_ENV=production` is kept as a
+    belt-and-braces trigger for any deployment that sets it without the other.
+
+    `NODE_ENV=test` overrides both, and `CI` alone is NOT a trigger.
+    `.gitlab/ci/test.yml` sets `NODE_ENV: "test"` AND `CI: "true"` on every Python
+    job, so without this carve-out a fail-closed posture would abort the hermetic
+    suite that proves the posture works — and a unit-test run is not a deployment
+    however its host is shaped. The run declares itself; we believe the
+    declaration.
     """
     env = os.environ if environ is None else environ
     node_env = env.get("NODE_ENV", "").strip().lower()
-    if node_env == "production":
-        return True
     if node_env == "test":
         return False
-    return env.get("CI", "").strip().lower() in _TRUTHY
+    if env.get("DEPLOYMENT_ENVIRONMENT", "").strip():
+        return True
+    return node_env == "production"
 
 
 def assert_internal_access_token(

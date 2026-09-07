@@ -56,11 +56,19 @@ class TestIsDeployed:
     def test_production_is_deployed(self) -> None:
         assert is_deployed({"NODE_ENV": "production"}) is True
 
-    def test_a_ci_shaped_process_is_deployed(self) -> None:
-        # `CI` truthy means "host env only, no env file" — the same posture a
-        # cluster pod runs in.
-        assert is_deployed({"CI": "true"}) is True
-        assert is_deployed({"CI": "1"}) is True
+    def test_the_dev_cluster_is_deployed(self) -> None:
+        # THE regression that matters. `base/config/platform.env` sets
+        # NODE_ENV=production, but `overlays/dev` PATCHES the generated ConfigMap
+        # to NODE_ENV=development — verified against the live
+        # `hope-platform-config` in hope-v2-dev on 2026-09-07. A rule keyed on
+        # `production` is inert in exactly the cluster where the token is missing.
+        assert is_deployed({"NODE_ENV": "development", "DEPLOYMENT_ENVIRONMENT": "dev"}) is True
+
+    def test_a_ci_shaped_process_is_NOT_deployed(self) -> None:
+        # A CI *test* job is not a deployment. `DEPLOYMENT_ENVIRONMENT` is unset
+        # there, which is the whole point of using it as the discriminator.
+        assert is_deployed({"CI": "true"}) is False
+        assert is_deployed({"CI": "1"}) is False
 
     def test_the_hermetic_test_suite_is_NOT_deployed(self) -> None:
         # `.gitlab/ci/test.yml` sets NODE_ENV=test AND CI=true on every Python
@@ -94,10 +102,13 @@ class TestDeployedRefusesToStart:
         with pytest.raises(MissingInternalAccessToken):
             assert_internal_access_token(environ=DEPLOYED)
 
-    def test_a_ci_shaped_deployment_raises(self, token) -> None:
+    def test_the_dev_cluster_raises(self, token) -> None:
+        # The hope-v2-dev pod environment, exactly as the live ConfigMap sets it.
         token("")
         with pytest.raises(MissingInternalAccessToken):
-            assert_internal_access_token(environ={"CI": "true"})
+            assert_internal_access_token(
+                environ={"NODE_ENV": "development", "DEPLOYMENT_ENVIRONMENT": "dev"}
+            )
 
     def test_a_real_token_starts_silently(self, token, caplog) -> None:
         token("s3cr3t-shared-internal-token")
