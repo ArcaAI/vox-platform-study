@@ -6,15 +6,13 @@
  * never render as "NER agent" on a clinician-visible playground surface. Family 6
  * (admin vocabulary): the per-tenant container is "Agent Catalog".
  *
- * The ASR pipeline's "Listener" label is RETIRED. The platform ships a
- * single-task realtime TRANSCRIPTION AGENT (a published `Agent` of task
- * `SPEECH_TO_TEXT`, TASK-863), and the Scribe offers a second, different choice
- * next to it — the consultation WORKFLOW selected at session-open. Calling one of
- * them "Listener" hid exactly the distinction the clinician now has to make, so
- * the ASR selector reads "Transcription agent". The former "(STT pipeline)" suffix
- * named the `AsrPipeline` substrate, which retires under TASK-861 (TASK-865 drops
- * it from the label). The NER case below is untouched: a shared skill is still
- * not an agent.
+ * The ASR pipeline's "Listener" label, and later its "Transcription agent" replacement, are
+ * BOTH RETIRED (TASK-891 OD-5): the Scribe footer's ASR-agent, note-assistant and
+ * writing-style dropdowns were removed outright — the consultation WORKFLOW selected at
+ * session-open is now the single selector, and it already names the ASR agent, the
+ * partial/finalize summarization agents and the DNA writing-style redaction agent. None of
+ * the retired dropdown's past labels may come back. The NER case below is untouched: a shared
+ * skill is still not an agent.
  */
 
 import { readFileSync } from 'node:fs';
@@ -44,12 +42,26 @@ describe('naming rollout (Family 2/6)', () => {
     }
   });
 
-  it('names the ASR selector after the transcription agent — no retired substrate, no "Listener"', () => {
+  /**
+   * TASK-891 OD-5 — the Transcription agent, Note assistant and Writing style dropdowns were
+   * REMOVED from the Scribe footer entirely: the consultation WORKFLOW picked at session-open
+   * is now the single selector, and it already names the ASR agent. This regression lock now
+   * asserts the retired dropdowns' own implementation markers never come back — not the prose
+   * that legitimately still names them when explaining the removal (this file's own docblock,
+   * and `scribe-footer.tsx`'s), which is why the assertions target JSX/identifier forms rather
+   * than the plain English label text.
+   */
+  it('never re-adds the retired Transcription agent / Note assistant / Writing style dropdowns to the Scribe footer', () => {
     const source = readSrc('features/playground-consultation/components/scribe/scribe-footer.tsx');
-    expect(source).toContain('label="Transcription agent"');
-    // The retired labels must not come back alongside the new one.
+    // `ModelSelector` backed BOTH the Transcription agent and Note assistant dropdowns.
+    expect(source).not.toContain('ModelSelector');
+    expect(source).not.toContain('label="Transcription agent"');
+    expect(source).not.toContain('label="Note assistant"');
     expect(source).not.toContain('Transcription Listener');
     expect(source).not.toContain('(STT pipeline)');
+    // The DNA writing-style picker's sentinel and field id.
+    expect(source).not.toContain('NO_DNA_STYLE');
+    expect(source).not.toContain('scribe-dna-style');
   });
 
   // The Agent Catalog screen's own vocabulary case lived here until
