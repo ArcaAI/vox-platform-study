@@ -10,7 +10,9 @@ and owns the three affordances that are NOT part of that wire:
 * the native ``GET {root}/api/v0/models`` listing, which carries ``state`` /
   ``quantization`` / ``max_context_length`` that ``/v1/models`` does not;
 * the non-standard ``stats`` blob LM Studio adds to a completion, captured
-  audit-only into ``GenerationStats.engine_native``.
+  audit-only into ``GenerationStats.engine_native``;
+* the structured-output wire, which admits ONLY ``json_schema`` and ``text`` —
+  never OpenAI's ``json_object`` (see ``_apply_response_format``).
 
 ## Why this is a class and not three ``if provider_name == "lm-studio"`` guards
 
@@ -51,6 +53,7 @@ import httpx
 import structlog
 
 from text.models.provider import ModelInfo
+from text.models.requests import GenerateRequest
 from text.providers.openai_compat import OpenAICompatProvider
 
 logger = structlog.get_logger(__name__)
@@ -75,6 +78,32 @@ class LMStudioProvider(OpenAICompatProvider):
         """No configuration — the engine endpoint arrives per request, exactly as
         for the base OpenAI-compatible adapter."""
         super().__init__(provider_name=_ENGINE, display_name="LM Studio")
+
+    def _apply_response_format(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
+        """LM Studio's structured-output wire: ``json_schema`` or ``text``, nothing else.
+
+        ``ResponseFormat.type == "json"`` is Text's vocabulary for "answer in JSON, no schema",
+        and the generic OpenAI wire spells it ``{"type": "json_object"}``. LM Studio refuses
+        that outright::
+
+            400 {'error': "'response_format.type' must be 'json_schema' or 'text'"}
+
+        so every published agent whose ``parameters.responseFormat`` is ``json`` failed on this
+        engine before a token was generated. It is expressed here as the PERMISSIVE object
+        schema — the same intent LM Studio's grammar engine can carry: constrain the output to
+        be a JSON object and nothing further, because the caller declared no shape. ``strict``
+        stays False for exactly that reason (a strict schema demands a closed property set
+        nobody named).
+
+        A caller-declared ``json_schema`` is forwarded by the base adapter untouched.
+        """
+        if request.response_format is not None and request.response_format.type == "json":
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "output", "schema": {"type": "object"}, "strict": False},
+            }
+            return
+        super()._apply_response_format(kwargs, request)
 
     def _apply_retention_hint(self, kwargs: dict[str, Any]) -> None:
         """Attach LM Studio's JIT ``ttl`` (seconds) via the OpenAI SDK's
