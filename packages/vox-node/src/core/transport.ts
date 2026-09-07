@@ -13,24 +13,24 @@ import { executeWithRetry } from './retry';
 import { SERVICE_ACCOUNT_TOKEN_HEADER } from './service-account-token';
 import type { QueryValue } from './url';
 import { buildUrl } from './url';
+import { resolveSdkVersion } from './version';
 
 /**
  * This package's identity, echoed in the `User-Agent` header as
- * `arcaai/vox-node/<version>`. `SDK_VERSION` is kept in sync with
- * `package.json#version` by hand — this package ships zero runtime
- * dependencies, and reading `package.json` at runtime would mean either a
- * build-config change to the (out-of-scope) `tsup.config.ts`/`tsconfig.json`
- * for a dual ESM/CJS JSON import, or a `require`/`import` divergence between
- * the two output formats. See the report.
+ * `arcaai/vox-node/<version>`. `SDK_VERSION` is DERIVED from
+ * `package.json#version` — at build time by `tsup.config.ts`'s `define`, and from
+ * the manifest itself when the source runs unbuilt (tests). See
+ * `core/version.ts`: it was a hand-maintained literal, and it drifted on the very
+ * first bump.
  */
 const SDK_USER_AGENT_NAME = 'arcaai/vox-node';
-const SDK_VERSION = '3.0.0';
+const SDK_VERSION = resolveSdkVersion();
 
 /**
- * The default `User-Agent` value. Exported so a test can assert it stays in sync
- * with `package.json#version` — hand-maintained constants drift silently, and a
- * stale version here is only discovered when someone is trying to correlate SDK
- * versions in gateway logs during an incident.
+ * The default `User-Agent` value. Exported so a test can assert the derivation is
+ * actually wired — a missing `define` and a missing manifest are both silent
+ * until someone is trying to correlate SDK versions in gateway logs during an
+ * incident.
  */
 export const SDK_USER_AGENT = `${SDK_USER_AGENT_NAME}/${SDK_VERSION}`;
 
