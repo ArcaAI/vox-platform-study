@@ -4,11 +4,13 @@ export type { LayoutEngine, LayoutOptions, LayoutResult, LayoutNode, LayoutEdge 
 export type {
   WorkflowCanvasProps,
   WorkflowCanvasNode,
-  WorkflowCanvasPort,
+  WorkflowCanvasBranch,
   WorkflowCanvasEdge,
   WorkflowCanvasNodeProblem,
   WorkflowCanvasNodeRendererProps,
   WorkflowCanvasNodeTypes,
+  WorkflowCanvasRunState,
+  WorkflowCanvasStepMarker,
   WorkflowConnectRequest,
   WorkflowFindingSeverity,
 } from './types';
