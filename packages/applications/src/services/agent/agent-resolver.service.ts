@@ -25,6 +25,14 @@ export interface ResolveAgentInput {
   task?: AgentTask;
   agentSlug?: string | null;
   departmentId?: string | null;
+  /**
+   * TASK-884's `key:value` selector tags, carried into the assignment cascade so a tier can
+   * hold more than one opinion (TASK-891: `phase:live` vs the unqualified finalize row).
+   *
+   * Ignored on the explicit-slug path — the caller already named the agent — and OMITTED from
+   * the cascade call entirely when empty, so every existing caller resolves byte-identically.
+   */
+  selectorTags?: readonly string[];
 }
 
 /** Where the ASR spec references auxiliary registry models (TASK-861 §3.2). */
@@ -104,7 +112,14 @@ export class AgentResolverService {
       source = 'explicit';
     } else {
       if (!input.task) throw new BadRequestException('Either agentSlug or task is required.');
-      const assigned = await this.assignments.resolve(tenantId, input.task, input.departmentId ?? null);
+      // The empty case calls with THREE arguments on purpose. Every other caller of this
+      // resolver (the ASR seam, the prompt test bench, a `core.agent` node) supplies no tags,
+      // and an unqualified cascade call must stay indistinguishable from the pre-TASK-891 one.
+      const selectorTags = input.selectorTags ?? [];
+      const assigned =
+        selectorTags.length > 0
+          ? await this.assignments.resolve(tenantId, input.task, input.departmentId ?? null, selectorTags)
+          : await this.assignments.resolve(tenantId, input.task, input.departmentId ?? null);
       if (!assigned.agentSlug || assigned.source === 'unassigned') {
         // TASK-890 §3.4 (OD-M) — the cascade ends at the tenant. Nothing assigned is a NAMED,
         // fail-closed 503 that says which task, in which tenant, and (when one was given) under

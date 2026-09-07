@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, Logger, Opt
 import { AgentTask } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import type { ResolvedAgent, ResolvedAgentModel } from '@arcaai/types';
-import { readAgentFallbackGovernance } from '@arcaai/workflow-contract';
+import { canonicalAgentTags, readAgentFallbackGovernance } from '@arcaai/workflow-contract';
 import { IAgentAssignmentService } from '../agent-assignment/IAgentAssignmentService';
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../agent-assignment/IAgentAssignmentService';
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
@@ -34,6 +34,15 @@ export interface ResolveTextSpecInput {
    */
   versionNumber?: number | null;
   departmentId?: string | null;
+  /**
+   * TASK-884 selector tags for the cascade. TASK-891 uses ONE reserved key — `phase:live` /
+   * `phase:finalize` / `phase:test`, minted by `textPhaseSelectorTags` — so the live flush and
+   * the finalize synthesis can resolve DIFFERENT agents of the same tenant and task, which is
+   * the only way one tenant expresses two reasoning postures.
+   *
+   * Part of the cache key (see `specCache`), and omitted from the downstream call when empty.
+   */
+  selectorTags?: readonly string[];
 }
 
 /**
@@ -115,7 +124,11 @@ export class TextAgentResolverService {
 
   async resolve(input: ResolveTextSpecInput): Promise<ResolvedTextGenerationSpec> {
     const { tenantId } = input;
-    const key = `${tenantId}::${input.departmentId ?? ''}::${input.agentSlug ?? ''}`;
+    // TASK-891 — the SELECTOR is part of the key. Without it the 15 s window would let the
+    // first flush's spec answer every phase behind it, which is exactly the cross-tier bleed
+    // the phase tag exists to remove. Canonicalised so `{a,b}` and `{b,a}` share one entry.
+    const selector = canonicalAgentTags([...(input.selectorTags ?? [])]).join(',');
+    const key = `${tenantId}::${input.departmentId ?? ''}::${input.agentSlug ?? ''}::${selector}`;
     const spec = await this.cached(key, tenantId, input);
     // Enforced on the CACHED spec, so a pinned call shares the entry and still fails CLOSED.
     if (typeof input.versionNumber === 'number' && spec.agent.versionNumber !== input.versionNumber) {
@@ -143,6 +156,8 @@ export class TextAgentResolverService {
         task: AgentTask.TEXT_GENERATION,
         agentSlug: input.agentSlug ?? null,
         departmentId: input.departmentId ?? null,
+        // Absent, not empty, when there is nothing to say — see `ResolveAgentInput.selectorTags`.
+        ...(input.selectorTags?.length ? { selectorTags: input.selectorTags } : {}),
       });
       return this.resolveFromAgent(agent, tenantId);
     })();
