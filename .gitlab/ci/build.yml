@@ -401,6 +401,13 @@ build-tts:
 
 build-stt:
   extends: .build-template
+  # The two STT images are the only ones pulling the 846.9 MiB `torch` wheel, and
+  # this runner's link to PyPI is measurably unreliable (pipeline #1135, 2026-09-07:
+  # two runs cancelled mid-download at the 30-minute default). `UV_HTTP_TIMEOUT` in
+  # apps/stt/docker/Dockerfile stops uv restarting the transfer from zero; this wall
+  # is the second half — even an uninterrupted pull needs more than 30 minutes when
+  # the link is slow. Remove it once `torch` is baked into a base image.
+  timeout: 1h
   needs:
     - job: warm-up-base-images
       optional: true
@@ -421,6 +428,13 @@ build-stt:
 
 build-stt-worker:
   extends: .build-template
+  # The two STT images are the only ones pulling the 846.9 MiB `torch` wheel, and
+  # this runner's link to PyPI is measurably unreliable (pipeline #1135, 2026-09-07:
+  # two runs cancelled mid-download at the 30-minute default). `UV_HTTP_TIMEOUT` in
+  # apps/stt/docker/Dockerfile stops uv restarting the transfer from zero; this wall
+  # is the second half — even an uninterrupted pull needs more than 30 minutes when
+  # the link is slow. Remove it once `torch` is baked into a base image.
+  timeout: 1h
   needs:
     - job: warm-up-base-images
       optional: true
