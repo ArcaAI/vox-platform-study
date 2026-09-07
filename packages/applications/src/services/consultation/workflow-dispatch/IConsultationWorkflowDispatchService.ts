@@ -102,6 +102,16 @@ export interface DispatchForConsultationInput {
   readonly userId: string;
   readonly externalPatientId?: string | null;
   /**
+   * TASK-891 — the consultation's own parent link, when it has one. Threaded in rather than
+   * re-read: dispatch is best-effort by contract, and a DB read here would change its failure
+   * profile (this service must never fail an open because it could not re-fetch a fact its
+   * caller already has). Used ONLY to derive the reserved `visit-type:<key>` selector tag
+   * (`VisitTypeService.forConsultation`, OD-2/OD-3) for the consultation-palette cascade —
+   * absent (`undefined`/`null`) means "not a follow-up", not "unknown", so an omitted value
+   * degrades to `visit-type:new-visit` rather than to a failure.
+   */
+  readonly parentConsultationId?: string | null;
+  /**
    * the caller's workflow selection, taking precedence over the assignment
    * cascade for the `consultation` palette (the INDEPENDENT `stt`-palette assignment is
    * unaffected — the two lanes are separate).

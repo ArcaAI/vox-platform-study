@@ -97,6 +97,26 @@ describe('ConsultationService.getOrCreate — workflow selection (OD-1)', () => 
     expect(m.workflowDispatchService.dispatchForConsultation).toHaveBeenCalledWith(expect.objectContaining({ workflowDefinitionSlug: undefined }));
   });
 
+  // TASK-891 — the dispatcher derives the reserved `visit-type:<key>` selector tag
+  // (OD-2/OD-3) from the consultation's own parent link. Threaded in here rather than
+  // re-read by the dispatcher: dispatch is best-effort by contract, and a DB read there
+  // would change its failure profile.
+  describe('TASK-891 — threading the parent link into dispatch for visit-type selection', () => {
+    it('passes the parent link through when the consultation is a revisit', async () => {
+      m.consultationRepository.findById.mockResolvedValue({ id: 'parent-1', tenantId: TENANT });
+
+      await makeService(m).getOrCreate({ patientId: 'p-1', parentConsultationId: 'parent-1' } as never, 'doctor-1');
+
+      expect(m.workflowDispatchService.dispatchForConsultation).toHaveBeenCalledWith(expect.objectContaining({ parentConsultationId: 'parent-1' }));
+    });
+
+    it('passes no parent link for a brand-new visit — today behaviour, unchanged', async () => {
+      await makeService(m).getOrCreate({ patientId: 'p-1' } as never, 'doctor-1');
+
+      expect(m.workflowDispatchService.dispatchForConsultation).toHaveBeenCalledWith(expect.objectContaining({ parentConsultationId: null }));
+    });
+  });
+
   it('refuses BEFORE writing anything when the selection 404s — no consultation row, no meter, no consent', async () => {
     m.workflowDispatchService.assertSelectableForConsultation = vi.fn().mockRejectedValue(new NotFoundException('Workflow definition not found'));
 
