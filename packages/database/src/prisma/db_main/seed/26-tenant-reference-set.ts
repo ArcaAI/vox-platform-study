@@ -52,6 +52,7 @@ export interface ReferenceSetSeedSummary {
   promptTemplates: number;
   agents: number;
   agentAssignments: number;
+  documentTemplates: number;
 }
 
 /**
@@ -336,8 +337,97 @@ async function copyAgentAssignments(client: CorePrismaClient, tenantId: string):
 }
 
 /**
+ * Clone the SYSTEM document-template reference library — the visit-type case-note SHAPES seeded by
+ * `27-document-template-library.ts` — into one tenant.
+ *
+ * `DocumentTemplate` is CONTENT: it is absent from `SYSTEM_SHARED_READ_MODELS` and
+ * `resolveForGeneration` reads the REQUEST tenant only, so a SYSTEM row is invisible to a tenant at
+ * runtime. The copy is the only thing that makes the shape reachable, exactly as for the four kinds
+ * above — which is why it lives HERE rather than in the phase that seeds the source rows. Phase 27
+ * owns the SYSTEM library; provisioning a tenant is this file's single job.
+ *
+ * Two departures from the copiers above, both forced by the model:
+ *
+ *  - the existence probe is deliberately NOT filtered by `resourceStatus`. `@@unique([tenantId,
+ *    slug])` is absolute, so a SOFT-DELETED row still occupies the slug and a create would violate
+ *    the constraint. (`copyPromptTemplates` may filter on ENABLED because `PromptTemplate` carries
+ *    no such unique.)
+ *  - `compiled` / `compilerVersion` / `checksum` travel VERBATIM rather than being recompiled, for
+ *    the reason the file header gives for an agent's `compiledConfig`: they are frozen artifacts
+ *    DERIVED from the same `shape`, and `platform-reference-shapes.task891.test.ts` pins them equal
+ *    to what the real `compileDocumentTemplate` emits for these shapes. Copying them is therefore
+ *    indistinguishable from the `create` + `publish` pair `TenantReferenceSetService` runs, which
+ *    is what makes a raw copy honest here.
+ */
+async function copyDocumentTemplates(client: CorePrismaClient, tenantId: string): Promise<number> {
+  const sources = await client.documentTemplate.findMany({
+    where: { tenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED' },
+    orderBy: { slug: 'asc' },
+  });
+  let added = 0;
+  for (const source of sources) {
+    const existing = await client.documentTemplate.findFirst({ where: { tenantId, slug: source.slug }, select: { id: true } });
+    if (existing) continue;
+
+    const pinned =
+      source.pinnedVersionNumber === null
+        ? null
+        : await client.documentTemplateVersion.findFirst({
+            where: { templateId: source.id, versionNumber: source.pinnedVersionNumber },
+          });
+    // An unpinned source would clone into a row `resolveForGeneration` refuses to serve — the same
+    // refusal `TenantReferenceSetService.copyDocumentTemplates` makes.
+    if (!pinned) continue;
+
+    const id = cloneId(tenantId, 'document-template', source.id);
+    await client.documentTemplate.create({
+      data: {
+        id,
+        tenantId,
+        slug: source.slug,
+        name: source.name,
+        description: source.description,
+        status: 'PUBLISHED',
+        pinnedVersionNumber: 1,
+        // Never the tenant default — the workflow node's `documentTemplateSlug` is the selector,
+        // and a lane that names none must keep falling open to the platform shape.
+        isDefault: false,
+        sourceTemplateSlug: source.slug,
+        templateLocked: true,
+        createdBy: SYSTEM_USER_ID,
+      },
+    });
+    await client.documentTemplateVersion.create({
+      data: {
+        id: cloneId(tenantId, 'document-template-version', pinned.id),
+        tenantId,
+        templateId: id,
+        // The clone's history restarts at 1 — a tenant's version lineage is its own.
+        versionNumber: 1,
+        shape: pinned.shape as never,
+        compiled: pinned.compiled as never,
+        compilerVersion: pinned.compilerVersion,
+        checksum: pinned.checksum,
+        changeReason: 'Provisioned from the platform reference set',
+        createdBy: SYSTEM_USER_ID,
+      },
+    });
+    added += 1;
+  }
+  return added;
+}
+
+/**
  * Provision ONE tenant, in the order the runtime requires: schemas, prompts, agents (whose
- * instruction is re-pointed at the prompt clones), then the assignments that name them.
+ * instruction is re-pointed at the prompt clones), the assignments that name them, and finally the
+ * document templates.
+ *
+ * The ORDER is `REFERENCE_SET_KINDS`, and it is load-bearing rather than tidy —
+ * `tenant-reference-set-parity.contract.test.ts` asserts both implementations share it.
+ * `documentTemplates` sits last here because it sits immediately before `workflowDefinitions`
+ * there: a `consultation.realtimeSummary` node binds its shape by ROW ID, and
+ * `WorkflowDefinitionService.cloneFromSystem` re-points that binding by SLUG in the target tenant,
+ * so the template has to exist before a workflow can be copied onto it.
  *
  * Workflow definitions are deliberately NOT copied here. `WorkflowAssignmentService.resolve` has
  * no SYSTEM tier and never had one, so a tenant without a definition behaves exactly as it does
@@ -353,7 +443,8 @@ export async function provisionTenantReferenceSet(client: CorePrismaClient, tena
   const promptTemplates = await copyPromptTemplates(client, tenantId);
   const agents = await copyAgents(client, tenantId);
   const agentAssignments = await copyAgentAssignments(client, tenantId);
-  return { tenantId, contextSchemas, promptTemplates, agents, agentAssignments };
+  const documentTemplates = await copyDocumentTemplates(client, tenantId);
+  return { tenantId, contextSchemas, promptTemplates, agents, agentAssignments, documentTemplates };
 }
 
 /** Every non-SYSTEM tenant that exists — the seed population, plus anything created since. */
@@ -377,7 +468,8 @@ export const seedTenantReferenceSets = async (client: CorePrismaClient): Promise
   for (const summary of summaries) {
     console.log(
       `  ${summary.tenantId}: +${summary.contextSchemas} context schema(s), +${summary.promptTemplates} prompt template(s), ` +
-        `+${summary.agents} agent(s), +${summary.agentAssignments} assignment(s)`,
+        `+${summary.agents} agent(s), +${summary.agentAssignments} assignment(s), ` +
+        `+${summary.documentTemplates} document template(s)`,
     );
   }
   if (summaries.length === 0) console.log('  (no non-SYSTEM tenants to provision)');
