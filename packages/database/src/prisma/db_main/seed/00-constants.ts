@@ -65,6 +65,18 @@
  *   83000000-xxxx → General User Settings
  *   84000000-xxxx → SDK User Preferences
  *   85000000-xxxx → Per-Tenant Global Settings (general, feature-flags, stt, text)
+ *   8a000000-…-XXXX-… → Document Templates — the platform document-template
+ *                     reference library (`27-document-template-library.ts`).
+ *                     Slot `…-0000-…` is the SYSTEM reference row; the
+ *                     per-tenant CLONES are not in this block at all — their
+ *                     ids are DERIVED from `(targetTenant, sourceId)` by that
+ *                     file's `cloneId`, so they need no allocation here.
+ *   8b000000-…-XXXX-… → their pinned v1 DocumentTemplateVersion snapshots
+ *                     (mirror slot, same rule for the clones)
+ *                     LOWER-CASE hex, deliberately: PostgreSQL `uuid` is
+ *                     CASE-INSENSITIVE, and the E0/F0 collision recorded below
+ *                     came from mixing cases across two blocks. Never write
+ *                     these as `8A`/`8B`.
  *   90000000-xxxx → Consultations
  *   91000000-xxxx → Context Items
  *   92000000-xxxx → Summary Metas

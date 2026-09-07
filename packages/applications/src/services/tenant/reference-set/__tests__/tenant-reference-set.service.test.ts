@@ -13,6 +13,11 @@
  *  - the SYSTEM tenant refuses to be provisioned from itself.
  *  - NOTHING is cloned for `AiModel` or `GlobalSetting` (OD-O / OD-P): those are CONFIG and
  *    resolve tenant → SYSTEM at read time.
+ *
+ * TASK-891 adds `documentTemplates` — the same CONTENT rule, for the clinical-document SHAPE
+ * catalogue seeded by `27-document-template-library.ts`. It lands BEFORE `workflowDefinitions`
+ * because a workflow's generation node binds its template BY ROW ID and the clone re-points that
+ * binding by slug in the target tenant: with no template there is nothing to re-point to.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BadRequestException } from '@nestjs/common';
@@ -21,6 +26,7 @@ import { AgentTask, PipelinePolicyScope } from '@arcaai/domains';
 import { IAgentService } from '../../../agent/IAgentService';
 import { IAgentAssignmentService } from '../../../agent-assignment/IAgentAssignmentService';
 import { IConsultationContextSchemaService } from '../../../consultation-context-schema/IConsultationContextSchemaService';
+import { IDocumentTemplateService } from '../../../document-template/IDocumentTemplateService';
 import { IPromptManagementService } from '../../../prompt-management/IPromptManagementService';
 import { IWorkflowDefinitionService } from '../../../workflow-definition/IWorkflowDefinitionService';
 import { TenantReferenceSetService } from '../tenant-reference-set.service';
@@ -35,6 +41,8 @@ const promptTemplateRepository = { findSystemReferences: vi.fn() };
 const assignmentRepository = { findAllForScope: vi.fn(), findForScopeSelector: vi.fn() };
 const workflowDefinitionRepository = { findSystemTemplates: vi.fn() };
 const contextSchemaRepository = { findAll: vi.fn(), findByTenantAndSlug: vi.fn() };
+const documentTemplateRepository = { findAll: vi.fn(), findByTenantAndSlug: vi.fn() };
+const documentTemplateVersionRepository = { findByTemplateAndVersionNumber: vi.fn() };
 const databaseService = { baseClient: { __base: true } };
 
 const agents = {
@@ -67,6 +75,16 @@ const assignments = {
     return {};
   }),
 };
+const documentTemplates = {
+  create: vi.fn(async (dto: any) => {
+    calls.push(`document:${dto.slug}`);
+    return { id: `dt-${dto.slug}` };
+  }),
+  // Deliberately NOT pushed onto `calls`: the ORDER assertion is about the kinds, and a second
+  // entry per template would drown it. That `publish` ran with the source's pinned shape is
+  // asserted directly instead.
+  publish: vi.fn(async () => ({})),
+};
 
 const PORTS = new Map<unknown, unknown>([
   [IAgentService, agents],
@@ -74,6 +92,7 @@ const PORTS = new Map<unknown, unknown>([
   [IWorkflowDefinitionService, workflows],
   [IConsultationContextSchemaService, contextSchemas],
   [IAgentAssignmentService, assignments],
+  [IDocumentTemplateService, documentTemplates],
 ]);
 
 function resolvePort(token: unknown): unknown {
@@ -100,6 +119,8 @@ function make(): TenantReferenceSetService {
     assignmentRepository as never,
     workflowDefinitionRepository as never,
     contextSchemaRepository as never,
+    documentTemplateRepository as never,
+    documentTemplateVersionRepository as never,
     databaseService as never,
     moduleRef as never,
     events as never,
@@ -133,6 +154,11 @@ beforeEach(() => {
     calls.push(`assignment:${dto.task}:${dto.agentSlug}`);
     return {};
   });
+  documentTemplates.create.mockImplementation(async (dto: any) => {
+    calls.push(`document:${dto.slug}`);
+    return { id: `dt-${dto.slug}` };
+  });
+  documentTemplates.publish.mockImplementation(async () => ({}));
   contextSchemaRepository.findAll.mockResolvedValue([{ slug: 'consultation_legacy_v1' }]);
   contextSchemaRepository.findByTenantAndSlug.mockResolvedValue(null);
   promptTemplateRepository.findSystemReferences.mockResolvedValue([{ id: 'sys-prompt', name: 'CATCHALL_SOAP', scope: 'TENANT_DEFAULT' }]);
@@ -142,10 +168,27 @@ beforeEach(() => {
   );
   assignmentRepository.findForScopeSelector.mockResolvedValue(null);
   workflowDefinitionRepository.findSystemTemplates.mockResolvedValue([{ slug: 'platform-default-summarization' }]);
+  documentTemplateRepository.findAll.mockResolvedValue([
+    {
+      id: 'sys-doc-1',
+      slug: 'consultation_note_new_visit',
+      name: 'Consultation Note — New / Referral Visit',
+      description: 'Platform reference shape.',
+      pinnedVersionNumber: 1,
+      isDefault: false,
+    },
+    { id: 'sys-doc-2', slug: 'consultation_note_revisit', name: 'Consultation Note — Follow-up', description: null, pinnedVersionNumber: 1, isDefault: false },
+  ]);
+  documentTemplateRepository.findByTenantAndSlug.mockResolvedValue(null);
+  documentTemplateVersionRepository.findByTemplateAndVersionNumber.mockImplementation(async (templateId: string) => ({
+    id: `${templateId}-v1`,
+    versionNumber: 1,
+    shape: { schemaVersion: '1.0', title: templateId, sections: [] },
+  }));
 });
 
 describe('TenantReferenceSetService.provision', () => {
-  it('copies every kind in the order the runtime requires: schemas, prompts, agents, assignments, workflows', async () => {
+  it('copies every kind in the order the runtime requires: schemas, prompts, agents, assignments, documents, workflows', async () => {
     const summary = await make().provision(TENANT);
 
     expect(calls).toEqual([
@@ -153,6 +196,8 @@ describe('TenantReferenceSetService.provision', () => {
       'prompt:sys-prompt',
       'agent:platform-summarization',
       'assignment:TEXT_GENERATION:platform-summarization',
+      'document:consultation_note_new_visit',
+      'document:consultation_note_revisit',
       'workflow:platform-default-summarization',
     ]);
     expect(summary.mode).toBe('missing-only');
@@ -161,6 +206,7 @@ describe('TenantReferenceSetService.provision', () => {
     expect(summary.kinds.promptTemplates.added).toBe(1);
     expect(summary.kinds.agents.added).toBe(1);
     expect(summary.kinds.agentAssignments.added).toBe(1);
+    expect(summary.kinds.documentTemplates.added).toBe(2);
     expect(summary.kinds.workflowDefinitions.added).toBe(1);
   });
 
@@ -168,7 +214,14 @@ describe('TenantReferenceSetService.provision', () => {
     const summary = await make().provision(TENANT);
     // The service has no model or setting repository at all; the assertion that matters is that
     // the kind set is closed, so a future addition has to be a deliberate edit here.
-    expect(Object.keys(summary.kinds)).toEqual(['contextSchemas', 'promptTemplates', 'agents', 'agentAssignments', 'workflowDefinitions']);
+    expect(Object.keys(summary.kinds)).toEqual([
+      'contextSchemas',
+      'promptTemplates',
+      'agents',
+      'agentAssignments',
+      'documentTemplates',
+      'workflowDefinitions',
+    ]);
   });
 
   it('reads the SYSTEM reference library on the UNSCOPED base client, never the caller-scoped one', async () => {
@@ -244,6 +297,7 @@ describe('TenantReferenceSetService.resync', () => {
   it('is idempotent: a second run over a fully provisioned tenant adds nothing', async () => {
     contextSchemaRepository.findByTenantAndSlug.mockResolvedValue({ id: 'own' });
     assignmentRepository.findForScopeSelector.mockResolvedValue({ id: 'own' });
+    documentTemplateRepository.findByTenantAndSlug.mockResolvedValue({ id: 'own' });
     prompts.cloneFromSystem.mockResolvedValue({ templateId: 'p1', created: false, approvedVersionNumber: 1 });
     agents.cloneFromSystem.mockResolvedValue({ agentId: 'a1', created: false, warnings: [] });
     workflows.cloneFromSystem.mockResolvedValue({ definitionId: 'w1', created: false });
@@ -263,5 +317,144 @@ describe('TenantReferenceSetService.resync', () => {
     const summary = await make().resync(TENANT, { mode: 'refresh-locked', kinds: ['contextSchemas'] });
     expect(summary.mode).toBe('refresh-locked');
     expect(summary.warnings.some((warning) => warning.includes('refresh-locked') && warning.includes('not implemented'))).toBe(true);
+  });
+});
+
+/**
+ * TASK-891 — `documentTemplates`.
+ *
+ * The gap these close: the SYSTEM `DocumentTemplate` rows seeded by
+ * `27-document-template-library.ts` are CONTENT — the model is deliberately absent from
+ * `SYSTEM_SHARED_READ_MODELS` and `resolveForGeneration` reads the REQUEST tenant only — so a
+ * SYSTEM row is INVISIBLE to a tenant that has no copy of it. Before this kind existed a tenant
+ * created through `POST /admin/tenants` received none, and the sync route could not add them
+ * later. Everything below is about the copy being faithful, ordered, and never destructive.
+ */
+describe('TenantReferenceSetService — documentTemplates (TASK-891)', () => {
+  it('clones each SYSTEM template and publishes v1 from the SOURCE`s PINNED version shape', async () => {
+    const summary = await make().provision(TENANT);
+
+    expect(summary.kinds.documentTemplates).toEqual({ added: 2, skipped: 0, failed: 0 });
+    expect(documentTemplateVersionRepository.findByTemplateAndVersionNumber).toHaveBeenCalledWith('sys-doc-1', 1);
+    expect(documentTemplateVersionRepository.findByTemplateAndVersionNumber).toHaveBeenCalledWith('sys-doc-2', 1);
+    expect(documentTemplates.publish).toHaveBeenCalledWith('dt-consultation_note_new_visit', {
+      shape: { schemaVersion: '1.0', title: 'sys-doc-1', sections: [] },
+      changeReason: 'Provisioned from the platform reference set',
+    });
+    expect(documentTemplates.publish).toHaveBeenCalledWith('dt-consultation_note_revisit', {
+      shape: { schemaVersion: '1.0', title: 'sys-doc-2', sections: [] },
+      changeReason: 'Provisioned from the platform reference set',
+    });
+  });
+
+  it('stamps the golden-library provenance and never makes the clone the tenant default', async () => {
+    await make().provision(TENANT);
+
+    expect(documentTemplates.create).toHaveBeenCalledWith({
+      slug: 'consultation_note_new_visit',
+      name: 'Consultation Note — New / Referral Visit',
+      description: 'Platform reference shape.',
+      // Hardcoded false, never mirrored from the source: `DocumentTemplateService.create`
+      // DEMOTES the tenant's existing default, and provisioning must never silently change a
+      // choice the tenant made.
+      isDefault: false,
+      sourceTemplateSlug: 'consultation_note_new_visit',
+      templateLocked: true,
+    });
+    expect(documentTemplates.create).toHaveBeenCalledWith(expect.objectContaining({ slug: 'consultation_note_revisit', description: undefined }));
+  });
+
+  it('reads the SYSTEM library under SYSTEM context and writes the clone under the TENANT`s', async () => {
+    await make().provision(TENANT);
+
+    expect(documentTemplateRepository.findAll).toHaveBeenCalledWith({ where: { tenantId: SYSTEM } });
+    expect(documentTemplateRepository.findByTenantAndSlug).toHaveBeenCalledWith(TENANT, 'consultation_note_new_visit');
+    expect(cls.set).toHaveBeenCalledWith('tenantId', SYSTEM);
+    expect(cls.set).toHaveBeenCalledWith('tenantId', TENANT);
+  });
+
+  it('lands BEFORE workflowDefinitions — a workflow node binds its template by row id, re-pointed by slug', async () => {
+    await make().provision(TENANT);
+    expect(calls.indexOf('document:consultation_note_new_visit')).toBeLessThan(calls.indexOf('workflow:platform-default-summarization'));
+  });
+
+  /**
+   * THE clobber proof. A tenant that has edited its copy — renamed it, republished a different
+   * shape, unlocked it — must come out of a re-sync with exactly what it had. Create-only by
+   * SLUG is what guarantees that: the tenant row is never read for its contents, never patched
+   * and never re-published, so there is no code path through which an edit could be lost.
+   */
+  it('is CREATE-ONLY: a tenant-EDITED row is skipped, never overwritten and never re-published', async () => {
+    documentTemplateRepository.findByTenantAndSlug.mockImplementation(async (_tenantId: string, slug: string) =>
+      slug === 'consultation_note_new_visit'
+        ? { id: 'tenant-own', slug, name: 'Our own house note', templateLocked: false, pinnedVersionNumber: 7 }
+        : null,
+    );
+
+    const summary = await make().resync(TENANT, { kinds: ['documentTemplates'] });
+
+    expect(summary.kinds.documentTemplates).toEqual({ added: 1, skipped: 1, failed: 0 });
+    // Only the MISSING slug was touched. The edited row produced no create and no publish at all.
+    expect(documentTemplates.create).toHaveBeenCalledTimes(1);
+    expect(documentTemplates.create).toHaveBeenCalledWith(expect.objectContaining({ slug: 'consultation_note_revisit' }));
+    expect(documentTemplates.publish).toHaveBeenCalledTimes(1);
+    expect(documentTemplates.publish).not.toHaveBeenCalledWith('tenant-own', expect.anything());
+  });
+
+  it('leaves a tenant-edited row alone in `refresh-locked` too — the mode is declared, not implemented', async () => {
+    documentTemplateRepository.findByTenantAndSlug.mockResolvedValue({ id: 'tenant-own', templateLocked: false });
+
+    const summary = await make().resync(TENANT, { mode: 'refresh-locked', kinds: ['documentTemplates'] });
+
+    expect(summary.kinds.documentTemplates).toEqual({ added: 0, skipped: 2, failed: 0 });
+    expect(documentTemplates.create).not.toHaveBeenCalled();
+    expect(documentTemplates.publish).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent: a second run over an already-provisioned tenant adds nothing', async () => {
+    documentTemplateRepository.findByTenantAndSlug.mockResolvedValue({ id: 'clone' });
+    const summary = await make().resync(TENANT, { kinds: ['documentTemplates'] });
+    expect(summary.kinds.documentTemplates).toEqual({ added: 0, skipped: 2, failed: 0 });
+  });
+
+  /**
+   * An unservable SOURCE would produce an unservable CLONE — a row `isServable` silently skips.
+   * Naming the platform defect at provisioning time is the point of the warnings list.
+   */
+  it('refuses a SYSTEM row with no pinned version, by name, and keeps going', async () => {
+    documentTemplateRepository.findAll.mockResolvedValue([
+      { id: 'sys-doc-1', slug: 'consultation_note_new_visit', name: 'A', description: null, pinnedVersionNumber: null, isDefault: false },
+      { id: 'sys-doc-2', slug: 'consultation_note_revisit', name: 'B', description: null, pinnedVersionNumber: 1, isDefault: false },
+    ]);
+
+    const summary = await make().resync(TENANT, { kinds: ['documentTemplates'] });
+
+    expect(summary.kinds.documentTemplates).toEqual({ added: 1, skipped: 0, failed: 1 });
+    expect(summary.warnings).toEqual([expect.stringContaining("documentTemplates: 'consultation_note_new_visit' was not provisioned")]);
+    expect(documentTemplates.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a per-row publish failure by NAME and still copies the rest', async () => {
+    documentTemplates.publish.mockRejectedValueOnce(new Error('the shape is not publishable'));
+
+    const summary = await make().resync(TENANT, { kinds: ['documentTemplates'] });
+
+    expect(summary.kinds.documentTemplates).toEqual({ added: 1, skipped: 0, failed: 1 });
+    expect(summary.warnings).toEqual([
+      expect.stringContaining("documentTemplates: 'consultation_note_new_visit' was not provisioned: the shape is not publishable"),
+    ]);
+  });
+
+  it('reports an unwired document-template service instead of throwing', async () => {
+    moduleRef.get.mockImplementation((token: unknown) => {
+      if (token === IDocumentTemplateService) throw new Error('not registered');
+      if (PORTS.has(token)) return PORTS.get(token);
+      throw new Error('not registered');
+    });
+
+    const summary = await make().resync(TENANT, { kinds: ['documentTemplates'] });
+
+    expect(summary.kinds.documentTemplates.failed).toBe(1);
+    expect(summary.warnings).toEqual([expect.stringContaining('documentTemplates: the document-template service is not wired')]);
   });
 });
