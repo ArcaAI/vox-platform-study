@@ -1641,18 +1641,26 @@ export class SummaryService extends BaseService implements ISummaryService {
     }
 
     let options = payload.options;
+    // TASK-891 — the resolved selection's `generation` block, carried alongside
+    // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
+    // `payload.agentLlm` (a bare `{provider, model}` pair) never carries an opinion.
+    let generation: Record<string, unknown> | undefined;
     if (this.harnessPolicyService && tenantId) {
       // Precedence: agent `llmOverrides.finalize` (frozen at the
       // live session's agent) → tenant `text.finalize` AiTaskDefault. The A4
       // fallback retry below stays TENANT-configured either way — an agent
       // override names the primary, never the fallback.
-      const { provider, model } =
-        payload.agentLlm ?? (await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', payload.departmentId ?? null));
-      options = { textProvider: provider, textModel: model, ...payload.options };
+      if (payload.agentLlm) {
+        options = { textProvider: payload.agentLlm.provider, textModel: payload.agentLlm.model, ...payload.options };
+      } else {
+        const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', payload.departmentId ?? null);
+        options = { textProvider: selection.provider, textModel: selection.model, ...payload.options };
+        generation = selection.generation;
+      }
     }
 
     try {
-      return await this.executeTextGenerate(payload, options);
+      return await this.executeTextGenerate(payload, options, generation);
     } catch (primaryError) {
       if (tenantId && this.harnessPolicyService && this.isTextFallbackEligible(primaryError)) {
         const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize', payload.departmentId ?? null);
@@ -1660,7 +1668,9 @@ export class SummaryService extends BaseService implements ISummaryService {
         if (fallback && fallback.provider !== primaryProvider) {
           const fallbackOptions = { ...options, textProvider: fallback.provider, textModel: fallback.model };
           try {
-            const result = await this.executeTextGenerate(payload, fallbackOptions);
+            // TASK-891 — the FALLBACK selection's own `generation`, not the primary's: a
+            // different agent may serve, and it carries its own reasoning posture.
+            const result = await this.executeTextGenerate(payload, fallbackOptions, fallback.generation);
             this.logger.warn({
               message: 'Primary TEXT finalize call failed; served via tenant-configured fallback',
               fallbackProvider: fallback.provider,
@@ -1715,7 +1725,15 @@ export class SummaryService extends BaseService implements ISummaryService {
    * eligibility from the original shape before wrapping into
    * `BadRequestException`.
    */
-  private async executeTextGenerate(payload: TextCallPayload, options: Record<string, unknown> | undefined): Promise<TextCallResult> {
+  private async executeTextGenerate(
+    payload: TextCallPayload,
+    options: Record<string, unknown> | undefined,
+    // TASK-891 — the RESOLVED selection's `parameters.generation`, when this attempt was made
+    // on behalf of one (primary or fallback). Its `reasoning` block becomes the `extra`
+    // ride-along below. Absent on the `payload.agentLlm` / no-policy-service paths, where there
+    // is no resolved agent to have an opinion.
+    generation?: Record<string, unknown>,
+  ): Promise<TextCallResult> {
     const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
     // (OD-9 exemption: credential injection ONLY) — this is the
     // FINALIZE path, whose output is the note a clinician signs, and it reached
@@ -1728,7 +1746,9 @@ export class SummaryService extends BaseService implements ISummaryService {
     // layer the platform admin's runtime profile (hyperparameters + engine
     // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
-    await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
+    // TASK-891 — `generation` carries the resolved agent's reasoning posture (OD-4) onto the
+    // `extra` ride-along; an agent with no opinion injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string }, generation);
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
     // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY on this hop — this
