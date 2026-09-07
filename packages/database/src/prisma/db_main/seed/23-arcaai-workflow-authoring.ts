@@ -37,21 +37,29 @@
  * row too (its edges had to migrate to named sockets), so both are now current and both are
  * reproducible by re-running their scripts. Neither may be hand-typed.
  *
- * ## Why these graphs, and why two
+ * ## Why these graphs, and why four
  *
  * The graphs are not a minimal rule-satisfying skeleton. They walk the capability chain the
  * requirement names: capture -> transcribe -> extract entities -> realtime summary -> assemble and
  * synthesize into SOAP -> verify -> persist -> clinician gate. Every node is a registered,
  * `implemented: true` palette entry with a real interpreter activity behind it.
  *
- * Two definitions, because "department changes the behaviour" has to be observable rather than
- * asserted. The Rheumatology graph differs in two ways that a reader can point at:
+ * They are ONE spine varied on three axes, because each axis has to be observable rather than
+ * asserted:
  *
- *   - it adds `consultation.inferentialSensors` — the LLM-as-judge verification pass;
- *   - its `consultation.assemblePrompt` binds `dnaStyleId` to Dr Nair's DNA writing-style report.
- *     That node config is the ONLY place in the platform where a SPECIFIC writing style can be
- *     selected: `DepartmentAgent.dnaStylePolicy` is `INHERIT | DISABLED`, a gate rather than a
- *     selector, so everywhere else the style follows whoever is logged in.
+ *   - DEPARTMENT. The Rheumatology graph adds `consultation.inferentialSensors` — the
+ *     LLM-as-judge verification pass — and its `consultation.assemblePrompt` binds `dnaStyleId`
+ *     to Dr Nair's DNA writing-style report. That node config is the ONLY place in the platform
+ *     where a SPECIFIC writing style can be selected: `DepartmentAgent.dnaStylePolicy` is
+ *     `INHERIT | DISABLED`, a gate rather than a selector, so everywhere else the style follows
+ *     whoever is logged in.
+ *   - VISIT TYPE (TASK-891 D8). The two visit-type graphs are the General Medicine one with a
+ *     `documentTemplateSlug` on the realtime node, naming the running case note's SHAPE. A
+ *     realtime node names ONE slug, so one workflow cannot serve both visit types — hence two
+ *     definitions rather than one parameterised at run time.
+ *
+ * The unqualified General Medicine graph deliberately names NO slug, which is what keeps a tenant
+ * that authored nothing resolving the platform SOAP shape exactly as it did before D8.
  *
  * ## The assignment rows ship DISABLED — see `substrate-exclusivity-guard.ts`
  *
@@ -73,11 +81,21 @@ import {
   GEN_COMPILED_CONFIG,
   GEN_GRAPH_CHECKSUM,
   GEN_VALIDATION_REPORT,
+  NEW_VISIT_COMPILED_CONFIG,
+  NEW_VISIT_GRAPH_CHECKSUM,
+  NEW_VISIT_VALIDATION_REPORT,
   REGISTRY_CHECKSUM,
+  REVISIT_COMPILED_CONFIG,
+  REVISIT_GRAPH_CHECKSUM,
+  REVISIT_VALIDATION_REPORT,
   RHEUM_COMPILED_CONFIG,
   RHEUM_GRAPH_CHECKSUM,
   RHEUM_VALIDATION_REPORT,
 } from './23-arcaai-workflow-authoring.generated';
+// TASK-891 (D8) — the two seeded note SHAPES the visit-type graphs name. Imported rather than
+// restated so a renamed slug breaks the build here, at the join, instead of failing open at flush
+// time to the platform SOAP shape with the cause hidden a layer further in.
+import { NEW_VISIT_NOTE_SLUG, REVISIT_NOTE_SLUG } from './27-document-template-library';
 import { encryptSeedRow } from './phi-encryption';
 import { detectSubstrateExclusivityGate } from './substrate-exclusivity-guard';
 
@@ -100,9 +118,13 @@ export const COMPILED_AT = '2026-08-23T00:00:00.000Z';
 
 export const ARCAAI_CONSULTATION_SOAP_ID = '99000000-0000-0000-0001-000000000001';
 export const ARCAAI_RHEUM_CONSULTATION_SOAP_ID = '99000000-0000-0000-0001-000000000002';
+export const ARCAAI_NEW_VISIT_CONSULTATION_ID = '99000000-0000-0000-0001-000000000003';
+export const ARCAAI_REVISIT_CONSULTATION_ID = '99000000-0000-0000-0001-000000000004';
 
 export const ARCAAI_CONSULTATION_SOAP_SLUG = 'arcaai-consultation-soap';
 export const ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG = 'arcaai-rheum-consultation-soap';
+export const ARCAAI_NEW_VISIT_CONSULTATION_SLUG = 'arcaai-consultation-new-visit';
+export const ARCAAI_REVISIT_CONSULTATION_SLUG = 'arcaai-consultation-revisit';
 
 // =============================================================================
 // The authored graphs (regeneration INPUT — everything below them is derived)
@@ -162,8 +184,29 @@ type SeedEdge = { id: string; from: string; fromPort: string; to: string; toPort
 const edges = (specs: readonly (readonly [string, string, string, string])[]): SeedEdge[] =>
   specs.map(([from, fromPort, to, toPort], index) => ({ id: `e${index + 1}`, from, fromPort, to, toPort }));
 
+/**
+ * The axes on which a seeded consultation graph varies. Everything else is one shared spine — a
+ * second spine would be a second thing to keep in step with the rule set.
+ */
+export interface ConsultationGraphOptions {
+  /** The department clinician's DNA writing-style report, bound in the compose stage. */
+  readonly dnaStyleId: string | null;
+  /** Adds `consultation.inferentialSensors` — the LLM-as-judge verification pass. */
+  readonly inferentialSensors: boolean;
+  /**
+   * TASK-891 (D8) — the SHAPE of the running case note, named on the realtime node.
+   *
+   * `null` leaves the key OFF the node entirely, which is what the two pre-existing graphs carry
+   * and what keeps their checksums byte-identical across this change. An absent key is not the
+   * same as an empty one: `realtimeDocumentTemplateSlug` returns `null` for it and
+   * `resolveForGeneration(tenantId)` then falls open to the platform SOAP shape, exactly as it
+   * has since before this ticket.
+   */
+  readonly documentTemplateSlug: string | null;
+}
+
 /** Shared spine. `dnaStyleId` is the one per-department difference in the compose stage. */
-const consultationNodes = (options: { dnaStyleId: string | null; inferentialSensors: boolean }) => [
+const consultationNodes = (options: ConsultationGraphOptions) => [
   { id: 'n_start', type: 'core.start', config: {} },
   // Identity is read from `run_payload`, never from config — a consent decision configured into
   // a graph would be a consent decision made at authoring time for every future patient.
@@ -296,7 +339,21 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // extraction, and the PLATFORM-DEFAULT lane leaves the same port unwired on purpose, because
   // wiring it "would make the note wait for NER, serialising the two calls". The seeded graph now
   // agrees with the lane it is meant to be at parity with.
-  { id: 'n_realtime', type: 'consultation.realtimeSummary', config: { onError: 'degrade' } },
+  //
+  // TASK-891 (D8) — `documentTemplateSlug` names the SHAPE of the running note (OD-2's third
+  // wire-up). `realtimeDocumentTemplateSlug` reads it off the frozen lane and
+  // `ensureTemplateResolved` hands it to `DocumentTemplateService.resolveForGeneration(tenantId,
+  // slug)`, whose `slug` parameter already existed and nothing passed. It is spread in only when
+  // the variant declares one, so the two pre-existing graphs keep byte-identical checksums.
+  // `config` is `Record<string, unknown>` on the node type, so this needs no schema change.
+  {
+    id: 'n_realtime',
+    type: 'consultation.realtimeSummary',
+    config: {
+      onError: 'degrade',
+      ...(options.documentTemplateSlug === null ? {} : { documentTemplateSlug: options.documentTemplateSlug }),
+    },
+  },
   // `purposeScope` is WF-CONS-013 (a tool-calling node declares its PURPOSE OF USE for the
   // outbound tool call); `unmappedOutputKey` is WF-CONS-019's sibling CR-19 — unmapped terms are
   // SURFACED, never silently dropped.
@@ -423,7 +480,7 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   { id: 'n_end', type: 'core.end', config: {} },
 ];
 
-const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: boolean }) => {
+const buildGraph = (options: ConsultationGraphOptions) => {
   const nodes = consultationNodes(options);
   // The verifier stage: `sensors` alone, or `sensors -> inferentialSensors`. Whichever runs LAST
   // is the one that hands the note on, because both verifiers pass the note through unchanged on
@@ -541,13 +598,50 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
   };
 };
 
-/** General Medicine — the baseline chain. */
-export const ARCAAI_CONSULTATION_GRAPH = buildGraph({ dnaStyleId: null, inferentialSensors: false });
+/**
+ * General Medicine — the baseline chain, and the UNQUALIFIED tenant default.
+ *
+ * It names no `documentTemplateSlug` on purpose. An empty selector is a subset of every request,
+ * so this graph is what a tenant that authored nothing resolves — and it must keep resolving the
+ * platform SOAP shape through `resolveForGeneration`'s fail-open, exactly as it did before the
+ * visit-type work. Naming `soap_note` explicitly here would agree with that value while changing
+ * this definition's `graphChecksum` and republishing a row nobody asked to change.
+ */
+export const ARCAAI_CONSULTATION_GRAPH = buildGraph({ dnaStyleId: null, inferentialSensors: false, documentTemplateSlug: null });
 
 /** Rheumatology — adds the LLM-as-judge pass and pins the department clinician's writing style. */
 export const ARCAAI_RHEUM_CONSULTATION_GRAPH = buildGraph({
   dnaStyleId: dnaReportIdForDepartment(SEED_DEPARTMENT_IDS.RHEUM_ARCAAI),
   inferentialSensors: true,
+  documentTemplateSlug: null,
+});
+
+/**
+ * TASK-891 (D8) — the two VISIT-TYPE variants, and the join this ticket exists for.
+ *
+ * A realtime node names ONE slug, so one workflow cannot serve both visit types. These are
+ * `ARCAAI_CONSULTATION_GRAPH` in every other respect — a variant, not a new graph — differing
+ * only in the note shape they predefine. `27-document-template-library.ts` seeds those two
+ * shapes from the customer's own approved department x visit-type heading lists (10 sections for
+ * a new/referral visit, 11 for a follow-up, sharing only 3 of 18 keys); until a workflow NAMED
+ * one, seeding them changed no runtime behaviour at all, which that file says in as many words.
+ *
+ * The visit-type-qualified `WorkflowAssignment` rows below point here. The unqualified row does
+ * NOT, and that asymmetry is the backwards-compatibility guarantee: a tenant carrying only the
+ * unqualified row resolves the baseline graph and the platform SOAP shape, unchanged, while a
+ * tenant carrying the qualified pair gets the visit-type shape because a more specific selector
+ * wins.
+ */
+export const ARCAAI_NEW_VISIT_CONSULTATION_GRAPH = buildGraph({
+  dnaStyleId: null,
+  inferentialSensors: false,
+  documentTemplateSlug: NEW_VISIT_NOTE_SLUG,
+});
+
+export const ARCAAI_REVISIT_CONSULTATION_GRAPH = buildGraph({
+  dnaStyleId: null,
+  inferentialSensors: false,
+  documentTemplateSlug: REVISIT_NOTE_SLUG,
 });
 
 // =============================================================================
@@ -560,7 +654,13 @@ export {
   GEN_COMPILED_CONFIG,
   GEN_GRAPH_CHECKSUM,
   GEN_VALIDATION_REPORT,
+  NEW_VISIT_COMPILED_CONFIG,
+  NEW_VISIT_GRAPH_CHECKSUM,
+  NEW_VISIT_VALIDATION_REPORT,
   REGISTRY_CHECKSUM,
+  REVISIT_COMPILED_CONFIG,
+  REVISIT_GRAPH_CHECKSUM,
+  REVISIT_VALIDATION_REPORT,
   RHEUM_COMPILED_CONFIG,
   RHEUM_GRAPH_CHECKSUM,
   RHEUM_VALIDATION_REPORT,
@@ -620,6 +720,57 @@ export const ARCAAI_WORKFLOW_DEFINITIONS = [
     tags: ['arcaai', 'consultation', 'tenant-authored', 'rheumatology'],
     createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
   },
+  // TASK-891 (D8) — the two VISIT-TYPE variants. Same spine as the General Medicine row above;
+  // the only difference is the note SHAPE their realtime node predefines, which is what the
+  // visit-type-qualified assignments below select on.
+  {
+    id: ARCAAI_NEW_VISIT_CONSULTATION_ID,
+    tenantId: ARCAAI,
+    slug: ARCAAI_NEW_VISIT_CONSULTATION_SLUG,
+    name: 'ArcaAI Consultation — New / Referral Visit',
+    description:
+      'The tenant consultation chain with the running case note shaped for a NEW or referral visit: the ten-section new-patient note derived from the department x visit-type heading lists the customer approved. Selected by the `visit-type:new-visit` assignment selector.',
+    paletteKey: 'consultation',
+    versionNumber: 1,
+    parentVersionId: null,
+    status: 'PUBLISHED' as const,
+    isActive: true,
+    graph: ARCAAI_NEW_VISIT_CONSULTATION_GRAPH,
+    graphChecksum: NEW_VISIT_GRAPH_CHECKSUM,
+    compiledConfig: NEW_VISIT_COMPILED_CONFIG,
+    compiledConfigChecksum: (NEW_VISIT_COMPILED_CONFIG as { checksum: string }).checksum,
+    registryChecksum: REGISTRY_CHECKSUM,
+    validationReport: NEW_VISIT_VALIDATION_REPORT,
+    needsReview: false,
+    validatedAt: new Date(COMPILED_AT),
+    publishedAt: new Date(COMPILED_AT),
+    tags: ['arcaai', 'consultation', 'tenant-authored', 'visit-type:new-visit'],
+    createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
+  },
+  {
+    id: ARCAAI_REVISIT_CONSULTATION_ID,
+    tenantId: ARCAAI,
+    slug: ARCAAI_REVISIT_CONSULTATION_SLUG,
+    name: 'ArcaAI Consultation — Follow-up Visit',
+    description:
+      'The tenant consultation chain with the running case note shaped for a FOLLOW-UP visit: the eleven-section revisit note that tracks change — last visit’s complaints and their status today, this result against the one before it, and the encounter’s order set. Selected by the `visit-type:revisit` assignment selector.',
+    paletteKey: 'consultation',
+    versionNumber: 1,
+    parentVersionId: null,
+    status: 'PUBLISHED' as const,
+    isActive: true,
+    graph: ARCAAI_REVISIT_CONSULTATION_GRAPH,
+    graphChecksum: REVISIT_GRAPH_CHECKSUM,
+    compiledConfig: REVISIT_COMPILED_CONFIG,
+    compiledConfigChecksum: (REVISIT_COMPILED_CONFIG as { checksum: string }).checksum,
+    registryChecksum: REGISTRY_CHECKSUM,
+    validationReport: REVISIT_VALIDATION_REPORT,
+    needsReview: false,
+    validatedAt: new Date(COMPILED_AT),
+    publishedAt: new Date(COMPILED_AT),
+    tags: ['arcaai', 'consultation', 'tenant-authored', 'visit-type:revisit'],
+    createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
+  },
 ];
 
 export const ARCAAI_WORKFLOW_ASSIGNMENTS = [
@@ -643,21 +794,25 @@ export const ARCAAI_WORKFLOW_ASSIGNMENTS = [
     selectorKey: '',
     createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
   },
-  // TASK-891 (D8b) — a visit-type-qualified pair alongside the existing unqualified TENANT
-  // row above, proving the selector cascade end to end (`WorkflowAssignmentService.resolve`,
-  // TASK-891's mirror of AgentAssignment's TASK-884 walk): a request tagged
-  // `visit-type:new-visit` / `visit-type:revisit` now matches the more specific row before
-  // falling back to the unqualified one. Both point at the SAME SOAP definition as the
-  // unqualified row today — this seed's job is to prove the PLUMBING, not to invent a visit-
-  // type-specific graph nobody asked for; a tenant admin can repoint either row at a
-  // different PUBLISHED `consultation`-palette definition later without a code change.
+  // TASK-891 (D8) — the visit-type-qualified pair, alongside (never replacing) the unqualified
+  // TENANT row above. `WorkflowAssignmentService.resolve` matches a row whose selector is a
+  // SUBSET of the request tags, most specific first and unqualified last, so a request tagged
+  // `visit-type:new-visit` / `visit-type:revisit` lands here and everything else keeps landing on
+  // the unqualified row.
+  //
+  // D8b seeded this pair pointing at the SAME SOAP definition as the unqualified row, to prove
+  // the plumbing without inventing a graph. They now point at the two visit-type definitions
+  // above, which is the whole join: the note shape a clinician WATCHES being written is the one
+  // that matches the visit type, so it agrees with the note they eventually sign. A tenant admin
+  // can repoint either row at any other PUBLISHED `consultation`-palette definition without a
+  // code change.
   {
     id: '9a000000-0000-0000-0001-000000000003',
     tenantId: ARCAAI,
     scope: 'TENANT' as const,
     scopeId: null as string | null,
     paletteKey: 'consultation',
-    workflowDefinitionSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
+    workflowDefinitionSlug: ARCAAI_NEW_VISIT_CONSULTATION_SLUG,
     selectorKey: 'visit-type:new-visit',
     createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
   },
@@ -667,7 +822,7 @@ export const ARCAAI_WORKFLOW_ASSIGNMENTS = [
     scope: 'TENANT' as const,
     scopeId: null as string | null,
     paletteKey: 'consultation',
-    workflowDefinitionSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
+    workflowDefinitionSlug: ARCAAI_REVISIT_CONSULTATION_SLUG,
     selectorKey: 'visit-type:revisit',
     createdBy: SEED_USER_IDS.ARCAAI_ADMIN,
   },
@@ -702,7 +857,7 @@ export const ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES = [
     afterSlug: ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG,
     reason: 'Seeded day-1 Rheumatology department override .',
   },
-  // TASK-891 (D8b) — change rows for the two new visit-type-qualified assignments above.
+  // TASK-891 (D8) — change rows for the two visit-type-qualified assignments above.
   // NOTE: `WorkflowAssignmentChange` (unlike its `AgentAssignmentChange` sibling, TASK-884)
   // carries no `selectorKey` column, so these rows are identified by content
   // (`afterSlug`/`reason`) rather than by a queryable selector key — see the report for the
@@ -716,8 +871,8 @@ export const ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES = [
     changedBy: SEED_USER_IDS.ARCAAI_ADMIN,
     assignmentVersion: 1,
     beforeSlug: null as string | null,
-    afterSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
-    reason: 'Seeded day-1 visit-type:new-visit selector assignment (TASK-891 D8b).',
+    afterSlug: ARCAAI_NEW_VISIT_CONSULTATION_SLUG,
+    reason: 'Seeded day-1 visit-type:new-visit selector assignment (TASK-891 D8).',
   },
   {
     id: '9a000000-0000-0001-0001-000000000004',
@@ -728,8 +883,8 @@ export const ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES = [
     changedBy: SEED_USER_IDS.ARCAAI_ADMIN,
     assignmentVersion: 1,
     beforeSlug: null as string | null,
-    afterSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
-    reason: 'Seeded day-1 visit-type:revisit selector assignment (TASK-891 D8b).',
+    afterSlug: ARCAAI_REVISIT_CONSULTATION_SLUG,
+    reason: 'Seeded day-1 visit-type:revisit selector assignment (TASK-891 D8).',
   },
 ];
 
