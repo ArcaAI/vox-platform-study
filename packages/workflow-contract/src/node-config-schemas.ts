@@ -1823,7 +1823,8 @@ const CORE_CLASSIFY_SCHEMA: NodeConfigSchema = Object.freeze({
             type: 'array',
             maxItems: 32,
             items: Object.freeze({ type: 'string', minLength: 1, maxLength: 128 }),
-            description: 'Which of the model`s own labels map onto this class. Absent means the class key is the label.',
+            description:
+              'Which of the model`s own labels map onto this class. For a TEXT_CLASSIFICATION model, absent means the class key IS the label. For a TOKEN_CLASSIFICATION model the labels are ENTITY TYPES, and the first class naming none of them is the catch-all: it is taken when any span clears `threshold`, while "nothing found" takes `otherwise`.',
           }),
         }),
       }),
