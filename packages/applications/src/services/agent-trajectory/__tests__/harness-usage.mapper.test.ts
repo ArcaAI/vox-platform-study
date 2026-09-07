@@ -14,6 +14,7 @@ import {
   AgentStepType,
   AgentTrajectoryStepFactory,
   AiCapability,
+  AiCostBasis,
   AiDeploymentKind,
   AiUsageUnit,
 } from '@arcaai/domains';
@@ -149,5 +150,67 @@ describe('buildHarnessUsageEvent', () => {
     });
     const event = buildHarnessUsageEvent(step);
     expect(event!.common.occurredAt).toEqual(step.startedAt);
+  });
+});
+
+/**
+ * F14 — the three dimensions the WORKFLOW lane knows and the consultation lane does not.
+ *
+ * A workflow-lane `core.agent` generation produced no ledger row at all until the harness
+ * started recording its LLM_CALL step (`nodes/_shared.record_generation_and_flush`). That step
+ * carries the same AD-1 `GenerationStats` the consultation lane records, PLUS `trigger`,
+ * `funding_tier` and `guardrail` — the answers to "why did this run", "whose money paid for it"
+ * and "was it screened", none of which the mapper could previously read anywhere.
+ *
+ * Both vocabularies are CLOSED (`usage-attributes.ts`): an unrecognised value is dropped rather
+ * than forked into the rollup dimension, and an absent funding tier stays absent — a guessed
+ * tier silently converts tenant-funded spend into platform COGS.
+ */
+describe('buildHarnessUsageEvent — workflow-lane dimensions (F14)', () => {
+  const base = { prompt_tokens: 812, predicted_tokens: 344, provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' };
+
+  it('carries the trigger and the screening disposition onto the ledger attributes', () => {
+    const event = buildHarnessUsageEvent(makeStep({ stats: { ...base, trigger: 'WORKFLOW_RUN', guardrail: 'screened' } }));
+
+    expect(event!.common.attributesJson).toMatchObject({ trigger: 'WORKFLOW_RUN', guardrail: 'screened' });
+  });
+
+  it('a tenant-funded generation is metered BYOK on the BYOK_NOTIONAL basis', () => {
+    const event = buildHarnessUsageEvent(makeStep({ stats: { ...base, funding_tier: 'tenant' } }));
+
+    // The pair has to move together: `UsageLedgerService` warns on either half alone.
+    expect(event!.common.deployment).toBe(AiDeploymentKind.BYOK);
+    expect(event!.common.costBasis).toBe(AiCostBasis.BYOK_NOTIONAL);
+  });
+
+  it('a platform-funded generation keeps the engine-derived deployment and the INTERNAL basis', () => {
+    const event = buildHarnessUsageEvent(makeStep({ stats: { ...base, funding_tier: 'platform' } }));
+
+    expect(event!.common.deployment).toBe(AiDeploymentKind.SELF_HOSTED);
+    expect(event!.common.costBasis).toBeUndefined();
+  });
+
+  it('an absent funding tier is never guessed', () => {
+    const event = buildHarnessUsageEvent(makeStep({ stats: base }));
+
+    expect(event!.common.deployment).toBe(AiDeploymentKind.SELF_HOSTED);
+    expect(event!.common.costBasis).toBeUndefined();
+  });
+
+  it('a value outside either closed vocabulary is dropped, never forked into the dimension', () => {
+    const event = buildHarnessUsageEvent(
+      makeStep({ stats: { ...base, trigger: 'BECAUSE_I_SAID_SO', guardrail: 'probably', funding_tier: 'whoever' } }),
+    );
+
+    expect(event!.common.attributesJson).not.toHaveProperty('trigger');
+    expect(event!.common.attributesJson).not.toHaveProperty('guardrail');
+    expect(event!.common.costBasis).toBeUndefined();
+    expect(event!.common.deployment).toBe(AiDeploymentKind.SELF_HOSTED);
+  });
+
+  it('a consultation-lane step carrying none of them is byte-identical to before', () => {
+    const event = buildHarnessUsageEvent(makeStep({ stats: { ...base, provider: 'ollama', model: 'llama3' } }));
+
+    expect(event!.common.attributesJson).toEqual({ engine: 'ollama', interrupted: false });
   });
 });

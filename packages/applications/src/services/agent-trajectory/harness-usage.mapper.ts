@@ -1,5 +1,14 @@
-import { AgentStepStatus, AgentStepType, AgentTrajectoryStepEntity, AiCapability, AiDeploymentKind } from '@arcaai/domains';
-import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageIdempotencyKey } from '../usageLedger';
+import { AgentStepStatus, AgentStepType, AgentTrajectoryStepEntity, AiCapability, AiCostBasis, AiDeploymentKind } from '@arcaai/domains';
+import {
+  GUARDRAIL_DISPOSITIONS,
+  GuardrailDisposition,
+  NormalizedLlmUsage,
+  toUsageUnitQuantities,
+  USAGE_TRIGGERS,
+  UsageEventBatchInput,
+  UsageIdempotencyKey,
+  UsageTrigger,
+} from '../usageLedger';
 
 /**
  * `AgentTrajectoryStep` -> usage-ledger emission hook.
@@ -14,6 +23,10 @@ import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageI
  * SCOPE (deliberately narrow — see the cheat sheet in
  *   - LLM_CALL steps only. TOOL_CALL/SENSOR/RETRIEVAL/GUARDRAIL/THINKING/
  *     SIGNAL/GATE/PHASE steps never call an LLM through this path.
+ *   - F14: `trigger` / `guardrail` / `funding_tier`, when the step carries them. The
+ *     workflow interpreter writes all three (`_generation_stats` in
+ *     `apps/harness/.../nodes/core.py`); the consultation lane writes none, and a step
+ *     without them maps exactly as it always did.
  *   - INPUT_TOKEN / OUTPUT_TOKEN only. AD-1 `GenerationStats`
  *     (apps/text/src/text/models/stats.py) does not surface a cache/reasoning
  *     breakdown on the LLM_CALL step itself — a non-empty reasoning count is
@@ -96,6 +109,39 @@ function pickString(stats: Record<string, unknown>, ...keys: string[]): string |
 }
 
 /**
+ * The three dimensions a WORKFLOW-lane step carries and a consultation-lane step does not
+ * (F14) — `trigger`, `guardrail` and `funding_tier`, written by the harness interpreter's
+ * `_generation_stats`.
+ *
+ * `trigger` and `guardrail` are CLOSED vocabularies (`usage-attributes.ts`): a value outside
+ * the list is DROPPED rather than passed through, because an unbounded rollup dimension forks
+ * silently and the ledger's own attribute allow-list would reject the row anyway.
+ */
+function pickTrigger(stats: Record<string, unknown>): UsageTrigger | undefined {
+  const raw = pickString(stats, 'trigger');
+  return raw && (USAGE_TRIGGERS as readonly string[]).includes(raw) ? (raw as UsageTrigger) : undefined;
+}
+
+function pickGuardrail(stats: Record<string, unknown>): GuardrailDisposition | undefined {
+  const raw = pickString(stats, 'guardrail');
+  return raw && (GUARDRAIL_DISPOSITIONS as readonly string[]).includes(raw) ? (raw as GuardrailDisposition) : undefined;
+}
+
+/**
+ * Whether the TENANT's own credential funded this call.
+ *
+ * The value is the tier the GATEWAY derived for the candidate that actually served
+ * (`AgentFundingTier`: `tenant` | `platform`) and rides the step verbatim. Anything else —
+ * absent, misspelled, a tier this mapper has never heard of — reads as "not established", which
+ * leaves the row on the engine-derived deployment and the default INTERNAL basis. Never the
+ * other way round: inferring BYOK from a value nobody derived would convert tenant-funded spend
+ * into platform COGS (or hide platform COGS as never-invoiced notional) on one bad literal.
+ */
+function isTenantFunded(stats: Record<string, unknown>): boolean {
+  return pickString(stats, 'funding_tier', 'fundingTier') === 'tenant';
+}
+
+/**
  * Map one persisted `AgentTrajectoryStep` onto the usage-ledger's
  * `{common, units}` batch input, or `null` when the step carries nothing
  * billable (wrong step type, no stats, no positive token count, no provider).
@@ -136,6 +182,9 @@ export function buildHarnessUsageEvent(step: AgentTrajectoryStepEntity): UsageEv
   const provider = canonicalizeProvider(rawProvider);
   const model = pickString(stats, 'model') ?? null;
   const stepId = stepIdentity(step);
+  const tenantFunded = isTenantFunded(stats);
+  const trigger = pickTrigger(stats);
+  const guardrail = pickGuardrail(stats);
 
   return {
     common: {
@@ -149,16 +198,24 @@ export function buildHarnessUsageEvent(step: AgentTrajectoryStepEntity): UsageEv
       operation: 'harness.step',
       provider,
       model,
-      deployment: classifyDeployment(provider),
-      // costBasis intentionally omitted (defaults to INTERNAL): AD-1
-      // GenerationStats carries no BYOK signal for this lane — see the
-      // report's "known gaps" section rather than guessing BYOK_NOTIONAL.
+      // BYOK is claimed ONLY from a funding tier the gateway derived; otherwise the
+      // engine decides, exactly as before.
+      deployment: tenantFunded ? AiDeploymentKind.BYOK : classifyDeployment(provider),
+      // The two halves move TOGETHER — `UsageLedgerService` warns on either alone (a BYOK
+      // deployment on the INTERNAL basis inflates COGS; the reverse loses platform spend).
+      // Omitted for everything else, which defaults to INTERNAL: a consultation-lane step
+      // still carries no BYOK signal and nothing is guessed for it.
+      ...(tenantFunded ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
       consultationId: step.consultationId ?? null,
       requestId: step.runId || step.sessionId,
       sessionId: step.sessionId,
       attributesJson: {
         engine: provider,
         interrupted: step.status !== AgentStepStatus.OK,
+        // Spread only when the step actually said so, so a consultation-lane row's
+        // attribute bag is byte-identical to what it has always been.
+        ...(trigger ? { trigger } : {}),
+        ...(guardrail ? { guardrail } : {}),
       },
     },
     units,
