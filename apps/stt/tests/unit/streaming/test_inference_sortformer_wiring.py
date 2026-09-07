@@ -453,6 +453,11 @@ async def test_recovery_reconstructs_sortformer_diarizer():
     mock_session = MagicMock()
     mock_session.force_persist = AsyncMock()
 
+    # TASK-891 — recovery restores the session's language mode into this dict.
+    # `MagicMock(spec=SessionManager)` does not carry instance attributes, so the
+    # harness supplies it; a real manager always has it from `__init__`.
+    mgr._session_language_modes = {}
+
     mgr._redis = MagicMock()
     mgr._redis.scan = AsyncMock(return_value=(0, ["stt:session:sess-1"]))
     mgr._redis.hgetall = AsyncMock(return_value={"k": "v"})

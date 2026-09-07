@@ -486,3 +486,77 @@ def test_uninstall_swallows_extension_errors(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(whisper_cpp_asr, "_log_module", SimpleNamespace(whisper_log_set=_boom))
 
     whisper_cpp_asr._uninstall_log_capture()  # must not raise
+
+
+# --- TASK-891 A4: word-split is REFUSED when the script would be corrupted ----
+#
+# ``max_len=1, split_on_word=True`` is the whisper.cpp word-timestamp technique,
+# and this adapter's own comment already called it "a lossy, script-corrupting
+# hack" that causes "space-joining corruption of non-space-delimited scripts
+# (Malayalam)". Measured in production (TASK-891 §2.3): finals retained only
+# 20-35% of the characters their duration implies, littered with orphaned
+# Malayalam combining marks. The adapter must therefore REFUSE the mode when the
+# decode may emit such a script — degrading to sentence-level segments (no word
+# timings) rather than returning corrupted text. Word timings are optional
+# downstream; the transcript is not.
+
+
+@pytest.mark.parametrize("language", [None, "ml", "ml-en", "vi-en"])
+def test_task891_word_split_is_refused_when_the_script_may_be_corrupted(
+    language: str | None,
+) -> None:
+    """Unpinned (auto / code-switch pair) or Malayalam ⇒ clean sentence-level
+    decode even though word timestamps were requested."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(
+        _loaded_model(model), _cfg(language), want_word_timestamps=True
+    )
+
+    adapter(_audio(), 16000)
+
+    kw = model.calls[0]
+    assert kw["max_len"] == 0
+    assert kw["split_on_word"] is False
+    assert kw["token_timestamps"] is False
+
+
+@pytest.mark.parametrize("language", ["en", "vi"])
+def test_task891_word_split_still_runs_for_a_declared_latin_language(language: str) -> None:
+    """A DECLARED space-delimited language keeps real word timings — the
+    technique's intended use. Refusing everywhere would be over-reach."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(
+        _loaded_model(model), _cfg(language), want_word_timestamps=True
+    )
+
+    adapter(_audio(), 16000)
+
+    kw = model.calls[0]
+    assert kw["max_len"] == 1
+    assert kw["split_on_word"] is True
+    assert kw["token_timestamps"] is True
+
+
+def test_task891_refused_word_split_returns_uncorrupted_malayalam() -> None:
+    """The regression this closes: with word timestamps requested on the seeded
+    ``ml-en`` agent, the transcript came back space-joined per whisper token,
+    shattering grapheme clusters. After the refusal the same segments rebuild by
+    NATIVE concatenation and the text is intact (word timings are dropped)."""
+    segments = [_seg("നമസ്കാരം", 0, 60, 0.9), _seg(" ഡോക്ടർ", 60, 90, 0.9)]
+    model = _CapturingModel_returning(segments)
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"), want_word_timestamps=True)
+
+    result = adapter(_audio(), 16000)
+
+    assert result["text"] == "നമസ്കാരം ഡോക്ടർ"
+    assert result["word_timestamps"] == []
+
+
+def test_task891_refusal_is_visible_on_the_adapter() -> None:
+    """The downgrade is observable, so a pipeline that asked for word timings and
+    got none is diagnosable without reading the decode kwargs."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"), want_word_timestamps=True)
+
+    assert adapter._word_timestamps_requested is True
+    assert adapter._want_word_timestamps is False

@@ -232,6 +232,32 @@ describe('StreamingSessionService', () => {
     );
   });
 
+  it('TASK-891 — an end-user language DECLARATION travels beside the spec, not inside it', async () => {
+    // OD-1: absent means "use the agent's mode", so the two facts are DIFFERENT
+    // channels and both must survive the same POST:
+    //   * `language_mode`             — what the end user / SDK declared;
+    //   * `resolved_spec.decoding.languageMode` — what the AGENT declared.
+    // apps/stt resolves the declaration against the engine that actually loads
+    // and falls back to the spec's mode when nothing was declared. Overwriting
+    // the spec with the declaration would erase the agent's own opinion from the
+    // record the session is rebuilt from after a worker restart.
+    httpService.post.mockReturnValue(of({ data: { session_id: 's-91', status: 'active', max_concurrent: 4, current_active: 1 } }));
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    await service.createSession({
+      sessionId: 's-91',
+      tenantId: 'tenant-1',
+      pipelineId: 'runtime-key-1',
+      languageMode: 'en',
+      resolvedSpec: { models: {}, audioFrontEnd: { diarization: { enabled: false } }, decoding: { languageMode: 'ml-en' } } as never,
+    });
+
+    const body = httpService.post.mock.calls[0][1];
+    expect(body.language_mode).toBe('en');
+    expect(body.resolved_spec.decoding.languageMode).toBe('ml-en');
+  });
+
   it('forwards start_on (snake_case) in createSession POST body', async () => {
     httpService.post.mockReturnValue(of({ data: { session_id: 's-9', status: 'active', max_concurrent: 4, current_active: 1 } }));
 
