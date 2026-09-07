@@ -20,6 +20,7 @@ import {
   ContextItemType,
   TranscriptSegmentRepository,
   McpServerRepository,
+  AiModelRepository,
   SYSTEM_TENANT_ID,
   ResourceStatusType,
   NotificationType,
@@ -32,6 +33,7 @@ import { HarnessAuditService } from '../../harness-audit';
 // module in from a service file is how an import cycle starts.
 import { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 import { PROVIDER_SERVICES, isCloudByoProvider, type ProviderService } from '../../ai-provider-connection/constants';
+import { derivedLocalPath } from '../../ai-model/constants';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
@@ -63,6 +65,7 @@ import type {
   HarnessGateDecisionResponse,
   HarnessPersistEntitiesRequest,
   HarnessPersistEntitiesResponse,
+  HarnessResolvedModelResponse,
   HarnessSegmentCitationRef,
 } from './dto';
 
@@ -230,7 +233,103 @@ export class HarnessInternalService {
     // + trailing so existing positional fixtures keep their arity; an unwired
     // resolver serves the same two visit types.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // F11 — the model CATALOGUE, used ONLY by `resolveRegistryModel`. Optional +
+    // trailing so existing positional unit fixtures keep their arity; absent ⇒
+    // every resolve is a 404, which is the FAIL-CLOSED direction (model
+    // SELECTION never substitutes a value for one it could not resolve).
+    @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
   ) {}
+
+  /**
+   * F11 — resolve ONE registry model by slug for the harness worker,
+   * tenant BYO → SYSTEM catalogue.
+   *
+   * WHY THIS EXISTS. The durable `core.classify` node has called
+   * `GET /internal/harness/models/resolve` since TASK-864 and the route was
+   * never built: `apps/api/route-manifest.json` carried
+   * `/internal/agents/resolve` and `/internal/harness/prompt-templates/:id/
+   * resolved` and nothing else, so every classify node degraded on a 404 at
+   * model resolution. The same boundary rule as `resolveMcpToken` /
+   * `resolveProviderCredential` applies: `apps/harness` holds no DB handle, so
+   * the catalogue row a node REFERENCES by slug is resolved here and injected.
+   *
+   * The cascade is the platform's standard one and is NOT reimplemented
+   * loosely: the tenant's OWN row wins on presence, SYSTEM answers only on
+   * ABSENCE — identical to `AgentResolverService.modelBySlug`. A slug that
+   * exists only under some OTHER tenant resolves nothing and answers 404,
+   * exactly like an unknown slug (404-over-403); the two reads are pinned to
+   * `[caller, SYSTEM]` by construction, so no third tenant is reachable.
+   *
+   * `taskType` is an OPTIONAL filter, not a requirement. `core.classify`'s own
+   * schema accepts a TEXT_CLASSIFICATION **or** TOKEN_CLASSIFICATION slug, and
+   * the two classification-capable rows the platform seeds
+   * (`gliner2-guardrails-pii-multi`, `medical-ner`) are both
+   * TOKEN_CLASSIFICATION — so a hard task pin here would 404 the very models
+   * the node is authored against. The row's own `taskType` rides on the
+   * response instead, and a caller that DOES require a task gets a 404 on a
+   * mismatch rather than a row it cannot use.
+   *
+   * Fails CLOSED throughout: an unresolvable slug, a task mismatch and an
+   * unwired catalogue are all a 404. Nothing is ever substituted for a
+   * selection that did not resolve.
+   */
+  async resolveRegistryModel(slug: string, tenantId: string, taskType?: string): Promise<HarnessResolvedModelResponse> {
+    if (!slug || !slug.trim()) {
+      throw new BadRequestException('slug is required');
+    }
+    // No tenant-less form, deliberately — the same reasoning as
+    // `resolveProviderCredential`: a tenant-less resolve could only mean "read
+    // SYSTEM unconditionally", which is the widen-without-absence bug the
+    // two-tier rule exists to prevent.
+    if (!tenantId || !tenantId.trim()) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (!this.aiModelRepository) {
+      this.logger.warn(`Harness model resolve requested but the model catalogue is unwired (${slug})`);
+      throw new NotFoundException(`Model '${slug}' could not be resolved.`);
+    }
+
+    const repository = this.aiModelRepository;
+    // A service-token request carries NO tenant on the CLS store, and `AiModel`
+    // is tenant-scoped: the scope extension refuses a read without one, and its
+    // shared-read widening admits exactly `[caller, SYSTEM]`. Re-establish the
+    // tenant from the query first, as `getEffectivePolicy` /
+    // `resolveProviderCredential` already do (the S-3 recurrence class).
+    const row = await this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      const own = tenantId === SYSTEM_TENANT_ID ? null : await repository.findBySlug(tenantId, slug).catch(() => null);
+      if (own) return own;
+      return repository.findBySlug(SYSTEM_TENANT_ID, slug).catch(() => null);
+    });
+
+    if (!row) {
+      throw new NotFoundException(`Model '${slug}' is not visible to this tenant.`);
+    }
+    const rowTask = String(row.taskType);
+    if (taskType && rowTask !== taskType) {
+      throw new NotFoundException(`Model '${slug}' is ${rowTask}, not ${taskType}.`);
+    }
+
+    const metaData =
+      row.metaData && typeof row.metaData === 'object' && !Array.isArray(row.metaData) ? (row.metaData as Record<string, unknown>) : null;
+    const taxonomy = metaData?.labelTaxonomy;
+    const labelTaxonomy = taxonomy && typeof taxonomy === 'object' && !Array.isArray(taxonomy) ? (taxonomy as Record<string, unknown>) : undefined;
+
+    return {
+      slug: row.slug,
+      taskType: rowTask,
+      tenantId: row.tenantId,
+      sourceUri: row.sourceUri,
+      sourceRevision: row.sourceRevision ?? null,
+      localPath: derivedLocalPath(row),
+      wireModelId: row.wireModelId ?? null,
+      servedBy: String(row.servedBy),
+      provider: row.provider ?? null,
+      format: String(row.format),
+      computeType: row.computeType ?? null,
+      ...(labelTaxonomy ? { labelTaxonomy } : {}),
+    };
+  }
 
   /**
    * Resolve an MCP server's credential from its `authRef`.

@@ -333,8 +333,15 @@ async def interpreter_core_classify(payload: NodeActivityInput) -> NodeActivityR
 
     settings = get_settings()
     try:
+        # NO task pin, deliberately (F11). `core.classify`'s own config schema
+        # accepts a TEXT_CLASSIFICATION *or* TOKEN_CLASSIFICATION slug, and BOTH
+        # classification-capable rows the platform seeds
+        # (`gliner2-guardrails-pii-multi`, `medical-ner`) are TOKEN_CLASSIFICATION
+        # — so the former hardcoded `task_type="TEXT_CLASSIFICATION"` 404'd the
+        # very models this node is authored against. The gateway answers with the
+        # row's OWN `taskType`; the node reads what it got rather than dictating it.
         raw_model = await _api_client(settings).resolve_model(
-            slug=slug, tenant_id=payload.tenant_id, task_type="TEXT_CLASSIFICATION"
+            slug=slug, tenant_id=payload.tenant_id
         )
         model = ResolvedClassificationModel.model_validate(raw_model)
     except (ApiServiceError, ValueError) as exc:

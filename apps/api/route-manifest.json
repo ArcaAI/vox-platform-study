@@ -13566,6 +13566,22 @@
     },
     {
       "controller": "HarnessInternalController",
+      "handler": "resolveRegistryModel",
+      "method": "GET",
+      "path": "/api/v1/internal/harness/models/resolve",
+      "routePath": "/internal/harness/models/resolve",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "HarnessInternalController",
       "handler": "getEffectivePolicy",
       "method": "GET",
       "path": "/api/v1/internal/harness/policy",
