@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 
 from nlp.api import api_router
 from nlp.core.config import settings
+from nlp.core.internal_auth import assert_internal_access_token
 from nlp.core.logging import get_logger
 from nlp.core.observability import setup_prometheus
 from nlp.lifespan import lifespan
@@ -13,6 +14,12 @@ logger = get_logger(__name__)
 
 
 def get_app() -> FastAPI:
+    # The container's ENTRYPOINT is `uvicorn --factory nlp.app:get_app`, so this
+    # factory IS the start path: a deployed process with no internal credential
+    # refuses to start here rather than serving compiled defaults in silence
+    # (TASK-892 D-3). Local dev gets one error-level line and carries on.
+    assert_internal_access_token()
+
     logger.info("Initializing FastAPI application...")
 
     app = FastAPI(

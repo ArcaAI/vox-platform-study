@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 115 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 21 |
-| Python declared fields | 305 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 352 |
-| `turbo.json#globalEnv` entries | 478 |
+| Python declared fields | 307 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 355 |
+| `turbo.json#globalEnv` entries | 480 |
 
 ## Variables — the TypeScript platform surface
 
@@ -384,6 +384,8 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `NLP_REDIS_URL` | `apps/nlp` | no | no | `redis://localhost:6379/0` | commented | — |
 | `NLP_SERVICE_NAME` | `apps/nlp` | no | no | `nlp` | commented | `OTEL_SERVICE_NAME`, `SERVICE_NAME`, `NLP_NAME` |
 | `NLP_SERVICE_VERSION` | `apps/nlp` | no | no | `0.1.0` | commented | `OTEL_SERVICE_VERSION`, `SERVICE_VERSION`, `NLP_VERSION` |
+| `NLP_TORCH_NUM_INTEROP_THREADS` | `apps/nlp` | no | no | `0` | commented | — |
+| `NLP_TORCH_NUM_THREADS` | `apps/nlp` | no | no | `0` | commented | — |
 | `NLP_TRACES_ENABLED` | `apps/nlp` | no | no | `true` | commented | `OTEL_TRACES_ENABLED` |
 | `NLP_URL` | `apps/guardrail` | no | no | `http://localhost:8864` | commented | `GUARDRAIL_V2_NLP_URL` |
 | `NLP_WORKERS` | `apps/nlp` | no | no | `1` | commented | `WORKERS` |
@@ -509,6 +511,7 @@ promotion into its service’s `BaseSettings`.
 | `HARNESS_PROMPTFOO_BASE_URL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_PROMPTFOO_MODEL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_VERDICT_CACHE_HMAC_KEY` | `apps/harness/src/harness/sensors/inferential/verdict_cache.py` |
+| `HF_HUB_CACHE` | `packages/py-runtime-models/src/hope_runtime_models/resolvable.py` |
 | `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/nlp/src/nlp/models/source_resolver.py`, `apps/stt/src/stt/models/source_resolver.py`, `apps/tts/src/tts/models/source_resolver.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
 | `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py` |
