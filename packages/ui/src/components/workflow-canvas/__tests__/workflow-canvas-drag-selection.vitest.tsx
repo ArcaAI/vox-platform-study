@@ -18,6 +18,9 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render } from '@testing-library/react';
 
+import { WorkflowCanvas } from '../workflow-canvas';
+import type { WorkflowCanvasNode } from '../types';
+
 const capturedProps: Record<string, unknown>[] = [];
 vi.mock('@xyflow/react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@xyflow/react')>();
@@ -30,9 +33,6 @@ vi.mock('@xyflow/react', async (importOriginal) => {
   };
 });
 
-const { WorkflowCanvas } = await import('../workflow-canvas');
-type CanvasNodes = React.ComponentProps<typeof WorkflowCanvas>['nodes'];
-
 beforeAll(() => {
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
     observe() {}
@@ -41,7 +41,7 @@ beforeAll(() => {
   };
 });
 
-const NODES = [{ id: 'ingest', type: 'stt.ingest', label: 'Ingest audio', position: { x: 0, y: 0 } }] as CanvasNodes;
+const NODES: WorkflowCanvasNode[] = [{ id: 'ingest', type: 'stt.ingest', label: 'Ingest audio', position: { x: 0, y: 0 } }];
 
 describe('WorkflowCanvas — dragging a node does not change the selection', () => {
   it('turns React Flow selection-on-drag off, so the controlled `selected` prop is never contradicted', () => {
