@@ -57,8 +57,11 @@ class Table {
 
   findMany({ where, orderBy }: { where?: Row; orderBy?: Row } = {}): Promise<Row[]> {
     const found = this.rows.filter((row) => matches(row, where));
-    if (orderBy) {
-      const [[key, direction]] = Object.entries(orderBy) as [[string, string]][number][];
+    // `noUncheckedIndexedAccess` makes `entries[0]` possibly-undefined, so the first
+    // entry is checked rather than destructured blind — an empty `orderBy` is a no-op sort.
+    const [first] = Object.entries(orderBy ?? {}) as [string, string][];
+    if (first) {
+      const [key, direction] = first;
       found.sort((a, b) => String(a[key]).localeCompare(String(b[key])) * (direction === 'desc' ? -1 : 1));
     }
     return Promise.resolve(found);
