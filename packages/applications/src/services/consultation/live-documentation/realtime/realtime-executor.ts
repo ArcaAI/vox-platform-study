@@ -22,7 +22,7 @@
  */
 import { portPrimitiveSatisfies, type WorkflowPortDescriptor, type WorkflowPortPrimitive } from '@arcaai/workflow-contract';
 import type { RealtimeLane, RealtimeNode } from './realtime-lane';
-import { realtimeHandlerFor, type RealtimeCapabilities, type RealtimeNodeHandler } from './realtime-node-registry';
+import { realtimeHandlerFor, type RealtimeCapabilities, type RealtimeCapabilityKey, type RealtimeNodeHandler } from './realtime-node-registry';
 
 /**
  * A binding the graph declares but the node contract cannot support.
@@ -54,6 +54,8 @@ export interface RealtimeNodeOutcome {
   readonly attempts: number;
   /** Present only on `succeeded`. Keyed by the node's declared `outputKey`s. */
   readonly output?: Record<string, unknown>;
+  /** Present only on `succeeded`: the CAPABILITY the node ran (TASK-893 — what a projection keys on). */
+  readonly capability?: RealtimeCapabilityKey;
   /** PHI-safe: an error name or a short reason code. Never clinical text. */
   readonly reason?: string;
 }
@@ -277,7 +279,7 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
         while (attempts < node.maxAttempts) {
           attempts += 1;
           try {
-            const output = await withTimeout(
+            const { output, capability } = await withTimeout(
               handler.run({ bound, config: node.config, tenantId, consultationId, capabilities, signal }),
               node.timeoutMs,
             );
@@ -305,6 +307,7 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
               durationMs: Date.now() - startedAt,
               attempts,
               output,
+              capability,
             };
           } catch (error) {
             lastReason = error instanceof Error ? error.message : String(error);

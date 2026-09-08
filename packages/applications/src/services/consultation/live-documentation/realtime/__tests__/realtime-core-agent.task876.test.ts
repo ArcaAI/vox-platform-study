@@ -1,14 +1,8 @@
 /**
- * TASK-876 — `core.agent` on the realtime lane is AGENT-FIRST.
- *
- * The defect: `CoreAgentHandler.run` forwarded only the node's `config` to `generateDocument`,
- * whose doc comment claimed the host service resolved `agentRef` — and nothing did. A bound
- * agent's model, instruction, prompt pin and parameters were ignored on the live lane; the
- * flush generated on the tenant `text.live` default with the session's frozen prompt.
- *
- * The handler now hands the host the REFERENCE it must resolve: `agentRef.slug` plus the
- * optional version pin, read off the node's own config. Resolution (explicit slug + pin, fail
- * closed on drift, else the assigned agent) is the host's — `live-documentation.core-agent.task876.test.ts`.
+ * TASK-876 — `core.agent` on the realtime lane is AGENT-FIRST: the handler hands the host the
+ * REFERENCE it must resolve (`agentRef.slug` + optional version pin) and never substitutes a
+ * tenant default. Since TASK-893 the same reference also decides the TASK the node runs as
+ * (`realtime-node-registry.test.ts`); this file keeps the reference-forwarding contract pinned.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { REALTIME_NODE_HANDLERS, realtimeHandlerFor, type RealtimeCapabilities } from '../realtime-node-registry';
@@ -48,12 +42,5 @@ describe('core.agent hands its agentRef to the host', () => {
     await expect(REALTIME_NODE_HANDLERS['core.agent'].run(ctx({ in: 'x' }, caps, { agentRef: {} }))).rejects.toThrow(/agentRef\.slug/);
     await expect(REALTIME_NODE_HANDLERS['core.agent'].run(ctx({ in: 'x' }, caps, {}))).rejects.toThrow(/agentRef\.slug/);
     expect(caps.generateDocument).not.toHaveBeenCalled();
-  });
-
-  it('the legacy summary node carries NO agentRef — it stays on the assigned-agent path', async () => {
-    const caps = capabilities();
-    await REALTIME_NODE_HANDLERS['consultation.realtimeSummary'].run(ctx({ in: 'text' }, caps, {}));
-    const [input] = (caps.generateDocument as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(input.agentRef).toBeUndefined();
   });
 });

@@ -1,62 +1,38 @@
 /**
- * the REALTIME node registry: which node types this runtime can run,
- * and what each one does.
+ * The REALTIME node registry: which node instances this runtime can run, and what each does.
  *
- * ## Task 7 — `LIVE_TOOL_KEYS` becomes node dispatch
+ * ## TASK-893 — keyed by what a node IS, never by a legacy type string
  *
- * The live plane used to decide what ran from a three-boolean allow-list
- * (`LIVE_TOOL_KEYS = ['ner','vitals','groundedness']`, D-13). Three booleans
- * cannot express "run this node, bound to that port, with this budget, and
- * degrade this way" — which is why a tenant could author a graph and have it
- * govern nothing. Here, a node RUNS because the lane contains it, and it
- * receives what its DECLARED PORTS say it receives.
+ * Until this ticket the handler table was keyed by legacy node types (`consultation.captureBinding`,
+ * `consultation.extractEntities`, `consultation.realtimeSummary`, `agent.*`) and a `core.agent`
+ * always generated the running note. Those types are gone. A `core.agent` now dispatches on the
+ * RESOLVED agent task (INTERFACES §7.4): `SPEECH_TO_TEXT` binds the live transcript,
+ * `NAMED_ENTITY_RECOGNITION` extracts entities, `TEXT_GENERATION` generates the running note —
+ * applying the agent's declared output schema as a response format (contract N4). A `core.action`
+ * runs only when `ACTION_CATALOGUE[key].lane === 'realtime'`; no kept action is, so
+ * `REALTIME_ACTION_HANDLERS` is empty and asserted total.
  *
- * `vitals` survives as what it always was: a projection of the SAME
- * `nlp.classify-tokens` response the entity node already makes. It was never a
- * second call and does not become a second node.
+ * A node's OUTCOME carries the CAPABILITY it ran (`RealtimeCapabilityKey`), which is what a
+ * projection keys on — never a type string, because every realtime node is now `core.agent`.
  *
  * ## Ports come from `@arcaai/workflow-contract`, never from here
  *
- * Every handler reads its port descriptors out of `NODE_PORTS`. That is what
- * makes the anti-laundering rule structural rather than conventional: this file
- * cannot widen `consultation.extractEntities.in` from `transcript` to `text`,
- * because it does not own the declaration.
+ * Every handler reads its port descriptors out of `NODE_PORTS` / `effectivePorts`. That is what
+ * keeps the type check structural: this file cannot widen a socket it does not own.
  */
-import {
-  NODE_CONFIG_SCHEMAS,
-  NODE_PORTS,
-  WORKFLOW_NODE_REGISTRY,
-  actionDelegateOf,
-  effectivePorts,
-  type WorkflowNodePorts,
-  type WorkflowPortDescriptor,
-} from '@arcaai/workflow-contract';
+import { ACTION_CATALOGUE, NODE_CONFIG_SCHEMAS, NODE_PORTS, WORKFLOW_NODE_REGISTRY, actionDelegateOf, effectivePorts, type WorkflowNodePorts, type WorkflowPortDescriptor } from '@arcaai/workflow-contract';
 import type { HarnessLiveAssistProposalDto } from '../../harness/dto';
 import type { LiveSummaryEntityDto, LiveSummarySectionDto, LiveSummaryStatsDto, LiveSummaryVitalsDto } from '../dto';
+import { outputSchemaResponseFormat, type JsonSchemaResponseFormat } from './output-schema-response-format.stub';
 
-/** The wire shape a correction proposal already has on the live-assist plane. Reused rather
- *  than redeclared: the realtime pass publishes onto that SAME channel, so a second shape
- *  would be a second contract for one payload. */
+/** The wire shape a correction proposal already has on the live-assist plane. */
 type LiveAssistProposal = HarnessLiveAssistProposalDto;
 
 /**
- * Node types the realtime runtime implements — DERIVED from the contract, not listed here
- * (lane A, item 7).
- *
- * This used to be a hand-kept set of three keys, and `realtime-lane.ts` explained at length why it
- * had to be: `WorkflowNodeDescriptor.lane` said `durable` on every node type, the contract package
- * refused a `realtime` node that was `externalWrite`, and no runtime read `lane` anyway. All three
- * of those are now false — the rule that refused a writing realtime node was falsified by this
- * very runtime and has been removed, `lane` carries the truth, and the durable interpreter SKIPS a
- * `realtime` node (`workflow.py`, reason `realtime_lane`) so exactly one runtime executes a given
- * node.
- *
- * Deriving it is the point rather than a tidy-up: two sources of truth for "which runtime owns
- * this node" is how the durable interpreter came to re-run nodes this executor already owns, and
- * for `consultation.realtimeSummary` (`externalWrite: true`) that is two engines writing one
- * consultation's document. `REALTIME_NODE_HANDLERS` below is asserted total over this set, so a
- * node flipped to `realtime` in the contract with no handler here is a failing test, never a
- * silent no-op at flush time.
+ * Node TYPES whose descriptor says `lane: 'realtime'` — DERIVED from the contract. Since TASK-893
+ * no registered type is realtime by TYPE (lane is a property of the `core.agent` / `core.action`
+ * INSTANCE), so this set is empty; it stays derived so a future realtime-by-type entry is a
+ * failing totality test here, never a silent no-op at flush time.
  */
 export const REALTIME_NODE_TYPES: ReadonlySet<string> = new Set(
   Object.values(WORKFLOW_NODE_REGISTRY)
@@ -65,14 +41,10 @@ export const REALTIME_NODE_TYPES: ReadonlySet<string> = new Set(
 );
 
 /**
- * TASK-864 A5 — lane membership is now a property of the INSTANCE, not only of the type.
- *
- * `core.agent` and `core.action` carry `execution.lane` in their own config (the registry's
- * per-TYPE `lane` became node config for the `core` vocabulary — §3.3), so one summarizer can
- * run live AND at finalization without two node types. A `core.action` inherits its delegate's
- * lane when the instance says nothing: an `agent.ner` action is realtime because `agent.ner`
- * is. The durable interpreter applies the SAME predicate (`_configured_realtime` in
- * `workflow.py`), so exactly one runtime still executes any given node.
+ * Lane membership is a property of the INSTANCE (TASK-864 A5): `core.agent` / `core.action` carry
+ * `execution.lane` in their own config. A `core.action` inherits its catalogue entry's lane when
+ * the instance says nothing. The durable interpreter applies the SAME predicate
+ * (`_configured_realtime` in `workflow.py`), so exactly one runtime executes any given node.
  */
 export function isRealtimeNode(type: string, config?: Readonly<Record<string, unknown>>): boolean {
   if (type === 'core.agent' || type === 'core.action') {
@@ -90,44 +62,56 @@ export function isRealtimeNode(type: string, config?: Readonly<Record<string, un
 // Capabilities — the NARROW port the host service implements
 // =============================================================================
 
+/** The agent tasks this lane dispatches on. Typed locally so the lane needs no enum from N. */
+export type RealtimeAgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
+
+/** The capability a node instance ran — what an outcome is keyed by. */
+export type RealtimeCapabilityKey = 'transcribe' | 'extractEntities' | 'generateDocument' | 'proposeCorrections' | 'extractFindings';
+
 export interface TranscribeResult {
   /** The transcript this turn contributes. Raw ASR output — never generated text. */
   transcript: string;
-  /**
-   * The `AsrPipeline` this capture is bound to, or null when the tenant has no
-   * `stt`-palette assignment and the session runs the default pipeline.
-   */
+  /** The ASR binding this capture ran on, or null on the tenant's default. */
   pipelineId: string | null;
 }
 
-/** A `core.agent` node's reference to the published Agent it runs (TASK-863 §3.4): a lineage slug and an optional version pin. */
-export interface RealtimeAgentRef {
-  slug: string;
-  versionNumber?: number;
+/**
+ * A `core.agent` node's reference to the agent it runs. Two forms:
+ *  - by SLUG (+ optional version pin) — what a tenant AUTHORS (`agentRef.slug` is required by the
+ *    node schema and `coreNodeConfigProblems`);
+ *  - by TASK — the tenant's ASSIGNED agent for that task, which only the code-built
+ *    {@link PLATFORM_REALTIME_LANE} uses (no slug is hard-coded anywhere; the assignment cascade
+ *    decides). A published graph can never carry this form.
+ */
+export type RealtimeAgentRef = { slug: string; versionNumber?: number; task?: undefined } | { task: RealtimeAgentTask; slug?: undefined };
+
+/** What the host resolved about a referenced agent — the part the lane dispatches on. */
+export interface RealtimeResolvedAgentView {
+  readonly slug: string;
+  readonly task: RealtimeAgentTask;
+  /** The agent's declared `outputSchema` (TEXT_GENERATION), applied per contract N4. */
+  readonly outputSchema?: unknown;
+  /** The agent's `parameters` — an explicit `responseFormat` there always wins. */
+  readonly parameters?: Record<string, unknown> | null;
 }
 
 export interface GenerateDocumentInput {
   /** The transcript this turn contributes, resolved from the node's declared `in` port. */
   sourceText: string;
   tenantId: string;
-  /**
-   * The node's OWN authored config, exactly as `ProposeCorrectionsInput` and
-   * `ExtractFindingsInput` already carry it — `config` is the ONLY thing that distinguishes
-   * one instance of a node type from another (a `core.agent`'s `overrides` live here).
-   * Optional so non-graph callers of the capability keep their arity.
-   */
+  /** The node's OWN authored config — the only thing that distinguishes two instances of one type. */
   config?: Readonly<Record<string, unknown>>;
-  /**
-   * TASK-876 — the `core.agent` node's `agentRef`, which the HOST resolves (explicit slug +
-   * version pin, fail closed on drift, through `TextAgentResolverService`) into the model,
-   * instruction, parameters and fallback chain the call runs on. Absent = a legacy summary
-   * node: the tenant's ASSIGNED TEXT_GENERATION agent selects (`resolveTextSelection`).
-   */
+  /** The node's `agentRef`, which the HOST resolves (explicit slug + pin, fail closed on drift). */
   agentRef?: RealtimeAgentRef;
+  /**
+   * Contract N4 (TASK-930): the JSON-schema response format derived from the agent's declared
+   * `outputSchema`, or `undefined` when the declared output is the task default / not an object
+   * schema / overridden by `parameters.responseFormat`. The host forwards it on the text call.
+   */
+  responseFormat?: JsonSchemaResponseFormat;
 }
 
 export interface GenerateDocumentResult {
-  /** The rendered running note. */
   text: string;
   sections: LiveSummarySectionDto[];
   stats: LiveSummaryStatsDto | null;
@@ -136,11 +120,7 @@ export interface GenerateDocumentResult {
 }
 
 export interface ExtractEntitiesInput {
-  /**
-   * RAW transcript. One field, by design — the same structural guarantee
-   * `ExtractionToolInput` carries in `live-tool-registry.ts`. There is no field
-   * on this type through which generated text could reach NER.
-   */
+  /** The text resolved from the node's declared `in` port. */
   sourceText: string;
   tenantId: string;
 }
@@ -151,88 +131,48 @@ export interface ExtractEntitiesResult {
 }
 
 export interface ExtractFindingsInput {
-  /**
-   * RAW transcript, resolved from the node's declared `in: transcript` port. Same structural
-   * guarantee `ExtractEntitiesInput` carries, and it matters most here: a "finding" the model
-   * invented in the running note and then highlighted as clinically IMPORTANT is the worst shape
-   * this failure could take. There is no field on this type through which a note can arrive.
-   */
   sourceText: string;
-  /**
-   * The consultation context items the owner's specification names alongside transcription,
-   * resolved from the optional `context` port. Passed through as authored — deciding which
-   * context matters is the tenant instruction's job, not this runtime's.
-   */
   context: unknown[];
-  /** Detector hints from the SAME flush's NER, so the pass costs one model call, not two. */
   entities: LiveSummaryEntityDto[];
   tenantId: string;
-  /**
-   * The node's OWN authored config. It carries the tenant's INSTRUCTION binding
-   * (`promptTemplateId`/`promptVersionNumber`) and `maxFindings`. What counts as important is
-   * declared there and nowhere else — this runtime holds no severity table, no red-flag list and
-   * no importance threshold.
-   */
   config: Readonly<Record<string, unknown>>;
 }
 
 export interface ExtractFindingsResult {
-  /**
-   * The findings, shaped as entities so they ride the highlight path that already exists.
-   * `type` carries the label the TENANT's instruction told the model to assign — the platform
-   * neither supplies nor validates that vocabulary.
-   */
   findings: LiveSummaryEntityDto[];
 }
 
 export interface ProposeCorrectionsInput {
-  /**
-   * RAW transcript, resolved from the node's declared `in: transcript` port. Same structural
-   * guarantee `ExtractEntitiesInput` carries: there is no field on this type through which a
-   * generated note could reach the grammar pass.
-   */
   sourceText: string;
-  /**
-   * The detector hints the SAME flush already produced, resolved from the optional
-   * `entities` port. Empty when the lane has no NER node — the pass still runs.
-   */
   entities: LiveSummaryEntityDto[];
   tenantId: string;
-  /**
-   * The node's OWN authored config. It carries the prompt binding
-   * (`promptTemplateId`/`promptVersionNumber`) and the correction task/tuning knobs — the prompt
-   * is CONFIG, resolved per node instance, never a literal in this runtime.
-   */
   config: Readonly<Record<string, unknown>>;
 }
 
 export interface ProposeCorrectionsResult {
-  /**
-   * Proposals that survived verification against the source. A proposal whose `[start, end)`
-   * does not equal its own `original` is DROPPED, because accepting it in a one-click UI would
-   * splice the replacement over the wrong characters.
-   */
   proposals: LiveAssistProposal[];
-  /** sha256 of the exact bytes the spans were measured against, so a console cannot accept a
-   *  proposal into text that has since drifted. */
   textSha256: string;
   rejectedProposals: number;
 }
 
 /**
- * What a node handler is allowed to do. Deliberately three narrow methods rather
- * than the whole `LiveDocumentationService`: a handler that could reach the
- * session could reach the generated note, and the type-level half of the
- * anti-laundering rule would be gone.
+ * What a node handler is allowed to do — narrow on purpose: a handler that could reach the
+ * session could reach the generated note.
  */
 export interface RealtimeCapabilities {
   transcribe(signal?: AbortSignal): Promise<TranscribeResult>;
   generateDocument(input: GenerateDocumentInput, signal?: AbortSignal): Promise<GenerateDocumentResult>;
   extractEntities(input: ExtractEntitiesInput, signal?: AbortSignal): Promise<ExtractEntitiesResult>;
-  /** Lane R (R1). PROPOSES corrections over the raw partial transcript; applies none of them. */
+  /** PROPOSES corrections over the raw partial transcript; applies none of them. */
   proposeCorrections(input: ProposeCorrectionsInput, signal?: AbortSignal): Promise<ProposeCorrectionsResult>;
-  /** Lane N. Mines IMPORTANT FINDINGS from the consultation context by tenant instruction. */
+  /** Mines IMPORTANT FINDINGS from the consultation context by tenant instruction. */
   extractFindings(input: ExtractFindingsInput, signal?: AbortSignal): Promise<ExtractFindingsResult>;
+  /**
+   * TASK-893 §7.4 — resolve a slug-form `agentRef` to the agent's TASK (and its output schema /
+   * parameters). Optional for callers that predate the rekey: when absent or `null`, the node is
+   * treated as `TEXT_GENERATION`, which is exactly what every `core.agent` was before this ticket.
+   */
+  resolveAgent?(ref: RealtimeAgentRef, signal?: AbortSignal): Promise<RealtimeResolvedAgentView | null>;
 }
 
 // =============================================================================
@@ -242,14 +182,7 @@ export interface RealtimeCapabilities {
 export interface RealtimeNodeRunContext {
   /** Values resolved from this node's declared input bindings, keyed by `toPort`. */
   readonly bound: Readonly<Record<string, unknown>>;
-  /**
-   * The node's OWN authored config, straight off the compiled node.
-   *
-   * Distinct from `bound` on purpose: `bound` is what UPSTREAM NODES produced and is type-checked
-   * against the port table, while this is what the TENANT AUTHORED on this instance. A per-node
-   * prompt binding is the second kind, and there is nowhere else for it to come from — resolving
-   * it from anything but the node would make one node's config govern another's call.
-   */
+  /** The node's OWN authored config, straight off the compiled node. */
   readonly config: Readonly<Record<string, unknown>>;
   readonly tenantId: string;
   readonly consultationId: string;
@@ -257,16 +190,17 @@ export interface RealtimeNodeRunContext {
   readonly signal?: AbortSignal;
 }
 
+/** What a handler produced: the output dict (keyed by declared `outputKey`s) and the capability it ran. */
+export interface RealtimeNodeRun {
+  readonly output: Record<string, unknown>;
+  readonly capability: RealtimeCapabilityKey;
+}
+
 export interface RealtimeNodeHandler {
   readonly type: string;
   readonly inputs: readonly WorkflowPortDescriptor[];
   readonly outputs: readonly WorkflowPortDescriptor[];
-  /**
-   * Returns the node's output dict — keyed by the `outputKey`s its output ports
-   * declare, exactly like a harness activity's `NodeActivityResult.output`. The
-   * executor reads it back through those same declarations.
-   */
-  run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>>;
+  run(ctx: RealtimeNodeRunContext): Promise<RealtimeNodeRun>;
 }
 
 function portsOf(type: string): WorkflowNodePorts {
@@ -281,248 +215,102 @@ function boundText(ctx: RealtimeNodeRunContext, port: string): string {
   return typeof value === 'string' ? value : '';
 }
 
-/**
- * `consultation.captureBinding` — task 14, and the answer to
- *
- * The node's declared output is `out: transcript { outputKey: 'transcript' }`,
- * and until now that was DESIGN INTENT: the durable activity starts/stops the
- * live-documentation session and emits `{action, consultationId}`, publishing no
- * transcript at all. The consultation palette therefore had NO producer of
- * `transcript`, which made `consultation.extractEntities`' required `in:
- * transcript` unsatisfiable in every graph — the node degraded on `no_bound_text`
- * and the port declaration was a promise nothing kept.
- *
- * In the REALTIME lane it is kept. Capture binds the live ASR stream — the
- * session's ingested STT finals, produced by the tenant's `AsrPipeline` — and
- * publishes them under `transcript`. Downstream nodes resolve their transcript
- * input through the port, not through a `delta || transcript` expression the
- * flush happened to have in scope.
- */
-class CaptureBindingHandler implements RealtimeNodeHandler {
-  readonly type = 'consultation.captureBinding';
-  readonly inputs = portsOf('consultation.captureBinding').inputs;
-  readonly outputs = portsOf('consultation.captureBinding').outputs;
-
-  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
-    const { transcript, pipelineId } = await ctx.capabilities.transcribe(ctx.signal);
-    return { transcript, pipelineId };
-  }
-}
-
-/**
- * `consultation.extractEntities` — NER over the raw transcript.
- *
- * ITS INPUT IS `transcript`, AND THAT IS THE POINT. The LLM running note carries
- * a material hallucination base rate, so NER over the note laundered invented
- * findings and medications into first-class clinical entities. The executor
- * refuses any binding whose producer's port type does not satisfy `transcript`,
- * and `document` does not (`document ⊑ text`, `transcript ⊑ text`, siblings) —
- * so a graph wiring a generation node into this one cannot run.
- */
-class ExtractEntitiesHandler implements RealtimeNodeHandler {
-  readonly type = 'consultation.extractEntities';
-  readonly inputs = portsOf('consultation.extractEntities').inputs;
-  readonly outputs = portsOf('consultation.extractEntities').outputs;
-
-  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
-    const sourceText = boundText(ctx, 'in');
-    if (!sourceText) return { entities: [] };
-    const result = await ctx.capabilities.extractEntities({ sourceText, tenantId: ctx.tenantId }, ctx.signal);
-    // `vitals` rides on the SAME response — it is a projection, not a second call.
-    return { entities: result.entities, vitals: result.vitals };
-  }
-}
-
-/** `consultation.realtimeSummary` — the TEXT generation producing the running note. */
-class RealtimeSummaryHandler implements RealtimeNodeHandler {
-  readonly type = 'consultation.realtimeSummary';
-  readonly inputs = portsOf('consultation.realtimeSummary').inputs;
-  readonly outputs = portsOf('consultation.realtimeSummary').outputs;
-
-  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
-    const sourceText = boundText(ctx, 'in');
-    const result = await ctx.capabilities.generateDocument({ sourceText, tenantId: ctx.tenantId, config: ctx.config }, ctx.signal);
-    // `text` is the declared `outputKey` of this node's `out: document` port.
-    return { text: result.text, sections: result.sections, stats: result.stats, repaired: result.repaired };
-  }
-}
-
-/**
- * `agent.grammar` — Lane R (R1). The live grammar/spelling pass.
- *
- * ITS INPUT IS `transcript`, and that is the difference from its durable sibling rather than an
- * oversight. `consultation.proposeCorrections.in` is `text` precisely so it may review a
- * generated note at the end of a consultation; this node reviews the RAW PARTIAL TRANSCRIPT the
- * clinician is watching grow, so the executor's port-type check refuses a generation node wired
- * into it exactly as it does for NER.
- *
- * It APPLIES NOTHING. `applied: false` rides on every output because a system that silently
- * rewrites a drug name or a dose in clinical text is a patient-safety defect: the corrected
- * transcript is always ADVISORY alongside the raw, and a proposal becomes real only through the
- * DD-8 accepted-proposal path.
- *
- * Entities come from the SAME flush's extraction rather than a second NER round trip — the same
- * "one call, two projections" principle `vitals` follows.
- */
-class GrammarHandler implements RealtimeNodeHandler {
-  readonly type = 'agent.grammar';
-  readonly inputs = portsOf('agent.grammar').inputs;
-  readonly outputs = portsOf('agent.grammar').outputs;
-
-  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
-    const sourceText = boundText(ctx, 'in');
-    // Nothing was said this turn, so there is nothing to propose a correction FOR. Calling a
-    // model here would invite ungrounded edits to ordinary prose — the same reason the durable
-    // engine returns early.
-    if (!sourceText) return { proposals: [], applied: false };
-
-    const bound = ctx.bound.entities;
-    const entities = Array.isArray(bound) ? (bound as LiveSummaryEntityDto[]) : [];
-
-    const result = await ctx.capabilities.proposeCorrections({ sourceText, entities, tenantId: ctx.tenantId, config: ctx.config }, ctx.signal);
-    return {
-      proposals: result.proposals,
-      applied: false,
-      textSha256: result.textSha256,
-      rejectedProposals: result.rejectedProposals,
-    };
-  }
-}
-
-/**
- * `agent.important_findings` — Lane N. The capability recorded as missing.
- *
- * ## What makes it "important" is CONFIGURATION, and it lives nowhere in this file
- *
- * The owner's specification is a configuration statement: findings are *"mined/generated/extracted
- * by agent following a set of instructions defined/declared/overwriten by tenant admin"*. So this
- * handler contains no severity ladder, no red-flag vocabulary and no importance threshold — every
- * one of those would be the platform answering the question the owner assigned to the tenant
- * admin. What it does is bind the node's declared inputs and hand them, with the tenant's own
- * instruction, to the host service.
- *
- * ## Its input is TRANSCRIPT, and that is the safety property
- *
- * Identical to `agent.ner`'s, for a sharper reason. A generation node cannot be wired in
- * (`document` and `transcript` are lattice siblings, so the executor's port-type check refuses
- * it), which means a finding highlighted as clinically important is always something that was
- * SAID — never something the running-note model produced and this pass then promoted.
- *
- * ## Its output is `entities`, under the key `findings`
- *
- * The PRIMITIVE is `entities` so a finding rides the highlight path already built
- * `groundEntitiesToNote` re-anchors it into the rendered note, `reanchorAnnotations` puts it on a
- * section. The KEY is distinct so a consumer can tell "the tenant said this matters" apart from
- * "the detector saw a drug name", which are two different claims and must not merge into one
- * highlight set.
- */
-class ImportantFindingsHandler implements RealtimeNodeHandler {
-  readonly type = 'agent.important_findings';
-  readonly inputs = portsOf('agent.important_findings').inputs;
-  readonly outputs = portsOf('agent.important_findings').outputs;
-
-  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
-    const sourceText = boundText(ctx, 'in');
-    // Nothing was said this turn, so there is nothing to mine. Calling a model over an empty turn
-    // invites findings with no source — the same early return the grammar pass makes.
-    if (!sourceText) return { findings: [] };
-
-    const boundEntities = ctx.bound.entities;
-    const boundContext = ctx.bound.context;
-    const result = await ctx.capabilities.extractFindings(
-      {
-        sourceText,
-        context: Array.isArray(boundContext) ? boundContext : boundContext === undefined ? [] : [boundContext],
-        entities: Array.isArray(boundEntities) ? (boundEntities as LiveSummaryEntityDto[]) : [],
-        tenantId: ctx.tenantId,
-        config: ctx.config,
-      },
-      ctx.signal,
-    );
-    return { findings: result.findings };
-  }
-}
-
-/**
- * `agent.transcription` and `agent.ner` are the TARGET CATALOGUE's names for capture and NER
- * and they run the SAME handler rather than a second implementation of the same
- * behaviour — `nodes/agent_catalogue.py` does exactly this on the durable side. What an alias does
- * NOT share is its port declaration: those are read from `@arcaai/workflow-contract` under the
- * alias's own key, so each node type is still validated against what it itself declares.
- */
-function aliasHandler(type: string, delegate: RealtimeNodeHandler): RealtimeNodeHandler {
-  const ports = portsOf(type);
-  return Object.freeze({ type, inputs: ports.inputs, outputs: ports.outputs, run: (ctx: RealtimeNodeRunContext) => delegate.run(ctx) });
-}
-
-/** The node's `agentRef`, or `null` when it names no slug. Malformed shapes read as absent — the authoring schema refuses them. */
-function readAgentRef(config: Readonly<Record<string, unknown>>): RealtimeAgentRef | null {
+/** The node's `agentRef` in either form, or `null`. Malformed shapes read as absent — the authoring schema refuses them. */
+export function readAgentRef(config: Readonly<Record<string, unknown>>): RealtimeAgentRef | null {
   const ref = config.agentRef;
   if (ref === null || typeof ref !== 'object' || Array.isArray(ref)) return null;
-  const { slug, versionNumber } = ref as Record<string, unknown>;
-  if (typeof slug !== 'string' || slug.length === 0) return null;
-  return Number.isInteger(versionNumber) && (versionNumber as number) >= 1 ? { slug, versionNumber: versionNumber as number } : { slug };
+  const { slug, versionNumber, task } = ref as Record<string, unknown>;
+  if (typeof slug === 'string' && slug.length > 0) {
+    return Number.isInteger(versionNumber) && (versionNumber as number) >= 1 ? { slug, versionNumber: versionNumber as number } : { slug };
+  }
+  if (task === 'SPEECH_TO_TEXT' || task === 'TEXT_GENERATION' || task === 'TEXT_TO_SPEECH' || task === 'NAMED_ENTITY_RECOGNITION') return { task };
+  return null;
 }
 
 /**
- * `core.agent` on the realtime lane (TASK-864 A5) — a TEXT_GENERATION agent producing the
- * running note through the SAME `generateDocument` capability `consultation.realtimeSummary`
- * uses. This handler binds the declared ports and hands the host the node's `agentRef`
- * (TASK-876: slug + optional version pin) beside the node's own config; the HOST resolves the
- * reference — explicit slug, fail closed on a drifted pin, exactly as the Temporal lane — into
- * the agent's model, instruction, parameters and fallback chain. A node with no slug is a
- * contract violation: it throws, the executor degrades it with a named reason, and nothing is
- * ever generated on a substituted default. ASR/TTS agents are not realtime-lane nodes: the live
- * transcript is the capture binding's product and speech is a durable artifact.
+ * `core.agent` on the realtime lane — dispatch on the RESOLVED task (INTERFACES §7.4).
+ *
+ *  - `SPEECH_TO_TEXT` → the live transcript (the former capture binding), under `transcript`.
+ *  - `NAMED_ENTITY_RECOGNITION` → NER over the bound `in` text: `data = { entities }`, `text` =
+ *    the input passed through (contract §2.4), plus `entities`/`vitals` for the projection.
+ *  - `TEXT_GENERATION` → the running note, with the agent's declared output schema applied as
+ *    a response format (contract N4). Also the fallback when the host cannot resolve the task.
+ *  - `TEXT_TO_SPEECH` is not a realtime-lane task: it throws, and the executor degrades the node
+ *    with a named reason.
+ *
+ * A node with no reference at all is a contract violation: it throws, nothing is generated on a
+ * substituted default.
  */
 class CoreAgentHandler implements RealtimeNodeHandler {
   readonly type = 'core.agent';
   readonly inputs = portsOf('core.agent').inputs;
   readonly outputs = portsOf('core.agent').outputs;
 
-  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
+  async run(ctx: RealtimeNodeRunContext): Promise<RealtimeNodeRun> {
     const agentRef = readAgentRef(ctx.config);
     if (!agentRef) throw new Error('core.agent: `agentRef.slug` is required');
-    const sourceText = boundText(ctx, 'in');
-    const context = ctx.bound.context;
-    const material = sourceText || (context !== undefined ? JSON.stringify(context) : '');
-    const result = await ctx.capabilities.generateDocument(
-      { sourceText: material, tenantId: ctx.tenantId, config: ctx.config, agentRef },
-      ctx.signal,
-    );
-    return { text: result.text, sections: result.sections, stats: result.stats, repaired: result.repaired };
+
+    const resolved = agentRef.task !== undefined ? null : ((await ctx.capabilities.resolveAgent?.(agentRef, ctx.signal)) ?? null);
+    const task: RealtimeAgentTask = agentRef.task ?? resolved?.task ?? 'TEXT_GENERATION';
+
+    switch (task) {
+      case 'SPEECH_TO_TEXT': {
+        const { transcript, pipelineId } = await ctx.capabilities.transcribe(ctx.signal);
+        return { capability: 'transcribe', output: { transcript, pipelineId } };
+      }
+      case 'NAMED_ENTITY_RECOGNITION': {
+        const sourceText = boundText(ctx, 'in');
+        if (!sourceText) return { capability: 'extractEntities', output: { data: { entities: [] }, text: '', entities: [] } };
+        const result = await ctx.capabilities.extractEntities({ sourceText, tenantId: ctx.tenantId }, ctx.signal);
+        // `vitals` rides on the SAME response — it is a projection, not a second call.
+        return { capability: 'extractEntities', output: { data: { entities: result.entities }, text: sourceText, entities: result.entities, vitals: result.vitals } };
+      }
+      case 'TEXT_TO_SPEECH':
+        throw new Error('core.agent: a TEXT_TO_SPEECH agent is not a realtime-lane node — speech is a durable artifact');
+      case 'TEXT_GENERATION':
+      default: {
+        const sourceText = boundText(ctx, 'in');
+        const context = ctx.bound.context;
+        const material = sourceText || (context !== undefined ? JSON.stringify(context) : '');
+        const responseFormat = resolved ? outputSchemaResponseFormat(resolved.slug, resolved.outputSchema, resolved.parameters) : undefined;
+        const result = await ctx.capabilities.generateDocument(
+          { sourceText: material, tenantId: ctx.tenantId, config: ctx.config, agentRef, ...(responseFormat === undefined ? {} : { responseFormat }) },
+          ctx.signal,
+        );
+        return { capability: 'generateDocument', output: { text: result.text, sections: result.sections, stats: result.stats, repaired: result.repaired } };
+      }
+    }
   }
 }
 
-const captureBinding = new CaptureBindingHandler();
-const extractEntities = new ExtractEntitiesHandler();
-
 export const REALTIME_NODE_HANDLERS: Readonly<Record<string, RealtimeNodeHandler>> = Object.freeze({
-  'consultation.captureBinding': captureBinding,
-  'consultation.extractEntities': extractEntities,
-  'consultation.realtimeSummary': new RealtimeSummaryHandler(),
-  'agent.transcription': aliasHandler('agent.transcription', captureBinding),
-  'agent.ner': aliasHandler('agent.ner', extractEntities),
-  // NOT an alias: `consultation.proposeCorrections` stays DURABLE (it reviews the finished note
-  // in the seeded graphs), so this node has no pipeline counterpart to delegate to here.
-  'agent.grammar': new GrammarHandler(),
-  // Lane N — no alias either: `agent.important_findings` is the one catalogue entry with no
-  // pipeline counterpart anywhere, because the capability did not exist before this ticket.
-  'agent.important_findings': new ImportantFindingsHandler(),
-  // TASK-864 — the `core` vocabulary's realtime agent. `core.action` has no static entry: its
-  // handler is its DELEGATE's, resolved per instance by `realtimeHandlerFor`.
   'core.agent': new CoreAgentHandler(),
 });
 
 /**
- * The handler for an INSTANCE (TASK-864 A5). A `core.action` resolves to the handler of the
- * legacy node it delegates to, wrapped so its declared ports are the delegate's (the action IS
- * the legacy node under a key). Every other type resolves by type, exactly as before.
+ * Handlers for `core.action` instances, keyed by ACTION key — only for catalogue entries whose
+ * `lane` is `realtime`. Asserted TOTAL over that set by `realtime-node-registry.test.ts`; today no
+ * kept action is realtime, so this table is empty and a realtime action instance is skipped by
+ * the executor as `unsupported_node_type` (observable, never silent).
+ */
+export const REALTIME_ACTION_HANDLERS: Readonly<Record<string, RealtimeNodeHandler>> = Object.freeze({});
+
+/** Whether the catalogue declares any realtime action — what `REALTIME_ACTION_HANDLERS` must cover. */
+export const REALTIME_ACTION_KEYS: readonly string[] = Object.freeze(
+  Object.values(ACTION_CATALOGUE)
+    .filter((descriptor) => descriptor.lane === 'realtime')
+    .map((descriptor) => descriptor.key),
+);
+
+/**
+ * The handler for an INSTANCE. A `core.action` resolves to its action's handler, wrapped so its
+ * declared ports are the action's effective ports and its config is the `action` sub-config.
+ * Every other type resolves by type.
  */
 export function realtimeHandlerFor(type: string, config?: Readonly<Record<string, unknown>>): RealtimeNodeHandler | undefined {
   if (type === 'core.action') {
     const delegate = actionDelegateOf(config);
-    const handler = delegate ? REALTIME_NODE_HANDLERS[delegate.key] : undefined;
+    const handler = delegate ? REALTIME_ACTION_HANDLERS[delegate.key] : undefined;
     if (!delegate || !handler) return undefined;
     const ports = effectivePorts('core.action', config);
     return Object.freeze({
@@ -535,62 +323,19 @@ export function realtimeHandlerFor(type: string, config?: Readonly<Record<string
   return REALTIME_NODE_HANDLERS[type];
 }
 
-/** The delegated action's OWN config (`config.action`), which is what the legacy handler reads. */
+/** The action's OWN config (`config.action`), which is what its handler reads. */
 function actionConfigOf(config: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
   const action = config.action;
   return typeof action === 'object' && action !== null && !Array.isArray(action) ? (action as Record<string, unknown>) : {};
 }
 
 /**
- * Which PIPELINE node type an alias stands for.
- *
- * `agent.transcription` and `agent.ner` are the target catalogue's names for capture and NER and
- * run the same handlers. A caller reading a lane's outcomes back — the flush projection in
- * `LiveDocumentationService`, a trajectory reader, anything keyed by node type — must treat the
- * two names as ONE capability, or a graph authored against the catalogue silently produces
- * nothing: the node runs, the model is paid for, and `outcomes.find(o => o.type ===
- * 'consultation.extractEntities')` returns undefined.
- *
- * A type with no pipeline counterpart is its own canonical form. `agent.grammar` is deliberately
- * one of those: its sibling `consultation.proposeCorrections` stays on the DURABLE lane, so
- * folding the two together would claim an equivalence no runtime honours.
- */
-const REALTIME_ALIAS_OF: Readonly<Record<string, string>> = Object.freeze({
-  'agent.transcription': 'consultation.captureBinding',
-  'agent.ner': 'consultation.extractEntities',
-});
-
-export function canonicalRealtimeNodeType(type: string, config?: Readonly<Record<string, unknown>>): string {
-  // TASK-864: a `core.action` instance reads back as the legacy capability it delegates to, and
-  // a realtime `core.agent` as the running-note generator — so the flush projection that keys
-  // outcomes by canonical type keeps working for a graph authored in the `core` vocabulary.
-  if (type === 'core.action') {
-    const delegate = actionDelegateOf(config);
-    return delegate ? (REALTIME_ALIAS_OF[delegate.key] ?? delegate.key) : type;
-  }
-  if (type === 'core.agent') return 'consultation.realtimeSummary';
-  return REALTIME_ALIAS_OF[type] ?? type;
-}
-
-/**
- * item 6 — whether a node type offers the `enabled` switch at all.
- *
- * DERIVED from the shipped config schema, never from a list of names. `node-config-schemas.ts`
- * folds `enabled` into every node type EXCEPT the registry-class `mandatory` ones (items 3-4), so
- * "does this schema declare `enabled`?" is the same question as "may a tenant turn this node
- * off?" — asked of the artifact that actually decides it. Every schema is
- * `additionalProperties: false`, so a node type without the property cannot be authored with one:
- * a read-out that showed such a node as togglable would advertise a switch the publish-time
- * validator rejects.
- *
- * Restating the mandatory set here instead would give the platform two answers to one question,
- * which is exactly the drift the derivation in `REALTIME_NODE_TYPES` above exists to avoid.
+ * Whether a node type offers the `enabled` switch at all — DERIVED from the shipped config schema,
+ * never from a list of names (`node-config-schemas.ts` withholds `enabled` from the two graph
+ * boundaries only). An unregistered type answers `false`: it withholds a switch rather than
+ * advertising one the publish-time validator rejects.
  */
 export function realtimeNodeIsTogglable(type: string): boolean {
-  // `NodeConfigSchema` is `Readonly<Record<string, unknown>>` — a JSON Schema document, not a
-  // typed shape — so the walk down to `properties.enabled` is narrowed rather than asserted. An
-  // unregistered type answers `false`, which is the safe direction: it withholds a switch rather
-  // than advertising one that does not exist.
   const properties = (NODE_CONFIG_SCHEMAS[type] as Record<string, unknown> | undefined)?.properties;
   if (typeof properties !== 'object' || properties === null) return false;
   return (properties as Record<string, unknown>).enabled !== undefined;

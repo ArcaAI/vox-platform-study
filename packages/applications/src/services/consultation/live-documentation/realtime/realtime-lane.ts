@@ -42,12 +42,12 @@
  * failing test, not a silent no-op at flush time.
  */
 import type { CompiledInputBinding, CompiledWorkflowConfig } from '@arcaai/workflow-contract';
-import { canonicalRealtimeNodeType, isRealtimeNode } from './realtime-node-registry';
+import { isRealtimeNode } from './realtime-node-registry';
 
 /** One executable node of the realtime lane, derived from a `CompiledNode`. */
 export interface RealtimeNode {
   readonly nodeId: string;
-  /** Registered node type, e.g. `consultation.realtimeSummary`. */
+  /** Registered node type — since TASK-893 every realtime node is a `core.agent` or `core.action`. */
   readonly type: string;
   readonly config: Readonly<Record<string, unknown>>;
   /**
@@ -99,27 +99,22 @@ const DEFAULT_NLP_TIMEOUT_MS = 30_000;
 const DEFAULT_CAPTURE_TIMEOUT_MS = 1_000;
 
 /**
- * The PLATFORM lane — today's flush, as a graph.
+ * The PLATFORM lane — today's flush, as a `core` graph (TASK-893).
  *
  * ```
- * stage 0 capture -> transcript
- * stage 1 extract (in: transcript) -> entities ┐ concurrent
- *           summarize (in: transcript) -> document ┘
+ * stage 0 capture   core.agent{SPEECH_TO_TEXT}            -> transcript
+ * stage 1 extract   core.agent{NAMED_ENTITY_RECOGNITION}  (in: capture.transcript) ┐ concurrent
+ *           summarize core.agent{TEXT_GENERATION}         (in: capture.transcript) ┘
  * ```
  *
- * `extract` and `summarize` BOTH read the transcript and neither reads the
- * other, so they are one topological level and run concurrently. That is not an
- * optimisation bolted onto the old order — it is what the dependency graph
- * actually says, and the old serial order was an artifact of the hardcoded
- * script.
- *
- * `summarize.entities` is deliberately LEFT UNWIRED even though the port exists.
- * Wiring it would make the note wait for NER, serialising the two calls and
- * changing what the model is told — neither of which today's behaviour does.
- *
- * There is no groundedness NODE because the registry has no groundedness node
- * type; the gate is a GUARD attached to the generation node (see `guard-memo.ts`).
+ * No agent SLUG is hard-coded here (rule: configuration is never a literal in code): each node
+ * references the tenant's ASSIGNED agent for its task (`agentRef: { task }`), which only this
+ * code-built lane may do — a published graph must name a slug. `extract` and `summarize` both
+ * read the transcript and neither reads the other, so they run concurrently.
  */
+const PLATFORM_AGENT_CONFIG = (task: 'SPEECH_TO_TEXT' | 'NAMED_ENTITY_RECOGNITION' | 'TEXT_GENERATION') =>
+  Object.freeze({ agentRef: Object.freeze({ task }), execution: Object.freeze({ lane: 'realtime', cadence: 'perTurn' }) });
+
 export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
   source: 'platform-default',
   definitionSlug: null,
@@ -132,8 +127,8 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
       nodes: Object.freeze([
         Object.freeze({
           nodeId: PLATFORM_LANE_NODE_IDS.capture,
-          type: 'consultation.captureBinding',
-          config: Object.freeze({}),
+          type: 'core.agent',
+          config: PLATFORM_AGENT_CONFIG('SPEECH_TO_TEXT'),
           timeoutMs: DEFAULT_CAPTURE_TIMEOUT_MS,
           maxAttempts: 1,
           inputs: Object.freeze([]),
@@ -147,22 +142,22 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
       nodes: Object.freeze([
         Object.freeze({
           nodeId: PLATFORM_LANE_NODE_IDS.extract,
-          type: 'consultation.extractEntities',
-          config: Object.freeze({}),
+          type: 'core.agent',
+          config: PLATFORM_AGENT_CONFIG('NAMED_ENTITY_RECOGNITION'),
           timeoutMs: DEFAULT_NLP_TIMEOUT_MS,
           maxAttempts: 1,
-          inputs: Object.freeze([{ fromNodeId: PLATFORM_LANE_NODE_IDS.capture, fromPort: 'out', toPort: 'in' }]),
+          inputs: Object.freeze([{ fromNodeId: PLATFORM_LANE_NODE_IDS.capture, fromPort: 'transcript', toPort: 'in' }]),
           // Entity extraction failing has never stopped the note being published.
           onError: 'degrade',
           enabled: true,
         } as RealtimeNode),
         Object.freeze({
           nodeId: PLATFORM_LANE_NODE_IDS.summarize,
-          type: 'consultation.realtimeSummary',
-          config: Object.freeze({}),
+          type: 'core.agent',
+          config: PLATFORM_AGENT_CONFIG('TEXT_GENERATION'),
           timeoutMs: DEFAULT_TEXT_TIMEOUT_MS,
           maxAttempts: 1,
-          inputs: Object.freeze([{ fromNodeId: PLATFORM_LANE_NODE_IDS.capture, fromPort: 'out', toPort: 'in' }]),
+          inputs: Object.freeze([{ fromNodeId: PLATFORM_LANE_NODE_IDS.capture, fromPort: 'transcript', toPort: 'in' }]),
           // A TEXT failure retains the last-good note and sets `textFailed` — it
           // has never failed the flush, and must not start to.
           onError: 'degrade',
@@ -261,7 +256,8 @@ export function realtimeDocumentTemplateSlug(lane: RealtimeLane | null): string 
   if (!lane) return null;
   for (const stage of lane.stages) {
     for (const node of stage.nodes) {
-      if (canonicalRealtimeNodeType(node.type, node.config) !== 'consultation.realtimeSummary') continue;
+      // TASK-893: with every realtime node a `core.agent`, the running-note node is the one that
+      // NAMES a template — a node that names none is not it.
       const slug = node.config.documentTemplateSlug;
       if (typeof slug === 'string' && slug.trim().length > 0) return slug.trim();
     }
