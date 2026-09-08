@@ -4,12 +4,14 @@ import { ProviderSwitch } from './ProviderSwitch';
 
 interface LiveTranscriptionProps {
   pipelineId: string;
+  /** The published ASR Agent the capture session selects (TASK-931); empty ⇒ the tenant assignment decides. */
+  sttAgentSlug: string;
   language: string;
 }
 
 type Phase = 'idle' | 'starting' | 'recording' | 'stopping';
 
-export function LiveTranscription({ pipelineId, language }: LiveTranscriptionProps) {
+export function LiveTranscription({ pipelineId, sttAgentSlug, language }: LiveTranscriptionProps) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [lines, setLines] = useState<string[]>([]);
   const [interim, setInterim] = useState('');
@@ -21,7 +23,7 @@ export function LiveTranscription({ pipelineId, language }: LiveTranscriptionPro
   const capture = useAudioCapture({
     language,
     languageMode: language,
-    options: { sttPipelineId: pipelineId.trim() || undefined },
+    options: { sttAgentSlug: sttAgentSlug.trim() || undefined },
     onError: (err) => setError(err.message),
   });
 

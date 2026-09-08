@@ -22,7 +22,9 @@ function toCompatOptions(config: PlaygroundConfig): V1SdkConfig {
     websocketUrl: apiEndpoint.replace(/^http/, 'ws'),
     credentials: { apiKey: config.apiKey.trim() },
     tenantId: config.tenantId.trim() || undefined,
-    sttPipelineId: config.pipelineId.trim() || undefined,
+    // `sttAgentSlug`, not the deprecated `sttPipelineId` (TASK-931): the ASR Agent slug is
+    // what the gateway resolves now, and the adapter prefers it when both are set.
+    sttAgentSlug: config.sttAgentSlug.trim() || undefined,
     // Browser capture-graph stages. Stated EXPLICITLY in both
     // directions rather than omitted: the adapter's output replaces
     // `DEFAULT_AUDIO_CONFIG` outright, so an omitted key silently means "off"

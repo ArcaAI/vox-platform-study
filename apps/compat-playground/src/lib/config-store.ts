@@ -15,8 +15,23 @@ export interface PlaygroundConfig {
   apiKey: string;
   /** Tenant id, e.g. `50000000-0000-0000-0000-000000000000`. */
   tenantId: string;
-  /** Streaming STT pipeline id — the "ON" (SDK-configured pipeline) target. */
+  /**
+   * Streaming STT pipeline id — the "ON" (SDK-configured pipeline) target.
+   *
+   * DEPRECATED at the gateway (removed in R4) and kept here because the two hooks it still
+   * feeds — `useArcaSpeechToText` and `useArcaBatchTranscription` — accept no agent slug yet.
+   * The CAPTURE selector moved to {@link sttAgentSlug} (TASK-931); this one did not, because
+   * an agent slug sent as a pipeline id is a 400, not a graceful degradation.
+   */
   pipelineId: string;
+  /**
+   * The published ASR Agent (`SPEECH_TO_TEXT`) the live capture session selects — what
+   * `V1SdkConfig.sttAgentSlug` and `useAudioCapture({ options: { sttAgentSlug } })` take.
+   *
+   * Empty means "no opinion": the tenant → department agent assignment decides, which is the
+   * normal case for a deployed app and the reason this is not required.
+   */
+  sttAgentSlug: string;
   /**
    * Selected STT language-mode id (catalog, e.g. `en`/`ml`/`ml-en`/`auto`).
    * Forwarded to `useArcaSpeechToText({ options: { languageMode } })`. The live
@@ -115,6 +130,7 @@ export function defaultConfig(): PlaygroundConfig {
     apiKey: stored.apiKey ?? import.meta.env.VITE_API_KEY ?? '',
     tenantId: stored.tenantId ?? import.meta.env.VITE_TENANT_ID ?? '',
     pipelineId: stored.pipelineId ?? import.meta.env.VITE_PIPELINE_ID ?? '',
+    sttAgentSlug: stored.sttAgentSlug ?? import.meta.env.VITE_STT_AGENT_SLUG ?? '',
     languageMode: stored.languageMode ?? import.meta.env.VITE_LANGUAGE_MODE ?? 'en',
     // `?? false` (not `|| false`) so a stored `false` is honoured rather than
     // re-defaulted, and so the pair is always a real boolean by the time it
