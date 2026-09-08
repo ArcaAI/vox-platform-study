@@ -33,6 +33,11 @@ function laneOf(nodes: RealtimeNode[][], source: RealtimeLane['source'] = 'tenan
     definitionSlug: 'fixture',
     definitionVersionNumber: 1,
     stages: nodes.map((stageNodes, stageIndex) => ({ stageIndex, nodes: stageNodes })),
+    onStart: [],
+    guardrail: null,
+    // TASK-932 — an UNBRANCHED lane: no `core.condition` gates anything here, which is what
+    // keeps every assertion in this file a statement about the walk and not about routing.
+    conditions: [],
   };
 }
 
@@ -43,6 +48,8 @@ const node = (over: Partial<RealtimeNode> & Pick<RealtimeNode, 'nodeId' | 'type'
   inputs: [],
   onError: 'degrade',
   enabled: true,
+  cadence: 'perTurn',
+  branchGuards: [],
   ...over,
 });
 

@@ -41,7 +41,7 @@
  * asserted total over it — a node flipped to `realtime` with no handler here is a
  * failing test, not a silent no-op at flush time.
  */
-import type { CompiledInputBinding, CompiledWorkflowConfig } from '@arcaai/workflow-contract';
+import type { CompiledBranchGuard, CompiledInputBinding, CompiledWorkflowConfig } from '@arcaai/workflow-contract';
 import { isRealtimeNode } from './realtime-node-registry';
 
 /** One executable node of the realtime lane, derived from a `CompiledNode`. */
@@ -72,6 +72,38 @@ export interface RealtimeNode {
    * before this cadence existed and nothing here is trying to reinterpret them.
    */
   readonly cadence: string | undefined;
+  /**
+   * TASK-932 — the branch handles this node sits BEHIND, kept verbatim from
+   * `CompiledNode.branchGuards`. Empty for an unguarded node, which is every node of every
+   * lane authored before a `core.condition` split one.
+   *
+   * The executor runs a guarded node only when one of these handles was taken
+   * ({@link RealtimeLane.conditions}) — the same rule the durable interpreter applies in
+   * `_branch_skip` (`apps/harness/.../interpreter/workflow.py`). Without it a graph that
+   * splits its per-turn summary by visit type ran BOTH summary nodes on every flush: two TEXT
+   * generations for one note, which is the 503 storm observed on 2026-09-09.
+   */
+  readonly branchGuards: readonly CompiledBranchGuard[];
+}
+
+/** One branch of a `core.condition`: the HANDLE it routes to and the CEL expression that opens it. */
+export interface RealtimeConditionBranch {
+  /** `branches[].key` — the same string the compiler recorded as a guard `handle`. */
+  readonly key: string;
+  readonly when: string;
+}
+
+/**
+ * A `core.condition` node the lane must EVALUATE but never EXECUTES.
+ *
+ * The condition itself is a durable node (`lane: 'durable'`, `classes: ['router']`), so it is not
+ * admitted to the lane and no handler exists for it. What the realtime lane needs from it is only
+ * its routing decision, which is a pure function of the run context — so the branches are carried
+ * here and evaluated by the executor with the SAME `evaluateCondition` the harness activity uses.
+ */
+export interface RealtimeCondition {
+  readonly nodeId: string;
+  readonly branches: readonly RealtimeConditionBranch[];
 }
 
 /** Nodes in one topological level. Every node in a stage runs CONCURRENTLY. */
@@ -109,6 +141,14 @@ export interface RealtimeLane {
    * one node cannot be screened on one lane and skipped on the other.
    */
   readonly guardrail: boolean | null;
+  /**
+   * TASK-932 — the `core.condition` nodes this lane's {@link RealtimeNode.branchGuards} name.
+   *
+   * Only the referenced ones: a condition that gates nothing on this lane is the durable lane's
+   * business and evaluating it here would be a decision nobody reads. Empty for every lane with
+   * no guarded node, which makes the whole mechanism inert for a graph that authors no split.
+   */
+  readonly conditions: readonly RealtimeCondition[];
 }
 
 /** Node ids of the platform-default lane — stable, because trajectories cite them. */
@@ -145,6 +185,9 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
   definitionVersionNumber: null,
   // The platform lane has no author, so it expresses no workflow-level guardrail opinion.
   guardrail: null,
+  // ...and no author means no branch: the code-built lane runs every one of its three nodes on
+  // every flush, exactly as it did before guards existed.
+  conditions: Object.freeze([]),
   // TASK-932 D-9 — the code-built lane declares NO warm start. The pre-summary is a node a
   // tenant AUTHORS on its graph; encoding one here would give every tenant with no graph a
   // capability they never asked for, which is exactly the "the hardcoded loop runs regardless of
@@ -164,6 +207,7 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
           onError: 'fail',
           enabled: true,
           cadence: 'perTurn',
+          branchGuards: Object.freeze([]),
         } as RealtimeNode),
       ]),
     } as RealtimeStage),
@@ -181,6 +225,7 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
           onError: 'degrade',
           enabled: true,
           cadence: 'perTurn',
+          branchGuards: Object.freeze([]),
         } as RealtimeNode),
         Object.freeze({
           nodeId: PLATFORM_LANE_NODE_IDS.summarize,
@@ -194,6 +239,7 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
           onError: 'degrade',
           enabled: true,
           cadence: 'perTurn',
+          branchGuards: Object.freeze([]),
         } as RealtimeNode),
       ]),
     } as RealtimeStage),
@@ -239,20 +285,31 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
 
   const stages: RealtimeStage[] = [];
   const onStart: RealtimeNode[] = [];
+  // Which router/review nodes actually gate something on THIS lane — collected while the nodes
+  // are built so the condition sweep below stays a lookup rather than a second graph walk.
+  const guardedBy = new Set<string>();
   for (const stage of compiled.stages) {
     const nodes = (stage.nodes ?? [])
       .filter((node) => admitted.has(node.nodeId))
-      .map<RealtimeNode>((node) => ({
-        nodeId: node.nodeId,
-        type: node.type,
-        config: node.config ?? {},
-        timeoutMs: toMs(node.timeoutSeconds, DEFAULT_TEXT_TIMEOUT_MS),
-        maxAttempts: Math.max(1, node.retry?.maximumAttempts ?? 1),
-        inputs: (node.inputs ?? []).filter((binding) => admitted.has(binding.fromNodeId)),
-        onError: node.onError === 'fail' ? 'fail' : 'degrade',
-        enabled: node.config?.enabled !== false,
-        cadence: cadenceOf(node.config),
-      }));
+      .map<RealtimeNode>((node) => {
+        // Guards are kept UNFILTERED, unlike `inputs`: the node they name is a durable router
+        // this lane never executes, so filtering them to admitted producers would delete exactly
+        // the decision the executor needs.
+        const branchGuards = node.branchGuards ?? [];
+        for (const guard of branchGuards) guardedBy.add(guard.fromNodeId);
+        return {
+          nodeId: node.nodeId,
+          type: node.type,
+          config: node.config ?? {},
+          timeoutMs: toMs(node.timeoutSeconds, DEFAULT_TEXT_TIMEOUT_MS),
+          maxAttempts: Math.max(1, node.retry?.maximumAttempts ?? 1),
+          inputs: (node.inputs ?? []).filter((binding) => admitted.has(binding.fromNodeId)),
+          onError: node.onError === 'fail' ? 'fail' : 'degrade',
+          enabled: node.config?.enabled !== false,
+          cadence: cadenceOf(node.config),
+          branchGuards,
+        };
+      });
     // TASK-932 D-9 — PARTITION, in stage order, before the stages are renumbered. A warm-start
     // node left in the flush lane runs once per turn: a second LLM call against the live budget
     // and a second PRE_SUMMARY row per flush. Its bindings are kept as authored — the warm start
@@ -277,7 +334,48 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
     stages,
     onStart,
     guardrail: compiled.policyBindings?.guardrail?.enabled ?? null,
+    conditions: conditionsFor(compiled, guardedBy),
   };
+}
+
+/**
+ * The `core.condition` nodes named by a guard on this lane, in graph order.
+ *
+ * A guard may also name a `core.classify` (a model call) or a `core.humanReview` (a person) —
+ * both `router`/`review` classes the compiler records guards for, and neither decidable from the
+ * run context alone. Those are simply absent from this list, and the executor treats an
+ * undecidable guard as "do not block", because refusing to document a consultation the lane
+ * already documents today is the worse of the two errors.
+ */
+function conditionsFor(compiled: CompiledWorkflowConfig, guardedBy: ReadonlySet<string>): RealtimeCondition[] {
+  const conditions: RealtimeCondition[] = [];
+  for (const stage of compiled.stages) {
+    for (const node of stage.nodes ?? []) {
+      if (node.type !== 'core.condition' || !guardedBy.has(node.nodeId)) continue;
+      conditions.push({ nodeId: node.nodeId, branches: conditionBranches(node.config) });
+    }
+  }
+  return conditions;
+}
+
+/**
+ * A `core.condition`'s authored branches, in order.
+ *
+ * As tolerant as `interpreter_core_condition` (`apps/harness/.../interpreter/nodes/core.py`) and
+ * for the same reason: a malformed entry is SKIPPED rather than raising, so a branch nobody can
+ * read cannot be the thing that stops a consultation being documented. The authoring schema
+ * (`node-config-schemas.ts`, `required: ['key','when']`) is what refuses one at publish time.
+ */
+function conditionBranches(config: Readonly<Record<string, unknown>> | undefined): RealtimeConditionBranch[] {
+  const branches = config?.branches;
+  if (!Array.isArray(branches)) return [];
+  const out: RealtimeConditionBranch[] = [];
+  for (const branch of branches) {
+    if (typeof branch !== 'object' || branch === null || Array.isArray(branch)) continue;
+    const { key, when } = branch as { key?: unknown; when?: unknown };
+    if (typeof key === 'string' && key.length > 0 && typeof when === 'string' && when.length > 0) out.push({ key, when });
+  }
+  return out;
 }
 
 /** The authored `execution.cadence`, or `undefined`. A malformed `execution` reads as absent. */
