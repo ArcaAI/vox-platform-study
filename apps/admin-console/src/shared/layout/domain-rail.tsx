@@ -6,6 +6,7 @@ import { cn } from '@arcaai/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@arcaai/ui/components/shadcn/tooltip';
 import { useSidebar } from '@arcaai/ui/components/shadcn/sidebar';
 import { usePermissions, useSession } from '@/shared/auth/hooks';
+import { useFeatureGates } from '@/shared/feature-gates/use-feature-gates';
 import { activeNavDomainId, domainLandingRoute, visibleNavDomains, visibleNavEntries } from '@/shared/navigation/nav-config';
 import { rovingItemProps, useRovingFocus } from './use-roving-focus';
 
@@ -29,10 +30,11 @@ export function DomainRail({ variant = 'rail' }: { variant?: 'rail' | 'inline' }
   const pathname = usePathname();
   const { data: rules } = usePermissions();
   const { data: session } = useSession();
+  const { gates } = useFeatureGates();
   const { isMobile, setOpenMobile } = useSidebar();
 
-  const entries = visibleNavEntries(rules, session?.user.roles);
-  const domains = visibleNavDomains(rules, session?.user.roles);
+  const entries = visibleNavEntries(rules, session?.user.roles, gates);
+  const domains = visibleNavDomains(rules, session?.user.roles, gates);
   const activeId = activeNavDomainId(pathname, entries);
 
   const isInline = variant === 'inline';

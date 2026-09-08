@@ -38,20 +38,19 @@ describe('AppSidebar — scoped to the active domain', () => {
   });
 
   it('keeps tier sub-headers where a domain spans tiers, and names the domain where it does not (OD-3)', async () => {
-    // AI Platform spans 10-19, 20-29 and 30-49, so the tier labels stay useful
-    // — they tell a super admin which rows are cross-tenant.
+    // AI Platform spans 10-19 and 20-29, so the tier labels stay useful — they
+    // tell a super admin which rows are cross-tenant vs shared-audience.
     //
-    // / OD-7 (2026-09-01) added the middle one: `/tools-mcp` retiered
-    // 10-19 -> 20-29 when tenant admins gained the right to configure MCP
-    // connectors, so this domain now spans three tiers instead of two. The
-    // "Administration" header is the point of the sub-headers, not a regression:
-    // it says the MCP row is the shared-audience one in an otherwise
-    // platform-and-tenant domain.
+    // TASK-932 removed the domain's only tier-30-49 entry (`/ai-configuration`,
+    // "Speech & Voice", folded into the redirect to `/agents`), so AI Platform
+    // now spans exactly two tiers instead of three; `/tools-mcp` (the entry
+    // that used to sit at 20-29 here) moved out to Platform Ops in the same
+    // change.
     usePathnameMock.mockReturnValue('/ai-models');
     const { unmount } = renderInShell(<AppSidebar />);
     await screen.findByRole('link', { name: 'AI models' });
     const aiHeadings = Array.from(scopedNav('AI Platform').querySelectorAll('[data-slot="sidebar-group-label"]')).map((el) => el.textContent);
-    expect(aiHeadings).toEqual(['Platform', 'Administration', 'Tenant']);
+    expect(aiHeadings).toEqual(['Platform', 'Administration']);
     unmount();
 
     // Clinical sits entirely in one tier; a lone "Tenant" header would say
@@ -199,5 +198,45 @@ describe('AppSidebar — scoped to the active domain', () => {
     const { container } = renderInShell(<AppSidebar />);
     await screen.findByRole('link', { name: 'Dashboard' });
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe('AppSidebar — platform-wide feature gates (TASK-932 §3.2)', () => {
+  it('hides only the gated Platform Ops entries when their keys resolve false, leaving the ungated ones', async () => {
+    usePathnameMock.mockReturnValue('/rate-limits');
+    renderInShell(<AppSidebar />, {
+      gates: { 'console.mlflow.enabled': false, 'console.agenticPolicy.enabled': false, 'console.tools.mcp.enabled': false, 'console.workflowHarness.enabled': false },
+    });
+    await screen.findByRole('link', { name: 'Rate limits' });
+
+    const opsLinks = within(scopedNav('Platform Ops')).getAllByRole('link').map((link) => link.textContent);
+    expect(opsLinks).toContain('Rate limits');
+    expect(opsLinks).toContain('Feature availability');
+    expect(opsLinks).not.toContain('MLflow');
+    expect(opsLinks).not.toContain('Agentic policy');
+    expect(opsLinks).not.toContain('Tools & MCP');
+  });
+
+  it('reveals the gated entries once their keys resolve true', async () => {
+    usePathnameMock.mockReturnValue('/rate-limits');
+    renderInShell(<AppSidebar />, {
+      gates: { 'console.mlflow.enabled': true, 'console.agenticPolicy.enabled': true, 'console.tools.mcp.enabled': true, 'console.workflowHarness.enabled': true },
+    });
+    await screen.findByRole('link', { name: 'MLflow' });
+
+    const opsLinks = within(scopedNav('Platform Ops')).getAllByRole('link').map((link) => link.textContent);
+    expect(opsLinks).toEqual(
+      expect.arrayContaining(['Feature availability', 'Rate limits', 'Agentic policy', 'MLflow', 'Settings registry', 'Settings rows & secrets', 'Tools & MCP', 'Storage browser']),
+    );
+  });
+
+  it('treats an absent key (loading/error) as closed, never as an assumed default', async () => {
+    usePathnameMock.mockReturnValue('/rate-limits');
+    // No `console.mlflow.enabled` entry at all — mirrors a gate the backend
+    // has not returned yet, which must read as OFF, not as "unknown, so show it".
+    renderInShell(<AppSidebar />, { gates: {} });
+    await screen.findByRole('link', { name: 'Rate limits' });
+
+    expect(within(scopedNav('Platform Ops')).queryByRole('link', { name: 'MLflow' })).toBeNull();
   });
 });
