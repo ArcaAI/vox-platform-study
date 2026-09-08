@@ -119,7 +119,7 @@ test.describe('TASK-932 R-16a — stop finalizes, with a real microphone', () =>
     await page.goto(SCRIBE);
   });
 
-  test('capture → transcript → SOAP + entities → stop → a finalized note with DNA provenance', async ({ page }) => {
+  test('capture → transcript → SOAP + entities → stop → a finalized note with DNA provenance', async ({ page }, testInfo) => {
     test.setTimeout(420_000);
 
     await impersonateUser(page, CLINICIAN);
@@ -168,7 +168,14 @@ test.describe('TASK-932 R-16a — stop finalizes, with a real microphone', () =>
     const caseNote = page.getByRole('region', { name: 'Case note' });
     await expect(caseNote).toBeVisible();
     const sections = caseNote.locator('[aria-label="Live documents"]').or(caseNote.getByRole('group', { name: 'Live running summary' }));
-    await expect(sections.first(), 'the realtime lane must produce at least one SOAP section').toBeVisible({ timeout: TRANSCRIPT_TIMEOUT_MS });
+    try {
+      await expect(sections.first(), 'the realtime lane must produce at least one SOAP section').toBeVisible({ timeout: TRANSCRIPT_TIMEOUT_MS });
+    } catch (error) {
+      // Evidence over guesswork: what the column actually held when the wait ran out.
+      await testInfo.attach('case-note-column.html', { body: await caseNote.innerHTML(), contentType: 'text/html' });
+      await testInfo.attach('case-note-column.txt', { body: (await caseNote.innerText()).slice(0, 4000), contentType: 'text/plain' });
+      throw error;
+    }
 
     const entities = caseNote.getByRole('group', { name: /detected entities/i });
     await expect(entities.first(), 'the realtime lane must produce at least one NER chip').toBeVisible({ timeout: TRANSCRIPT_TIMEOUT_MS });
