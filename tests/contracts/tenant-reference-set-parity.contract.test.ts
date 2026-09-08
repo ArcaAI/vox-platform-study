@@ -33,7 +33,7 @@ const SEED_SRC = readFileSync(join(__dirname, '../../packages/database/src/prism
  * service still copies it — a tenant admin gets something to publish — and the re-sync route
  * adds it to a seeded tenant on request.
  */
-const SEED_DECLARED_EXCEPTIONS: ReadonlySet<ReferenceSetKind> = new Set<ReferenceSetKind>(['workflowDefinitions']);
+const SEED_DECLARED_EXCEPTIONS: ReadonlySet<ReferenceSetKind> = new Set<ReferenceSetKind>([]); // TASK-930 §6.3: the seed copier now clones every kind the runtime service does
 
 /** `contextSchemas` → `copyContextSchemas`. */
 function copierName(kind: ReferenceSetKind): string {

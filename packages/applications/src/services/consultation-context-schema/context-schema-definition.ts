@@ -53,7 +53,7 @@ export const CONTEXT_PRODUCERS = ['CLIENT', 'AGENT', 'SYSTEM'] as const;
  * `packages/database/src/prisma/db_main/seed/07g-consultation-legacy-context-schema.ts`, which
  * cannot import this package; the seed test asserts the two agree.
  */
-export const LEGACY_CONTEXT_SCHEMA_SLUG = 'consultation_legacy_v1';
+export const LEGACY_CONTEXT_SCHEMA_SLUG = 'consultation_note_context';
 
 /** The only `schemaVersion` this platform understands. */
 export const CONTEXT_SCHEMA_DEFINITION_VERSION = '1.0';
