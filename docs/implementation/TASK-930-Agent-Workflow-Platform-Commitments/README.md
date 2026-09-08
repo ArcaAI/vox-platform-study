@@ -502,6 +502,24 @@ mandatory for a `core` graph that may be API-only — is the owner's.
 | orchestrator | runtime | D-3 — DONE (resolved, see §6.9); the whisper warm (owner); an uncancelled direct warm-up of nlp's guard models so the environment converges before W3 lands | `.env.dev`, the stack |
 | **W3** (opus) | fresh isolated worktree (Python only) | D-7: nlp's model cache survives a cancelled requester (single-flight, shielded), optional startup warm-up of the seeded guard models, guardrail's breaker not amplifying a cold start, text's guardrail client logging the exception class and a configurable cold-start budget | `apps/nlp/**`, `apps/guardrail/**`, `apps/text/src/text/services/external_guardrail.py` + tests |
 
+**W2 — DONE (unmerged until W1 releases the primary).** `worktree-agent-aa320f3b773c86b14` @
+`dd2dbaa8f`, 5 commits, 10 files, in scope, merges clean. Two corrections to the §6.9 evidence:
+the D-4 throw site is `publishEntity → resolveTriggerContextSchema →
+ConsultationContextSchemaService.resolveReference → requireTenantId()`
+(`consultation-context-schema.service.ts:518`), reached because the seeded `core.trigger` binds a
+`contextSchemaId` — not the assignment services; and D-5's provenance was never broken —
+`sourceTemplateSlug` / `templateLocked` were stamped by `clone()` all along but absent from the
+response DTO, so no API response could show them. Fixes: the promotion's publish runs under
+`runInTenantContext(SYSTEM)` and INSIDE `promote()`'s transaction through a new `afterWrite(definition,
+tx)` hook (a refusal rolls the copy back — no orphan); the reference-set clone is published through
+`publishEntity` (PUBLISHED + active, recompiled against the tenant's own catalogue and schema pin — the
+runtime counterpart of the seed copier's restamp), and the two provenance fields join
+`WorkflowDefinitionResponse` (→ artifact regen). RED/GREEN pasted in its report; applications
+**12 255 / 0 failed**, api **4 262 / 0**, parity contract 8/8. Named, not buried: `publishEntity`
+broadcasts `ResourceUpdated` inside the transaction on this path (a rollback would announce a publish
+that did not happen — restructuring the shared `publishEntity` is a follow-up, FU-7), and
+`compileSttPipelineIfNeeded` is not tx-threaded (pre-existing, only on an `stt`-palette promotion).
+
 Merge W2 into `dev-2.2` after W1 lands; re-run §6.9 (lane LOCAL) on the result; then FU-6 and the
 statuses.
 
