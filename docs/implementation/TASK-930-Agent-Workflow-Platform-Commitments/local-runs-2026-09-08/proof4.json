@@ -1,0 +1,659 @@
+{
+ "arcaai-neur-consultation": {
+  "startStatus": 202,
+  "runId": "01a08173-b414-7cd2-9627-cfe41320dc6c",
+  "startBody": "{\"runId\":\"01a08173-b414-7cd2-9627-cfe41320dc6c\",\"status\":\"started\",\"statusUrl\":\"/api/v1/workflows/arcaai-neur-consultation/runs/01a08173-b414-7cd2-9627-cfe41320dc6c\",\"streamUrl\":\"/api/v1/workflows/arcaai-neur-consultation/runs/01a08173-b414-7cd2-9627-cfe41320dc6c/stream\"}",
+  "last": {
+   "runId": "01a08173-b414-7cd2-9627-cfe41320dc6c",
+   "slug": "arcaai-neur-consultation",
+   "workflowVersionNumber": 1,
+   "status": "FAILED",
+   "stages": [
+    {
+     "stage_index": 0,
+     "nodes": [
+      {
+       "node_id": "n_trigger",
+       "node_type": "core.trigger",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 1,
+     "nodes": [
+      {
+       "node_id": "n_asr",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 2,
+     "nodes": [
+      {
+       "node_id": "n_ner",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 3,
+     "nodes": [
+      {
+       "node_id": "n_visit",
+       "node_type": "core.condition",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 4,
+     "nodes": [
+      {
+       "node_id": "n_summary_new",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      },
+      {
+       "node_id": "n_summary_revisit",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 5,
+     "nodes": [
+      {
+       "node_id": "n_finalize",
+       "node_type": "core.agent",
+       "status": "DEGRADED",
+       "reason": "core.agent: nothing bound on `in`/`context` to generate from"
+      }
+     ]
+    },
+    {
+     "stage_index": 6,
+     "nodes": [
+      {
+       "node_id": "n_review",
+       "node_type": "core.humanReview",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 7,
+     "nodes": [
+      {
+       "node_id": "n_output",
+       "node_type": "core.output",
+       "status": "FAILED",
+       "reason": "activity_error: RuntimeError: core.output: result violates the declared output schema: (root): 'case_note' is a required property"
+      }
+     ]
+    }
+   ],
+   "startedAt": "2026-09-08T14:37:18.779097+00:00",
+   "endedAt": "2026-09-08T14:37:22.165114+00:00",
+   "resultRef": null
+  },
+  "decide": {
+   "status": 200,
+   "body": "{\"runId\":\"01a08173-b414-7cd2-9627-cfe41320dc6c\",\"nodeId\":\"n_review\",\"decision\":\"approved\",\"signaled\":true,\"reviewerId\":\"70000000-0000-0000-0000-000000000003\"}"
+  },
+  "final": {
+   "runId": "01a08173-b414-7cd2-9627-cfe41320dc6c",
+   "slug": "arcaai-neur-consultation",
+   "workflowVersionNumber": 1,
+   "status": "FAILED",
+   "stages": [
+    {
+     "stage_index": 0,
+     "nodes": [
+      {
+       "node_id": "n_trigger",
+       "node_type": "core.trigger",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 1,
+     "nodes": [
+      {
+       "node_id": "n_asr",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 2,
+     "nodes": [
+      {
+       "node_id": "n_ner",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 3,
+     "nodes": [
+      {
+       "node_id": "n_visit",
+       "node_type": "core.condition",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 4,
+     "nodes": [
+      {
+       "node_id": "n_summary_new",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      },
+      {
+       "node_id": "n_summary_revisit",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 5,
+     "nodes": [
+      {
+       "node_id": "n_finalize",
+       "node_type": "core.agent",
+       "status": "DEGRADED",
+       "reason": "core.agent: nothing bound on `in`/`context` to generate from"
+      }
+     ]
+    },
+    {
+     "stage_index": 6,
+     "nodes": [
+      {
+       "node_id": "n_review",
+       "node_type": "core.humanReview",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 7,
+     "nodes": [
+      {
+       "node_id": "n_output",
+       "node_type": "core.output",
+       "status": "FAILED",
+       "reason": "activity_error: RuntimeError: core.output: result violates the declared output schema: (root): 'case_note' is a required property"
+      }
+     ]
+    }
+   ],
+   "startedAt": "2026-09-08T14:37:18.779097+00:00",
+   "endedAt": "2026-09-08T14:37:22.165114+00:00",
+   "resultRef": null
+  }
+ },
+ "arcaai-rheum-consultation": {
+  "startStatus": 202,
+  "runId": "01a08173-cc9b-7490-a3d8-db598d071e0c",
+  "startBody": "{\"runId\":\"01a08173-cc9b-7490-a3d8-db598d071e0c\",\"status\":\"started\",\"statusUrl\":\"/api/v1/workflows/arcaai-rheum-consultation/runs/01a08173-cc9b-7490-a3d8-db598d071e0c\",\"streamUrl\":\"/api/v1/workflows/arcaai-rheum-consultation/runs/01a08173-cc9b-7490-a3d8-db598d071e0c/stream\"}",
+  "last": {
+   "runId": "01a08173-cc9b-7490-a3d8-db598d071e0c",
+   "slug": "arcaai-rheum-consultation",
+   "workflowVersionNumber": 1,
+   "status": "FAILED",
+   "stages": [
+    {
+     "stage_index": 0,
+     "nodes": [
+      {
+       "node_id": "n_trigger",
+       "node_type": "core.trigger",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 1,
+     "nodes": [
+      {
+       "node_id": "n_asr",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 2,
+     "nodes": [
+      {
+       "node_id": "n_ner",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 3,
+     "nodes": [
+      {
+       "node_id": "n_visit",
+       "node_type": "core.condition",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 4,
+     "nodes": [
+      {
+       "node_id": "n_summary_new",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      },
+      {
+       "node_id": "n_summary_revisit",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 5,
+     "nodes": [
+      {
+       "node_id": "n_finalize",
+       "node_type": "core.agent",
+       "status": "DEGRADED",
+       "reason": "core.agent: nothing bound on `in`/`context` to generate from"
+      }
+     ]
+    },
+    {
+     "stage_index": 6,
+     "nodes": [
+      {
+       "node_id": "n_review",
+       "node_type": "core.humanReview",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 7,
+     "nodes": [
+      {
+       "node_id": "n_output",
+       "node_type": "core.output",
+       "status": "FAILED",
+       "reason": "activity_error: RuntimeError: core.output: result violates the declared output schema: (root): 'case_note' is a required property"
+      }
+     ]
+    }
+   ],
+   "startedAt": "2026-09-08T14:37:25.032901+00:00",
+   "endedAt": "2026-09-08T14:37:28.316506+00:00",
+   "resultRef": null
+  },
+  "decide": {
+   "status": 200,
+   "body": "{\"runId\":\"01a08173-cc9b-7490-a3d8-db598d071e0c\",\"nodeId\":\"n_review\",\"decision\":\"approved\",\"signaled\":true,\"reviewerId\":\"70000000-0000-0000-0000-000000000003\"}"
+  },
+  "final": {
+   "runId": "01a08173-cc9b-7490-a3d8-db598d071e0c",
+   "slug": "arcaai-rheum-consultation",
+   "workflowVersionNumber": 1,
+   "status": "FAILED",
+   "stages": [
+    {
+     "stage_index": 0,
+     "nodes": [
+      {
+       "node_id": "n_trigger",
+       "node_type": "core.trigger",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 1,
+     "nodes": [
+      {
+       "node_id": "n_asr",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 2,
+     "nodes": [
+      {
+       "node_id": "n_ner",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 3,
+     "nodes": [
+      {
+       "node_id": "n_visit",
+       "node_type": "core.condition",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 4,
+     "nodes": [
+      {
+       "node_id": "n_summary_new",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      },
+      {
+       "node_id": "n_summary_revisit",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 5,
+     "nodes": [
+      {
+       "node_id": "n_finalize",
+       "node_type": "core.agent",
+       "status": "DEGRADED",
+       "reason": "core.agent: nothing bound on `in`/`context` to generate from"
+      }
+     ]
+    },
+    {
+     "stage_index": 6,
+     "nodes": [
+      {
+       "node_id": "n_review",
+       "node_type": "core.humanReview",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 7,
+     "nodes": [
+      {
+       "node_id": "n_output",
+       "node_type": "core.output",
+       "status": "FAILED",
+       "reason": "activity_error: RuntimeError: core.output: result violates the declared output schema: (root): 'case_note' is a required property"
+      }
+     ]
+    }
+   ],
+   "startedAt": "2026-09-08T14:37:25.032901+00:00",
+   "endedAt": "2026-09-08T14:37:28.316506+00:00",
+   "resultRef": null
+  }
+ },
+ "arcaai-gen-consultation": {
+  "startStatus": 202,
+  "runId": "01a08173-e4f4-7096-a4aa-70408ddfab4b",
+  "startBody": "{\"runId\":\"01a08173-e4f4-7096-a4aa-70408ddfab4b\",\"status\":\"started\",\"statusUrl\":\"/api/v1/workflows/arcaai-gen-consultation/runs/01a08173-e4f4-7096-a4aa-70408ddfab4b\",\"streamUrl\":\"/api/v1/workflows/arcaai-gen-consultation/runs/01a08173-e4f4-7096-a4aa-70408ddfab4b/stream\"}",
+  "last": {
+   "runId": "01a08173-e4f4-7096-a4aa-70408ddfab4b",
+   "slug": "arcaai-gen-consultation",
+   "workflowVersionNumber": 1,
+   "status": "FAILED",
+   "stages": [
+    {
+     "stage_index": 0,
+     "nodes": [
+      {
+       "node_id": "n_trigger",
+       "node_type": "core.trigger",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 1,
+     "nodes": [
+      {
+       "node_id": "n_asr",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 2,
+     "nodes": [
+      {
+       "node_id": "n_ner",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 3,
+     "nodes": [
+      {
+       "node_id": "n_visit",
+       "node_type": "core.condition",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 4,
+     "nodes": [
+      {
+       "node_id": "n_summary_new",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      },
+      {
+       "node_id": "n_summary_revisit",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 5,
+     "nodes": [
+      {
+       "node_id": "n_finalize",
+       "node_type": "core.agent",
+       "status": "DEGRADED",
+       "reason": "core.agent: nothing bound on `in`/`context` to generate from"
+      }
+     ]
+    },
+    {
+     "stage_index": 6,
+     "nodes": [
+      {
+       "node_id": "n_review",
+       "node_type": "core.humanReview",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 7,
+     "nodes": [
+      {
+       "node_id": "n_output",
+       "node_type": "core.output",
+       "status": "FAILED",
+       "reason": "activity_error: RuntimeError: core.output: result violates the declared output schema: (root): 'case_note' is a required property"
+      }
+     ]
+    }
+   ],
+   "startedAt": "2026-09-08T14:37:31.267117+00:00",
+   "endedAt": "2026-09-08T14:37:34.667529+00:00",
+   "resultRef": null
+  },
+  "decide": {
+   "status": 200,
+   "body": "{\"runId\":\"01a08173-e4f4-7096-a4aa-70408ddfab4b\",\"nodeId\":\"n_review\",\"decision\":\"approved\",\"signaled\":true,\"reviewerId\":\"70000000-0000-0000-0000-000000000003\"}"
+  },
+  "final": {
+   "runId": "01a08173-e4f4-7096-a4aa-70408ddfab4b",
+   "slug": "arcaai-gen-consultation",
+   "workflowVersionNumber": 1,
+   "status": "FAILED",
+   "stages": [
+    {
+     "stage_index": 0,
+     "nodes": [
+      {
+       "node_id": "n_trigger",
+       "node_type": "core.trigger",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 1,
+     "nodes": [
+      {
+       "node_id": "n_asr",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 2,
+     "nodes": [
+      {
+       "node_id": "n_ner",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 3,
+     "nodes": [
+      {
+       "node_id": "n_visit",
+       "node_type": "core.condition",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 4,
+     "nodes": [
+      {
+       "node_id": "n_summary_new",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      },
+      {
+       "node_id": "n_summary_revisit",
+       "node_type": "core.agent",
+       "status": "SKIPPED",
+       "reason": "realtime_lane"
+      }
+     ]
+    },
+    {
+     "stage_index": 5,
+     "nodes": [
+      {
+       "node_id": "n_finalize",
+       "node_type": "core.agent",
+       "status": "DEGRADED",
+       "reason": "core.agent: nothing bound on `in`/`context` to generate from"
+      }
+     ]
+    },
+    {
+     "stage_index": 6,
+     "nodes": [
+      {
+       "node_id": "n_review",
+       "node_type": "core.humanReview",
+       "status": "SUCCEEDED",
+       "reason": null
+      }
+     ]
+    },
+    {
+     "stage_index": 7,
+     "nodes": [
+      {
+       "node_id": "n_output",
+       "node_type": "core.output",
+       "status": "FAILED",
+       "reason": "activity_error: RuntimeError: core.output: result violates the declared output schema: (root): 'case_note' is a required property"
+      }
+     ]
+    }
+   ],
+   "startedAt": "2026-09-08T14:37:31.267117+00:00",
+   "endedAt": "2026-09-08T14:37:34.667529+00:00",
+   "resultRef": null
+  }
+ }
+}

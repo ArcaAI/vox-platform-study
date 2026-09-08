@@ -1,0 +1,197 @@
+{
+ "edges": [
+  {
+   "id": "e1",
+   "to": "n_asr",
+   "from": "n_trigger",
+   "toPort": "after",
+   "fromPort": "next"
+  },
+  {
+   "id": "e2",
+   "to": "n_ner",
+   "from": "n_asr",
+   "toPort": "in",
+   "fromPort": "transcript"
+  },
+  {
+   "id": "e3",
+   "to": "n_summary",
+   "from": "n_trigger",
+   "toPort": "context",
+   "fromPort": "out"
+  },
+  {
+   "id": "e4",
+   "to": "n_summary",
+   "from": "n_ner",
+   "toPort": "in",
+   "fromPort": "out"
+  },
+  {
+   "id": "e5",
+   "to": "n_finalize",
+   "from": "n_summary",
+   "toPort": "in",
+   "fromPort": "out"
+  },
+  {
+   "id": "e6",
+   "to": "n_review",
+   "from": "n_finalize",
+   "toPort": "in",
+   "fromPort": "out"
+  },
+  {
+   "id": "e7",
+   "to": "n_output",
+   "from": "n_review",
+   "toPort": "in",
+   "fromPort": "out"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "n_trigger",
+   "type": "core.trigger",
+   "config": {
+    "kinds": [
+     "consultation",
+     "api"
+    ],
+    "guardrail": {
+     "enabled": true
+    },
+    "contextSchema": {
+     "versionNumber": 1,
+     "contextSchemaId": "79000000-0000-0000-0000-000000000001"
+    }
+   }
+  },
+  {
+   "id": "n_asr",
+   "type": "core.agent",
+   "config": {
+    "onError": "fail",
+    "agentRef": {
+     "slug": "realtime-transcription"
+    },
+    "execution": {
+     "lane": "realtime",
+     "cadence": "perTurn"
+    }
+   }
+  },
+  {
+   "id": "n_ner",
+   "type": "core.agent",
+   "config": {
+    "onError": "degrade",
+    "agentRef": {
+     "slug": "medical-ner"
+    },
+    "execution": {
+     "lane": "realtime",
+     "cadence": "perTurn"
+    }
+   }
+  },
+  {
+   "id": "n_summary",
+   "type": "core.agent",
+   "config": {
+    "onError": "degrade",
+    "agentRef": {
+     "slug": "general-medicine-summarization"
+    },
+    "execution": {
+     "lane": "realtime",
+     "cadence": "perTurn"
+    },
+    "guardrail": {
+     "enabled": true
+    }
+   }
+  },
+  {
+   "id": "n_finalize",
+   "type": "core.agent",
+   "config": {
+    "onError": "fail",
+    "agentRef": {
+     "slug": "casenote-finalization"
+    },
+    "execution": {
+     "lane": "durable",
+     "cadence": "onEnd"
+    },
+    "guardrail": {
+     "enabled": true
+    }
+   }
+  },
+  {
+   "id": "n_review",
+   "type": "core.humanReview",
+   "config": {
+    "allowEdit": true,
+    "assignRole": "DOCTOR",
+    "reviewType": "clinical_finalization",
+    "instructions": "Review the finalized case note. Approve to sign it off, or edit it and approve; reject to discard this finalization.",
+    "timeoutSeconds": 3600
+   }
+  },
+  {
+   "id": "n_output",
+   "type": "core.output",
+   "config": {
+    "protocols": [
+     "http",
+     "http-sse",
+     "socket"
+    ],
+    "outputSchema": {
+     "type": "object",
+     "required": [
+      "case_note",
+      "entities"
+     ],
+     "properties": {
+      "entities": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "text",
+         "label"
+        ],
+        "properties": {
+         "end": {
+          "type": "integer"
+         },
+         "text": {
+          "type": "string"
+         },
+         "label": {
+          "type": "string"
+         },
+         "score": {
+          "type": "number"
+         },
+         "start": {
+          "type": "integer"
+         }
+        }
+       }
+      },
+      "case_note": {
+       "type": "string"
+      }
+     }
+    },
+    "onSchemaViolation": "fail"
+   }
+  }
+ ],
+ "version": 1
+}

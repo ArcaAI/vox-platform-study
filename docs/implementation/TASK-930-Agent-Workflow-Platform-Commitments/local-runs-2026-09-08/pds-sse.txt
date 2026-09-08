@@ -1,0 +1,16 @@
+# HTTP 202 text/event-stream
+event: workflow.run.progress
+data: {"schemaVersion":1,"id":"dc140a07-6c95-4751-80c1-d6628c428c34","tenantId":"50000000-0000-0000-0000-000000000000","type":"workflow.run.progress","occurredAt":"2026-09-08T14:37:59.228Z","correlationId":"01a08174-51ec-76a6-aed6-5d91b49cf094","causationId":null,"idempotencyKey":"wf:run:01a08174-51ec-76a6-aed6-5d91b49cf094:status:RUNNING","payload":{"runId":"01a08174-51ec-76a6-aed6-5d91b49cf094","slug":"platform-default-summarization","workflowVersionNumber":1,"status":"RUNNING","stages":[],"startedAt":"2026-09-08T14:37:59.184577+00:00","endedAt":null}}
+
+event: workflow.node.started
+id: eyJ2IjoxLCJ0IjoicmVkaXMtc3RyZWFtIiwiYyI6IjE3ODg4NzgyNzkyOTQtMCJ9
+data: {"schemaVersion":1,"id":"4e1f2002-4071-46fb-8c2a-c40415f5704f","tenantId":"50000000-0000-0000-0000-000000000000","type":"workflow.node.started","occurredAt":"2026-09-08T14:37:59.294606+00:00","correlationId":"01a08174-51ec-76a6-aed6-5d91b49cf094","causationId":null,"idempotencyKey":"wf:run:01a08174-51ec-76a6-aed6-5d91b49cf094:node:n_trigger:1:started","payload":{"nodeId":"n_trigger","nodeType":"core.trigger","stageIndex":0}}
+
+event: workflow.node.completed
+id: eyJ2IjoxLCJ0IjoicmVkaXMtc3RyZWFtIiwiYyI6IjE3ODg4NzgyNzkzNzktMCJ9
+data: {"schemaVersion":1,"id":"71fab951-8a30-4350-91f4-a30835e2d27a","tenantId":"50000000-0000-0000-0000-000000000000","type":"workflow.node.completed","occurredAt":"2026-09-08T14:37:59.378924+00:00","correlationId":"01a08174-51ec-76a6-aed6-5d91b49cf094","causationId":null,"idempotencyKey":"wf:run:01a08174-51ec-76a6-aed6-5d91b49cf094:node:n_trigger:1","payload":{"nodeId":"n_trigger","nodeType":"core.trigger","stageIndex":0,"status":"SUCCEEDED"}}
+
+event: workflow.node.started
+id: eyJ2IjoxLCJ0IjoicmVkaXMtc3RyZWFtIiwiYyI6IjE3ODg4NzgyNzkzOTctMCJ9
+data: {"schemaVersion":1,"id":"4d31c696-832b-495d-82a8-5c5cb60e34e3","tenantId":"50000000-0000-0000-0000-000000000000","type":"workflow.node.started","occurredAt":"2026-09-08T14:37:59.397621+00:00","correlationId":"01a08174-51ec-76a6-aed6-5d91b49cf094","causationId":null,"idempotencyKey":"wf:run:01a08174-51ec-76a6-aed6-5d91b49cf094:node:n_summary:1:started","payload":{"nodeId":"n_summary","nodeType":"core.agent","stageIndex":1}}
+

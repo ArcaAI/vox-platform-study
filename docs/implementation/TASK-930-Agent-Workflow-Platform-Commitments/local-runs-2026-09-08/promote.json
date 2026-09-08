@@ -1,0 +1,1 @@
+{"message":"Promoting an agent into SYSTEM crosses a tenant boundary and requires an elevated tenant-less context; clear the working tenant and retry.","error":"Forbidden","statusCode":403,"correlationId":"01a08178-8ccc-79fa-86e7-445cdc1098bd","code":"HTTP.FORBIDDEN"}
