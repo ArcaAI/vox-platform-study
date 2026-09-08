@@ -318,6 +318,17 @@ export class SettingsRegistryWriteService extends BaseService {
 
     // 7. Upsert the backing row under COMPARE-AND-SET, then refresh the read cache.
     const existing = await this.findBackingRow(key, targetTenantId);
+    // RFC 7232: a caller that echoes a POSITIVE version believes a row exists.
+    // If it no longer does (reset / deleted by someone else since the read),
+    // that is drift — 412 like any other stale precondition — never a silent
+    // re-create under the caller's stale belief. A first write carries no
+    // version (or 0, the "no row" ETag the GET renders) and is unaffected.
+    if (!existing && options.expectedVersion !== undefined && options.expectedVersion > 0) {
+      throw new OptimisticConcurrencyException('GlobalSetting', key, {
+        expectedVersion: options.expectedVersion,
+        currentVersion: 0,
+      });
+    }
     const persisted = await this.actingOnTenant(targetTenantId, () =>
       existing
         ? this.updateExisting(existing, serialized, valueType, options.expectedVersion, key)
