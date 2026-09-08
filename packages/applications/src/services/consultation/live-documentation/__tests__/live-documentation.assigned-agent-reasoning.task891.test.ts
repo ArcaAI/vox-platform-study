@@ -338,26 +338,21 @@ describe('TASK-891 — the ASSIGNED live agent`s reasoning posture reaches the w
 });
 
 /**
- * The running note is not the only TEXT call a flush makes. Lane R's grammar pass and Lane N's
- * findings miner resolve the SAME `('live')` selection and post to the same endpoint inside the
- * same flush budget — so a posture honoured on one hop and ignored on the other two buys back a
- * third of the saving and makes the control look broken to the tenant who set it.
+ * TASK-893 — the two SIBLING live hops this file used to pin are GONE from the realtime lane.
+ *
+ * Lane R's grammar pass and Lane N's findings miner ran as the node types `agent.grammar` and
+ * `agent.important_findings`, both deleted with the legacy vocabulary (owner decision D-9). The
+ * `core.agent` handler that replaced them dispatches on the RESOLVED agent task and covers exactly
+ * three capabilities — `transcribe`, `extractEntities`, `generateDocument` — while
+ * `REALTIME_ACTION_HANDLERS` is empty because no KEPT action declares `lane: 'realtime'`.
+ *
+ * So `RealtimeCapabilities.proposeCorrections` / `.extractFindings` are still implemented by
+ * `LiveDocumentationService` and still declared on the port, but nothing can invoke them: there is
+ * no authorable node that resolves to either capability. The two cases that lived here
+ * ("the grammar pass and the findings miner both carry the live agent's posture" and "an agent
+ * with no reasoning opinion leaves both sibling hops byte-identical") were DELETED rather than
+ * retargeted, because a fixture that made them pass would have to author a node the platform
+ * cannot run. Restoring the capability is lane work, not a test edit.
+ *
+ * What still holds — that the RUNNING NOTE hop obeys the live tier's posture — is pinned above.
  */
-describe('TASK-891 — the sibling live hops obey the same agent', () => {
-  it('the grammar pass and the findings miner both carry the live agent`s posture', async () => {
-    const bodies = await runOneFlush(SPLIT, siblingHopsLane);
-
-    expect(bodies).toHaveLength(2);
-    for (const body of bodies) {
-      expect(body.model).toBe('gemma-4-e2b-it-qat-live');
-      expect(body.extra).toEqual({ reasoning_effort: 'minimal' });
-    }
-  });
-
-  it('an agent with no reasoning opinion leaves both sibling hops byte-identical to before', async () => {
-    const bodies = await runOneFlush([{ agentSlug: 'no-opinion-live', selectorKey: '' }], siblingHopsLane);
-
-    expect(bodies).toHaveLength(2);
-    for (const body of bodies) expect(Object.keys(body)).not.toContain('extra');
-  });
-});
