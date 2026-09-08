@@ -105,7 +105,7 @@ All lanes branch from `dev-2.2 @ 7793d09ca` (the plan commit). Bootstrapped 2026
 
 | Lane | Ticket | Worktree · branch | Model | State (2026-09-08, wave 3) |
 |---|---|---|---|---|
-| R | TASK-893 | `../hope-v2-t893-r` · `task-893-retire` | fable → **opus** | wave 3's fable run reached 7 commits (Phase 2 TS+Py, realtime rekey, applications retarget, Studio dropdown, registry deletion) then hit the fable session limit (429, resets 21:20 Saigon) with the legacy-test deletion uncommitted; **resumed 17:25 on opus** from its own `.lane-report.md`. Before that: waves 1+2 both died before writing anything — **zero commits, clean tree**. Wave 3 starts the lane from the base with INTERFACES §7 as the design of record |
+| R | TASK-893 | `../hope-v2-t893-r` · `task-893-retire` | fable → **opus** | **DONE-WITH-GAPS @ `6dfd9783c`** (§4.3). wave 3's fable run reached 7 commits (Phase 2 TS+Py, realtime rekey, applications retarget, Studio dropdown, registry deletion) then hit the fable session limit (429, resets 21:20 Saigon) with the legacy-test deletion uncommitted; **resumed 17:25 on opus** from its own `.lane-report.md`. Before that: waves 1+2 both died before writing anything — **zero commits, clean tree**. Wave 3 starts the lane from the base with INTERFACES §7 as the design of record |
 | N | TASK-930 | `../hope-v2-t930-n` · `task-930-ner-plane` | opus | **DONE-WITH-GAPS @ `9128d7507`** (§4.3). Was: `66241bb57` (enum + migration + domains enum) and `96a4af2d1` (NER contract in `agent-schemas.ts` + tests) landed; `packages/types/src/agent.ts` (A-5 widening) left UNCOMMITTED. Wave 3 **resumes**: commit that file first, then §2.4 invocation, §3 scopes, §4 ticket, §5 outputSchema, §2.5 console |
 | P | TASK-930 | `../hope-v2-t930-p` · `task-930-promotion` | opus | **DONE @ `4a634f8c8`** (§4.3). Was: zero commits, but wave 2 left ~1 000 uncommitted lines under `packages/applications/src/services/agentPromotion/` (service + interface + DTO + test). Wave 3 **commits that first**, then judges it against §6 and adds the controller/module, §6.2 409 check, §6.3 reference set, §6.4 console |
 | S | TASK-930 | `../hope-v2-t930-s` · `task-930-seeds` | fable → **opus** | **DONE @ `5eb24b9a1`** (§4.3). wave 3's fable run reached 8 commits (§8.1 deletion, §8.2 schema, §8.3 agents, §8.4/8.5/8.6 workflows + generator + regen script) then hit the same 429 with the §6.3 copier RED test uncommitted; **resumed 17:25 on opus**, briefed with P's kind set and N's five scopes. Before that: `eeb232436` carries the §2.1 enum line only (no migration, by contract). Both waves died during reading — the seed rebuild itself is unstarted. Wave 3 works against a throwaway `hope_seed_930` DB |
@@ -230,6 +230,47 @@ templates declare no variables, so §8.5's "variables populated" is pinned as th
 **Binding consequence for the merge order:** the `.generated.ts` blobs are checksum-bound to THIS
 tree's node registry. Lane R's retirement changes that checksum, so after R merges the orchestrator
 must re-run `seed:regen:workflows` — S's new parity test goes red until then, by design.
+
+**Lane R — DONE-WITH-GAPS.** `task-893-retire` @ `6dfd9783c`, 35 commits, tree clean, merges
+clean; the one out-of-row file is `workflow-contract/package.json` (two `regen:*` script lines —
+the same allowance S has). It stayed out of N's `interpreter_core_agent` / `_run_*` and did not
+duplicate the A-4 export.
+
+Delivered: `ACTION_CATALOGUE` (17 keys) as a first-class table in TS and Python, `ACTION_PORTS`,
+`ACTION_CONFIG_SCHEMAS`, `WORKFLOW_NODE_REGISTRY` → 11 `core.*` entries, `NODE_REGISTRY` 64 → 11,
+`NODE_ACTIVITIES` 65 → 29, `MANDATORY_NODE_TYPES = {core.trigger, core.output}`, the `WF-SUMM-*` set
+and `DRAFT_CONSULTATION_RULE_SET` deleted, `classesOf()` resolving a `core.action` instance to its
+delegate. Two SOURCE fixes it found rather than test edits: `GUARDRAIL_OPTED_OUT` in
+`publish-findings.ts` had become dead code after Phase 4 (it tested the mandatory set, which is now
+exactly the two types whose schema withholds `enabled`) — the first of TASK-890 D-1's three
+compensating controls; and `core.start` left `ENTRY_NODE_TYPES`.
+
+Gates pasted: workflow-contract 38 files / 827, tsc + eslint + build clean; Studio 56 files / 544,
+tsc + `--max-warnings 0` clean; `py-workflow-contract` 75; harness ruff + mypy (152 files) clean;
+applications (own rows) 26 files / 248; `grep "deprecated: true"` → 0; `NodeSpec(` → 11. Python
+provenance proved in-tree.
+
+**Named reds, left failing on purpose — each an owner decision, ruled below (§4.5):** harness
+pytest **34 failed / 2 203 passed** = 6 replay-compat (a deploy PRECONDITION, not a bug — deleting a
+node type changes what the interpreter schedules, `TMPRL1100 Nondeterminism`, no `workflow.patched`
+can rescue a path that no longer exists) + 22 agentic-loop (the `agentic.loop` dispatcher was the
+only caller of `AgenticLoopWorkflow` / `loop_activities.py` — a feature removal outside the brief)
++ 2 audio two-lane (needs N's `interpreter_core_agent`) + 6 pre-existing at baseline.
+
+**The real blast radius:** `packages/applications` **140 failures across 30 files, none in R's
+rows** — `agentPromotion/**`, `workflow-definition/**` (P's tests, written against the old
+vocabulary), `config-resolver/**`, `workflow-assignment/**`, `workflow-invariant-rule/**`,
+`workflow-validator/**`, `consultation/prompt/**`, `live-documentation/__tests__/**` (unowned).
+INTERFACES §7 anticipated only the seeds. Plus: `GET /admin/workflow-nodes` must serve the 17 action
+descriptors or the Studio's `effectiveNodePorts` silently falls back to the generic superset (six
+sockets where the action has one); `live-documentation.service.ts:1376` still resolves palette
+`'consultation'`; `py-workflow-contract` has no `pythonpath`, so the worktree guard needs a manual
+`PYTHONPATH`.
+
+Pinned as tests, not silently changed: all ten `WF-I-*` invariants are INERT (`paletteKey:
+'summarization'`, and `validate()` skips a foreign palette); `WF-S-007` is vacuous for `core`;
+anti-laundering is weaker for NER (a `core.agent` typed on `text`, which `document` widens to);
+`compileGate` may be unreachable (nothing is `gate`-classed now).
 
 ### 4.4 Orchestrator punch list — the unowned files, resolved (wave 3)
 
