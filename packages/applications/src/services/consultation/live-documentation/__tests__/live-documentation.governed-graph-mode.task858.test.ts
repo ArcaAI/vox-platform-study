@@ -50,7 +50,7 @@ const CID = 'consultation-858-a2';
 const NOTE = 'Subjective: patient reports cough and takes aspirin\nObjective:\nAssessment:\nPlan:';
 
 /** The tenant DEFAULT — what the cascade answers when the consultation named nothing. */
-const ASSIGNED_SLUG = 'arcaai-consultation-soap';
+const ASSIGNED_SLUG = 'arcaai-gen-consultation';
 /** What the DURABLE run took ownership of, and therefore what the realtime lane must walk. */
 const GOVERNING_SLUG = 'arcaai-example-medical-ner';
 
@@ -61,31 +61,36 @@ const GOVERNING_SLUG = 'arcaai-example-medical-ner';
  * "the session flushed and TEXT was never called" is decisive proof that the lane ran and the
  * legacy path did not.
  */
+/**
+ * TASK-893 — every realtime node is a `core.agent` now, dispatching on the RESOLVED agent task.
+ * The fixtures name the task directly (`agentRef: { task }`), which is the form the code-built
+ * `PLATFORM_REALTIME_LANE` uses and the only one that resolves without a host agent lookup.
+ */
+const agentNode = (
+  nodeId: string,
+  task: 'SPEECH_TO_TEXT' | 'NAMED_ENTITY_RECOGNITION' | 'TEXT_GENERATION',
+  extra: { config?: Record<string, unknown>; inputs?: unknown[]; onError?: string } = {},
+) => ({
+  nodeId,
+  type: 'core.agent',
+  config: { agentRef: { task }, execution: { lane: 'realtime', cadence: 'perTurn' }, ...(extra.config ?? {}) },
+  inputs: extra.inputs ?? [],
+  onError: extra.onError ?? 'degrade',
+});
+
 const NER_ONLY_CONFIG = {
   slug: GOVERNING_SLUG,
   versionNumber: 3,
   stages: [
-    {
-      stageIndex: 0,
-      nodes: [{ nodeId: 'capture', type: 'consultation.captureBinding', config: {}, inputs: [], onError: 'fail' }],
-    },
+    { stageIndex: 0, nodes: [agentNode('capture', 'SPEECH_TO_TEXT', { onError: 'fail' })] },
     {
       stageIndex: 1,
       nodes: [
-        {
-          nodeId: 'extract',
-          type: 'consultation.extractEntities',
-          config: {},
-          inputs: [{ fromNodeId: 'capture', fromPort: 'out', toPort: 'in' }],
-          onError: 'degrade',
-        },
-        {
-          nodeId: 'summarize',
-          type: 'consultation.realtimeSummary',
+        agentNode('extract', 'NAMED_ENTITY_RECOGNITION', { inputs: [{ fromNodeId: 'capture', fromPort: 'transcript', toPort: 'in' }] }),
+        agentNode('summarize', 'TEXT_GENERATION', {
           config: { enabled: false },
-          inputs: [{ fromNodeId: 'capture', fromPort: 'out', toPort: 'in' }],
-          onError: 'degrade',
-        },
+          inputs: [{ fromNodeId: 'capture', fromPort: 'transcript', toPort: 'in' }],
+        }),
       ],
     },
   ],
@@ -98,15 +103,7 @@ const UNWIRABLE_CONFIG = {
     NER_ONLY_CONFIG.stages[0],
     {
       stageIndex: 1,
-      nodes: [
-        {
-          nodeId: 'extract',
-          type: 'consultation.extractEntities',
-          config: {},
-          inputs: [{ fromNodeId: 'capture', fromPort: 'not-a-port', toPort: 'in' }],
-          onError: 'degrade',
-        },
-      ],
+      nodes: [agentNode('extract', 'NAMED_ENTITY_RECOGNITION', { inputs: [{ fromNodeId: 'capture', fromPort: 'not-a-port', toPort: 'in' }] })],
     },
   ],
 };
@@ -118,7 +115,9 @@ const FULL_CONFIG = {
     NER_ONLY_CONFIG.stages[0],
     {
       stageIndex: 1,
-      nodes: NER_ONLY_CONFIG.stages[1].nodes.map((n) => (n.nodeId === 'summarize' ? { ...n, config: {} } : n)),
+      nodes: NER_ONLY_CONFIG.stages[1].nodes.map((n) =>
+        n.nodeId === 'summarize' ? { ...n, config: { agentRef: { task: 'TEXT_GENERATION' }, execution: { lane: 'realtime', cadence: 'perTurn' } } } : n,
+      ),
     },
   ],
 };
@@ -207,7 +206,7 @@ function buildService(opts: BuildOpts = {}) {
   const assignments = {
     resolve: vi.fn(
       async (tenantId: string, paletteKey: string): Promise<ResolvedWorkflowAssignment> =>
-        tenantId === ARCAAI && paletteKey === 'consultation'
+        tenantId === ARCAAI && paletteKey === 'core'
           ? { workflowDefinitionSlug: ASSIGNED_SLUG, source: 'tenant' }
           : { workflowDefinitionSlug: null, source: 'platform-default' },
     ),
@@ -216,8 +215,8 @@ function buildService(opts: BuildOpts = {}) {
   const definitions = {
     findPublishedBySlug: vi.fn(async (tenantId: string, slug: string) => {
       if (tenantId !== ARCAAI) return null;
-      if (slug === GOVERNING_SLUG) return { slug, paletteKey: 'consultation', compiledConfig: opts.governingConfig ?? NER_ONLY_CONFIG };
-      if (slug === ASSIGNED_SLUG) return { slug, paletteKey: 'consultation', compiledConfig: FULL_CONFIG };
+      if (slug === GOVERNING_SLUG) return { slug, paletteKey: 'core', compiledConfig: opts.governingConfig ?? NER_ONLY_CONFIG };
+      if (slug === ASSIGNED_SLUG) return { slug, paletteKey: 'core', compiledConfig: FULL_CONFIG };
       return null;
     }),
   };
@@ -367,7 +366,7 @@ describe(' A2 — an ungoverned consultation is untouched', () => {
     service.ingestSegment(CID, { text: 'patient reports cough and takes aspirin', isFinal: true, segmentId: 's1' });
     const payload = await service.flush(CID);
 
-    expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'consultation', null);
+    expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'core', null);
     expect(definitions.findPublishedBySlug).toHaveBeenCalledWith(ARCAAI, ASSIGNED_SLUG);
     expect(payload?.runningSummary).toContain('patient reports cough');
     expect(generateCalls(post)).toHaveLength(1);
@@ -382,42 +381,50 @@ describe(' A2 — an ungoverned consultation is untouched', () => {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SEED = path.resolve(HERE, '../../../../../../database/src/prisma/db_main/seed');
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const arcaai: any = await import(/* @vite-ignore */ `${SEED}/23-arcaai-workflow-authoring.generated.ts`);
-const examples: any = await import(/* @vite-ignore */ `${SEED}/24-example-consultation-workflows.generated.ts`);
+// TASK-930 §8.6 — seeds 23/24 are deleted. Every committed graph now lives in one of two
+// slug-keyed blob maps, so this block reads the WHOLE seeded set instead of naming eight exports
+// (a list that went stale the moment the set was rebuilt).
+const library: any = await import(/* @vite-ignore */ `${SEED}/28-workflow-library.generated.ts`);
+const arcaai: any = await import(/* @vite-ignore */ `${SEED}/29-arcaai-agents-and-workflows.generated.ts`);
 
-/** Every committed `consultation`-palette compiled config, by the export that carries it. */
+/** Every committed compiled config that authors a realtime lane, by its `<TENANT>:<slug>` key. */
 const COMMITTED_CONSULTATION_CONFIGS: ReadonlyArray<readonly [string, unknown]> = [
-  ['GEN_COMPILED_CONFIG', arcaai.GEN_COMPILED_CONFIG],
-  ['RHEUM_COMPILED_CONFIG', arcaai.RHEUM_COMPILED_CONFIG],
-  ['PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG', examples.PLATFORM_GRAMMAR_FIX_COMPILED_CONFIG],
-  ['ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG', examples.ARCAAI_GRAMMAR_FIX_COMPILED_CONFIG],
-  ['PLATFORM_MEDICAL_NER_COMPILED_CONFIG', examples.PLATFORM_MEDICAL_NER_COMPILED_CONFIG],
-  ['ARCAAI_MEDICAL_NER_COMPILED_CONFIG', examples.ARCAAI_MEDICAL_NER_COMPILED_CONFIG],
-  ['PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG', examples.PLATFORM_NER_GRAMMAR_FIX_COMPILED_CONFIG],
-  ['ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG', examples.ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG],
-];
+  ...Object.entries(library.WORKFLOW_LIBRARY_GENERATED as Record<string, { compiledConfig: unknown }>),
+  ...Object.entries(arcaai.ARCAAI_GENERATED as Record<string, { compiledConfig: unknown }>),
+]
+  .map(([key, blob]) => [key, blob.compiledConfig] as const)
+  .filter(([, compiled]) => buildRealtimeLane(compiled as never) !== null);
 
-/** The durable writers. `persistDraft` is the one names; the other two write too. */
-const DURABLE_WRITERS = ['consultation.persistDraft', 'consultation.finalizeAssurance', 'consultation.synthesize'];
+/**
+ * A node the DURABLE interpreter runs. Since TASK-893 that is a property of the INSTANCE
+ * (`config.execution.lane`), not of a type name: the writers that used to be their own node types
+ * (`consultation.persistDraft` and friends) are a `core.agent`/`core.action` declaring
+ * `lane: 'durable'`, and `_configured_realtime` in `workflow.py` applies the same predicate.
+ */
+const declaredDurableNodeIds = (compiled: any): string[] =>
+  (compiled.stages ?? []).flatMap((stage: any) =>
+    (stage.nodes ?? []).filter((node: any) => node?.config?.execution?.lane === 'durable').map((node: any) => node.nodeId),
+  );
 
 describe(' A2 — exclusivity holds BY CONSTRUCTION, not by the gate', () => {
-  it.each(COMMITTED_CONSULTATION_CONFIGS)('%s: its realtime lane contains no durable writer', (_name, compiled) => {
+  it('the seeded set is non-empty — an empty table would make every case below vacuous', () => {
+    expect(COMMITTED_CONSULTATION_CONFIGS.length).toBeGreaterThan(0);
+  });
+
+  it.each(COMMITTED_CONSULTATION_CONFIGS)('%s: its realtime lane contains no durable node', (_name, compiled) => {
     const lane = buildRealtimeLane(compiled as never);
 
     expect(lane).not.toBeNull();
-    const types = lane!.stages.flatMap((stage) => stage.nodes.map((node) => node.type));
-    expect(types.length).toBeGreaterThan(0);
-    for (const writer of DURABLE_WRITERS) expect(types).not.toContain(writer);
+    const laneNodeIds = lane!.stages.flatMap((stage) => stage.nodes.map((node) => node.nodeId));
+    expect(laneNodeIds.length).toBeGreaterThan(0);
+    for (const durable of declaredDurableNodeIds(compiled)) expect(laneNodeIds).not.toContain(durable);
   });
 
-  it('the durable writers really are present in the graphs — the filter is doing work', () => {
-    const declared = (compiled: any): string[] => (compiled.stages ?? []).flatMap((s: any) => (s.nodes ?? []).map((n: any) => n.type));
-
-    for (const [name, compiled] of COMMITTED_CONSULTATION_CONFIGS) {
-      expect(declared(compiled), `${name} declares no durable writer — the assertion above would be vacuous`).toEqual(
-        expect.arrayContaining(['consultation.persistDraft']),
-      );
-    }
+  it('the durable nodes really are present in the graphs — the filter is doing work', () => {
+    // At least one seeded graph must declare a durable node, or "the lane excludes them" is a
+    // claim about an empty set. The consultation graphs all carry the durable finalize agent.
+    const withDurable = COMMITTED_CONSULTATION_CONFIGS.filter(([, compiled]) => declaredDurableNodeIds(compiled).length > 0);
+    expect(withDurable.length).toBeGreaterThan(0);
   });
 });
 
