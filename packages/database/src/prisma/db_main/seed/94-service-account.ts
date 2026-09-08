@@ -210,6 +210,15 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:workflow-node:read', // → read:WorkflowDefinition
   'svc:admin:workflow-run:read', // → read:WorkflowRun
   'svc:admin:workflow-test-fixture:manage', // → manage:WorkflowTestFixture
+  // TASK-930 (INTERFACES §3) — the INVOCATION plane: a service account may list and invoke the
+  // tenant's published agents and workflows, the way an API key does. Renamespaced from the
+  // API-key scopes of the same name (`apikey-scopes.registry.ts`); every one implies an ability
+  // TENANT_ADMIN already holds, so the derivation rule above still admits them.
+  'svc:agent:definition:read', // → list:Agent
+  'svc:agent:invocation:write', // → read:Agent (the invoke routes demand it)
+  'svc:workflow:definition:read', // → list:WorkflowDefinition
+  'svc:workflow:run:read', // → read:WorkflowRun
+  'svc:workflow:run:write', // → create:WorkflowRun, update:WorkflowRun
 ] as const;
 
 /**

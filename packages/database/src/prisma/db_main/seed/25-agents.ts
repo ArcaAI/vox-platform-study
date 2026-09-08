@@ -1,54 +1,82 @@
 /**
- * TASK-863 §3.7 — the first-class Agents: platform defaults (SYSTEM tenant) and the
- * Global-tenant examples.
+ * TASK-930 §8.3 — the seeded Agents: the promotion process, as data.
  *
- * SYSTEM tenant (`isActive: true`, PUBLISHED) — the platform defaults every tenant inherits
- * through the assignment cascade (`AgentAssignment` TENANT rows on the SYSTEM tenant are the
- * cascade's last tier):
- *   platform-transcription        SPEECH_TO_TEXT   arcaai-whisper-large-ml-en-gguf (+ faster-whisper CT2 fallback, silero-vad, cadence punctuation)
- *   platform-summarization        TEXT_GENERATION  elected text model + the APPROVED live SOAP template
- *   platform-summarization-live   TEXT_GENERATION  the same, with engine reasoning OFF — the REALTIME tier,
- *                                                  reached by the `phase:live` assignment selector (TASK-891)
- *   platform-presummarization     TEXT_GENERATION  + the APPROVED pre-summary default template
- *   platform-discharge-summary    TEXT_GENERATION  + an inline system prompt (no APPROVED SYSTEM discharge template exists on this base)
- *   platform-grammar-correction   TEXT_GENERATION  + the APPROVED live transcript-corrections template
- *   platform-important-findings   TEXT_GENERATION  + the APPROVED important-findings template, JSON output
- *   platform-tts                  TEXT_TO_SPEECH   kokoro / af_heart
+ * Global (`50000000-…`, the platform-admin PLAYGROUND — a customer tenant, never a config tier)
+ * AUTHORS five agents. SYSTEM carries the IDENTICAL five as the PROMOTED copy: same slug, same
+ * configuration, `sourceAgentId` / `sourceTenantId` / `sourceSlug` / `sourceVersionNumber`
+ * pointing at the Global row — exactly the provenance `POST /admin/agents/promote-to-system`
+ * (INTERFACES §6.1) stamps, so a seeded promotion and a real one are indistinguishable. ArcaAI
+ * receives the SYSTEM set through phase 26 and adds its own department agents in phase 29.
  *
- * Global tenant (`50000000-…`, the platform-admin PLAYGROUND — a customer tenant, never a
- * config tier): the same set as PUBLISHED `example-*` rows, plus one Azure-backed and one
- * Sarvam-backed ASR agent in DRAFT (no key is seeded; publish fails closed until a provider
- * connection exists — the ticket's own fail-closed proof). ArcaAI tenant: nothing
- * (provisioning clones SYSTEM — owner ruling 2026-08-20).
+ *   realtime-transcription          SPEECH_TO_TEXT            arcaai-whisper-large-ml-en-gguf-q8_0 (+ gguf, + faster-whisper CT2)
+ *   medical-ner                     NAMED_ENTITY_RECOGNITION  medical-ner (TOKEN_CLASSIFICATION, built-in)         INTERFACES §2
+ *   general-medicine-summarization  TEXT_GENERATION           gemma + the General Medicine summary template, guards ON
+ *   casenote-finalization           TEXT_GENERATION           gemma + inline system prompt, `{ case_note, redactions }` output schema
+ *   text-to-speech                  TEXT_TO_SPEECH            kokoro / af_heart
+ *
+ * `AgentAssignment` (TENANT scope) in BOTH tenants: one row per task, unqualified.
  *
  * Rows are written directly (unscoped client, create-only): a PUBLISHED Agent is immutable at
  * the service AND at the `agent_immutability_guard` trigger, so an upsert with an `update`
- * branch would raise at the DB. Model rows are resolved BY SLUG at seed time (never a hard-coded
- * model id): the registry seed (TASK-860) owns those ids. A spec whose model or template is
- * missing is SKIPPED with a warning rather than seeded broken — the same fail-closed posture
- * `AgentService.publish` takes.
+ * branch would raise at the DB. `compiledConfig` mirrors `AgentService.compile`
+ * (`AgentCompiledConfig` in @arcaai/types) and its checksum is `sha256:` over the same canonical
+ * JSON (`canonicalJson` of @arcaai/workflow-contract, duplicated here because @arcaai/database
+ * takes no dependency on the contract package; `task-930-agents.test.ts` pins the parity).
  *
- * `compiledConfig` mirrors `AgentService.compile` (`AgentCompiledConfig` in @arcaai/types) and
- * its checksum is `sha256:` over the same canonical JSON (`canonicalJson` in
- * @arcaai/workflow-contract — duplicated here because @arcaai/database takes no dependency on
- * the contract package; `task-863-agents.test.ts` pins the parity).
+ * NER on THIS branch: `packages/workflow-contract` learns `NAMED_ENTITY_RECOGNITION` from lane N.
+ * The task maps below already carry it (the seed is what N's enum value is FOR), and the IO
+ * defaults are the INTERFACES §2.3 literal, verbatim.
  */
 import { createHash } from 'node:crypto';
 import type { CorePrismaClient } from '../../../client';
-import { SEED_TENANT_ID, SYSTEM_LIVE_SOAP_TEMPLATE_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
-import { TEMPLATE_IDS } from './07-prompt-template';
+import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import { GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES, SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, TEMPLATE_IDS } from './07-prompt-template';
+import { NEW_VISIT_NOTE_SHAPE, REVISIT_NOTE_SHAPE } from './27-document-template-library';
 
-export const COMPILED_AT = '2026-09-04T00:00:00.000Z';
+export const COMPILED_AT = '2026-09-08T00:00:00.000Z';
 
-export type SeedAgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+export type SeedAgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
 
-export const AGENT_TASK_SERVICE: Record<SeedAgentTask, 'stt' | 'llm' | 'tts'> = { SPEECH_TO_TEXT: 'stt', TEXT_GENERATION: 'llm', TEXT_TO_SPEECH: 'tts' };
+export const AGENT_TASK_SERVICE: Record<SeedAgentTask, 'stt' | 'llm' | 'tts' | 'nlp'> = {
+  SPEECH_TO_TEXT: 'stt',
+  TEXT_GENERATION: 'llm',
+  TEXT_TO_SPEECH: 'tts',
+  NAMED_ENTITY_RECOGNITION: 'nlp',
+};
 export const AGENT_TASK_MODEL_TASK_TYPE: Record<SeedAgentTask, string> = {
   SPEECH_TO_TEXT: 'AUTOMATIC_SPEECH_RECOGNITION',
   TEXT_GENERATION: 'TEXT_GENERATION',
   TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
+  NAMED_ENTITY_RECOGNITION: 'TOKEN_CLASSIFICATION',
 };
-const AGENT_PROTOCOLS: Record<SeedAgentTask, string[]> = { SPEECH_TO_TEXT: ['http', 'socket'], TEXT_GENERATION: ['http', 'http-sse'], TEXT_TO_SPEECH: ['http', 'http-sse'] };
+/** NER is ONE-SHOT (`?mode=stream` → 400 `MODE_UNSUPPORTED`, INTERFACES §2.4). */
+const AGENT_PROTOCOLS: Record<SeedAgentTask, string[]> = {
+  SPEECH_TO_TEXT: ['http', 'socket'],
+  TEXT_GENERATION: ['http', 'http-sse'],
+  TEXT_TO_SPEECH: ['http', 'http-sse'],
+  NAMED_ENTITY_RECOGNITION: ['http'],
+};
+
+/** INTERFACES §2.3, verbatim. */
+export const NER_IO_DEFAULTS = {
+  inputSchema: { type: 'object', properties: { text: { type: 'string' }, language: { type: 'string' } }, required: ['text'], additionalProperties: false },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      entities: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { text: { type: 'string' }, label: { type: 'string' }, start: { type: 'integer' }, end: { type: 'integer' }, score: { type: 'number' } },
+          required: ['text', 'label', 'start', 'end'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['entities'],
+    additionalProperties: false,
+  },
+};
 
 /** The task defaults of AGENT_IO_DEFAULTS, compiled verbatim so the runtime never reads a null schema. */
 const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>; outputSchema: Record<string, unknown> }> = {
@@ -79,7 +107,16 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
     inputSchema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', minLength: 1, maxLength: 20000 }, ssml: { type: 'string', minLength: 1, maxLength: 40000 } }, anyOf: [{ required: ['text'] }, { required: ['ssml'] }] },
     outputSchema: { type: 'object', required: ['audio'], properties: { audio: { type: 'object', required: ['mediaId', 'format'], properties: { mediaId: { type: 'string' }, format: { type: 'string' }, sampleRate: { type: 'integer' } } }, durationMs: { type: 'integer', minimum: 0 } } },
   },
+  NAMED_ENTITY_RECOGNITION: NER_IO_DEFAULTS,
 };
+
+/** Cross-lineage provenance — the four `Agent` columns a promotion / clone stamps. */
+export interface SeedAgentProvenance {
+  sourceAgentId: string;
+  sourceTenantId: string;
+  sourceSlug: string;
+  sourceVersionNumber: number;
+}
 
 export interface SeedAgentSpec {
   id: string;
@@ -92,246 +129,221 @@ export interface SeedAgentSpec {
   fallbackModelSlugs: string[];
   instruction: Record<string, unknown> | null;
   parameters: Record<string, unknown>;
+  /** An explicit output contract (INTERFACES §5); `null` = the task default. */
+  outputSchema: Record<string, unknown> | null;
   status: 'PUBLISHED' | 'DRAFT';
   isActive: boolean;
   tags: string[];
+  /** `null` on an authored row; set on a promoted / cloned copy. */
+  provenance: SeedAgentProvenance | null;
 }
 
-/** Id blocks: `9c000000-…-0001-` SYSTEM agents, `-0002-` Global agents, `-0003-` fallbacks, `-0004-` assignments. */
+/** Id blocks: `9c000000-…-0001-` SYSTEM agents, `-0002-` Global agents, `-0003-` fallbacks, `-0004-` assignments, `-0005-` ArcaAI agents (phase 29). */
 const sys = (n: number) => `9c000000-0000-0000-0001-${String(n).padStart(12, '0')}`;
 const glob = (n: number) => `9c000000-0000-0000-0002-${String(n).padStart(12, '0')}`;
 export const fallbackId = (n: number) => `9c000000-0000-0000-0003-${String(n).padStart(12, '0')}`;
 export const assignmentId = (n: number) => `9c000000-0000-0000-0004-${String(n).padStart(12, '0')}`;
+export const arcaaiAgentId = (n: number) => `9c000000-0000-0000-0005-${String(n).padStart(12, '0')}`;
 
-const ASR_PARAMETERS = {
+/** The five lineage keys, in seed order. */
+export const SEEDED_AGENT_SLUGS = ['realtime-transcription', 'medical-ner', 'general-medicine-summarization', 'casenote-finalization', 'text-to-speech'] as const;
+
+/** The ONE ASR lineage key — Global and SYSTEM both carry it (§8.3); `09-consultation.ts` names it. */
+export const ASR_AGENT_SLUG = 'realtime-transcription';
+
+// ----------------------------------------------------------------------------------------------
+// Shared configuration (exported so phase 29 builds the ArcaAI department agents the same way)
+// ----------------------------------------------------------------------------------------------
+
+/** Today's `platform-transcription` parameters (TASK-891 A4: `wordTimestamps: false`). */
+export const ASR_PARAMETERS = {
   audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 250, minSilenceMs: 500 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
-  // TASK-891 (A4) — `wordTimestamps` was `true`. The whisper.cpp adapter's own comment
-  // (`whisper_cpp_asr.py:500-505`) calls per-word timestamp mode "a lossy,
-  // script-corrupting hack": it forces `max_len=1, split_on_word=True`, which
-  // space-joins Malayalam's non-space-delimited script into orphaned combining marks
-  // (`ൽ`, `ും`, `്ട്`) — measurably destroying this agent's own output. `false` runs a
-  // clean sentence-level decode instead; nothing downstream of this agent (case note,
-  // NER) consumes per-word timing.
+  // The whisper.cpp adapter's per-word timestamp mode is "a lossy, script-corrupting hack" for
+  // Malayalam (`whisper_cpp_asr.py:500-505`); nothing downstream consumes per-word timing.
   decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: false, beamSize: 5, temperature: 0 },
   postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-punctuation' }, disfluency: true, stabilizer: true },
   streaming: { partialIntervalMs: 500, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
 };
-const ASR_INSTRUCTION = { initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.', hotwords: [] as string[] };
+export const ASR_INSTRUCTION = { initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.', hotwords: [] as string[] };
 
-const DISCHARGE_SYSTEM_PROMPT =
-  'You are a clinical documentation assistant. From the consultation transcript and the clinician notes provided, draft a discharge summary with these sections: Admission diagnosis, Hospital course, Procedures, Discharge diagnosis, Discharge medications, Follow-up, Patient instructions. Use only facts present in the input; mark anything uncertain as "to be confirmed by the clinician". Never invent findings, doses or dates.';
+/**
+ * The per-turn summarization hyper-parameters. `guards.enabled: true` is the AGENT level of the
+ * `node > workflow > agent > true` guardrail precedence (§3.14) — stated, not inherited, because
+ * "guardrail enabled with GLiNER2 on the summarization agent" is an owner commitment (D-2).
+ * Reasoning OFF: the live flush is a 20 s budget and reasoning tokens were measured at 92% of
+ * the completion on this model (TASK-891).
+ */
+export const SUMMARIZATION_PARAMETERS = {
+  generation: { temperature: 0.2, maxTokens: 2048, reasoning: { enabled: false } },
+  responseFormat: 'text',
+  guards: { enabled: true },
+};
 
-/** The platform defaults + the Global examples, as pure data. */
-function catalogue(tenantId: string, prefix: 'platform' | 'example', ids: (n: number) => string, published: boolean): SeedAgentSpec[] {
-  const status = published ? 'PUBLISHED' : 'DRAFT';
-  // TASK-884 — agent tags are `key:value` pairs (owner decision #6): the grammar the write
-  // DTOs now enforce, so the platform's own rows are what a tenant admin copies. A bare tag
-  // like `stt` has no key, which is exactly the ungrouped vocabulary the pair form prevents.
-  const tier = prefix === 'platform' ? 'tier:platform-default' : 'tier:example';
+/** `NEW_VISIT_NOTE_SHAPE` / `REVISIT_NOTE_SHAPE` headings, as the text constant the prompt reads. */
+export const headingList = (shape: { sections: ReadonlyArray<{ title: string }> }): string => shape.sections.map((section) => section.title).join(' | ');
+
+/**
+ * F6 — a binding for EVERY variable the General Medicine template declares. The nine §8.2 fields
+ * resolve from the trigger's validated context (`{{trigger.context.*}}`, INTERFACES §8.3); the two
+ * document-template heading lists are CONSTANTS, because `Agent.instruction.variables` knows only
+ * `{ value }` | `{ path }` — there is no document-template binding kind (reported).
+ */
+export function generalMedicinePromptVariables(): Record<string, { value: string } | { path: string }> {
+  const constants: Record<string, string> = { new_visit_headings: headingList(NEW_VISIT_NOTE_SHAPE), revisit_headings: headingList(REVISIT_NOTE_SHAPE) };
+  return Object.fromEntries(
+    GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES.map((name) => [name, name in constants ? { value: constants[name]! } : { path: `trigger.context.${name}` }]),
+  );
+}
+
+export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
+  'You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician\'s work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code. Return a JSON object with `case_note` (the finalized Markdown note) and `redactions` (an array of `{ text, label }`).';
+
+/** INTERFACES §8.3 — `{ case_note: string, redactions: [{ text, label }] }`. */
+export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['case_note', 'redactions'],
+  properties: {
+    case_note: { type: 'string' },
+    redactions: {
+      type: 'array',
+      items: { type: 'object', additionalProperties: false, required: ['text', 'label'], properties: { text: { type: 'string' }, label: { type: 'string' } } },
+    },
+  },
+};
+
+// ----------------------------------------------------------------------------------------------
+// The five, as pure data
+// ----------------------------------------------------------------------------------------------
+
+/**
+ * ONE catalogue for both tenants — the whole point of §8.3 is that Global and SYSTEM differ only
+ * by tenant, id, the template id each tenant owns, and provenance.
+ */
+function catalogue(tenantId: string, ids: (n: number) => string, generalMedicineTemplateId: string): SeedAgentSpec[] {
+  const tier = tenantId === SYSTEM_TENANT_ID ? 'tier:platform-default' : 'tier:playground';
   return [
     {
       id: ids(1),
       tenantId,
-      slug: `${prefix}-transcription`,
-      name: prefix === 'platform' ? 'Platform transcription (whisper.cpp ML/EN)' : 'Example transcription (whisper.cpp ML/EN)',
-      description: 'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF, Silero VAD gating, Cadence punctuation, CTranslate2 turbo as the fallback.',
+      slug: 'realtime-transcription',
+      name: 'Realtime transcription (whisper.cpp ML/EN)',
+      description: 'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF (Q8_0), Silero VAD gating, Cadence punctuation; the F16 GGUF and the CTranslate2 turbo as fallbacks.',
       task: 'SPEECH_TO_TEXT',
-      modelSlug: 'arcaai-whisper-large-ml-en-gguf',
-      fallbackModelSlugs: ['faster-whisper-large-v3-turbo-int8'],
+      modelSlug: 'arcaai-whisper-large-ml-en-gguf-q8_0',
+      fallbackModelSlugs: ['arcaai-whisper-large-ml-en-gguf', 'faster-whisper-large-v3-turbo-int8'],
       instruction: ASR_INSTRUCTION,
       parameters: ASR_PARAMETERS,
-      status,
-      isActive: published,
+      outputSchema: null,
+      status: 'PUBLISHED',
+      isActive: true,
       tags: [tier, 'task:stt', 'capability:transcription'],
+      provenance: null,
     },
     {
       id: ids(2),
       tenantId,
-      slug: `${prefix}-summarization`,
-      name: prefix === 'platform' ? 'Platform summarization (SOAP)' : 'Example summarization (SOAP)',
-      description: 'Consultation SOAP summary on the elected platform text model, bound to the approved live SOAP template.',
-      task: 'TEXT_GENERATION',
-      modelSlug: 'lms-gemma-4-e2b-it-qat',
+      slug: 'medical-ner',
+      name: 'Medical NER',
+      description: 'Medical named-entity recognition over the transcript (blaze999/Medical-NER through the NLP service). One-shot.',
+      task: 'NAMED_ENTITY_RECOGNITION',
+      modelSlug: 'medical-ner',
       fallbackModelSlugs: [],
-      instruction: { promptTemplateId: SYSTEM_LIVE_SOAP_TEMPLATE_ID, promptVersionNumber: 1 },
-      parameters: { generation: { temperature: 0.2, maxTokens: 2048 }, responseFormat: 'text' },
-      status,
-      isActive: published,
-      tags: [tier, 'task:llm', 'capability:summarization'],
+      instruction: null,
+      parameters: { threshold: 0.5, aggregation: 'simple' },
+      outputSchema: null,
+      status: 'PUBLISHED',
+      isActive: true,
+      tags: [tier, 'task:ner', 'capability:entity-recognition'],
+      provenance: null,
     },
     {
       id: ids(3),
       tenantId,
-      slug: `${prefix}-presummarization`,
-      name: prefix === 'platform' ? 'Platform pre-summarization' : 'Example pre-summarization',
-      description: 'Pre-visit summary from prior context, bound to the approved pre-summary default template.',
+      slug: 'general-medicine-summarization',
+      name: 'General Medicine summarization (partial)',
+      description: 'The running per-turn consultation note for General Medicine, bound to the approved General Medicine consultation summary template; guardrail screening ON.',
       task: 'TEXT_GENERATION',
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
-      instruction: { promptTemplateId: TEMPLATE_IDS.PRE_SUMMARY_DEFAULT, promptVersionNumber: 1 },
-      parameters: { generation: { temperature: 0.2, maxTokens: 1536 }, responseFormat: 'text' },
-      status,
-      isActive: published,
-      tags: [tier, 'task:llm', 'capability:presummarization'],
+      instruction: { promptTemplateId: generalMedicineTemplateId, promptVersionNumber: 1, variables: generalMedicinePromptVariables() },
+      parameters: SUMMARIZATION_PARAMETERS,
+      outputSchema: null,
+      status: 'PUBLISHED',
+      isActive: true,
+      tags: [tier, 'task:llm', 'capability:summarization', 'specialty:general-medicine'],
+      provenance: null,
     },
     {
       id: ids(4),
       tenantId,
-      slug: `${prefix}-discharge-summary`,
-      name: prefix === 'platform' ? 'Platform discharge summary' : 'Example discharge summary',
-      description: 'Discharge summary drafting with an inline system prompt (no approved platform discharge template exists yet — bind one when it does).',
+      slug: 'casenote-finalization',
+      name: 'Case note finalization',
+      description: 'Finalizes the case note from the partial summaries and the work notes, redacts residual PII, keeps the document template headings. Structured output: { case_note, redactions }.',
       task: 'TEXT_GENERATION',
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
-      instruction: { systemPrompt: DISCHARGE_SYSTEM_PROMPT },
-      parameters: { generation: { temperature: 0.1, maxTokens: 3072 }, responseFormat: 'text' },
-      status,
-      isActive: published,
-      tags: [tier, 'task:llm', 'capability:discharge-summary'],
+      instruction: { systemPrompt: CASENOTE_FINALIZATION_SYSTEM_PROMPT },
+      // No `responseFormat`: the declared `outputSchema` IS the response format (INTERFACES §5).
+      parameters: { generation: { temperature: 0.1, maxTokens: 4096 }, guards: { enabled: true } },
+      outputSchema: CASENOTE_OUTPUT_SCHEMA,
+      status: 'PUBLISHED',
+      isActive: true,
+      tags: [tier, 'task:llm', 'capability:finalization'],
+      provenance: null,
     },
     {
       id: ids(5),
       tenantId,
-      slug: `${prefix}-grammar-correction`,
-      name: prefix === 'platform' ? 'Platform transcript corrections' : 'Example transcript corrections',
-      description: 'Live transcript grammar/spelling corrections, bound to the approved corrections template; deterministic decoding.',
-      task: 'TEXT_GENERATION',
-      modelSlug: 'lms-gemma-4-e2b-it-qat',
-      fallbackModelSlugs: [],
-      instruction: { promptTemplateId: TEMPLATE_IDS.LIVE_GRAMMAR_SYSTEM, promptVersionNumber: 1 },
-      // TASK-891 (C3) — this agent runs on every LIVE flush (`agent.grammar`, always in the
-      // realtime branch — see `n_grammar` in 24-example-consultation-workflows.ts and
-      // 23-arcaai-workflow-authoring.ts). Reasoning measured at 70-78% of the completion
-      // token budget on this class of call, and the output is a short deterministic
-      // correction pass, not a task reasoning improves. `effort` is omitted: `enabled:
-      // false` alone instructs the engine not to reason at all.
-      parameters: { generation: { temperature: 0, maxTokens: 1024, reasoning: { enabled: false } }, responseFormat: 'text' },
-      status,
-      isActive: published,
-      tags: [tier, 'task:llm', 'capability:grammar'],
-    },
-    {
-      id: ids(6),
-      tenantId,
-      slug: `${prefix}-important-findings`,
-      name: prefix === 'platform' ? 'Platform important findings' : 'Example important findings',
-      description: 'Important-findings extraction as JSON, bound to the approved important-findings template.',
-      task: 'TEXT_GENERATION',
-      modelSlug: 'lms-gemma-4-e2b-it-qat',
-      fallbackModelSlugs: [],
-      instruction: { promptTemplateId: TEMPLATE_IDS.IMPORTANT_FINDINGS_SYSTEM, promptVersionNumber: 1 },
-      // TASK-891 (C3) — the realtime important-findings highlight (`consultation.extractFindings`
-      // in `realtime-node-registry.ts`), called on every live flush. Same rationale as
-      // grammar-correction: the note/output here is JSON-shaped (`responseFormat: 'json'`),
-      // and reasoning tokens do not improve a structured extraction the model is not asked
-      // to argue about.
-      parameters: { generation: { temperature: 0, maxTokens: 1024, reasoning: { enabled: false } }, responseFormat: 'json' },
-      status,
-      isActive: published,
-      tags: [tier, 'task:llm', 'capability:important-findings'],
-    },
-    {
-      // Ids 8 and 9 are RESERVED for the two Global-tenant ASR drafts below, which are declared
-      // outside this catalogue and already hold `glob(8)` / `glob(9)`.
-      id: ids(10),
-      tenantId,
-      slug: `${prefix}-summarization-live`,
-      name: prefix === 'platform' ? 'Platform summarization — live (SOAP)' : 'Example summarization — live (SOAP)',
-      description:
-        'The REALTIME tier of the SOAP summary: the same model, prompt and decoding as the finalize agent, with engine reasoning switched OFF for the live flush budget.',
-      task: 'TEXT_GENERATION',
-      modelSlug: 'lms-gemma-4-e2b-it-qat',
-      fallbackModelSlugs: [],
-      instruction: { promptTemplateId: SYSTEM_LIVE_SOAP_TEMPLATE_ID, promptVersionNumber: 1 },
-      // TASK-891 (owner decision: "separate live and finalize agents"). Everything here is
-      // byte-identical to `${prefix}-summarization` EXCEPT `reasoning` — the split exists so
-      // ONE difference is expressible, and keeping the rest identical is what makes it
-      // auditable. Measured on `gemma-4-e2b-it-qat` (LM Studio, cluster idle, 2026-09-07):
-      // reasoning unset = 5168 ms / 199 completion tokens of which 184 (92%) were reasoning;
-      // `minimal` = 1237 ms / 45 / 30. The live flush is a 20 s budget on a JSON-shaped note,
-      // so the reasoning is bought and thrown away. Finalize keeps the engine default.
-      parameters: { generation: { temperature: 0.2, maxTokens: 2048, reasoning: { enabled: false } }, responseFormat: 'text' },
-      status,
-      isActive: published,
-      // `phase:live` is the SELECTOR the assignment below matches (`AgentAssignment.selectorKey`,
-      // TASK-884). On the agent itself it is alignment vocabulary — the console facet and the
-      // admin's copy template — not something the cascade reads.
-      tags: [tier, 'task:llm', 'capability:summarization', 'phase:live'],
-    },
-    {
-      id: ids(7),
-      tenantId,
-      slug: `${prefix}-tts`,
-      name: prefix === 'platform' ? 'Platform text-to-speech (Kokoro)' : 'Example text-to-speech (Kokoro)',
+      slug: 'text-to-speech',
+      name: 'Text-to-speech (Kokoro)',
       description: 'English speech synthesis on the local Kokoro engine, voice af_heart, 24 kHz WAV.',
       task: 'TEXT_TO_SPEECH',
       modelSlug: 'kokoro',
       fallbackModelSlugs: [],
       instruction: null,
       parameters: { voice: 'af_heart', language: 'en', speed: 1, format: 'wav', sampleRate: 24000 },
-      status,
-      isActive: published,
+      outputSchema: null,
+      status: 'PUBLISHED',
+      isActive: true,
       tags: [tier, 'task:tts'],
+      provenance: null,
     },
   ];
 }
 
-export const PLATFORM_AGENT_SPECS: SeedAgentSpec[] = catalogue(SYSTEM_TENANT_ID, 'platform', sys, true);
+/** Global authors. */
+export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = catalogue(SEED_TENANT_ID, glob, TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY);
 
-export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = [
-  ...catalogue(SEED_TENANT_ID, 'example', glob, true),
-  {
-    id: glob(8),
-    tenantId: SEED_TENANT_ID,
-    slug: 'example-azure-transcription',
-    name: 'Example transcription (Azure Speech) — draft',
-    description: 'Cloud ASR on Azure Speech. DRAFT: publish fails closed until an enabled stt/azure provider connection exists (no key is seeded).',
-    task: 'SPEECH_TO_TEXT',
-    modelSlug: 'azure-speech-stt',
-    fallbackModelSlugs: ['arcaai-whisper-large-ml-en-gguf'],
-    instruction: { initialPrompt: ASR_INSTRUCTION.initialPrompt },
-    parameters: { decoding: { languageMode: 'en', wordTimestamps: true }, streaming: { partialIntervalMs: 500, endpointing: 'fixed' }, fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 2 } },
-    status: 'DRAFT',
-    isActive: false,
-    tags: ['tier:example', 'task:stt', 'provider:azure', 'hosting:cloud'],
-  },
-  {
-    id: glob(9),
-    tenantId: SEED_TENANT_ID,
-    slug: 'example-sarvam-transcription',
-    name: 'Example transcription (Sarvam Saaras) — draft',
-    description: 'Cloud ASR on Sarvam Saaras for Indic languages. DRAFT: publish fails closed until an enabled stt/sarvam provider connection exists (no key is seeded).',
-    task: 'SPEECH_TO_TEXT',
-    modelSlug: 'sarvam-saaras-v4',
-    fallbackModelSlugs: ['arcaai-whisper-large-ml-en-gguf'],
-    instruction: null,
-    parameters: { decoding: { languageMode: 'ml-en', codeSwitching: true }, streaming: { partialIntervalMs: 500, endpointing: 'fixed' } },
-    status: 'DRAFT',
-    isActive: false,
-    tags: ['tier:example', 'task:stt', 'provider:sarvam', 'hosting:cloud'],
-  },
+/** SYSTEM is the promoted copy — provenance → the Global row of the same slug. */
+export const PLATFORM_AGENT_SPECS: SeedAgentSpec[] = catalogue(SYSTEM_TENANT_ID, sys, SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID).map((spec) => {
+  const source = GLOBAL_AGENT_SPECS.find((global) => global.slug === spec.slug);
+  if (!source) throw new Error(`SYSTEM agent ${spec.slug} has no Global source`);
+  return { ...spec, provenance: { sourceAgentId: source.id, sourceTenantId: source.tenantId, sourceSlug: source.slug, sourceVersionNumber: 1 } };
+});
+
+export interface SeedAgentAssignment {
+  id: string;
+  tenantId: string;
+  task: SeedAgentTask;
+  agentSlug: string;
+  selectorKey?: string;
+}
+
+const assignmentsFor = (tenantId: string, offset: number): SeedAgentAssignment[] => [
+  { id: assignmentId(offset + 1), tenantId, task: 'SPEECH_TO_TEXT', agentSlug: 'realtime-transcription' },
+  { id: assignmentId(offset + 2), tenantId, task: 'TEXT_GENERATION', agentSlug: 'general-medicine-summarization' },
+  { id: assignmentId(offset + 3), tenantId, task: 'TEXT_TO_SPEECH', agentSlug: 'text-to-speech' },
+  { id: assignmentId(offset + 4), tenantId, task: 'NAMED_ENTITY_RECOGNITION', agentSlug: 'medical-ner' },
 ];
 
 /**
- * SYSTEM TENANT-scope assignments — the platform reference set a tenant is provisioned FROM
- * (TASK-890 OD-M: content is CLONED, so these are never read at runtime for a customer tenant).
- *
- * `selectorKey` is TASK-884's tag selector, canonical and comma-joined; `''` is the UNQUALIFIED
- * row, which satisfies every request because an empty selector is a subset of anything. A task
- * may therefore hold several rows, and `AgentAssignmentService.resolve` tries the most specific
- * matching one first with the unqualified row last.
+ * TENANT-scope assignments. SYSTEM's are the reference set a tenant is provisioned FROM (TASK-890
+ * OD-M: content is CLONED, never read across tenants at run time); Global's are its own.
  */
-export const PLATFORM_AGENT_ASSIGNMENTS: Array<{ id: string; task: SeedAgentTask; agentSlug: string; selectorKey?: string }> = [
-  { id: assignmentId(1), task: 'SPEECH_TO_TEXT', agentSlug: 'platform-transcription' },
-  { id: assignmentId(2), task: 'TEXT_GENERATION', agentSlug: 'platform-summarization' },
-  { id: assignmentId(3), task: 'TEXT_TO_SPEECH', agentSlug: 'platform-tts' },
-  // TASK-891 — the REALTIME tier. `HarnessPolicyService.resolveTextSelection` mints
-  // `phase:<task>` from its routing task, so a live flush matches this row and everything else
-  // (finalize, the test bench, any caller that names no phase) keeps matching the unqualified
-  // TEXT_GENERATION row above. Adding a qualified row can only ever ADD a resolution.
-  { id: assignmentId(4), task: 'TEXT_GENERATION', agentSlug: 'platform-summarization-live', selectorKey: 'phase:live' },
-];
+export const PLATFORM_AGENT_ASSIGNMENTS: SeedAgentAssignment[] = assignmentsFor(SYSTEM_TENANT_ID, 0);
+export const GLOBAL_AGENT_ASSIGNMENTS: SeedAgentAssignment[] = assignmentsFor(SEED_TENANT_ID, 10);
 
 // ----------------------------------------------------------------------------------------------
 // Row building (pure)
@@ -342,10 +354,7 @@ export interface SeedModelRef {
   slug: string;
   taskType: string;
   provider: string | null;
-  /**
-   * The provider-native id `AiModel.wireModelId` (TASK-890 §3.1) — what an invocation actually
-   * puts on the wire. `null` on a platform-self-host row, which resolves by locator instead.
-   */
+  /** `AiModel.wireModelId` — what an invocation puts on the wire; `null` on a platform-self-host row. */
   wireModelId: string | null;
 }
 
@@ -372,37 +381,26 @@ export function buildCompiledConfig(spec: SeedAgentSpec, model: SeedModelRef, fa
   return {
     task: spec.task,
     service: AGENT_TASK_SERVICE[spec.task],
-    // TASK-890 black-box F9 — `wireModelId` is FROZEN beside the reference exactly as
-    // `AgentService.compile` freezes it, so a seeded row and a re-published one stay the same
-    // artifact down to the checksum. Present-and-null on a self-host row; never absent.
+    // `wireModelId` is FROZEN beside the reference exactly as `AgentService.compile` freezes it
+    // (present-and-null on a self-host row; never absent).
     model: { id: model.id, slug: model.slug, provider: model.provider ?? null, taskType: model.taskType, wireModelId: model.wireModelId ?? null },
     fallbacks: fallbacks.map((fallback, priority) => ({ priority, id: fallback.id, slug: fallback.slug, provider: fallback.provider ?? null })),
     instruction: spec.instruction,
     resolvedPrompt,
     parameters: spec.parameters,
     inputSchema: IO_DEFAULTS[spec.task].inputSchema,
-    outputSchema: IO_DEFAULTS[spec.task].outputSchema,
+    outputSchema: spec.outputSchema ?? IO_DEFAULTS[spec.task].outputSchema,
     tools: [],
     protocols: AGENT_PROTOCOLS[spec.task],
-    // TASK-890 §3.4 / §3.14 — the two fields `AgentService.compile` freezes. Seeded rows carry
-    // them explicitly so a seeded agent and a re-published one are the SAME artifact: a seed that
-    // omitted them would produce a different checksum for identical configuration, which is the
-    // drift `task-863-agents.test.ts` exists to keep out.
-    //
-    // `contextSchema: null` — no seeded SYSTEM agent pins a context schema. A schema is CONTENT
-    // and is cloned per tenant (§1.5), so a SYSTEM row could not resolve one anyway.
+    // `contextSchema: null` — no seeded agent pins a context schema: a schema is CONTENT, cloned
+    // per tenant; the trigger of the workflow binds it and `{{trigger.context.*}}` reads it.
     contextSchema: null,
-    // ABSENT MEANS ON: guardrail is platform-managed and screening is the floor a tenant opts out
-    // of, so a seed that says nothing about it says `enabled: true`.
+    // ABSENT MEANS ON — the agent level of the guardrail precedence.
     guardrail: { enabled: guardrailEnabledOf(spec.parameters) },
   };
 }
 
-/**
- * The AGENT level of the `node > workflow > agent > true` guardrail precedence (§3.14), mirroring
- * `guardrailEnabledOf` in `AgentService`. Duplicated here for the same reason `canonicalJson` is:
- * @arcaai/database takes no dependency on the applications layer or on the contract package.
- */
+/** Mirrors `guardrailEnabledOf` in `AgentService` (duplicated: no dependency on the applications layer). */
 function guardrailEnabledOf(parameters: Record<string, unknown> | null | undefined): boolean {
   const guards = parameters?.guards;
   if (guards === null || typeof guards !== 'object' || Array.isArray(guards)) return true;
@@ -426,16 +424,19 @@ export function buildAgentRow(spec: SeedAgentSpec, model: SeedModelRef, fallback
     task: spec.task,
     versionNumber: 1,
     parentVersionId: null,
+    sourceAgentId: spec.provenance?.sourceAgentId ?? null,
+    sourceTenantId: spec.provenance?.sourceTenantId ?? null,
+    sourceSlug: spec.provenance?.sourceSlug ?? null,
+    sourceVersionNumber: spec.provenance?.sourceVersionNumber ?? null,
     status: spec.status,
     isActive: spec.isActive,
     modelId: model.id,
-    // TASK-890 §3.4 — no seeded SYSTEM agent pins a context schema (see `buildCompiledConfig`).
     contextSchemaId: null,
     contextSchemaVersionNumber: null,
     instruction: spec.instruction,
     parameters: spec.parameters,
     inputSchema: null,
-    outputSchema: null,
+    outputSchema: spec.outputSchema,
     tools: null,
     compiledConfig: compiled,
     compiledConfigChecksum: compiled ? checksumOf(compiled) : null,
@@ -482,28 +483,36 @@ async function resolvePrompt(client: SeedAgentsClient, spec: SeedAgentSpec): Pro
   return { ok: true, resolvedPrompt: { source: 'template', promptTemplateId: templateId, promptVersionNumber: versionNumber, content: version?.content ?? template.content ?? '' } };
 }
 
-export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentSpec[], label: string): Promise<SeedAgentsResult> {
+/**
+ * Seed one spec list. `fallbackSeqStart` numbers this list's `AgentModelFallback` ids so two
+ * lists never collide: SYSTEM starts at 1, Global at 100, ArcaAI (phase 29) at 200.
+ */
+export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentSpec[], label: string, fallbackSeqStart: number): Promise<SeedAgentsResult> {
   console.log(`Seeding ${label} agents ...`);
   const result: SeedAgentsResult = { created: 0, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 0 };
   const models = await client.aiModel.findMany({ where: { tenantId: SYSTEM_TENANT_ID } });
   const bySlug = new Map(models.map((model) => [model.slug, model]));
-  let fallbackSeq = specs === PLATFORM_AGENT_SPECS ? 1 : 100;
+  let fallbackSeq = fallbackSeqStart;
 
   for (const spec of specs) {
     const existing = await client.agent.findUnique({ where: { id: spec.id }, select: { id: true } });
     if (existing) {
       result.skippedExisting += 1;
+      // Keep the fallback id sequence stable across runs whether or not this row was created.
+      fallbackSeq += spec.fallbackModelSlugs.length;
       continue;
     }
     const model = bySlug.get(spec.modelSlug);
     if (!model) {
       console.warn(`  ! ${spec.slug}: model '${spec.modelSlug}' is not in the SYSTEM registry — skipped (seed the catalogue first)`);
       result.skippedUnresolvable += 1;
+      fallbackSeq += spec.fallbackModelSlugs.length;
       continue;
     }
     if (model.taskType !== AGENT_TASK_MODEL_TASK_TYPE[spec.task]) {
       console.warn(`  ! ${spec.slug}: model '${spec.modelSlug}' is ${model.taskType}, not ${AGENT_TASK_MODEL_TASK_TYPE[spec.task]} — skipped`);
       result.skippedUnresolvable += 1;
+      fallbackSeq += spec.fallbackModelSlugs.length;
       continue;
     }
     const fallbacks: SeedModelRef[] = [];
@@ -519,12 +528,14 @@ export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentS
     }
     if (fallbackMissing) {
       result.skippedUnresolvable += 1;
+      fallbackSeq += spec.fallbackModelSlugs.length;
       continue;
     }
     const prompt = await resolvePrompt(client, spec);
     if (!prompt.ok) {
       console.warn(`  ! ${spec.slug}: ${prompt.reason} — skipped (fail closed)`);
       result.skippedUnresolvable += 1;
+      fallbackSeq += spec.fallbackModelSlugs.length;
       continue;
     }
 
@@ -541,20 +552,21 @@ export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentS
   return result;
 }
 
-export async function seedPlatformAgentAssignments(client: SeedAgentsClient): Promise<number> {
+/** TENANT-scope assignments for one tenant; a row is written only when its agent was seeded. */
+export async function seedAgentAssignments(client: SeedAgentsClient, assignments: SeedAgentAssignment[], specs: SeedAgentSpec[], label: string): Promise<number> {
   let created = 0;
-  for (const assignment of PLATFORM_AGENT_ASSIGNMENTS) {
+  for (const assignment of assignments) {
     const existing = await client.agentAssignment.findUnique({ where: { id: assignment.id }, select: { id: true } });
     if (existing) continue;
-    const agent = await client.agent.findUnique({ where: { id: PLATFORM_AGENT_SPECS.find((spec) => spec.slug === assignment.agentSlug)?.id ?? '' }, select: { id: true } });
+    const agent = await client.agent.findUnique({ where: { id: specs.find((spec) => spec.slug === assignment.agentSlug)?.id ?? '' }, select: { id: true } });
     if (!agent) {
-      console.warn(`  ! assignment ${assignment.task} → ${assignment.agentSlug}: the agent was not seeded — skipped`);
+      console.warn(`  ! ${label} assignment ${assignment.task} → ${assignment.agentSlug}: the agent was not seeded — skipped`);
       continue;
     }
     await client.agentAssignment.create({
       data: {
         id: assignment.id,
-        tenantId: SYSTEM_TENANT_ID,
+        tenantId: assignment.tenantId,
         scope: 'TENANT',
         scopeId: null,
         task: assignment.task,
@@ -564,21 +576,22 @@ export async function seedPlatformAgentAssignments(client: SeedAgentsClient): Pr
       },
     });
     created += 1;
-    console.log(`  assigned SYSTEM ${assignment.task}${assignment.selectorKey ? ` [${assignment.selectorKey}]` : ''} → ${assignment.agentSlug}`);
+    console.log(`  assigned ${label} ${assignment.task}${assignment.selectorKey ? ` [${assignment.selectorKey}]` : ''} → ${assignment.agentSlug}`);
   }
   return created;
 }
 
-/** Platform defaults (SYSTEM) + Global-tenant examples + SYSTEM assignments. ArcaAI: nothing. */
+/** Global authors, then SYSTEM as the promoted copy; each with its four TENANT assignments. */
 export async function seedAgents(client: CorePrismaClient | SeedAgentsClient): Promise<SeedAgentsResult> {
   const typed = client as unknown as SeedAgentsClient;
-  const platform = await seedAgentSpecs(typed, PLATFORM_AGENT_SPECS, 'platform default (SYSTEM tenant)');
-  const assignments = await seedPlatformAgentAssignments(typed);
-  const examples = await seedAgentSpecs(typed, GLOBAL_AGENT_SPECS, 'Global-tenant example');
+  const global = await seedAgentSpecs(typed, GLOBAL_AGENT_SPECS, 'Global (playground) authored', 100);
+  const globalAssignments = await seedAgentAssignments(typed, GLOBAL_AGENT_ASSIGNMENTS, GLOBAL_AGENT_SPECS, 'Global');
+  const platform = await seedAgentSpecs(typed, PLATFORM_AGENT_SPECS, 'SYSTEM (promoted copy)', 1);
+  const platformAssignments = await seedAgentAssignments(typed, PLATFORM_AGENT_ASSIGNMENTS, PLATFORM_AGENT_SPECS, 'SYSTEM');
   return {
-    created: platform.created + examples.created,
-    skippedExisting: platform.skippedExisting + examples.skippedExisting,
-    skippedUnresolvable: platform.skippedUnresolvable + examples.skippedUnresolvable,
-    assignmentsCreated: assignments,
+    created: global.created + platform.created,
+    skippedExisting: global.skippedExisting + platform.skippedExisting,
+    skippedUnresolvable: global.skippedUnresolvable + platform.skippedUnresolvable,
+    assignmentsCreated: globalAssignments + platformAssignments,
   };
 }

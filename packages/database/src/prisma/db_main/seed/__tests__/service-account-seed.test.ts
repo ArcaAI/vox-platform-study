@@ -110,6 +110,16 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   'svc:admin:workflow-node:read': [['read', 'WorkflowDefinition']],
   'svc:admin:workflow-run:read': [['read', 'WorkflowRun']],
   'svc:admin:workflow-test-fixture:manage': [['manage', 'WorkflowTestFixture']],
+  // TASK-930 (INTERFACES §3) — the invocation plane, renamespaced from the API-key scopes whose
+  // `implies` are pinned in `apikey-scopes.registry.ts`.
+  'svc:agent:definition:read': [['list', 'Agent']],
+  'svc:agent:invocation:write': [['read', 'Agent']],
+  'svc:workflow:definition:read': [['list', 'WorkflowDefinition']],
+  'svc:workflow:run:read': [['read', 'WorkflowRun']],
+  'svc:workflow:run:write': [
+    ['create', 'WorkflowRun'],
+    ['update', 'WorkflowRun'],
+  ],
 };
 
 /**

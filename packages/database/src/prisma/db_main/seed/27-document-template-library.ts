@@ -78,9 +78,8 @@
  * `platform-document-shapes.ts` that `resolveForGeneration` already returns when
  * a tenant has no row. A byte-identical row would shadow the default with a copy
  * of itself and buy nothing; a DIFFERENT row under that slug would silently
- * change what every existing workflow resolves, since
- * `24-example-consultation-workflows.ts` names `documentTemplateSlug:
- * 'soap_note'` on its realtime node. Neither is wanted, so the slug is left
+ * change what every existing workflow resolves for any node that names
+ * `documentTemplateSlug: 'soap_note'`. Neither is wanted, so the slug is left
  * alone and these two get their own.
  *
  * ## Status, default, and why nothing changes until a workflow asks
@@ -88,7 +87,7 @@
  *  - `PUBLISHED`, not `APPROVED`. `isServable` accepts both; `APPROVED` means a
  *    clinician signed the shape off, and seeding that would fabricate a
  *    governance act (the same objection `seed-mode.ts` records against seeding
- *    `23-arcaai-workflow-authoring` outside dev).
+ *    `29-arcaai-agents-and-workflows` outside dev).
  *  - `isDefault: false` on both. `resolveForGeneration(tenantId)` with no slug
  *    reads the tenant DEFAULT; making one of these it would apply a new/referral
  *    shape to a follow-up whenever a workflow named nothing. The selector is the
@@ -142,7 +141,7 @@ import { createHash } from 'node:crypto';
 import type { CorePrismaClient } from '../../../client';
 import type { DocumentTemplateStatus } from '../../../generated/core-prisma-client/enums';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
-import { canonicalJson } from './07e-consultation-loop-defaults';
+import { canonicalJson } from './07e-consultation-note-context-schema';
 
 // =============================================================================
 // Shape types — structural mirrors of `document-template-shape.ts`

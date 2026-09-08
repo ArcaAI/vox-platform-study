@@ -31,15 +31,14 @@
  * `packages/database` takes no dependency on `@arcaai/workflow-contract` or
  * `@arcaai/json-schema-subset` (adding one edits the shared root lockfile — a collision surface
  * while sibling agents share this repo), so both are imported from their BUILT dist by relative
- * path, exactly as the three `regen-*-seed.ts` scripts already do.
+ * path, exactly as `regen-workflow-seeds.ts` does.
  */
 /* eslint-disable no-console, @typescript-eslint/no-explicit-any */
 import * as contract from '../../workflow-contract/dist/index.mjs';
 import * as jsonSchemaSubset from '../../json-schema-subset/dist/index.mjs';
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';
-import { GRAPH as PLATFORM_SUMMARIZATION_GRAPH } from '../src/prisma/db_main/seed/21-workflow-definition';
-import { ARCAAI_CONSULTATION_GRAPH, ARCAAI_RHEUM_CONSULTATION_GRAPH } from '../src/prisma/db_main/seed/23-arcaai-workflow-authoring';
-import { GRAMMAR_FIX_GRAPH, MEDICAL_NER_GRAPH, NER_GRAMMAR_FIX_GRAPH } from '../src/prisma/db_main/seed/24-example-consultation-workflows';
+import { WORKFLOW_LIBRARY_TARGETS } from '../src/prisma/db_main/seed/28-workflow-library';
+import { ARCAAI_WORKFLOW_TARGETS } from '../src/prisma/db_main/seed/29-arcaai-agents-and-workflows';
 
 const { publishFindings, TEMPLATE_REFERENCE_SEVERITY_RELEASE_1 } = contract as any;
 const { jsonSchemaValueProblems } = jsonSchemaSubset as any;
@@ -64,14 +63,7 @@ function findingsFor(graph: unknown): Finding[] {
   }) as Finding[];
 }
 
-const SEED_GRAPHS: Array<[string, unknown]> = [
-  ['21 platform-default-summarization', PLATFORM_SUMMARIZATION_GRAPH],
-  ['23 arcaai-consultation-soap', ARCAAI_CONSULTATION_GRAPH],
-  ['23 arcaai-rheum-consultation-soap', ARCAAI_RHEUM_CONSULTATION_GRAPH],
-  ['24 grammar-fix', GRAMMAR_FIX_GRAPH],
-  ['24 medical-ner', MEDICAL_NER_GRAPH],
-  ['24 ner-grammar-fix', NER_GRAMMAR_FIX_GRAPH],
-];
+const SEED_GRAPHS: Array<[string, unknown]> = [...WORKFLOW_LIBRARY_TARGETS, ...ARCAAI_WORKFLOW_TARGETS].map((target) => [target.key, target.graph]);
 
 function tally(counts: Map<string, number>, findings: Finding[]): void {
   for (const finding of findings) {
