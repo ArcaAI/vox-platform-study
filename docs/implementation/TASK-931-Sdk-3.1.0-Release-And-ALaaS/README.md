@@ -124,6 +124,28 @@ PUBLISHED package. Re-run it after the publish.
 ### 4.5 Publish evidence
 
 <!-- PUBLISH-EVIDENCE -->
+**Published 2026-09-08 (from the owner's machine, GitHub Packages, `changeset publish`).** The first
+run aborted at 5/12 with `ENEEDAUTH … registry.npmjs.org`: three internal packages with no
+`publishConfig` (`@arcaai/types`, `@arcaai/utils`, `@arcaai/json-schema-subset`) defaulted to npmjs
+because the local `~/.npmrc` carried only the auth token, not the `@arcaai:registry=` scope line CI
+writes. With the scope mapped (a gitignored root `.npmrc`) the second run published the rest:
+
+| Package | Version on `npm.pkg.github.com` |
+|---|---|
+| `@arcaai/vox`, `@arcaai/vox-node`, `@arcaai/vox-codegen` | 3.1.0 |
+| `@arcaai/room`, `@arcaai/stt`, `@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/med-ner`, `@arcaai/pipeline` | 3.1.0 |
+| `@arcaai/json-schema-subset`, `@arcaai/types`, `@arcaai/utils` | 0.1.0 |
+
+**Defect found and closed by this publish:** `@arcaai/vox` depends on `@arcaai/json-schema-subset`
+(`workspace:*` → `0.1.0`), and the registry's `vox@3.0.1` already declared that dependency — but
+`json-schema-subset@0.1.0` had NEVER been published, so `vox@3.0.1` could not be installed from
+GitHub Packages. It is on the registry now. `types` / `utils` rode along exactly as CI's scope mapping
+would publish them; neither is a dependency of any SDK package.
+
+Local git tags created by changeset at `bc8234fe0`: one `<name>@<version>` per published package
+(twelve). Pushing tags to GitLab is the owner's step (the owner rewrote and force-pushed `dev-2.2`
+on the same day; tag pushes follow the same decision).
+
 
 _Not yet run. The runbook is §3; the orchestrator fills this section with the actual
 `changeset publish` output, the nine published versions, the `SDK-3.1.0` tag, and the
