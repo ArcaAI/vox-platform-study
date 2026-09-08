@@ -1,5 +1,46 @@
 # @arcaai/vox — Changelog
 
+## 3.1.0
+
+### Minor Changes
+
+- 2e09493: **The browser SDK follows the platform onto the agent/workflow plane (3.1.0).**
+
+  **Named entity recognition is a first-class agent task.** `AgentTask` gains
+  `'NAMED_ENTITY_RECOGNITION'`, `AGENT_ENDPOINTS.LIST` accepts it, and
+  `useAgentInvocation().invoke(slug, { text })` calls a NER agent the same way it calls a
+  text-generation one — the shape of the answer is the agent's own `outputSchema`
+  (`{ entities: [{ text, label, start, end, score? }] }` by default), not a second method.
+  `NamedEntityRecognitionInput` / `NamedEntityRecognitionOutput` / `RecognizedEntity` are
+  exported for the default shape; an agent whose tenant authored a different schema is still
+  yours to type. NER is a ONE-SHOT task: `?mode=stream` on a NER agent is a 400
+  (`MODE_UNSUPPORTED`) at the gateway, so use `invoke`, never `stream`.
+
+  **`useWorkflowRun({ transport: 'socket' })`.** The run stream can now be read over a
+  WebSocket instead of SSE. The hook mints a run-scoped, single-use ticket
+  (`POST /workflows/:slug/runs/:runId/stream-ticket`) and opens the `url` the response returns
+  — never a JWT in a query string. Event shape, resume cursor, terminal detection and
+  `stopWatching()` are identical to the SSE lane, so this is a one-word change at the call
+  site. SSE stays the default: it resumes with `Last-Event-ID`, which a socket lane cannot.
+  Pick `socket` when a proxy in front of you buffers `text/event-stream` (the failure mode is
+  a run that looks stalled and then completes all at once) or when you already hold a socket
+  budget per tab. `SocketUnavailableError` names the missing global rather than silently
+  falling back — a silent fallback would hide the proxy problem you switched transports to
+  solve.
+
+  **First-party demo apps move `sttPipelineId` → `sttAgentSlug`.** The compat adapter already
+  preferred the agent slug; the five remaining call sites in `apps/example`,
+  `apps/compat-playground` and `apps/quick-compat-app` no longer pass the deprecated key.
+  `sttPipelineId` itself is unchanged and still accepted (removed in R4).
+
+### Patch Changes
+
+- @arcaai/med-ner@3.1.0
+  - @arcaai/noise-filter@3.1.0
+  - @arcaai/room@3.1.0
+  - @arcaai/stt@3.1.0
+  - @arcaai/vad@3.1.0
+
 All notable changes to the `@arcaai/vox` SDK are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -133,33 +174,33 @@ release** — `ALL-2.0.0` deletes the shims. 308 preserves method and body, so a
 un-upgraded client keeps working; a client still on the old paths after
 `ALL-2.0.0` will get 404s.
 
-| Retired path | New path | Why |
-|---|---|---|
-| `GET/PATCH /user/me/preferences` | `/users/me/preferences` | plural collection |
-| `GET /user/me/settings` | `/users/me/settings` | plural collection |
-| `PATCH /user/me/settings/:namespace/:key` | `/users/me/settings/:namespace/:key` | plural collection |
-| `GET /user/me/departments` | `/users/me/departments` | plural collection |
-| `GET /tenant/me` | `/tenants/me` | plural collection |
-| `GET/PATCH /tenant/me/config` | `/tenants/me/config` | plural collection |
-| `GET /tenant/me/context-schema` | `/tenants/me/context-schema` | plural collection |
-| `GET /entitlements/me` | `/tenants/me/entitlements` | one tenant self alias |
-| `GET /billing/me/invoices[/:id]` | `/tenants/me/invoices[/:id]` | one tenant self alias |
-| `GET /billing/me/spend` | `/tenants/me/spend` | one tenant self alias |
-| `GET /usage/me/summary` | `/tenants/me/usage-summary` | one tenant self alias |
-| `GET /usage/me/burndown` | `/tenants/me/usage-burndown` | one tenant self alias |
-| `POST /voice-profile/enroll` | `/voice-profiles/enroll` | plural collection |
-| `GET /voice-profile` | `/voice-profiles` | plural collection |
-| `PATCH /voice-profile/:id/{activate,deactivate}` | `/voice-profiles/:id/{activate,deactivate}` | plural collection |
-| `DELETE /voice-profile/:id` | `/voice-profiles/:id` | plural collection |
-| `POST /rbac/check` | `POST /users/:id/permission-checks` | verb-as-resource → resource |
-| `POST /rbac/check/bulk` | `POST /users/:id/permission-checks/bulk` | verb-as-resource → resource |
-| `POST /rbac/check/my-permissions` | `POST /users/me/permission-checks` | verb-as-resource → resource |
-| `POST /ai/guardrail/analyze` | `POST /safety-checks` | `ai` named neither capability it hosted |
-| `POST /ai/nlp/{entities,diagnosis,topic,intent}` | `POST /text-analyses/{…}` | ditto |
-| `POST /text/generate[/assembled]` | `/text-generations/generate[/assembled]` | `text` was the name of a service |
-| `GET /text/tasks/:id[/stream]` | `/text-generations/tasks/:id[/stream]` | ditto |
-| `POST /text/tasks/:id/cancel` | `/text-generations/tasks/:id/cancel` | ditto |
-| `GET /text/{providers,guardrail-providers}` | `/text-generations/{…}` | ditto |
+| Retired path                                     | New path                                    | Why                                     |
+| ------------------------------------------------ | ------------------------------------------- | --------------------------------------- |
+| `GET/PATCH /user/me/preferences`                 | `/users/me/preferences`                     | plural collection                       |
+| `GET /user/me/settings`                          | `/users/me/settings`                        | plural collection                       |
+| `PATCH /user/me/settings/:namespace/:key`        | `/users/me/settings/:namespace/:key`        | plural collection                       |
+| `GET /user/me/departments`                       | `/users/me/departments`                     | plural collection                       |
+| `GET /tenant/me`                                 | `/tenants/me`                               | plural collection                       |
+| `GET/PATCH /tenant/me/config`                    | `/tenants/me/config`                        | plural collection                       |
+| `GET /tenant/me/context-schema`                  | `/tenants/me/context-schema`                | plural collection                       |
+| `GET /entitlements/me`                           | `/tenants/me/entitlements`                  | one tenant self alias                   |
+| `GET /billing/me/invoices[/:id]`                 | `/tenants/me/invoices[/:id]`                | one tenant self alias                   |
+| `GET /billing/me/spend`                          | `/tenants/me/spend`                         | one tenant self alias                   |
+| `GET /usage/me/summary`                          | `/tenants/me/usage-summary`                 | one tenant self alias                   |
+| `GET /usage/me/burndown`                         | `/tenants/me/usage-burndown`                | one tenant self alias                   |
+| `POST /voice-profile/enroll`                     | `/voice-profiles/enroll`                    | plural collection                       |
+| `GET /voice-profile`                             | `/voice-profiles`                           | plural collection                       |
+| `PATCH /voice-profile/:id/{activate,deactivate}` | `/voice-profiles/:id/{activate,deactivate}` | plural collection                       |
+| `DELETE /voice-profile/:id`                      | `/voice-profiles/:id`                       | plural collection                       |
+| `POST /rbac/check`                               | `POST /users/:id/permission-checks`         | verb-as-resource → resource             |
+| `POST /rbac/check/bulk`                          | `POST /users/:id/permission-checks/bulk`    | verb-as-resource → resource             |
+| `POST /rbac/check/my-permissions`                | `POST /users/me/permission-checks`          | verb-as-resource → resource             |
+| `POST /ai/guardrail/analyze`                     | `POST /safety-checks`                       | `ai` named neither capability it hosted |
+| `POST /ai/nlp/{entities,diagnosis,topic,intent}` | `POST /text-analyses/{…}`                   | ditto                                   |
+| `POST /text/generate[/assembled]`                | `/text-generations/generate[/assembled]`    | `text` was the name of a service        |
+| `GET /text/tasks/:id[/stream]`                   | `/text-generations/tasks/:id[/stream]`      | ditto                                   |
+| `POST /text/tasks/:id/cancel`                    | `/text-generations/tasks/:id/cancel`        | ditto                                   |
+| `GET /text/{providers,guardrail-providers}`      | `/text-generations/{…}`                     | ditto                                   |
 
 **Two self aliases, not one.** `/users/me/**` is for USER-owned surfaces;
 `/tenants/me/**` is for TENANT-owned ones. Billing, usage, entitlements and
