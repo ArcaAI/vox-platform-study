@@ -1158,9 +1158,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       },
       {
         afterWrite: async (promoted, tx) => {
-          published = await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, () =>
-            this.publishEntity(promoted, { activate: true }, tx),
-          );
+          published = await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, () => this.publishEntity(promoted, { activate: true }, tx));
         },
       },
     );

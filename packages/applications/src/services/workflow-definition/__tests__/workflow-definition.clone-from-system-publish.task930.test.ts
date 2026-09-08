@@ -224,11 +224,10 @@ describe('WorkflowDefinitionService.cloneFromSystem — the reference-set copy (
     // The runtime gate read a correctly-stamped clone as having no provenance because the DTO
     // omitted these two fields entirely, so no API response could ever show them.
     currentTenantId = TENANT; // `clone` is the ordinary tenant-scoped verb, unlike cloneFromSystem
-    const response = await service.clone(
-      'sys-tpl-1',
-      { targetSlug: 'general-medicine-consultation', name: 'x', description: null } as never,
-      { sourceTemplateSlug: 'general-medicine-consultation', templateLocked: true },
-    );
+    const response = await service.clone('sys-tpl-1', { targetSlug: 'general-medicine-consultation', name: 'x', description: null } as never, {
+      sourceTemplateSlug: 'general-medicine-consultation',
+      templateLocked: true,
+    });
 
     expect(response.sourceTemplateSlug).toBe('general-medicine-consultation');
     expect(response.templateLocked).toBe(true);
