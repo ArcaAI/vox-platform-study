@@ -75,8 +75,6 @@ export interface BuiltInConnectionDefault {
   apiKey: string | null;
   /** The default `extraJson`, or `null` to clear it. */
   extraJson: Record<string, boolean | number | string> | null;
-  /** What this default IS, in operator words — rendered by the reset dialog. */
-  summary: string;
 }
 
 /**
@@ -99,6 +97,7 @@ export interface BuiltInConnectionDefault {
  * shared by every environment can honestly declare.
  */
 export const BUILT_IN_CONNECTION_DEFAULTS: Readonly<Record<string, BuiltInConnectionDefault>> = Object.freeze({
+  // LM Studio at the in-cluster Service address, enabled, no credential.
   'llm:lm-studio': {
     service: 'llm',
     provider: 'lm-studio',
@@ -106,8 +105,8 @@ export const BUILT_IN_CONNECTION_DEFAULTS: Readonly<Record<string, BuiltInConnec
     enabled: true,
     apiKey: SELF_HOST_PLACEHOLDER_API_KEY,
     extraJson: null,
-    summary: 'LM Studio at the in-cluster Service address `http://hope-lmstudio:1234/v1`, enabled, no credential.',
   },
+  // Ollama at localhost:11434 — it runs beside the node, not as a cluster Service.
   'llm:ollama': {
     service: 'llm',
     provider: 'ollama',
@@ -115,8 +114,8 @@ export const BUILT_IN_CONNECTION_DEFAULTS: Readonly<Record<string, BuiltInConnec
     enabled: true,
     apiKey: SELF_HOST_PLACEHOLDER_API_KEY,
     extraJson: null,
-    summary: 'Ollama at `http://localhost:11434`, enabled, no credential. Ollama runs beside the node, not as a cluster Service.',
   },
+  // vLLM at the in-cluster Service address, enabled, no credential.
   'llm:vllm': {
     service: 'llm',
     provider: 'vllm',
@@ -124,8 +123,8 @@ export const BUILT_IN_CONNECTION_DEFAULTS: Readonly<Record<string, BuiltInConnec
     enabled: true,
     apiKey: SELF_HOST_PLACEHOLDER_API_KEY,
     extraJson: null,
-    summary: 'vLLM at the in-cluster Service address `http://hope-vllm:8000/v1`, enabled, no credential.',
   },
+  // llama.cpp at its Service address, enabled, no credential.
   'llm:llama-cpp': {
     service: 'llm',
     provider: 'llama-cpp',
@@ -133,8 +132,8 @@ export const BUILT_IN_CONNECTION_DEFAULTS: Readonly<Record<string, BuiltInConnec
     enabled: true,
     apiKey: SELF_HOST_PLACEHOLDER_API_KEY,
     extraJson: null,
-    summary: 'llama.cpp at `http://hope-llama-cpp:8080`, enabled, no credential.',
   },
+  // The Hub with NO token: public repos pull anonymously; a token is what reaches a gated one.
   'model-registry:huggingface': {
     service: 'model-registry',
     provider: 'huggingface',
@@ -142,8 +141,8 @@ export const BUILT_IN_CONNECTION_DEFAULTS: Readonly<Record<string, BuiltInConnec
     enabled: true,
     apiKey: null,
     extraJson: null,
-    summary: 'The Hugging Face Hub with NO token: public repos pull anonymously. A token is what upgrades that to a gated repo.',
   },
+  // The platform's own object storage — endpoint and key pair come from the platform storage configuration, not from this row.
   'model-registry:s3': {
     service: 'model-registry',
     provider: 's3',
@@ -151,28 +150,10 @@ export const BUILT_IN_CONNECTION_DEFAULTS: Readonly<Record<string, BuiltInConnec
     enabled: true,
     apiKey: null,
     extraJson: { [INHERITS_PLATFORM_STORAGE_KEY]: true },
-    summary: "The platform's own object storage — endpoint and key pair come from the platform storage configuration, not from this row.",
   },
 } satisfies Record<string, BuiltInConnectionDefault>);
 
 /** The factory setting for `(service, provider)`, or `undefined` when it has none. */
 export function builtInDefaultFor(service: ProviderService, provider: string): BuiltInConnectionDefault | undefined {
   return BUILT_IN_CONNECTION_DEFAULTS[`${service}:${provider}`];
-}
-
-/** Whether `(service, provider)` is a platform-managed row a super admin may reset. */
-export function hasBuiltInDefault(service: ProviderService, provider: string): boolean {
-  return builtInDefaultFor(service, provider) !== undefined;
-}
-
-/**
- * Whether a stored `extraJson` carries the platform-storage marker.
- *
- * Tolerant of the SHAPE it is given (the column is `Json?`) and strict about the
- * VALUE: only a literal `true` counts, so a row that once carried the marker and
- * was later switched off reads as "no".
- */
-export function inheritsPlatformStorage(extraJson: unknown): boolean {
-  if (!extraJson || typeof extraJson !== 'object' || Array.isArray(extraJson)) return false;
-  return (extraJson as Record<string, unknown>)[INHERITS_PLATFORM_STORAGE_KEY] === true;
 }
