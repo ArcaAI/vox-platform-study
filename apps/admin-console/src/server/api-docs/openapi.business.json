@@ -4219,6 +4219,11 @@
             "example": true,
             "type": "boolean"
           },
+          "language": {
+            "description": "BCP-47 language tag the generated notes are written in, as declared at open. Absent = undeclared (the agent decides).",
+            "example": "ml",
+            "type": "string"
+          },
           "metadata": {
             "description": "Additional metadata",
             "type": "object"
@@ -12679,6 +12684,11 @@
           },
           "departmentId": {
             "description": "Department ID (from Department lookup table)",
+            "type": "string"
+          },
+          "language": {
+            "description": "BCP-47 language tag the generated notes should be written in (`en`, `ml`, `en-IN`). Independent of the STT language mode: absent means undeclared, and the agent decides.",
+            "example": "ml",
             "type": "string"
           },
           "metadata": {
