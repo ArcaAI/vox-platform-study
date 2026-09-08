@@ -27,19 +27,30 @@ import pytest
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.interpreter.compiled_config import CompiledNode
 from harness.temporal.interpreter.models import InterpreterInput
-from harness.temporal.interpreter.registry import NODE_REGISTRY
+from harness.temporal.interpreter.registry import NODE_REGISTRY, effective_spec
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 
-#: A durable, implemented node type whose registry activity name we can deliberately MISMATCH.
+#: A durable, implemented node whose registry activity name we can deliberately MISMATCH.
 #: Reaching ``activity_mismatch`` proves dispatch got PAST the enabled check — a positive
 #: control that needs no Temporal server and no activity execution.
-_DURABLE_TYPE = "consultation.sensors"
-# A lane: "realtime" node type — owned by live executor.
-_REALTIME_TYPE = "consultation.extractEntities"
+#:
+#: TASK-893 Phase 4: `consultation.sensors` is an ACTION now, so the node is a `core.action`
+#: carrying its key and the spec is resolved per instance (`effective_spec`).
+_DURABLE_TYPE = "core.action"
+_DURABLE_CONFIG: dict[str, Any] = {"actionKey": "consultation.sensors"}
+#: The `realtime` lane is a per-INSTANCE execution choice on the same vocabulary, not a node type
+#: of its own — `execution.lane` on the node config is what the durable interpreter skips on
+#: (`_configured_realtime`). The three `consultation.*` realtime node types that used to carry
+#: `lane="realtime"` on their SPEC went with the legacy vocabulary.
+_REALTIME_TYPE = "core.agent"
+_REALTIME_CONFIG: dict[str, Any] = {"execution": {"lane": "realtime"}}
 
 
 def _node(node_type: str, config: dict[str, Any], *, activity: str | None = None) -> CompiledNode:
-    spec = NODE_REGISTRY[node_type]
+    if node_type == _DURABLE_TYPE:
+        config = {**_DURABLE_CONFIG, **config}
+    spec = effective_spec(node_type, config)
+    assert spec is not None, node_type
     return CompiledNode.model_validate(
         {
             "nodeId": "n1",
@@ -131,11 +142,14 @@ class TestLaneOwnershipIsDecidedFirst:
         # The realtime executor owns this node AND already honours the toggle itself. If the
         # durable interpreter claimed it as `disabled_by_config`, two runtimes would be
         # reporting on one node — the exact ambiguity `lane` was made load-bearing to remove.
-        assert NODE_REGISTRY[_REALTIME_TYPE].lane == "realtime"
+        # Since TASK-893 the claim is per INSTANCE: no node TYPE declares `lane="realtime"`, and
+        # `_configured_realtime` reads `execution.lane` off the node's own config.
+        assert all(spec.lane != "realtime" for spec in NODE_REGISTRY.values())
 
         result = await WorkflowInterpreter()._dispatch_node(
             _node(
-                _REALTIME_TYPE, {"enabled": False, "requiresFinalized": False, "onError": "degrade"}
+                _REALTIME_TYPE,
+                {**_REALTIME_CONFIG, "enabled": False, "onError": "degrade"},
             ),
             _input(),
             0,
