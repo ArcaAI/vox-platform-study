@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { IconArrowLeft, IconBuilding, IconExternalLink } from '@tabler/icons-react';
+import { IconArrowLeft, IconBuilding, IconExternalLink, IconFilterOff } from '@tabler/icons-react';
 import { parseAsString, useQueryStates } from 'nuqs';
 import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -138,7 +138,7 @@ export function AllTenantsBody() {
             );
           }
           return (
-            <Link href="/tenants/storage" className="text-foreground inline-flex items-center gap-1 text-sm underline-offset-4 hover:underline">
+            <Link href="/tenants/storage" className="text-foreground inline-flex items-center gap-1 text-sm underline underline-offset-4">
               Register
               <IconExternalLink aria-hidden className="size-3.5" />
             </Link>
@@ -238,8 +238,27 @@ export function AllTenantsBody() {
           isLoading={bucketsQuery.isPending}
           error={bucketsQuery.error instanceof Error ? bucketsQuery.error : null}
           errorState={(err) => <ErrorState error={err} onRetry={() => void bucketsQuery.refetch()} />}
+          // `VirtualizedDataGrid` takes only ONE empty-state node (no separate
+          // "no rows at all" vs "no rows after filtering" prop, unlike
+          // `AdminDataGrid`), so the distinction is made HERE: a search that
+          // matches nothing is a different fact from no bucket existing at all,
+          // and "No buckets yet" was misleading whenever a search was active (m4).
           emptyState={
-            <EmptyState icon={IconBuilding} title="No buckets yet" description="No tenant has a registered bucket, and no physical bucket exists." />
+            buckets.length > 0 && filteredBuckets.length === 0 ? (
+              <EmptyState
+                icon={IconFilterOff}
+                title="No buckets match this search"
+                description="Clear the search to see the rest of the buckets."
+                action={
+                  <Button variant="outline" onClick={() => void setParams({ search: null })}>
+                    <IconFilterOff aria-hidden />
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState icon={IconBuilding} title="No buckets yet" description="No tenant has a registered bucket, and no physical bucket exists." />
+            )
           }
         />
       )}

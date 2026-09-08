@@ -32,6 +32,21 @@ export interface TriStateCellProps {
   onChange: (next: CellValue) => void;
   /** Marks an edit that has not been saved yet. */
   dirty?: boolean;
+  /**
+   * The platform column has no "inherit" state to cycle through — the platform
+   * IS the fallback, so `value` here is always `true`/`false`, never `null`.
+   * With `twoState`, activation flips it directly instead of running the
+   * tri-state cycle, which would otherwise land on `null` (a reset-to-descriptor
+   * -default write) while rendering visually identical to the prior "off" state
+   * (M3). Resetting the platform cell stays a separate, explicit action.
+   */
+  twoState?: boolean;
+  /**
+   * No row stored at all for this cell — what is shown is the descriptor's
+   * code default, not an explicit choice on record. Rendered as a visible hint
+   * rather than folded silently into the same look as a real `false`.
+   */
+  usingDefault?: boolean;
 }
 
 /**
@@ -53,12 +68,14 @@ export interface TriStateCellProps {
  * inherited value is drawn ghosted so the row reads as a row: what every tenant
  * currently resolves to, with the overridden ones standing out.
  */
-export function TriStateCell({ value, inheritedValue, label, disabled, disabledReason, onChange, dirty }: TriStateCellProps) {
+export function TriStateCell({ value, inheritedValue, label, disabled, disabledReason, onChange, dirty, twoState, usingDefault }: TriStateCellProps) {
   const effective = value ?? inheritedValue;
   const inherits = value === null;
   const ariaChecked = inherits ? 'mixed' : value === true;
 
-  const stateWord = inherits ? `inherits ${inheritedValue ? 'on' : 'off'}` : value ? 'on' : 'off';
+  const stateWord = inherits
+    ? `inherits ${inheritedValue ? 'on' : 'off'}`
+    : `${value ? 'on' : 'off'}${usingDefault ? ' (code default)' : ''}`;
 
   return (
     <button
@@ -70,7 +87,7 @@ export function TriStateCell({ value, inheritedValue, label, disabled, disabledR
       // accessible name says it in words.
       title={disabled ? disabledReason : `${label} — ${stateWord}`}
       disabled={disabled}
-      onClick={() => onChange(nextCellValue(value))}
+      onClick={() => onChange(twoState ? !effective : nextCellValue(value))}
       className={cx(
         'focus-visible:ring-ring inline-flex size-8 items-center justify-center rounded-md border transition-colors focus-visible:ring-2 focus-visible:outline-none',
         disabled && 'cursor-not-allowed opacity-40',
@@ -78,7 +95,7 @@ export function TriStateCell({ value, inheritedValue, label, disabled, disabledR
         // Emphasis comes from the BORDER and the glyph, never from the primary
         // ink token: under the achromatic palette it resolves to body ink and
         // would render nothing at all (`emphasis-canon.test.ts` guards it).
-        inherits ? 'text-muted-foreground border-dashed' : effective ? 'border-primary text-foreground' : 'text-muted-foreground',
+        inherits || usingDefault ? 'text-muted-foreground border-dashed' : effective ? 'border-primary text-foreground' : 'text-muted-foreground',
         dirty && 'border-warning ring-warning/40 ring-2 ring-offset-1',
       )}
     >

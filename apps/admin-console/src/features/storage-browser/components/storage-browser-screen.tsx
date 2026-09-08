@@ -189,11 +189,14 @@ export function StorageBrowserScreen() {
   const session = useSession();
 
   if (!session.data) {
+    // m5 — the session decides which of the two bodies below to render (all
+    // tenants vs. one), so nothing beyond the header is known yet. That is a
+    // ScreenTemplate loading state like any other (`ai-providers-screen.tsx`'s
+    // own `scope.isLoading` branch), not a reason to hand-roll the page frame.
     return (
-      <div className="flex flex-col gap-4">
-        <PageHeader title="Storage" meta={<Skeleton className="h-4 w-40" />} />
+      <ScreenTemplate header={<PageHeader title="Storage" meta={<Skeleton className="h-4 w-40" />} />}>
         <Skeleton className="h-64 w-full" />
-      </div>
+      </ScreenTemplate>
     );
   }
 
