@@ -33,10 +33,22 @@ const SYSTEM_ONLY_KEY = 'consultation.ocr.enabled';
 /** `env` tier — locked for EVERY caller, super administrators included. */
 const LOCKED_KEY = 'databaseUrl';
 
+/** The reserved platform-configuration tier. Never a customer tenant. */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+/** `enable-local-raw-capture` — a seeded, LOCKED, SYSTEM-tenant `GlobalSetting` ROW (seed 11). */
+const SYSTEM_ROW_ID = '00000000-0000-0000-0002-000000000001';
+
 async function tenantAdminToken(request: APIRequestContext): Promise<string> {
   const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
   expect(login, 'the seeded tenant admin must log in').not.toBeNull();
   return login!.token;
+}
+
+/** The tenant admin's token AND the tenant it is bound to — the list assertions need both. */
+async function tenantAdminSession(request: APIRequestContext): Promise<{ token: string; tenantId: string }> {
+  const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
+  expect(login, 'the seeded tenant admin must log in').not.toBeNull();
+  return { token: login!.token, tenantId: login!.user.tenantId };
 }
 
 async function superAdminToken(request: APIRequestContext): Promise<string> {
@@ -244,5 +256,90 @@ test.describe('TASK-932 — reset restores inheritance', () => {
     });
     expect(response.status()).toBe(400);
     expect(await response.text()).toMatch(/nothing above it to inherit/i);
+  });
+});
+
+/**
+ * TASK-932 R-1 / D-5 — the LEGACY row surface, not the registry.
+ *
+ * The catalog above is a list of DESCRIPTORS; `admin/settings` is a list of
+ * ROWS, and it is served by a different service. `GlobalSetting` is a member of
+ * `SYSTEM_SHARED_READ_MODELS`, so a read that names no tenant is widened to
+ * `tenantId IN [caller, SYSTEM]` — right for a resolver inheriting a default on
+ * absence, wrong for a directory of the platform's own configuration. These
+ * cases pin the row surface to the same rule the descriptor surface already
+ * obeys, so hiding a key in one place cannot be undone by reading its row in
+ * the other.
+ *
+ * The by-id answer is 404 and not 403 deliberately: the WRITE lane answers 403
+ * for the same row (TASK-890 OD-P — "you may not write this"), but a READ must
+ * be indistinguishable from a missing id or the platform tier is enumerable one
+ * request at a time.
+ */
+test.describe('TASK-932 R-1 — the legacy settings ROW list is tenant-pinned', () => {
+  test('the legacy row list carries no SYSTEM rows for a tenant admin', async ({ request }) => {
+    const admin = await tenantAdminSession(request);
+    const response = await request.get(`${SETTINGS}?limit=200`, { headers: auth(admin.token) });
+    expect(response.status()).toBe(200);
+
+    const body = (await response.json()) as { data: Array<{ id: string; key: string; namespace?: string | null; tenantId?: string | null }> };
+    expect(body.data.length, 'the tenant must still see its own rows').toBeGreaterThan(0);
+
+    for (const item of body.data) {
+      expect(item.tenantId, `${item.key} (${item.id}) must belong to the caller's own tenant`).toBe(admin.tenantId);
+      expect(item.tenantId).not.toBe(SYSTEM_TENANT_ID);
+    }
+    // The platform-only registry keys by name, so the assertion still bites if
+    // the row shape ever stops carrying `tenantId`. A tenant's OWN
+    // `namespace: 'registry'` rows are legitimate (they are its overrides), so
+    // the namespace alone is not the test — these KEYS are.
+    for (const platformKey of [PLATFORM_KEY, SYSTEM_ONLY_KEY, LOCKED_KEY]) {
+      expect(
+        body.data.some((i) => i.key === platformKey),
+        `${platformKey} is platform configuration and must not reach a tenant admin`,
+      ).toBe(false);
+    }
+  });
+
+  test('a SYSTEM row by id is 404 for a tenant admin and 200 for a super admin', async ({ request }) => {
+    const admin = await tenantAdminSession(request);
+    const hidden = await request.get(`${SETTINGS}/${SYSTEM_ROW_ID}`, { headers: auth(admin.token) });
+    expect(hidden.status()).toBe(404);
+
+    // Same request, elevated: the row exists, so the 404 above is a visibility
+    // rule and not a broken fixture.
+    const visible = await request.get(`${SETTINGS}/${SYSTEM_ROW_ID}`, { headers: auth(await superAdminToken(request)) });
+    expect(visible.status()).toBe(200);
+    expect((await visible.json()).tenantId).toBe(SYSTEM_TENANT_ID);
+  });
+
+  test('an unknown id and a SYSTEM id are indistinguishable to a tenant admin', async ({ request }) => {
+    const admin = await tenantAdminSession(request);
+    const unknown = await request.get(`${SETTINGS}/00000000-0000-0000-0009-999999999999`, { headers: auth(admin.token) });
+    const system = await request.get(`${SETTINGS}/${SYSTEM_ROW_ID}`, { headers: auth(admin.token) });
+    expect(unknown.status()).toBe(404);
+    expect(system.status()).toBe(404);
+
+    // Same body, minus `correlationId` — which is per-request metadata about
+    // the RESPONSE, not about the row (`DataNotFoundExceptionFilter`).
+    const stable = (body: Record<string, unknown>) => ({ statusCode: body.statusCode, message: body.message, code: body.code });
+    expect(stable(await system.json())).toEqual(stable(await unknown.json()));
+  });
+
+  test('the by-tenant list refuses any tenant that is not the caller own — SYSTEM included', async ({ request }) => {
+    // `where: { tenantId: SYSTEM }` is ACCEPTED by the shared-read merge (SYSTEM
+    // is half the pair it allows), so this route was the whole platform tier
+    // behind one path parameter.
+    const admin = await tenantAdminSession(request);
+    expect((await request.get(`${SETTINGS}/tenant/${SYSTEM_TENANT_ID}`, { headers: auth(admin.token) })).status()).toBe(404);
+    expect((await request.get(`${SETTINGS}/tenant/${admin.tenantId}`, { headers: auth(admin.token) })).status()).toBe(200);
+  });
+
+  test('a super admin still lists the SYSTEM tenant rows', async ({ request }) => {
+    const response = await request.get(`${SETTINGS}/tenant/${SYSTEM_TENANT_ID}?limit=200`, { headers: auth(await superAdminToken(request)) });
+    expect(response.status()).toBe(200);
+    const body = (await response.json()) as { data: Array<{ tenantId?: string | null }> };
+    expect(body.data.length).toBeGreaterThan(0);
+    for (const item of body.data) expect(item.tenantId).toBe(SYSTEM_TENANT_ID);
   });
 });

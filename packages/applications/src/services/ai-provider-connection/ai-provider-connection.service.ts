@@ -1109,7 +1109,16 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * The `model-registry:s3` platform-storage branch, or `null` when it does not
    * apply (TASK-932 D-7).
    *
-   * Two conditions, both necessary. The row must be the SYSTEM one and ENABLED —
+   * THREE conditions, all necessary. The REQUEST must be the platform's own —
+   * D-7 declares exactly one lane, `resolveCredential('model-registry','s3',
+   * SYSTEM)`, and the row this reads is the SYSTEM one whoever asked, so
+   * without a tenant condition every customer tenant would inherit the
+   * platform's own object-storage secret (returned as a real credential and
+   * metered `funding: 'platform'`, which is also how it would be paid for).
+   * A tenant that wants the weight store brings its own `model-registry:s3`
+   * row, which the fold above has already returned before reaching here.
+   *
+   * Then the row must be the SYSTEM one and ENABLED —
    * a disabled row is the platform's own veto and must stay a non-answer — and
    * it must carry no credential of its own, because an explicit key on the row
    * is an operator's deliberate override of the built-in default and wins
@@ -1126,6 +1135,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     provider: string,
     tenantId: string,
   ): Promise<ResolvedProviderCredential | null> {
+    if (tenantId !== SYSTEM_TENANT_ID) return null;
     if (service !== 'model-registry' || provider !== 's3') return null;
 
     const systemRows = await this.readTier(service, SYSTEM_TENANT_ID, provider);
