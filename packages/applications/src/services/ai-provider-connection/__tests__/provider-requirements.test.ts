@@ -150,11 +150,20 @@ describe('bedrock — region and credentials', () => {
   });
 });
 
-describe('model-registry — the two deferred credentials', () => {
-  it('huggingface requires a model id AND a token', () => {
-    const errors = validateProviderRequirements('model-registry', 'huggingface', bare);
-    expect(errors).toHaveLength(2);
-    expect(errors.join(' ')).toContain('apiKey');
+/**
+ * TASK-932 D-7/D-8 amended the two `model-registry` rows: they are the
+ * PLATFORM's built-in weight-fetch plane, seeded ENABLED and blank. A blank
+ * enabled row is therefore a configured state — the platform storage
+ * credentials for `s3`, an anonymous pull for `huggingface` — and only a
+ * PARTLY-filled row is refused.
+ */
+describe('model-registry — the built-in weight-fetch plane', () => {
+  it('huggingface accepts a blank enabled row — that IS the anonymous built-in default', () => {
+    expect(validateProviderRequirements('model-registry', 'huggingface', bare)).toEqual([]);
+  });
+
+  it('huggingface requires a model id once a token is supplied — half a configuration is neither', () => {
+    const errors = validateProviderRequirements('model-registry', 'huggingface', { ...bare, hasApiKey: true });
     expect(errors.join(' ')).toContain('model');
   });
 
@@ -164,9 +173,16 @@ describe('model-registry — the two deferred credentials', () => {
     ).toEqual([]);
   });
 
-  it('s3 requires an endpoint, a secret key and the non-secret access key id', () => {
-    const errors = validateProviderRequirements('model-registry', 's3', bare);
-    expect(errors.join(' ')).toContain('baseUrl');
+  it('s3 accepts a blank enabled row — the platform storage credentials serve it', () => {
+    expect(validateProviderRequirements('model-registry', 's3', bare)).toEqual([]);
+  });
+
+  it('s3 accepts the platform-storage marker without any credential material', () => {
+    expect(validateProviderRequirements('model-registry', 's3', { ...bare, extraJson: { inheritsPlatformStorage: true } })).toEqual([]);
+  });
+
+  it('s3 requires an endpoint, a secret key and the access key id once ANY of them is supplied', () => {
+    const errors = validateProviderRequirements('model-registry', 's3', { ...bare, baseUrl: 'minio:9000' });
     expect(errors.join(' ')).toContain('apiKey');
     expect(errors.join(' ')).toContain('accessKeyId');
   });
@@ -199,7 +215,9 @@ describe('DISABLED rows are exempt — the veto must stay expressible', () => {
 
 describe('messages', () => {
   it('never echo the stored value — only the field name and why it is needed', () => {
-    const errors = validateProviderRequirements('model-registry', 's3', { ...bare, extraJson: { accessKeyId: '' } });
+    // A PARTLY-filled row (TASK-932 D-7: a blank one is the built-in default),
+    // so the message under test is actually produced.
+    const errors = validateProviderRequirements('model-registry', 's3', { ...bare, baseUrl: 'https://minio.internal:9000', extraJson: {} });
     expect(errors.join(' ')).not.toContain('minio');
     expect(errors.join(' ')).toContain('accessKeyId');
   });

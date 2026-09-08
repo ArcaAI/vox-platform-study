@@ -249,6 +249,13 @@ export interface AiProviderConnectionSeed {
    */
   apiKeyPlaintext: string | null;
   enabled: boolean;
+  /**
+   * TASK-932 D-7 — provider-specific extras with no dedicated column. The only
+   * seeded value today is the weight store's `inheritsPlatformStorage` marker,
+   * which is what makes an enabled-and-keyless `model-registry:s3` row resolve
+   * to the PLATFORM'S OWN object storage instead of reading as "unconfigured".
+   */
+  extraJson?: Record<string, boolean | number | string> | null;
   metaData: { placeholder?: boolean; note?: string } | null;
 }
 
@@ -631,13 +638,26 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
 
   // ── model-registry: the weight-fetch plane ─────────────────────
   //
-  // Both rows are seeded BLANK and DISABLED, and that is the whole point. They
-  // are the platform's placeholders, in exactly the shape the Azure/Bedrock
-  // catalog rows above use: a super admin fills in the endpoint and pastes the
-  // credential through the console, and the row becomes live at that moment —
-  // no redeploy, no env var, no secret in this file. Seeding a real token here
-  // would arm the platform-default cascade for every entitled tenant without an
-  // administrator ever deciding to.
+  // Both rows are seeded BLANK, and no VENDOR credential is ever seeded: a super
+  // admin pastes a token through the console and the row becomes live at that
+  // moment — no redeploy, no env var, no secret in this file. Seeding a real
+  // token here would arm the platform-default cascade for every entitled tenant
+  // without an administrator ever deciding to.
+  //
+  // TASK-932 R-11/D-7 changed the ENABLED state, and only that. Both rows now
+  // seed ENABLED, because on a PLATFORM-MANAGED plane "blank" is a configured
+  // state rather than an absence:
+  //   * `s3` carries `inheritsPlatformStorage`, and resolves to the platform's
+  //     own object storage (the SYSTEM `TenantStorageConfig` cascade) — which is
+  //     where `hope-models` actually lives. Seeded DISABLED, the console
+  //     rendered the platform's own weight store as "no key · Disabled for this
+  //     tenant": tenant wording on a platform row, about the thing every model
+  //     fetch depends on.
+  //   * `huggingface` blank means an ANONYMOUS pull, which is the correct
+  //     resolved state for a public repo (`apps/stt`'s `absent` outcome). A
+  //     token is what upgrades that to a gated repo.
+  // Disabling either row is still the platform's own veto, and still means
+  // "fail closed"; it is simply no longer the shipped state.
   //
   // These two rows are the ONLY ones that can exist on this plane: owner ruling
   // 2026-08-24 made `model-registry` platform-managed, so `CLOUD_BYO_PROVIDERS`
@@ -658,7 +678,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     encryptedApiKey: null,
     keyVersion: null,
     apiKeyPlaintext: null,
-    enabled: false,
+    enabled: true,
     metaData: { note: 'Platform HuggingFace Hub token. Blank until a super admin supplies one; anonymous pulls still work for public repos.' },
   },
   {
@@ -677,8 +697,13 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     encryptedApiKey: null,
     keyVersion: null,
     apiKeyPlaintext: null,
-    enabled: false,
-    metaData: { note: 'Platform model-weights object store. baseUrl = endpoint; accessKeyId rides in extraJson; the secret key is the encrypted field.' },
+    enabled: true,
+    extraJson: { inheritsPlatformStorage: true },
+    metaData: {
+      note:
+        'Platform model-weights object store. Blank + inheritsPlatformStorage = the platform storage credentials serve it ' +
+        '(TASK-932 D-7). To point it elsewhere, set baseUrl = endpoint, accessKeyId in extraJson and paste the secret key.',
+    },
   },
 ];
 
@@ -766,6 +791,7 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
         deploymentName: row.deploymentName,
         enabled: row.enabled,
         ...(row.timeoutS !== undefined && row.timeoutS !== null ? { timeoutS: row.timeoutS } : {}),
+        ...(row.extraJson ? { extraJson: row.extraJson } : {}),
         // Conditional spread, not `?? undefined` — the repo compiles
         // with `exactOptionalPropertyTypes`, so an explicit `undefined`
         // is not assignable to Prisma's JSON input type.

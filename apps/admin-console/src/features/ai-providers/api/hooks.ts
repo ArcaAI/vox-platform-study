@@ -3,10 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteProviderConnection,
+  getInferenceReadiness,
   getProviderConnection,
   listRoutingBindings,
   putConnectionModels,
   putProviderConnection,
+  resetProviderConnection,
   testProviderConnection,
 } from './client';
 import { providerConnectionKeys } from './keys';
@@ -99,5 +101,43 @@ export function useRoutingBindings(tenantId: string, enabled = true) {
     queryKey: providerConnectionKeys.bindings(tenantId),
     queryFn: () => listRoutingBindings(tenantId),
     enabled: enabled && Boolean(tenantId),
+  });
+}
+
+/**
+ * TASK-932 R-3 — reset one platform-managed row to its built-in default.
+ *
+ * Invalidates the ROW key as well as the service key: the card holds the ETag it
+ * read, and the reset bumps the version server-side, so a card that kept its old
+ * token would 412 on the operator's next save.
+ */
+export function useResetProviderConnection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ service, provider, tenantId }: { service: ProviderService; provider: string; tenantId?: string }) =>
+      resetProviderConnection(service, provider, tenantId),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: providerConnectionKeys.row(variables.service, variables.provider, variables.tenantId) });
+      void queryClient.invalidateQueries({ queryKey: providerConnectionKeys.service(variables.service, variables.tenantId) });
+    },
+  });
+}
+
+/**
+ * The platform's last inference-readiness observation, for the engine cards.
+ *
+ * `unknown` is a real answer here, not a failure: a cold snapshot, a sweep that
+ * is switched off, or an unreachable probe aggregator all mean "not measured",
+ * and the card says so rather than implying a verdict nobody produced. A FAILED
+ * read is therefore not retried into an error state — the cards simply show
+ * nothing measured.
+ */
+export function useInferenceReadiness(enabled = true) {
+  return useQuery({
+    queryKey: providerConnectionKeys.readiness(),
+    queryFn: getInferenceReadiness,
+    enabled,
+    retry: false,
+    staleTime: 30_000,
   });
 }

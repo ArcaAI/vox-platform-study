@@ -15,7 +15,7 @@ const SUPER: Ctx['user'] = { roles: ['SUPER_ADMIN'] };
 const TENANT_ADMIN = (tenantId: string): Ctx['user'] => ({ roles: ['TENANT_ADMIN'], tenantId });
 
 function makeController(ctx: Ctx) {
-  const service = { list: vi.fn(), getRow: vi.fn(), upsertRow: vi.fn(), deleteRow: vi.fn(), declareModels: vi.fn() };
+  const service = { list: vi.fn(), getRow: vi.fn(), upsertRow: vi.fn(), deleteRow: vi.fn(), declareModels: vi.fn(), resetRow: vi.fn() };
   const probe = { test: vi.fn() };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
   const controller = new ProviderConnectionController(service as never, probe as never, cls as never);
@@ -98,5 +98,48 @@ describe('ProviderConnectionController — declaring a connection\u2019s models'
     const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     await expect(controller.declareModels('not-a-service', 'azure', BODY as never, undefined)).rejects.toBeInstanceOf(BadRequestException);
     expect(service.declareModels).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * TASK-932 R-3 — `POST :service/:provider/reset`.
+ *
+ * Thin on purpose, and the two things the CONTROLLER owns are exactly the two
+ * things that could go wrong here: the `:service` guard, and the tenant scoping
+ * that decides WHICH tier the service is asked to reset. The privilege gate
+ * itself is imperative and lives in the service (AUTH-NOTE at the route), so it
+ * is pinned by the applications suite, not here.
+ */
+describe('ProviderConnectionController — reset to the built-in default', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('lets a super admin reset the platform tier via ?tenantId=', async () => {
+    const { controller, service } = makeController({ user: SUPER });
+    service.resetRow.mockResolvedValue({ provider: 'lm-studio' });
+
+    await controller.reset('llm', 'lm-studio', '00000000-0000-0000-0000-000000000000');
+
+    expect(service.resetRow).toHaveBeenCalledWith('llm', 'lm-studio', '00000000-0000-0000-0000-000000000000');
+  });
+
+  it('pins a tenant admin to their CLS tenant — the service then refuses the tier', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    service.resetRow.mockResolvedValue({ provider: 'lm-studio' });
+
+    await controller.reset('llm', 'lm-studio', undefined);
+
+    expect(service.resetRow).toHaveBeenCalledWith('llm', 'lm-studio', 't1');
+  });
+
+  it('rejects a tenant admin naming another tenant, before the service is reached', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.reset('llm', 'lm-studio', 't2')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.resetRow).not.toHaveBeenCalled();
+  });
+
+  it('400s an unknown service segment before reaching the service', async () => {
+    const { controller, service } = makeController({ user: SUPER });
+    await expect(controller.reset('not-a-service', 'lm-studio', undefined)).rejects.toBeInstanceOf(BadRequestException);
+    expect(service.resetRow).not.toHaveBeenCalled();
   });
 });

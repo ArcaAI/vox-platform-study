@@ -15,6 +15,7 @@ import { getJson, getWithEtag, postJson, request, versionFromEtag } from '@/shar
 import type { WithEtag } from '@/shared/api';
 import type {
   DeclareConnectionModelsRequest,
+  InferenceReadinessSnapshot,
   ProviderConnection,
   ProviderService,
   RoutingBinding,
@@ -82,6 +83,30 @@ export async function putConnectionModels(
 /** Remove the tenant's credential (soft delete) — returns the provider to "platform default". */
 export async function deleteProviderConnection(service: ProviderService, provider: string, tenantId?: string): Promise<void> {
   await request<void>(`${BASE}/${service}/${provider}`, { method: 'DELETE', params: tenantParams(tenantId) });
+}
+
+/**
+ * TASK-932 R-3 — restore ONE platform-managed row to its built-in default.
+ *
+ * No ETag: the route carries no `If-Match` on purpose. "Whatever it says now,
+ * put it back" is exactly the operation an operator reaches for when the stored
+ * value is wrong, so refusing it on a stale token would refuse the caller who
+ * most needs it. Super-admin only, platform tier only — a tenant-tier card never
+ * renders the control.
+ */
+export function resetProviderConnection(service: ProviderService, provider: string, tenantId?: string): Promise<ProviderConnection> {
+  return postJson(`${BASE}/${service}/${provider}/reset`, {}, tenantParams(tenantId));
+}
+
+/**
+ * The platform's LAST inference-readiness observation, for the engine cards.
+ *
+ * Read here rather than imported from `features/ai-services`: features never
+ * import each other (rule 13 §Structure), and the payload this screen needs is
+ * one array off a plain GET.
+ */
+export function getInferenceReadiness(): Promise<InferenceReadinessSnapshot> {
+  return getJson('admin/ai-services/readiness');
 }
 
 /** Ephemeral "Test connection" probe — never persisted, no OCC. */
