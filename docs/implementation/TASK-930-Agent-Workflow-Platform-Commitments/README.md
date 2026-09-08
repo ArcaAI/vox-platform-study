@@ -162,6 +162,30 @@ that must NOT land on `dev-2.2`; drop it in the merge. Its cross-lane request (l
 `26-tenant-reference-set.ts` the same `workflowAssignments` clone) is already contract §6.3, so it
 needs verification at merge, not a new instruction.
 
+### 4.4 Orchestrator punch list — the unowned files, resolved (wave 3)
+
+Lane S reported four cross-lane needs that share one root cause: **the §1 ownership table has no
+row for them**, so under "anything not listed is owned by nobody" they were correctly left alone.
+They are hereby the **orchestrator's**, and they are fixed **at merge time, not before** — flipping
+any of them on `dev-2.2` while the seeds still exist there would turn the branch red for a state
+that has not landed yet.
+
+| Unowned file | What must change | When |
+|---|---|---|
+| `packages/applications/src/services/consultation/prompt/prompt-assembly.service.ts:770` | `LEGACY_CONTEXT_SCHEMA_SLUG` repointed from `consultation_legacy_v1` to `consultation_note_context`. The resolver is FAIL-CLOSED (`LEGACY_CONTEXT_SCHEMA_MISSING`), so the moment S's §8.1 deletion lands without this, every prompt assembly throws. **Highest-risk item in the wave.** | with the S merge, in the same commit |
+| `tests/contracts/tenant-reference-set-parity.contract.test.ts:36` | `SEED_DECLARED_EXCEPTIONS` drops `workflowDefinitions` — §6.3 makes the seed copier and the runtime service copy the same kind set, which is exactly what this contract exists to pin | with the S merge (P's §6.3 half is already on `task-930-promotion`) |
+| `live-documentation.*.task858` / `…task852`, `day1-loop-defaults.task686` | retarget imports off deleted seeds 23 / 24 / 07e | with the S merge |
+| `packages/applications/src/services/consultation-context-schema/context-schema-definition.ts` | check only — S folds `DAY1_CONTEXT_SCHEMA_SLUG` into the new schema because it has **no runtime reader** (`LoopConfigService` reads `isDefault`). Verify that still holds after R's retirement | at merge |
+
+Also carried to merge time:
+
+- **Drop every lane's `.lane-report.md`** — a wave-3 scratch artifact, committed on purpose so a
+  kill could not lose it. P, R, S and K each have one; none belongs on `dev-2.2`.
+- **Test infra** (`:5433`) was down for the whole wave, which is why lane P's one integration test
+  file could not `$connect()`. Brought up by the orchestrator; the post-merge gates need it seeded.
+- **Disk is at 98 % (≈21 GiB free).** The step-3 dev-DB reset + reseed and the five-artifact
+  regeneration both want headroom; check before the reset rather than after it fails.
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
