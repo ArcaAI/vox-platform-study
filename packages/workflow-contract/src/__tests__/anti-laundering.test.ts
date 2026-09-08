@@ -1,84 +1,103 @@
 /**
- * **`document -> ner` is a TYPE ERROR.** The single most important test in
- * this ticket.
+ * **`document -> transcript` is a TYPE ERROR.** The single most important test in this ticket.
  *
- * The rule, stated clinically: **NER must never see LLM-generated text, only the raw
- * transcript.** A model that hallucinates a drug name into a generated note, whose note is then
- * fed to the entity extractor, produces a coded, structured, persisted clinical entity with no
+ * The rule, stated clinically: **the entity extractor must never see LLM-generated text, only
+ * the raw transcript.** A model that hallucinates a drug name into a generated note, whose note
+ * is then fed to the extractor, produces a coded, structured, persisted clinical entity with no
  * human utterance behind it — a hallucination LAUNDERED into the record with the authority of
- * structured data. Nothing downstream can tell it apart from an entity a clinician actually
- * said.
+ * structured data. Nothing downstream can tell it apart from an entity a clinician actually said.
  *
  * This file proves the rule is STRUCTURAL, not procedural. It is not enforced by a lint, a
  * review checklist, or a runtime guard that can be bypassed — it is enforced by the port type
  * lattice, which makes the edge unrepresentable:
  *
- *   - `consultation.synthesize` (and every other generation node) outputs `document`.
- *   - `consultation.extractEntities` — the NER node (`interpreter.consultation_extract_entities`,
- *     which calls apps/nlp) — accepts only `transcript`.
+ *   - a generation step outputs `document`.
+ *   - a transcript consumer (the redaction actions) accepts only `transcript`.
  *   - `transcript` and `document` are SIBLINGS under `text` in `WORKFLOW_PORT_SUPERTYPE`.
  *     Widening is one-directional, so a `document` can reach a `text` consumer (a guardrail
  *     legitimately checks generated prose) but can NEVER reach a `transcript` consumer, not
  *     directly and not through any chain of widenings.
  *
  * The last clause is the one that matters: a laundering path only needs ONE hole. So this file
- * asserts the property EXHAUSTIVELY over the whole registry rather than on the one obvious
+ * asserts the property EXHAUSTIVELY over the whole port surface rather than on the one obvious
  * pair.
+ *
+ * ## What TASK-893 Phase 4 changed, and what it did NOT
+ *
+ * The node types this file used to name are gone. `consultation.extractEntities` and
+ * `consultation.synthesize` are retired; the clinical steps that survive are ACTIONS behind
+ * `core.action`, resolved per instance by `actionKey`, so every case below is expressed as an
+ * action instance instead of a node type. The LATTICE is untouched, so the property is
+ * untouched — and it is now asserted across BOTH port tables.
+ *
+ * One consequence is a genuine WEAKENING, pinned by its own test at the foot of this file rather
+ * than left to be discovered: named-entity recognition is no longer a node type with a
+ * `transcript`-typed socket. It is a `core.agent` whose resolved task is
+ * `NAMED_ENTITY_RECOGNITION`, and an agent's data input is `text` — which `document` widens to.
+ * The port lattice therefore no longer refuses `generated document -> NER`; only the runtime
+ * task resolution does. That is a policy question for the agent contract, not a lattice bug.
  */
 import { describe, expect, it } from 'vitest';
-import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
+import { ACTION_PORTS, NODE_PORTS } from '../node-ports';
 import { WORKFLOW_PORT_PRIMITIVES, portPrimitiveSatisfies } from '../port-model';
 import type { WorkflowPortPrimitive } from '../port-model';
 import { isValidConnection, workflowEdgePortProblems } from '../port-validation';
 
-/** The NER node: the one that turns clinical text into structured, codeable entities. */
-const NER_NODE = 'consultation.extractEntities';
-/** A generation node: prose a language model authored, not a human utterance. */
-const GENERATION_NODE = 'consultation.synthesize';
-/** The transcription node: the verbatim record of what was actually said. */
-const TRANSCRIPT_NODE = 'consultation.captureBinding';
+/** A generation step: prose a language model authored, not a human utterance. The assurance
+ *  sensors take a draft document in and hand the (annotated) document back out. */
+const GENERATION = { actionKey: 'consultation.sensors', action: {} } as const;
+/** The redaction step: the one that consumes the verbatim record of what was actually said. */
+const TRANSCRIPT_CONSUMER = { actionKey: 'consultation.phiHop', action: {} } as const;
+/** The ASR agent: the only legitimate source of a `transcript`. */
+const TRANSCRIPT_PRODUCER = { agentRef: { slug: 'asr-agent' } } as const;
 
-describe('document -> ner is a TYPE ERROR (the anti-hallucination-laundering rule)', () => {
-  it('the NER node accepts ONLY transcript on its data input', () => {
-    const ner = WORKFLOW_NODE_REGISTRY[NER_NODE];
-    const dataInputs = ner.inputs.filter((port) => port.primitive !== 'control');
+describe('document -> transcript is a TYPE ERROR (the anti-hallucination-laundering rule)', () => {
+  it('the transcript consumer accepts ONLY transcript on its data input', () => {
+    const dataInputs = ACTION_PORTS['consultation.phiHop'].inputs.filter((port) => port.primitive !== 'control');
     expect(dataInputs.map((port) => port.primitive)).toEqual(['transcript']);
   });
 
-  it('the generation node emits `document`, never `transcript`', () => {
-    const generation = WORKFLOW_NODE_REGISTRY[GENERATION_NODE];
-    const dataOutputs = generation.outputs.filter((port) => port.primitive !== 'control');
-    expect(dataOutputs.map((port) => port.primitive)).toEqual(['document']);
+  it('the generation step emits `document`, never `transcript`', () => {
+    const dataOutputs = ACTION_PORTS['consultation.sensors'].outputs.filter((port) => port.primitive !== 'control');
+    expect(dataOutputs.map((port) => port.primitive).sort()).toEqual(['document', 'verdict']);
+    expect(dataOutputs.map((port) => port.primitive)).not.toContain('transcript');
   });
 
-  it('REFUSES the connection consultation.synthesize[out] -> consultation.extractEntities[in]', () => {
-    expect(isValidConnection(GENERATION_NODE, 'out', NER_NODE, 'in')).toBe(false);
+  it('REFUSES the connection generation[document] -> redaction[in]', () => {
+    expect(
+      isValidConnection('core.action', 'document', 'core.action', 'in', { fromNodeConfig: GENERATION, toNodeConfig: TRANSCRIPT_CONSUMER }),
+    ).toBe(false);
   });
 
   it('reports it as an edge type error on an authored graph, naming both primitives', () => {
     const problems = workflowEdgePortProblems({
       version: 1,
       nodes: [
-        { id: 'synth', type: GENERATION_NODE, config: {} },
-        { id: 'ner', type: NER_NODE, config: {} },
+        { id: 'synth', type: 'core.action', config: GENERATION },
+        { id: 'redact', type: 'core.action', config: TRANSCRIPT_CONSUMER },
       ],
-      edges: [{ id: 'e1', from: 'synth', fromPort: 'out', to: 'ner', toPort: 'in' }],
+      edges: [{ id: 'e1', from: 'synth', fromPort: 'document', to: 'redact', toPort: 'in' }],
     });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('document');
     expect(problems[0]).toContain('transcript');
   });
 
-  it('ALLOWS the legitimate edge consultation.captureBinding[out] -> consultation.extractEntities[in]', () => {
-    expect(isValidConnection(TRANSCRIPT_NODE, 'out', NER_NODE, 'in')).toBe(true);
+  it('ALLOWS the legitimate edge asrAgent[transcript] -> redaction[in]', () => {
+    expect(
+      isValidConnection('core.agent', 'transcript', 'core.action', 'in', {
+        fromNodeConfig: TRANSCRIPT_PRODUCER,
+        toNodeConfig: TRANSCRIPT_CONSUMER,
+      }),
+    ).toBe(true);
     expect(
       workflowEdgePortProblems({
         version: 1,
         nodes: [
-          { id: 'capture', type: TRANSCRIPT_NODE, config: {} },
-          { id: 'ner', type: NER_NODE, config: {} },
+          { id: 'asr', type: 'core.agent', config: TRANSCRIPT_PRODUCER },
+          { id: 'redact', type: 'core.action', config: TRANSCRIPT_CONSUMER },
         ],
-        edges: [{ id: 'e1', from: 'capture', fromPort: 'out', to: 'ner', toPort: 'in' }],
+        edges: [{ id: 'e1', from: 'asr', fromPort: 'transcript', to: 'redact', toPort: 'in' }],
       }),
     ).toEqual([]);
   });
@@ -104,12 +123,13 @@ describe('document -> ner is a TYPE ERROR (the anti-hallucination-laundering rul
     expect(reachable.has('transcript')).toBe(false);
   });
 
-  it('NO node in the whole registry can route a document into any transcript-typed input', () => {
-    const documentProducers = Object.values(WORKFLOW_NODE_REGISTRY).flatMap((descriptor) =>
-      descriptor.outputs.filter((port) => port.primitive === 'document').map((port) => `${descriptor.key}[${port.name}]`),
+  it('NO port anywhere can route a document into a transcript-typed input', () => {
+    const tables = { ...NODE_PORTS, ...ACTION_PORTS };
+    const documentProducers = Object.entries(tables).flatMap(([key, ports]) =>
+      ports.outputs.filter((port) => port.primitive === 'document').map((port) => `${key}[${port.name}]`),
     );
-    const transcriptConsumers = Object.values(WORKFLOW_NODE_REGISTRY).flatMap((descriptor) =>
-      descriptor.inputs.filter((port) => port.primitive === 'transcript').map((port) => `${descriptor.key}[${port.name}]`),
+    const transcriptConsumers = Object.entries(tables).flatMap(([key, ports]) =>
+      ports.inputs.filter((port) => port.primitive === 'transcript').map((port) => `${key}[${port.name}]`),
     );
     // The property is vacuous if either side is empty — assert both exist before asserting the rule.
     expect(documentProducers.length).toBeGreaterThan(0);
@@ -117,45 +137,43 @@ describe('document -> ner is a TYPE ERROR (the anti-hallucination-laundering rul
     expect(portPrimitiveSatisfies('document', 'transcript')).toBe(false);
   });
 
-  it('every generation-classed node emits document (or a non-text product), never transcript', () => {
-    const generators = Object.values(WORKFLOW_NODE_REGISTRY).filter((descriptor) => descriptor.classes.includes('generation'));
-    expect(generators.length).toBeGreaterThan(0);
-    for (const descriptor of generators) {
-      for (const port of descriptor.outputs) {
-        expect(port.primitive).not.toBe('transcript');
-      }
-    }
+  it('the ONLY producers of `transcript` are transcription/redaction steps, never a model author', () => {
+    const tables = { ...NODE_PORTS, ...ACTION_PORTS };
+    const transcriptProducers = Object.entries(tables)
+      .filter(([, ports]) => ports.outputs.some((port) => port.primitive === 'transcript'))
+      .map(([key]) => key)
+      .sort();
+    // `core.agent` is the ASR agent's home — the retired transcription node types were deprecated
+    // in its favour. Its `transcript` socket is LIVE only for an agent whose task is
+    // SPEECH_TO_TEXT: an LLM agent's activity emits `text`/`data` and never the `transcript` key,
+    // so nothing model-authored can arrive on that socket at runtime.
+    // `consultation.phiHop` is the redaction action — it takes a transcript in and hands a
+    // redacted transcript out, which is a transformation of a human utterance, not an authoring
+    // of one. (`guard.phi` shares the activity but is typed on `text`, so it is not a producer.)
+    expect(transcriptProducers).toEqual(['consultation.phiHop', 'core.agent']);
   });
 
-  it('the ONLY producers of `transcript` are transcription/redaction nodes, never a model author', () => {
-    const transcriptProducers = Object.values(WORKFLOW_NODE_REGISTRY)
-      .filter((descriptor) => descriptor.outputs.some((port) => port.primitive === 'transcript'))
-      .map((descriptor) => descriptor.key)
-      .sort();
-    // lane A — `agent.transcription` is the target catalogue's capture entry. It
-    // belongs on this list for exactly the reason the list exists: it is a TRANSCRIPTION node,
-    // not a generation node, and the loop below is what enforces that distinction.
-    // `agentic.stt` joins the list, and the loop below is why that is safe rather
-    // than merely expected: it is a TRANSCRIPTION node (it dispatches a batch ASR job and
-    // publishes what the recogniser returned), it carries no `generation` class, and the
-    // generic `agentic.agent` deliberately produces `text` rather than `transcript` precisely so
-    // it can never appear here.
-    // `core.agent` (TASK-864) joins the list because it is the ASR agent's home — the
-    // transcription-node entries above are deprecated in its favour. It carries NO `generation`
-    // class (the loop above is what enforces that), and its `transcript` socket is LIVE only for
-    // an agent whose task is SPEECH_TO_TEXT: an LLM agent's activity emits `text`/`data` and never
-    // the `transcript` key, so nothing model-authored can ever arrive on that socket at runtime.
-    expect(transcriptProducers).toEqual([
-      'agent.transcription',
-      'agentic.stt',
-      'consultation.captureBinding',
-      'consultation.phiHop',
-      'core.agent',
-      'stt.asrEngine',
-      'stt.phiHop',
-    ]);
-    for (const key of transcriptProducers) {
-      expect(WORKFLOW_NODE_REGISTRY[key].classes).not.toContain('generation');
-    }
+  /**
+   * The weakening the vocabulary change introduces, asserted so it is a KNOWN fact rather than an
+   * assumption someone reads off this file's title.
+   *
+   * Until Phase 4 the extractor was `consultation.extractEntities`, whose only data input was
+   * `transcript`, so `document -> NER` was refused by the lattice. NER is now a `core.agent` with
+   * `resolved.task === 'NAMED_ENTITY_RECOGNITION'`, and every agent's data input is `text`, which
+   * `document` widens to by design (a guardrail must be able to read generated prose). So the
+   * structural refusal no longer covers NER; what stands between a generated document and the
+   * extractor is the agent's task resolution at runtime, not the port type.
+   */
+  it('KNOWN GAP: an agent-hosted extractor accepts `text`, so the lattice no longer refuses a document', () => {
+    const agentDataInputs = NODE_PORTS['core.agent'].inputs.filter((port) => port.primitive !== 'control');
+    expect(agentDataInputs.map((port) => port.primitive)).toContain('text');
+    expect(agentDataInputs.map((port) => port.primitive)).not.toContain('transcript');
+    expect(portPrimitiveSatisfies('document', 'text')).toBe(true);
+    expect(
+      isValidConnection('core.action', 'document', 'core.agent', 'in', {
+        fromNodeConfig: GENERATION,
+        toNodeConfig: { agentRef: { slug: 'ner-agent' } },
+      }),
+    ).toBe(true);
   });
 });
