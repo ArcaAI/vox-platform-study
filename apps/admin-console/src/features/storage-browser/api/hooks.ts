@@ -1,12 +1,28 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createBucket, deleteBucket, deleteFile, getFileInfo, getStorageHealth, listBuckets, listObjects, updateBucket, uploadFile } from './client';
+import {
+  createBucket,
+  deleteBucket,
+  deleteFile,
+  getFileInfo,
+  getStorageHealth,
+  listBuckets,
+  listBucketsAllTenants,
+  listObjects,
+  updateBucket,
+  uploadFile,
+} from './client';
 import { storageBrowserKeys } from './keys';
 import type { CreateBucketRequest, UpdateBucketRequest } from './types';
 
 export function useBuckets() {
   return useQuery({ queryKey: storageBrowserKeys.buckets(), queryFn: listBuckets });
+}
+
+/** "All tenants" listing (TASK-932 Lane T) — only fired while `enabled`. */
+export function useBucketsAllTenants(enabled: boolean) {
+  return useQuery({ queryKey: storageBrowserKeys.bucketsAllTenants(), queryFn: listBucketsAllTenants, enabled });
 }
 
 export function useObjects(bucketName: string, prefix?: string) {
