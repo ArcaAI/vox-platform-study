@@ -8,9 +8,9 @@
  * no e2e at all. This file covers it:
  *
  *   - the lifecycle DRAFT → VALIDATED → PUBLISHED, plus the version lineage;
- *   - the rule catalogue AT THE WIRE (`WF-CONS-*` mandatory-node and reachability
- *     rules, `WF-S-*` bookends) and, importantly, which findings BLOCK and which
- *     do not;
+ *   - the rule catalogue AT THE WIRE (the `WF-CORE-*` boundary rules and the
+ *     palette-agnostic `WF-S-*` bookends) and, importantly, which findings BLOCK
+ *     and which do not;
  *   - `If-Match`/`ETag` optimistic concurrency (missing → 428, drift → 412);
  *   - cross-tenant isolation → 404, never 403.
  *
@@ -47,80 +47,59 @@ interface Graph {
 }
 
 /**
- * Satisfies the palette-agnostic invariants WF-I-004 (trajectory stated) and
- * WF-I-010 (bounded retry) — on the EXECUTABLE nodes only.
+ * TASK-893 retired the legacy `consultation.*` vocabulary; this fixture is authored in the
+ * `core` vocabulary that replaced it (`packages/workflow-contract/src/node-registry.ts`), and
+ * mirrors the shape of the seeded reference graphs in
+ * `packages/database/src/prisma/db_main/seed/28-workflow-library.ts`.
  *
- * `core.start` and `core.end` are graph BOUNDARIES: they execute nothing, their
- * config schemas declare no `emitsTrajectory`, and those schemas are
- * `additionalProperties: false`. Stamping it on them is a `NODE_CONFIG_SCHEMA`
- * ERROR at the publish gate (TASK-890 L0 wired it; §3.14a relies on the same
- * strictness to keep a runtime knob off a boundary). Neither invariant asks for
- * it there — the rule catalogue reports the graph clean without it.
+ * Two things about the config objects are load-bearing:
+ *
+ *  - `emitsTrajectory` is GONE. Every `core.*` config schema is `additionalProperties: false`
+ *    and none of them declares it, so stamping it is a `NODE_CONFIG_SCHEMA` ERROR at the
+ *    publish gate. Nothing asks for it either: `WF-I-004` (which did) is `paletteKey:
+ *    'summarization'`, and `validate()` drops every rule whose palette is not the definition's.
+ *  - The surviving fixed-purpose clinical steps are ACTIONS, not node types: one `core.action`
+ *    node carrying `actionKey` plus the action's own config under `action`
+ *    (`packages/workflow-contract/src/action-catalogue.ts`, 17 keys).
  */
-const BASE_CONFIG = { emitsTrajectory: true, retry: { maximumAttempts: 3 } };
-
-/** Boundary nodes take their own config only; see `BASE_CONFIG`. */
-const isBoundary = (type: string): boolean => type === 'core.start' || type === 'core.end';
-/** The consultation palette's non-abort error policy (CR-16 / WF-CONS-019). */
 const DEGRADE = 'degrade';
 
-const NODE_CONFIG: Record<string, Record<string, unknown>> = {
-  'consultation.captureBinding': { action: 'start', onError: DEGRADE },
-  'consultation.extractEntities': { requiresFinalized: true, onError: DEGRADE },
-  'consultation.bindTerminology': { purposeScope: 'terminology_validation', unmappedOutputKey: 'unmappedTerms', onError: DEGRADE },
-  'consultation.phiHop': { mode: 'pseudonymize', onError: DEGRADE },
-  'consultation.synthesize': { taskKey: 'text.finalize', producesCode: false, onError: DEGRADE },
-  'consultation.sensors': { onError: DEGRADE },
-  'consultation.persistDraft': { occ: true, onError: DEGRADE },
-};
-
-const CANONICAL_TYPES = [
-  'core.start',
-  'consultation.consentGate',
-  'consultation.captureBinding',
-  'consultation.extractEntities',
-  'consultation.bindTerminology',
-  'consultation.phiHop',
-  'consultation.synthesize',
-  'consultation.sensors',
-  'consultation.persistDraft',
-  'consultation.hitlGate',
-  'core.end',
-] as const;
+/** The canonical `core` consultation shape: trigger → consent → PHI hop → persist → review → output. */
+const CANONICAL_NODES: ReadonlyArray<Omit<GraphNode, 'id'>> = [
+  { type: 'core.trigger', config: { kinds: ['consultation', 'api'] } },
+  { type: 'core.action', config: { actionKey: 'consultation.consentGate', action: {}, onError: DEGRADE } },
+  { type: 'core.action', config: { actionKey: 'consultation.phiHop', action: { mode: 'pseudonymize' }, onError: DEGRADE } },
+  { type: 'core.action', config: { actionKey: 'consultation.persistDraft', action: { occ: true }, onError: DEGRADE } },
+  { type: 'core.humanReview', config: { reviewType: 'clinical_finalization', assignRole: 'DOCTOR', timeoutSeconds: 3600 } },
+  { type: 'core.output', config: { protocols: ['http'] } },
+];
 
 /**
- * A linear graph over `types`, ordered on the CONTROL ports.
+ * A linear graph over `specs`, ordered on the CONTROL ports.
  *
- * `next` → `after`, not `out` → `in`. Every node in this vocabulary declares a
- * control pair (`after` in, `next` out) beside its typed data pair, and only the
- * control pair composes into an arbitrary chain: `out`/`in` carry primitives
- * (`transcript`, `entities`, `document`, `verdict`), so a chain of all eleven
- * canonical types on the DATA ports is not merely mis-named — it is
- * type-incompatible at `bindTerminology[entities] → phiHop[transcript]` and at
- * `sensors[verdict] → persistDraft[document]`.
+ * `next` → `after`, not `out` → `in`. Every node in this vocabulary declares a control pair
+ * (`after` in, `next` out) beside its typed data sockets, and only the control pair composes
+ * into an arbitrary chain: the data ports carry primitives (`transcript`, `entities`,
+ * `document`, `verdict`), so chaining the canonical nodes on them is not merely mis-named — it
+ * is type-incompatible, and `workflowEdgePortProblems` refuses it at the publish gate.
  *
- * `out`/`in` was what this fixture used until TASK-890 L0 wired the publish gate
- * (§2.3 BLOCKER 1). The port problems were always COMPUTED; nothing enforced
- * them, so a graph naming ports no node declares still reached VALIDATED. It no
- * longer does, and this fixture had to stop asserting that it could.
+ * `core.trigger` declares no input ports and `core.output` no output ports; they are the graph
+ * boundaries, so they can only ever be the head and the tail of the chain.
  */
-function chain(types: readonly string[]): Graph {
+function chain(specs: ReadonlyArray<Omit<GraphNode, 'id'>>): Graph {
   return {
     version: 1,
-    nodes: types.map((type, index) => ({
-      id: `n${index}`,
-      type,
-      config: isBoundary(type) ? { ...(NODE_CONFIG[type] ?? {}) } : { ...BASE_CONFIG, ...(NODE_CONFIG[type] ?? {}) },
-    })),
-    edges: types.slice(1).map((_, index) => ({ id: `e${index}`, from: `n${index}`, fromPort: 'next', to: `n${index + 1}`, toPort: 'after' })),
+    nodes: specs.map((spec, index) => ({ id: `n${index}`, type: spec.type, config: { ...spec.config } })),
+    edges: specs.slice(1).map((_, index) => ({ id: `e${index}`, from: `n${index}`, fromPort: 'next', to: `n${index + 1}`, toPort: 'after' })),
   };
 }
 
-const canonicalGraph = (): Graph => chain(CANONICAL_TYPES);
+const canonicalGraph = (): Graph => chain(CANONICAL_NODES);
 
-function nodeIdOfType(graph: Graph, type: string): string {
-  const node = graph.nodes.find((n) => n.type === type);
-  expect(node, `fixture must contain a ${type} node`).toBeTruthy();
+/** Addresses a fixture node by type, or — for `core.action` — by the action key it carries. */
+function nodeIdOfType(graph: Graph, type: string, actionKey?: string): string {
+  const node = graph.nodes.find((n) => n.type === type && (actionKey === undefined || n.config.actionKey === actionKey));
+  expect(node, `fixture must contain a ${actionKey ?? type} node`).toBeTruthy();
   return node!.id;
 }
 
@@ -168,7 +147,7 @@ async function createDefinition(
 ): Promise<{ status: number; body: Definition & { message?: string } }> {
   const response = await request.post('/api/v1/admin/workflow-definitions', {
     headers: bearer(token, tenantId),
-    data: { slug: uniqueSlug(label), name: `t779 ${label}`, paletteKey: 'consultation', graph },
+    data: { slug: uniqueSlug(label), name: `t779 ${label}`, paletteKey: 'core', graph },
   });
   const body = await response.json();
   if (response.status() === 201) created.push({ id: body.id, tenantId });
@@ -269,14 +248,16 @@ test.describe(' workflow — authoring lifecycle', () => {
 });
 
 test.describe(' workflow — the rule catalogue at the wire', () => {
-  test('a missing mandatory node reports WF-CONS-007 as an ERROR — and still publishes (rule findings are NON-blocking by design)', async ({
+  test('a missing mandatory node reports WF-CORE-002 as an ERROR — and still publishes (rule findings are NON-blocking by design)', async ({
     request,
   }) => {
-    // CR-17: `consultation.persistDraft` is mandatory. Drop it.
-    const graph = chain(CANONICAL_TYPES.filter((t) => t !== 'consultation.persistDraft'));
+    // `core.output` is mandatory — a run must declare what it returns (WF-CORE-002). Drop it.
+    // (This case pinned the consultation palette's `WF-CONS-007` until TASK-893 deleted that
+    // rule set with the palette; `WF-CORE-002` is the surviving mandatory-node rule.)
+    const graph = chain(CANONICAL_NODES.filter((n) => n.type !== 'core.output'));
     const { status, body } = await createDefinition(request, tenantAdminToken, graph, 'missing_mandatory');
     expect(status, 'the row is still CREATED — the rule catalogue is a report, not an admission gate').toBe(201);
-    expect(errorRuleIds(body.validationReport), 'the mandatory-node rule fires').toContain('WF-CONS-007');
+    expect(errorRuleIds(body.validationReport), 'the mandatory-node rule fires').toContain('WF-CORE-002');
     expect(body.validationReport?.ok, 'a report carrying ERROR findings is not ok').toBe(false);
 
     // This is the surprising half, and the reason it is pinned: only the ENGINE
@@ -292,26 +273,24 @@ test.describe(' workflow — the rule catalogue at the wire', () => {
     expect((await published.json()).status).toBe('PUBLISHED');
   });
 
-  test('reachability: work before the consent gate trips WF-CONS-002, work after the HITL gate trips WF-CONS-004', async ({ request }) => {
-    const beforeGate = canonicalGraph();
-    const consentGateId = nodeIdOfType(beforeGate, 'consultation.consentGate');
-    beforeGate.nodes.push({ id: 'sneak', type: 'consultation.sensors', config: { ...BASE_CONFIG, onError: DEGRADE } });
-    beforeGate.edges.push({ id: 'sneak_edge', from: 'sneak', fromPort: 'out', to: consentGateId, toPort: 'in' });
-    const sneaked = await createDefinition(request, tenantAdminToken, beforeGate, 'pre_consent');
-    expect(sneaked.status).toBe(201);
-    expect(errorRuleIds(sneaked.body.validationReport), 'a WORK node preceding the consent gate is not reachable from it').toContain('WF-CONS-002');
+  /*
+   * DELETED (TASK-930 D-9, TASK-893 Phase 4): 'reachability: work before the consent gate trips
+   * WF-CONS-002, work after the HITL gate trips WF-CONS-004'.
+   *
+   * `DRAFT_CONSULTATION_RULE_SET` (`WF-CONS-001..019`) was deleted with the `consultation`
+   * palette's node types — a rule scoped to a palette that no longer exists can never fire, and
+   * `consultation.hitlGate` (the node the second half addressed) left the vocabulary entirely;
+   * the durable human wait is `core.humanReview` now. The successor ordering rule, `WF-CORE-003`
+   * ("core.output is never upstream of core.trigger"), is structurally UNAUTHORABLE at the wire:
+   * `core.trigger` declares no input ports and `core.output` no output ports, so no edge can
+   * invert the boundaries for it to catch. Nothing was retargeted here rather than something
+   * weaker being asserted in its place.
+   */
 
-    const afterGate = canonicalGraph();
-    const hitlGateId = nodeIdOfType(afterGate, 'consultation.hitlGate');
-    afterGate.nodes.push({ id: 'trailing', type: 'consultation.persistDraft', config: { ...BASE_CONFIG, occ: true, onError: DEGRADE } });
-    afterGate.edges.push({ id: 'trailing_edge', from: hitlGateId, fromPort: 'out', to: 'trailing', toPort: 'in' });
-    const trailing = await createDefinition(request, tenantAdminToken, afterGate, 'post_hitl');
-    expect(trailing.status).toBe(201);
-    expect(errorRuleIds(trailing.body.validationReport), 'nothing may execute after the HITL gate').toContain('WF-CONS-004');
-  });
-
-  test('the palette-agnostic bookend rule is live: a graph with no core.start trips WF-S-002', async ({ request }) => {
-    const graph = chain(CANONICAL_TYPES.filter((t) => t !== 'core.start'));
+  test('the palette-agnostic bookend rule is live: a graph with no core.trigger trips WF-S-002', async ({ request }) => {
+    // `WF-S-002` is CLASS-based (`entryClass: 'entry'`), and `core.trigger` is the one
+    // `entry`-classed type left since TASK-893 retired `core.start`.
+    const graph = chain(CANONICAL_NODES.filter((n) => n.type !== 'core.trigger'));
     const { status, body } = await createDefinition(request, tenantAdminToken, graph, 'headless');
     expect(status).toBe(201);
     expect(errorRuleIds(body.validationReport)).toContain('WF-S-002');
@@ -319,21 +298,27 @@ test.describe(' workflow — the rule catalogue at the wire', () => {
 
   test('the ENGINE gate DOES block: an unregistered node type is refused 400 at create', async ({ request }) => {
     const graph = canonicalGraph();
-    graph.nodes.push({ id: 'bogus', type: 'consultation.no_such_node_type', config: { ...BASE_CONFIG } });
-    graph.edges.push({ id: 'bogus_edge', from: nodeIdOfType(graph, 'consultation.sensors'), fromPort: 'out', to: 'bogus', toPort: 'in' });
+    graph.nodes.push({ id: 'bogus', type: 'core.no_such_node_type', config: {} });
+    graph.edges.push({
+      id: 'bogus_edge',
+      from: nodeIdOfType(graph, 'core.action', 'consultation.persistDraft'),
+      fromPort: 'next',
+      to: 'bogus',
+      toPort: 'after',
+    });
     const { status } = await createDefinition(request, tenantAdminToken, graph, 'unknown_type');
     expect(status, 'an unregistered node type fails the shape/engine gate — this one is blocking, unlike rule findings').toBe(400);
   });
 
   test('the ENGINE gate DOES block: a cyclic graph is refused 400 at create', async ({ request }) => {
     const graph = canonicalGraph();
-    // Close a loop from the last work node back to the capture node.
+    // Close a loop from the last work node back to the consent gate.
     graph.edges.push({
       id: 'cycle',
-      from: nodeIdOfType(graph, 'consultation.persistDraft'),
-      fromPort: 'out',
-      to: nodeIdOfType(graph, 'consultation.captureBinding'),
-      toPort: 'in',
+      from: nodeIdOfType(graph, 'core.action', 'consultation.persistDraft'),
+      fromPort: 'next',
+      to: nodeIdOfType(graph, 'core.action', 'consultation.consentGate'),
+      toPort: 'after',
     });
     const { status } = await createDefinition(request, tenantAdminToken, graph, 'cyclic');
     expect(status, 'a cycle cannot compile').toBe(400);
