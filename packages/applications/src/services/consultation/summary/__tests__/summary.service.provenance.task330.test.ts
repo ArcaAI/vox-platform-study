@@ -76,6 +76,11 @@ describe('SummaryService.getSummaryProvenance (provenance over HTTP)', () => {
       sensorScores: { entityFaithfulness: 0.95, coverage: 0.9, schemaValid: 1 },
       citationsMap: { claims: [{ id: 'claim-1', text: 'lisinopril', status: 'verified' }] },
       generatedAt: '2026-06-06T00:00:00.000Z',
+      // TASK-932 R-16a — the redaction MARKER, now surfaced so "identifiers were replaced when
+      // this note was finalized" is auditable over HTTP rather than only against the database.
+      // `null` here because this fixture's meta declares none, which is deliberately distinct
+      // from `false` ("the transform ran and changed nothing").
+      redactionApplied: null,
       // No transcriptSegmentRepository wired in this fixture (
       // is best-effort) — degrades to [] rather than blocking the read.
       citedSegments: [],
@@ -137,6 +142,7 @@ describe('SummaryService.getSummaryProvenance (provenance over HTTP)', () => {
       sensorScores: null,
       citationsMap: null,
       generatedAt: null,
+      redactionApplied: null,
       citedSegments: [],
     });
   });
