@@ -94,6 +94,24 @@ describe('SettingsRegistryWriteService — OCC', () => {
     expect(result.version).toBe(1);
   });
 
+  it('raises OptimisticConcurrencyException (→412) when a POSITIVE version is echoed for a row that no longer exists', async () => {
+    // The row was reset/deleted since the caller's read: its belief is stale,
+    // so this is drift, never a silent re-create (TASK-932 matrix per-cell 412).
+    globalSettingRepository.findFirst.mockResolvedValue(null);
+
+    await expect(buildService().write(KEY, 500, { expectedVersion: 9999 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+    expect(globalSettings.create).not.toHaveBeenCalled();
+  });
+
+  it('treats version 0 as "no row" and still allows the first write', async () => {
+    globalSettingRepository.findFirst.mockResolvedValue(null);
+
+    const result = await buildService().write(KEY, 500, { expectedVersion: 0 });
+
+    expect(globalSettings.create).toHaveBeenCalled();
+    expect(result.version).toBe(1);
+  });
+
   it('echoes the NEW version so the client can round-trip the next If-Match', async () => {
     globalSettingRepository.findFirst.mockResolvedValue(existingRow(7));
     globalSettings.update.mockResolvedValue({ id: 'row-1', version: 8 });
