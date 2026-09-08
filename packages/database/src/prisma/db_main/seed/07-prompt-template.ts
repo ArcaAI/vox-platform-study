@@ -1,7 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
-import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SYSTEM_TENANT_ID } from './00-constants';
+import { SEED_DEPARTMENT_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 /**
  * Publication baseline.
@@ -250,6 +250,10 @@ export const TEMPLATE_IDS = {
   // this node needs to be told.
   LIVE_SUGGESTIONS_SYSTEM: '71000000-0000-0000-0000-000000000045',
   WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000050',
+  // TASK-930 §8.3 — the General Medicine consultation summary the `general-medicine-summarization`
+  // agent binds. Global AUTHORS it (this id); SYSTEM carries the promoted copy
+  // (`SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID`, `sourceTemplateId` → this row).
+  GENERAL_MEDICINE_CONSULTATION_SUMMARY: '71000000-0000-0000-0000-000000000051',
 } as const;
 
 // Version IDs
@@ -1568,125 +1572,18 @@ export const DEFAULT_PROMPT_VERSIONS = DEFAULT_PROMPT_TEMPLATES.map((t, i) => ({
 }));
 
 // =============================================================================
-// CUSTOMER-TENANT PROMPT TEMPLATES
+// CUSTOMER-TENANT PROMPT TEMPLATES — RETIRED (TASK-930 §8.1)
 //
-// The DEFAULT_PROMPT_TEMPLATES above all belong to the Global customer tenant
-// (DEFAULT_TENANT_ID). The ArcaAI customer tenant had
-// ZERO prompt templates, so the admin cross-tenant switcher demoed empty for
-// it. This block adds a small, realistic, idempotent set
-// (4 per tenant covering SYSTEM / SUMMARY / DNA_ANALYSIS / CUSTOM) so the
-// switcher shows distinct, believable per-tenant content.
-//
-// ID convention mirrors the per-tenant 4th-UUID-group encoding used by the
-// department / global-setting seeds: 0001 = ArcaAI.
-// Templates use the `71…` prefix; their initial versions use
-// the matching `72…` prefix (see customerVersionId below). The CUSTOM
-// (cardiology) template is attached to that tenant's own CARD department.
+// The four ArcaAI demo templates that lived here (`ArcaAI System Prompt`, `ArcaAI SOAP
+// Summary`, `ArcaAI Writing Style Analysis`, `ArcaAI Cardiology Note`) were orphans: nothing
+// bound them, the ArcaAI clinical library (`07b`) and the SYSTEM reference set are what the
+// tenant actually resolves. The two exports stay, EMPTY, because sibling suites iterate them as
+// "every seeded template" lists; the seeder below writes nothing for them.
 // =============================================================================
-const CUSTOMER_TEMPLATE_IDS = {
-  // ArcaAI (0001)
-  ARCAAI_SYSTEM: '71000000-0000-0000-0001-000000000001',
-  ARCAAI_SUMMARY: '71000000-0000-0000-0001-000000000002',
-  ARCAAI_DNA: '71000000-0000-0000-0001-000000000003',
-  ARCAAI_CARD: '71000000-0000-0000-0001-000000000004',
-} as const;
 
-// The initial version of each customer template reuses the template UUID with
-// the `72…` (PromptVersion) prefix so the cross-reference stays deterministic
-// and idempotent without a parallel hand-maintained map.
-const customerVersionId = (templateId: string): string => `72${templateId.slice(2)}`;
+export const CUSTOMER_PROMPT_TEMPLATES: ReadonlyArray<(typeof DEFAULT_PROMPT_TEMPLATES)[number]> = [];
 
-export const CUSTOMER_PROMPT_TEMPLATES = [
-  // --- ArcaAI ------------------------------------------------------------
-  {
-    id: CUSTOMER_TEMPLATE_IDS.ARCAAI_SYSTEM,
-    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    name: 'ArcaAI System Prompt',
-    description: 'ArcaAI house system prompt for ambient clinical documentation',
-    content:
-      'You are ArcaAI, an ambient clinical documentation assistant. Produce accurate, concise notes from the consultation. Preserve the conversation language, use standard medical terminology, never invent findings, and keep all patient identifiers confidential. Format output according to the active department template.',
-    category: 'SYSTEM',
-    variables: declareTypedVariables({
-      patient_name: { type: 'string', required: true },
-      department: { type: 'string', required: false },
-    }),
-    currentVersionNumber: 1,
-    departmentId: null,
-    tags: ['arcaai', 'system'],
-  },
-  {
-    id: CUSTOMER_TEMPLATE_IDS.ARCAAI_SUMMARY,
-    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    name: 'ArcaAI SOAP Summary',
-    description: 'ArcaAI SOAP-format clinical summary tuned for outpatient encounters',
-    content:
-      'Generate a SOAP-format clinical summary for an ArcaAI outpatient encounter.\n\n- Subjective: chief complaint, HPI, relevant history\n- Objective: vitals, examination findings, available investigations\n- Assessment: working diagnosis and key differentials\n- Plan: medications, referrals, follow-up timeline, patient education\n\nUse concise clinical language and flag any critical values.',
-    category: 'SUMMARY',
-    variables: declareTypedVariables({
-      patient_name: { type: 'string', required: true },
-      chief_complaint: { type: 'string', required: true },
-      department: { type: 'string', required: false },
-    }),
-    currentVersionNumber: 1,
-    departmentId: null,
-    tags: ['arcaai', 'soap', 'summary'],
-  },
-  {
-    id: CUSTOMER_TEMPLATE_IDS.ARCAAI_DNA,
-    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    name: 'ArcaAI Writing Style Analysis',
-    description: 'ArcaAI prompt for analysing a clinician writing style (DNA)',
-    content:
-      "Analyse the clinician's documentation style from the supplied ArcaAI transcripts and notes. Extract sentence-structure preferences, terminology and abbreviation habits, section ordering, and tone. Output a structured style profile with confidence scores that can steer future summaries to match this clinician.\n\nDo not reproduce, quote, or paraphrase any patient name, identifier, date, medication, dose, or other encounter-specific fact from the source material — describe stylistic patterns only, never patient content.",
-    category: 'DNA_ANALYSIS',
-    variables: declareTypedVariables({
-      physician_id: { type: 'string', required: true },
-      sample_count: { type: 'number', required: false },
-    }),
-    // PHI containment: this is the tenant whose DNA feature is
-    // LIVE today (the former `14-pipeline-policy.ts` ARCAAI_PIPELINE_POLICY_OVERRIDE, retired by TASK-861,
-    // sets `dnaStyleEnabled: true`), so the schema constraint that closes the
-    // free-text output defect must be seeded onto ArcaAI's OWN copy of the
-    // template — `listPromptTemplates` resolves strictly by `tenantId`, so
-    // the DEFAULT_TENANT_ID fix above does not reach this tenant's
-    // generations on its own.
-    metaData: { promptConfig: DNA_PROMPT_CONFIG } as Prisma.InputJsonValue,
-    currentVersionNumber: 1,
-    departmentId: null,
-    tags: ['arcaai', 'dna', 'writing-style'],
-  },
-  {
-    id: CUSTOMER_TEMPLATE_IDS.ARCAAI_CARD,
-    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    name: 'ArcaAI Cardiology Note',
-    description: 'ArcaAI cardiology-specific documentation prompt',
-    content:
-      'Generate cardiology documentation for ArcaAI. Capture cardiac history, relevant vitals (BP, HR, rhythm), ECG findings when present, and the cardiovascular examination. Use cardiology-standard terminology (LVEF, NYHA, STEMI) and highlight any time-critical findings.',
-    category: 'CUSTOM',
-    variables: declareTypedVariables({
-      patient_name: { type: 'string', required: true },
-      ecg_results: { type: 'string', required: false },
-    }),
-    currentVersionNumber: 1,
-    // departmentId is null: the former ArcaAI CARD department was retired in
-    // The ArcaAI tenant now carries the 7 v1 clinica
-    // departments). This demo cross-tenant-switcher template stays as a
-    // tenant-level CUSTOM cardiology prompt with no department binding.
-    departmentId: null,
-    tags: ['arcaai', 'cardiology'],
-  },
-];
-
-export const CUSTOMER_PROMPT_VERSIONS = CUSTOMER_PROMPT_TEMPLATES.map((t) => ({
-  id: customerVersionId(t.id),
-  tenantId: t.tenantId,
-  promptTemplateId: t.id,
-  versionNumber: 1,
-  content: t.content,
-  variables: t.variables,
-  changeReason: 'Initial version',
-  changedBy: SYSTEM_USER_ID,
-}));
+export const CUSTOMER_PROMPT_VERSIONS: ReadonlyArray<(typeof DEFAULT_PROMPT_VERSIONS)[number]> = [];
 
 /**
  * Extra historical `PromptVersion` rows layered on top of `DEFAULT_PROMPT_VERSIONS`
@@ -1789,6 +1686,112 @@ export const EXTRA_PROMPT_VERSIONS = [
   },
 ];
 
+// =============================================================================
+// GENERAL MEDICINE CONSULTATION SUMMARY (TASK-930 §8.3)
+//
+// The template the `general-medicine-summarization` agent binds. Derived from the ArcaAI
+// General Medicine v3 corpus (`07b-arcaai-clinical-content-v3.ts`: SAIL discipline, the
+// source-of-truth tiers, gated + annotated ASR name repair, third person / past tense, omit
+// empty headings) but written in the PARTIAL / INCREMENTAL register: it runs on every live turn
+// over a growing transcript and re-emits the running note, so it never treats the transcript as
+// finished and never closes a section. The finalized note is `casenote-finalization`'s job.
+//
+// Every variable is DECLARED, and the agent binds every one (`25-agents.ts`, F6): the nine
+// §8.2 context fields ride in through `{{trigger.context.*}}`, and the two document-template
+// heading lists are bound as CONSTANTS from `27-document-template-library.ts` — there is no
+// document-template binding kind on `Agent.instruction` (only `{ value }` | `{ path }`), so the
+// shape is carried as text and selected in the prompt by `visit_type`.
+//
+// Global (`DEFAULT_TENANT_ID`) AUTHORS the row; SYSTEM carries the promoted copy with
+// `sourceTemplateId` pointing back — the same provenance `PromptManagementService.cloneFromSystem`
+// stamps on a clone, so proof #9 cannot tell a seeded promotion from a real one.
+// =============================================================================
+
+export const SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000002';
+const GENERAL_MEDICINE_SUMMARY_VERSION_IDS = {
+  GLOBAL: '72000000-0000-0000-0000-000000000051',
+  SYSTEM: '72000000-0000-0000-0004-000000000002',
+} as const;
+
+/** Declared in the order the body reads them; the agent binds each by name. */
+export const GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES: readonly string[] = [
+  'visit_type',
+  'current_department',
+  'language',
+  'safe_age',
+  'safe_dob',
+  'safe_gender',
+  'chief_complaint',
+  'formatted_vitals',
+  'formatted_previous_visits',
+  'new_visit_headings',
+  'revisit_headings',
+];
+
+export const GENERAL_MEDICINE_SUMMARY_CONTENT =
+  'You are an expert medical scribe with postgraduate training in Medicine and extensive EMR documentation experience, following SAIL scoring best practices (logical organization, clinical relevance, clarity, no redundancy).\n\n' +
+  'You maintain the RUNNING consultation note for a {{current_department}} {{visit_type}} encounter while the consultation is still in progress. The transcript you receive is PARTIAL and grows on every turn: re-emit the whole note each time, extend a section when the transcript adds to it, revise it when the transcript corrects it, and never treat the conversation as finished — no closing summary, no sign-off, no "end of consultation".\n\n' +
+  '=== SOURCE-OF-TRUTH PROTOCOL (binding) ===\n' +
+  'T1 TRANSCRIPT of today\'s encounter — the only admissible source for what was reported, examined, found, discussed, decided, advised, prescribed or ordered today.\n' +
+  'T2 ENCOUNTER METADATA — age {{safe_age}}, date of birth {{safe_dob}}, gender {{safe_gender}}, presenting complaint "{{chief_complaint}}".\n' +
+  'T3 RECENT VITALS — {{formatted_vitals}}\n' +
+  'T4 PREVIOUS VISITS (pre-summary of prior case notes, most recent first, each fact stamped with the date it was recorded) — {{formatted_previous_visits}}\n' +
+  'Higher tiers win every conflict. A T3/T4 fact may appear ONLY where a heading calls for history, must keep its recorded date, and must never be written as if it were said or found today.\n\n' +
+  '=== NOTE SHAPE ===\n' +
+  'Use EXACTLY the headings of the document template that matches the visit type, in this order, and no others:\n' +
+  '- new-visit: {{new_visit_headings}}\n' +
+  '- revisit: {{revisit_headings}}\n' +
+  'Omit any heading the transcript has not yet reached — omitting a heading is always correct, inventing content under it never is. Write every section as concise clinical prose or short bullets, third person, past tense.\n\n' +
+  '=== RULES ===\n' +
+  '1. Include only what the doctor actually said, found, decided or ordered; never add AI-generated recommendations, differentials or plans.\n' +
+  '2. State medication names, doses, routes and frequencies exactly as spoken; if a dose changed against T4, show the previous dose in brackets.\n' +
+  '3. Document negative history only when it was explicitly stated today.\n' +
+  '4. ASR terminology repair: when a drug, test or condition name is clearly mis-transcribed and the intended term is unambiguous from context, write the intended term and annotate it (transcribed as "…"). Never repair numbers, doses, dates, laterality or anatomical site.\n' +
+  '5. Write all content values in the conversation language ({{language}}); keep the headings in English.\n' +
+  '6. Do not carry over information from any other patient. Treat each request independently.\n' +
+  '7. Never include names, identifiers, addresses or contact details in the note body.\n\n' +
+  'Output the running note as Markdown: one `##` heading per section present, nothing before the first heading and nothing after the last section.';
+
+const GENERAL_MEDICINE_SUMMARY_VARIABLES = declareTypedVariables(
+  Object.fromEntries(GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES.map((name) => [name, { type: 'string' as const, required: name !== 'chief_complaint' }])),
+);
+
+const generalMedicineSummaryRow = (tenantId: string, id: string, sourceTemplateId: string | null) => ({
+  id,
+  tenantId,
+  name: 'General Medicine Consultation Summary',
+  description:
+    'The running (partial, per-turn) General Medicine consultation note, derived from the ArcaAI General Medicine v3 corpus. Bound by the `general-medicine-summarization` agent; the document-template headings for the visit type ride in as variables.',
+  content: GENERAL_MEDICINE_SUMMARY_CONTENT,
+  category: 'SUMMARY' as PromptTemplateCategory,
+  status: 'APPROVED' as PromptTemplateStatus,
+  scope: 'TENANT_DEFAULT' as PromptTemplateScope,
+  variables: GENERAL_MEDICINE_SUMMARY_VARIABLES as Prisma.InputJsonValue,
+  currentVersionNumber: 1,
+  approvedVersionNumber: 1,
+  departmentId: null as string | null,
+  sourceTemplateId,
+  templateLocked: false,
+  tags: ['slug:general-medicine-consultation-summary', 'specialty:general-medicine', 'register:partial-summary'],
+});
+
+/** Global authors; SYSTEM is the promoted copy (`sourceTemplateId` → the Global row). */
+export const GENERAL_MEDICINE_SUMMARY_TEMPLATES = [
+  generalMedicineSummaryRow(DEFAULT_TENANT_ID, TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY, null),
+  generalMedicineSummaryRow(SYSTEM_TENANT_ID, SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY),
+];
+
+export const GENERAL_MEDICINE_SUMMARY_VERSIONS = GENERAL_MEDICINE_SUMMARY_TEMPLATES.map((template) => ({
+  id: template.tenantId === SYSTEM_TENANT_ID ? GENERAL_MEDICINE_SUMMARY_VERSION_IDS.SYSTEM : GENERAL_MEDICINE_SUMMARY_VERSION_IDS.GLOBAL,
+  tenantId: template.tenantId,
+  promptTemplateId: template.id,
+  versionNumber: 1,
+  content: template.content,
+  variables: template.variables,
+  changeReason: template.sourceTemplateId ? 'Promoted from the Global playground (TASK-930 §8.3)' : 'Initial version (TASK-930 §8.3)',
+  changedBy: SYSTEM_USER_ID,
+}));
+
 export const seedPromptTemplate = async (client: CorePrismaClient) => {
   console.log('Seeding prompt templates...');
   for (const template of DEFAULT_PROMPT_TEMPLATES) {
@@ -1838,38 +1841,14 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
 
   console.log(`Seeded ${DEFAULT_PROMPT_VERSIONS.length + EXTRA_PROMPT_VERSIONS.length} prompt versions`);
 
-  // Customer-tenant templates + initial versions.
-  console.log('Seeding customer-tenant prompt templates...');
-  for (const template of CUSTOMER_PROMPT_TEMPLATES) {
-    const { variables, ...rest } = template;
-    const data = {
-      ...rest,
-      category: rest.category as PromptTemplateCategory,
-      // Publish clinician-facing templates (keep DNA DRAFT) so every customer
-      // tenant has >= 1 resolvable template — pinned, or it resolves to nothing.
-      ...resolvePromptPublication(rest),
-      ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
-    };
-    await client.promptTemplate.upsert({
-      where: { id: template.id },
-      update: data,
-      create: data,
-    });
+  // TASK-930 §8.3 — the General Medicine consultation summary, Global + SYSTEM. Idempotent
+  // upsert-by-id like every row above; `variables` is part of the row on purpose (F6 declares).
+  console.log('Seeding the General Medicine consultation summary template (Global + SYSTEM)...');
+  for (const template of GENERAL_MEDICINE_SUMMARY_TEMPLATES) {
+    await client.promptTemplate.upsert({ where: { id: template.id }, update: template, create: template });
   }
-  console.log(`Seeded ${CUSTOMER_PROMPT_TEMPLATES.length} customer-tenant prompt templates`);
-
-  console.log('Seeding customer-tenant prompt versions...');
-  for (const version of CUSTOMER_PROMPT_VERSIONS) {
-    const { variables, ...rest } = version;
-    const data = {
-      ...rest,
-      ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
-    };
-    await client.promptVersion.upsert({
-      where: { id: version.id },
-      update: data,
-      create: data,
-    });
+  for (const version of GENERAL_MEDICINE_SUMMARY_VERSIONS) {
+    await client.promptVersion.upsert({ where: { id: version.id }, update: version, create: version });
   }
-  console.log(`Seeded ${CUSTOMER_PROMPT_VERSIONS.length} customer-tenant prompt versions`);
+  console.log(`Seeded ${GENERAL_MEDICINE_SUMMARY_TEMPLATES.length} General Medicine summary templates + ${GENERAL_MEDICINE_SUMMARY_VERSIONS.length} versions`);
 };
