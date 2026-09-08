@@ -365,7 +365,6 @@ test.describe('TASK-932 R-1 — the legacy settings ROW list is tenant-pinned', 
  * with rate limiting ON.
  */
 const SEEDED_ELSEWHERE_KEY = 'rate-limit.enabled';
-const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 test.describe('TASK-932 — a platform row seeded under another namespace is adopted, not duplicated', () => {
   test('the seeded version is reported, the write lands on THAT row, and one SYSTEM row remains', async ({ request }) => {
