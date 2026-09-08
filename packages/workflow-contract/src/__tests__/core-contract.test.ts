@@ -130,18 +130,14 @@ describe('the `core` palette is registered (A1)', () => {
     }
   });
 
-  it('marks every stt.* node deprecated, replaced by core.agent (TASK-861 §step 10, owned here)', () => {
-    const stt = Object.values(WORKFLOW_NODE_REGISTRY).filter((d) => d.paletteKey === 'stt');
-    expect(stt).toHaveLength(8);
-    for (const descriptor of stt) {
-      expect(descriptor.deprecated).toBe(true);
-      expect(descriptor.replacedBy).toBe('core.agent');
-      expect(isDeprecatedNodeType(descriptor.key)).toBe(true);
-      // TASK-867 (the TASK-861 step-10 follow-up): the whole palette is unimplemented, so
-      // `nodeInfo()` hides it from the compiler and no stt graph compiles any more.
-      expect(descriptor.implemented).toBe(false);
-      expect(nodeInfo(descriptor.key)).toBeUndefined();
-    }
+  it('leaves no deprecated node type behind — the legacy palettes are gone (TASK-893 Phase 4)', () => {
+    // Until Phase 4 this asserted the eight `stt.*` descriptors were `deprecated: true` /
+    // `implemented: false`, the shape TASK-861 step 10 left them in. The whole deprecated
+    // vocabulary is now DELETED rather than marked, so the invariant that replaces it is that
+    // the registry has nothing left to migrate away from.
+    const deprecated = Object.values(WORKFLOW_NODE_REGISTRY).filter((d) => d.deprecated === true);
+    expect(deprecated).toEqual([]);
+    expect(Object.values(WORKFLOW_NODE_REGISTRY).filter((d) => !d.implemented)).toEqual([]);
     expect(isDeprecatedNodeType('core.agent')).toBe(false);
     expect(isDeprecatedNodeType('nope')).toBe(false);
   });
