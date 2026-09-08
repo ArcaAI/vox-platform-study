@@ -48,6 +48,7 @@ import {
   EmptyTitle,
 } from '@arcaai/ui';
 import { IconChevronLeft, IconChevronRight, IconDots, IconLock, IconPencil, IconPlus, IconTopologyStar3, IconX } from '@tabler/icons-react';
+import { ACTION_CATALOGUE } from '@arcaai/workflow-contract';
 import { WorkflowCanvas, layoutWorkflowGraph, type WorkflowCanvasEdge, type WorkflowCanvasNode } from '@arcaai/ui/components/workflow-canvas';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
@@ -233,18 +234,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   // node is currently selected, not just at hydration time.
   const descriptorByType = useMemo(() => new Map(registryNodes.map((descriptor) => [descriptor.type, descriptor])), [registryNodes]);
   const selectedNodeConfigSchema = selectedNode ? (descriptorByType.get(selectedNode.type)?.configSchema ?? undefined) : undefined;
-  // TASK-864 B1 — the `core.action` catalogue IS the set of deprecated types that map onto it,
-  // so the inspector's action list is registry-driven, never a hand-kept mirror of ACTION_CATALOGUE.
+  // TASK-893 — the inspector's action list IS the action catalogue (`ACTION_CATALOGUE`, the
+  // first-class table behind `core.action`), never a filter over deprecated registry types.
   const actionOptions = useMemo(
     () =>
-      registryNodes
-        .filter((descriptor) => descriptor.deprecated === true && descriptor.replacedBy === ACTION_NODE_TYPE)
-        .map((descriptor) => ({ key: descriptor.type, label: humanizeKey(descriptor.type) }))
+      Object.values(ACTION_CATALOGUE)
+        .map((action) => ({ key: action.key, label: humanizeKey(action.key) }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-    [registryNodes],
+    [],
   );
-  const selectedActionSchema =
-    selectedNode?.type === ACTION_NODE_TYPE ? (descriptorByType.get(actionKeyOf(selectedNode.config) ?? '')?.configSchema ?? undefined) : undefined;
+  const selectedActionSchema = selectedNode?.type === ACTION_NODE_TYPE ? ACTION_CATALOGUE[actionKeyOf(selectedNode.config) ?? '']?.configSchema : undefined;
   const celReferences = useMemo(() => celReferencesOf(nodes), [nodes]);
   // TASK-890 §3.14 — the workflow's own guardrail default, for `core.agent`'s effective-value
   // display in the inspector (`GuardrailField`, node scope). `core.trigger` is the graph's one

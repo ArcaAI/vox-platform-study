@@ -9,11 +9,42 @@
  * descriptors would prove only that they agree with the fixture; against the real tables they
  * prove they agree with the contract.
  */
-import { WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
+import { ACTION_CATALOGUE, ACTION_PORTS, ACTION_CONFIG_SCHEMAS, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
 import type { WorkflowNodeDescriptor } from '../../api/types';
 
+/**
+ * TASK-893 Phase 4 — the map carries the ELEVEN node types AND the SEVENTEEN actions, keyed by
+ * action key.
+ *
+ * `effectiveNodePorts` resolves a `core.action` instance by looking its `actionKey` up in THIS
+ * map (`core-ports.ts`). Until Phase 4 every action was also a node type, so the lookup found it
+ * for free; now it does not, and a map of node types alone would make every action instance fall
+ * back to `core.action`'s generic SUPERSET — the canvas would draw six sockets where the action
+ * has one, and `isValidConnection` would accept wires the delegate refuses.
+ *
+ * So the entries below are the wire contract `GET /admin/workflow-nodes` has to satisfy, asserted
+ * here rather than assumed. See the lane report's cross-lane request against that endpoint.
+ */
+const ACTION_DESCRIPTORS = Object.values(ACTION_CATALOGUE).map((a) => ({
+  key: a.key,
+  implemented: true,
+  activityName: a.activityName,
+  classes: a.classes,
+  paletteKey: 'core',
+  critical: a.critical,
+  externalWrite: a.externalWrite,
+  defaultTimeoutSeconds: a.defaultTimeoutSeconds,
+  defaultMaxAttempts: a.defaultMaxAttempts,
+  entitlementKey: a.entitlementKey ?? null,
+  configSchema: ACTION_CONFIG_SCHEMAS[a.key],
+  inputs: ACTION_PORTS[a.key].inputs,
+  outputs: ACTION_PORTS[a.key].outputs,
+  deprecated: false,
+  replacedBy: null,
+}));
+
 export const REGISTRY: ReadonlyMap<string, WorkflowNodeDescriptor> = new Map<string, WorkflowNodeDescriptor>(
-  Object.values(WORKFLOW_NODE_REGISTRY).map((d) => [
+  [...Object.values(WORKFLOW_NODE_REGISTRY), ...ACTION_DESCRIPTORS].map((d) => [
     d.key,
     {
       type: d.key,

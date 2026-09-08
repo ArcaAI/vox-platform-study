@@ -35,6 +35,11 @@ from harness.temporal.interpreter.run_events import (
     run_event_stream_key,
 )
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
+from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
+
+#: TASK-893 — this suite drives the interpreter through the retired `noop`/`passthrough` seed
+#: types, which now exist only as test scaffolding (see `../conftest.py`).
+pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
 
 _BUCKET = "harness-claim-check"
 TENANT = "22222222-2222-2222-2222-222222222222"
@@ -113,7 +118,7 @@ async def _run(body: dict) -> tuple[str, object]:
             env.client,
             task_queue=tq,
             workflows=[WorkflowInterpreter],
-            activities=INTERPRETER_ACTIVITIES,
+            activities=[*INTERPRETER_ACTIVITIES, *SCAFFOLD_ACTIVITIES],
         ):
             handle = await env.client.start_workflow(
                 WorkflowInterpreter.run,

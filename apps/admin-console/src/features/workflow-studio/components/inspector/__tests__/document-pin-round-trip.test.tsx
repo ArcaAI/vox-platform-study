@@ -65,8 +65,12 @@ function stubCatalog(templates: unknown[] = [catalogRow(), catalogRow({ id: OTHE
   );
 }
 
+const AGENT_REF = { slug: 'discharge-summariser' } as const;
+
+/** TASK-893 Phase 4 — `generate.text` is retired; the generation node is `core.agent`, which is
+ *  the one type `classesOf` resolves to `generation` and therefore the one document-pin carrier. */
 function node(config: Record<string, unknown>): GraphStoreNode {
-  return { id: 'generate_note', type: 'generate.text', position: { x: 10, y: 20 }, safetyClasses: [], config };
+  return { id: 'generate_note', type: 'core.agent', position: { x: 10, y: 20 }, safetyClasses: [], config: { agentRef: AGENT_REF, ...config } };
 }
 
 beforeAll(() => {
@@ -109,8 +113,8 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
     stubCatalog();
     renderWithProviders(
       <InspectorPanel tab="config" onTabChange={vi.fn()}
-        node={node({ taskKey: 'text.finalize', documentTemplateId: TEMPLATE_ID, documentVersionNumber: PINNED_VERSION })}
-        configSchema={NODE_CONFIG_SCHEMAS['generate.text']}
+        node={node({ documentTemplateId: TEMPLATE_ID, documentVersionNumber: PINNED_VERSION })}
+        configSchema={NODE_CONFIG_SCHEMAS['core.agent']}
         problems={[]}
         onConfigChange={vi.fn()}
       />,
@@ -127,14 +131,15 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
     const onConfigChange = vi.fn();
     renderWithProviders(
       <InspectorPanel tab="config" onTabChange={vi.fn()}
-        node={node({ taskKey: 'text.finalize', documentTemplateId: TEMPLATE_ID, documentVersionNumber: PINNED_VERSION })}
-        configSchema={NODE_CONFIG_SCHEMAS['generate.text']}
+        node={node({ documentTemplateId: TEMPLATE_ID, documentVersionNumber: PINNED_VERSION })}
+        configSchema={NODE_CONFIG_SCHEMAS['core.agent']}
         problems={[]}
         onConfigChange={onConfigChange}
       />,
     );
 
-    fireEvent.change(await screen.findByLabelText(/^System Prompt/), { target: { value: 'Be concise.' } });
+    // A plain number field on the same node — the document control must not disturb it.
+    fireEvent.change(await screen.findByLabelText(/^Timeout Seconds/), { target: { value: '42' } });
 
     await waitFor(() => expect(onConfigChange).toHaveBeenCalled());
     const emitted = onConfigChange.mock.calls.at(-1)?.[0] as Record<string, unknown>;
@@ -142,13 +147,13 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
     expect(emitted.documentVersionNumber).toBe(PINNED_VERSION);
   });
 
-  it('KEEPS the DD-11 prompt pin when the document binding is edited through its own control', async () => {
+  it('KEEPS the agent reference when the document binding is edited through its own control', async () => {
     stubCatalog();
     const onConfigChange = vi.fn();
     renderWithProviders(
       <InspectorPanel tab="config" onTabChange={vi.fn()}
-        node={node({ taskKey: 'text.finalize', promptTemplateId: '11111111-1111-4111-8111-111111111111', promptVersionNumber: 4 })}
-        configSchema={NODE_CONFIG_SCHEMAS['generate.text']}
+        node={node({})}
+        configSchema={NODE_CONFIG_SCHEMAS['core.agent']}
         problems={[]}
         onConfigChange={onConfigChange}
       />,
@@ -160,12 +165,7 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
 
     await waitFor(() => expect(onConfigChange).toHaveBeenCalled());
     const emitted = onConfigChange.mock.calls.at(-1)?.[0] as Record<string, unknown>;
-    expect(emitted).toEqual({
-      taskKey: 'text.finalize',
-      promptTemplateId: '11111111-1111-4111-8111-111111111111',
-      promptVersionNumber: 4,
-      documentTemplateId: TEMPLATE_ID,
-    });
+    expect(emitted).toEqual({ agentRef: AGENT_REF, documentTemplateId: TEMPLATE_ID });
   });
 
   it('KEEPS the binding across the full graph serialization round trip (the shape actually PATCHed)', () => {
@@ -174,8 +174,8 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
       nodes: [
         {
           id: 'generate_note',
-          type: 'generate.text',
-          config: { taskKey: 'text.finalize', documentTemplateId: TEMPLATE_ID, documentVersionNumber: PINNED_VERSION },
+          type: 'core.agent',
+          config: { agentRef: AGENT_REF, documentTemplateId: TEMPLATE_ID, documentVersionNumber: PINNED_VERSION },
           position: { x: 1, y: 2 },
         },
       ],
@@ -193,7 +193,7 @@ describe('DD-2 document binding — round-trip survival through the inspector', 
   it('leaves an UNPINNED node unpinned — round-tripping must never invent a pin, least of all a 0', () => {
     const graph: WorkflowGraph = {
       version: 1,
-      nodes: [{ id: 'follows', type: 'generate.text', config: { taskKey: 'text.finalize', documentTemplateId: TEMPLATE_ID }, position: { x: 0, y: 0 } }],
+      nodes: [{ id: 'follows', type: 'core.agent', config: { agentRef: AGENT_REF, documentTemplateId: TEMPLATE_ID }, position: { x: 0, y: 0 } }],
       edges: [],
     };
 

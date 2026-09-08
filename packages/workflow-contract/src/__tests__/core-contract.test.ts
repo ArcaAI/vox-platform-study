@@ -6,10 +6,9 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../compiler';
 import type { CompilerContext } from '../compiler';
+import { ACTION_CATALOGUE, actionDelegateOf } from '../action-catalogue';
 import {
-  ACTION_CATALOGUE,
   actionConfigSchemaOf,
-  actionDelegateOf,
   branchHandlesOf,
   coreNodeConfigProblems,
   declaredIoSchemas,
@@ -131,18 +130,14 @@ describe('the `core` palette is registered (A1)', () => {
     }
   });
 
-  it('marks every stt.* node deprecated, replaced by core.agent (TASK-861 §step 10, owned here)', () => {
-    const stt = Object.values(WORKFLOW_NODE_REGISTRY).filter((d) => d.paletteKey === 'stt');
-    expect(stt).toHaveLength(8);
-    for (const descriptor of stt) {
-      expect(descriptor.deprecated).toBe(true);
-      expect(descriptor.replacedBy).toBe('core.agent');
-      expect(isDeprecatedNodeType(descriptor.key)).toBe(true);
-      // TASK-867 (the TASK-861 step-10 follow-up): the whole palette is unimplemented, so
-      // `nodeInfo()` hides it from the compiler and no stt graph compiles any more.
-      expect(descriptor.implemented).toBe(false);
-      expect(nodeInfo(descriptor.key)).toBeUndefined();
-    }
+  it('leaves no deprecated node type behind — the legacy palettes are gone (TASK-893 Phase 4)', () => {
+    // Until Phase 4 this asserted the eight `stt.*` descriptors were `deprecated: true` /
+    // `implemented: false`, the shape TASK-861 step 10 left them in. The whole deprecated
+    // vocabulary is now DELETED rather than marked, so the invariant that replaces it is that
+    // the registry has nothing left to migrate away from.
+    const deprecated = Object.values(WORKFLOW_NODE_REGISTRY).filter((d) => d.deprecated === true);
+    expect(deprecated).toEqual([]);
+    expect(Object.values(WORKFLOW_NODE_REGISTRY).filter((d) => !d.implemented)).toEqual([]);
     expect(isDeprecatedNodeType('core.agent')).toBe(false);
     expect(isDeprecatedNodeType('nope')).toBe(false);
   });
@@ -224,20 +219,18 @@ describe('the action catalogue', () => {
     expect(keys).toContain('consultation.phiHop');
     expect(keys).toContain('guard.groundedness');
     expect(keys).toContain('prompt.template_ref');
-    for (const excluded of ['consultation.synthesize', 'consultation.hitlGate', 'agentic.agent', 'agentic.input', 'output.deliver', 'input.context_binding', 'generate.text']) {
+    // TASK-893: the agent-shaped keys are `core.agent` now, and the primitives never were actions.
+    for (const excluded of ['consultation.synthesize', 'consultation.hitlGate', 'consultation.extractEntities', 'agent.ner', 'agentic.agent', 'agentic.input', 'output.deliver', 'input.context_binding', 'generate.text']) {
       expect(keys).not.toContain(excluded);
     }
-    for (const key of keys) expect(WORKFLOW_NODE_REGISTRY[key]).toBeDefined();
   });
 
-  it('a core.action instance takes its delegate`s ports and config schema', () => {
+  it('a core.action instance takes its catalogue descriptor`s ports and config schema', () => {
     const config = { actionKey: 'consultation.phiHop' };
-    expect(actionDelegateOf(config)?.key).toBe('consultation.phiHop');
-    expect(effectivePorts('core.action', config)).toEqual({
-      inputs: WORKFLOW_NODE_REGISTRY['consultation.phiHop'].inputs,
-      outputs: WORKFLOW_NODE_REGISTRY['consultation.phiHop'].outputs,
-    });
-    expect(actionConfigSchemaOf(config)).toBe(NODE_CONFIG_SCHEMAS['consultation.phiHop']);
+    const descriptor = ACTION_CATALOGUE['consultation.phiHop'];
+    expect(actionDelegateOf(config)).toBe(descriptor);
+    expect(effectivePorts('core.action', config)).toEqual(descriptor.ports);
+    expect(actionConfigSchemaOf(config)).toBe(descriptor.configSchema);
     expect(actionDelegateOf({ actionKey: 'nope' })).toBeUndefined();
     expect(effectivePorts('core.action', { actionKey: 'nope' })).toEqual({ inputs: WORKFLOW_NODE_REGISTRY['core.action'].inputs, outputs: WORKFLOW_NODE_REGISTRY['core.action'].outputs });
   });

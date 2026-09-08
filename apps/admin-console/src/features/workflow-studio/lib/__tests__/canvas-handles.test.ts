@@ -32,8 +32,13 @@ describe('primaryIoFor', () => {
   // gets a dot — `core.start` (deprecated, but the entry of every seeded graph today) would
   // otherwise be unwireable on the canvas.
   it('counts the ORDERING sockets too, so an ordering-only node is still wireable', () => {
-    expect(primaryIoFor(REGISTRY, 'core.start')).toEqual({ hasInput: false, hasOutput: true });
-    expect(primaryIoFor(REGISTRY, 'core.end')).toEqual({ hasInput: true, hasOutput: false });
+    // The retired `core.start`/`core.end` markers were the ordering-only pair. Their successors
+    // are the graph boundaries: `core.trigger` has no input at all, `core.output` no output, and
+    // both still resolve because the ordering handles (`next` / `after`) count.
+    expect(primaryIoFor(REGISTRY, 'core.trigger')).toEqual({ hasInput: false, hasOutput: true });
+    expect(primaryIoFor(REGISTRY, 'core.output')).toEqual({ hasInput: true, hasOutput: false });
+    // `session.timeout` is the ordering-only ACTION — `after` in, `next` out, no data socket.
+    expect(primaryIoFor(REGISTRY, 'session.timeout')).toEqual({ hasInput: true, hasOutput: true });
   });
 
   it('gives a canvas comment no dots at all, and an unknown type none either', () => {

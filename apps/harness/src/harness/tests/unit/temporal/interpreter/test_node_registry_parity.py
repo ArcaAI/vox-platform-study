@@ -99,97 +99,41 @@ class TestNodeRegistryParity:
         implemented = [entry for entry in _load_fixture_entries() if entry["implemented"]]
         assert _project_registry() == implemented
 
-    def test_unimplemented_fixture_entries_have_no_spec_and_no_served_activity(self):
-        """TASK-867 — the asymmetry documented in the module docstring, pinned from this side:
-        an `implemented: false` entry is the retired `stt` palette and nothing else, it has no
-        `NodeSpec` here, and the worker serves no activity under its (historical) name — so the
-        deleted `nodes/stt_placeholder.py` cannot quietly come back under either registration.
-        """
-        unimplemented = [entry for entry in _load_fixture_entries() if not entry["implemented"]]
-        assert [entry["key"] for entry in unimplemented] == RETIRED_STT_KEYS
-        served = _served_activity_names()
-        for entry in unimplemented:
-            assert entry["key"] not in NODE_REGISTRY, entry["key"]
-            assert entry["activityName"] not in served, entry["activityName"]
+    def test_the_cross_language_asymmetry_is_closed(self):
+        """TASK-893 Phase 4 — the asymmetry this guard was written for is GONE.
 
-    def test_carries_exactly_the_seed_consultation_agentic_and_core_keys(self):
+        It used to be that an `implemented: false` fixture entry existed on the TypeScript side
+        only: `registry.py` cannot hold a spec without a registered activity callable, so the
+        eight retired `stt.*` keys were kept there for the deprecation window and asserted absent
+        here. The deprecated vocabulary is now DELETED on both sides, so every fixture entry is
+        implemented and the two registries are a plain one-to-one mapping.
+
+        What still has to hold is the half that was never about the asymmetry: the retired keys
+        must not come back under EITHER registration — not as a spec, and not as an activity the
+        worker serves under a historical name.
+        """
+        assert [entry for entry in _load_fixture_entries() if not entry["implemented"]] == []
+        served = _served_activity_names()
+        for key in RETIRED_STT_KEYS:
+            assert key not in NODE_REGISTRY, key
+        for name in ("interpreter.stt_asr_engine", "interpreter.stt_audio_input", "interpreter.stt_vad"):
+            assert name not in served, name
+
+    def test_carries_exactly_the_eleven_core_keys(self):
+        # TASK-893 Phase 4: the seed / consultation / endpoint / agent-catalogue / agentic keys
+        # were deleted with their node types. The seventeen ACTIONS behind `core.action` are NOT
+        # node types — they live in `action_catalogue.py` and have their own parity guard
+        # (`test_action_catalogue_parity.py`).
         assert sorted(NODE_REGISTRY.keys()) == [
-            # lane A — the target catalogue and the guards.
-            "agent.discharge_summary",
-            "agent.dna_redaction",
-            # TASK-882 -- the DNA writing-style gate.
-            "agent.dna_style",
-            "agent.feedback",
-            # Lane R (R1) — the realtime grammar/spelling pass.
-            "agent.grammar",
-            # Lane N — the one catalogue entry that is not a delegation:
-            # important findings had no engine anywhere to delegate to.
-            "agent.important_findings",
-            "agent.ner",
-            "agent.normalization",
-            "agent.presummarization",
-            "agent.retrieval",
-            "agent.summarization",
-            "agent.transcription",
-            # the GENERIC (`agentic`) catalogue: the eight node types of the
-            # owner's specification, closing program finding F-12's have/missing table.
-            # Sorted position, not catalogue position -- Python's `sorted` puts `agentic.*`
-            # after every `agent.*` because "." sorts before "i".
-            "agentic.agent",
-            "agentic.data",
-            "agentic.guardrail",
-            "agentic.input",
-            "agentic.loop",
-            "agentic.output",
-            "agentic.stt",
-            "agentic.tts",
-            "consultation.assemblePrompt",
-            "consultation.bindTerminology",
-            "consultation.captureBinding",
-            "consultation.consentGate",
-            "consultation.extractEntities",
-            "consultation.finalizeAssurance",
-            "consultation.hitlGate",
-            "consultation.inferentialSensors",
-            "consultation.persistDraft",
-            "consultation.phiHop",
-            "consultation.proposeCorrections",
-            "consultation.realtimeSummary",
-            "consultation.retrieveEvidence",
-            "consultation.sensors",
-            "consultation.suggestions",
-            "consultation.synthesize",
-            # TASK-864 -- the `core` vocabulary, in sorted position.
             "core.action",
             "core.agent",
             "core.classify",
             "core.condition",
             "core.data",
-            "core.end",
             "core.humanReview",
             "core.loop",
             "core.note",
             "core.output",
-            "core.start",
             "core.trigger",
             "core.variable",
-            # the endpoint stage.
-            "feedback.capture",
-            "generate.text",
-            "guard.groundedness",
-            "guard.moderation",
-            "guard.phi",
-            "guardrail.check",
-            # TASK-882 -- the two endpoint stages that had no node type.
-            "harness.finalize",
-            "input.context_binding",
-            "livedoc.stop",
-            "noop",
-            "output.deliver",
-            "passthrough",
-            "prompt.template_ref",
-            "session.timeout",
-            # `stt.*` — RETIRED (TASK-861 step 10 / TASK-867): TypeScript-side only, as
-            # `implemented: false`; see `test_unimplemented_fixture_entries_have_no_spec_...`.
-            "summary.finalize",
         ]

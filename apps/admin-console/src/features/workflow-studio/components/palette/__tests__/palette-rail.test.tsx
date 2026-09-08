@@ -104,11 +104,9 @@ describe('PaletteRail', () => {
     expect(screen.getByText(/utility/i)).toBeTruthy();
   });
 
-  it('TASK-864: a deprecated type is hidden from the rail, and the core group comes first', () => {
-    const DEPRECATED: WorkflowNodeDescriptor = { ...NOOP, type: 'agent.grammar', paletteKey: 'consultation', deprecated: true, replacedBy: 'core.action' };
+  it('TASK-893: the rail hides nothing — every registered type is offered — and the core group comes first', () => {
     const CORE: WorkflowNodeDescriptor = { ...NOOP, type: 'core.agent', paletteKey: 'core', classes: ['agent'] };
-    render(<PaletteRail descriptors={[MANDATORY, DEPRECATED, CORE]} onAddNode={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: new RegExp(humanizeKey('agent.grammar'), 'i') })).toBeNull();
+    render(<PaletteRail descriptors={[MANDATORY, CORE]} onAddNode={vi.fn()} />);
     expect(screen.getByRole('button', { name: new RegExp(humanizeKey('core.agent'), 'i') })).toBeTruthy();
     const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
     expect(headings[0]).toMatch(/core/i);

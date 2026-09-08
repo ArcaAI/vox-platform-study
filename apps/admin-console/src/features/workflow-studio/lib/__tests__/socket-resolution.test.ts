@@ -23,19 +23,27 @@ describe('the primary data pair', () => {
   });
 
   it('resolves through a core.action DELEGATE, not its generic superset', () => {
-    // `consultation.captureBinding.out` is `transcript`; delegating `core.action` to
-    // `consultation.extractEntities` gives it that delegate's `in: transcript`.
-    expect(resolvePrimarySockets(REGISTRY, at('consultation.captureBinding'), at('core.action', { actionKey: 'consultation.extractEntities' }))).toEqual({
-      sourceHandle: 'out',
+    // `core.agent.transcript` is `transcript`; delegating `core.action` to
+    // `consultation.phiHop` gives it that delegate's `in: transcript`.
+    expect(resolvePrimarySockets(REGISTRY, at('core.agent'), at('core.action', { actionKey: 'consultation.phiHop' }), 'transcript')).toEqual({
+      sourceHandle: 'transcript',
       targetHandle: 'in',
+    });
+    // Without the hint the agent's PRIMARY output is `out: text`, which the delegate's
+    // `in: transcript` refuses — so the pair degrades to an ordering edge rather than widening.
+    expect(resolvePrimarySockets(REGISTRY, at('core.agent'), at('core.action', { actionKey: 'consultation.phiHop' }))).toEqual({
+      sourceHandle: 'next',
+      targetHandle: 'after',
     });
   });
 });
 
 describe('the control fallback', () => {
   it('falls back to next -> after when the TARGET has no data input', () => {
-    // A gate emits a control signal, and `consultation.captureBinding` declares `after` only.
-    expect(resolvePrimarySockets(REGISTRY, at('consultation.consentGate'), at('consultation.captureBinding'))).toEqual({
+    // A gate emits a control signal, and `session.timeout` declares `after` only.
+    expect(
+      resolvePrimarySockets(REGISTRY, at('core.action', { actionKey: 'consultation.consentGate' }), at('core.action', { actionKey: 'session.timeout' })),
+    ).toEqual({
       sourceHandle: 'next',
       targetHandle: 'after',
     });
@@ -43,7 +51,7 @@ describe('the control fallback', () => {
 
   it('falls back to next -> after when the SOURCE has no data output', () => {
     // `consultation.finalizeAssurance` produces `contextItemId` and `next` — no `out` at all.
-    expect(resolvePrimarySockets(REGISTRY, at('consultation.finalizeAssurance'), at('core.agent'))).toEqual({
+    expect(resolvePrimarySockets(REGISTRY, at('core.action', { actionKey: 'consultation.finalizeAssurance' }), at('core.agent'))).toEqual({
       sourceHandle: 'next',
       targetHandle: 'after',
     });
@@ -111,8 +119,10 @@ describe('sourceHandleHint — the branch the user actually grabbed', () => {
 });
 
 describe('ANTI-LAUNDERING — the collapse must not widen the lattice', () => {
-  const SOURCE = at('consultation.synthesize');
-  const TARGET = at('consultation.extractEntities');
+  // `consultation.sensors` hands out a `document`; `consultation.phiHop` takes only a
+  // `transcript`. Both are actions since Phase 4, so the pair is expressed through `core.action`.
+  const SOURCE = at('core.action', { actionKey: 'consultation.sensors' });
+  const TARGET = at('core.action', { actionKey: 'consultation.phiHop' });
 
   it('never proposes the document -> transcript data pair', () => {
     const resolved = resolvePrimarySockets(REGISTRY, SOURCE, TARGET);
@@ -157,8 +167,8 @@ describe('ANTI-LAUNDERING — the collapse must not widen the lattice', () => {
  * hint-free and could not see it. Every case here is the hinted twin of one above, and must agree.
  */
 describe('the primary handle id is not an explicit grab', () => {
-  const SOURCE = at('consultation.synthesize');
-  const TARGET = at('consultation.extractEntities');
+  const SOURCE = at('core.action', { actionKey: 'consultation.sensors' });
+  const TARGET = at('core.action', { actionKey: 'consultation.phiHop' });
 
   it('still degrades the anti-laundering pair to an ordering edge when hinted with `out`', () => {
     expect(resolvePrimarySockets(REGISTRY, SOURCE, TARGET, 'out')).toEqual({ sourceHandle: 'next', targetHandle: 'after' });

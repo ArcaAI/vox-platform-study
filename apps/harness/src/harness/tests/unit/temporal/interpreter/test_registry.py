@@ -1,8 +1,13 @@
 """RED-first tests for the interpreter's node-type -> activity registry (Task 4, S-4/S-6).
 
 Mirrors LOOP_ACTION_REGISTRY's shape/discipline (workflows.py:1665-1693): a key with no entry,
-or an entry with implemented=False, is an OBSERVABLE skip, never a silent no-op. The registry
-starts empty of palette nodes ( populates it); ships only noop/passthrough.
+or an entry with implemented=False, is an OBSERVABLE skip, never a silent no-op.
+
+TASK-893 Phase 4 made the registry the ELEVEN ``core.*`` types and nothing else. The seed
+``noop``/``passthrough`` entries and the ``core.start``/``core.end`` boundary markers were
+retired with the rest of the legacy vocabulary; the boundaries are ``core.trigger`` /
+``core.output``, and the seventeen ACTIONS behind ``core.action`` live in
+``action_catalogue.py`` rather than here.
 """
 
 from __future__ import annotations
@@ -12,43 +17,55 @@ from harness.temporal.interpreter.registry import NODE_REGISTRY, NodeSpec
 
 
 class TestRegistryShape:
-    def test_seed_entries_present(self):
-        assert "noop" in NODE_REGISTRY
-        assert "passthrough" in NODE_REGISTRY
+    def test_the_registry_is_exactly_the_core_vocabulary(self):
+        assert sorted(NODE_REGISTRY) == [
+            "core.action",
+            "core.agent",
+            "core.classify",
+            "core.condition",
+            "core.data",
+            "core.humanReview",
+            "core.loop",
+            "core.note",
+            "core.output",
+            "core.trigger",
+            "core.variable",
+        ]
 
     def test_every_entry_is_a_node_spec(self):
         for spec in NODE_REGISTRY.values():
             assert isinstance(spec, NodeSpec)
 
-    def test_seed_entries_are_implemented_and_non_critical(self):
-        for key in ("noop", "passthrough"):
-            spec = NODE_REGISTRY[key]
+    def test_every_entry_is_implemented(self):
+        # The one deliberate asymmetry with the TypeScript registry was the retired `stt.*`
+        # palette, kept there as `implemented=False` and absent here. Phase 4 deleted it, so the
+        # two registries are a plain one-to-one mapping again.
+        for spec in NODE_REGISTRY.values():
             assert spec.implemented is True
-            assert spec.critical is False
-            assert spec.external_write is False
 
     def test_graph_boundary_markers_are_registered_and_dispatchable(self):
-        # `core.start`/`core.end` are the two node types the palette-agnostic structural rules
-        # WF-S-002/003/004/007 are written against. compile() refuses any graph containing an
-        # unimplemented node type, so a marker that is registered but not dispatchable would
-        # leave every graph unpublishable for a different reason than before.
-        for key in ("core.start", "core.end"):
+        # `core.trigger`/`core.output` are the two node types the palette-agnostic structural
+        # rules WF-S-002/003/004/007 select by class (`entry` / `terminal`). compile() refuses
+        # any graph containing an unimplemented node type, so a boundary that is registered but
+        # not dispatchable would leave every graph unpublishable for a different reason.
+        for key in ("core.trigger", "core.output"):
             spec = NODE_REGISTRY[key]
             assert spec.implemented is True
-            assert spec.critical is False
-            assert spec.external_write is False
             assert callable(spec.activity)
+        # The trigger reads; the output DELIVERS, so it is the one boundary that writes out.
+        assert NODE_REGISTRY["core.trigger"].external_write is False
+        assert NODE_REGISTRY["core.output"].external_write is True
 
     def test_boundary_markers_carry_distinct_activity_names(self):
-        assert NODE_REGISTRY["core.start"].activity_name == "interpreter.core_start"
-        assert NODE_REGISTRY["core.end"].activity_name == "interpreter.core_end"
+        assert NODE_REGISTRY["core.trigger"].activity_name == "interpreter.core_trigger"
+        assert NODE_REGISTRY["core.output"].activity_name == "interpreter.core_output"
 
     def test_activity_is_a_callable_reference_not_a_string(self):
         # S-4: routing reaches sanctioned activities via a code-owned registry, never a
         # string dispatched at runtime (see
         for spec in NODE_REGISTRY.values():
             assert callable(spec.activity)
-            assert isinstance(spec.activity, type(interpreter_activities.interpreter_noop))
+            assert isinstance(spec.activity, type(interpreter_activities.emit_run_events))
 
 
 class TestNoActivityReachesApproveSummary:

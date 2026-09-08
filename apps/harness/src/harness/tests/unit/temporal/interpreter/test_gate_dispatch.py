@@ -48,7 +48,13 @@ _GATE_NODE = "n_gate"
 
 
 def _body(*, gates: list | None = None, with_stage_node: bool = True) -> dict:
-    """A minimal config carrying one `passthrough` stage node plus (optionally) one gate."""
+    """A minimal config carrying one annotation stage node plus (optionally) one gate.
+
+    TASK-893 Phase 4: `passthrough` and `consultation.hitlGate` left the vocabulary. The inert
+    stage node is `core.note` (an annotation, which executes nothing), and the durable human wait
+    is `core.humanReview` — the one remaining `kind="child_workflow"` spec, which is what routes
+    a gate to its child workflow.
+    """
     stages = (
         [
             {
@@ -56,8 +62,8 @@ def _body(*, gates: list | None = None, with_stage_node: bool = True) -> dict:
                 "nodes": [
                     {
                         "nodeId": "n1",
-                        "type": "passthrough",
-                        "activity": "interpreter.passthrough",
+                        "type": "core.variable",
+                        "activity": "interpreter.core_variables",
                         "config": {"contextItemId": "ci-1"},
                         "timeoutSeconds": 30,
                         "retry": {
@@ -81,7 +87,7 @@ def _body(*, gates: list | None = None, with_stage_node: bool = True) -> dict:
         "slug": "gate-test",
         "versionNumber": 1,
         "tenantId": "22222222-2222-2222-2222-222222222222",
-        "paletteKey": "consultation",
+        "paletteKey": "core",
         "compiledAt": "2026-08-19T00:00:00.000Z",
         "compilerVersion": "0.1.0",
         "registryChecksum": "abc123",
@@ -102,7 +108,7 @@ def _body(*, gates: list | None = None, with_stage_node: bool = True) -> dict:
 def _gate_row() -> dict:
     return {
         "nodeId": _GATE_NODE,
-        "gateType": "consultation.hitlGate",
+        "gateType": "core.humanReview",
         "blocking": True,
         "timeoutSeconds": 900,
         "onTimeout": "TIMED_OUT",

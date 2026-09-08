@@ -33,7 +33,7 @@ const mockConsultationService = { getById: vi.fn() };
 
 const SUMMARIZATION_CONFIG = {
   formatVersion: 1,
-  stages: [{ stageIndex: 0, nodes: [{ nodeId: 'n0', type: 'generate.text', activity: 'interpreter.generate.text', config: {} }] }],
+  stages: [{ stageIndex: 0, nodes: [{ nodeId: 'n0', type: 'core.agent', activity: 'interpreter.core_agent', config: {} }] }],
   gates: [],
 };
 
@@ -43,7 +43,7 @@ const definition = () => ({
   slug: 'discharge_summary',
   name: 'Discharge Summary',
   description: null,
-  paletteKey: 'summarization',
+  paletteKey: 'core',
   versionNumber: 1,
   compiledConfig: SUMMARIZATION_CONFIG,
 });

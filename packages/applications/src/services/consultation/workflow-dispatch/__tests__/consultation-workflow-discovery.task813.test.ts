@@ -25,7 +25,7 @@ const consultationA = {
   versionNumber: 3,
   name: 'Clinic Intake',
   description: 'The standard intake graph',
-  paletteKey: 'consultation',
+  paletteKey: 'core',
   compiledConfig: { formatVersion: 1, stages: [], checksum: 'abc' },
 };
 const consultationB = { ...consultationA, id: 'wd-2', slug: 'telehealth_v2', name: 'Telehealth', description: null };
@@ -94,7 +94,7 @@ describe('listSelectableForConsultation — the discoverable set', () => {
     deps.assignments.resolve = vi.fn().mockResolvedValue({ workflowDefinitionSlug: 'telehealth_v2', source: 'tenant' });
     const { data } = await makeService(deps).listSelectableForConsultation(TENANT);
 
-    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', null);
+    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'core', null);
     expect(data.find((d) => d.slug === 'telehealth_v2')?.isTenantDefault).toBe(true);
     expect(data.find((d) => d.slug === 'clinic_intake_v1')?.isTenantDefault).toBe(false);
   });
