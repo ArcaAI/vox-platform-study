@@ -307,7 +307,7 @@ TEXT_GENERATION → `general-medicine-summarization`, TTS → `text-to-speech`, 
                  context ← ①.context · in ← ③.out · promptVariables from trigger.context.*
 ⑤ core.agent     casenote-finalization      execution {durable, onEnd}      guardrail {enabled:true}   in ← ④.out
 ⑥ core.humanReview  clinical_finalization, assignRole DOCTOR, timeoutSeconds 3600, allowEdit  in ← ⑤.out
-⑦ core.output    protocols [http, http-sse, socket]; outputSchema {case_note, entities}; onSchemaViolation fail
+⑦ core.output    protocols [http, http-sse, socket]; outputSchema {case_note (required), redactions} — amended 2026-09-08 by lane W1 (D-1/S2): only live audio produces entities; the finalizer returns redactions; onSchemaViolation fail
 ```
 
 **`platform-default-summarization`** (SYSTEM + Global, same slug as today, `core` palette):
