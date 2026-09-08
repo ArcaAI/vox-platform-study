@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { FeatureGateBoundary } from '@/shared/feature-gates/feature-gate-boundary';
 import { ToolsMcpScreen } from '@/features/tools-mcp/components/tools-mcp-screen';
 
 export const metadata: Metadata = { title: 'Tools & MCP' };
@@ -16,7 +17,15 @@ export const metadata: Metadata = { title: 'Tools & MCP' };
  * and a stub left at `(global)/tools-mcp` would resolve to the SAME path and
  * fail the build as a duplicate route. The one-release redirect convention in
  * `13-nextjs-apps.md` covers RENAMED routes; this is a retier, not a rename.
+ *
+ * TASK-932 §3.2: wrapped in `console.tools.mcp.enabled` — a platform-wide
+ * visibility gate, not an authorisation change (rule 13 §Routing); the
+ * backend stays ability-gated exactly as above.
  */
 export default function ToolsMcpPage() {
-  return <ToolsMcpScreen />;
+  return (
+    <FeatureGateBoundary gate="console.tools.mcp.enabled">
+      <ToolsMcpScreen />
+    </FeatureGateBoundary>
+  );
 }
