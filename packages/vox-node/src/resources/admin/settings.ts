@@ -13,9 +13,14 @@ import { AdminResource } from './admin-resource';
 import type { AdminListOptions, AdminListQuery, AdminRequestOptions, IfMatchPrecondition, PaginatedPage } from './admin-resource';
 import type {
   CreateGlobalSettingRequest,
+  EffectiveFeaturesResponse,
   EffectiveSettingResponse,
+  FeatureMatrixResponse,
+  FeatureMatrixWriteBatchRequest,
+  FeatureMatrixWriteResponse,
   GlobalSettingResponse,
   PaginatedResponse,
+  ResetRegistrySettingResponse,
   SecurityPolicyResponse,
   SettingCatalogResponse,
   UpdateGlobalSettingRequest,
@@ -31,8 +36,8 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers GlobalSettingController, SecurityPolicyController, SettingsCatalogController, SettingsRegistryWriteController
- * (12 routes). Several controllers sharing one scope share one
+ * Backed by controllers GlobalSettingController, SecurityPolicyController, SettingsCatalogController, SettingsFeaturesController, SettingsRegistryWriteController
+ * (16 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -175,14 +180,84 @@ export class AdminSettingsResource extends AdminResource {
   /**
    * Resolve the effective value of one non-secret setting for a context (with cascade trace).
    *
+   * A platform-only key answers 404 for a tenant administrator — the catalog does not list it, and this route must not act as a directory for it. A platform admin with no working tenant and no `?tenantId` resolves the SYSTEM (platform) tier rather than being refused.
+   *
    * `GET /api/v1/admin/settings/effective` — `SettingsCatalogController.getEffective`.
    */
   getEffective(
-    options: AdminRequestOptions & { query?: { departmentId?: string; doctorId?: string; key: string; tenantId?: string } } = {},
+    options: AdminRequestOptions & {
+      query?: { departmentId?: string; doctorId?: string; key: string; scope?: 'system' | 'tenant'; tenantId?: string };
+    } = {},
   ): Promise<EffectiveSettingResponse> {
     return this.request<EffectiveSettingResponse>({
       method: 'GET',
       path: 'admin/settings/effective',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Resolve every feature-availability gate for the calling context.
+   *
+   * Caller-scoped: a platform admin with no working tenant gets the SYSTEM (platform) values; with a working tenant, that tenant’s effective values; a tenant admin, its own. `sourceScope` reports which tier answered, so a console can say a value is INHERITED rather than chosen. Values only — never the descriptor inventory, and never a write path.
+   *
+   * `GET /api/v1/admin/settings/features/effective` — `SettingsFeaturesController.getEffectiveFeatures`.
+   */
+  getEffectiveFeatures(options: AdminRequestOptions = {}): Promise<EffectiveFeaturesResponse> {
+    return this.request<EffectiveFeaturesResponse>({
+      method: 'GET',
+      path: 'admin/settings/features/effective',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * The cross-tenant feature matrix: the platform default beside every tenant’s override.
+   *
+   * SUPER_ADMIN only (403 otherwise). `cells[].value === null` means the tenant holds NO row and inherits the platform default; the `system` column is never null. A feature whose `maxScope` is `system` contributes no tenant cells at all — its consumer has no tenant in hand, so a per-tenant row could never be honoured, and the screen disables those columns rather than offering a checkbox the cascade would ignore. Every `version` is read FRESH from the row, never from the settings cache: two admins editing inside one 45s cache window would otherwise compare against the same stale number.
+   *
+   * `GET /api/v1/admin/settings/features/matrix` — `SettingsFeaturesController.getFeatureMatrix`.
+   */
+  getFeatureMatrix(options: AdminRequestOptions = {}): Promise<FeatureMatrixResponse> {
+    return this.request<FeatureMatrixResponse>({
+      method: 'GET',
+      path: 'admin/settings/features/matrix',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Apply a batch of feature-matrix edits.
+   *
+   * SUPER_ADMIN only (403 otherwise). `value: null` on a TENANT cell removes the override so it inherits again; on the `system` cell it rewrites the platform row to the descriptor default. The batch is ORDERED and PARTIAL, not all-or-nothing, and answers 200 either way: every cell that can be applied is, and the rest come back in `errors[]` with the status each would have produced on its own (412 drift, 400 refused, 403 privilege). Failing the whole save on one drifted cell would discard a screenful of unrelated valid edits and say nothing about which cell to re-read; and it could not be a real transaction anyway, since the write lane’s cache refresh and its two invalidation publishes are not transactional side effects.
+   *
+   * `PUT /api/v1/admin/settings/features/matrix` — `SettingsFeaturesController.putFeatureMatrix`.
+   */
+  putFeatureMatrix(body: FeatureMatrixWriteBatchRequest, options: AdminRequestOptions = {}): Promise<FeatureMatrixWriteResponse> {
+    return this.request<FeatureMatrixWriteResponse>({
+      method: 'PUT',
+      path: 'admin/settings/features/matrix',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Reset one TENANT override so the key resumes inheriting the platform default.
+   *
+   * Removes the working tenant row for `key`, after which the cascade resolves `SYSTEM` -> descriptor default again. Idempotent: a key with no override answers 200 with `removed: false` rather than 404, so a "reset every tenant" sweep does not fail on the tenants that never had one. `scope=system` is refused 400 -- the platform row is the top of the cascade, so there is nothing above it to inherit; write the descriptor default explicitly instead. A super administrator resets another tenant by selecting it as the working tenant, exactly as a write does.
+   *
+   * `DELETE /api/v1/admin/settings/registry/{key}` — `SettingsRegistryWriteController.resetSetting`.
+   */
+  resetSetting(key: string, options: AdminRequestOptions & { query?: { scope?: 'tenant' } } = {}): Promise<ResetRegistrySettingResponse> {
+    return this.request<ResetRegistrySettingResponse>({
+      method: 'DELETE',
+      path: `admin/settings/registry/${encodePathSegment(String(key))}`,
       query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,

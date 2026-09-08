@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 413 component schemas the generated surface transitively
+ * Only the 424 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2164,6 +2164,19 @@ export interface EditBurdenResponse {
   timeToSignSeconds?: number | null;
 }
 
+export interface EffectiveFeatureResponse {
+  /** Feature-availability registry key. */
+  key: string;
+  /** Which tier supplied it: a tenant override, the platform row, or the descriptor default. */
+  sourceScope: 'system' | 'tenant' | 'default';
+  /** The effective value for the resolved tenant. */
+  value: boolean;
+}
+
+export interface EffectiveFeaturesResponse {
+  items: EffectiveFeatureResponse[];
+}
+
 export interface EffectiveSettingResponse {
   key: string;
   /** Which cascade tier supplied the value. */
@@ -2337,6 +2350,75 @@ export interface EvalScoreResponse {
 export interface ExemplarCurationRequest {
   /** The curator verdict: APPROVED (may be shown to the model), REJECTED (never), or PENDING (back to the queue). */
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
+}
+
+export interface FeatureMatrixCellErrorResponse {
+  key: string;
+  message: string;
+  /** The status this cell would have produced as a single-key request (412 drift, 400 refused, 403 privilege). */
+  status: number;
+  tenantId: string;
+}
+
+export interface FeatureMatrixCellResponse {
+  key: string;
+  /** A tenant id, or the literal `system` for the platform-default column. */
+  tenantId: string;
+  /** `null` = this tenant holds no row and INHERITS the platform default. The platform column is never null. */
+  value: boolean | null;
+  /** Backing row version; 0 when no row is stored. Echo it as `expectedVersion` on a write. */
+  version: number;
+}
+
+export interface FeatureMatrixFeatureResponse {
+  /** Server-side taxonomy bucket. Always `Feature Availability` on this route. */
+  category: string;
+  /** The descriptor default — what a tenant inherits when neither it nor the platform holds a row. */
+  default: boolean;
+  description?: string;
+  key: string;
+  /** True = a kill-switch whose safe position is OFF. */
+  killSwitch?: boolean;
+  label?: string;
+  /** Deepest scope a row may live at. `system` means the key has NO per-tenant row (its consumer has no tenant in hand), so the screen disables its tenant cells. */
+  maxScope: string;
+}
+
+export interface FeatureMatrixResponse {
+  cells: FeatureMatrixCellResponse[];
+  features: FeatureMatrixFeatureResponse[];
+  /** Every non-SYSTEM tenant, Global included. SYSTEM is the platform column, not a tenant. */
+  tenants: FeatureMatrixTenantResponse[];
+}
+
+export interface FeatureMatrixTenantResponse {
+  id: string;
+  name: string;
+  /** Tenant key/slug. */
+  slug: string;
+}
+
+export interface FeatureMatrixWriteBatchRequest {
+  /** The cells to apply, in order. Capped at 500 — a matrix save is one screen of edits, not a migration. */
+  cells: FeatureMatrixWriteRequest[];
+}
+
+export interface FeatureMatrixWriteRequest {
+  /** The `version` from the prior matrix read. Omit for a cell that has no stored row. */
+  expectedVersion?: number;
+  /** Feature-availability registry key. */
+  key: string;
+  /** Tenant id, or the literal `system` for the platform default. */
+  tenantId: string;
+  /** The new value. `null` on a TENANT cell removes the override so it inherits again; `null` on the `system` cell rewrites the platform row to the descriptor default (the platform row is never deleted — there is nothing above it to inherit). */
+  value: boolean | null;
+}
+
+export interface FeatureMatrixWriteResponse {
+  /** The touched cells, re-read AFTER the batch, carrying the version to echo next. */
+  cells: FeatureMatrixCellResponse[];
+  /** Per-cell failures. The batch is ORDERED and PARTIAL, not all-or-nothing: one drifted cell must not discard a screenful of unrelated valid edits, and the caller re-reads and re-applies only what is listed here. */
+  errors: FeatureMatrixCellErrorResponse[];
 }
 
 export interface FinalizeAgentTestRequest {
@@ -3299,8 +3381,12 @@ export interface NodePromptUpdateResponse {
   registryChecksum?: string | null;
   resourceStatus: string;
   slug: string;
+  /** The SYSTEM template slug this row was provisioned from, if any. */
+  sourceTemplateSlug?: string | null;
   status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
   tags: string[];
+  /** True when the row came from the reference set and a re-sync may refresh it. */
+  templateLocked: boolean;
   tenantId: string;
   updatedAt: string;
   validatedAt?: string | null;
@@ -4412,6 +4498,17 @@ export interface ResetPasswordResponse {
   token?: string;
 }
 
+export interface ResetRegistrySettingResponse {
+  /** The registry key whose tenant override was reset. */
+  key: string;
+  /** False when there was no override to remove. Idempotent by design: a "reset every tenant" sweep must not fail on the tenants that never had one. */
+  removed: boolean;
+  /** Scope that was reset. Always `tenant` today. */
+  scope: string;
+  /** Storage tier the row lived in. */
+  tier: string;
+}
+
 export interface ResolvedFeaturesResponse {
   /** Harness agentic loop — multi-agent consultation orchestration */
   agenticLoop: boolean;
@@ -4872,6 +4969,12 @@ export interface SettingCatalogItemResponse {
   /** True = a kill-switch whose safe position is OFF. */
   killSwitch?: boolean;
   label?: string;
+  /** Short badge text for the lock KIND (Bootstrap / Platform secret / Tenant secret / Secret). */
+  lockLabel?: string;
+  /** Why the key is locked, and where its value actually changes. Present iff `locked`. */
+  lockReason?: string;
+  /** True = un-editable from any admin surface, for every caller including a super admin. */
+  locked?: boolean;
   /** Deepest scope a tenant admin may set this at. */
   maxScope: string;
   sensitivity: 'public' | 'internal' | 'secret';
@@ -6755,8 +6858,12 @@ export interface WorkflowDefinitionResponse {
   registryChecksum?: string | null;
   resourceStatus: string;
   slug: string;
+  /** The SYSTEM template slug this row was provisioned from, if any. */
+  sourceTemplateSlug?: string | null;
   status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
   tags: string[];
+  /** True when the row came from the reference set and a re-sync may refresh it. */
+  templateLocked: boolean;
   tenantId: string;
   updatedAt: string;
   validatedAt?: string | null;

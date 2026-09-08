@@ -2504,6 +2504,24 @@
           "name": {
             "description": "Bucket name",
             "type": "string"
+          },
+          "physicalMissing": {
+            "description": "True when a registered bucket has no matching physical bucket in the provider (includePhysical only)",
+            "type": "boolean"
+          },
+          "registered": {
+            "description": "Whether a TenantBucket row exists for this physical bucket name (includePhysical only)",
+            "type": "boolean"
+          },
+          "tenantId": {
+            "description": "Owning tenant ID (includePhysical only; null for an unregistered physical bucket)",
+            "nullable": true,
+            "type": "string"
+          },
+          "tenantName": {
+            "description": "Owning tenant name (includePhysical only; null for an unregistered physical bucket)",
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [
@@ -8110,6 +8128,50 @@
         ],
         "type": "object"
       },
+      "EffectiveFeatureResponse": {
+        "properties": {
+          "key": {
+            "description": "Feature-availability registry key.",
+            "example": "console.mlflow.enabled",
+            "type": "string"
+          },
+          "sourceScope": {
+            "description": "Which tier supplied it: a tenant override, the platform row, or the descriptor default.",
+            "enum": [
+              "system",
+              "tenant",
+              "default"
+            ],
+            "example": "system",
+            "type": "string"
+          },
+          "value": {
+            "description": "The effective value for the resolved tenant.",
+            "example": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "sourceScope"
+        ],
+        "type": "object"
+      },
+      "EffectiveFeaturesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EffectiveFeatureResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "EffectiveRoutingPolicyResponse": {
         "properties": {
           "explicitProviderMode": {
@@ -8736,6 +8798,217 @@
         },
         "required": [
           "text"
+        ],
+        "type": "object"
+      },
+      "FeatureMatrixCellErrorResponse": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "description": "The status this cell would have produced as a single-key request (412 drift, 400 refused, 403 privilege).",
+            "example": 412,
+            "type": "number"
+          },
+          "tenantId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "tenantId",
+          "status",
+          "message"
+        ],
+        "type": "object"
+      },
+      "FeatureMatrixCellResponse": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "A tenant id, or the literal `system` for the platform-default column.",
+            "example": "system",
+            "type": "string"
+          },
+          "value": {
+            "description": "`null` = this tenant holds no row and INHERITS the platform default. The platform column is never null.",
+            "example": true,
+            "nullable": true,
+            "type": "boolean"
+          },
+          "version": {
+            "description": "Backing row version; 0 when no row is stored. Echo it as `expectedVersion` on a write.",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "tenantId",
+          "value",
+          "version"
+        ],
+        "type": "object"
+      },
+      "FeatureMatrixFeatureResponse": {
+        "properties": {
+          "category": {
+            "description": "Server-side taxonomy bucket. Always `Feature Availability` on this route.",
+            "type": "string"
+          },
+          "default": {
+            "description": "The descriptor default — what a tenant inherits when neither it nor the platform holds a row.",
+            "example": false,
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "killSwitch": {
+            "description": "True = a kill-switch whose safe position is OFF.",
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "maxScope": {
+            "description": "Deepest scope a row may live at. `system` means the key has NO per-tenant row (its consumer has no tenant in hand), so the screen disables its tenant cells.",
+            "example": "tenant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "default",
+          "maxScope",
+          "category"
+        ],
+        "type": "object"
+      },
+      "FeatureMatrixResponse": {
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureMatrixCellResponse"
+            },
+            "type": "array"
+          },
+          "features": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureMatrixFeatureResponse"
+            },
+            "type": "array"
+          },
+          "tenants": {
+            "description": "Every non-SYSTEM tenant, Global included. SYSTEM is the platform column, not a tenant.",
+            "items": {
+              "$ref": "#/components/schemas/FeatureMatrixTenantResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "features",
+          "tenants",
+          "cells"
+        ],
+        "type": "object"
+      },
+      "FeatureMatrixTenantResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "description": "Tenant key/slug.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ],
+        "type": "object"
+      },
+      "FeatureMatrixWriteBatchRequest": {
+        "properties": {
+          "cells": {
+            "description": "The cells to apply, in order. Capped at 500 — a matrix save is one screen of edits, not a migration.",
+            "items": {
+              "$ref": "#/components/schemas/FeatureMatrixWriteRequest"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "cells"
+        ],
+        "type": "object"
+      },
+      "FeatureMatrixWriteRequest": {
+        "properties": {
+          "expectedVersion": {
+            "description": "The `version` from the prior matrix read. Omit for a cell that has no stored row.",
+            "example": 3,
+            "minimum": 1,
+            "type": "number"
+          },
+          "key": {
+            "description": "Feature-availability registry key.",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Tenant id, or the literal `system` for the platform default.",
+            "type": "string"
+          },
+          "value": {
+            "description": "The new value. `null` on a TENANT cell removes the override so it inherits again; `null` on the `system` cell rewrites the platform row to the descriptor default (the platform row is never deleted — there is nothing above it to inherit).",
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "tenantId",
+          "value"
+        ],
+        "type": "object"
+      },
+      "FeatureMatrixWriteResponse": {
+        "properties": {
+          "cells": {
+            "description": "The touched cells, re-read AFTER the batch, carrying the version to echo next.",
+            "items": {
+              "$ref": "#/components/schemas/FeatureMatrixCellResponse"
+            },
+            "type": "array"
+          },
+          "errors": {
+            "description": "Per-cell failures. The batch is ORDERED and PARTIAL, not all-or-nothing: one drifted cell must not discard a screenful of unrelated valid edits, and the caller re-reads and re-applies only what is listed here.",
+            "items": {
+              "$ref": "#/components/schemas/FeatureMatrixCellErrorResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "cells",
+          "errors"
         ],
         "type": "object"
       },
@@ -12141,6 +12414,11 @@
           "slug": {
             "type": "string"
           },
+          "sourceTemplateSlug": {
+            "description": "The SYSTEM template slug this row was provisioned from, if any.",
+            "nullable": true,
+            "type": "string"
+          },
           "status": {
             "enum": [
               "DRAFT",
@@ -12155,6 +12433,10 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "templateLocked": {
+            "description": "True when the row came from the reference set and a re-sync may refresh it.",
+            "type": "boolean"
           },
           "tenantId": {
             "type": "string"
@@ -12193,6 +12475,7 @@
           "currentRegistryChecksum",
           "needsReview",
           "isActive",
+          "templateLocked",
           "resourceStatus",
           "createdAt",
           "updatedAt",
@@ -16032,6 +16315,34 @@
         ],
         "type": "object"
       },
+      "ResetRegistrySettingResponse": {
+        "properties": {
+          "key": {
+            "description": "The registry key whose tenant override was reset.",
+            "type": "string"
+          },
+          "removed": {
+            "description": "False when there was no override to remove. Idempotent by design: a \"reset every tenant\" sweep must not fail on the tenants that never had one.",
+            "example": true,
+            "type": "boolean"
+          },
+          "scope": {
+            "description": "Scope that was reset. Always `tenant` today.",
+            "type": "string"
+          },
+          "tier": {
+            "description": "Storage tier the row lived in.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "tier",
+          "scope",
+          "removed"
+        ],
+        "type": "object"
+      },
       "ResolvedFeaturesResponse": {
         "properties": {
           "agenticLoop": {
@@ -17950,6 +18261,20 @@
           },
           "label": {
             "type": "string"
+          },
+          "lockLabel": {
+            "description": "Short badge text for the lock KIND (Bootstrap / Platform secret / Tenant secret / Secret).",
+            "example": "Bootstrap",
+            "type": "string"
+          },
+          "lockReason": {
+            "description": "Why the key is locked, and where its value actually changes. Present iff `locked`.",
+            "example": "Bootstrap / data-plane transport value, read from the process environment and fixed for the process lifetime.",
+            "type": "string"
+          },
+          "locked": {
+            "description": "True = un-editable from any admin surface, for every caller including a super admin.",
+            "type": "boolean"
           },
           "maxScope": {
             "description": "Deepest scope a tenant admin may set this at.",
@@ -24086,6 +24411,11 @@
           "slug": {
             "type": "string"
           },
+          "sourceTemplateSlug": {
+            "description": "The SYSTEM template slug this row was provisioned from, if any.",
+            "nullable": true,
+            "type": "string"
+          },
           "status": {
             "enum": [
               "DRAFT",
@@ -24100,6 +24430,10 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "templateLocked": {
+            "description": "True when the row came from the reference set and a re-sync may refresh it.",
+            "type": "boolean"
           },
           "tenantId": {
             "type": "string"
@@ -24138,6 +24472,7 @@
           "currentRegistryChecksum",
           "needsReview",
           "isActive",
+          "templateLocked",
           "resourceStatus",
           "createdAt",
           "updatedAt",
@@ -38488,6 +38823,83 @@
         ]
       }
     },
+    "/api/v1/admin/providers/{service}/{provider}/reset": {
+      "post": {
+        "description": "Restores the endpoint, `enabled` state, extras and key material of a PLATFORM-MANAGED row — the built-in inference engines (LM Studio, Ollama, vLLM, llama.cpp) and the model registry (Hugging Face, the S3/MinIO weight store) — from `BUILT_IN_CONNECTION_DEFAULTS`. **This is not `DELETE`.** Deleting a SYSTEM engine row does not return it to the default: `apps/text` resolves a self-hosted engine’s base URL only from the injected provider overrides, with no environment fallback, so a missing row is a 503 on every generation. Connection CEILINGS (`maxConcurrent`, `rpmLimit`, `tpmLimit`, `timeoutS`) are PRESERVED — they are an operator’s tuning of their own hardware, not part of the row’s identity. No `If-Match`: the operation means “whatever it says now, put it back”, so a stale token would refuse the caller who most needs it.",
+        "operationId": "ProviderConnectionController_reset",
+        "parameters": [
+          {
+            "description": "Capability the connection serves.",
+            "in": "path",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "enum": [
+                "llm",
+                "stt",
+                "tts",
+                "embeddings",
+                "rerank",
+                "vector",
+                "model-registry"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Capability-scoped provider identifier, e.g. `lm-studio`.",
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Platform tier only — the SYSTEM tenant.",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiProviderConnectionResponse"
+                }
+              }
+            },
+            "description": "The restored row, masked."
+          },
+          "400": {
+            "description": "Unknown service segment."
+          },
+          "403": {
+            "description": "Not a platform super administrator, or a tenant tier — built-in defaults live on the platform tier only."
+          },
+          "404": {
+            "description": "This (service, provider) ships no built-in default."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reset one built-in provider connection to its platform default (super admin only).",
+        "tags": [
+          "admin-provider-connections"
+        ]
+      }
+    },
     "/api/v1/admin/providers/{service}/{provider}/test": {
       "post": {
         "description": "Probes the credential/endpoint BEFORE (or independent of) saving it. Every body field is optional: an omitted field falls back to the STORED row (the tenant row, else the SYSTEM platform default), so a saved write-only key can be re-tested without re-entering it. A real auth-only call where the vendor exposes one (`probe: \"auth\"`), a reachability smoke test otherwise (`probe: \"reachability\"`). No Vault write, no OCC, the key is never logged. Tenant-supplied URLs must be https and public.",
@@ -42728,6 +43140,7 @@
     },
     "/api/v1/admin/settings/effective": {
       "get": {
+        "description": "A platform-only key answers 404 for a tenant administrator — the catalog does not list it, and this route must not act as a directory for it. A platform admin with no working tenant and no `?tenantId` resolves the SYSTEM (platform) tier rather than being refused.",
         "operationId": "SettingsCatalogController_getEffective",
         "parameters": [
           {
@@ -42763,6 +43176,19 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Which tier to resolve against. `system` resolves the platform row with no tenant required; omitted keeps the legacy behaviour.",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "enum": [
+                "system",
+                "tenant"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -42775,6 +43201,12 @@
               }
             },
             "description": ""
+          },
+          "400": {
+            "description": "Missing `key`, or `scope=tenant` with no tenant in context."
+          },
+          "404": {
+            "description": "Unknown key, or a platform-only key read by a tenant administrator."
           }
         },
         "security": [
@@ -42791,7 +43223,180 @@
         ]
       }
     },
+    "/api/v1/admin/settings/features/effective": {
+      "get": {
+        "description": "Caller-scoped: a platform admin with no working tenant gets the SYSTEM (platform) values; with a working tenant, that tenant’s effective values; a tenant admin, its own. `sourceScope` reports which tier answered, so a console can say a value is INHERITED rather than chosen. Values only — never the descriptor inventory, and never a write path.",
+        "operationId": "SettingsFeaturesController_getEffectiveFeatures",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveFeaturesResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller lacks `read:GlobalSetting`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resolve every feature-availability gate for the calling context.",
+        "tags": [
+          "admin-settings-features"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/features/matrix": {
+      "get": {
+        "description": "SUPER_ADMIN only (403 otherwise). `cells[].value === null` means the tenant holds NO row and inherits the platform default; the `system` column is never null. A feature whose `maxScope` is `system` contributes no tenant cells at all — its consumer has no tenant in hand, so a per-tenant row could never be honoured, and the screen disables those columns rather than offering a checkbox the cascade would ignore. Every `version` is read FRESH from the row, never from the settings cache: two admins editing inside one 45s cache window would otherwise compare against the same stale number.",
+        "operationId": "SettingsFeaturesController_getFeatureMatrix",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureMatrixResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller is not a platform administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The cross-tenant feature matrix: the platform default beside every tenant’s override.",
+        "tags": [
+          "admin-settings-features"
+        ]
+      },
+      "put": {
+        "description": "SUPER_ADMIN only (403 otherwise). `value: null` on a TENANT cell removes the override so it inherits again; on the `system` cell it rewrites the platform row to the descriptor default. The batch is ORDERED and PARTIAL, not all-or-nothing, and answers 200 either way: every cell that can be applied is, and the rest come back in `errors[]` with the status each would have produced on its own (412 drift, 400 refused, 403 privilege). Failing the whole save on one drifted cell would discard a screenful of unrelated valid edits and say nothing about which cell to re-read; and it could not be a real transaction anyway, since the write lane’s cache refresh and its two invalidation publishes are not transactional side effects.",
+        "operationId": "SettingsFeaturesController_putFeatureMatrix",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeatureMatrixWriteBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureMatrixWriteResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Malformed batch (empty, over the 500-cell cap, or a non-boolean value)."
+          },
+          "403": {
+            "description": "The caller is not a platform administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Apply a batch of feature-matrix edits.",
+        "tags": [
+          "admin-settings-features"
+        ]
+      }
+    },
     "/api/v1/admin/settings/registry/{key}": {
+      "delete": {
+        "description": "Removes the working tenant row for `key`, after which the cascade resolves `SYSTEM` -> descriptor default again. Idempotent: a key with no override answers 200 with `removed: false` rather than 404, so a \"reset every tenant\" sweep does not fail on the tenants that never had one. `scope=system` is refused 400 -- the platform row is the top of the cascade, so there is nothing above it to inherit; write the descriptor default explicitly instead. A super administrator resets another tenant by selecting it as the working tenant, exactly as a write does.",
+        "operationId": "SettingsRegistryWriteController_resetSetting",
+        "parameters": [
+          {
+            "description": "Registry key, e.g. `console.mlflow.enabled`.",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Defaults to `tenant`. `system` is refused.",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "enum": [
+                "tenant"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetRegistrySettingResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`scope=system`, a locked tier, an unwritable tier, or a scope deeper than the descriptor `maxScope`."
+          },
+          "403": {
+            "description": "The setting is super-admin-only."
+          },
+          "404": {
+            "description": "Unknown key, or a platform-only key addressed by a tenant administrator."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reset one TENANT override so the key resumes inheriting the platform default.",
+        "tags": [
+          "admin-settings-registry"
+        ]
+      },
       "get": {
         "operationId": "SettingsRegistryWriteController_getSetting",
         "parameters": [
@@ -57081,7 +57686,17 @@
     "/api/v1/storage/buckets": {
       "get": {
         "operationId": "StorageController_listBuckets",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Storage browser \"All tenants\" view (TASK-932): merge every tenant's registered buckets with the physical bucket list from the provider. Allowed ONLY for an unscoped platform admin (no tenant context) — every other caller gets 400.",
+            "in": "query",
+            "name": "includePhysical",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -57095,6 +57710,9 @@
               }
             },
             "description": "List of all buckets"
+          },
+          "400": {
+            "description": "includePhysical requires an unscoped platform admin (no tenant context)"
           }
         },
         "security": [
@@ -59918,6 +60536,10 @@
     {
       "description": "Read and write governed settings through their descriptors.",
       "name": "admin-settings-registry"
+    },
+    {
+      "description": "Which features exist for a tenant, and the platform admin's cross-tenant matrix that decides it.",
+      "name": "admin-settings-features"
     },
     {
       "description": "Bucket and tenant storage configuration, cascading to a SYSTEM default.",
