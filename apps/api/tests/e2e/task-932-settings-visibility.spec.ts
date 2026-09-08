@@ -341,6 +341,10 @@ test.describe('TASK-932 R-1 — the legacy settings ROW list is tenant-pinned', 
     const body = (await response.json()) as { data: Array<{ tenantId?: string | null }> };
     expect(body.data.length).toBeGreaterThan(0);
     for (const item of body.data) expect(item.tenantId).toBe(SYSTEM_TENANT_ID);
+  });
+});
+
+/**
  * TASK-932 — the write lane ADOPTS a seeded row instead of duplicating its key.
  *
  * Reproduced live on the dev stack (2026-09-09, super admin, no working
