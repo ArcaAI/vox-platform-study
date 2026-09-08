@@ -76,7 +76,7 @@ test.describe('TASK-932 — GET /storage/buckets?includePhysical=true', () => {
     expect(response.status()).toBe(400);
   });
 
-  test('a tenant admin (__GLOBAL__) gets 400 and never sees another tenant\'s buckets', async ({ request }) => {
+  test("a tenant admin (__GLOBAL__) gets 400 and never sees another tenant's buckets", async ({ request }) => {
     const response = await request.get('/api/v1/storage/buckets?includePhysical=true', {
       headers: { Authorization: `Bearer ${globalTenantAdminToken}` },
     });
