@@ -20,65 +20,83 @@
  * fold now withholds `enabled` from the two GRAPH BOUNDARIES alone (`core.trigger`,
  * `core.output`), whose disablement is an unrunnable graph rather than a guardrail opinion.
  *
- * `MANDATORY_NODE_TYPES` itself is UNCHANGED and still mirrored against the registry below: it is
- * what the mandatory-PRESENCE rules and the `GUARDRAIL_OPTED_OUT` finding both read, and D-1
- * relaxes EXECUTION, never presence. `consultation.hitlGate` — the human sign-off — still offers
- * no runtime knob at all, because it is the one `gate`-classed type and sits in
- * `RUNTIME_PROPERTY_EXCLUSIONS` (TASK-859 invariant 5: the system never signs).
+ * `MANDATORY_NODE_TYPES` is still mirrored against the registry below: it is what the
+ * mandatory-PRESENCE rules and the `GUARDRAIL_OPTED_OUT` finding both read, and D-1 relaxes
+ * EXECUTION, never presence.
+ *
+ * ## What TASK-893 Phase 4 changed
+ *
+ * The clinical guards are no longer node TYPES. They are ACTIONS behind `core.action`, so the
+ * `mandatory` class they carry lives in `ACTION_CATALOGUE` and is resolved per instance by
+ * `classesOf('core.action', config)`. `MANDATORY_NODE_TYPES` is therefore the two graph
+ * boundaries alone, and the toggle contract is asserted on BOTH maps — node schemas and action
+ * schemas — because an action's config is validated under the node's `action` sub-config.
  */
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { describe, expect, it } from 'vitest';
-import { GRAPH_BOUNDARY_NODE_TYPES, MANDATORY_NODE_TYPES, NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from '../node-config-schemas';
+import { ACTION_CATALOGUE } from '../action-catalogue';
+import {
+  ACTION_CONFIG_SCHEMAS,
+  GRAPH_BOUNDARY_NODE_TYPES,
+  MANDATORY_NODE_TYPES,
+  NODE_CONFIG_SCHEMAS,
+  type NodeConfigSchema,
+} from '../node-config-schemas';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 
+/** Both halves of the authorable surface: a node's own config, and an action's sub-config. */
+const ALL_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = { ...NODE_CONFIG_SCHEMAS, ...ACTION_CONFIG_SCHEMAS };
+
 const propertiesOf = (key: string): Record<string, NodeConfigSchema | undefined> =>
-  (NODE_CONFIG_SCHEMAS[key].properties ?? {}) as Record<string, NodeConfigSchema | undefined>;
+  (ALL_SCHEMAS[key].properties ?? {}) as Record<string, NodeConfigSchema | undefined>;
 
 const declaresEnabled = (key: string): boolean => Object.hasOwn(propertiesOf(key), 'enabled');
 
-const SCHEMA_KEYS = Object.keys(NODE_CONFIG_SCHEMAS).sort();
+const SCHEMA_KEYS = Object.keys(ALL_SCHEMAS).sort();
 
-/** Derived from the registry, never listed by hand — that IS the point of this file. */
-const MANDATORY_KEYS = Object.values(WORKFLOW_NODE_REGISTRY)
-  .filter((descriptor) => descriptor.classes.includes('mandatory'))
-  .map((descriptor) => descriptor.key)
-  .filter((key) => Object.hasOwn(NODE_CONFIG_SCHEMAS, key))
+/** Derived from the registry and the action catalogue, never listed by hand — that IS the point
+ *  of this file. A `mandatory` action carries the class in its catalogue entry; `classesOf`
+ *  resolves it onto the hosting `core.action` instance. */
+const MANDATORY_KEYS = [
+  ...Object.values(WORKFLOW_NODE_REGISTRY)
+    .filter((descriptor) => descriptor.classes.includes('mandatory'))
+    .map((descriptor) => descriptor.key),
+  ...Object.values(ACTION_CATALOGUE)
+    .filter((descriptor) => descriptor.classes.includes('mandatory'))
+    .map((descriptor) => descriptor.key),
+]
+  .filter((key) => Object.hasOwn(ALL_SCHEMAS, key))
   .sort();
-
-/** The one type whose schema the COMPILER (not an activity) consumes — it offers no runtime knob. */
-const RUNTIME_EXCLUDED_KEYS = ['consultation.hitlGate'];
 
 const BOUNDARY_KEYS = [...GRAPH_BOUNDARY_NODE_TYPES].sort();
 
-const TOGGLEABLE_KEYS = SCHEMA_KEYS.filter((key) => !BOUNDARY_KEYS.includes(key) && !RUNTIME_EXCLUDED_KEYS.includes(key));
+const TOGGLEABLE_KEYS = SCHEMA_KEYS.filter((key) => !BOUNDARY_KEYS.includes(key));
 
 /** Minimal configs that satisfy each schema's `required` set, so an assertion below can only
  *  ever fail on `enabled` and never on an unrelated missing field. */
 const BASE_CONFIG: Record<string, Record<string, unknown>> = {
   'consultation.consentGate': {},
   'consultation.phiHop': { mode: 'full', onError: 'fail' },
-  'consultation.hitlGate': {},
-  'consultation.realtimeSummary': { onError: 'degrade' },
-  'consultation.extractEntities': { requiresFinalized: false, onError: 'degrade' },
+  'consultation.persistDraft': { onError: 'fail' },
+  'consultation.finalizeAssurance': { onError: 'fail' },
   'consultation.sensors': { onError: 'degrade' },
-  'agent.important_findings': { onError: 'degrade' },
+  'consultation.retrieveEvidence': { onError: 'degrade' },
   'prompt.template_ref': { promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41' },
   'core.trigger': { kinds: ['api'] },
   'core.output': {},
-  'guardrail.check': { guardrailType: 'groundedness', failOn: 'unsafe_or_unknown', onFail: 'mark' },
-  'consultation.finalizeAssurance': { onError: 'fail' },
+  'core.agent': { agentRef: { slug: 'demo-agent' } },
+  'guard.moderation': { guardrailType: 'groundedness', failOn: 'unsafe_or_unknown', onFail: 'mark' },
 };
 
-const TOGGLEABLE_SAMPLE = [
-  'consultation.realtimeSummary',
-  'consultation.extractEntities',
-  'consultation.sensors',
-  'agent.important_findings',
-  'prompt.template_ref',
-] as const;
+const TOGGLEABLE_SAMPLE = ['core.agent', 'consultation.sensors', 'consultation.retrieveEvidence', 'prompt.template_ref'] as const;
 
-/** D-1: the clinical guard nodes that now OFFER the toggle. */
-const MANDATORY_GUARD_SAMPLE = ['guardrail.check', 'consultation.consentGate', 'consultation.phiHop', 'consultation.finalizeAssurance'] as const;
+/** D-1: the clinical guards that now OFFER the toggle — all four are actions since Phase 4. */
+const MANDATORY_GUARD_SAMPLE = [
+  'guard.moderation',
+  'consultation.consentGate',
+  'consultation.phiHop',
+  'consultation.finalizeAssurance',
+] as const;
 
 describe('every node type except the two graph boundaries declares the `enabled` toggle', () => {
   it.each(TOGGLEABLE_KEYS)('%s declares `enabled` as a boolean defaulting to on', (key) => {
@@ -101,13 +119,13 @@ describe('every node type except the two graph boundaries declares the `enabled`
 
   it.each(MANDATORY_GUARD_SAMPLE)('%s (a MANDATORY clinical guard) offers the toggle after D-1', (key) => {
     expect(declaresEnabled(key)).toBe(true);
-    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).toEqual([]);
+    expect(jsonSchemaValueProblems(ALL_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).toEqual([]);
   });
 });
 
-describe('the two graph boundaries — and the human gate — still have no disable toggle', () => {
-  it('withholds `enabled` from exactly `core.trigger`, `core.output` and the runtime-excluded gate', () => {
-    expect(SCHEMA_KEYS.filter((key) => !declaresEnabled(key))).toEqual([...BOUNDARY_KEYS, ...RUNTIME_EXCLUDED_KEYS].sort());
+describe('the two graph boundaries still have no disable toggle', () => {
+  it('withholds `enabled` from exactly `core.trigger` and `core.output`', () => {
+    expect(SCHEMA_KEYS.filter((key) => !declaresEnabled(key))).toEqual(BOUNDARY_KEYS);
   });
 
   it.each(BOUNDARY_KEYS)('%s REJECTS a config that tries to switch it off', (key) => {
@@ -116,30 +134,42 @@ describe('the two graph boundaries — and the human gate — still have no disa
     expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).not.toEqual([]);
   });
 
-  it('`consultation.hitlGate` still offers NO runtime knob at all (invariant 5 — the system never signs)', () => {
-    const properties = propertiesOf('consultation.hitlGate');
-    expect(Object.hasOwn(properties, 'enabled')).toBe(false);
-    expect(Object.hasOwn(properties, 'retry')).toBe(false);
-    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS['consultation.hitlGate'], { enabled: false })).not.toEqual([]);
+  it('the human sign-off is still the tenant`s, never the platform`s (invariant 5)', () => {
+    // TASK-859 invariant 5 — "the system never signs" — is about who DECIDES, never about which
+    // nodes may be SKIPPED, so D-1 leaves it untouched. `core.humanReview` is the durable human
+    // wait; the property that carries the invariant is that a REVIEW DECISION is never
+    // authorable as config, and it is not: the schema offers a deadline and its behaviour on
+    // expiry, and no key that stands in for a signature.
+    const properties = propertiesOf('core.humanReview');
+    expect(Object.hasOwn(properties, 'decision')).toBe(false);
+    expect(Object.hasOwn(properties, 'approved')).toBe(false);
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS['core.humanReview'], { approved: true })).not.toEqual([]);
   });
 });
 
 describe('the mandatory class still mirrors the registry — D-1 relaxed EXECUTION, not PRESENCE', () => {
   it('`MANDATORY_NODE_TYPES` is exactly the registry`s mandatory-class node types', () => {
-    expect([...MANDATORY_NODE_TYPES].sort()).toEqual(MANDATORY_KEYS);
+    // The projection in `node-config-schemas.ts` mirrors NODE TYPES only; a mandatory ACTION
+    // carries the class in `ACTION_CATALOGUE` and reaches a node through `classesOf`, so it is
+    // asserted separately below rather than folded into this set.
+    const mandatoryNodeTypes = Object.values(WORKFLOW_NODE_REGISTRY)
+      .filter((descriptor) => descriptor.classes.includes('mandatory'))
+      .map((descriptor) => descriptor.key)
+      .sort();
+    expect([...MANDATORY_NODE_TYPES].sort()).toEqual(mandatoryNodeTypes);
   });
 
-  it('covers the six consultation nodes the presence rules exist for', () => {
+  it('covers the clinical actions the presence rules exist for', () => {
     // A literal restatement of the requirement, so the derivation above cannot quietly stop
-    // covering the cases it exists for.
+    // covering the cases it exists for. `consultation.captureBinding` and `consultation.hitlGate`
+    // left the vocabulary with TASK-893 Phase 4 — the human wait is `core.humanReview`, which is
+    // `review`-classed rather than `mandatory`.
     expect(MANDATORY_KEYS).toEqual(
       expect.arrayContaining([
         'consultation.consentGate',
-        'consultation.captureBinding',
         'consultation.phiHop',
         'consultation.persistDraft',
         'consultation.finalizeAssurance',
-        'consultation.hitlGate',
       ]),
     );
   });
@@ -152,7 +182,7 @@ describe('the mandatory class still mirrors the registry — D-1 relaxed EXECUTI
 
 describe('the toggle survives the round trip that used to strip it', () => {
   it.each(TOGGLEABLE_SAMPLE)('%s: the value evaluator accepts `enabled: false`', (key) => {
-    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).toEqual([]);
+    expect(jsonSchemaValueProblems(ALL_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).toEqual([]);
   });
 
   it.each(TOGGLEABLE_SAMPLE)('%s: `enabled` survives a generated-form round trip', (key) => {
@@ -166,6 +196,6 @@ describe('the toggle survives the round trip that used to strip it', () => {
   });
 
   it.each(TOGGLEABLE_SAMPLE)('%s: still rejects a non-boolean `enabled`', (key) => {
-    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: 'off' })).not.toEqual([]);
+    expect(jsonSchemaValueProblems(ALL_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: 'off' })).not.toEqual([]);
   });
 });
