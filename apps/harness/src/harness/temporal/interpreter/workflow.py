@@ -32,6 +32,7 @@ with workflow.unsafe.imports_passed_through():
         CompiledGate,
         CompiledNode,
         CompiledStage,
+        CompiledWorkflowConfig,
     )
     from harness.temporal.interpreter.core_loop_workflow import (
         LoopWorkflow,
@@ -333,7 +334,7 @@ class WorkflowInterpreter:
             # `_emit_stage_started` so a stage is never announced as started and then parked for
             # the length of a consultation.
             if self._needs_live_handoff(stage, inp) and workflow.patched(_LIVE_HANDOFF_PATCH):
-                await self._await_live_outputs(inp)
+                await self._await_live_outputs(inp, config)
             await self._emit_stage_started(stage, inp)
             node_results = await self._run_stage(stage, inp)
             self._stages.append(StageResult(stage_index=stage.stage_index, nodes=node_results))
@@ -572,7 +573,7 @@ class WorkflowInterpreter:
             for node in stage.nodes
         )
 
-    async def _await_live_outputs(self, inp: InterpreterInput) -> None:
+    async def _await_live_outputs(self, inp: InterpreterInput, config: CompiledWorkflowConfig) -> None:
         """Park until the live session hands off, then seed its outputs into the walk's cache.
 
         A poll rather than a signal, deliberately. The interpreter's signal surface is a
@@ -600,7 +601,17 @@ class WorkflowInterpreter:
             run_id=inp.run_id,
             tenant_id=inp.tenant_id,
             consultation_id=consultation_id,
-            node_ids=sorted(self._live_skipped),
+            # EVERY realtime node in the graph, not only those skipped so far: the handoff
+            # fires at the FIRST durable consumer of a live output (on the seeded consultation
+            # graphs that is the visit-type condition reading `n_ner.out`), which is stages
+            # before the summary nodes are skipped — and the summary node is exactly what
+            # `n_finalize.in` binds. The poll waits for the live lane to END, so every realtime
+            # output is final by the time it answers (reproduced live 2026-09-09: the handoff
+            # asked for `n_asr,n_ner,n_presummary` and the finalizer still had nothing bound).
+            node_ids=sorted(
+                self._live_skipped
+                | {node.node_id for stage in config.stages for node in stage.nodes if _configured_realtime(node)}
+            ),
         )
         deadline = workflow.now() + _LIVE_HANDOFF_MAX_WAIT
         while not self._cancelled:
