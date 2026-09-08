@@ -722,7 +722,13 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'workflow:definition:read': {
     description: 'List published workflows and their input schemas',
     category: 'Workflow',
-    implies: [{ action: 'list', subject: 'WorkflowDefinition' }],
+    // `read` as well as `list`: `GET /workflows/:slug/schema` is `@CanRead('WorkflowDefinition')`,
+    // and the derived `svc:workflow:definition:read` must satisfy every route it is declared on
+    // (svc-scope-route-ability-coverage). The description already promised the schema.
+    implies: [
+      { action: 'list', subject: 'WorkflowDefinition' },
+      { action: 'read', subject: 'WorkflowDefinition' },
+    ],
   },
   'workflow:run:write': {
     description: 'Invoke and cancel workflow runs',
