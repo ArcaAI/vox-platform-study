@@ -113,6 +113,9 @@ function makeClient() {
     agentAssignment: new Table('agentAssignment', log),
     documentTemplate: new Table('documentTemplate', log, ['tenantId', 'slug']),
     documentTemplateVersion: new Table('documentTemplateVersion', log),
+    workflowDefinition: new Table('workflowDefinition', log),
+    workflowAssignment: new Table('workflowAssignment', log),
+    workflowAssignmentChange: new Table('workflowAssignmentChange', log),
     tenant: new Table('tenant', log),
   };
   return { client, log };
