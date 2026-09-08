@@ -47,7 +47,7 @@
 
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { NODE_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
+import { ACTION_CONFIG_SCHEMAS, NODE_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
 import { renderWithProviders } from '@/test/render';
 import { fromWorkflowGraph, toWorkflowGraph } from '../../../lib/graph-serialization';
 import type { GraphStoreNode } from '../../../store/types';
@@ -58,7 +58,13 @@ const PINNED_VERSION = 4;
 const TEMPLATE_ID = '11111111-1111-4111-8111-111111111111';
 
 /** Every node type whose config schema declares the DD-11 prompt binding. */
-const BOUND_NODE_TYPES = Object.entries(NODE_CONFIG_SCHEMAS)
+/**
+ * TASK-893 Phase 4 — the prompt pin lives on the `prompt.template_ref` ACTION now. A `core.agent`
+ * takes its prompt from the referenced published Agent, so no NODE type declares the binding; the
+ * carriers are looked up in the action schemas, which is where the inspector reads them from for
+ * a `core.action` instance's `action` sub-config.
+ */
+const BOUND_NODE_TYPES = Object.entries(ACTION_CONFIG_SCHEMAS)
   .filter(([, schema]) => Object.hasOwn((schema as { properties?: Record<string, unknown> }).properties ?? {}, 'promptTemplateId'))
   .map(([type]) => type);
 
@@ -88,14 +94,14 @@ describe('DD-11 prompt pin — round-trip survival', () => {
     // a template but does not declare the pin loses it on every round trip.
     expect(BOUND_NODE_TYPES.length).toBeGreaterThan(0);
     for (const type of BOUND_NODE_TYPES) {
-      const properties = (NODE_CONFIG_SCHEMAS[type] as { properties: Record<string, unknown> }).properties;
+      const properties = (ACTION_CONFIG_SCHEMAS[type] as { properties: Record<string, unknown> }).properties;
       expect(Object.hasOwn(properties, 'promptVersionNumber'), `${type} must declare promptVersionNumber`).toBe(true);
     }
   });
 
   it('renders a field for the pin, so it is visible and editable rather than silently carried', async () => {
     renderWithProviders(
-      <InspectorPanel tab="config" onTabChange={vi.fn()} node={node()} configSchema={NODE_CONFIG_SCHEMAS['prompt.template_ref']} problems={[]} onConfigChange={vi.fn()} />,
+      <InspectorPanel tab="config" onTabChange={vi.fn()} node={node()} configSchema={ACTION_CONFIG_SCHEMAS['prompt.template_ref']} problems={[]} onConfigChange={vi.fn()} />,
     );
 
     const field = (await screen.findByLabelText(/^Prompt Version Number/i)) as HTMLInputElement;
@@ -107,7 +113,7 @@ describe('DD-11 prompt pin — round-trip survival', () => {
     renderWithProviders(
       <InspectorPanel tab="config" onTabChange={vi.fn()}
         node={node({ config: { promptTemplateId: TEMPLATE_ID, promptVersionNumber: PINNED_VERSION, variableBindings: {} } })}
-        configSchema={NODE_CONFIG_SCHEMAS['prompt.template_ref']}
+        configSchema={ACTION_CONFIG_SCHEMAS['prompt.template_ref']}
         problems={[]}
         onConfigChange={onConfigChange}
       />,
