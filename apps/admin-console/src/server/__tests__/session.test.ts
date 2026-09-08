@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { effectiveRoles } from '../session';
 
 const { cookieJar } = vi.hoisted(() => {
   const jar = new Map<string, { name: string; value: string; [key: string]: unknown }>();
@@ -120,5 +121,32 @@ describe('isElevated', () => {
     expect(isElevated({ roles: [] })).toBe(false);
     expect(isElevated(null)).toBe(false);
     expect(isElevated(undefined)).toBe(false);
+  });
+});
+
+describe('effectiveRoles (TASK-932 — tier guards judge the impersonated identity)', () => {
+  const operator = { id: 'op', username: 'super_admin', email: 'op@example.com', roles: ['SUPER_ADMIN'] };
+
+  it('returns the operator roles when nobody is impersonated', () => {
+    expect(effectiveRoles({ accessToken: 'a', refreshToken: 'r', user: operator })).toEqual(['SUPER_ADMIN']);
+  });
+
+  it('returns the target roles while impersonating, so a super admin acting as a tenant admin is NOT elevated', () => {
+    const session = {
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: operator,
+      impersonation: { originalAccessToken: 'o', originalRefreshToken: 'p', targetUserId: 't', targetRoles: ['TENANT_ADMIN'] },
+    };
+    expect(effectiveRoles(session)).toEqual(['TENANT_ADMIN']);
+  });
+
+  it('falls back to the operator roles for a session sealed before targetRoles existed', () => {
+    const session = { accessToken: 'a', refreshToken: 'r', user: operator, impersonation: { originalAccessToken: 'o', originalRefreshToken: 'p', targetUserId: 't' } };
+    expect(effectiveRoles(session)).toEqual(['SUPER_ADMIN']);
+  });
+
+  it('is empty for no session', () => {
+    expect(effectiveRoles(null)).toEqual([]);
   });
 });

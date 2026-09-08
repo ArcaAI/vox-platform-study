@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { getSession, isElevated } from '@/server/session';
+import { effectiveRoles, getSession, isElevated } from '@/server/session';
 
 /**
  * Tier 30–49 guard (rule 13): tenant-admin-scope screens render for
@@ -12,7 +12,9 @@ import { getSession, isElevated } from '@/server/session';
  */
 export default async function TenantTierLayout({ children }: { children: ReactNode }) {
   const session = await getSession();
-  if (!isElevated(session?.user) && !session?.user.roles.includes('TENANT_ADMIN')) {
+  // Effective identity: the impersonated target while impersonating (TASK-932).
+  const roles = effectiveRoles(session);
+  if (!isElevated({ roles: [...roles] }) && !roles.includes('TENANT_ADMIN')) {
     notFound();
   }
   return children;
