@@ -10,7 +10,7 @@
  * the hop to the Python service.
  */
 
-export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
 
 /** Which tier supplied the provider credential — decides BYOK vs CLOUD metering (derived, never stamped). */
 export type AgentFundingTier = 'tenant' | 'platform';
@@ -106,8 +106,15 @@ export interface ResolvedAgentProviderOverride {
  */
 export interface AgentCompiledConfig {
   task: AgentTask;
-  /** `AiProviderConnection.service` the credential resolves under (`stt` | `llm` | `tts`). */
-  service: 'stt' | 'llm' | 'tts';
+  /**
+   * `AiProviderConnection.service` the credential resolves under (`stt` | `llm` | `tts`).
+   *
+   * TASK-930 — `null` for a NAMED_ENTITY_RECOGNITION agent (and for any model whose registry
+   * task type maps to no provider service): token classification is served by `apps/nlp` from
+   * platform-hosted weights, so there is no credential tier to resolve and a runtime must SKIP
+   * the provider-override lookup rather than pick a service that does not apply.
+   */
+  service: 'stt' | 'llm' | 'tts' | null;
   model: { id: string; slug: string; provider: string | null; taskType: string };
   fallbacks: Array<{ priority: number; id: string; slug: string; provider: string | null }>;
   instruction: Record<string, unknown> | null;
