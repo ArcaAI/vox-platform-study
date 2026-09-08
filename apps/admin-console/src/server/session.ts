@@ -105,3 +105,15 @@ export async function clearSession(): Promise<void> {
 export function isElevated(user: Pick<SessionUser, 'roles'> | null | undefined): boolean {
   return rolesAreElevated(user?.roles);
 }
+
+/**
+ * The roles a route-group guard must judge: the impersonated target's while
+ * impersonating, else the operator's own. `safe-user.ts` projects the same
+ * identity as `effectiveUser`/`effectiveIsElevated` for the client; the tier
+ * layouts must agree with it, or a super admin impersonating a tenant admin
+ * still opens tier 10–19 screens the nav (correctly) hides (TASK-932).
+ * Sessions sealed before `targetRoles` existed fall back to the operator.
+ */
+export function effectiveRoles(session: SessionPayload | null | undefined): readonly string[] {
+  return session?.impersonation?.targetRoles ?? session?.user.roles ?? [];
+}
