@@ -20,7 +20,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { HopeClient } from '../../client';
-import { CredentialClassError } from '../../core/errors';
 
 function stubFetch(responses: Array<() => Response>): { fetch: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } {
   const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -201,18 +200,8 @@ describe('AgentsResource — speech and transcription', () => {
   });
 });
 
-describe('AgentsResource — credential class', () => {
-  it('refuses a service-account client at the call site (the plane is API-key only)', async () => {
-    const { fetch, calls } = stubFetch([() => json({ token: 't', expiresIn: 900 })]);
-    const hope = new HopeClient({
-      baseUrl: 'http://localhost:8868',
-      serviceAccount: { clientId: 'c', clientSecret: 's' },
-      fetch,
-      maxRetries: 0,
-    });
-
-    await expect(hope.agents.list()).rejects.toBeInstanceOf(CredentialClassError);
-    await expect(hope.agents.invoke('note-writer', {})).rejects.toBeInstanceOf(CredentialClassError);
-    expect(calls).toHaveLength(0);
-  });
-});
+// AMENDED TASK-931: this suite used to pin a call-site REFUSAL of a service-account client,
+// because the gateway declared `svcScopes: []` on every agent route. TASK-930 declares
+// `svc:agent:definition:read` / `svc:agent:invocation:write`, so one client can now administer
+// AND invoke. The reach is pinned in `task931-agent-plane.test.ts`; nothing here replaces it,
+// because "an API key works" is what the rest of this file already asserts.

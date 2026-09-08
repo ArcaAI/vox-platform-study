@@ -26,10 +26,13 @@
  *    tracks each frame's opaque `id` and reconnects with `Last-Event-ID`, so
  *    a disconnect costs latency, never events. Doing this by hand means
  *    knowing that the snapshot frame deliberately carries no token.
- * 3. **Refuses the wrong credential class** — every route here records
- *    `svcScopes: []` in `route-manifest.json`, i.e. deny-by-default for a
- *    service account. A service-account client gets a plain explanation
- *    instead of a 403 that looks like a missing grant.
+ * 3. **Refuses the wrong credential class where the gateway still does** — the
+ *    CONSULTATION-bound plane records `svcScopes: []` in `route-manifest.json`,
+ *    i.e. deny-by-default for a service account, so a service-account client
+ *    gets a plain explanation instead of a 403 that looks like a missing grant.
+ *    The UNBOUND plane no longer needs that: TASK-930 declares
+ *    `svc:workflow:definition:read` / `svc:workflow:run:read` /
+ *    `svc:workflow:run:write` on it, so both machine credential classes reach it.
  */
 
 import { CredentialClassError, ReservedRunIdentityError } from '../core/errors';
@@ -153,8 +156,15 @@ function reviewPath(slug: string, runId: string, nodeId: string): string {
  * Deliberately checked in the RESOURCE and not the transport: the transport
  * carries whatever credential it was configured with and is right to be
  * ignorant of which plane a path belongs to. Which credential class a route
- * accepts is a property of the ROUTE, and `route-manifest.json` records
- * `svcScopes: []` for every route in {@link WORKFLOW_PLANE_ROUTES}.
+ * accepts is a property of the ROUTE.
+ *
+ * Since TASK-930 the only caller is the CONSULTATION-bound plane
+ * (`/consultations/{id}/workflows*`), which still records `svcScopes: []`: running
+ * a workflow that writes into a clinical record is not a power the platform hands
+ * a machine identity. The unbound plane's routes now declare their `svc:*` scopes,
+ * so {@link WorkflowsResource} overrides the check away rather than explaining a
+ * refusal the gateway would not make. Still exported: an integrator switching
+ * credential classes catches this by name.
  */
 export function assertApiKeyPlane(isServiceAccount: boolean, surface: string): void {
   if (!isServiceAccount) return;
@@ -218,6 +228,18 @@ abstract class WorkflowInvocationBase {
   /** Human-readable name of this plane, used in the credential-class error. */
   protected abstract surfaceName(): string;
 
+  /**
+   * Refuse the wrong credential class for THIS plane, before the request leaves.
+   *
+   * Strict by default — the consultation-bound plane is API-key/JWT only — and
+   * overridden to a no-op by {@link WorkflowsResource}, whose routes accept a service
+   * account since TASK-930. A hook rather than a boolean flag so the override carries
+   * the reason it exists at the place a reader looks for it.
+   */
+  protected assertCredentialClass(): void {
+    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+  }
+
   /** Gateway-relative path of the run COLLECTION for `slug` (where a run is POSTed). */
   protected abstract collectionPath(slug: string, scopeId?: string): string;
 
@@ -225,13 +247,13 @@ abstract class WorkflowInvocationBase {
   protected abstract listPath(scopeId?: string): string;
 
   protected async listWorkflows(scopeId?: string, signal?: AbortSignal): Promise<WorkflowSummary[]> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    this.assertCredentialClass();
     const response = await this.transport.request<{ data?: WorkflowSummary[] }>({ path: this.listPath(scopeId), signal });
     return Array.isArray(response?.data) ? response.data : [];
   }
 
   protected async startRun(slug: string, body: StartWorkflowRunRequest, options: StartRunOptions, scopeId?: string): Promise<WorkflowRunHandle> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    this.assertCredentialClass();
     assertNoReservedIdentity(body.input);
     const headers = idempotencyHeaders(options);
     return this.transport.request<WorkflowRunHandle>({
@@ -251,7 +273,7 @@ abstract class WorkflowInvocationBase {
     options: StartRunOptions,
     scopeId?: string,
   ): Promise<WorkflowRunStatus> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    this.assertCredentialClass();
     assertNoReservedIdentity(body.input);
     const headers = idempotencyHeaders(options);
     return this.transport.request<WorkflowRunStatus>({
@@ -286,7 +308,7 @@ abstract class WorkflowInvocationBase {
     options: StartRunOptions & StreamRunOptions,
     scopeId?: string,
   ): AsyncGenerator<WorkflowRunEvent, void, void> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    this.assertCredentialClass();
     assertNoReservedIdentity(body.input);
     const headers = { Accept: 'text/event-stream', ...(idempotencyHeaders(options) ?? {}) };
 
@@ -401,14 +423,7 @@ async function* readFrames(response: Response, state: ResumeState, signal?: Abor
  * retry.
  */
 export class WorkflowReviewsResource {
-  constructor(
-    private readonly transport: Transport,
-    private readonly isServiceAccount: boolean,
-  ) {}
-
-  private surfaceName(): string {
-    return 'The workflow human-review plane (`hope.workflows.reviews`)';
-  }
+  constructor(private readonly transport: Transport) {}
 
   /**
    * `GET /api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}` — is this review waiting, and
@@ -418,7 +433,6 @@ export class WorkflowReviewsResource {
    * `(runId, nodeId)` and not by the run alone.
    */
   async get(slug: string, runId: string, nodeId: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowReview> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowReview>({ path: reviewPath(slug, runId, nodeId), signal: options.signal });
   }
 
@@ -437,7 +451,6 @@ export class WorkflowReviewsResource {
     body: WorkflowReviewDecision,
     options: { signal?: AbortSignal } = {},
   ): Promise<WorkflowReviewDecisionResult> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowReviewDecisionResult>({
       method: 'POST',
       path: `${reviewPath(slug, runId, nodeId)}/decide`,
@@ -475,12 +488,21 @@ export class WorkflowsResource extends WorkflowInvocationBase {
 
   constructor(transport: Transport, isServiceAccount = false) {
     super(transport, isServiceAccount);
-    this.reviews = new WorkflowReviewsResource(transport, isServiceAccount);
+    this.reviews = new WorkflowReviewsResource(transport);
   }
 
   protected surfaceName(): string {
     return 'The workflow invocation plane (`hope.workflows`)';
   }
+
+  /**
+   * Both machine credential classes reach this plane (TASK-930 §3): an API key, and a service
+   * account holding `svc:workflow:definition:read` / `svc:workflow:run:read` /
+   * `svc:workflow:run:write`. Overridden to a no-op rather than deleted from the base, because
+   * {@link ConsultationWorkflowsResource} — the same code, the clinical prefix — still refuses
+   * a service account, and one class silently inheriting the other's rule is how that would rot.
+   */
+  protected override assertCredentialClass(): void {}
 
   protected collectionPath(slug: string): string {
     return runsPath(slug);
@@ -505,7 +527,6 @@ export class WorkflowsResource extends WorkflowInvocationBase {
    * rather than deciding what to send. Discovering a catalogue does not need an N+1 of these.
    */
   async schema(slug: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowSchemaDescription> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowSchemaDescription>({ path: `workflows/${encodePathSegment(slug)}/schema`, signal: options.signal });
   }
 
@@ -543,13 +564,11 @@ export class WorkflowsResource extends WorkflowInvocationBase {
 
   /** `GET /api/v1/workflows/{slug}/runs/{runId}` — live status, stages and delivered result. */
   async getRun(slug: string, runId: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowRunStatus> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowRunStatus>({ path: runPath(slug, runId), signal: options.signal });
   }
 
   /** `POST /api/v1/workflows/{slug}/runs/{runId}/cancel`. Returns once the signal is SENT — cancellation may not be complete. */
   async cancelRun(slug: string, runId: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowRunCancelResult> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowRunCancelResult>({ method: 'POST', path: `${runPath(slug, runId)}/cancel`, signal: options.signal });
   }
 
@@ -567,7 +586,6 @@ export class WorkflowsResource extends WorkflowInvocationBase {
    * `autoResume: false` to opt out.
    */
   streamRun(slug: string, runId: string, options: StreamRunOptions = {}): AsyncGenerator<WorkflowRunEvent, void, void> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     const state: ResumeState = { lastEventId: options.lastEventId, terminal: false, runId };
     // One connection for the initial connect, plus the resume budget on top —
     // `autoResume: false` spends the first and buys none.
