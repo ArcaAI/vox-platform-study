@@ -1,65 +1,40 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Publish stage — SDK package release to GitLab Package Registry
+# Publish stage — SDK package release to GitHub Packages
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# Triggered on the `release-sdk` branch only.
-# Uses Changesets to version and publish @arcaai/* packages.
+# Triggered by an `SDK-<ver>` / `ALL-<ver>` tag (or the legacy `release-sdk`
+# branch). Uses Changesets to version and publish the @arcaai/* SDK family.
+#
+# ── The registry of record is GitHub Packages ────────────────────────────────
+#
+# `npm.pkg.github.com`, named by `publishConfig.registry` in every publishable
+# manifest — @arcaai/vox, @arcaai/vox-node, @arcaai/vox-codegen, @arcaai/room,
+# @arcaai/stt, @arcaai/vad, @arcaai/noise-filter, @arcaai/med-ner,
+# @arcaai/pipeline. That is where the 2.0.x and 3.0.x releases went (published by
+# hand from an operator's machine — see docs/operations/vox-sdk-release/) and
+# where every consumer pulls from.
+#
+# This job used to write an .npmrc for the GitLab Package Registry instead. It was
+# never a working alternative: `changeset publish` honours each package's OWN
+# `publishConfig.registry`, so the GitLab credentials it wrote authenticated a
+# registry no publish ever addressed. Corrected in TASK-931.
 #
 # ── Setup ────────────────────────────────────────────────────────────────────
 #
-# Prerequisites (one-time setup in GitLab):
+# Prerequisites (one-time):
 #
-# 1. Enable Package Registry:
-#    Settings → General → Visibility → Package registry → Everyone with access
+# 1. Create a GitHub PAT (classic) with `write:packages` + `read:packages`, with
+#    write access to the repo named by `repository.url` in the manifests
+#    (`ArcaAI/project-hope`). GitHub Packages ties a published package to a repo
+#    through that field, so it must be right before the token is minted.
 #
-# 2. Create a Project Access Token (or use CI_JOB_TOKEN):
-#    Settings → Access Tokens → Add new token
-#      Name:   "npm-publish"
-#      Role:   Developer
-#      Scopes: api, read_package_registry, write_package_registry
-#    Save the token as CI variable: NPM_PUBLISH_TOKEN
+# 2. Save it as a MASKED, PROTECTED CI variable named `GITHUB_PACKAGES_TOKEN`
+#    (Settings → CI/CD → Variables). `before_script` fails the job with an
+#    explanation when it is unset, rather than letting `changeset publish` reach
+#    an anonymous registry and report a 401 per package.
 #
-# 3. Install Changesets (in the repo):
-#    pnpm add -Dw @changesets/cli @changesets/changelog-github
-#    pnpm changeset init
-#
-# 4. Configure .changeset/config.json:
-#    {
-#      "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
-#      "changelog": "@changesets/cli/changelog",
-#      "commit": false,
-#      "fixed": [],
-#      "linked": [
-#        ["@arcaai/vox", "@arcaai/room", "@arcaai/stt",
-#         "@arcaai/vad", "@arcaai/noise-filter"]
-#      ],
-#      "access": "restricted",
-#      "baseBranch": "main",
-#      "updateInternalDependencies": "patch",
-#      "ignore": [
-#        "@arcaai/api", "@arcaai/database",
-#        "@arcaai/domains", "@arcaai/applications", "@arcaai/exceptions",
-#        "@arcaai/logger", "@arcaai/tools", "@arcaai/config-eslint",
-#        "@arcaai/config-rollup", "@arcaai/config-tailwind", "@arcaai/config-ts",
-#        "@arcaai/ui"
-#      ]
-#    }
-#
-# 5. Add publishConfig to each publishable package.json:
-#    {
-#      "publishConfig": {
-#        "@arcaai:registry": "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
-#      }
-#    }
-#
-# 6. Add root package.json scripts:
-#    {
-#      "scripts": {
-#        "changeset": "changeset",
-#        "changeset:version": "changeset version",
-#        "changeset:publish": "changeset publish"
-#      }
-#    }
+# 3. `NPM_PUBLISH_TOKEN` is still used, for the git push of the version-bump
+#    commit back to the `release-sdk` branch — a GitLab token, not a registry one.
 #
 # ── Developer workflow ───────────────────────────────────────────────────────
 #
@@ -68,20 +43,20 @@
 #    → Select affected packages, bump type (patch/minor/major)
 #    → Creates .changeset/<random-name>.md
 # 3. Commit the changeset file with your code changes
-# 4. Merge to release-sdk branch
+# 4. Tag the release (`SDK-<ver>`) once merged
 # 5. Pipeline runs:
 #    → changeset version (bumps versions + generates CHANGELOGs)
 #    → build packages
-#    → changeset publish (pushes to GitLab Package Registry)
+#    → changeset publish (pushes to GitHub Packages)
 #
 # ── Installing published packages ────────────────────────────────────────────
 #
-# Consumers add to their .npmrc:
+# Consumers add to their .npmrc (never committed with a real token):
 #
-#   @arcaai:registry=https://<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/npm/
-#   //<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/npm/:_authToken=<TOKEN>
+#   @arcaai:registry=https://npm.pkg.github.com/
+#   //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 #
-# Then:  pnpm add @arcaai/vox@1.2.3
+# Then:  pnpm add @arcaai/vox@3.1.0
 #
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -103,13 +78,30 @@ publish-sdk:
     - corepack enable
     - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
     - pnpm config set store-dir .pnpm-store
+    # The registry of record is GITHUB PACKAGES, not the GitLab registry this job
+    # used to write an .npmrc for. Every publishable manifest in the family says so
+    # (`publishConfig.registry: https://npm.pkg.github.com`), that is where the
+    # 2.0.x and 3.0.x releases were published from an operator's machine, and it is
+    # where every consumer — the ALaaS apps included — pulls from. `changeset
+    # publish` honours each package's own `publishConfig.registry`, so an .npmrc
+    # naming GitLab could never have authenticated the publish it was written for.
+    #
+    # GITHUB_PACKAGES_TOKEN is a GitHub PAT with `write:packages` on the repo named
+    # by `repository.url`. Fail here, loudly, rather than let `changeset publish`
+    # reach an anonymous registry and report a 401 per package.
     - |
-      echo "@arcaai:registry=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
-      echo "${CI_API_V4_URL#http*:}/projects/${CI_PROJECT_ID}/packages/npm/:_authToken=${NPM_PUBLISH_TOKEN}"
+      if [ -z "${GITHUB_PACKAGES_TOKEN}" ]; then
+        echo "publish-sdk: GITHUB_PACKAGES_TOKEN is not set." >&2
+        echo "  The @arcaai/* SDK family publishes to GitHub Packages (npm.pkg.github.com)," >&2
+        echo "  per publishConfig.registry in every publishable package.json." >&2
+        echo "  Add a GitHub PAT with write:packages as a masked, protected CI variable" >&2
+        echo "  named GITHUB_PACKAGES_TOKEN (Settings -> CI/CD -> Variables)." >&2
+        exit 1
+      fi
     - |
       {
-        echo "@arcaai:registry=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
-        echo "${CI_API_V4_URL#http*:}/projects/${CI_PROJECT_ID}/packages/npm/:_authToken=${NPM_PUBLISH_TOKEN}"
+        echo "@arcaai:registry=https://npm.pkg.github.com/"
+        echo "//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}"
       } > .npmrc
     - pnpm install --frozen-lockfile --prefer-offline
   script:
@@ -131,8 +123,12 @@ publish-sdk:
     - pnpm turbo build --filter=@arcaai/med-ner
     - pnpm turbo build --filter=@arcaai/vox
     - pnpm turbo build --filter=@arcaai/vox-node
+    # Publishable by manifest and documented as `npx @arcaai/vox-codegen`, but it was
+    # absent from this list and sat in the Changesets `ignore` list — so it was never
+    # versioned or published with the family it belongs to. Both are fixed (TASK-931).
+    - pnpm turbo build --filter=@arcaai/vox-codegen
 
-    - echo "Publishing to GitLab Package Registry..."
+    - echo "Publishing to GitHub Packages (npm.pkg.github.com)..."
     - pnpm changeset publish
 
     - echo "Committing version bumps..."

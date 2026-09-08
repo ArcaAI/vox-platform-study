@@ -15,6 +15,78 @@ release notes in [`docs/operations/release-notes/`](../../docs/operations/releas
 
 ## [Unreleased]
 
+### Added — TASK-931: the invocation plane accepts a service account
+
+`hope.agents.*` and `hope.workflows.*` were API-key-only: every method called
+`assertApiKeyPlane`, which refused a service-account client LOCALLY, before any request, because
+`route-manifest.json` declared `svcScopes: []` on those routes and a 403 with no grantable scope
+behind it is worse than an explanation. TASK-930 declares the scopes
+(`svc:agent:definition:read`, `svc:agent:invocation:write`, `svc:workflow:definition:read`,
+`svc:workflow:run:read`, `svc:workflow:run:write`), so the refusal is gone and ONE client can
+administer and invoke.
+
+The rule that made the refusal necessary is unchanged, and still enforced at construction: a
+service-account client never sends `X-Tenant-Id`, because `workingTenantId` binds at token
+EXCHANGE. `hope.admin.*` remains service-account only, and an API key still cannot reach
+`/admin/*` under any scope — that is platform policy, enforced by a boot audit.
+
+`CredentialClassError` and `assertApiKeyPlane` are still exported: the consultation-bound plane
+(`hope.consultations.workflows`) is API-key/JWT only and still uses them.
+
+### Added — TASK-931: `NAMED_ENTITY_RECOGNITION`
+
+`AgentTask` gains the value, so `hope.agents.list({ task: 'NAMED_ENTITY_RECOGNITION' })` types
+and filters. `invoke()` returns the agent's entities;
+`NamedEntityRecognitionInput` / `NamedEntityRecognitionOutput` / `RecognizedEntity` describe the
+task's DEFAULT schema (`{ text, language? }` → `{ entities: [{ text, label, start, end, score? }] }`)
+— a tenant may author a different one, which is why they are a convenience type and not a
+constraint on `invoke`.
+
+It is a ONE-SHOT task: `?mode=stream` on a NER agent is a gateway 400 (`MODE_UNSUPPORTED`), so
+`invokeAndStream` on one fails rather than answering slowly.
+
+### Added — TASK-931: `transport: 'socket'` on the workflow run stream
+
+`streamRun`, `waitForRun` and `runAndStream` accept `{ transport: 'socket' }`. The SDK mints a
+run-scoped single-use ticket (`POST /workflows/{slug}/runs/{runId}/stream-ticket`) and reads the
+run's events over `globalThis.WebSocket`, resolving the ticket's `url` against the client's
+`baseUrl` (`http(s)` → `ws(s)`). Same event objects, same terminal detection, same `waitForRun`
+return value — a one-word change at the call site.
+
+**Still zero runtime dependencies.** The socket is the platform global, which means **Node 22 or
+newer**; on a runtime without it the SDK throws `SocketUnavailableError` naming that floor rather
+than importing a polyfill you did not ask for.
+
+**SSE remains the default, and remains the only lane that RESUMES.** A dropped socket ends the
+iteration (the ticket is single-use and the gateway replays nothing), where SSE reconnects with
+`Last-Event-ID` and loses no frames. Reach for `socket` when something between you and the
+gateway buffers `text/event-stream` — the symptom is a run that looks stalled and then completes
+all at once — or when a socket is the budget you already hold.
+
+### Fixed — TASK-931: `SDK_VERSION` is derived from `package.json`
+
+It was a hand-maintained literal in `core/transport.ts` and had already drifted — it read `3.0.0`
+while the package was `3.0.1`, so every request from the shipped SDK announced the wrong version
+in `User-Agent`. `tsup` now substitutes the manifest's value at build time, with a manifest read
+as the fallback when the source runs unbuilt.
+
+### Fixed — TASK-931: the admin surface is 49 areas, not 52
+
+`src/index.ts` and the README said 52 — the count from TASK-773, before `ai-task-defaults`
+(TASK-881), `pipeline-policy` (TASK-882) and `tenant-tts-config` (TASK-888) left with the routes
+they wrapped. The generated tree has said 49 since; only the prose was stale.
+`docs/architecture/vox-node-gateway-gaps.md` G3 ("webhook deliveries never fire") is closed for
+the same reason: delivery shipped in TASK-890.
+
+### Added — TASK-931: `examples/05-agents-and-workflows.ts`
+
+Runs a published agent, streams a workflow run over both transports, and releases a
+`core.humanReview` node — the three surfaces the examples did not cover.
+
+---
+
+## [3.0.1] — 2026-09-07
+
 ### Added — TASK-890: `hope.agents.*`, the tenant's published agents
 
 Hand-authored (like `hope.workflows`), API-key plane, six methods over five gateway routes:
@@ -108,3 +180,70 @@ asserted the envelope now pins the flat body for both modes.
 ### Added — packaging
 
 `CHANGELOG.md` is included in the published tarball (`package.json#files`).
+
+### Added — TASK-773: the administration plane and the service-account credential class
+
+The version number does not carry the size of this change — `3.0.0 → 3.0.1` was a deliberate
+patch bump per owner decision D-4, taken so the SDK family stays in lockstep. Read this entry,
+not the number, for what landed.
+
+`new HopeClient({ serviceAccount: { clientId, clientSecret } })`. The SDK exchanges the pair at
+`POST /auth/service-token` for an opaque short-lived token and presents it as
+`X-Service-Account-Token`. Construction still never touches the network: the first call exchanges
+lazily, the token is cached and refreshed on a margin before expiry, concurrent calls during a
+refresh collapse to one exchange, and a token revoked mid-flight (revocation is immediate, not
+TTL-bound) is re-exchanged once and the call retried. Neither the secret nor the token can reach a
+log line or a serialized error.
+
+An API key still cannot reach `/admin/*` under any scope, including `*` — platform policy,
+enforced by a boot audit, not a gap. A service account is the only path.
+
+**`workingTenantId` binds at exchange, not per request.** This is the one place API-key intuition
+misleads: a token *carries* its working tenant, so the SDK never sends `X-Tenant-Id` alongside it.
+Supplying top-level `tenantId` together with `serviceAccount` throws at construction rather than
+being silently dropped, as does supplying `apiKey` and `serviceAccount` together (the gateway
+rejects two credentials, so failing at construction turns a runtime refusal into a programming
+error).
+
+`hope.admin.*` is generated from the gateway's own route metadata cross-checked against its
+OpenAPI document, with a CI gate that fails on drift. Areas are named after the scope they require
+(`svc:admin:tenant-tts-config:manage` → `hope.admin.tenantTtsConfig`), and every 403 names the
+scope that route needs.
+
+Three behaviours worth knowing before writing against it:
+
+- **Use `listIterate()` rather than a hand-rolled page loop.** The gateway echoes back the raw
+  `page`/`limit` query values, so reading them off the response and incrementing does not work;
+  the iterator drives pagination from the request side.
+- **The row is the OCC precondition**, not a header — `update(id, patch, { ifMatch: row })`.
+  `ifMatch` is a required property, so forgetting it is a compile error rather than a 428. List
+  responses carry no ETag at all, since one validator cannot represent N rows.
+- **A 404 can mean "not yours"**, not "does not exist" — the platform answers cross-tenant reads
+  with 404 deliberately.
+
+Five admin areas are deliberately absent, machine-closed by owner decision: service-account
+issuance (self-replication), impersonation (it would defeat audit attribution, which records
+exactly one actor — human or machine, never both), consent grants (consent is an act of a
+person), and the monitoring and service-health telemetry surfaces. A method that always 403s is
+worse than no method.
+
+Also exports `ServiceAccountCredentials` from the root barrel, previously reachable only from the
+`core` subpath, so integrators could not name the type of the credential they were constructing.
+
+### Added — earlier in the 3.0.1 window
+
+Back-filled from git history; each shipped between `3.0.0` (2026-08-18) and the `3.0.1` bump.
+
+- **TASK-865** — `hope.agents.*`: invoke a tenant's published Agents from a server (list, get,
+  invoke, invokeAndStream, synthesize, transcribe). Selection is a `slug`, never a model,
+  provider or pipeline id.
+- **TASK-858** — `verifyWebhookSignature`: verify an inbound HOPE webhook delivery from the
+  server SDK, zero dependencies, constant-time.
+- **TASK-856** — workflow clone (`admin` surface) reached the generated tree.
+- **TASK-855** — the model-download / model-registry admin surface reached the generated tree.
+- **TASK-850b** — `hope.workflows` and `hope.consultations.workflows`: the workflow invocation
+  plane, with SSE resume (`Last-Event-ID`), reserved run-identity refusal, and the blocking
+  ceiling handled as non-retryable.
+- **TASK-800** — consultation context write plus context-schema discovery.
+- **TASK-760 / TASK-742** — `core/url.ts`'s prefix-exemption set re-synced with the gateway's
+  own `main.ts` exclusion list.
