@@ -9,7 +9,7 @@
  */
 
 /** The task family a published Agent serves. */
-export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
 
 /**
  * One published, active Agent visible to the tenant (the same predicate the
@@ -57,16 +57,59 @@ export interface AgentInvocationInput {
   [key: string]: unknown;
 }
 
-/** The `?mode=blocking` 200 body of an agent invocation. */
-export interface AgentInvocationResult {
+/**
+ * The `?mode=blocking` 200 body of an agent invocation.
+ *
+ * `TOutput` defaults to the TEXT_GENERATION shape, which is what every existing call site
+ * means. A task with a different output — `NAMED_ENTITY_RECOGNITION` answers
+ * {@link NamedEntityRecognitionOutput} — names it explicitly:
+ * `invoke<NamedEntityRecognitionOutput>(slug, { text })`. The envelope around `output` is the
+ * same for every task, which is why this is one generic type rather than one type per task.
+ */
+export interface AgentInvocationResult<TOutput = { text: string }> {
   agentSlug: string;
   /** The exact published version that answered — pin it in a log; the slug alone is a lineage. */
   agentVersionId: string;
-  output: { text: string };
+  output: TOutput;
   /** The provider that served it, or `null` when the resolver could not attribute one. */
   provider: string | null;
   model: string | null;
   usage: { promptTokens: number | null; completionTokens: number | null } | null;
+}
+
+/**
+ * The DEFAULT input of a `NAMED_ENTITY_RECOGNITION` agent (TASK-930 §2.3).
+ *
+ * A convenience, not a constraint — {@link AgentInvocationInput} stays open, because the
+ * gateway validates against the AGENT'S OWN `inputSchema` and a tenant may author its own.
+ */
+export interface NamedEntityRecognitionInput {
+  text: string;
+  /** ISO 639-1 hint; omit to let the agent decide. */
+  language?: string;
+  [key: string]: unknown;
+}
+
+/** One entity a NER agent found. `start`/`end` are character offsets into the input `text`. */
+export interface RecognizedEntity {
+  text: string;
+  label: string;
+  start: number;
+  end: number;
+  /** Model confidence in `0..1`. Absent for a checkpoint that reports none. */
+  score?: number;
+}
+
+/**
+ * The DEFAULT output of a `NAMED_ENTITY_RECOGNITION` agent —
+ * `invoke<NamedEntityRecognitionOutput>(slug, { text })`.
+ *
+ * NER is a ONE-SHOT task: `?mode=stream` on a NER agent is a gateway 400 (`MODE_UNSUPPORTED`),
+ * so `stream()` on one fails rather than answering slowly. There is nothing to stream — the
+ * answer is a single spans array.
+ */
+export interface NamedEntityRecognitionOutput {
+  entities: RecognizedEntity[];
 }
 
 /**

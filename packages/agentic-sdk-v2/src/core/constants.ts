@@ -4,6 +4,8 @@
  * Default values and endpoint definitions.
  */
 
+import type { AgentTask } from '../types/agent';
+
 // =============================================================================
 // Route classification
 // =============================================================================
@@ -775,8 +777,14 @@ export const workflowRunStreamScope = (runId: string): string => `workflow_run:$
  * Administration (`/admin/agents/**`) is NOT here — it is the admin plane.
  */
 export const AGENT_ENDPOINTS = {
-  /** List published, active agents visible to the tenant, optionally filtered by task. */
-  LIST: (task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH') => (task ? `/agents?task=${encodeURIComponent(task)}` : '/agents'),
+  /**
+   * List published, active agents visible to the tenant, optionally filtered by task.
+   *
+   * Typed with the shared {@link AgentTask} union (a TYPE-only import, so this module stays
+   * runtime-dependency-free) rather than a second copy of it — the copy is what went stale
+   * when `NAMED_ENTITY_RECOGNITION` was added in TASK-931.
+   */
+  LIST: (task?: AgentTask) => (task ? `/agents?task=${encodeURIComponent(task)}` : '/agents'),
   /** One published agent: summary + input/output schema + protocols. */
   GET: (slug: string) => `/agents/${encodeURIComponent(slug)}`,
   /**

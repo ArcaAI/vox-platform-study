@@ -44,7 +44,7 @@ export interface UseAgentInvocationReturn {
    * Throws {@link ReservedRunIdentityError} SYNCHRONOUSLY — before any request — when `input`
    * carries a server-stamped identity key.
    */
-  invoke: (slug: string, input: AgentInvocationInput) => Promise<AgentInvocationResult>;
+  invoke: <TOutput = { text: string }>(slug: string, input: AgentInvocationInput) => Promise<AgentInvocationResult<TOutput>>;
   /**
    * Invoke and consume the token stream (`?mode=stream`). Frames are relayed verbatim from the
    * TEXT service, so read the fields you know and ignore the rest.
@@ -96,12 +96,16 @@ export function useAgentInvocation(): UseAgentInvocationReturn {
   const [result, setResult] = useState<AgentInvocationResult | null>(null);
 
   const invoke = useCallback(
-    async (slug: string, input: AgentInvocationInput): Promise<AgentInvocationResult> => {
+    // Generic over the agent's OUTPUT (TASK-931): the envelope is identical for every task, and
+    // only `output` differs — `{ text }` for TEXT_GENERATION, `{ entities }` for
+    // NAMED_ENTITY_RECOGNITION, whatever a tenant authored otherwise. `result` stays typed at
+    // the default because a piece of state cannot be generic over the last call that wrote it.
+    async <TOutput = { text: string }>(slug: string, input: AgentInvocationInput): Promise<AgentInvocationResult<TOutput>> => {
       assertNoReservedIdentity(input);
-      const answer = await execute<AgentInvocationResult>('invokeAgent', (client) =>
-        client.post<AgentInvocationResult>(AGENT_ENDPOINTS.INVOKE(slug, 'blocking'), input),
+      const answer = await execute<AgentInvocationResult<TOutput>>('invokeAgent', (client) =>
+        client.post<AgentInvocationResult<TOutput>>(AGENT_ENDPOINTS.INVOKE(slug, 'blocking'), input),
       );
-      setResult(answer);
+      setResult(answer as AgentInvocationResult);
       return answer;
     },
     [execute],

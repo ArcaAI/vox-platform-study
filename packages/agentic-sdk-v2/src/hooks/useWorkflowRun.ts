@@ -34,6 +34,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { WORKFLOW_ENDPOINTS, workflowRunStreamScope } from '../core/constants';
 import { SSEClient, type SSEApiClient } from '../core/SSEClient';
+import { WorkflowRunSocketClient, type SocketApiClient } from '../core/WorkflowRunSocketClient';
 import type {
   WorkflowRunEvent,
   WorkflowRunEventPayload,
@@ -105,8 +106,24 @@ export interface StartWorkflowRunOptions {
 
 /** Options for {@link useWorkflowRun}. */
 export interface UseWorkflowRunOptions {
-  // TODO(TASK-864): workflow socket protocol — a `transport: 'sse' | 'socket'` option lands here
-  // when the run stream gains a socket lane; SSE with `Last-Event-ID` resume stays the default.
+  /**
+   * Which lane the run's events arrive on. Default `'sse'`.
+   *
+   * **SSE is the default because it is the only lane that RESUMES.** It re-mints a ticket per
+   * connect and replays with `Last-Event-ID`, so a dropped connection costs latency and no
+   * frames; a socket's ticket is single-use, so a drop ends the watch (`watch(slug, runId,
+   * lastEventId)` starts a new one from the cursor you kept).
+   *
+   * Reach for `'socket'` when something between the browser and the gateway BUFFERS
+   * `text/event-stream` — the symptom is a run that looks stalled and then completes all at
+   * once — or when a socket is the connection budget you already hold per tab. It mints a
+   * run-scoped ticket (`POST /workflows/{slug}/runs/{runId}/stream-ticket`) and opens the URL
+   * that response returns; a JWT never travels in a query string on either lane.
+   *
+   * Everything else is identical: the same `events`, the same `status`, the same
+   * `lastEventId`, the same `stopWatching()`.
+   */
+  transport?: 'sse' | 'socket';
   /**
    * Load the catalogue on mount. Pass a `consultationId` to load the
    * CONSULTATION-BOUND catalogue, which is wider — it also lists
@@ -181,7 +198,7 @@ const STREAM_EVENT_TYPES: readonly string[] = Object.freeze([
 ]);
 
 export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflowRunReturn {
-  const { consultationId, skipInitialLoad = false, maxEvents = DEFAULT_MAX_EVENTS } = options;
+  const { consultationId, skipInitialLoad = false, maxEvents = DEFAULT_MAX_EVENTS, transport = 'sse' } = options;
   const { execute, isLoading, error, apiClient, logger } = useApiOperation('useWorkflowRun');
 
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
@@ -192,13 +209,19 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
   const [lastEventId, setLastEventId] = useState<string | null>(null);
 
   const sseRef = useRef<SSEClient | null>(null);
+  const socketRef = useRef<WorkflowRunSocketClient | null>(null);
 
   const stopWatching = useCallback(() => {
     // Disconnect ONLY. Never a cancel: the run is a durable execution, and
     // closing a view of it must not end it — the same guarantee the gateway
     // makes by registering no `close` handler that signals the run.
+    // Both lanes are torn down unconditionally: `transport` can change between the connect
+    // and the teardown (a remount, a prop flip), and a lane closed by the wrong branch is a
+    // socket or an EventSource that outlives the screen holding it.
     sseRef.current?.disconnect();
     sseRef.current = null;
+    socketRef.current?.disconnect();
+    socketRef.current = null;
   }, []);
 
   // Unmount must not leave an EventSource (and its ticket refresh loop) open.
@@ -257,10 +280,61 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
     [execute],
   );
 
+  /**
+   * Fold one decoded frame into state — events, cursor, status, terminal detection.
+   *
+   * Extracted from `watch` when the socket lane landed (TASK-931): the two lanes differ ONLY
+   * in how a frame and its cursor arrive, and duplicating this body is how the socket lane
+   * would quietly stop capping `events` or stop closing on a terminal frame.
+   */
+  const applyFrame = useCallback(
+    (envelope: WorkflowRunEvent, cursor: string | null, slug: string, runId: string): void => {
+      setLastEventId(cursor);
+      setEvents((prev) => {
+        const next = [...prev, { ...envelope, ...(cursor === null ? {} : { resumeToken: cursor }) }];
+        return next.length > maxEvents ? next.slice(next.length - maxEvents) : next;
+      });
+
+      const payload = envelope.payload as WorkflowRunEventPayload | undefined;
+      if (payload?.status !== undefined && typeof payload.status === 'string') {
+        setStatus({
+          runId: payload.runId ?? runId,
+          slug: payload.slug ?? slug,
+          workflowVersionNumber: payload.workflowVersionNumber ?? 0,
+          status: payload.status,
+          stages: payload.stages ?? [],
+          startedAt: payload.startedAt ?? null,
+          endedAt: payload.endedAt ?? null,
+          resultRef: (payload.resultRef as Record<string, unknown> | undefined) ?? null,
+        });
+      }
+      if (envelope.type === 'workflow.run.completed' || (typeof payload?.status === 'string' && isTerminalRunStatus(payload.status))) {
+        setIsRunning(false);
+        stopWatching();
+      }
+    },
+    [maxEvents, stopWatching],
+  );
+
   const watch = useCallback(
     (slug: string, runId: string, startCursor?: string): (() => void) => {
       if (!apiClient) throw new Error('SDK not initialized');
       stopWatching();
+
+      if (transport === 'socket') {
+        // A run-scoped ticket, minted on the run's own route rather than `/auth/stream-ticket`:
+        // it binds to ONE run at mint time and answers the socket URL to open, so neither the
+        // scope nor the URL is something this client assembles and could get wrong.
+        const socket = new WorkflowRunSocketClient(slug, runId, apiClient as unknown as SocketApiClient, logger);
+        socketRef.current = socket;
+        socket.onFrame((envelope, cursor) => applyFrame(envelope as unknown as WorkflowRunEvent, cursor, slug, runId));
+        // A socket failure ends this VIEW of the run, never the run. Recorded and surfaced —
+        // not retried, because the ticket was single-use and a silent re-mint would be a new
+        // subscription wearing the old one's name.
+        socket.onError(() => setIsRunning(false));
+        socket.connect(startCursor);
+        return stopWatching;
+      }
 
       // The scope carries the RUN id: the gateway mints a ticket for one run
       // (`@StreamScope({ namespace: 'workflow_run', param: 'runId' })`), and
@@ -278,30 +352,7 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
             // frames are fine — and the run is unaffected either way.
             return;
           }
-          const cursor = sse.getLastEventId();
-          setLastEventId(cursor);
-          setEvents((prev) => {
-            const next = [...prev, { ...envelope, ...(cursor === null ? {} : { resumeToken: cursor }) }];
-            return next.length > maxEvents ? next.slice(next.length - maxEvents) : next;
-          });
-
-          const payload = envelope.payload as WorkflowRunEventPayload | undefined;
-          if (payload?.status !== undefined && typeof payload.status === 'string') {
-            setStatus({
-              runId: payload.runId ?? runId,
-              slug: payload.slug ?? slug,
-              workflowVersionNumber: payload.workflowVersionNumber ?? 0,
-              status: payload.status,
-              stages: payload.stages ?? [],
-              startedAt: payload.startedAt ?? null,
-              endedAt: payload.endedAt ?? null,
-              resultRef: (payload.resultRef as Record<string, unknown> | undefined) ?? null,
-            });
-          }
-          if (envelope.type === 'workflow.run.completed' || (typeof payload?.status === 'string' && isTerminalRunStatus(payload.status))) {
-            setIsRunning(false);
-            stopWatching();
-          }
+          applyFrame(envelope, sse.getLastEventId(), slug, runId);
         });
       }
 
@@ -320,7 +371,7 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
 
       return stopWatching;
     },
-    [apiClient, logger, maxEvents, stopWatching],
+    [apiClient, applyFrame, logger, stopWatching, transport],
   );
 
   const start = useCallback(
