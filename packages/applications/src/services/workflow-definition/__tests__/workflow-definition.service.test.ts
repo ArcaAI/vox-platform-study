@@ -77,12 +77,24 @@ const STT_GRAPH = {
   ],
 };
 
-const VALID_GRAPH = { version: 1, nodes: [{ id: 'n1', type: 'noop', config: {} }], edges: [] };
+/** TASK-893 — the only vocabulary left is `core`; `noop` and every legacy palette are gone. */
+const VALID_GRAPH = {
+  version: 1,
+  nodes: [
+    { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
+    { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 'summarizer' } }, position: { x: 1, y: 0 } },
+    { id: 'o1', type: 'core.output', config: { protocols: ['http'] }, position: { x: 2, y: 0 } },
+  ],
+  edges: [
+    { id: 'e1', from: 't1', fromPort: 'out', to: 'a1', toPort: 'context' },
+    { id: 'e2', from: 'a1', fromPort: 'out', to: 'o1', toPort: 'in' },
+  ],
+};
 const CYCLIC_GRAPH = {
   version: 1,
   nodes: [
-    { id: 'n1', type: 'noop', config: {} },
-    { id: 'n2', type: 'noop', config: {} },
+    { id: 'n1', type: 'core.agent', config: { agentRef: { slug: 'a' } }, position: { x: 0, y: 0 } },
+    { id: 'n2', type: 'core.agent', config: { agentRef: { slug: 'b' } }, position: { x: 1, y: 0 } },
   ],
   edges: [
     { id: 'e1', from: 'n1', fromPort: 'out', to: 'n2', toPort: 'in' },
@@ -97,7 +109,7 @@ const createMockEntity = (overrides: Record<string, unknown> = {}) => ({
   slug: overrides.slug ?? 'discharge_summary',
   name: overrides.name ?? 'Discharge Summary',
   description: overrides.description ?? null,
-  paletteKey: overrides.paletteKey ?? 'summarization',
+  paletteKey: overrides.paletteKey ?? 'core',
   versionNumber: overrides.versionNumber ?? 1,
   parentVersionId: overrides.parentVersionId ?? null,
   status: overrides.status ?? WorkflowDefinitionStatus.DRAFT,
@@ -162,7 +174,7 @@ describe('WorkflowDefinitionService', () => {
       const result = await service.create({
         slug: 'discharge_summary',
         name: 'Discharge Summary',
-        paletteKey: 'summarization',
+        paletteKey: 'core',
         graph: VALID_GRAPH,
       });
 
@@ -182,7 +194,7 @@ describe('WorkflowDefinitionService', () => {
         service.create({
           slug: 'discharge_summary',
           name: 'Discharge Summary',
-          paletteKey: 'summarization',
+          paletteKey: 'core',
           // Missing `edges` — workflowGraphProblems fails this before any rule/compile runs.
           graph: { version: 1, nodes: [] } as never,
         }),
@@ -194,7 +206,7 @@ describe('WorkflowDefinitionService', () => {
       mockWorkflowDefinitionRepository.findMaxVersionNumber.mockResolvedValue(0);
 
       await expect(
-        service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'summarization', graph: CYCLIC_GRAPH }),
+        service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: CYCLIC_GRAPH }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(mockWorkflowDefinitionRepository.create).not.toHaveBeenCalled();
     });
@@ -203,7 +215,7 @@ describe('WorkflowDefinitionService', () => {
       mockWorkflowDefinitionRepository.findMaxVersionNumber.mockResolvedValue(0);
 
       await expect(
-        service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'summarization', graph: UNREGISTERED_NODE_GRAPH }),
+        service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: UNREGISTERED_NODE_GRAPH }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(mockWorkflowDefinitionRepository.create).not.toHaveBeenCalled();
     });
@@ -214,7 +226,7 @@ describe('WorkflowDefinitionService', () => {
       mockEntitlements.assertQuantityQuota.mockRejectedValue(new Error('QuotaExceeded'));
 
       await expect(
-        service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'summarization', graph: VALID_GRAPH }),
+        service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: VALID_GRAPH }),
       ).rejects.toThrow('QuotaExceeded');
       expect(mockEntitlements.assertQuantityQuota).toHaveBeenCalledWith('tenant-1', 'maxWorkflowDefinitions', 5);
       expect(mockWorkflowDefinitionRepository.create).not.toHaveBeenCalled();
@@ -377,7 +389,7 @@ describe('WorkflowDefinitionService', () => {
 
     describe('featurePaletteStt entitlement gate (Task 7)', () => {
       it('never consults isFeatureEnabled for a non-stt palette', async () => {
-        const entity = createMockEntity({ paletteKey: 'summarization' });
+        const entity = createMockEntity({ paletteKey: 'core' });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
         mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
 
@@ -414,7 +426,7 @@ describe('WorkflowDefinitionService', () => {
     });
 
     describe('STT pipeline compilation on publish (Task 4 — unreachable for a real stt graph since TASK-867)', () => {
-      it('never reaches SttPipelineCompilerService: compile() refuses every stt.* node (WF-C-002) first, so nothing is written and no sys-event fires', async () => {
+      it('never reaches SttPipelineCompilerService: the publish gate refuses every stt.* node first, so nothing is written and no sys-event fires', async () => {
         const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
         mockSttPipelineCompiler.compileAndPublish.mockResolvedValue({ id: 'pipe-42', slug: 'wf-stt-discharge-summary', version: 1 });
@@ -422,16 +434,21 @@ describe('WorkflowDefinitionService', () => {
         const error = await service.publish('def-id-1', {}).catch((e: unknown) => e);
 
         expect(error).toBeInstanceOf(BadRequestException);
-        const { findings } = (error as BadRequestException).getResponse() as { findings: Array<{ ruleId: string; nodeId?: string }> };
-        expect(findings.map((finding) => finding.ruleId)).toEqual(['WF-C-002', 'WF-C-002', 'WF-C-002']);
-        expect(findings.map((finding) => finding.nodeId).sort()).toEqual(['n_asr', 'n_audio', 'n_out']);
+        const { findings } = (error as BadRequestException).getResponse() as { findings: Array<{ ruleId: string; code?: string; message: string }> };
+        // TASK-893 deleted the `stt.*` descriptors outright, so the refusal moved one gate
+        // EARLIER: the structural port-binding pass cannot resolve the ports of an unregistered
+        // type and stops there, before compile()'s own WF-C-002. Both refuse; this one names the
+        // unregistered type on the edge that referenced it, which is strictly more actionable.
+        expect(findings.map((finding) => finding.ruleId)).toEqual(['WF-PUB', 'WF-PUB']);
+        expect(findings.map((finding) => finding.code)).toEqual(['PORT_BINDING', 'PORT_BINDING']);
+        expect(findings.map((finding) => finding.message).join(' ')).toContain('stt.audioInput');
         expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
         expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
         expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
       });
 
       it('never calls the STT compiler for a non-stt palette', async () => {
-        const entity = createMockEntity({ paletteKey: 'summarization' });
+        const entity = createMockEntity({ paletteKey: 'core' });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
         mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
 
