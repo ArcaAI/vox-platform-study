@@ -23,7 +23,6 @@ from temporalio.worker import Worker
 
 from harness.temporal.claim_check import _MEMORY_STORE, store_blob
 from harness.temporal.interpreter import activities as interpreter_activities
-from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES, interpreter_noop
 from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.models import InterpreterInput
@@ -36,6 +35,7 @@ from harness.temporal.interpreter.run_events import (
     run_event_stream_key,
 )
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
+from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
 
 #: TASK-893 — this suite drives the interpreter through the retired `noop`/`passthrough` seed
 #: types, which now exist only as test scaffolding (see `../conftest.py`).

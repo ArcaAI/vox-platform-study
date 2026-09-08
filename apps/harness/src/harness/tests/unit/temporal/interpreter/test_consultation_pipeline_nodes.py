@@ -22,14 +22,13 @@ import pytest
 from harness.sensors.base import NEREntity
 from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
+from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import consultation_capture as caps
 from harness.temporal.interpreter.nodes import consultation_compose as compose
 from harness.temporal.interpreter.nodes import consultation_nlp as nlp
 from harness.temporal.interpreter.nodes import consultation_persist as persist
 from harness.temporal.interpreter.nodes import consultation_verify as verify
-from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
-from harness.temporal.interpreter.registry import NODE_REGISTRY
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = {"consultationId": "c1", "externalPatientId": "p1", "userId": "u1"}
