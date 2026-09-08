@@ -27,22 +27,60 @@ async def _load_into_cache(model_name: str, model_path: str | None) -> None:
         pass
 
 
+def bootstrap_warm_models(raw: str | None = None) -> list[tuple[str, str | None]]:
+    """The env-declared pre-load list, as `(model_name, model_path | None)` pairs.
+
+    Format: `modelName[=modelPath]`, comma-separated. Empty (the default) means
+    NO opinion, so an unconfigured process — CI included — stays exactly as lazy
+    as it was.
+
+    This is a SCHEDULING lever, not a selection one, and the distinction is what
+    keeps it inside the "no hardcoded configuration" rule: an entry never
+    decides which weights answer a request (the caller still names its model,
+    resolved tenant-first), only that those weights are loaded before the first
+    caller asks. It exists because the control-plane warm set has no producer
+    today, which left the whole warm path inert — see TASK-930 D-7. Retire it
+    the moment `warmModels` is actually served.
+    """
+    source = settings.service.warm_models if raw is None else raw
+    pairs: list[tuple[str, str | None]] = []
+    for entry in (source or "").split(","):
+        name, _, path = entry.partition("=")
+        name, path = name.strip(), path.strip()
+        if name:
+            pairs.append((name, path or None))
+    return pairs
+
+
 async def warm_models(
     client: Any,
     load: Callable[[str, str | None], Awaitable[None]] = _load_into_cache,
+    bootstrap: list[tuple[str, str | None]] | None = None,
 ) -> None:
-    """Load the control-plane warm set. NEVER raises — warming is an optimisation.
+    """Load the warm set. NEVER raises — warming is an optimisation.
+
+    The set is the control plane's `warmModels` plus the bootstrap list above,
+    with the SERVED entry winning for a model both name: the platform's staged
+    path is the authoritative one, and a duplicate must cost one load, not two.
+    A config outage no longer discards the bootstrap list — that outage IS the
+    cold-start case, since nlp boots before the gateway does.
 
     Sequential on purpose: a cold GLiNER2 load is CPU- and IO-heavy, and racing
     several of them at boot lengthens the wall-clock time to the FIRST usable
     model, which is the number that actually matters to readiness.
     """
     try:
-        snapshot = await client.get()
-        warm = snapshot.warm_models()
-    except Exception as exc:  # noqa: BLE001 — a config outage leaves the service lazy
+        served = (await client.get()).warm_models()
+    except Exception as exc:  # noqa: BLE001 — a config outage leaves the served half empty
         logger.warning(f"nlp.warm_models.config_unavailable error={type(exc).__name__} {exc}")
-        return
+        served = []
+
+    warm = list(served)
+    named = {name for name, _ in warm}
+    for name, path in bootstrap_warm_models() if bootstrap is None else bootstrap:
+        if name not in named:
+            warm.append((name, path))
+            named.add(name)
 
     if not warm:
         logger.info("nlp.warm_models.none_configured")

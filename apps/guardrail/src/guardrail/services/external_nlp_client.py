@@ -201,7 +201,14 @@ class NlpGuardClient:
         return headers
 
     async def _post(self, path: str, payload: dict[str, Any], what: str) -> dict[str, Any]:
-        """One bounded, retried POST. Raises rather than returning a fabricated result."""
+        """One bounded, retried POST. Raises rather than returning a fabricated result.
+
+        Three exits, three different meanings: a peer that ANSWERED badly
+        (retried within the budget, then `GuardrailUndeterminedError` — fail
+        closed); a peer that is known-down (`BreakerOpenError`, shed without a
+        retry); and a call the CALLER abandoned, which propagates untouched and
+        is never counted against the peer.
+        """
         body = {**payload, "tenant_id": self._tenant_id}
         if self.model_id:
             body["model_name"] = self.model_id
@@ -240,6 +247,15 @@ class NlpGuardClient:
                 # here — the posture is unchanged (this still raises below).
                 last_error = str(exc)
                 break
+            except asyncio.CancelledError:
+                # The upstream gave up (its own deadline, or a disconnect), so
+                # nobody wants this answer any more: stop, rather than spending
+                # the rest of the budget on it. It is NOT a peer failure — the
+                # breaker declares that posture (`core/breaker.py`) and this
+                # states the caller-side half of it, because `except Exception`
+                # below does not catch a `BaseException` today and a future
+                # widening must not silently start counting one.
+                raise
             except _PeerStatusError as exc:
                 last_error = f"HTTP {exc.status_code}"
                 # 4xx that is not a transient overload is not worth retrying —
