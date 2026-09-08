@@ -17,8 +17,10 @@ test.beforeEach(async ({ page }) => {
   test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
   test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
   await loginAsAdmin(page);
-  // The storage browser is tenant-scoped: elevated sessions see the
-  // "Select a working tenant" gate until one is chosen.
+  // These specs exercise the tenant-scoped browser. Since TASK-932 an elevated
+  // session with NO working tenant sees the cross-tenant "All tenants" view
+  // instead of a gate (covered by task-932-storage-browser.spec.ts), so pick a
+  // working tenant first to land on the tenant-scoped surface.
   await selectWorkingTenant(page);
 });
 

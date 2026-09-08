@@ -82,17 +82,18 @@ test.describe('app shell chrome (frame 07)', () => {
     await expect(dashboardLink).toContainText('Dashboard');
   });
 
-  test('the domain rail gates on ability: Playground is reachable and holds Workbench', async ({ page }) => {
+  test('the domain rail gates on ability: Playground is reachable and holds Consultation Scribe', async ({ page }) => {
     // Moved here from workbench.spec.ts. It guards the domain rail's
-    // ability gating, not any Workbench feature, and gating it on the harness
+    // ability gating, not any playground feature, and gating it on the harness
     // service — as its old home is — would silently drop that coverage whenever
-    // the service is down.
+    // the service is down. TASK-893 retired the Workbench screen; the domain's
+    // first entry is now the Consultation Scribe (TASK-932 nav inventory).
     await page.goto('/dashboard');
     const rail = page.getByRole('navigation', { name: 'Capability domains' });
     const playground = rail.getByRole('link', { name: 'Playground' });
     await expect(playground).toBeVisible();
 
     await playground.click();
-    await expect(page.getByRole('link', { name: 'Workbench' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Consultation Scribe' })).toBeVisible();
   });
 });
