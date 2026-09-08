@@ -583,7 +583,13 @@ class RunEventBatch(BaseModel):
 # TASK-864 — the `core` vocabulary's payloads.
 # ---------------------------------------------------------------------------
 
-AgentTask = Literal["SPEECH_TO_TEXT", "TEXT_GENERATION", "TEXT_TO_SPEECH"]
+# TASK-930 — NAMED_ENTITY_RECOGNITION joins the three. Widening this Literal is not
+# cosmetic: `ResolvedAgent.model_validate` REFUSES an unknown task, so a NER agent would
+# have degraded its node as `agent_unresolvable` — an error about resolution, raised for an
+# agent the gateway resolved perfectly well.
+AgentTask = Literal[
+    "SPEECH_TO_TEXT", "TEXT_GENERATION", "TEXT_TO_SPEECH", "NAMED_ENTITY_RECOGNITION"
+]
 
 
 class ResolvedAgentModel(BaseModel):

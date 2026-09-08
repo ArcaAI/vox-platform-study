@@ -280,7 +280,7 @@ describe('AgentsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New agent' }));
     const wizard = await screen.findByRole('dialog');
     fireEvent.click(within(wizard).getByLabelText('Speech-to-text'));
-    fireEvent.change(within(wizard).getByLabelText(/^Name/), { target: { value: 'Ward ASR' } });
+    fireEvent.change((within(wizard).getByLabelText(/^Name \*?$/) as HTMLInputElement), { target: { value: 'Ward ASR' } });
     expect((within(wizard).getByLabelText(/^Slug/) as HTMLInputElement).value).toBe('ward-asr');
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' }));
     // Radix Select renders its options into a portal — query the document, not the dialog subtree.
@@ -302,7 +302,7 @@ describe('AgentsScreen', () => {
     await screen.findByText('Clinic summarizer');
     fireEvent.click(screen.getByRole('button', { name: 'New agent' }));
     const wizard = await screen.findByRole('dialog');
-    fireEvent.change(within(wizard).getByLabelText(/^Name/), { target: { value: 'Ward summarizer' } });
+    fireEvent.change((within(wizard).getByLabelText(/^Name \*?$/) as HTMLInputElement), { target: { value: 'Ward summarizer' } });
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Model
     fireEvent.click(await screen.findByLabelText('Model'));
     fireEvent.click(await screen.findByRole('option', { name: /Gemma 4 E2B/ }));

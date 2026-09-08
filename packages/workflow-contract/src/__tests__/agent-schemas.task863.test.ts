@@ -25,13 +25,21 @@ const MODEL_ASR = { slug: 'arcaai-whisper-large-ml-en-gguf', taskType: 'AUTOMATI
 const MODEL_TTS = { slug: 'kokoro', taskType: 'TEXT_TO_SPEECH', provider: 'local' };
 
 describe('TASK-863 — task taxonomy', () => {
-  it('names exactly the three owner-directed tasks, mapped to a service and a registry task type', () => {
-    expect([...AGENT_TASKS]).toEqual(['SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_TO_SPEECH']);
-    expect(AGENT_TASK_SERVICE).toEqual({ SPEECH_TO_TEXT: 'stt', TEXT_GENERATION: 'llm', TEXT_TO_SPEECH: 'tts' });
+  // TASK-930 widened this from the three owner-directed tasks to four: NAMED_ENTITY_RECOGNITION
+  // is served by `apps/nlp`, which is not an `AiProviderConnection.service` — hence the `null`.
+  it('names exactly the owner-directed tasks, mapped to a service and a registry task type', () => {
+    expect([...AGENT_TASKS]).toEqual(['SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_TO_SPEECH', 'NAMED_ENTITY_RECOGNITION']);
+    expect(AGENT_TASK_SERVICE).toEqual({
+      SPEECH_TO_TEXT: 'stt',
+      TEXT_GENERATION: 'llm',
+      TEXT_TO_SPEECH: 'tts',
+      NAMED_ENTITY_RECOGNITION: null,
+    });
     expect(AGENT_TASK_MODEL_TASK_TYPE).toEqual({
       SPEECH_TO_TEXT: 'AUTOMATIC_SPEECH_RECOGNITION',
       TEXT_GENERATION: 'TEXT_GENERATION',
       TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
+      NAMED_ENTITY_RECOGNITION: 'TOKEN_CLASSIFICATION',
     });
   });
 

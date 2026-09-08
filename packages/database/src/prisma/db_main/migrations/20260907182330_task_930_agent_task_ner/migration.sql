@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "core"."AgentTask" ADD VALUE 'NAMED_ENTITY_RECOGNITION';

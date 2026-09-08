@@ -104,6 +104,8 @@ interface DraftState {
   systemPrompt: string;
   initialPrompt: string;
   hotwords: string;
+  /** TASK-930 — the NER label set, comma-separated in the field and split on save (same shape as `hotwords`). */
+  labels: string;
 }
 
 function stringField(instruction: Record<string, unknown> | null, key: string): string {
@@ -129,6 +131,7 @@ function instructionToBinding(agent: Agent): InstructionBindingValue {
 function draftFromAgent(agent: Agent): DraftState {
   const instruction = agent.instruction as Record<string, unknown> | null;
   const hotwords = instruction?.hotwords;
+  const labels = instruction?.labels;
   return {
     name: agent.name,
     description: agent.description ?? '',
@@ -143,6 +146,7 @@ function draftFromAgent(agent: Agent): DraftState {
     systemPrompt: stringField(instruction, 'systemPrompt'),
     initialPrompt: stringField(instruction, 'initialPrompt'),
     hotwords: Array.isArray(hotwords) ? hotwords.join(', ') : '',
+    labels: Array.isArray(labels) ? labels.join(', ') : '',
   };
 }
 
@@ -221,6 +225,14 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
         .map((word) => word.trim())
         .filter(Boolean);
       instruction = { ...(draft.initialPrompt ? { initialPrompt: draft.initialPrompt } : {}), ...(hotwords.length ? { hotwords } : {}) };
+    } else if (agent.task === 'NAMED_ENTITY_RECOGNITION') {
+      // TASK-930 — the label set is the whole instruction. Left undefined when empty so a
+      // fixed-label checkpoint keeps emitting its own taxonomy rather than an empty declaration.
+      const labels = draft.labels
+        .split(',')
+        .map((label) => label.trim())
+        .filter(Boolean);
+      instruction = labels.length ? { labels } : undefined;
     }
     const tags = draft.tags
       .split(',')
@@ -548,6 +560,15 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                         <Input id="edit-hotwords" placeholder="comma-separated" value={draft.hotwords} onChange={(event) => setDraft({ ...draft, hotwords: event.target.value })} />
                       </div>
                     </fieldset>
+                  ) : agent.task === 'NAMED_ENTITY_RECOGNITION' ? (
+                    <fieldset className="flex flex-col gap-3">
+                      <legend className="text-sm font-medium">Instruction</legend>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="edit-labels">Entity labels</Label>
+                        <Input id="edit-labels" placeholder="comma-separated" value={draft.labels} onChange={(event) => setDraft({ ...draft, labels: event.target.value })} />
+                        <p className="text-muted-foreground text-xs">Honoured by zero-shot extractors; a fixed-label checkpoint emits its own set.</p>
+                      </div>
+                    </fieldset>
                   ) : null}
 
                   <div className="flex flex-col gap-1.5">
@@ -624,7 +645,7 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                   title="Test run"
                   description={
                     agent.task !== 'TEXT_GENERATION'
-                      ? 'Direct test runs cover text-generation agents; speech and transcription agents are exercised from the Playground.'
+                      ? 'Direct test runs cover text-generation agents; every other task is exercised from the Playground.'
                       : 'Publish and activate this version to run it through POST /agents/{slug}/invocations.'
                   }
                 />
