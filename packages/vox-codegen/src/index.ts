@@ -13,6 +13,9 @@ export { jsonSchemaSubsetToTs, type SchemaToTsOptions } from './schema-to-ts';
 export { generateConsultationSchemaTypes, type GenerateOptions, type GeneratedFile } from './generate';
 export { fetchConsultationSchemaBundle, type FetchConsultationSchemaOptions } from './fetch-schema';
 export { runCodegenOnce, type RunCodegenOptions, type RunCodegenResult } from './run';
+export { fetchPublishedCatalogue, type FetchPublishedCatalogueOptions } from './fetch-catalogue';
+export { generateCatalogueTypes, type CatalogueSurface, type GenerateCatalogueOptions, type GeneratedCatalogueFile } from './generate-catalogue';
+export { runCatalogueCodegenOnce, type RunCatalogueCodegenOptions, type RunCatalogueCodegenResult, type WrittenCatalogueFile } from './run-catalogue';
 export { watchCodegen, type WatchOptions, type WatchCycleInfo } from './watch';
 export {
   CONTEXT_PRIMITIVES,
@@ -22,4 +25,7 @@ export {
   type ContextOutputDeclaration,
   type ConsultationContextSchemaDefinition,
   type ConsultationSchemaBundle,
+  type PublishedAgent,
+  type PublishedCatalogue,
+  type PublishedWorkflow,
 } from './types';
