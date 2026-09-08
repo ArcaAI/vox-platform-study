@@ -20,7 +20,13 @@
  *     produces a typed event for the clinician UI. Silent degradation to an empty
  *     note is exactly why the 2026-08-25 outage went unnoticed for hours.
  */
-import { portPrimitiveSatisfies, type WorkflowPortDescriptor, type WorkflowPortPrimitive } from '@arcaai/workflow-contract';
+import {
+  evaluateCondition,
+  portPrimitiveSatisfies,
+  type ExpressionValue,
+  type WorkflowPortDescriptor,
+  type WorkflowPortPrimitive,
+} from '@arcaai/workflow-contract';
 import type { RealtimeLane, RealtimeNode } from './realtime-lane';
 import { realtimeHandlerFor, type RealtimeCapabilities, type RealtimeCapabilityKey, type RealtimeNodeHandler } from './realtime-node-registry';
 
@@ -44,6 +50,9 @@ export class RealtimeBindingError extends Error {
 }
 
 export type RealtimeNodeStatus = 'succeeded' | 'degraded' | 'failed' | 'skipped' | 'timed-out' | 'stale';
+
+/** The durable interpreter's own reason code for a node the graph routed around (`_branch_skip`). */
+const BRANCH_NOT_TAKEN = 'branch_not_taken';
 
 export interface RealtimeNodeOutcome {
   readonly nodeId: string;
@@ -73,6 +82,23 @@ export interface RealtimeDegradeEvent {
   readonly laneSource: RealtimeLane['source'];
 }
 
+/**
+ * What ONE `core.condition` decided for this run — the realtime mirror of the durable activity's
+ * `{"evaluation": {"branch", "matched", "errors"}}` output.
+ *
+ * Returned rather than logged, exactly like {@link RealtimeDegradeEvent}: "the else branch was
+ * chosen because every expression errored" and "the else branch was chosen because no branch
+ * matched" produce the same note, so the caller must be able to tell them apart.
+ */
+export interface RealtimeBranchEvaluation {
+  readonly nodeId: string;
+  /** The handle taken: the FIRST branch whose expression evaluated `true`, else `else`. */
+  readonly handle: string;
+  readonly matched: boolean;
+  /** PHI-safe: a branch key and an evaluator message. Never clinical text. */
+  readonly errors: readonly { readonly branch: string; readonly error: string }[];
+}
+
 export interface RealtimeRunResult {
   /** Outcomes in EXECUTION order: stage ascending, then as authored within a stage. */
   readonly outcomes: readonly RealtimeNodeOutcome[];
@@ -81,6 +107,8 @@ export interface RealtimeRunResult {
   readonly events: readonly RealtimeDegradeEvent[];
   /** True when an `onError: 'fail'` node failed and the lane stopped. */
   readonly failed: boolean;
+  /** TASK-932 — what each of `lane.conditions` decided, in lane order. Empty for an unbranched lane. */
+  readonly branchEvaluations: readonly RealtimeBranchEvaluation[];
 }
 
 export interface RealtimeRunInput {
@@ -96,6 +124,21 @@ export interface RealtimeRunInput {
   readonly isStale?: () => boolean;
   /** Aborts in-flight work when a newer flush supersedes this one. */
   readonly signal?: AbortSignal;
+  /**
+   * TASK-932 — the run context `{ trigger, vars, nodes }` (TASK-864 §3.2) every
+   * `core.condition` guard is evaluated against. On this lane `trigger` is the consultation's
+   * trigger context, so a seeded visit-type split reads `trigger.context.visit_type`.
+   *
+   * ONE evaluation per flush, BEFORE stage 0, so the routing decision is identical for every
+   * node of the walk and cannot change mid-flush. The consequence is stated rather than hidden:
+   * `nodes.*` resolves against an EMPTY cache and `vars.*` against `{}` — this lane executes
+   * neither the condition nor any `core.variable`, so a guard reading either falls to `else`
+   * with a recorded error rather than being answered wrongly.
+   *
+   * Absent = an empty context, in which every expression errors and every condition takes
+   * `else` — the same fall-through the durable activity performs on an unevaluable branch.
+   */
+  readonly runContext?: Record<string, ExpressionValue>;
 }
 
 function outputPort(handler: RealtimeNodeHandler, name: string): WorkflowPortDescriptor | undefined {
@@ -173,6 +216,35 @@ function resolveBoundInputs(
   return bound;
 }
 
+/**
+ * Evaluate every condition the lane's guards name, in order: the FIRST branch whose expression
+ * is `true` wins, otherwise `else`.
+ *
+ * Byte-for-byte the rule `interpreter_core_condition` applies
+ * (`apps/harness/.../interpreter/nodes/core.py`), including its treatment of a broken
+ * expression: the error is RECORDED and that branch counts as not taken, so a condition nobody
+ * can evaluate falls through to `else` observably instead of routing on a guess. `evaluateCondition`
+ * is the same evaluator both lanes call, so the two runtimes cannot drift on the language.
+ */
+function resolveBranchHandles(lane: RealtimeLane, runContext: Record<string, ExpressionValue>): RealtimeBranchEvaluation[] {
+  return lane.conditions.map((condition) => {
+    const errors: { branch: string; error: string }[] = [];
+    let handle = 'else';
+    for (const branch of condition.branches) {
+      const { taken, error } = evaluateCondition(branch.when, runContext);
+      if (error !== undefined) {
+        errors.push({ branch: branch.key, error });
+        continue;
+      }
+      if (taken) {
+        handle = branch.key;
+        break;
+      }
+    }
+    return { nodeId: condition.nodeId, handle, matched: handle !== 'else', errors };
+  });
+}
+
 /** Race the node against its OWN budget. Rejects with a `timeout` marker. */
 async function withTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return work;
@@ -191,6 +263,12 @@ async function withTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
 
 function degradeEvent(outcome: RealtimeNodeOutcome, laneSource: RealtimeLane['source']): RealtimeDegradeEvent | null {
   if (outcome.status === 'succeeded') return null;
+  // TASK-932 — ROUTING IS NOT DEGRADATION. A node the graph deliberately routed around is the
+  // condition working, and publishing `lane.degraded` for it once per flush would train the
+  // clinician (and the operator reading the warnings) to ignore the channel that carries the
+  // real failures. Every other skip — `disabled_by_config`, `unsupported_node_type` — still
+  // emits, unchanged.
+  if (outcome.status === 'skipped' && outcome.reason === BRANCH_NOT_TAKEN) return null;
   return {
     nodeId: outcome.nodeId,
     type: outcome.type,
@@ -215,6 +293,31 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
   const events: RealtimeDegradeEvent[] = [];
   const producerHandlers = new Map<string, RealtimeNodeHandler>();
   let failed = false;
+
+  // ONCE, before stage 0 — see `RealtimeRunInput.runContext`.
+  const branchEvaluations = resolveBranchHandles(lane, input.runContext ?? {});
+  const takenHandle = new Map(branchEvaluations.map((evaluation) => [evaluation.nodeId, evaluation.handle]));
+  const branchSkipped = new Set<string>();
+
+  /**
+   * Whether the graph routed AROUND this node — `_branch_skip`, transcribed.
+   *
+   * Two rules, in the durable order:
+   *  1. a guarded node runs only when one of its guards' handles was taken. A guard naming a
+   *     producer this lane cannot decide (a `core.classify` model call, a `core.humanReview`
+   *     person — both `router`/`review` classes the compiler records guards for) is left OUT of
+   *     the vote rather than counted as not-taken: blocking on a decision the durable lane owns
+   *     would delete a note this lane produces today, which is the worse of the two errors;
+   *  2. a node whose every predecessor was itself branch-skipped is skipped too, so a chain
+   *     behind a closed branch reports `branch_not_taken` rather than a cascade of false
+   *     degrades from inputs that will never arrive.
+   */
+  const branchSkip = (node: RealtimeNode): boolean => {
+    const decidable = node.branchGuards.filter((guard) => takenHandle.has(guard.fromNodeId));
+    if (decidable.length > 0 && !decidable.some((guard) => takenHandle.get(guard.fromNodeId) === guard.handle)) return true;
+    const predecessors = new Set([...node.inputs.map((binding) => binding.fromNodeId), ...node.branchGuards.map((guard) => guard.fromNodeId)]);
+    return predecessors.size > 0 && [...predecessors].every((nodeId) => branchSkipped.has(nodeId));
+  };
 
   // Index every node's handler FIRST, across all stages, so a binding can be
   // checked against its producer's contract even when that producer skipped or
@@ -246,9 +349,24 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
           };
         }
 
-        // Resolve bindings BEFORE the enabled check: a disabled node must not be
-        // able to hide a contract violation from publish-time review.
+        // Resolve bindings BEFORE the enabled and branch checks: neither a disabled node nor
+        // one the graph routed around may hide a contract violation from publish-time review.
+        // (The durable interpreter orders its own branch check before the disabled check; the
+        // ordering that matters clinically is that one, and it is preserved below.)
         const bound = resolveBoundInputs(node, handler, producerHandlers, outputs);
+
+        if (branchSkip(node)) {
+          branchSkipped.add(node.nodeId);
+          return {
+            nodeId: node.nodeId,
+            type: node.type,
+            stageIndex: stage.stageIndex,
+            status: 'skipped',
+            durationMs: 0,
+            attempts: 0,
+            reason: BRANCH_NOT_TAKEN,
+          };
+        }
 
         if (!node.enabled) {
           return {
@@ -346,5 +464,5 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
     }
   }
 
-  return { outcomes, outputs, events, failed };
+  return { outcomes, outputs, events, failed, branchEvaluations };
 }
