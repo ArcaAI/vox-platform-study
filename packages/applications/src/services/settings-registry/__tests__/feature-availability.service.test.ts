@@ -231,7 +231,8 @@ describe('applyMatrix', () => {
 
   it('is ORDERED and PARTIAL: one drifted cell does not discard the rest', async () => {
     const write = vi.fn(async (key: string) => {
-      if (key === 'console.mlflow.enabled') throw new OptimisticConcurrencyException('GlobalSetting', 'gs-1', { expectedVersion: 1, currentVersion: 4 });
+      if (key === 'console.mlflow.enabled')
+        throw new OptimisticConcurrencyException('GlobalSetting', 'gs-1', { expectedVersion: 1, currentVersion: 4 });
       return { version: 2 };
     });
     const { svc } = makeService({ write });

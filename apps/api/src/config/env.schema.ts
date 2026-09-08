@@ -37,7 +37,13 @@
 // Handled by `VAULT_CONDITIONAL` / `NOT_READ_BY_THIS_PROCESS` below rather than
 // by weakening the descriptors, which are correct as classifications.
 
-import { BOOTSTRAP_ENV_SETTINGS, HARNESS_CLAIM_CHECK_ENABLED, PLATFORM_KNOB_SETTINGS, toEnvVarName, type SettingDescriptor } from '@arcaai/applications';
+import {
+  BOOTSTRAP_ENV_SETTINGS,
+  HARNESS_CLAIM_CHECK_ENABLED,
+  PLATFORM_KNOB_SETTINGS,
+  toEnvVarName,
+  type SettingDescriptor,
+} from '@arcaai/applications';
 import { z } from 'zod';
 import { API_PLATFORM_ENV_SETTINGS } from './env.descriptors';
 
