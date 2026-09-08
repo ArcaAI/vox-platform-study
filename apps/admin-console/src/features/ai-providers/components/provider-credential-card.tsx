@@ -448,20 +448,32 @@ export function ProviderCredentialCard({
         </Button>
         {resettable ? (
           confirmingReset ? (
-            <>
+            <div
+              role="alertdialog"
+              aria-live="assertive"
+              aria-label={`Confirm reset of ${meta.label} to its built-in default`}
+              className="contents"
+            >
               <span className="text-muted-foreground text-xs">
                 Restore the built-in default
                 {meta.fields.find((f) => f.name === 'baseUrl')?.placeholder ? ` (${meta.fields.find((f) => f.name === 'baseUrl')!.placeholder})` : ''}? Any
                 stored credential on this connection is removed.
               </span>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmingReset(false)} disabled={resetMutation.isPending}>
+              {/*
+                A destructive confirmation replaces its own trigger, so focus
+                would otherwise fall back to `<body>` with no announcement
+                (M4). `role="alertdialog"` + `aria-live` speak the row; moving
+                focus to Cancel (never the destructive action) keeps the safe
+                choice the one a stray Enter/Space activates.
+              */}
+              <Button variant="ghost" size="sm" autoFocus onClick={() => setConfirmingReset(false)} disabled={resetMutation.isPending}>
                 Cancel
               </Button>
               <Button variant="destructive" size="sm" onClick={handleReset} disabled={resetMutation.isPending}>
                 {resetMutation.isPending ? <Spinner /> : null}
                 Confirm reset
               </Button>
-            </>
+            </div>
           ) : (
             <Button variant="outline" size="sm" onClick={() => setConfirmingReset(true)} aria-label={`Reset ${meta.label} to its built-in default`}>
               <IconRestore aria-hidden />
@@ -471,16 +483,16 @@ export function ProviderCredentialCard({
         ) : null}
         {!resettable && current.version > 0 ? (
           confirmingRemove ? (
-            <>
+            <div role="alertdialog" aria-live="assertive" aria-label={`Confirm removing the ${meta.label} connection`} className="contents">
               <span className="text-muted-foreground text-xs">Remove this connection and use the platform default?</span>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(false)} disabled={deleteMutation.isPending}>
+              <Button variant="ghost" size="sm" autoFocus onClick={() => setConfirmingRemove(false)} disabled={deleteMutation.isPending}>
                 Cancel
               </Button>
               <Button variant="destructive" size="sm" onClick={handleRemove} disabled={deleteMutation.isPending}>
                 {deleteMutation.isPending ? <Spinner /> : null}
                 Confirm remove
               </Button>
-            </>
+            </div>
           ) : (
             <Button
               variant="outline"

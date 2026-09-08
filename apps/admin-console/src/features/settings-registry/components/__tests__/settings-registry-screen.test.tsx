@@ -271,6 +271,22 @@ describe('SettingsRegistryScreen — the inventory', () => {
 
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it('m3 — mounting at ?key=<key> opens the drawer for that key', async () => {
+    stubFetch();
+    renderWithProviders(<SettingsRegistryScreen />, { searchParams: `?key=${NUMBER_KEY}` });
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(NUMBER_KEY)).toBeDefined();
+  });
+
+  it('m3 — an unknown ?key= leaves the drawer closed', async () => {
+    stubFetch();
+    renderWithProviders(<SettingsRegistryScreen />, { searchParams: '?key=no-such-key' });
+
+    await screen.findByText(NUMBER_KEY);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
 
 describe('SettingRegistryDrawer — type-aware controls', () => {
@@ -441,6 +457,19 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
 
     expect(await within(dialog).findByText(/412 Precondition Failed/)).toBeDefined();
     expect(putCalls(calls)).toHaveLength(1);
+  });
+
+  it('M2 — keeps the typed edit after a 412, since the alert says it is kept locally', async () => {
+    const calls = stubFetch({ onPut: () => Response.json({ message: 'conflict' }, { status: 412 }) });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(NUMBER_KEY);
+
+    fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: '250' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await within(dialog).findByText(/412 Precondition Failed/);
+    expect(putCalls(calls)).toHaveLength(1);
+    expect((within(dialog).getByLabelText('New value') as HTMLInputElement).value).toBe('250');
   });
 
   it('surfaces a 428 as a stale-tab precondition error rather than forcing the write', async () => {

@@ -160,6 +160,10 @@ export function FeatureMatrixScreen() {
 
   const dirtyCount = Object.keys(edits).length;
 
+  // Shared between the desktop grid and the sub-md list (m1) — a feature with
+  // no per-tenant row has nothing to reset per tenant.
+  const resettableFeatures = sections.flatMap(([, features]) => features).filter((feature) => feature.maxScope !== 'system');
+
   const onSave = () => {
     const cells: FeatureMatrixWrite[] = Object.entries(edits).map(([composite, value]) => {
       const [tenantId, key] = composite.split(CELL_KEY_SEPARATOR);
@@ -275,7 +279,7 @@ export function FeatureMatrixScreen() {
       {/* Desktop: the full grid. One horizontal scroll container, first column
           sticky, so the feature never scrolls out from under its own row. */}
       <div className="hidden md:block">
-        <div className="overflow-x-auto rounded-md border">
+        <div tabIndex={0} role="region" aria-label="Feature availability matrix" className="overflow-x-auto rounded-md border">
           <table className="w-full border-collapse text-sm">
             <caption className="sr-only">
               Feature availability per tenant. Each cell is a three-state control: on, off, or inheriting the platform default.
@@ -316,10 +320,11 @@ export function FeatureMatrixScreen() {
                       {columns.map((column) => {
                         const isPlatform = column.id === PLATFORM_COLUMN;
                         const composite = cellKey(feature.key, column.id);
+                        const raw = valueOf(feature.key, column.id);
                         return (
                           <td key={column.id} className="p-3 text-center">
                             <TriStateCell
-                              value={isPlatform ? (valueOf(feature.key, column.id) ?? feature.default) : valueOf(feature.key, column.id)}
+                              value={isPlatform ? (raw ?? feature.default) : raw}
                               inheritedValue={isPlatform ? feature.default : platformValueOf(feature)}
                               label={`${feature.label ?? feature.key} for ${column.name}`}
                               disabled={platformOnly && !isPlatform}
@@ -329,6 +334,8 @@ export function FeatureMatrixScreen() {
                                   : undefined
                               }
                               dirty={composite in edits}
+                              twoState={isPlatform}
+                              usingDefault={isPlatform && raw === null}
                               onChange={(next) => setCell(feature.key, column.id, next)}
                             />
                           </td>
@@ -342,18 +349,21 @@ export function FeatureMatrixScreen() {
           </table>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          {sections.flatMap(([, features]) => features).some((f) => f.maxScope !== 'system') ? (
+          {resettableFeatures.length > 0 ? (
             <span className="text-muted-foreground text-xs">Reset a whole row to the platform default:</span>
           ) : null}
-          {sections
-            .flatMap(([, features]) => features)
-            .filter((feature) => feature.maxScope !== 'system')
-            .map((feature) => (
-              <Button key={feature.key} variant="outline" size="sm" onClick={() => resetRow(feature)}>
-                <IconRestore aria-hidden />
-                {feature.label ?? feature.key}
-              </Button>
-            ))}
+          {resettableFeatures.map((feature) => (
+            <Button
+              key={feature.key}
+              variant="outline"
+              size="sm"
+              onClick={() => resetRow(feature)}
+              aria-label={`Reset ${feature.label ?? feature.key} for every tenant to the platform default`}
+            >
+              <IconRestore aria-hidden />
+              {feature.label ?? feature.key}
+            </Button>
+          ))}
         </div>
       </div>
 
@@ -383,6 +393,7 @@ export function FeatureMatrixScreen() {
               {features.map((feature) => {
                 const isPlatform = mobileTenant === PLATFORM_COLUMN;
                 const platformOnly = feature.maxScope === 'system';
+                const raw = valueOf(feature.key, mobileTenant);
                 return (
                   <li key={feature.key} className="flex items-center justify-between gap-3">
                     <span className="flex min-w-0 flex-col">
@@ -390,12 +401,14 @@ export function FeatureMatrixScreen() {
                       <span className="text-muted-foreground truncate font-mono text-xs">{feature.key}</span>
                     </span>
                     <TriStateCell
-                      value={isPlatform ? (valueOf(feature.key, mobileTenant) ?? feature.default) : valueOf(feature.key, mobileTenant)}
+                      value={isPlatform ? (raw ?? feature.default) : raw}
                       inheritedValue={isPlatform ? feature.default : platformValueOf(feature)}
                       label={`${feature.label ?? feature.key} for ${columnLabel(mobileTenant, columns.find((c) => c.id === mobileTenant)?.name)}`}
                       disabled={platformOnly && !isPlatform}
                       disabledReason="This feature has no per-tenant row."
                       dirty={cellKey(feature.key, mobileTenant) in edits}
+                      twoState={isPlatform}
+                      usingDefault={isPlatform && raw === null}
                       onChange={(next) => setCell(feature.key, mobileTenant, next)}
                     />
                   </li>
@@ -404,6 +417,25 @@ export function FeatureMatrixScreen() {
             </ul>
           </section>
         ))}
+        {resettableFeatures.length > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-muted-foreground text-xs">Reset a whole row to the platform default:</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {resettableFeatures.map((feature) => (
+                <Button
+                  key={feature.key}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => resetRow(feature)}
+                  aria-label={`Reset ${feature.label ?? feature.key} for every tenant to the platform default`}
+                >
+                  <IconRestore aria-hidden />
+                  {feature.label ?? feature.key}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </ScreenTemplate>
   );

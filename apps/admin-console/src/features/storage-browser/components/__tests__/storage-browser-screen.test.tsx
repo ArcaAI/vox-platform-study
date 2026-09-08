@@ -108,6 +108,21 @@ afterEach(() => {
 });
 
 describe('StorageBrowserScreen', () => {
+  it('m5 — wraps the pre-session skeleton in ScreenTemplate rather than a bare div', () => {
+    // Session never resolves, so the component is still in its `!session.data`
+    // branch when this assertion runs.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const { container } = renderWithProviders(<StorageBrowserScreen />);
+
+    expect(screen.getByText('Storage')).toBeDefined();
+    // `ScreenTemplate`'s content region carries `overflow-y-auto` in the
+    // default `scroll` mode — the old ad hoc wrapper had no such region.
+    expect(container.querySelector('.overflow-y-auto')).not.toBeNull();
+  });
+
   it('renders the bucket select, breadcrumb and prefix-grouped object grid from the stub', async () => {
     stubStorageBrowser();
     renderWithProviders(<StorageBrowserScreen />);
