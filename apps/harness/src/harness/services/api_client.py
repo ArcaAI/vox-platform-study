@@ -1101,6 +1101,40 @@ class ApiClient:
         data = await self._post(f"/consultations/{consultation_id}/live-documentation/start", body)
         return bool(data.get("ok", False))
 
+    async def live_handoff(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        run_id: str,
+        node_ids: list[str],
+    ) -> dict[str, Any]:
+        """TASK-932 R-16a — read the LIVE lane's final outputs for a consultation-bound run.
+
+        ``GET {internal_prefix}/consultations/{id}/live-handoff`` answers
+        ``{ended, outputs, context}``:
+
+        * ``ended: false`` — the live session has not handed off yet. The interpreter's poll
+          loop sleeps and asks again; it never fabricates an empty handoff, because an empty one
+          is indistinguishable from "the clinician is still speaking".
+        * ``ended: true`` — the live lane is finished. ``outputs`` is keyed by the node id the
+          lane ran, and may legitimately be empty for a consultation that never recorded.
+
+        ``node_ids`` names the realtime nodes THIS run skipped, so the gateway answers about the
+        graph that is actually running rather than re-deriving one.
+
+        **This response carries clinical text** (the running note the finalizer merges) and the
+        clinician's own writing profile, so it is a PHI transport exactly like
+        ``publish_live_summary`` — service-token guarded, tenant-scoped, and never logged.
+
+        Raises :class:`ApiServiceError` on any transport/HTTP error; the CALLING activity is the
+        swallow layer, and the workflow's poll loop treats a failed read as "not ready yet".
+        """
+        params: dict[str, Any] = {"tenantId": tenant_id, "runId": run_id}
+        if node_ids:
+            params["nodeIds"] = ",".join(node_ids)
+        return await self._get(f"/consultations/{consultation_id}/live-handoff", params)
+
     async def live_documentation_stop(
         self,
         consultation_id: str,
