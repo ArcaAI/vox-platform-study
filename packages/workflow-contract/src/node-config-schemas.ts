@@ -179,8 +179,39 @@ const DOCUMENT_VERSION_NUMBER_PROPERTY = Object.freeze({
     "DD-2 — this node's own pin onto one immutable version of that document template. Absent means the node follows the template's current pin.",
 });
 
+/**
+ * TASK-932 §3.7 — the SLUG form of the same binding, and the one the REALTIME lane actually reads.
+ *
+ * `realtimeDocumentTemplateSlug` (`realtime-lane.ts`, TASK-891 D7) looks for exactly this key on
+ * the frozen lane's summary node and hands it to `resolveForGeneration(tenantId, slug)` — the
+ * parameter that method has accepted since it was written and that nothing ever supplied. The
+ * reader shipped; the authoring schema did not, and since every schema here is
+ * `additionalProperties: false`, a graph carrying the key could not be PUBLISHED at all: the
+ * publish gate answered `NODE_CONFIG_SCHEMA: /documentTemplateSlug: property is not declared`.
+ * So OD-2's third wire-up was unreachable, not merely unused, and the traced 2026-09-07 session's
+ * `templateId: null` had nowhere else to come from.
+ *
+ * SLUG rather than id, deliberately, and both forms are kept: an id is a ROW REFERENCE and a
+ * document template is CONTENT, cloned per tenant with a fresh id (`copyDocumentTemplates`), so a
+ * graph that travels between tenants — the reference set, a promotion into SYSTEM — must name the
+ * shape by the one identifier its clones share. `documentTemplateId` stays for a node pinned to a
+ * specific row inside one tenant.
+ *
+ * Not `required`, like both properties above: a node that names no shape falls open to the
+ * platform SOAP shape, which is what every graph published before this ticket does.
+ */
+const DOCUMENT_TEMPLATE_SLUG_PROPERTY = Object.freeze({
+  type: 'string',
+  minLength: 1,
+  maxLength: 128,
+  summary: 'Which document layout this step produces, by name.',
+  description:
+    'The `DocumentTemplate.slug` whose compiled shape this node produces, resolved in the REQUEST tenant. Portable across tenants, unlike `documentTemplateId`.',
+});
+
 const DOCUMENT_BINDING_PROPERTIES = Object.freeze({
   documentTemplateId: DOCUMENT_TEMPLATE_ID_PROPERTY,
+  documentTemplateSlug: DOCUMENT_TEMPLATE_SLUG_PROPERTY,
   documentVersionNumber: DOCUMENT_VERSION_NUMBER_PROPERTY,
 });
 
