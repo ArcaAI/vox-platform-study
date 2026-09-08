@@ -784,8 +784,13 @@ class LiveOutputsResult(BaseModel):
     composed.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    # `ignore`, not `forbid`: the gateway may add descriptive fields (it already sends
+    # `endedAt`), and a rejected answer is indistinguishable from "not ended yet" to the
+    # poll loop — an extra field must never park a clinical run for the whole handoff window
+    # (reproduced live 2026-09-09: every poll logged `live_handoff_malformed … endedAt`).
+    model_config = ConfigDict(extra="ignore")
 
     ended: bool = False
+    ended_at: str | None = Field(default=None, alias="endedAt")
     outputs: dict[str, dict[str, Any]] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
