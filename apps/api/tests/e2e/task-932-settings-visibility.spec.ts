@@ -380,10 +380,14 @@ test.describe('TASK-932 — a platform row seeded under another namespace is ado
     const etag = before.headers()['etag'];
     expect(etag, 'a stored row must render an ETag for the client to echo').toBeTruthy();
 
-    const write = await request.put(path, { headers: { ...headers, 'If-Match': etag! }, data: { value: false, scope: 'system' } });
+    // Toggle RELATIVE to whatever the stack holds (an orchestrator may have
+    // switched rate limiting off for a run): a same-value write is a no-op 400
+    // by design, and this test is about adoption, not about the value.
+    const flipped = seeded.value !== true;
+    const write = await request.put(path, { headers: { ...headers, 'If-Match': etag! }, data: { value: flipped, scope: 'system' } });
     expect(write.status(), await write.text()).toBe(200);
     const written = (await write.json()) as { value: unknown; version: number };
-    expect(written.value).toBe(false);
+    expect(written.value).toBe(flipped);
     expect(written.version).toBe(seeded.version + 1);
 
     // THE ASSERTION THE DEFECT WOULD FAIL: one row, not two.
@@ -394,12 +398,12 @@ test.describe('TASK-932 — a platform row seeded under another namespace is ado
     expect(forKey, `exactly one SYSTEM row may exist for '${SEEDED_ELSEWHERE_KEY}'`).toHaveLength(1);
     expect(forKey[0]!.namespace, 'the adopted row keeps its own namespace — nothing is migrated').toBe('rate-limit');
 
-    // Leave the stack as we found it: rate limiting ON.
+    // Leave the stack as we found it (whatever the value was before this test).
     const restore = await request.put(path, {
       headers: { ...headers, 'If-Match': `"${written.version}"` },
-      data: { value: true, scope: 'system' },
+      data: { value: seeded.value === true, scope: 'system' },
     });
     expect(restore.status(), await restore.text()).toBe(200);
-    expect((await restore.json()).value).toBe(true);
+    expect((await restore.json()).value).toBe(seeded.value === true);
   });
 });
