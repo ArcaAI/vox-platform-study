@@ -102,7 +102,7 @@ describe('ConfigResolver.resolveAutoSummaryEnabled — the generation node`s `en
   it('resolves the assignment for the consultation`s department', async () => {
     publishGraph([{ id: 'synth', type: 'core.agent', config: { agentRef: { slug: 'soap' } } }]);
     await makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT, departmentId: DEPT });
-    expect(workflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPT);
+    expect(workflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'core', DEPT);
   });
 
   it('degrades to ON (never silently loses a note) when the lookup throws', async () => {

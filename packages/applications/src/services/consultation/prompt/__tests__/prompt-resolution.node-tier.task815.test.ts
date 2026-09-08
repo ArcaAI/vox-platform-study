@@ -15,7 +15,7 @@
  *
  * | Before | After |
  * |---|---|
- * | `DepartmentAgentRepository.findDefaultForDepartment(tenant, dept)` | `IWorkflowAssignmentService.resolve(tenant, 'consultation', dept)` → the ACTIVE PUBLISHED definition |
+ * | `DepartmentAgentRepository.findDefaultForDepartment(tenant, dept)` | `IWorkflowAssignmentService.resolve(tenant, 'core', dept)` → the ACTIVE PUBLISHED definition |
  * | the agent's capability column (`livePromptTemplateId` / `newPatientTemplateId` / …) | the node's `config.promptTemplateId`, selected by the node's effective `taskKey` |
  * | `DepartmentAgent.pinnedVersionNumber` | the node's own `config.promptVersionNumber` pin |
  * | `resolvedAgentId` = the agent row id | `resolvedAgentId` = the workflow NODE id |

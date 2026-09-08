@@ -64,7 +64,7 @@ function publishGraph(nodes: unknown[]): void {
   mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({
     id: 'wfdef-1',
     slug: 'consultation-default',
-    paletteKey: 'consultation',
+    paletteKey: 'core',
     graph: { version: 1, nodes, edges: [] },
   });
 }
@@ -691,7 +691,7 @@ describe('PromptResolutionService', () => {
       // NO pre-summary candidate, so the chain falls through to the tenant template instead of
       // serving a note prompt for a pre-summary request. The cascade is consulted with a NULL
       // department, because pre-summary has no department axis.
-      expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(expect.any(String), 'consultation', null);
+      expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(expect.any(String), 'core', null);
       // …and the department visit-type columns are never reached — the failure is the node tier's,
       // not a silent slide onto a department column.
       expect(mockPromptVersionRepository.findByVersionNumber).not.toHaveBeenCalled();

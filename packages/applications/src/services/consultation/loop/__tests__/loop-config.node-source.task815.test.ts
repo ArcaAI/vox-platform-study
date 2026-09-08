@@ -76,7 +76,7 @@ describe('LoopConfigService — resolved from the governing definition', () => {
     contextSchemaRepository.findDefaultForScope.mockResolvedValue(null);
     contextSchemaVersionRepository.findBySchemaAndVersionNumber.mockResolvedValue(null);
     workflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'department' });
-    workflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({ id: 'wfdef-row-7', slug: 'consultation-default', paletteKey: 'consultation' });
+    workflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({ id: 'wfdef-row-7', slug: 'consultation-default', paletteKey: 'core' });
     tenantSettings.resolvePlatform.mockReturnValue({ value: 900 });
     tenantSettings.resolve.mockReturnValue({ value: undefined });
     service = makeService();
@@ -87,7 +87,7 @@ describe('LoopConfigService — resolved from the governing definition', () => {
 
     const config = await service.resolveForConsultation(TENANT, CONSULTATION);
 
-    expect(workflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT);
+    expect(workflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'core', DEPARTMENT);
     expect(config.enabled).toBe(true);
     expect(config.agentId).toBe('consultation-default');
     // WorkflowDefinition rows ARE versions, so the row id IS the immutable pin —
@@ -134,7 +134,7 @@ describe('LoopConfigService — resolved from the governing definition', () => {
     workflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({
       id: 'wfdef-row-7',
       slug: 'consultation-default',
-      paletteKey: 'consultation',
+      paletteKey: 'core',
       graph: {
         version: 1,
         nodes: [

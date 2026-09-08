@@ -67,7 +67,7 @@ describe('ConfigResolver.resolveRevisitCarryForwardEnabled (TASK-882)', () => {
   it('resolves the assignment for the consultation`s department', async () => {
     const { resolver, workflowAssignments } = build(graphWith({ id: 'n1', type: 'consultation.assemblePrompt', config: { carryForward: true } }));
     await resolver.resolveRevisitCarryForwardEnabled({ tenantId: TENANT, departmentId: 'dept-1' });
-    expect(workflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', 'dept-1');
+    expect(workflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'core', 'dept-1');
   });
 
   it('OFF (never a throw) when the lookup fails', async () => {
