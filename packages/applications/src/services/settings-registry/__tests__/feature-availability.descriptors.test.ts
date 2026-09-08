@@ -35,7 +35,9 @@ describe('Feature Availability category', () => {
   });
 
   it('carries the four console gates plus the three migrated keys and the realtime graph executor', () => {
-    const keys = featureRows().map((d) => d.key).sort();
+    const keys = featureRows()
+      .map((d) => d.key)
+      .sort();
     expect(keys).toEqual(
       [
         CONSOLE_FEATURE_KEYS.agenticPolicy,

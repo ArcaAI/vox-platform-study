@@ -66,7 +66,7 @@ export class FeatureMatrixCellResponse {
   @ApiProperty()
   key!: string;
 
-  @ApiProperty({ description: "A tenant id, or the literal `system` for the platform-default column.", example: 'system' })
+  @ApiProperty({ description: 'A tenant id, or the literal `system` for the platform-default column.', example: 'system' })
   tenantId!: string;
 
   @ApiProperty({
@@ -84,7 +84,10 @@ export class FeatureMatrixResponse {
   @ApiProperty({ type: [FeatureMatrixFeatureResponse] })
   features!: FeatureMatrixFeatureResponse[];
 
-  @ApiProperty({ type: [FeatureMatrixTenantResponse], description: 'Every non-SYSTEM tenant, Global included. SYSTEM is the platform column, not a tenant.' })
+  @ApiProperty({
+    type: [FeatureMatrixTenantResponse],
+    description: 'Every non-SYSTEM tenant, Global included. SYSTEM is the platform column, not a tenant.',
+  })
   tenants!: FeatureMatrixTenantResponse[];
 
   @ApiProperty({ type: [FeatureMatrixCellResponse] })
@@ -97,7 +100,7 @@ export class FeatureMatrixWriteRequest {
   @IsString()
   key!: string;
 
-  @ApiProperty({ description: "Tenant id, or the literal `system` for the platform default." })
+  @ApiProperty({ description: 'Tenant id, or the literal `system` for the platform default.' })
   @IsString()
   tenantId!: string;
 
@@ -141,7 +144,10 @@ export class FeatureMatrixCellErrorResponse {
   @ApiProperty()
   tenantId!: string;
 
-  @ApiProperty({ description: 'The status this cell would have produced as a single-key request (412 drift, 400 refused, 403 privilege).', example: 412 })
+  @ApiProperty({
+    description: 'The status this cell would have produced as a single-key request (412 drift, 400 refused, 403 privilege).',
+    example: 412,
+  })
   status!: number;
 
   @ApiProperty()

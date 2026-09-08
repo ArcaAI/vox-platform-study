@@ -23,8 +23,20 @@ import { TenantSettingsService } from './tenant-settings.service';
   // dependency the `db-config` lane needs — the cascade itself is the pure
   // function the upload path already uses.
   imports: [CommonServiceModule, GlobalSettingServiceModule, CoreDatabaseModule],
-  providers: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService, PlatformStorageSettingsResolver, FeatureAvailabilityService],
-  exports: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService, PlatformStorageSettingsResolver, FeatureAvailabilityService],
+  providers: [
+    EffectiveSettingsService,
+    SettingsRegistryWriteService,
+    TenantSettingsService,
+    PlatformStorageSettingsResolver,
+    FeatureAvailabilityService,
+  ],
+  exports: [
+    EffectiveSettingsService,
+    SettingsRegistryWriteService,
+    TenantSettingsService,
+    PlatformStorageSettingsResolver,
+    FeatureAvailabilityService,
+  ],
 })
 export class EffectiveSettingsModule implements OnModuleInit {
   private readonly logger = new Logger(EffectiveSettingsModule.name);

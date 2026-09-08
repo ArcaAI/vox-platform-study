@@ -84,7 +84,10 @@ export class SettingCatalogItemResponse {
   })
   lockReason?: string;
 
-  @ApiPropertyOptional({ description: 'Short badge text for the lock KIND (Bootstrap / Platform secret / Tenant secret / Secret).', example: 'Bootstrap' })
+  @ApiPropertyOptional({
+    description: 'Short badge text for the lock KIND (Bootstrap / Platform secret / Tenant secret / Secret).',
+    example: 'Bootstrap',
+  })
   lockLabel?: string;
 }
 

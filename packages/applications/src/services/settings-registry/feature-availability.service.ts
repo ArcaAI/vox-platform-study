@@ -247,7 +247,9 @@ export class FeatureAvailabilityService {
    */
   private assertPlatformMatrixAccess(): void {
     if (!isSuperAdmin(this.cls.get('user'))) {
-      throw new ForbiddenException('The feature-availability matrix is cross-tenant platform configuration and is restricted to super administrators.');
+      throw new ForbiddenException(
+        'The feature-availability matrix is cross-tenant platform configuration and is restricted to super administrators.',
+      );
     }
   }
 

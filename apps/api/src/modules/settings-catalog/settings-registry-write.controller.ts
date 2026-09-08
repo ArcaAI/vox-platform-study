@@ -150,7 +150,7 @@ export class SettingsRegistryWriteController {
     'reset-to-inherited: the outcome (no row) does not depend on what the row contained, and the batch matrix save resets cells the caller never opened',
   )
   @ApiOperation({
-    summary: "Reset one TENANT override so the key resumes inheriting the platform default.",
+    summary: 'Reset one TENANT override so the key resumes inheriting the platform default.',
     description:
       'Removes the working tenant row for `key`, after which the cascade resolves `SYSTEM` -> descriptor default again. ' +
       'Idempotent: a key with no override answers 200 with `removed: false` rather than 404, so a "reset every tenant" sweep does not fail on the tenants that never had one. ' +

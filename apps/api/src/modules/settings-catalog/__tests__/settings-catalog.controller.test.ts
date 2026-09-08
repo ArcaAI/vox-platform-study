@@ -129,7 +129,10 @@ describe('SettingsCatalogController.getEffective', () => {
     const resolveEffective = vi.fn(async () => ({ key: 'rateLimit.maxRequests', tier: 'global-kv', value: 100, sourceScope: 'system' }));
     const controller = controllerFor({ roles: ['SUPER_ADMIN'] }, { resolveEffective });
     await expect(controller.getEffective('rateLimit.maxRequests')).resolves.toBeTruthy();
-    expect(resolveEffective).toHaveBeenCalledWith('rateLimit.maxRequests', expect.objectContaining({ tenantId: '00000000-0000-0000-0000-000000000000' }));
+    expect(resolveEffective).toHaveBeenCalledWith(
+      'rateLimit.maxRequests',
+      expect.objectContaining({ tenantId: '00000000-0000-0000-0000-000000000000' }),
+    );
   });
 
   it('scope=tenant still needs a tenant — a platform row is not a substitute for one', async () => {
@@ -183,7 +186,10 @@ describe('SettingsCatalogController.getCatalog — tenant visibility', () => {
     }
     // Named specimens from the families that used to leak wholesale.
     for (const hidden of ['jwt.secretKey', 'database.url', 'consultation.ocr.enabled', 'console.mlflow.enabled', 'harness.claimCheck.enabled']) {
-      expect(res.items.some((i) => i.key === hidden), `${hidden} must not reach a tenant admin`).toBe(false);
+      expect(
+        res.items.some((i) => i.key === hidden),
+        `${hidden} must not reach a tenant admin`,
+      ).toBe(false);
     }
   });
 
