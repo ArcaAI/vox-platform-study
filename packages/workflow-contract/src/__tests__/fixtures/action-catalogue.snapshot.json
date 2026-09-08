@@ -1,0 +1,242 @@
+{
+  "_comment": "The cross-language ACTION-catalogue parity fixture (TASK-893 Phase 2). `ACTION_CATALOGUE` (packages/workflow-contract/src/action-catalogue.ts) and `action_catalogue.py` (apps/harness/src/harness/temporal/interpreter/) both project onto this file — asserted from action-catalogue-parity.test.ts (TS) and test_action_catalogue_parity.py (Python). Same field set as node-registry.snapshot.json minus `implemented` (every action is dispatchable by construction): `outputKeys` maps EVERY output port name to the runtime key it carries, or null for a control port. Entries sorted by key. Regenerate with `pnpm --filter @arcaai/workflow-contract regen:action-snapshot`.",
+  "entries": [
+    {
+      "key": "consultation.bindTerminology",
+      "activityName": "interpreter.consultation_bind_terminology",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "entities",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "consultation.consentGate",
+      "activityName": "interpreter.consultation_consent_gate",
+      "critical": true,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": null,
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "consultation.finalizeAssurance",
+      "activityName": "interpreter.consultation_finalize_assurance",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "contextItemId": "contextItemId",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "consultation.inferentialSensors",
+      "activityName": "interpreter.consultation_inferential_sensors",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 900,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "document": "text",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "consultation.persistDraft",
+      "activityName": "interpreter.consultation_persist_draft",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "contextItemId": "contextItemId",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "consultation.phiHop",
+      "activityName": "interpreter.consultation_phi_hop",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "consultation.retrieveEvidence",
+      "activityName": "interpreter.consultation_retrieve_evidence",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "context",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "consultation.sensors",
+      "activityName": "interpreter.consultation_sensors",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "document": "text",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "feedback.capture",
+      "activityName": "interpreter.feedback_capture",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "guard.groundedness",
+      "activityName": "interpreter.guard_groundedness",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "guard.moderation",
+      "activityName": "interpreter.guard_moderation",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "guard.phi",
+      "activityName": "interpreter.guard_phi",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "text": "text",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "harness.finalize",
+      "activityName": "interpreter.harness_finalize",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "livedoc.stop",
+      "activityName": "interpreter.livedoc_stop",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "prompt.template_ref",
+      "activityName": "interpreter.template_ref",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "content",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "session.timeout",
+      "activityName": "interpreter.session_timeout",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "summary.finalize",
+      "activityName": "interpreter.summary_finalize",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      },
+      "lane": "durable"
+    }
+  ]
+}

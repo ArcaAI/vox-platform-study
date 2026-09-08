@@ -7,10 +7,10 @@
  * row, a clock or the network. The applications layer resolves the REFERENCES this module only
  * shape-checks (an Agent slug, a registry model slug, a context-schema id).
  */
+import { ACTION_CATALOGUE, actionDelegateOf } from './action-catalogue';
 import { EXPRESSION_CONTEXT_ROOTS, expressionProblems, expressionRootIdentifiers } from './expressions';
 import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
 import { EMPTY_PORTS, NODE_PORTS, type WorkflowNodePorts } from './node-ports';
-import { WORKFLOW_NODE_REGISTRY, type WorkflowNodeDescriptor } from './node-registry';
 import type { WorkflowPortDescriptor } from './port-model';
 
 // =============================================================================================
@@ -39,88 +39,8 @@ export type CoreOutputProtocol = (typeof CORE_OUTPUT_PROTOCOLS)[number];
 export const DEFAULT_OUTPUT_PROTOCOLS: readonly CoreOutputProtocol[] = Object.freeze(['http-sse']);
 
 // =============================================================================================
-// The ACTION CATALOGUE — every remaining fixed-purpose clinical step, keyed
+// The ACTION CATALOGUE — a first-class table since TASK-893 (`action-catalogue.ts`)
 // =============================================================================================
-
-export interface CoreActionDescriptor {
-  /** The `actionKey` a `core.action` node carries — the legacy node type's own key, so a
-   *  migration is a rename of `type` to `core.action` + `actionKey`, nothing else. */
-  readonly key: string;
-  /** The legacy node type whose activity, config schema and ports this action reuses. */
-  readonly delegateType: string;
-  readonly label: string;
-}
-
-/**
- * The legacy node types that survive as ACTIONS. Excluded on purpose: the input/output/agent
- * shapes (`input.context_binding`, `output.deliver`, `agentic.input/output/agent/loop/data/stt/
- * tts`, `generate.text`, `consultation.synthesize`, `agent.{summarization,presummarization,
- * discharge_summary}`, `consultation.hitlGate`) — those map onto a `core.*` PRIMITIVE, and an
- * action that duplicated one would give the same capability two homes.
- */
-const ACTION_KEYS: readonly string[] = Object.freeze([
-  'consultation.consentGate',
-  'consultation.captureBinding',
-  'consultation.extractEntities',
-  'consultation.bindTerminology',
-  'consultation.phiHop',
-  'consultation.retrieveEvidence',
-  'consultation.assemblePrompt',
-  'consultation.sensors',
-  'consultation.inferentialSensors',
-  'consultation.persistDraft',
-  'consultation.finalizeAssurance',
-  'consultation.realtimeSummary',
-  'consultation.suggestions',
-  'consultation.proposeCorrections',
-  'agent.transcription',
-  'agent.normalization',
-  'agent.ner',
-  'agent.grammar',
-  'agent.important_findings',
-  'agent.retrieval',
-  'agent.feedback',
-  'agent.dna_redaction',
-  'agent.dna_style',
-  'guard.phi',
-  'guard.moderation',
-  'guard.groundedness',
-  'guardrail.check',
-  'agentic.guardrail',
-  'session.timeout',
-  'summary.finalize',
-  'feedback.capture',
-  // TASK-882 — the whole endpoint stage is authorable through `core.action`.
-  'livedoc.stop',
-  'harness.finalize',
-  'prompt.template_ref',
-]);
-
-function humanLabel(key: string): string {
-  const tail = key.slice(key.indexOf('.') + 1);
-  return tail
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/_/g, ' ')
-    .replace(/^./, (c) => c.toUpperCase());
-}
-
-/** `actionKey -> descriptor`. Derived from the registry so a key that stops existing fails here. */
-export const ACTION_CATALOGUE: Readonly<Record<string, CoreActionDescriptor>> = Object.freeze(
-  Object.fromEntries(
-    ACTION_KEYS.filter((key) => WORKFLOW_NODE_REGISTRY[key] !== undefined).map((key) => [
-      key,
-      Object.freeze({ key, delegateType: key, label: humanLabel(key) }),
-    ]),
-  ),
-);
-
-/** The registry descriptor an action delegates to, or `undefined` for an unknown key. */
-export function actionDelegateOf(config: Readonly<Record<string, unknown>> | undefined): WorkflowNodeDescriptor | undefined {
-  const key = config?.actionKey;
-  if (typeof key !== 'string') return undefined;
-  const action = ACTION_CATALOGUE[key];
-  return action === undefined ? undefined : WORKFLOW_NODE_REGISTRY[action.delegateType];
-}
 
 /** The config schema the action's own `action` sub-config must satisfy (the delegate's). */
 export function actionConfigSchemaOf(config: Readonly<Record<string, unknown>> | undefined): Readonly<Record<string, unknown>> | undefined {
@@ -165,14 +85,14 @@ export function isBranchHandle(nodeType: string, config: Readonly<Record<string,
 }
 
 /**
- * The ports an INSTANCE actually offers. `core.action` takes its delegate's table (the action
- * IS the legacy node, under a key); the routers add one `control` output per declared class /
+ * The ports an INSTANCE actually offers. `core.action` takes its catalogue descriptor's table;
+ * the routers add one `control` output per declared class /
  * branch; everything else is the static table.
  */
 export function effectivePorts(nodeType: string, config: Readonly<Record<string, unknown>> | undefined): WorkflowNodePorts {
   if (nodeType === 'core.action') {
     const delegate = actionDelegateOf(config);
-    if (delegate !== undefined) return { inputs: delegate.inputs, outputs: delegate.outputs };
+    if (delegate !== undefined) return delegate.ports;
   }
   const base = NODE_PORTS[nodeType] ?? EMPTY_PORTS;
   const dynamic = branchHandlesOf(nodeType, config).filter((handle) => !base.outputs.some((port) => port.name === handle));

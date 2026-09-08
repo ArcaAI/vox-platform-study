@@ -6,10 +6,9 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../compiler';
 import type { CompilerContext } from '../compiler';
+import { ACTION_CATALOGUE, actionDelegateOf } from '../action-catalogue';
 import {
-  ACTION_CATALOGUE,
   actionConfigSchemaOf,
-  actionDelegateOf,
   branchHandlesOf,
   coreNodeConfigProblems,
   declaredIoSchemas,
@@ -224,20 +223,18 @@ describe('the action catalogue', () => {
     expect(keys).toContain('consultation.phiHop');
     expect(keys).toContain('guard.groundedness');
     expect(keys).toContain('prompt.template_ref');
-    for (const excluded of ['consultation.synthesize', 'consultation.hitlGate', 'agentic.agent', 'agentic.input', 'output.deliver', 'input.context_binding', 'generate.text']) {
+    // TASK-893: the agent-shaped keys are `core.agent` now, and the primitives never were actions.
+    for (const excluded of ['consultation.synthesize', 'consultation.hitlGate', 'consultation.extractEntities', 'agent.ner', 'agentic.agent', 'agentic.input', 'output.deliver', 'input.context_binding', 'generate.text']) {
       expect(keys).not.toContain(excluded);
     }
-    for (const key of keys) expect(WORKFLOW_NODE_REGISTRY[key]).toBeDefined();
   });
 
-  it('a core.action instance takes its delegate`s ports and config schema', () => {
+  it('a core.action instance takes its catalogue descriptor`s ports and config schema', () => {
     const config = { actionKey: 'consultation.phiHop' };
-    expect(actionDelegateOf(config)?.key).toBe('consultation.phiHop');
-    expect(effectivePorts('core.action', config)).toEqual({
-      inputs: WORKFLOW_NODE_REGISTRY['consultation.phiHop'].inputs,
-      outputs: WORKFLOW_NODE_REGISTRY['consultation.phiHop'].outputs,
-    });
-    expect(actionConfigSchemaOf(config)).toBe(NODE_CONFIG_SCHEMAS['consultation.phiHop']);
+    const descriptor = ACTION_CATALOGUE['consultation.phiHop'];
+    expect(actionDelegateOf(config)).toBe(descriptor);
+    expect(effectivePorts('core.action', config)).toEqual(descriptor.ports);
+    expect(actionConfigSchemaOf(config)).toBe(descriptor.configSchema);
     expect(actionDelegateOf({ actionKey: 'nope' })).toBeUndefined();
     expect(effectivePorts('core.action', { actionKey: 'nope' })).toEqual({ inputs: WORKFLOW_NODE_REGISTRY['core.action'].inputs, outputs: WORKFLOW_NODE_REGISTRY['core.action'].outputs });
   });
