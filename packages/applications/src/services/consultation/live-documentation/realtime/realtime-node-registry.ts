@@ -248,10 +248,21 @@ export function readAgentRef(config: Readonly<Record<string, unknown>>): Realtim
  * {@link readAgentRef} and both fall back to `TEXT_GENERATION` for a slug the host cannot resolve.
  * A caller with an outcome in hand must still PREFER the reported capability — that one is what
  * ran, this one is only what was expected.
+ *
+ * TASK-930 (G-1) — a SLUG-form reference carries no task, so a caller that can resolve the agent
+ * passes `taskOf`. It is the read-back half of {@link RealtimeCapabilities.resolveAgent}: supply
+ * the same resolution the handler will make and this answers what will actually run; supply none
+ * (or a slug it cannot resolve) and it answers `generateDocument`, which is what the handler falls
+ * back to. Agreement with the handler is preserved in both directions.
  */
-export function realtimeCapabilityOf(type: string, config?: Readonly<Record<string, unknown>>): RealtimeCapabilityKey | undefined {
+export function realtimeCapabilityOf(
+  type: string,
+  config?: Readonly<Record<string, unknown>>,
+  taskOf?: (slug: string) => RealtimeAgentTask | undefined,
+): RealtimeCapabilityKey | undefined {
   if (type !== 'core.agent') return undefined;
-  switch (readAgentRef(config ?? {})?.task) {
+  const ref = readAgentRef(config ?? {});
+  switch (ref === null ? undefined : (ref.task ?? (ref.slug !== undefined ? taskOf?.(ref.slug) : undefined))) {
     case 'SPEECH_TO_TEXT':
       return 'transcribe';
     case 'NAMED_ENTITY_RECOGNITION':

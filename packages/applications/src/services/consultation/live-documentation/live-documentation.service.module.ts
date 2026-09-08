@@ -3,6 +3,7 @@ import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { CoreDatabaseModule } from '@arcaai/domains';
+import { AgentServiceModule } from '../../agent/agent.service.module';
 import { RedisCacheModule } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSession.service.module';
@@ -107,6 +108,13 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
     // produced no ledger rows at all: a production LLM path that billed nothing. The quota half
     // (`IEntitlementsService`) already resolves through `EntitlementsServiceModule` above.
     UsageLedgerServiceModule,
+    // TASK-930 (G-1) — supplies `AgentResolverService`, which turns a `core.agent` node's SLUG
+    // into the agent's TASK and so decides which realtime capability the node runs. It also
+    // supplies `TextAgentResolverService`, the TASK-876 injection this module named nowhere:
+    // `HarnessPolicyServiceModule` imports `AgentServiceModule` but does not re-export it, so
+    // neither resolver was reachable from this injector. Both deps are @Optional, so this is
+    // additive — a composition without it keeps the pre-TASK-930 TEXT_GENERATION fallback.
+    AgentServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],

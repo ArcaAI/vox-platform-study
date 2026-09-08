@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Inject, Injectable, Logger, type MessageEvent, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, type MessageEvent, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -9,6 +9,7 @@ import {
   AgentSessionKind,
   AgentStepStatus,
   AgentStepType,
+  AgentTask,
   ConsultationRepository,
   ContextItemEntity,
   ContextItemFactory,
@@ -37,6 +38,7 @@ import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 //  — the ONE reader of a node's `llmBinding`, shared with the durable
 // interpreter's Python mirror (`nodes/_shared.py`'s `read_model_slug`).
+import { AgentResolverService } from '../../agent/agent-resolver.service';
 import { TextAgentResolverService } from '../../agent/text-agent-resolver.service';
 import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../agent/text-generation-spec';
 // TASK-890 §3.2/§3.3 — the ONE prompt grammar and the ONE scope. The realtime and durable lanes
@@ -111,14 +113,17 @@ import {
   reanchorAnnotations,
   PLATFORM_REALTIME_LANE,
   buildRealtimeLane,
+  readAgentRef,
   realtimeCapabilityOf,
   realtimeDocumentTemplateSlug,
   realtimeNodeIsTogglable,
   runRealtimeLane,
   type RealtimeAgentRef,
+  type RealtimeAgentTask,
   type RealtimeCapabilities,
   type RealtimeCapabilityKey,
   type RealtimeLane,
+  type RealtimeResolvedAgentView,
   type RealtimeRunResult,
   type SectionPatchDto,
 } from './realtime';
@@ -615,6 +620,26 @@ function realtimeCapabilityIndex(lane: RealtimeLane): Map<string, RealtimeCapabi
   return index;
 }
 
+/**
+ * TASK-930 (G-1) — `AgentTask` (the persisted enum) → `RealtimeAgentTask` (the lane's own union).
+ *
+ * Written out rather than cast: the lane types its four tasks locally so it needs no enum from
+ * the agent plane, and a fifth member added to `AgentTask` must surface as a compile error here
+ * rather than as a silent `TEXT_GENERATION` at run time.
+ */
+function realtimeAgentTaskOf(task: AgentTask): RealtimeAgentTask {
+  switch (task) {
+    case AgentTask.SPEECH_TO_TEXT:
+      return 'SPEECH_TO_TEXT';
+    case AgentTask.NAMED_ENTITY_RECOGNITION:
+      return 'NAMED_ENTITY_RECOGNITION';
+    case AgentTask.TEXT_TO_SPEECH:
+      return 'TEXT_TO_SPEECH';
+    case AgentTask.TEXT_GENERATION:
+      return 'TEXT_GENERATION';
+  }
+}
+
 function storedMode(result: { value: unknown; sourceScope: string }): AgenticTranscriptMode | undefined {
   if (result.sourceScope === 'code-default') return undefined;
   return result.value === 'windowed' || result.value === 'whole' ? result.value : undefined;
@@ -820,6 +845,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // must never become a precondition for documenting a consultation.
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
+    // TASK-930 (G-1) — resolves a slug-form `core.agent` reference to the agent's TASK, which is
+    // what decides WHICH capability the node runs (`SPEECH_TO_TEXT` → transcribe,
+    // `NAMED_ENTITY_RECOGNITION` → extractEntities, `TEXT_GENERATION` → generateDocument). The
+    // task-agnostic resolver, not `TextAgentResolverService`: the whole point is that the task is
+    // not known before the agent is resolved. Optional + trailing so every positional fixture
+    // keeps its arity; ABSENT ⇒ `CoreAgentHandler` falls back to TEXT_GENERATION exactly as it did
+    // before this ticket, which is why the read-out reports that same fallback.
+    @Optional() @Inject(AgentResolverService) private readonly agentResolver?: AgentResolverService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1588,6 +1621,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     const { lane: tenantLane, assignmentSource } = await this.resolveTenantLane(tenantId, departmentId, consultationId ?? undefined);
     const lane = tenantLane ?? PLATFORM_REALTIME_LANE;
+    // TASK-930 (G-1) — the same resolution the lane makes at run time, so `canonicalType` names
+    // what a node WILL run rather than the TEXT_GENERATION fallback every slug-form ref reported.
+    const agentTasks = await this.resolveLaneAgentTasks(lane, tenantId);
 
     return {
       tenantId,
@@ -1602,7 +1638,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         stage.nodes.map((node) => ({
           nodeId: node.nodeId,
           type: node.type,
-          canonicalType: realtimeCapabilityOf(node.type, node.config) ?? node.type,
+          canonicalType: realtimeCapabilityOf(node.type, node.config, (slug) => agentTasks.get(slug)) ?? node.type,
           stageIndex: stage.stageIndex,
           enabled: node.enabled,
           togglable: realtimeNodeIsTogglable(node.type),
@@ -2522,6 +2558,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // `extractEntities`' required input unsatisfiable. Here it is real: the
       // value is the live ASR stream this session ingested.
       transcribe: async () => ({ transcript: session.pendingGraphTranscript ?? '', pipelineId: session.sttPipelineId ?? null }),
+
+      // TASK-930 (G-1) — WHICH capability a `core.agent` runs is a property of the AGENT, and a
+      // slug-form reference carries no task, so the host must resolve it. Without this the lane
+      // fell back to TEXT_GENERATION for every node: the ASR and NER nodes of the seeded graphs
+      // generated notes instead of transcribing and extracting.
+      resolveAgent: async (ref) => this.resolveRealtimeAgentView(ref, session.tenantId),
 
       generateDocument: async (input, signal) => {
         // Built from the node's BOUND `sourceText`, not from an expression this
@@ -3557,6 +3599,81 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       transcriptMode: this.envTranscriptMode ?? AGENTIC_CONTEXT_DEFAULTS['transcript.mode'],
       tokenBudgetPerRun: this.envTokenBudgetPerRun ?? AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun'],
     };
+  }
+
+  /**
+   * TASK-930 (G-1) — `RealtimeCapabilities.resolveAgent`: a slug-form `core.agent` reference to
+   * the agent's TASK, so the lane dispatches on what the agent IS.
+   *
+   * Until this ticket the hook was unimplemented, so `CoreAgentHandler` fell back to
+   * `TEXT_GENERATION` for every slug-form reference and the seeded graphs' ASR and NER nodes each
+   * GENERATED A NOTE instead of transcribing / extracting. Nothing errored — the lane simply did
+   * the wrong work, three times per flush.
+   *
+   * FAIL CLOSED, exactly as `resolveRealtimeTextAgent` does, and for the same reason: an unknown,
+   * unpublished or cross-tenant slug is one 404 out of `AgentResolverService` (404-over-403) and a
+   * version pin that no longer matches the active published version is a 409. Both THROW, and the
+   * executor turns the throw into a named degrade — nothing is generated in the node's place.
+   *
+   * Two references resolve to `null` rather than throwing, and the difference from the paragraph
+   * above is deliberate. A TASK-form reference is the code-built platform lane naming the tenant's
+   * ASSIGNED agent for a task, which the handler already dispatches on directly. And a composition
+   * with no resolver at all cannot ANSWER the question, so it keeps the hook's declared
+   * absent-means-fallback semantics: that is a wiring state, not a tenant's agent gone missing, and
+   * turning it into a per-node degrade would take out every lane in a stack that predates this
+   * ticket. Production always wires it (`LiveDocumentationServiceModule` imports
+   * `AgentServiceModule`), so the fail-closed branches below are the ones that run.
+   */
+  private async resolveRealtimeAgentView(ref: RealtimeAgentRef, tenantId: string): Promise<RealtimeResolvedAgentView | null> {
+    if (ref.slug === undefined || !this.agentResolver) return null;
+    const resolved = await this.agentResolver.resolve({ tenantId, agentSlug: ref.slug });
+    // The resolver serves the ACTIVE published version and takes no pin, so honouring one means
+    // REFUSING a different version — a pin that ran whatever is active would be no pin at all.
+    if (ref.versionNumber !== undefined && resolved.versionNumber !== ref.versionNumber) {
+      throw new ConflictException({
+        code: 'AGENT_VERSION_DRIFT',
+        message: `Agent '${resolved.slug}' is pinned to v${ref.versionNumber} but the active published version is v${resolved.versionNumber}.`,
+      });
+    }
+    return {
+      slug: resolved.slug,
+      task: realtimeAgentTaskOf(resolved.task),
+      outputSchema: resolved.compiledConfig?.outputSchema,
+      parameters: resolved.compiledConfig?.parameters ?? null,
+    };
+  }
+
+  /**
+   * slug → task for every slug-form `core.agent` of a lane, resolved ONCE for the read-out.
+   *
+   * The read-out DESCRIBES; it never fails. An unresolvable slug is simply absent from the map,
+   * which makes `realtimeCapabilityOf` report the same `generateDocument` the handler would fall
+   * back to — describing a lane that does not exist would be the worse answer.
+   */
+  private async resolveLaneAgentTasks(lane: RealtimeLane, tenantId: string): Promise<Map<string, RealtimeAgentTask>> {
+    const tasks = new Map<string, RealtimeAgentTask>();
+    if (!this.agentResolver) return tasks;
+    const slugs = new Set<string>();
+    for (const stage of lane.stages) {
+      for (const node of stage.nodes) {
+        const slug = readAgentRef(node.config)?.slug;
+        if (slug !== undefined) slugs.add(slug);
+      }
+    }
+    for (const slug of slugs) {
+      try {
+        const view = await this.resolveRealtimeAgentView({ slug }, tenantId);
+        if (view) tasks.set(slug, view.task);
+      } catch (error) {
+        this.logger.debug({
+          message: 'Realtime capability read-out could not resolve a referenced agent — reporting the handler’s own fallback',
+          tenantId,
+          agentSlug: slug,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return tasks;
   }
 
   /** TASK-876 — the bound agent for a realtime `core.agent` node, or a throw the executor turns into a named degrade. */
