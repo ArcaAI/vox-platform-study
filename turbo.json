@@ -461,6 +461,7 @@
         "NLP_TRACES_ENABLED",
         "NLP_URL",
         "NLP_VERSION",
+        "NLP_WARM_MODELS",
         "NLP_WORKERS",
         "NODE_ENV",
         "OMP_NUM_THREADS",
