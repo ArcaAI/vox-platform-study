@@ -209,9 +209,13 @@ describe('env:sync — rendered documentation is not a read', () => {
    *
    * `HOPE_API_BASE_URL` / `HOPE_API_TOKEN` predate the portal and ARE genuine
    * declared keys — the assertion below is deliberately exact, not a
-   * `HOPE_*` prefix sweep, so it cannot swallow them.
+   * `HOPE_*` prefix sweep, so it cannot swallow them. `HOPE_API_KEY` left this
+   * list with TASK-931: `vox-codegen`'s business-plane mode reads it as the
+   * fallback for `--api-key` (`packages/vox-codegen/src/cli.ts`), the same way
+   * the CLI already reads `HOPE_API_TOKEN` — a real member expression, not a
+   * rendered snippet.
    */
-  const CONSUMER_SNIPPET_ONLY = ['HOPE_API_KEY', 'HOPE_API_URL', 'HOPE_SA_CLIENT_ID', 'HOPE_SA_CLIENT_SECRET', 'HOPE_TENANT_ID'];
+  const CONSUMER_SNIPPET_ONLY = ['HOPE_API_URL', 'HOPE_SA_CLIENT_ID', 'HOPE_SA_CLIENT_SECRET', 'HOPE_TENANT_ID'];
 
   it('registers no snippet-only consumer variable in turbo.json#globalEnv', () => {
     const globalEnv: string[] = JSON.parse(artifact('turbo.json')).globalEnv;
