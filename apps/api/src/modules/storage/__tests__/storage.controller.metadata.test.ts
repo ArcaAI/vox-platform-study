@@ -27,12 +27,18 @@ describe('@TenantOwnedResource metadata on StorageController', () => {
     ['getBucket'] as const,
     ['deleteBucket'] as const,
     ['updateBucket'] as const,
-    ['listFiles'] as const,
     ['uploadFile'] as const,
     ['getFileInfo'] as const,
     ['deleteFile'] as const,
   ])('handler %s is annotated with lookup=name', (handler) => {
     expect(meta(handler)).toEqual(expected);
+  });
+
+  // TASK-932 Lane T: `listFiles` additionally carries `scope: 'super-admin'`
+  // so the storage browser's "All tenants" view (an unscoped platform admin)
+  // can list files in any registered bucket by name — see storage.controller.ts.
+  it('handler listFiles is annotated with lookup=name AND scope=super-admin', () => {
+    expect(meta('listFiles')).toEqual({ ...expected, scope: 'super-admin' });
   });
 
   it.each([['listBuckets'] as const, ['createBucket'] as const, ['checkHealth'] as const])(

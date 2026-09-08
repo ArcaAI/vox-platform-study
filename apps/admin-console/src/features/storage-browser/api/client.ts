@@ -14,6 +14,7 @@ import type {
   FileInfoResult,
   FileUploadResult,
   StorageBucket,
+  StorageBucketWithScope,
   StorageHealth,
   StorageObject,
   UpdateBucketRequest,
@@ -34,6 +35,14 @@ const filePath = (bucketName: string, key: string) => `${bucketPath(bucketName)}
 
 export function listBuckets(): Promise<StorageBucket[]> {
   return getJson(BUCKETS);
+}
+
+/**
+ * "All tenants" listing (TASK-932 Lane T) — an unscoped platform admin (no
+ * working tenant) only; the gateway 400s for any tenant-bound caller.
+ */
+export function listBucketsAllTenants(): Promise<StorageBucketWithScope[]> {
+  return getJson(BUCKETS, { includePhysical: true });
 }
 
 export function createBucket(body: CreateBucketRequest): Promise<CreateBucketResult> {

@@ -43,6 +43,7 @@ const mockTenantBucketRepository = {
 
 const mockTenantRepository = {
   findById: vi.fn(),
+  findAll: vi.fn(),
 };
 
 const mockBlobStorage = {
@@ -55,9 +56,12 @@ const mockBlobStorage = {
   bucketExists: vi.fn(),
 };
 
-// Retained only for the best-effort S3/MinIO setBucketPolicy hardening.
+// Retained only for the best-effort S3/MinIO setBucketPolicy hardening, and
+// (TASK-932) the physical bucket listing behind the "All tenants" storage
+// browser.
 const mockS3Service = {
   setBucketPolicy: vi.fn(),
+  listAllBuckets: vi.fn(),
 };
 
 const createMockBucketEntity = (
@@ -238,6 +242,89 @@ describe('TenantBucketService', () => {
 
       await expect(service.listBuckets()).rejects.toThrow(BadRequestException);
       expect(mockTenantBucketRepository.findAllCrossTenant).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listBucketsCrossTenantWithPhysical', () => {
+    it('rejects a tenant-bound caller (even a super admin with a working tenant) with 400', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return 'tenant-1';
+        if (key === 'user') return { id: 'user-id-1', roles: ['SUPER_ADMIN'] };
+        return null;
+      });
+
+      await expect(service.listBucketsCrossTenantWithPhysical()).rejects.toThrow(BadRequestException);
+      expect(mockTenantBucketRepository.findAllCrossTenant).not.toHaveBeenCalled();
+      expect(mockS3Service.listAllBuckets).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unscoped non-elevated caller with 400', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return null;
+        if (key === 'user') return { id: 'user-id-1', roles: ['TENANT_ADMIN'] };
+        return null;
+      });
+
+      await expect(service.listBucketsCrossTenantWithPhysical()).rejects.toThrow(BadRequestException);
+      expect(mockTenantBucketRepository.findAllCrossTenant).not.toHaveBeenCalled();
+    });
+
+    it('merges registered TenantBucket rows (with resolved tenant names) with the physical bucket list for an unscoped SUPER_ADMIN', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return null;
+        if (key === 'user') return { id: 'user-id-1', roles: ['SUPER_ADMIN'] };
+        return null;
+      });
+      mockTenantBucketRepository.findAllCrossTenant.mockResolvedValue([
+        createMockBucketEntity({ id: 'b1', tenantId: 'tenant-1', name: 'hope-audio-arcaai', slug: 'audio' }),
+        createMockBucketEntity({ id: 'b2', tenantId: 'tenant-2', name: 'hope-audio-global', slug: 'audio' }),
+        // Registered, but the physical bucket has vanished from the provider.
+        createMockBucketEntity({ id: 'b3', tenantId: 'tenant-2', name: 'hope-attachments-global', slug: 'attachments' }),
+      ]);
+      mockS3Service.listAllBuckets.mockResolvedValue([
+        { name: 'hope-audio-arcaai', creationDate: '2026-01-01T00:00:00.000Z' },
+        { name: 'hope-audio-global', creationDate: '2026-01-02T00:00:00.000Z' },
+        // Physical bucket with no TenantBucket row at all.
+        { name: 'orphan-bucket', creationDate: '2026-01-03T00:00:00.000Z' },
+      ]);
+      mockTenantRepository.findAll.mockResolvedValue([
+        { id: 'tenant-1', name: 'ArcaAI' },
+        { id: 'tenant-2', name: 'Global' },
+      ]);
+
+      const result = await service.listBucketsCrossTenantWithPhysical();
+
+      expect(mockTenantBucketRepository.findAllCrossTenant).toHaveBeenCalledWith();
+      expect(mockS3Service.listAllBuckets).toHaveBeenCalledWith();
+      expect(mockTenantRepository.findAll).toHaveBeenCalledWith({ filters: { id: { in: ['tenant-1', 'tenant-2'] } } });
+
+      expect(result).toHaveLength(4);
+
+      const audioArcaai = result.find((row) => row.name === 'hope-audio-arcaai');
+      expect(audioArcaai).toMatchObject({ tenantId: 'tenant-1', tenantName: 'ArcaAI', registered: true, physicalMissing: false });
+
+      const attachmentsGlobal = result.find((row) => row.name === 'hope-attachments-global');
+      expect(attachmentsGlobal).toMatchObject({ tenantId: 'tenant-2', tenantName: 'Global', registered: true, physicalMissing: true });
+
+      const orphan = result.find((row) => row.name === 'orphan-bucket');
+      expect(orphan).toMatchObject({ tenantId: null, tenantName: null, registered: false, physicalMissing: false });
+    });
+
+    it('skips the tenant lookup when there are no registered rows', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return null;
+        if (key === 'user') return { id: 'user-id-1', roles: ['SUPER_ADMIN'] };
+        return null;
+      });
+      mockTenantBucketRepository.findAllCrossTenant.mockResolvedValue([]);
+      mockS3Service.listAllBuckets.mockResolvedValue([{ name: 'orphan-bucket', creationDate: '2026-01-03T00:00:00.000Z' }]);
+
+      const result = await service.listBucketsCrossTenantWithPhysical();
+
+      expect(mockTenantRepository.findAll).not.toHaveBeenCalled();
+      expect(result).toEqual([
+        { name: 'orphan-bucket', creationDate: '2026-01-03T00:00:00.000Z', tenantId: null, tenantName: null, registered: false, physicalMissing: false },
+      ]);
     });
   });
 

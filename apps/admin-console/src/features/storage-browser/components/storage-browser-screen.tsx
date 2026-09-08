@@ -6,44 +6,19 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import { useSession } from '@/shared/auth';
 import { FilterSearch } from '@/shared/data/filter-bar';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
-import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { useBuckets, useObjects, useStorageHealth } from '../api/hooks';
-import type { StorageHealth, StorageObject } from '../api/types';
+import { useBuckets, useObjects } from '../api/hooks';
+import type { StorageObject } from '../api/types';
+import { AllTenantsBody } from './all-tenants-panel';
+import { ENDPOINT_HINT, HealthStatus } from './health-status';
 import { UPLOAD_INPUT_ID, UploadZone } from './object-actions-panel';
 import { deriveEntries, ObjectBrowserPanel, PrefixChips, sortEntries } from './object-browser-panel';
 import { ObjectDetailDrawer } from './object-detail';
-
-const ENDPOINT_HINT = 'GET /storage/buckets';
-
-function healthLabel(health: StorageHealth): string {
-  if (health.status === 'not-configured') return 'Storage not configured';
-  if (health.status === 'healthy' && health.connected) return health.isMinIO ? 'MinIO reachable' : 'Storage reachable';
-  return health.isMinIO ? 'MinIO unreachable' : 'Storage unreachable';
-}
-
-function healthDotClass(health: StorageHealth): string {
-  if (health.status === 'healthy' && health.connected) return 'bg-success';
-  if (health.status === 'not-configured') return 'bg-warning';
-  return 'bg-destructive';
-}
-
-/** Footer health verdict (frame 31): dot + probe result, from GET /storage/health. */
-function HealthStatus() {
-  const { data, isPending, isError } = useStorageHealth();
-  if (isPending) return <Skeleton className="h-4 w-32" />;
-  const health: StorageHealth = isError ? { status: 'unhealthy', connected: false, isMinIO: false } : (data as StorageHealth);
-  return (
-    <span className="flex items-center gap-2">
-      <span aria-hidden className={`size-2 shrink-0 rounded-full ${healthDotClass(health)}`} />
-      <span className="truncate">{healthLabel(health)}</span>
-    </span>
-  );
-}
 
 function ScreenBody() {
   const bucketsQuery = useBuckets();
@@ -204,19 +179,27 @@ function ScreenBody() {
  * /tenants/storage (frame 14). Redesign (build spec: fill-height object
  * grid + breadcrumb path bar, bucket select in the toolbar, object actions in
  * the console-wide detail slide-over.
+ *
+ * TASK-932 Lane T: an elevated session with NO working tenant no longer hits
+ * the NoTenant gate — it gets the "All tenants" cross-tenant + physical-bucket
+ * view (`AllTenantsBody`) instead. Elevated + a working tenant selected, and a
+ * tenant admin, are both unchanged (`ScreenBody`, tenant-scoped).
  */
 export function StorageBrowserScreen() {
-  return (
-    <WorkingTenantGate
-      title="Storage"
-      meta={
-        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-          {ENDPOINT_HINT}
-        </span>
-      }
-      description="Storage is browsed per tenant. Pick a working tenant from the switcher in the top bar to list its buckets and objects."
-    >
-      <ScreenBody />
-    </WorkingTenantGate>
-  );
+  const session = useSession();
+
+  if (!session.data) {
+    return (
+      <div className="flex flex-col gap-4">
+        <PageHeader title="Storage" meta={<Skeleton className="h-4 w-40" />} />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (session.data.effectiveIsElevated && !session.data.effectiveTenantId) {
+    return <AllTenantsBody />;
+  }
+
+  return <ScreenBody />;
 }

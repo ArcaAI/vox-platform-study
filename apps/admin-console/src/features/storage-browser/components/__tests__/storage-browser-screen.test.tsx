@@ -1,8 +1,13 @@
 /**
  * Frame 31 — tenant Storage browser. fetch is stubbed at the network
  * boundary; assertions cover the fill-grid render (bucket select + breadcrumb
- * + prefix-grouped grid), the NoTenant gate, the type-to-confirm object delete
- * (in the detail slide-over), the multipart upload, and the error state.
+ * + prefix-grouped grid), the type-to-confirm object delete (in the detail
+ * slide-over), the multipart upload, and the error state.
+ *
+ * TASK-932 Lane T: an elevated session with NO working tenant used to hit a
+ * NoTenant gate here; it now routes to the "All tenants" view instead (see
+ * `all-tenants-panel.test.tsx` for that view's own coverage) — the scope-switch
+ * itself is asserted below.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -134,17 +139,22 @@ describe('StorageBrowserScreen', () => {
     expect(await screen.findByText(/MinIO reachable/)).toBeDefined();
   });
 
-  it('asks an elevated session without a working tenant to pick one (no data queries fired)', async () => {
+  it('routes an elevated session with no working tenant to the "All tenants" view, never the tenant-scoped buckets call', async () => {
     const calls = stubStorageBrowser((call) => {
       const path = new URL(call.url, 'http://test.local').pathname;
       if (path === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
+      if (path === '/api/hope/storage/buckets' && new URL(call.url, 'http://test.local').searchParams.get('includePhysical') === 'true') {
+        return Response.json([]);
+      }
       return undefined;
     });
     renderWithProviders(<StorageBrowserScreen />);
 
-    expect(await screen.findByText('Select a working tenant')).toBeDefined();
     expect(screen.getByRole('heading', { level: 1, name: 'Storage' })).toBeDefined();
-    expect(calls.every((call) => !call.url.includes('/storage/'))).toBe(true);
+    expect(await screen.findByText('all tenants')).toBeDefined();
+    expect(screen.getByRole('grid', { name: 'Storage buckets across all tenants' })).toBeDefined();
+    // Never the plain tenant-scoped listing — only the includePhysical one.
+    expect(calls.some((call) => call.url === '/api/hope/storage/buckets')).toBe(false);
   });
 
   it('opens the selected object in the detail slide-over and deletes it after typing its name', async () => {
