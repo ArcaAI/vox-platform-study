@@ -3,9 +3,19 @@
  * prepends the `/api/hope` BFF proxy mount.
  */
 
-import { getJson, getWithEtag, putWithEtag, request, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, putJson, putWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
-import type { EffectiveSetting, SettingCatalog, SettingScope, WriteRegistrySettingResult } from './types';
+import type {
+  EffectiveFeature,
+  EffectiveSetting,
+  FeatureMatrix,
+  FeatureMatrixWrite,
+  FeatureMatrixWriteResult,
+  ResetRegistrySettingResult,
+  SettingCatalog,
+  SettingScope,
+  WriteRegistrySettingResult,
+} from './types';
 
 const BASE = 'admin/settings';
 
@@ -49,4 +59,50 @@ export function putRegistrySetting(
   // the path where a caller hands us one anyway.
   const usable = etag && versionFromEtag(etag) > 0 ? etag : null;
   return usable ? putWithEtag(path, body, usable) : request(path, { method: 'PUT', body });
+}
+
+/**
+ * Reset ONE tenant override so the key inherits the platform default again.
+ *
+ * A DELETE and not a write of the platform's current value: copying the value
+ * down looks identical today and diverges silently the next time the platform
+ * default moves, leaving the tenant pinned to a stale number nobody chose.
+ *
+ * `scope=system` is refused by the gateway (400) — the platform row is the top
+ * of the cascade, so there is nothing above it to inherit. The console never
+ * offers it.
+ */
+export function resetRegistrySetting(key: string): Promise<ResetRegistrySettingResult> {
+  return deleteJson(`${BASE}/registry/${encodeURIComponent(key)}`, undefined, { scope: 'tenant' });
+}
+
+// ---------------------------------------------------------------------------
+// Feature availability (TASK-932 R-8)
+// ---------------------------------------------------------------------------
+
+/**
+ * The gates for the CALLER's context — an unscoped platform admin gets the
+ * platform values, a scoped one gets the working tenant's, a tenant admin its
+ * own. One call per session; the console renders navigation from it.
+ */
+export function getEffectiveFeatures(): Promise<{ items: EffectiveFeature[] }> {
+  return getJson(`${BASE}/features/effective`);
+}
+
+/** The cross-tenant matrix. Super administrators only (403 otherwise). */
+export function getFeatureMatrix(): Promise<FeatureMatrix> {
+  return getJson(`${BASE}/features/matrix`);
+}
+
+/**
+ * Apply a batch of cell edits under ONE approval.
+ *
+ * There is no `If-Match` header here and there could not be: each cell is a
+ * separate row under a separate tenant with its own version, so the precondition
+ * travels per cell as `expectedVersion`. The gateway answers 200 either way and
+ * reports per-cell failures in `errors` — a drifted cell must not discard the
+ * rest of a screenful of edits.
+ */
+export function putFeatureMatrix(cells: FeatureMatrixWrite[]): Promise<FeatureMatrixWriteResult> {
+  return putJson(`${BASE}/features/matrix`, { cells });
 }

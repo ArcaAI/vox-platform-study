@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { IconFilterOff, IconInfoCircle, IconLock, IconPlus, IconSettings, IconTrash } from '@tabler/icons-react';
+import { IconFilterOff, IconLock, IconPlus, IconSettings, IconTrash } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { type ColumnDef, type GroupByConfig, type SortRule } from '@arcaai/ui';
@@ -22,7 +22,6 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { useDeleteGlobalSetting, useGlobalSettings, useSettingNamespaces } from '../api/hooks';
 import type { GlobalSetting } from '../api/types';
-import { ADVISORY_FEATURE_FLAG_HINT, isAdvisoryFeatureFlag } from './advisory-feature-flags';
 import { SettingCreateDrawer, SettingDetailDrawer } from './setting-drawer';
 
 /** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
@@ -166,12 +165,6 @@ export function SettingsScreen() {
               <IconLock aria-hidden className="text-muted-foreground size-3.5" />
               <span className="sr-only">locked</span>
             </>
-          ) : null}
-          {isAdvisoryFeatureFlag(row.original) ? (
-            <span title={ADVISORY_FEATURE_FLAG_HINT}>
-              <IconInfoCircle aria-hidden className="text-muted-foreground size-3.5" />
-              <span className="sr-only">{ADVISORY_FEATURE_FLAG_HINT}</span>
-            </span>
           ) : null}
         </span>
       ),

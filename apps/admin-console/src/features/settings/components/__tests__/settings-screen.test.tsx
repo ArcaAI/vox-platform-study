@@ -124,25 +124,27 @@ describe('SettingsScreen', () => {
     expect(screen.getByText(/2 settings/)).toBeDefined();
   });
 
-  it('marks feature-flags rows with no runtime consumer as advisory, but not enable-consultation-sharing', async () => {
-    const advisory = setting({ id: 's-3', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
+  // TASK-932 R-8 — the "advisory feature flag" marker is GONE with the five rows
+  // it warned about. It existed to tell an admin that a toggle changed nothing
+  // at runtime; the answer to that is to remove the toggle, which the seed now
+  // does (and `RETIRED_GLOBAL_SETTING_KEYS` sweeps the copies a provisioned
+  // database holds). `enable-consultation-sharing` is the one `feature-flags`
+  // row left, and it was never advisory.
+  it('renders a feature-flags row with no advisory marker of any kind', async () => {
     const enforced = setting({ id: 's-4', key: 'enable-consultation-sharing', namespace: 'feature-flags', name: 'Consultation Sharing' });
-    stubFetch({ rows: [advisory, enforced] });
+    stubFetch({ rows: [enforced] });
     renderWithProviders(<SettingsScreen />);
 
-    expect(await screen.findByText('enable-ner-extraction')).toBeDefined();
-    // F-23 / item 7: the hint is sr-only text next to the advisory key only.
-    expect(screen.getAllByText('Advisory only — no runtime path reads this flag today')).toHaveLength(1);
-    const enforcedRow = screen.getByText('enable-consultation-sharing').closest('[role="row"]') as HTMLElement;
-    expect(within(enforcedRow).queryByText('Advisory only — no runtime path reads this flag today')).toBeNull();
+    expect(await screen.findByText('enable-consultation-sharing')).toBeDefined();
+    expect(screen.queryByText(/no runtime path reads this flag today/)).toBeNull();
   });
 
-  it('has no axe violations with an advisory feature-flag row rendered', async () => {
-    const advisory = setting({ id: 's-3', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
-    stubFetch({ rows: [advisory] });
+  it('has no axe violations with a feature-flags row rendered', async () => {
+    const enforced = setting({ id: 's-4', key: 'enable-consultation-sharing', namespace: 'feature-flags', name: 'Consultation Sharing' });
+    stubFetch({ rows: [enforced] });
     const { container } = renderWithProviders(<SettingsScreen />);
 
-    await screen.findByText('enable-ner-extraction');
+    await screen.findByText('enable-consultation-sharing');
     expect(await axe(container)).toHaveNoViolations();
   });
 

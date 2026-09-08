@@ -122,39 +122,9 @@ describe('SettingDetailDrawer', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it('marks a feature-flags row with no runtime consumer as advisory (F-23 / item 7)', async () => {
-    const advisory = setting({ id: 's-5', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
-    stubFetch({
-      custom: (call) => {
-        if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-5') {
-          return Response.json(advisory, { headers: { etag: '"2"' } });
-        }
-        return undefined;
-      },
-    });
-    renderWithProviders(<SettingDetailDrawer settingId="s-5" onClose={vi.fn()} onDelete={vi.fn()} />);
-
-    expect(await screen.findByText('enable-ner-extraction')).toBeDefined();
-    expect(screen.getByText('Advisory')).toBeDefined();
-    expect(screen.getByText(/no runtime path reads this flag today/)).toBeDefined();
-  });
-
-  it('has no axe violations with the advisory badge and note rendered', async () => {
-    const advisory = setting({ id: 's-7', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
-    stubFetch({
-      custom: (call) => {
-        if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-7') {
-          return Response.json(advisory, { headers: { etag: '"2"' } });
-        }
-        return undefined;
-      },
-    });
-    const { container } = renderWithProviders(<SettingDetailDrawer settingId="s-7" onClose={vi.fn()} onDelete={vi.fn()} />);
-
-    await screen.findByText('Advisory');
-    expect(await axe(container)).toHaveNoViolations();
-  });
-
+  // TASK-932 R-8 — the advisory badge and note are gone with the five rows they
+  // described. This case is kept as the regression pin that NOTHING marks a
+  // `feature-flags` row advisory any more.
   it('does not mark enable-consultation-sharing as advisory — it is genuinely enforced', async () => {
     const enforced = setting({ id: 's-6', key: 'enable-consultation-sharing', namespace: 'feature-flags', name: 'Consultation Sharing' });
     stubFetch({
