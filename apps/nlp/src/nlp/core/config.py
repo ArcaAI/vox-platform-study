@@ -449,6 +449,18 @@ class NLPServiceConfig(BaseSettings):
     model_cache_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     model_cache_max_models: int = Field(default=3, ge=1)
 
+    # Boot warm set — `modelName[=modelPath]`, comma-separated. EMPTY by
+    # default, so an unconfigured process (CI included) stays lazy.
+    #
+    # A SCHEDULING lever, never a selection one: a request still names its own
+    # model, resolved tenant-first by the caller, and an entry here only decides
+    # that those weights are loaded before the first caller asks. The
+    # control-plane set (`warmModels`) is loaded too and WINS on a duplicate;
+    # this exists only because nothing produces that key today, which left the
+    # warm path inert while a cold `/guard/*` call was being cancelled and
+    # restarted forever (TASK-930 D-7). Retire it once `warmModels` is served.
+    warm_models: str = Field(default="")
+
     # ── Model weight cache root ────────────────────────────────────────────
     # WHERE weights are cached; never WHICH checkpoint runs (that stays
     # `AiTaskDefault` x `AiModel`, resolved per request). Transport/topology,
