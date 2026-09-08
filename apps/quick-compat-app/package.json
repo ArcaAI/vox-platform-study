@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@arcaai/vox": "^2.0.2",
+    "@arcaai/vox": "^3.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
