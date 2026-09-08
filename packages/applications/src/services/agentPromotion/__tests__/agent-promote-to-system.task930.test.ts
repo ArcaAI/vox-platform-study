@@ -92,6 +92,17 @@ const agent = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/**
+ * A saved row: the entity the service handed the repository, carrying the id the database
+ * assigned. `Object.create(prototype)` keeps the accessors — a plain spread does not, and the
+ * resulting `undefined` slug is indistinguishable from a service that forgot to set one.
+ */
+function withId<T extends object>(entity: T, id: string): T {
+  const saved = Object.assign(Object.create(Object.getPrototypeOf(entity) as object), entity) as T;
+  Object.defineProperty(saved, 'id', { value: id, configurable: true, enumerable: true });
+  return saved;
+}
+
 const construct = () =>
   new AgentPromoteToSystemService(
     mockAgentRepository as never,
@@ -126,11 +137,14 @@ describe('AgentPromoteToSystemService — Global -> SYSTEM agent promotion (TASK
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(agent());
     mockAgentRepository.findAllVersionsBySlug.mockResolvedValue([agent()]);
     mockAgentRepository.findMaxVersionNumber.mockResolvedValue(4);
-    mockAgentRepository.create.mockImplementation((created: { id?: string }) => Promise.resolve({ ...created, id: 'agent-sys-5' }));
+    // The repository returns the ENTITY it wrote, with the database's id. Spreading it would drop
+  // every prototype getter (`slug`, `versionNumber`, …) and the service would then write a WORM
+  // record with no `targetAgentId` — so the saved row keeps its prototype and only shadows `id`.
+  mockAgentRepository.create.mockImplementation((created: object) => Promise.resolve(withId(created, 'agent-sys-5')));
     mockFallbackRepository.findByAgentId.mockResolvedValue([]);
     mockFallbackRepository.create.mockImplementation((row: unknown) => Promise.resolve(row));
     mockAiModelRepository.findByIdOrNull.mockResolvedValue({ id: 'model-sys-1', slug: 'gemma', tenantId: SYSTEM_TENANT_ID });
-    mockPromotionRepository.create.mockImplementation((row: { id?: string }) => Promise.resolve({ ...row, id: 'promo-agent-1' }));
+    mockPromotionRepository.create.mockImplementation((row: object) => Promise.resolve(withId(row, 'promo-agent-1')));
     mockAgentService.publish.mockResolvedValue({ id: 'agent-sys-5', slug: 'general-medicine-summarization', versionNumber: 5 });
     elevated();
     service = construct();
@@ -242,7 +256,7 @@ describe('AgentPromoteToSystemService — Global -> SYSTEM agent promotion (TASK
     mockPromptTemplateRepository.findByTenantAndSourceTemplateId.mockResolvedValue(null);
     mockPromptTemplateRepository.findByName.mockResolvedValue(null);
     mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ id: 'v2', versionNumber: 2, content: 'approved content', variables: { a: 'string' } });
-    mockPromptTemplateRepository.create.mockImplementation((row: unknown) => Promise.resolve({ ...(row as object), id: 'tpl-sys-1' }));
+    mockPromptTemplateRepository.create.mockImplementation((row: object) => Promise.resolve(withId(row, 'tpl-sys-1')));
     mockPromptVersionRepository.create.mockImplementation((row: unknown) => Promise.resolve(row));
 
     const result = await service.promoteToSystem({ sourceSlug: 'general-medicine-summarization', changeReason: 'r' });
