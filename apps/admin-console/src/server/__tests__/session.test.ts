@@ -136,13 +136,13 @@ describe('effectiveRoles (TASK-932 — tier guards judge the impersonated identi
       accessToken: 'a',
       refreshToken: 'r',
       user: operator,
-      impersonation: { originalAccessToken: 'o', originalRefreshToken: 'p', targetUserId: 't', targetRoles: ['TENANT_ADMIN'] },
+      impersonation: { accessToken: 'i', originalAccessToken: 'o', originalRefreshToken: 'p', targetUserId: 't', targetRoles: ['TENANT_ADMIN'] },
     };
     expect(effectiveRoles(session)).toEqual(['TENANT_ADMIN']);
   });
 
   it('falls back to the operator roles for a session sealed before targetRoles existed', () => {
-    const session = { accessToken: 'a', refreshToken: 'r', user: operator, impersonation: { originalAccessToken: 'o', originalRefreshToken: 'p', targetUserId: 't' } };
+    const session = { accessToken: 'a', refreshToken: 'r', user: operator, impersonation: { accessToken: 'i', originalAccessToken: 'o', originalRefreshToken: 'p', targetUserId: 't' } };
     expect(effectiveRoles(session)).toEqual(['SUPER_ADMIN']);
   });
 
