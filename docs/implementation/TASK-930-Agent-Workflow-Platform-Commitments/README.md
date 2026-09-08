@@ -303,6 +303,42 @@ Also carried to merge time:
 - **Disk is at 98 % (≈21 GiB free).** The step-3 dev-DB reset + reseed and the five-artifact
   regeneration both want headroom; check before the reset rather than after it fails.
 
+### 4.5 Merge log and the integration fix-up (wave 3)
+
+All five lanes are merged on `dev-2.2`, in the contract order, each with its punch-list fixes in
+the commit right after the merge:
+
+| Merge | Commit | Fix-ups applied with it |
+|---|---|---|
+| N | `merge(TASK-930): lane N` | nlp-egress grep-gate allow-list (the §4.4 ruling); `workflow:definition:read` now also implies `read:WorkflowDefinition` — the coverage gate caught that `GET /workflows/:slug/schema` is `@CanRead` while the derived svc scope implied only `list` (an N defect its own gate had not surfaced) |
+| P | `merge(TASK-930): lane P` | — (clean) |
+| R | `merge(TASK-893): lane R` | `live-documentation.service.ts:1376` resolves assignments under `CORE_PALETTE_KEY` |
+| S | `merge(TASK-930): lane S` | `LEGACY_CONTEXT_SCHEMA_SLUG` → `consultation_note_context`; parity contract exceptions emptied; two task858/852 tests → `29-…generated.ts`; day1 test → `07e-consultation-note-context-schema`; seed blobs regenerated against R's registry checksum |
+| K | `merge(TASK-931): lane K` | `HOPE_API_KEY` in `turbo.json#globalEnv`; `PENDING_GATEWAY_ROUTES` emptied; the deny-by-default e2e example moved to `GET /consultations/:id/workflows` |
+
+Every lane's `.lane-report.md` was dropped from its merge. No lockfile moved, so no `pnpm install`.
+
+**The integrated tree does not build yet.** `@arcaai/applications` fails on two TS errors in the
+unowned `live-documentation.service.ts` (`canonicalRealtimeNodeType` no longer exported by R's
+realtime registry; `resolveRealtimeTextAgent`'s input type), which is the visible tip of the
+blast radius R reported (140 applications test failures across 30 files, 34 harness reds, the
+`GET /admin/workflow-nodes` action payload, the governed-graph test importing seeds 23/24). This
+is integration work, not lane work, and it runs as two fix-up lanes partitioned by language:
+
+| Fix-up lane | Tree | Scope |
+|---|---|---|
+| **F-TS** (opus) | the PRIMARY checkout, `dev-2.2` — the orchestrator makes no edits while it runs | applications build + tests green; `GET /admin/workflow-nodes` serves the 17 action descriptors; `live-documentation.governed-graph-mode.task858` retargeted; apps/api + admin-console typecheck |
+| **F-PY** (opus) | `../hope-v2-t893-r` re-pointed to a new branch `fixup-930-harness` off `dev-2.2` | the 34 harness reds under the rulings below |
+
+**Owner rulings for the harness reds (orchestrator, 2026-09-08 — recorded so F-PY does not re-derive them):**
+
+| Red set | Ruling |
+|---|---|
+| Replay compatibility (6) | Re-fixture the recorded histories onto `core.*` graphs. The deploy precondition R wrote into the deprecation register stands (drain in-flight harness workflows before deploying — a deleted node type cannot be `workflow.patched` back). The histories are not evidence any more once the vocabulary they replay is gone by owner decision. |
+| Agentic-loop subsystem (22) | **Delete it.** `agentic.loop` was its only dispatcher and is retired; OD-2 says deprecated things are removed completely, and an orphaned `AgenticLoopWorkflow` / `AgenticSubAgentWorkflow` / `loop_activities.py` is exactly the dead code that rule exists to catch. Record the removal (and `_LOOP_PATCH`'s replay implication) in the deprecation register. |
+| Audio two-lane (2) | Rebuild the two tests on `core.agent` — N's `interpreter_core_agent` is merged now, so the ownership boundary that stopped R is gone. |
+| Pre-existing at baseline (6) | Leave failing; list them by name in the report. Not this wave's. |
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
@@ -343,6 +379,7 @@ _Pending — filled at close with per-lane evidence, merge commits, gates and th
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (merge) | N → P → R → S → K merged on `dev-2.2` with per-merge punch-list fixes (§4.5); the integrated tree fails the applications build on R's blast radius; two fix-up lanes (F-TS in the primary, F-PY in R's re-pointed worktree) dispatched under recorded rulings for the 34 harness reds. |
 | 2026-09-08 (wave 3, S) | Lane S reported DONE on its opus resume and was verified; the legacy-slug punch-list row corrected to the constant's real home; the post-R `seed:regen:workflows` dependency recorded. Only R outstanding. |
 | 2026-09-08 (wave 3, later) | P, N, K reported (§4.3) and were verified against their trees — all merge clean. The two fable lanes (R, S) hit that model's session limit mid-step with substantial committed progress; both resumed on opus. Owner ruling recorded on the PHI egress grep-gate (§4.4). Test infra brought up. |
 | 2026-09-08 (wave 3) | Prior session's artifacts reviewed; measured per-lane state recorded in §4.1 (R and S effectively unstarted, N and K resuming from one commit each, P holding ~1 000 uncommitted lines). Five lanes relaunched from the same worktrees under a new account budget, tiers R/S `fable` · N/P/K `opus`, with a `RESUME.md` commit-discipline addendum. Lane A still held to after the publish. |
