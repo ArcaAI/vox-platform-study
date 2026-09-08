@@ -97,25 +97,66 @@ TMPRL1100 Nondeterminism error: Complete workflow machine does not handle this e
 HistoryEvent(id: 11, ActivityTaskScheduled)
 ```
 
-Six backward-guard replay tests fail for exactly this reason and are LEFT FAILING rather than
-re-fixtured: `test_replay_compat.py::{TestWorkflowInterpreterReplayCompatibility::test_v1_history_replays_on_current_definition,
-TestRunEventStreamReplayCompatibility::test_a_stream_era_history_replays_on_the_current_definition,
-TestRunEventStreamReplayCompatibility::test_a_pre_stream_history_still_replays_with_no_emits,
-TestAgenticLoopReplayCompatibility::test_a_current_era_loop_history_replays_on_the_current_definition,
-TestAgenticLoopReplayCompatibility::test_a_pre_loop_history_still_replays,
-TestCoreVocabularyReplayCompatibility::test_every_pre_core_history_still_replays_with_the_patch_never_consulted}`.
-Their fixtures are recorded production-shaped histories whose whole purpose is to prove that
-already-running workflows survive a deploy; regenerating them would delete the evidence rather
-than the problem.
+Six backward-guard replay tests failed for exactly this reason. They are now RESOLVED under the
+owner ruling of 2026-09-08 (`docs/implementation/TASK-930-Agent-Workflow-Platform-Commitments/README.md`
+§4.5): a recorded history stops being evidence once the vocabulary it replays is retired by
+decision, so the fixtures are **re-captured onto `core.*` graphs** and the suite proves replay
+compatibility of the CURRENT vocabulary. `_capture_interpreter_replay_fixture.py` builds the same
+three command shapes (multi-stage walk, fan-out stage, one DEGRADED node settling alongside
+SUCCEEDED siblings) out of `core.trigger` / `core.agent` / `core.output`.
 
-A `workflow.patched` marker cannot rescue this, because a patch needs the OLD path to still exist
-and the old path IS the deleted registry entries. So the mitigation is operational:
+Two consequences worth recording, because neither is visible from the test names:
+
+* **The pre-stream era is now SYNTHESISED, not historical.** The shipped interpreter emits a
+  run-completed event on every run, so no capture of it can omit the `task-849-run-event-stream`
+  marker. `--no-stream` suppresses the mirror for the capture only (unsandboxed runner); replay
+  always runs against the real method, so the guard — "a history with no marker still replays with
+  the emits skipped" — is unchanged. It is synthesised because the genuine pre-stream recordings
+  walked the retired `noop`/`passthrough` seed types.
+* **`TestCoreVocabularyReplayCompatibility`'s backward guard is re-stated, not weakened.** It used
+  to read "no history recorded before this ticket carries a `core.*` node". Every fixture is a
+  `core.*` graph now, but `_CORE_PATCH` is consulted only for `core.humanReview` and `core.loop` —
+  the two types dispatched as CHILD WORKFLOWS — and neither interpreter fixture carries one, which
+  is exactly what the cheap-operand-first gate promises.
+
+A `workflow.patched` marker cannot rescue an in-flight run, because a patch needs the OLD path to
+still exist and the old path IS the deleted registry entries. So the mitigation is operational and
+**stands unchanged**:
 
 > **Drain in-flight harness workflows before deploying the Phase-4 image.** Any run still executing
 > against a legacy-vocabulary definition must complete (or be terminated) first.
 
-Owner decision needed on: whether the drain is acceptable, and whether the six backward guards are
-then re-scoped to core-era histories only.
+### TASK-893 fix-up — the agentic-loop subsystem, removed (2026-09-08)
+
+`agentic.loop` was the only dispatcher of `AgenticLoopWorkflow` / `AgenticSubAgentWorkflow`, and it
+left `NODE_REGISTRY` in Phase 4. Under OD-2 (a deprecated thing is removed completely) the orphaned
+subsystem is deleted rather than left as unreachable workflow types the worker still registers:
+
+| Removed | Note |
+|---|---|
+| `interpreter/loop_workflow.py` (`AgenticLoopWorkflow`, `AgenticSubAgentWorkflow`, their ids, `exhausted_bound`, `_result`) | `exhausted_bound` MOVED into `core_loop_workflow.py` and re-typed on `CoreLoopState` / `CoreLoopBounds`; `core.loop` reused it |
+| `AgenticLoopBounds` / `AgenticLoopNodeSpec` / `AgenticLoopState` / `AgenticLoopInput` / `AgenticLoopResult` / `AgenticSubAgentInput` (`interpreter/models.py`) | `LoopStopReason`, `LoopCheckpointInput` and `LoopStateCheckpoint` are KEPT — `core.loop` uses all three |
+| `_LOOP_PATCH` (`task-848-agentic-loop-child`), `_LOOP_NODE_TYPE`, `_loop_node_spec`, `_run_loop`, the loop-body index and its `SKIPPED(loop_body)` preflight (`interpreter/workflow.py`) | — |
+| Both workflow registrations in `temporal/worker.py` | — |
+| `interpreter/nodes/agentic.py` (all eight `interpreter.agentic_*` activities) | Dead since Phase 4: none was in `NODE_REGISTRY` OR `NODE_ACTIVITIES`. `interpreter_agentic_data` was its one live entry point (delegated to by `core.data`) and its body moved verbatim into `interpreter_core_data` |
+| Tests: `test_agentic_loop_task848.py`, `test_task849_loop_iteration_emitter.py`, `_agentic_loop_stubs.py`, `_capture_loop_replay_fixture.py`, `fixtures/interpreter_loop_v1_history.json`, `test_agentic_nodes_task847.py`, `test_task849_agentic_tts.py`, `test_io_schema_tier3_task848c.py` | The data-reshape and TTS cases were RETARGETED (`test_core_data_reshape.py`, `test_core_agent_speech.py`), not dropped |
+
+**`interpreter/loop_activities.py` is NOT deleted**, contrary to the first reading of the ruling:
+`core.loop`'s `LoopWorkflow` schedules `interpreter.loop_state_checkpoint` on every iteration, so
+the module is a live part of the SHIPPED vocabulary. Only its docstrings were re-keyed off the
+agentic loop.
+
+**Replay implication of dropping `_LOOP_PATCH`.** The marker existed because pre-TASK-848 histories
+recorded `agentic.loop` as an ACTIVITY while the shipped code dispatched it as a CHILD WORKFLOW.
+Removing the gate means neither shape replays any more — both are the deleted node type. This adds
+no NEW deploy risk: it is the same drain precondition above, for the same reason, and a history
+carrying an `agentic.loop` node is already unreplayable through `NODE_REGISTRY` alone.
+
+**One behaviour was rescued rather than deleted.** `agentic.tts` streamed every synthesis frame on
+the delta lane (`run_event_producer().emit_token_delta`); `core.agent`'s `_run_speech`, which
+replaced it, stored the artifact but streamed nothing — so the audio half of the two-lane split had
+been silently lost with the node type. The emission is ported into `_run_speech` and measured by
+`test_task849_audio_two_lane_split.py`.
 
 ## Admin console routes and features
 

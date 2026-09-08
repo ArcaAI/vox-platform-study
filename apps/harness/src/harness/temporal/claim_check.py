@@ -420,7 +420,7 @@ async def store_bytes(
 ) -> ClaimCheckRef:
     """Write raw BYTES out-of-band and return their content-addressed claim-check ref.
 
-    The binary sibling of :func:`store_blob`, added for the ``agentic.tts`` artifact write
+    The binary sibling of :func:`store_blob`, added for the TTS artifact write
     ( lane B). Audio is not text: store_blob encodes utf-8, and a WAV body has no
     valid utf-8 decoding, so routing audio through it would either raise or silently mangle.
 

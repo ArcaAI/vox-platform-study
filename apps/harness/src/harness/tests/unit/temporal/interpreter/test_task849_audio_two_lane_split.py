@@ -8,8 +8,13 @@ careless implementation blows the 50 MB per-run BYTE ceiling long before it appr
 The method is lane A's, reused deliberately (``test_task849_two_lane_split.py``): the SAME graph
 runs twice against a real ephemeral Temporal server — once with a small artifact, once with one
 1000x larger — walked by the real ``WorkflowInterpreter`` through the real, registered
-``interpreter.agentic_tts`` activity. Only the Redis socket and the upstream synthesis call are
-faked.
+``interpreter.core_agent`` activity. Only the Redis socket, the agent resolution and the upstream
+synthesis call are faked.
+
+TASK-893: the graph was rebuilt from ``agentic.input`` -> ``agentic.tts`` onto ``core.trigger`` ->
+``core.agent``. ``agentic.tts`` left ``NODE_REGISTRY`` with the rest of the legacy vocabulary, and
+a ``core.agent`` resolving to a ``TEXT_TO_SPEECH`` agent is what synthesises speech now
+(``nodes/core.py::_run_speech``). The property under test is unchanged and so are the assertions.
 
 Two things this file inherits from lane A's own negative probe and must not lose:
 
@@ -39,6 +44,7 @@ from harness.temporal.interpreter import activities as interpreter_activities
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.models import InterpreterInput
+from harness.temporal.interpreter.nodes import core as core_nodes
 from harness.temporal.interpreter.run_events import EVENT_TOKEN_DELTA, run_event_stream_key
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.models import SpeechSynthesisResult
@@ -103,8 +109,26 @@ def _decoded_history_payloads(history_json: str) -> bytes:
     return b"".join(chunks)
 
 
+#: What the stubbed gateway answers for the TTS agent the graph names. `voice` is on
+#: `parameters`, which is where `_run_speech` reads it — a TTS agent that names no voice degrades
+#: rather than picking a platform default.
+_TTS_WIRE: dict[str, Any] = {
+    "agentId": "agent-tts-1",
+    "slug": "clinical-voice",
+    "versionNumber": 1,
+    "task": "TEXT_TO_SPEECH",
+    "model": {"slug": "kokoro", "provider": "local", "sourceUri": "hexgrad/Kokoro-82M"},
+    "parameters": {"voice": "clinical-en-1"},
+}
+
+
+class _StubApi:
+    async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
+        return _TTS_WIRE
+
+
 def _body() -> dict:
-    """A real two-node graph: `agentic.input` → `agentic.tts`.
+    """A real two-node graph: `core.trigger` → `core.agent` (a `TEXT_TO_SPEECH` agent).
 
     No registry monkeypatching — both are the SHIPPED node specs, wired by a real edge, so the
     text the TTS node synthesizes arrives the way it does in production (bound on the `in` port
@@ -116,7 +140,7 @@ def _body() -> dict:
         "slug": "audio-split-test",
         "versionNumber": 1,
         "tenantId": TENANT,
-        "paletteKey": "agentic",
+        "paletteKey": "core",
         "compiledAt": "2026-09-02T00:00:00.000Z",
         "compilerVersion": "0.1.0",
         "registryChecksum": "abc123",
@@ -127,9 +151,9 @@ def _body() -> dict:
                 "nodes": [
                     {
                         "nodeId": "src",
-                        "type": "agentic.input",
-                        "activity": "interpreter.agentic_input",
-                        "config": {"sourceKey": "text"},
+                        "type": "core.trigger",
+                        "activity": "interpreter.core_trigger",
+                        "config": {"kinds": ["api"]},
                         "timeoutSeconds": 30,
                         "retry": {
                             "maximumAttempts": 1,
@@ -147,12 +171,9 @@ def _body() -> dict:
                 "nodes": [
                     {
                         "nodeId": "speak",
-                        "type": "agentic.tts",
-                        "activity": "interpreter.agentic_tts",
-                        "config": {
-                            "providerConfigRef": {"taskKey": "tts.synthesize"},
-                            "voiceRef": "clinical-en-1",
-                        },
+                        "type": "core.agent",
+                        "activity": "interpreter.core_agent",
+                        "config": {"agentRef": {"slug": "clinical-voice"}},
                         "timeoutSeconds": 300,
                         "retry": {
                             "maximumAttempts": 1,
@@ -188,6 +209,7 @@ async def _run_with(
         return SpeechSynthesisResult(chunks=chunks, content_type="audio/wav", provider="azure")
 
     monkeypatch.setattr(harness_activities, "dispatch_speech_synthesis", _dispatch)
+    monkeypatch.setattr(core_nodes, "_api_client", lambda _settings: _StubApi())
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS", redis, raising=False)
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS_BUILT", True, raising=False)
 
@@ -258,7 +280,7 @@ class TestAudioNeverEntersTemporalHistory:
         assert len(large_deltas) == LARGE_FRAMES
 
         print(
-            f"\n[ lane B audio split, measured] "
+            f"\n[lane B audio split, measured] "
             f"audio_bytes={SMALL_FRAMES * FRAME_BYTES} -> temporal_history_events={small['events']}"
             f" | audio_bytes={LARGE_FRAMES * FRAME_BYTES} -> "
             f"temporal_history_events={large['events']} | "
@@ -306,7 +328,7 @@ class TestAudioNeverEntersTemporalHistory:
                 ), f"{label} history carries base64 audio"
 
         print(
-            f"\n[ lane B audio split, measured bytes] "
+            f"\n[lane B audio split, measured bytes] "
             f"audio_bytes={SMALL_FRAMES * FRAME_BYTES} -> history_bytes={len(small['history_json'])}"
             f" | audio_bytes={LARGE_FRAMES * FRAME_BYTES} -> "
             f"history_bytes={len(large['history_json'])}"

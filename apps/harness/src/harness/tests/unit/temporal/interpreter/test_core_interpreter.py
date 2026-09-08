@@ -4,8 +4,8 @@ Same hermetic pattern as `test_interpreter_semantics.py`: a real ephemeral Tempo
 `INTERPRETER_ACTIVITIES` run for real against the in-memory claim-check store, and ONLY the
 two network-bound activities (`interpreter.core_agent`, `interpreter.core_classify`) replaced
 by programmable stubs registered under the same names — the same technique
-`_agentic_loop_stubs.py` uses, for the same reason: a branch is only proven if the thing being
-branched over is the production interpreter.
+a stub registered under the production name keeps the thing being branched over — the
+interpreter itself — real.
 
 Properties defended here, each its own test:
 
@@ -42,7 +42,6 @@ from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.core_loop_workflow import LoopWorkflow
 from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
 from harness.temporal.interpreter.loop_activities import LOOP_ACTIVITIES
-from harness.temporal.interpreter.loop_workflow import AgenticLoopWorkflow, AgenticSubAgentWorkflow
 from harness.temporal.interpreter.models import (
     InterpreterInput,
     NodeActivityInput,
@@ -111,8 +110,6 @@ _ACTIVITIES = [
 _WORKFLOWS = [
     WorkflowInterpreter,
     ConsultationGateWorkflow,
-    AgenticLoopWorkflow,
-    AgenticSubAgentWorkflow,
     ReviewGateWorkflow,
     LoopWorkflow,
 ]
