@@ -214,8 +214,7 @@ export const AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES = [
 ] as const;
 
 /** The renamespaced form of {@link AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES}. */
-export const AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES: readonly string[] =
-  AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES.map(toServiceAccountScope);
+export const AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES: readonly string[] = AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES.map(toServiceAccountScope);
 
 /**
  * Renamespace one declared source family into the registry. Shared by both

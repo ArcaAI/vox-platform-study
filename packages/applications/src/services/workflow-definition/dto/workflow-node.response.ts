@@ -51,7 +51,9 @@ export class WorkflowNodeEvalGateResponse {
  * package's zero-deps registry IS the source of truth
  */
 export class WorkflowNodeResponse {
-  @ApiProperty({ description: 'The node type string authored on a graph node, or — for `kind: "action"` — the `actionKey` a `core.action` delegates to.' })
+  @ApiProperty({
+    description: 'The node type string authored on a graph node, or — for `kind: "action"` — the `actionKey` a `core.action` delegates to.',
+  })
   type: string;
 
   @ApiProperty({

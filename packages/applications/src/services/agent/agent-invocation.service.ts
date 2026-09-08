@@ -292,7 +292,9 @@ export class AgentInvocationService {
       });
     }
 
-    const labels = Array.isArray(instruction.labels) ? (instruction.labels as unknown[]).filter((label): label is string => typeof label === 'string') : [];
+    const labels = Array.isArray(instruction.labels)
+      ? (instruction.labels as unknown[]).filter((label): label is string => typeof label === 'string')
+      : [];
     const body: Record<string, unknown> = {
       text,
       model_name: modelName,

@@ -213,7 +213,10 @@ function collectNodes(graph: unknown, compiledConfig: unknown): Array<{ type: st
   const push = (node: unknown) => {
     const record = node as { type?: unknown; config?: unknown };
     if (typeof record?.type !== 'string') return;
-    nodes.push({ type: record.type, config: typeof record.config === 'object' && record.config !== null ? (record.config as Record<string, unknown>) : undefined });
+    nodes.push({
+      type: record.type,
+      config: typeof record.config === 'object' && record.config !== null ? (record.config as Record<string, unknown>) : undefined,
+    });
   };
   const graphNodes = (graph as { nodes?: unknown })?.nodes;
   if (Array.isArray(graphNodes)) graphNodes.forEach(push);
