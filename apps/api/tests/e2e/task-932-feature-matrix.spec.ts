@@ -108,9 +108,20 @@ test.describe('PUT features/matrix', () => {
     const headers = auth(await superAdminToken(request));
     const read = async () => (await (await request.get(`${FEATURES}/matrix`, { headers })).json()) as MatrixBody;
 
-    const before = await read();
+    let before = await read();
     const tenant = before.tenants[0]!;
     const cellOf = (body: MatrixBody) => body.cells.find((c) => c.key === GATE && c.tenantId === tenant.id)!;
+    // Start from INHERIT: another suite (the console matrix spec shares this
+    // database) may have left an override behind, and a same-value write is a
+    // per-cell 400 by design.
+    if (cellOf(before).value !== null) {
+      const clear = await request.put(`${FEATURES}/matrix`, {
+        headers,
+        data: { cells: [{ key: GATE, tenantId: tenant.id, value: null, expectedVersion: cellOf(before).version }] },
+      });
+      expect(clear.status(), await clear.text()).toBe(200);
+      before = await read();
+    }
     const original = cellOf(before);
 
     const set = await request.put(`${FEATURES}/matrix`, {
