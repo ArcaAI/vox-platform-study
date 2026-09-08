@@ -76,9 +76,10 @@ test.describe('TASK-932 — provider reads follow the tier (R-12)', () => {
 
     const rows = (await resp.json()) as ConnectionRow[];
     for (const row of rows) {
-      expect(['azure', 'bedrock', 'openai', 'anthropic', 'vertex'], `'${row.provider}' is platform infrastructure and must not reach a tenant`).toContain(
-        row.provider,
-      );
+      expect(
+        ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
+        `'${row.provider}' is platform infrastructure and must not reach a tenant`,
+      ).toContain(row.provider);
     }
   });
 
@@ -150,7 +151,10 @@ test.describe('TASK-932 — reset to the built-in default (R-3)', () => {
   });
 
   test('an unknown service segment is a 400 before anything else', async ({ request }) => {
-    const resp = await request.post(`${BASE}/not-a-service/lm-studio/reset?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth(superAdminToken), data: {} });
+    const resp = await request.post(`${BASE}/not-a-service/lm-studio/reset?tenantId=${SYSTEM_TENANT_ID}`, {
+      headers: auth(superAdminToken),
+      data: {},
+    });
     expect(resp.status()).toBe(400);
   });
 
