@@ -156,6 +156,26 @@ def _configured_realtime(node: CompiledNode) -> bool:
     return isinstance(execution, dict) and execution.get("lane") == "realtime"
 
 
+def _has_live_owner(inp: InterpreterInput) -> bool:
+    """Whether a LIVE executor owns this run's realtime nodes — i.e. the run is consultation-bound.
+
+    TASK-930 D-1. The realtime lane is driven by `LiveDocumentationService.flush` inside a
+    consultation's live session; it has no other entry point. So a run with a clinical subject may
+    have its `realtime` nodes executed by that lane, and a run without one never will.
+
+    Reads BOTH channels for the same reason `_run_gate` reads `payload`: `subject` is the typed
+    field the dispatcher sets, and `sanitize_run_payload` re-stamps the same identity into the
+    payload before the workflow starts, so the two cannot disagree — but a history recorded before
+    `subject` existed carries only the payload copy, and replaying it must reach the same verdict.
+
+    Pure: a plain read of the workflow's own input, safe inside the workflow body.
+    """
+    if inp.subject is not None:
+        return True
+    payload = inp.payload if isinstance(inp.payload, dict) else {}
+    return bool(payload.get("consultationId"))
+
+
 #: Ceiling for a formatted activity-error reason. Long enough for a provider's own message,
 #: short enough that a reason line stays a line — a node result is a REPORT, not a log sink.
 _ACTIVITY_REASON_MAX_CHARS = 320
@@ -492,12 +512,22 @@ class WorkflowInterpreter:
         # any given node: `consultation.realtimeSummary` is `external_write`, so both running it
         # means two engines writing one consultation's document.
         #
+        # TASK-930 D-1 — ownership needs an OWNER, so the skip is conditional on the run being
+        # CONSULTATION-BOUND (`_has_live_owner`). The live executor only ever runs a node inside a
+        # consultation's live session; an exposure-plane run has no such session, and there the
+        # skip did not hand a node to another runtime, it handed it to nobody — which is exactly
+        # how a graph declaring `kinds: ['consultation','api']` came to be structurally incapable
+        # of producing its own declared output on the `api` half (§6.9 D-1: every producing node
+        # SKIPPED, `n_finalize` degraded "nothing bound", `n_output` FAILED on its own schema).
+        # The double-write hazard this rule exists for is a hazard ABOUT a consultation, and it is
+        # preserved verbatim wherever a consultation exists.
+        #
         # This loses nothing that was working. In THIS lane `consultation.captureBinding` emits no
         # transcript, so `consultation.extractEntities` and `consultation.realtimeSummary` already
         # degraded on `no_bound_text` every run. The skip turns a silent degrade into an
         # OBSERVABLE one that names the runtime which owns the work — the same discipline as
         # `unsupported_node_type` above, and never a silent no-op.
-        if spec.lane == "realtime" or _configured_realtime(node):
+        if (spec.lane == "realtime" or _configured_realtime(node)) and _has_live_owner(inp):
             return NodeResult(
                 node_id=node.node_id,
                 node_type=node.type,

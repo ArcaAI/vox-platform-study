@@ -18,7 +18,7 @@ export const REGISTRY_CHECKSUM: string = "b7f556b38bba350d4befc623675cc55393abf9
 
 export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "GLOBAL:general-medicine-consultation": {
-    "graphChecksum": "40593a02183d9c831d5ebbc58d3da315175319ab4535d8f55c07c357f512f800",
+    "graphChecksum": "1b36163568018037bfb26e7f282634d912a783f4cf98ed07590e2ac6f4f100a9",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -431,14 +431,13 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -452,15 +451,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -478,7 +468,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -513,7 +508,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "8987322e73f5e28c617084e8eb0fc245ac8fa0118ff9f1f9b1b1aee8e4935789"
+      "checksum": "6b6f7ead0019650ed033cbc19e4076c2ecc31a172d28d6f6ea39288705c70282"
     }
   },
   "GLOBAL:platform-default-summarization": {
@@ -830,7 +825,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
     }
   },
   "SYSTEM:general-medicine-consultation": {
-    "graphChecksum": "b908f76dbda4f774c9991a6e29ed13b2c7b28a5111d5d66265824e919575add3",
+    "graphChecksum": "45a8f3a569eebacba2e48b541cae766631c3d47a1508b44b878bc9ca6fd84c41",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1243,14 +1238,13 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -1264,15 +1258,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -1290,7 +1275,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -1325,7 +1315,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "a0d216b68dbd3df4a9c7a1075adaa5f80395de954b12a16c49c03c90e91fe602"
+      "checksum": "7329146b60465275e1678bde361f6feba10d31a890530b5f41c16b404934bb59"
     }
   },
   "SYSTEM:platform-default-summarization": {

@@ -47,6 +47,7 @@ from harness.temporal.interpreter.models import (
     NodeActivityInput,
     NodeActivityResult,
     ReviewDecisionSignal,
+    RunSubject,
 )
 from harness.temporal.interpreter.review_workflow import ReviewGateWorkflow, review_gate_workflow_id
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
@@ -206,6 +207,7 @@ async def _run(
     payload: dict | None = None,
     review: str | None = None,
     review_node: str = "n_review",
+    subject: RunSubject | None = None,
 ):
     """Start the interpreter; when `review` is set, signal the review child once it is waiting."""
     ref = await _store(body)
@@ -224,6 +226,7 @@ async def _run(
                     tenant_id=_TENANT,
                     run_id=run_id,
                     payload=payload or {},
+                    subject=subject,
                 ),
                 id=f"wf-core-{run_id}",
                 task_queue=tq,
@@ -496,6 +499,39 @@ class TestContextAndDelegation:
 
     @pytest.mark.asyncio
     async def test_a_realtime_lane_agent_is_skipped_by_the_durable_interpreter(self):
+        # TASK-930 D-1 — the skip is a HAND-OFF, so it happens only when there is a runtime to
+        # hand to: a consultation-bound run, which is the only kind the live executor drives.
+        body = _body(
+            [
+                {"stageIndex": 0, "nodes": [_trigger()]},
+                {
+                    "stageIndex": 1,
+                    "nodes": [
+                        _node(
+                            "n_live",
+                            "core.agent",
+                            "interpreter.core_agent",
+                            config={
+                                "agentRef": {"slug": "a"},
+                                "execution": {"lane": "realtime", "cadence": "perTurn"},
+                            },
+                        )
+                    ],
+                },
+            ]
+        )
+        _, by_id = await _run(body, subject=RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001"))
+        assert by_id["n_live"].status == "SKIPPED"
+        assert by_id["n_live"].reason == "realtime_lane"
+
+    @pytest.mark.asyncio
+    async def test_a_realtime_lane_agent_RUNS_here_when_no_live_executor_owns_the_run(self):
+        """TASK-930 D-1 — on the exposure plane the skip handed the node to nobody.
+
+        A graph declaring `kinds: ['consultation','api']` was structurally incapable of producing
+        its declared output on the `api` half, because every producing node was skipped for a
+        runtime that only exists inside a consultation's live session.
+        """
         body = _body(
             [
                 {"stageIndex": 0, "nodes": [_trigger()]},
@@ -516,8 +552,7 @@ class TestContextAndDelegation:
             ]
         )
         _, by_id = await _run(body)
-        assert by_id["n_live"].status == "SKIPPED"
-        assert by_id["n_live"].reason == "realtime_lane"
+        assert by_id["n_live"].status == "SUCCEEDED"
 
     @pytest.mark.asyncio
     async def test_the_trigger_fails_the_run_on_a_context_schema_violation(self):

@@ -119,7 +119,7 @@ export const ARCAAI_WORKFLOW_TARGETS: WorkflowSeedTarget[] = ARCAAI_DEPARTMENT_T
   tenantId: ARCAAI,
   slug: arcaaiWorkflowSlug(row),
   name: `${row.name} Consultation`,
-  description: `Realtime transcription, medical NER, the ${row.name} running note selected by visit type (new-visit / revisit), case-note finalization, clinician review and the {case_note, entities} output.`,
+  description: `Realtime transcription, medical NER, the ${row.name} running note selected by visit type (new-visit / revisit), case-note finalization, clinician review and the {case_note, redactions} output.`,
   graph: buildConsultationGraph({
     contextSchemaId: ARCAAI_NOTE_CONTEXT_SCHEMA_ID,
     summarizer: { kind: 'condition', newVisitSlug: arcaaiAgentSlug(row, 'new-visit'), revisitSlug: arcaaiAgentSlug(row, 'revisit') },

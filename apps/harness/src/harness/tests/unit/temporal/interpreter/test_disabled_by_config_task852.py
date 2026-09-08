@@ -26,7 +26,7 @@ import pytest
 
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.interpreter.compiled_config import CompiledNode
-from harness.temporal.interpreter.models import InterpreterInput
+from harness.temporal.interpreter.models import InterpreterInput, RunSubject
 from harness.temporal.interpreter.registry import NODE_REGISTRY, effective_spec
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 
@@ -66,7 +66,7 @@ def _node(node_type: str, config: dict[str, Any], *, activity: str | None = None
     )
 
 
-def _input(*, sandbox: bool = False) -> InterpreterInput:
+def _input(*, sandbox: bool = False, subject: RunSubject | None = None) -> InterpreterInput:
     # `_dispatch_node` never dereferences the claim check (the caller already parsed the config),
     # so a well-formed ref with no blob behind it is enough to exercise the skip branches.
     return InterpreterInput(
@@ -76,7 +76,14 @@ def _input(*, sandbox: bool = False) -> InterpreterInput:
         tenant_id="10000000-0000-0000-0000-000000000001",
         run_id="r-1",
         sandbox=sandbox,
+        subject=subject,
     )
+
+
+#: TASK-930 D-1 — the realtime skip now asks whether a live executor OWNS this run, which is true
+#: exactly when the run is consultation-bound. Every lane-ownership case below therefore runs
+#: against a bound input.
+_BOUND = RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001")
 
 
 class TestADisabledNodeIsSkippedObservably:
@@ -151,12 +158,30 @@ class TestLaneOwnershipIsDecidedFirst:
                 _REALTIME_TYPE,
                 {**_REALTIME_CONFIG, "enabled": False, "onError": "degrade"},
             ),
-            _input(),
+            _input(subject=_BOUND),
             0,
         )
 
         assert result.status == "SKIPPED"
         assert result.reason == "realtime_lane"
+
+    @pytest.mark.asyncio
+    async def test_without_a_live_owner_the_toggle_decides_again(self):
+        # TASK-930 D-1. On an UNBOUND (exposure-plane) run no live executor exists, so lane
+        # ownership has nobody to defer to and the node is this interpreter's to run — which
+        # means the per-node kill switch is the thing that decides, and it must be REPORTED as
+        # such rather than as a hand-off that never happens.
+        result = await WorkflowInterpreter()._dispatch_node(
+            _node(
+                _REALTIME_TYPE,
+                {**_REALTIME_CONFIG, "enabled": False, "onError": "degrade"},
+            ),
+            _input(),
+            0,
+        )
+
+        assert result.status == "SKIPPED"
+        assert result.reason == "disabled_by_config"
 
 
 class TestTheSkipIsAPureRead:
