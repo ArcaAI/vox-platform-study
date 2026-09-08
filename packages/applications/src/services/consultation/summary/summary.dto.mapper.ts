@@ -15,6 +15,12 @@ export class SummaryDtoMapper {
           qualityScore: summaryMeta.qualityScore ?? undefined,
           promptResolvedFrom: (summaryMeta.promptResolvedFrom as 'preferred' | 'department' | 'default' | null) ?? undefined,
           resolvedPromptId: summaryMeta.resolvedPromptId ?? undefined,
+          // TASK-932 R-16a — `dnaStyleId` has been DECLARED on this DTO and populated by nothing
+          // since it was written, so a client could never tell whether the clinician's writing
+          // style had been applied to the note it was reading. It is a column on the note row
+          // (`ContextItem.dnaWritingStyleId`), not on the provenance, which is why it is read
+          // from the entity here rather than from `summaryMeta`.
+          dnaStyleId: entity.dnaWritingStyleId ?? undefined,
         }
       : undefined;
 
@@ -43,6 +49,10 @@ export class SummaryDtoMapper {
     return {
       contextItemId: meta.contextItemId,
       modelName: meta.modelName ?? null,
+      // TASK-932 R-16a — the redaction marker, so "identifiers were replaced" is auditable over
+      // HTTP. `null` means the generating agent declared no redaction contract at all, which is
+      // deliberately distinct from `false` ("it ran and changed nothing").
+      redactionApplied: meta.redactionApplied ?? null,
       entityFaithfulnessScore: meta.entityFaithfulnessScore ?? null,
       coverageScore: meta.coverageScore ?? null,
       ragTriadScore: meta.ragTriadScore ?? null,
