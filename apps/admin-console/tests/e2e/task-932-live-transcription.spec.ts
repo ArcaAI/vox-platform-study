@@ -70,7 +70,10 @@ test.describe('TASK-932 — the live-transcription language picker', () => {
     await page.locator('#language-picker').selectOption('ml');
     await expect(page.locator('#language-picker')).toHaveValue('ml');
 
-    await page.getByRole('button', { name: /start session/i }).click();
+    // `.first()`: the screen renders TWO "Start session" buttons — the pinned
+    // `CanvasHeader` action and the streaming tab's own empty-state action —
+    // and the header one renders first in DOM order.
+    await page.getByRole('button', { name: /start session/i }).first().click();
 
     const request = await sessionCreate.catch(() => null);
     test.skip(!request, 'the streaming session was never created — the STT service is not reachable from this stack');
@@ -79,14 +82,16 @@ test.describe('TASK-932 — the live-transcription language picker', () => {
     expect(body.language, 'the declared language must reach `POST …/stream/session`').toBe('ml');
 
     // Tear the session down so the tenant's concurrency quota is not left consumed.
-    const stop = page.getByRole('button', { name: /stop session/i });
+    // Same duplication as "Start session" once the session is running (header
+    // + `SessionControlsCard` both render a "Stop session" button).
+    const stop = page.getByRole('button', { name: /stop session/i }).first();
     if (await stop.isVisible().catch(() => false)) await stop.click();
   });
 
   test('the picker is disabled while a session is running — the language is bound at session start', async ({ page }) => {
-    await page.getByRole('button', { name: /start session/i }).click();
+    await page.getByRole('button', { name: /start session/i }).first().click();
 
-    const stop = page.getByRole('button', { name: /stop session/i });
+    const stop = page.getByRole('button', { name: /stop session/i }).first();
     const started = await stop.isVisible({ timeout: 20_000 }).catch(() => false);
     test.skip(!started, 'the streaming session did not start — the STT service is not reachable from this stack');
 

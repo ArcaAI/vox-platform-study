@@ -15,8 +15,14 @@ import { expectNoA11yViolations } from './helpers/a11y';
 import { impersonateUser, loginAsAdmin, selectWorkingTenant } from './helpers/auth';
 import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
-/** `global-kv`, `maxScope: 'tenant'`, `globalOnly` — a platform-editable knob. */
+/** `global-kv`, `maxScope: 'system'`, `globalOnly` — a platform-only, platform-editable knob. */
 const EDITABLE_KEY = 'consultation.realtime.textTimeoutMs';
+/**
+ * `global-kv`, `maxScope: 'tenant'`, NOT `globalOnly` — a tenant-writable knob.
+ * `EDITABLE_KEY` above is `globalOnly` (platform-only by design), so it never
+ * offers a tenant-override radio; this key is the one that does.
+ */
+const TENANT_OVERRIDE_KEY = 'rateLimit.maxRequests';
 /** `env` tier — locked for every caller, super administrators included. */
 const LOCKED_KEY = 'databaseUrl';
 
@@ -59,8 +65,8 @@ test.describe('settings registry — the platform admin can write (R-6)', () => 
     const next = before === '90000' ? '95000' : '90000';
 
     await field.fill(next);
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
     // Re-open from scratch: a value that only exists in local state proves nothing.
     await page.reload();
@@ -70,13 +76,13 @@ test.describe('settings registry — the platform admin can write (R-6)', () => 
 
     // Restore so a re-run starts from the same place.
     await reopened.getByLabel('New value').fill(before);
-    await reopened.getByRole('button', { name: 'Save' }).click();
+    await reopened.getByRole('button', { name: 'Save', exact: true }).click();
   });
 
   test('with a working tenant selected, the drawer offers a NAMED tenant override', async ({ page }) => {
     await selectWorkingTenant(page);
     await openRegistry(page);
-    const dialog = await openKey(page, EDITABLE_KEY);
+    const dialog = await openKey(page, TENANT_OVERRIDE_KEY);
 
     // "This tenant only" would leave the admin to remember which one — the
     // control names it, because the row read and the row written must visibly
@@ -88,8 +94,18 @@ test.describe('settings registry — the platform admin can write (R-6)', () => 
 
     const field = dialog.getByLabel('New value');
     await field.fill('87000');
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+    try {
+      await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    } finally {
+      // Reset: DELETE the tenant override so the key inherits the platform
+      // default again, rather than leaving a stray row for the next run.
+      const reset = await page.evaluate(async (key) => {
+        const res = await fetch(`/api/hope/admin/settings/registry/${encodeURIComponent(key)}?scope=tenant`, { method: 'DELETE' });
+        return res.ok ? null : `Failed to reset ${key} (${res.status})`;
+      }, TENANT_OVERRIDE_KEY);
+      expect(reset).toBeNull();
+    }
   });
 });
 
@@ -101,7 +117,7 @@ test.describe('settings registry — locked tiers (R-6 / D-6)', () => {
     await expect(dialog.getByText(/not editable here/i)).toBeVisible();
     await expect(dialog.getByText(/redeploy/i)).toBeVisible();
     // Locked for a SUPER ADMIN too — the lock is not a privilege gate.
-    await expect(dialog.getByRole('button', { name: 'Save' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   });
 });
 

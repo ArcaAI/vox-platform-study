@@ -35,9 +35,14 @@ async function openMatrix(page: Page) {
   await expect(page.getByRole('table')).toBeVisible();
 }
 
+/** Escapes regex metacharacters so a label like "MLflow (console)" matches literally. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** One cell, by feature and column. The accessible name carries both. */
 function cell(page: Page, feature: string, column: string): Locator {
-  return page.getByRole('table').getByRole('checkbox', { name: new RegExp(`${feature} for ${column}`) });
+  return page.getByRole('table').getByRole('checkbox', { name: new RegExp(`${escapeRegExp(feature)} for ${escapeRegExp(column)}`) });
 }
 
 test.describe('feature matrix — the three states', () => {
