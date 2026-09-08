@@ -77,11 +77,45 @@ name them. They are tombstones, not deprecations.
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
 |---|---|---|---|---|---|
-| `stt` palette (8 node types), `WF-STT-*` rules, `stt-pipeline.compiler.ts`, `stt-pipeline-resolver.service.ts`, `stt_placeholder.py` | TASK-861 (node types marked by TASK-864: `deprecated: true`, `replacedBy: 'core.agent'`; step 10 closed by TASK-867) | R2 | R4 | ASR Agent | marked — all 8 descriptors are `implemented: false` on top of the TASK-864 flags, so `compile()` refuses any new or re-published `stt` graph (WF-C-002) while already-published rows keep loading, validating and rendering; `WF-STT-001..006` and their golden fixtures are DELETED from `rule-catalogue.ts` (rules scoped to a palette that cannot compile can never fire); `stt_placeholder.py` is DELETED together with its 8 `registry.py` specs and worker registrations — Python carries no `stt.*` spec at all, and both parity guards pin `implemented: false` ⇔ no Python spec / no served activity; the parity snapshot and seeds 21/23/24 are regenerated for the moved `registryChecksum`. Still in place until R4: the descriptors, `NODE_CONFIG_SCHEMAS`/`NODE_PORTS` entries, `stt-pipeline.compiler.ts` and `stt-pipeline-resolver.service.ts` (`@deprecated TASK-861`, now unreachable through `publish()`), and `EXPOSURE_ALLOWED_PALETTES` (unchanged) |
-| `summarization`, `consultation`, `agentic` palettes + the palette-less `noop`/`passthrough`/`core.start`/`core.end`/`guard.*` (50 node types) | TASK-864 | R2 | R4 | `core.*` vocabulary (+ `core.action` catalogue, seeded Agents) — every descriptor carries `deprecated: true` + `replacedBy`; `deprecation.task864.test.ts` pins the set; the Studio rail hides them | marked |
+| `stt` palette (8 node types), `WF-STT-*` rules, `stt-pipeline.compiler.ts`, `stt-pipeline-resolver.service.ts`, `stt_placeholder.py` | TASK-861 (node types marked by TASK-864; step 10 closed by TASK-867) | R2 | R4 | ASR Agent | **removed (TASK-893 Phase 4, 2026-09-08)** — the eight descriptors, their `NODE_CONFIG_SCHEMAS` / `NODE_PORTS` entries and their Python specs are DELETED. Nothing is `implemented: false` any longer, so the deliberate TS/Python asymmetry TASK-867 documented is CLOSED and both parity guards now assert its inverse. `stt-pipeline.compiler.ts` and `stt-pipeline-resolver.service.ts` are NOT in this lane's ownership and remain — see the R4 row below |
+| `summarization`, `consultation`, `agentic` palettes + the palette-less `noop`/`passthrough`/`core.start`/`core.end`/`guard.*` (50 node types) | TASK-864 | R2 | R4 | `core.*` vocabulary (+ the `core.action` catalogue, seeded Agents) | **removed (TASK-893 Phase 4, 2026-09-08)** — `WORKFLOW_NODE_REGISTRY` is the eleven `core.*` types (72 → 11) and `registry.py` the eleven matching `NodeSpec`s (64 → 11); `grep "deprecated: true"` returns 0. Seventeen of the retired types SURVIVE AS ACTIONS behind `core.action` (`action-catalogue.ts` / `action_catalogue.py`) with their descriptors, ports, schemas and activity callables copied verbatim — they are no longer node types, and their `mandatory` / `redaction` / `activity` classes reach a rule or a finding through `classesOf(type, config)`. `WF-CONS-*` and `WF-SUMM-*` are deleted from `rule-catalogue.ts`; the worker's served activity list is derived from the catalogue and is now exactly what is dispatched (65 → 29). **Deploy precondition: in-flight harness workflows must be DRAINED first** — a history recorded against a legacy node type no longer replays (see the R4 note below) |
 | `EXPOSURE_ALLOWED_PALETTES` | TASK-864 | R2 | R4 | class-based exposure boundary (`clinicalWriteViolation`) — the palette sets now admit `core` and are consulted only for legacy graphs | marked |
 | Harness `_llm_policy.get_policy(task_key)` over `AiTaskDefault` | TASK-863 | R1 | R3 | `/internal/agents/resolve` + `AiRoutingPolicy` | planned |
 | `HarnessPolicy.textProvider`, `textModel` | TASK-863 | R1 | R3 | Agent binding | **removed (TASK-881, 2026-09-06)** — columns dropped (migration by the orchestrator), PATCH fields and console controls gone; the response fields stay, derived from the assigned TEXT_GENERATION agent (TASK-876) |
+
+
+### TASK-893 Phase 4 — replay compatibility is a DEPLOY PRECONDITION, not a code gap (2026-09-08)
+
+Deleting a node type from `NODE_REGISTRY` changes what the interpreter SCHEDULES for a graph that
+used it: the type resolves to no spec, the walk records an observable `SKIPPED(unsupported_node_type)`
+step, and no activity is dispatched. A Temporal history recorded when that node DID dispatch then
+replays against a command sequence that no longer issues the activity, which is a
+`NondeterminismError` — measured, not predicted:
+
+```
+TMPRL1100 Nondeterminism error: Complete workflow machine does not handle this event:
+HistoryEvent(id: 11, ActivityTaskScheduled)
+```
+
+Six backward-guard replay tests fail for exactly this reason and are LEFT FAILING rather than
+re-fixtured: `test_replay_compat.py::{TestWorkflowInterpreterReplayCompatibility::test_v1_history_replays_on_current_definition,
+TestRunEventStreamReplayCompatibility::test_a_stream_era_history_replays_on_the_current_definition,
+TestRunEventStreamReplayCompatibility::test_a_pre_stream_history_still_replays_with_no_emits,
+TestAgenticLoopReplayCompatibility::test_a_current_era_loop_history_replays_on_the_current_definition,
+TestAgenticLoopReplayCompatibility::test_a_pre_loop_history_still_replays,
+TestCoreVocabularyReplayCompatibility::test_every_pre_core_history_still_replays_with_the_patch_never_consulted}`.
+Their fixtures are recorded production-shaped histories whose whole purpose is to prove that
+already-running workflows survive a deploy; regenerating them would delete the evidence rather
+than the problem.
+
+A `workflow.patched` marker cannot rescue this, because a patch needs the OLD path to still exist
+and the old path IS the deleted registry entries. So the mitigation is operational:
+
+> **Drain in-flight harness workflows before deploying the Phase-4 image.** Any run still executing
+> against a legacy-vocabulary definition must complete (or be terminated) first.
+
+Owner decision needed on: whether the drain is acceptable, and whether the six backward guards are
+then re-scoped to core-era histories only.
 
 ## Admin console routes and features
 
@@ -118,4 +152,4 @@ name them. They are tombstones, not deprecations.
 | `14-pipeline-policy.ts`, `23a-realtime-transcription-agent{,.generated}.ts`, regen script + their seed tests — DONE; `06-stt.ts` pipeline half (`DEFAULT_ASR_PIPELINES`, the four per-tenant / Global sets, `seedAsrPipelines`, `switchDefaultSttPipelineToGgufTurbo`, `retireRetiredAsrPipelines`) + `seedTenantSttConfig` — DONE (step 11 follow-up, after the TASK-860 file split; `06-stt.ts` now seeds STT Global Settings only). The six seeded `TranscriptionJob` rows are re-keyed to `agentVersionId` (`09-consultation.ts`); `seed.test.ts`, `managed-asr-addon-posture.test.ts` (now asserts the SYSTEM-assigned ASR agent is self-hosted, fallbacks included) and `ai-model-registry-seed.test.ts` re-pointed; e2e `pipeline-template-governance` / `pipeline-clone-resync-cross-tenant` DELETED 2026-09-05 (they probed only the seeded template copies, so once those went they asserted nothing; the code they covered stays live until R4 and keeps its unit suites) | TASK-861 |
 | `16-ai-task-default.ts` (replaced by `16-ai-routing-policy.ts`), `18-ai-runtime-profile.ts`, `llm:sarvam` connection row — DONE; `19-tenant-tts-config.ts` + `tenant-tts-config-seed.test.ts` — DONE (TASK-888) | TASK-862 |
 | 10 catalogue rows not in the owner's list; `RETIRED_AI_MODEL_SLUGS` ledger extended | TASK-860 |
-| `21`, `23`, `24` workflow seeds rewritten in `core.*` — NOT DONE in the first TASK-864 landing: their derived blobs were regenerated for the core registry (checksums), the authoring sources still use the legacy palettes (owner question: the consultation rule set `CR-*` keys on `consultation.*` types, so a `core.action` rewrite needs the rules retargeted first) | TASK-864 |
+| `21`, `23`, `24` workflow seeds rewritten in `core.*` | TASK-864 | — | — | `core.*` authoring sources | **removed (TASK-893, 2026-09-08)** — the owner question this row recorded ("the consultation rule set `CR-*` keys on `consultation.*` types, so a `core.action` rewrite needs the rules retargeted first") is answered: `WF-CONS-*` is deleted and the clinical steps carry their classes in the action catalogue, so a rule written against a class still fires on a migrated node. The seed rewrite itself is lane S's |
