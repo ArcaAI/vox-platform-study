@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PermissionRule } from '@/shared/auth/ability';
+import { FEATURE_GATE_KEYS, type FeatureGateKey, type FeatureGateMap } from '@/shared/feature-gates/keys';
 import {
   activeNavDomainId,
   domainLandingRoute,
@@ -30,91 +31,25 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
   { action: 'read', subject: 'Role' },
 ];
 
-describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier)', () => {
-  // /prompt-templates (tier 30-49), taking 45 -> 46.
-  // /ai-operations/reconciliation (tier 10-19), taking 46 -> 47.
-  // /allowed-origins retiered 10-19 -> 30-49 (tenant admins now reach
-  // it for their own tenant's rows); total stays 47.
-  // /releases (tier 10-19), taking 47 -> 48.
-  // /context-schemas (tier 30-49), taking 48 -> 49.
-  // /playground/workbench (tier 50-59), taking 49 -> 50.
-  // /workflow-runs (tier 30-49, — the definition-scoped
-  // runs/observability view, cross-linked with /ai-operations/runs), taking
-  // 50 -> 51.
-  // /workflow-studio (tier 30-49, — a concurrent sibling ticket's
-  // graph-authoring surface, landed in this shared file alongside this
-  // ticket's own edit), taking 51 -> 52.
-  // /workflow-studio/assignments (tier 30-49, — the Studio
-  // assignment-matrix screen), taking 53 -> 54.
-  // /developer (tier 20-29, — the API documentation portal),
-  // taking 54 -> 55.
-  // /security-policy (tier 10-19, — the platform credential policy:
-  // password complexity/rotation + issued-secret entropy), taking 55 -> 56.
-  // moved /developer and /account OUT of the rail and into
-  // USER_MENU_ENTRIES (they are personal chrome, not a capability domain),
-  // taking 56 -> 54 and tier 20-29 from 8 -> 6. No route was deleted: both are
-  // still declared, still gated identically, and still reachable — see the
-  // USER_MENU_ENTRIES describe below.
-  // added the two screens whose gateway routes had shipped
-  // with no console consumer at all:
-  //   /ai-runtime-profiles (tier 10-19, E.2 — the hyperparameter / capacity /
-  //     timing plane; five operations under `admin/ai-runtime-profiles` and no
-  //     feature folder), taking 54 -> 55 and tier 10-19 from 22 -> 23.
-  //   /settings-registry (tier 20-29, E.1 — the descriptor-driven editor over
-  //     `admin/settings/catalog` + `admin/settings/registry/:key`; 210
-  //     descriptors with exactly ONE consumer, a single hardcoded category),
-  //     taking 55 -> 56 and tier 20-29 from 6 -> 7.
-  // added `/consent` (the consent register), taking 56 -> 57 and
-  // tier 30-49 / domain `clinical` up by one.
-  // `/settings` was NOT removed — it keeps the legacy raw-row and secret
-  // administration and is relabelled "Settings rows & secrets" to say so.
-  // added `/document-templates` (the clinical document SHAPE catalog
-  // the sibling of `/context-schemas`: that screen governs what context may be
-  // SUBMITTED, this one what document comes BACK), taking 57 -> 58 and
-  // tier 30-49 / domain `knowledge-agents` up by one.
-  // REMOVED `/agents` (the Agent Catalog), taking 58 -> 57 and tier
-  // 30-49 / domain `knowledge-agents` back down by one. The route itself keeps
-  // a one-release `redirect()` to `/prompt-templates`, but a redirect is not a
-  // navigable destination and has no place in the rail map.
-  // The three platform AI BACKENDS that had no screen added
-  // `/ai-services/lm-studio`, `/ai-services/vllm` and `/ai-services/mlflow`
-  // (all tier 10-19, domain `ai-platform`), taking 57 -> 60 and tier 10-19 from
-  // 23 -> 26. They are rail entries rather than tabs of `/ai-services` because
-  // the rail is the platform's inventory of engines and registries.
-  // consolidated the AI provider surface into `/ai-platform`
-  // (tier 20-29), and retired two rail entries in the process:
-  //   * `/ai-task-defaults` — the SYSTEM half of a two-tier cascade whose
-  //     tenant half lived on another screen. It is now the platform-default
-  //     SCOPE of `/ai-platform`, and its URL keeps a one-release redirect.
-  //   * `/ai-runtime-profiles` — retired as a rail entry ONLY. The route still
-  //     exists and is reached from the Providers tab it tunes; a rail peer
-  //     implied it was a sibling of the configurations rather than their knobs.
-  // Net: 10-19 loses both (25 -> 23), 20-29 gains `/ai-platform` (8 -> 9),
-  // so the total goes 60 -> 59.
-  // TASK-862 REMOVED `/ai-operations/reconciliation` (Provider Reconciliation
-  // deleted outright, owner directive 2026-09-04; the URL keeps a one-release
-  // redirect to `/ai-operations/consumption`), taking 59 -> 58 and tier 10-19
-  // from 23 -> 22. TASK-862 also DISSOLVED `/ai-platform` (one-release redirect)
-  // into the one `/ai-providers` screen (tier 20-29): 20-29 stays at 9.
-  // TASK-863: /agents is back as a REAL screen (the Agent entity), 58 -> 59,
-  // tier 30-49 21 -> 22.
-  // TASK-861: `/audio/pipelines` and `/harness/pipeline-policy` RETIRED (redirect
-  // stubs; the ASR Agent + workflow assignments replace them), 59 -> 57, tier 30-49 22 -> 20.
-  // TASK-890: `/ai-services/ollama` and `/ai-services/llama-cpp` join the rail —
-  // both engines were already probed by discovery and by the readiness sweep and
-  // had no screen — 57 -> 59, tier 10-19 22 -> 24.
-  // TASK-893: `/playground/workbench` RETIRED (redirect stub -> `/workflow-studio`; the Studio's
-  // inspector owns the sandbox now, OD-3) — 59 -> 58, tier 50-59 6 -> 5.
-  it('covers the full 58-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /workflow-runs, /workflow-studio, /security-policy)', () => {
+/** Every platform-wide feature gate resolved `true` — the "nothing is hidden by the matrix" baseline most ability-only tests want. */
+const ALL_GATES_OPEN: FeatureGateMap = Object.fromEntries(FEATURE_GATE_KEYS.map((key) => [key, true]));
+
+describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates added)', () => {
+  // TASK-932: net zero. `/ai-configuration` ("Speech & Voice") left the rail
+  // entirely — its remaining binding retires with the ASR Agent and the route
+  // becomes a one-release redirect (see retired-route-redirects.test.tsx) —
+  // and `/features` (the feature-availability matrix) joined Platform Ops, so
+  // the total and the tier-30-49 count both hold at their pre-ticket values
+  // minus one, plus the new tier-10-19 entry: 58 total, 25/9/19/5 by tier
+  // (was 24/9/20/5; `/ai-configuration` was tier 30-49, `/features` is
+  // tier 10-19).
+  it('covers the full 58-route rail map across the four tiers', () => {
     expect(NAV_ENTRIES).toHaveLength(58);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(24);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(25);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(19);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu are accounted for, not lost.
-    // TASK-862: 62 -> 60; TASK-863: 60 -> 61 (`/agents` returns to the rail as a real screen);
-    // TASK-861: 61 -> 59 (two retired routes). TASK-890: 59 -> 61 (two engines).
-    // TASK-893: 61 -> 60 (`/playground/workbench` retired).
     expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(60);
   });
 
@@ -130,21 +65,18 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(policy?.implemented).toBe(true);
   });
 
-  // developer-portal gate assertions moved with the entry itself
-  // into the USER_MENU_ENTRIES describe below — the ability contract
-  // (`read:ApiDocumentation`, a DEDICATED delegable subject rather than
-  // `manage:all`) is unchanged and still asserted there.
   it('no longer surfaces the developer portal or the account page from the rail', () => {
     const developerRules: PermissionRule[] = [{ action: 'read', subject: 'ApiDocumentation' }];
     expect(visibleNavEntries(developerRules, ['DOCTOR']).map((entry) => entry.route)).not.toContain('/developer');
     expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']).map((entry) => entry.route)).not.toContain('/account');
   });
 
-  it('keeps the retired per-capability credential screens (/stt-config, /tts-config) out of the rail', () => {
-    for (const route of ['/stt-config', '/tts-config']) {
+  it('keeps the retired per-capability credential screens (/stt-config, /tts-config, /ai-configuration) out of the rail', () => {
+    // TASK-932: "Speech & Voice" left the rail entirely — the route now
+    // redirects to /agents?task=SPEECH_TO_TEXT (retired-route-redirects.test.tsx).
+    for (const route of ['/stt-config', '/tts-config', '/ai-configuration']) {
       expect(NAV_ENTRIES.some((entry) => entry.route === route)).toBe(false);
     }
-    expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-configuration')).toBe(true);
   });
 
   it('lists the ONE AI provider screen (TASK-862) and none of the surfaces it absorbed', () => {
@@ -167,17 +99,6 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
       ['manage', 'GlobalSetting'],
     ]);
     expect(providers?.implemented).toBe(true);
-
-    // `/ai-configuration` survives (deprecated, removed in R4 with the ASR/TTS
-    // agents): speech and voice are pipeline and voice BINDINGS, not provider
-    // configuration. Its URL is unchanged, so it takes no redirect yet.
-    const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
-    expect(tenant?.label).toBe('Speech & Voice');
-    expect(tenant?.tier).toBe('30-49');
-    // TASK-888 dropped the `TenantTtsConfig` read with the model: the Voice tab
-    // reads nothing now and is gated on `Agent` inside the screen.
-    expect(tenant?.required).toEqual([['read', 'TenantSttConfig']]);
-    expect(tenant?.implemented).toBe(true);
   });
 
   it('carries no /ai-runtime-profiles entry — the route was removed with AiRuntimeProfile (TASK-862)', () => {
@@ -197,19 +118,27 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(NAV_ENTRIES.some((entry) => entry.route === '/tenants/frontend-config')).toBe(false);
   });
 
-  // The entry was hidden (`implemented: false`, reachable only by
-  // direct URL) while the screen was registry-only. It is now the AI-models
-  // hub (registry + live discovery + register), so it is a first-class,
-  // navigable super-admin surface.
   it('exposes /ai-models as an implemented, navigable hub', () => {
     const aiModels = NAV_ENTRIES.find((entry) => entry.route === '/ai-models');
     expect(aiModels?.implemented).toBe(true);
   });
 
-  it('has unique routes and a section per tier', () => {
+  it('has unique routes, a section per tier, and a unique order within every domain+tier group', () => {
     const routes = NAV_ENTRIES.map((entry) => entry.route);
     expect(new Set(routes).size).toBe(routes.length);
     expect(NAV_SECTIONS.map((section) => section.tier)).toEqual(['10-19', '20-29', '30-49', '50-59']);
+
+    // `order` is "position within domain+tier" (rule: nav-config.ts §NavEntry) —
+    // declaration order in NAV_ENTRIES must match it exactly, so a reorder
+    // always touches both the field and the array position.
+    const byGroup = new Map<string, number[]>();
+    for (const entry of NAV_ENTRIES) {
+      const key = `${entry.domain}::${entry.tier}`;
+      byGroup.set(key, [...(byGroup.get(key) ?? []), entry.order]);
+    }
+    for (const [group, orders] of byGroup) {
+      expect(orders, `${group} orders`).toEqual(orders.map((_, index) => index + 1));
+    }
   });
 
   it('marks every tier-10-19 entry implemented (unhid /ai-models)', () => {
@@ -224,8 +153,6 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(byTier('50-59').every((entry) => entry.implemented)).toBe(true);
   });
 
-  // TASK-893: with the Workbench retired, the tier is five own-account demo planes and NOTHING
-  // else — so the `required: []` convention holds for every entry again, with no carve-out.
   it('routes every playground entry under /playground; all five demo planes keep an empty ability gate (role-gated instead)', () => {
     const playground = NAV_ENTRIES.filter((entry) => entry.tier === '50-59');
     expect(playground.map((entry) => entry.route)).toEqual([
@@ -238,20 +165,9 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(playground.every((entry) => entry.required.length === 0)).toBe(true);
   });
 
-  // TASK-893 OD-3: the Workbench-gating case that stood here is GONE with the route. It existed
-  // to pin the one tier-50-59 entry that carried resource abilities instead of `required: []`;
-  // running a definition is now the Studio's Run tab, behind `/workflow-studio`'s own
-  // `manage:WorkflowDefinition` gate, so the tier has no exception left to pin.
-
-  /**
-   * Console IA cleanup: `/prompt-studio` folded into `/agents`, `/ai-services`
-   * took its slot. `/allowed-origins` moved OUT of tier 10-19;
-   * see the dedicated retier test below.
-   */
   describe('console IA cleanup', () => {
     it('retires /prompt-studio (governance moved into the prompt-template Governance tab)', () => {
       expect(NAV_ENTRIES.some((entry) => entry.route === '/prompt-studio')).toBe(false);
-      // The surface it folded into now has its own nav entry.
       const promptTemplates = NAV_ENTRIES.find((entry) => entry.route === '/prompt-templates');
       expect(promptTemplates?.tier).toBe('30-49');
       expect(promptTemplates?.required).toEqual([['manage', 'PromptTemplate']]);
@@ -322,8 +238,8 @@ describe('matchNavEntry', () => {
 });
 
 describe('visibleNavEntries', () => {
-  it('shows a super admin every implemented entry (manage:all grants all tiers)', () => {
-    const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']);
+  it('shows a super admin every implemented entry with every gate open (manage:all grants all tiers)', () => {
+    const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN);
     const implemented = NAV_ENTRIES.filter((entry) => entry.implemented);
     expect(visible.map((entry) => entry.route)).toEqual(implemented.map((entry) => entry.route));
   });
@@ -333,7 +249,7 @@ describe('visibleNavEntries', () => {
   });
 
   it('hides super-admin-only entries from tenant admins but keeps shared screens and the playground', () => {
-    const visible = visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN']).map((entry) => entry.route);
+    const visible = visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN).map((entry) => entry.route);
     expect(visible).not.toContain('/dashboard');
     expect(visible).not.toContain('/monitoring');
     // Still super-admin only (manage:all) — now visible to super admins,
@@ -369,31 +285,86 @@ describe('visibleNavEntries', () => {
   });
 
   it('filters unimplemented entries even when the ability grants them', () => {
-    const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']);
+    const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN);
     expect(visible.every((entry) => entry.implemented)).toBe(true);
+  });
+
+  describe('platform-wide feature gates (TASK-932 §3.2)', () => {
+    const GATED_ROUTES: ReadonlyArray<readonly [route: string, key: FeatureGateKey]> = [
+      ['/agentic-policy', 'console.agenticPolicy.enabled'],
+      ['/ai-services/mlflow', 'console.mlflow.enabled'],
+      ['/tools-mcp', 'console.tools.mcp.enabled'],
+      ['/harness/policy', 'console.workflowHarness.enabled'],
+      ['/harness/observability', 'console.workflowHarness.enabled'],
+      ['/harness/workflows', 'console.workflowHarness.enabled'],
+      ['/workflow-runs', 'console.workflowHarness.enabled'],
+    ];
+
+    it.each(GATED_ROUTES)('carries the %s -> %s gate contract', (route, key) => {
+      expect(NAV_ENTRIES.find((entry) => entry.route === route)?.gate).toBe(key);
+    });
+
+    it('hides every gated entry when no gate map is supplied at all — undefined fails closed, not "assume on"', () => {
+      const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']).map((entry) => entry.route);
+      for (const [route] of GATED_ROUTES) {
+        expect(visible, `${route} must be hidden with no gate map`).not.toContain(route);
+      }
+    });
+
+    it('hides a gated entry when its key resolves false, even though the ability grants it', () => {
+      const gates: FeatureGateMap = { 'console.mlflow.enabled': false };
+      expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], gates).map((entry) => entry.route)).not.toContain('/ai-services/mlflow');
+    });
+
+    it('shows a gated entry once its key resolves true', () => {
+      const gates: FeatureGateMap = { 'console.mlflow.enabled': true };
+      expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], gates).map((entry) => entry.route)).toContain('/ai-services/mlflow');
+    });
+
+    it('never affects an ungated entry — the gate map is additive, not a global switch', () => {
+      const gates: FeatureGateMap = {};
+      const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], gates).map((entry) => entry.route);
+      expect(visible).toContain('/rate-limits');
+      expect(visible).toContain('/features');
+    });
+
+    it('leaves each gate independent — closing one does not close the others', () => {
+      const gates: FeatureGateMap = { 'console.mlflow.enabled': false, 'console.agenticPolicy.enabled': true, 'console.tools.mcp.enabled': true, 'console.workflowHarness.enabled': true };
+      const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], gates).map((entry) => entry.route);
+      expect(visible).not.toContain('/ai-services/mlflow');
+      expect(visible).toContain('/agentic-policy');
+      expect(visible).toContain('/tools-mcp');
+      expect(visible).toContain('/workflow-runs');
+    });
   });
 });
 
 // ---------------------------------------------------------------------------
-// the capability-DOMAIN axis.
+// The exhaustive route/domain/tier/order/ability/gate pin (TASK-932 §3.1/§3.2).
 //
-// The rail groups by capability domain ; the existing NavTier keeps
-// answering *who may open a screen* and is untouched. AC-1/AC-2 promise
-// the new axis is PURELY additive, so the guard below pins every route string,
-// tier and ability pair verbatim: a future edit cannot relocate a guard without
-// the diff also touching this table.
+// Declaration order in `NAV_ENTRIES` IS the render order within a domain+tier
+// (nav-config.ts filters preserve array order), so this table doubles as the
+// order pin the ticket asks for: a future reorder, re-domain, re-tier or gate
+// change must edit BOTH `nav-config.ts` and this table in the same diff.
 // ---------------------------------------------------------------------------
 
-/**
- * FROZEN 2026-08-22 (dev-2.2, pre-Phase-A). The 54 rail routes with their tier
- * and ability gate, dumped from `NAV_ENTRIES` before the `domain` field was
- * added. Declaration order is pinned too — it is the order the sidebar renders.
- */
-const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArray<readonly [string, string]>]> = [
-  ['/dashboard', '10-19', [['manage', 'PlatformMetrics']]],
+type PinnedEntry = readonly [
+  route: string,
+  domain: NavDomainId,
+  tier: NavTier,
+  order: number,
+  required: ReadonlyArray<readonly [string, string]>,
+  gate?: FeatureGateKey,
+];
+
+const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
+  // Overview
+  ['/dashboard', 'overview', '10-19', 1, [['manage', 'PlatformMetrics']]],
   [
     '/monitoring',
+    'overview',
     '10-19',
+    2,
     [
       ['manage', 'all'],
       ['read', 'TenantTelemetry'],
@@ -401,58 +372,168 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ],
   [
     '/releases',
+    'overview',
     '10-19',
+    3,
     [
       ['manage', 'all'],
       ['read', 'TenantTelemetry'],
     ],
   ],
+  // Tenancy
   [
     '/tenants',
+    'tenancy',
     '10-19',
+    1,
     [
       ['manage', 'Tenant'],
       ['update', 'Tenant'],
     ],
   ],
-  ['/entitlements', '10-19', [['manage', 'all']]],
+  ['/entitlements', 'tenancy', '10-19', 2, [['manage', 'all']]],
   [
     '/tenants/storage',
+    'tenancy',
     '10-19',
+    3,
     [
       ['manage', 'Tenant'],
       ['read', 'Storage'],
     ],
   ],
-  ['/ai-models', '10-19', [['manage', 'all']]],
-  // removed `/ai-task-defaults` and `/ai-runtime-profiles` from the
-  // rail: the first became the platform-default SCOPE of `/ai-platform` (its
-  // URL redirects), the second is now reached from the Providers tab it tunes
-  // (its URL is unchanged).
-  ['/rate-limits', '10-19', [['manage', 'all']]],
-  ['/security-policy', '10-19', [['manage', 'all']]],
-  ['/agentic-policy', '10-19', [['manage', 'all']]],
-  ['/ai-services', '10-19', [['manage', 'all']]],
-  // The three platform AI backends that had no screen. Same gate as their
-  // parent: platform infrastructure, cross-tenant, SUPER_ADMIN only.
-  ['/ai-services/lm-studio', '10-19', [['manage', 'all']]],
-  ['/ai-services/vllm', '10-19', [['manage', 'all']]],
-  ['/ai-services/ollama', '10-19', [['manage', 'all']]],
-  ['/ai-services/llama-cpp', '10-19', [['manage', 'all']]],
-  ['/ai-services/mlflow', '10-19', [['manage', 'all']]],
-  ['/ai-operations/runs', '10-19', [['manage', 'all']]],
-  ['/ai-operations/metrics', '10-19', [['manage', 'all']]],
-  ['/ai-operations/consumption', '10-19', [['manage', 'all']]],
-  // `/ai-operations/reconciliation` REMOVED by TASK-862 (Provider Reconciliation deleted outright).
-  ['/billing', '10-19', [['manage', 'all']]],
-  ['/queues', '10-19', [['manage', 'all']]],
-  ['/schedulers', '10-19', [['manage', 'all']]],
-  ['/audit-logs', '10-19', [['read', 'AuditLog']]],
-  ['/db-studio', '10-19', [['manage', 'all']]],
-  ['/users', '20-29', [['manage', 'User']]],
+  ['/billing', 'tenancy', '10-19', 4, [['manage', 'all']]],
+  [
+    '/tenant-profile',
+    'tenancy',
+    '20-29',
+    1,
+    [
+      ['read', 'Tenant'],
+      ['update', 'Tenant'],
+    ],
+  ],
+  ['/departments', 'tenancy', '30-49', 1, [['manage', 'Department']]],
+  // Platform Ops — TASK-932 R-2 (moved ahead of AI Platform), R-4 (gained the
+  // three gated entries it absorbed from AI Platform / Knowledge & Agents
+  // plus the new /features matrix).
+  ['/features', 'platform-ops', '10-19', 1, [['manage', 'all']]],
+  ['/rate-limits', 'platform-ops', '10-19', 2, [['manage', 'all']]],
+  ['/ai-operations/runs', 'platform-ops', '10-19', 3, [['manage', 'all']]],
+  ['/ai-operations/metrics', 'platform-ops', '10-19', 4, [['manage', 'all']]],
+  ['/ai-operations/consumption', 'platform-ops', '10-19', 5, [['manage', 'all']]],
+  ['/queues', 'platform-ops', '10-19', 6, [['manage', 'all']]],
+  ['/schedulers', 'platform-ops', '10-19', 7, [['manage', 'all']]],
+  ['/audit-logs', 'platform-ops', '10-19', 8, [['read', 'AuditLog']]],
+  ['/db-studio', 'platform-ops', '10-19', 9, [['manage', 'all']]],
+  ['/agentic-policy', 'platform-ops', '10-19', 10, [['manage', 'all']], 'console.agenticPolicy.enabled'],
+  ['/ai-services/mlflow', 'platform-ops', '10-19', 11, [['manage', 'all']], 'console.mlflow.enabled'],
+  [
+    '/settings-registry',
+    'platform-ops',
+    '20-29',
+    1,
+    [
+      ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
+    ],
+  ],
+  ['/settings', 'platform-ops', '20-29', 2, [['manage', 'GlobalSetting']]],
+  ['/tools-mcp', 'platform-ops', '20-29', 3, [['manage', 'McpServer']], 'console.tools.mcp.enabled'],
+  [
+    '/storage',
+    'platform-ops',
+    '30-49',
+    1,
+    [
+      ['read', 'Storage'],
+      ['manage', 'Storage'],
+    ],
+  ],
+  // AI Platform — narrowed to tiers 10-19/20-29 now that the sole tier-30-49
+  // member (`/ai-configuration`) is gone.
+  ['/ai-models', 'ai-platform', '10-19', 1, [['manage', 'all']]],
+  ['/ai-services', 'ai-platform', '10-19', 2, [['manage', 'all']]],
+  ['/ai-services/lm-studio', 'ai-platform', '10-19', 3, [['manage', 'all']]],
+  ['/ai-services/vllm', 'ai-platform', '10-19', 4, [['manage', 'all']]],
+  ['/ai-services/ollama', 'ai-platform', '10-19', 5, [['manage', 'all']]],
+  ['/ai-services/llama-cpp', 'ai-platform', '10-19', 6, [['manage', 'all']]],
+  [
+    '/ai-providers',
+    'ai-platform',
+    '20-29',
+    1,
+    [
+      ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
+    ],
+  ],
+  // Knowledge & Agents — /tools-mcp left for Platform Ops (TASK-932 R-4).
+  ['/agents', 'knowledge-agents', '30-49', 1, [['manage', 'Agent']]],
+  ['/prompt-templates', 'knowledge-agents', '30-49', 2, [['manage', 'PromptTemplate']]],
+  ['/context-schemas', 'knowledge-agents', '30-49', 3, [['manage', 'ConsultationContextSchema']]],
+  ['/document-templates', 'knowledge-agents', '30-49', 4, [['manage', 'DocumentTemplate']]],
+  ['/knowledge', 'knowledge-agents', '30-49', 5, [['manage', 'KnowledgeDocument']]],
+  ['/dna-writing-styles', 'knowledge-agents', '30-49', 6, [['manage', 'DnaWritingStyleReport']]],
+  ['/workflow-studio', 'knowledge-agents', '30-49', 7, [['manage', 'WorkflowDefinition']]],
+  ['/workflow-studio/assignments', 'knowledge-agents', '30-49', 8, [['manage', 'WorkflowDefinition']]],
+  // Clinical
+  ['/consent', 'clinical', '30-49', 1, [['manage', 'ConsentGrant']]],
+  [
+    '/audio/transcription-jobs',
+    'clinical',
+    '30-49',
+    2,
+    [
+      ['read', 'AsrPipeline'],
+      ['manage', 'Tenant'],
+    ],
+  ],
+  ['/consultations', 'clinical', '30-49', 3, [['manage', 'Consultation']]],
+  // Workflow & Harness — the WHOLE domain is gated (TASK-932 R-4).
+  [
+    '/harness/policy',
+    'workflow-harness',
+    '30-49',
+    1,
+    [
+      ['read', 'HarnessPolicy'],
+      ['manage', 'HarnessPolicy'],
+    ],
+    'console.workflowHarness.enabled',
+  ],
+  [
+    '/harness/observability',
+    'workflow-harness',
+    '30-49',
+    2,
+    [
+      ['read', 'HarnessAudit'],
+      ['read', 'HarnessEval'],
+      ['read', 'HarnessWorkflow'],
+    ],
+    'console.workflowHarness.enabled',
+  ],
+  [
+    '/harness/workflows',
+    'workflow-harness',
+    '30-49',
+    3,
+    [
+      ['read', 'HarnessWorkflow'],
+      ['manage', 'HarnessWorkflow'],
+    ],
+    'console.workflowHarness.enabled',
+  ],
+  ['/workflow-runs', 'workflow-harness', '30-49', 4, [['read', 'WorkflowRun']], 'console.workflowHarness.enabled'],
+  // Identity & Access
+  ['/security-policy', 'identity-access', '10-19', 1, [['manage', 'all']]],
+  ['/users', 'identity-access', '20-29', 1, [['manage', 'User']]],
   [
     '/rbac/roles',
+    'identity-access',
     '20-29',
+    2,
     [
       ['read', 'Role'],
       ['manage', 'Role'],
@@ -460,7 +541,9 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ],
   [
     '/rbac/policies',
+    'identity-access',
     '20-29',
+    3,
     [
       ['read', 'Policy'],
       ['manage', 'Policy'],
@@ -468,53 +551,19 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ],
   [
     '/api-keys',
+    'identity-access',
     '20-29',
+    4,
     [
       ['read', 'ApiKey'],
       ['manage', 'ApiKey'],
     ],
   ],
-  // E.1 — the descriptor-driven registry lane. `read` as well
-  // as `manage`: the catalog is RBAC-filtered and readable by any admin, and
-  // which keys are WRITABLE (and at which scope) is decided per descriptor.
-  [
-    '/settings-registry',
-    '20-29',
-    [
-      ['read', 'GlobalSetting'],
-      ['manage', 'GlobalSetting'],
-    ],
-  ],
-  ['/settings', '20-29', [['manage', 'GlobalSetting']]],
-  [
-    '/tenant-profile',
-    '20-29',
-    [
-      ['read', 'Tenant'],
-      ['update', 'Tenant'],
-    ],
-  ],
-  // TASK-862 — the ONE AI provider screen (replaced the `/ai-platform` hub).
-  // Shared audience: cross-tenant for a super admin, tenant-scoped for a tenant
-  // admin. Mirrors `ProviderConnectionController`'s GlobalSetting gate.
-  [
-    '/ai-providers',
-    '20-29',
-    [
-      ['read', 'GlobalSetting'],
-      ['manage', 'GlobalSetting'],
-    ],
-  ],
-  // / OD-7 (2026-09-01) — RELOCATED from the 10-19 block, where it read
-  // `['/tools-mcp', '10-19', [['manage', 'all']]]`. Tenant admins may configure
-  // MCP connectors, so this is now a shared-audience (20-29) screen gated by the
-  // resource's own `manage:McpServer` rather than the `manage:all` super-admin
-  // proxy. This table exists to make exactly this kind of move visible in a diff.
-  ['/tools-mcp', '20-29', [['manage', 'McpServer']]],
-  ['/departments', '30-49', [['manage', 'Department']]],
   [
     '/identity-providers',
+    'identity-access',
     '30-49',
+    1,
     [
       ['read', 'TenantIdentityProvider'],
       ['manage', 'TenantIdentityProvider'],
@@ -522,188 +571,47 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ],
   [
     '/allowed-origins',
+    'identity-access',
     '30-49',
+    2,
     [
       ['read', 'TenantAllowedOrigin'],
       ['manage', 'TenantAllowedOrigin'],
     ],
   ],
-  [
-    '/storage',
-    '30-49',
-    [
-      ['read', 'Storage'],
-      ['manage', 'Storage'],
-    ],
-  ],
-  ['/agents', '30-49', [['manage', 'Agent']]],
-  ['/prompt-templates', '30-49', [['manage', 'PromptTemplate']]],
-  ['/context-schemas', '30-49', [['manage', 'ConsultationContextSchema']]],
-  // the clinical document SHAPE catalog. `manage:DocumentTemplate`
-  // is the whole gate (`DocumentTemplateAdminController`'s class-level
-  // `@CanManage`); this resource carries no imperative privilege check.
-  ['/document-templates', '30-49', [['manage', 'DocumentTemplate']]],
-  ['/knowledge', '30-49', [['manage', 'KnowledgeDocument']]],
-  ['/dna-writing-styles', '30-49', [['manage', 'DnaWritingStyleReport']]],
-  // the consent register.
-  ['/consent', '30-49', [['manage', 'ConsentGrant']]],
-  [
-    '/audio/transcription-jobs',
-    '30-49',
-    [
-      ['read', 'AsrPipeline'],
-      ['manage', 'Tenant'],
-    ],
-  ],
-  [
-    '/harness/policy',
-    '30-49',
-    [
-      ['read', 'HarnessPolicy'],
-      ['manage', 'HarnessPolicy'],
-    ],
-  ],
-  [
-    '/harness/observability',
-    '30-49',
-    [
-      ['read', 'HarnessAudit'],
-      ['read', 'HarnessEval'],
-      ['read', 'HarnessWorkflow'],
-    ],
-  ],
-  [
-    '/harness/workflows',
-    '30-49',
-    [
-      ['read', 'HarnessWorkflow'],
-      ['manage', 'HarnessWorkflow'],
-    ],
-  ],
-  ['/workflow-runs', '30-49', [['read', 'WorkflowRun']]],
-  ['/workflow-studio', '30-49', [['manage', 'WorkflowDefinition']]],
-  ['/workflow-studio/assignments', '30-49', [['manage', 'WorkflowDefinition']]],
-  [
-    // NARROWED this entry: the Models (`AiTaskDefault`) and Providers
-    // (`GlobalSetting`) reads left with the tabs that made them, both now on
-    // `/ai-platform`; TASK-888 took `TenantTtsConfig` with the model. The URL,
-    // tier and domain are untouched — this table exists to make exactly that
-    // kind of narrowing visible in a diff.
-    '/ai-configuration',
-    '30-49',
-    [['read', 'TenantSttConfig']],
-  ],
-  ['/consultations', '30-49', [['manage', 'Consultation']]],
-  ['/playground/consultation', '50-59', []],
-  ['/playground/live-transcription', '50-59', []],
-  ['/playground/voice-profiles', '50-59', []],
-  ['/playground/dna-writing-style', '50-59', []],
-  ['/playground/llm', '50-59', []],
+  // Playground — unchanged.
+  ['/playground/consultation', 'playground', '50-59', 1, []],
+  ['/playground/live-transcription', 'playground', '50-59', 2, []],
+  ['/playground/voice-profiles', 'playground', '50-59', 3, []],
+  ['/playground/dna-writing-style', 'playground', '50-59', 4, []],
+  ['/playground/llm', 'playground', '50-59', 5, []],
 ];
 
-/** The 9 domains of the ticket's Domain Model, verbatim. */
-const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly string[]]> = [
-  ['overview', ['/dashboard', '/monitoring', '/releases']],
-  ['tenancy', ['/tenants', '/tenants/storage', '/entitlements', '/billing', '/tenant-profile', '/departments']],
-  // TASK-862 (README §3.4): AI Platform = AI models · AI providers · AI
-  // services (+ its three engine views) · Agentic policy. `/ai-configuration`
-  // stays until R4 (deprecated bindings). `/ai-operations/*` moved to Platform
-  // Ops (observability), `/tools-mcp` to Knowledge & Agents (agent tooling).
-  [
-    'ai-platform',
-    [
-      '/ai-models',
-      '/ai-providers',
-      '/ai-services',
-      '/agentic-policy',
-      '/ai-configuration',
-      // The self-hosted engines and the model registry of record.
-      '/ai-services/lm-studio',
-      '/ai-services/vllm',
-      '/ai-services/ollama',
-      '/ai-services/llama-cpp',
-      '/ai-services/mlflow',
-    ],
-  ],
-  // `/document-templates` sits next to `/context-schemas`: the two
-  // halves of one contract — what context may go in, what document comes out.
-  // TASK-862 (README §3.4): Knowledge & Agents = Agents (TASK-863) · Workflow
-  // Studio · Assignments · Prompt templates · Context schemas · Document
-  // templates · Knowledge base — plus Tools & MCP (the tools agents call).
-  // TASK-863: `/agents` (the Agent entity) joins knowledge-agents, 8 -> 9.
-  [
-    'knowledge-agents',
-    [
-      '/agents',
-      '/prompt-templates',
-      '/context-schemas',
-      '/document-templates',
-      '/knowledge',
-      '/dna-writing-styles',
-      '/tools-mcp',
-      '/workflow-studio',
-      '/workflow-studio/assignments',
-    ],
-  ],
-  // TASK-861: `/audio/pipelines` retired.
-  ['clinical', ['/consultations', '/consent', '/audio/transcription-jobs']],
-  // TASK-861: `/harness/pipeline-policy` retired.
-  ['workflow-harness', ['/harness/policy', '/harness/observability', '/harness/workflows', '/workflow-runs']],
-  ['identity-access', ['/users', '/rbac/roles', '/rbac/policies', '/api-keys', '/identity-providers', '/allowed-origins', '/security-policy']],
-  // `/settings-registry` joins `/settings` here: same
-  // domain, different resource — descriptor-governed keys vs raw rows/secrets.
-  // `/ai-operations/reconciliation` used to sit here as a vendor BILLING
-  // auditor; TASK-862 removed the feature outright — and moved the three
-  // surviving `/ai-operations/*` dashboards (runs, metrics, consumption) here:
-  // observability over runs, latency and spend is Platform Ops work.
-  [
-    'platform-ops',
-    [
-      '/queues',
-      '/schedulers',
-      '/audit-logs',
-      '/db-studio',
-      '/rate-limits',
-      '/settings-registry',
-      '/settings',
-      '/storage',
-      '/ai-operations/runs',
-      '/ai-operations/metrics',
-      '/ai-operations/consumption',
-    ],
-  ],
-  [
-    'playground',
-    [
-      '/playground/consultation',
-      '/playground/live-transcription',
-      '/playground/voice-profiles',
-      '/playground/dna-writing-style',
-      '/playground/llm',
-    ],
-  ],
-];
-
-describe(' AC-2 — the domain axis is purely additive', () => {
-  it('leaves every route string, tier and ability pair exactly where it was', () => {
-    expect(NAV_ENTRIES.map((entry) => [entry.route, entry.tier, entry.required.map(([action, subject]) => [action, subject])])).toEqual(
-      FROZEN_RAIL_ENTRIES.map(([route, tier, required]) => [route, tier, required.map(([action, subject]) => [action, subject])]),
-    );
+describe('EXPECTED_NAV_ENTRIES — the full route/domain/tier/order/ability/gate pin', () => {
+  it('matches NAV_ENTRIES exactly, in declaration order', () => {
+    expect(
+      NAV_ENTRIES.map((entry) => [entry.route, entry.domain, entry.tier, entry.order, entry.required.map(([action, subject]) => [action, subject]), entry.gate]),
+    ).toEqual(EXPECTED_NAV_ENTRIES.map(([route, domain, tier, order, required, gate]) => [route, domain, tier, order, required.map(([action, subject]) => [action, subject]), gate]));
   });
 
-  it('keeps the four tier sections and their labels (OD-3 — tier still governs the guards)', () => {
-    expect(NAV_SECTIONS).toEqual([
-      { tier: '10-19', label: 'Platform' },
-      { tier: '20-29', label: 'Administration' },
-      { tier: '30-49', label: 'Tenant' },
-      { tier: '50-59', label: 'Playground' },
-    ]);
+  it('pins exactly 58 entries, matching NAV_ENTRIES', () => {
+    expect(EXPECTED_NAV_ENTRIES).toHaveLength(NAV_ENTRIES.length);
   });
 });
 
-describe('NAV_DOMAINS', () => {
-  it('declares the 9 rail domains in a stable, unique order', () => {
-    expect(NAV_DOMAINS.map((domain) => domain.id)).toEqual(FROZEN_DOMAIN_MEMBERSHIP.map(([id]) => id));
+describe('NAV_DOMAINS (TASK-932 R-2 — Platform Ops moved ahead of AI Platform)', () => {
+  it('declares the 9 rail domains in the §3.1 order', () => {
+    expect(NAV_DOMAINS.map((domain) => domain.id)).toEqual([
+      'overview',
+      'tenancy',
+      'platform-ops',
+      'ai-platform',
+      'knowledge-agents',
+      'clinical',
+      'workflow-harness',
+      'identity-access',
+      'playground',
+    ]);
     expect(new Set(NAV_DOMAINS.map((domain) => domain.order)).size).toBe(NAV_DOMAINS.length);
     expect([...NAV_DOMAINS].sort((a, b) => a.order - b.order).map((domain) => domain.id)).toEqual(NAV_DOMAINS.map((domain) => domain.id));
   });
@@ -730,38 +638,25 @@ describe('NAV_DOMAINS', () => {
     }
   });
 
-  // 3·6·11·5·4·7·7·8·6 — ai-platform 10 -> 11 (/ai-runtime-profiles) and
-  // platform-ops 7 -> 8 (/settings-registry), both; clinical
-  // 3 -> 4 (/consent).
-  // knowledge-agents 6 -> 5 ( removed /agents).
-  // ai-platform 11 -> 14: LM Studio, vLLM and MLflow.
-  // ai-platform 14 -> 12 (`/ai-task-defaults` and
-  // `/ai-runtime-profiles` retired from the rail, `/ai-platform` added,
-  // `/ai-operations/reconciliation` retagged out) and platform-ops 8 -> 9.
-  // platform-ops 9 -> 8: TASK-862 removed `/ai-operations/reconciliation`.
-  // TASK-862 README §3.4 retag: ai-platform 12 -> 8 (`/ai-platform` → `/ai-providers`,
-  // `/tools-mcp` → knowledge-agents, `/ai-operations/*` ×3 → platform-ops);
-  // knowledge-agents 5 -> 8 (+ `/tools-mcp`, `/workflow-studio`, `/workflow-studio/assignments`);
-  // workflow-harness 7 -> 5; platform-ops 8 -> 11.
-  // TASK-863: knowledge-agents 8 -> 9 (/agents).
-  // TASK-893: 59 -> 58. `/playground/workbench` left the rail — running a definition moved into
-  // the Workflow Studio's Run tab and the route is now only a redirect.
-  it('partitions the rail routes exactly as the ticket Domain Model does', () => {
-    for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
+  it('partitions the rail routes exactly as EXPECTED_NAV_ENTRIES does', () => {
+    const expectedByDomain = new Map<NavDomainId, string[]>();
+    for (const [route, domain] of EXPECTED_NAV_ENTRIES) {
+      expectedByDomain.set(domain, [...(expectedByDomain.get(domain) ?? []), route]);
+    }
+    for (const [domain, routes] of expectedByDomain) {
       expect(
-        NAV_ENTRIES.filter((entry) => entry.domain === id)
+        NAV_ENTRIES.filter((entry) => entry.domain === domain)
           .map((entry) => entry.route)
           .sort(),
-        `domain "${id}" membership drifted`,
+        `domain "${domain}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(58);
   });
 
-  it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {
-    const aiConfiguration = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
-    expect(aiConfiguration?.tier).toBe('30-49');
-    expect(aiConfiguration?.domain).toBe('ai-platform');
+  it('keeps domain orthogonal to tier — /storage is tenant-tier but Platform Ops (OD-2)', () => {
+    const storage = NAV_ENTRIES.find((entry) => entry.route === '/storage');
+    expect(storage?.tier).toBe('30-49');
+    expect(storage?.domain).toBe('platform-ops');
     // Two domains deliberately span more than one tier; that is the point.
     const tiersOf = (id: NavDomainId) => new Set(NAV_ENTRIES.filter((entry) => entry.domain === id).map((entry) => entry.tier));
     expect(tiersOf('ai-platform').size).toBeGreaterThan(1);
@@ -808,14 +703,21 @@ describe('USER_MENU_ENTRIES — the two routes that leave the rail', () => {
 });
 
 describe('visibleNavDomains (AC-3)', () => {
-  it('shows a super admin every domain', () => {
-    expect(visibleNavDomains(SUPER_ADMIN_RULES, ['SUPER_ADMIN']).map((domain) => domain.id)).toEqual(NAV_DOMAINS.map((domain) => domain.id));
+  it('shows a super admin every domain when every gate is open', () => {
+    expect(visibleNavDomains(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN).map((domain) => domain.id)).toEqual(NAV_DOMAINS.map((domain) => domain.id));
+  });
+
+  it('hides a domain whose every entry is gated closed (Workflow & Harness)', () => {
+    const gates: FeatureGateMap = { 'console.workflowHarness.enabled': false };
+    expect(visibleNavDomains(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], gates).map((domain) => domain.id)).not.toContain('workflow-harness');
+    // Platform Ops keeps showing — most of its entries are ungated.
+    expect(visibleNavDomains(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], gates).map((domain) => domain.id)).toContain('platform-ops');
   });
 
   it('derives visibility from the same entry gate the sidebar uses, never a hardcoded list', () => {
-    const visible = visibleNavDomains(TENANT_ADMIN_RULES, ['TENANT_ADMIN']);
+    const visible = visibleNavDomains(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN);
     const expected = NAV_DOMAINS.filter((domain) =>
-      visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN']).some((entry) => entry.domain === domain.id),
+      visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN).some((entry) => entry.domain === domain.id),
     );
     expect(visible).toEqual(expected);
     // A tenant admin holds none of the manage:all platform surfaces.
@@ -856,16 +758,19 @@ describe('activeNavDomainId (AC-6 — selection is derived from the URL)', () =>
   });
 
   it('follows the domain axis, not the tier axis (OD-2)', () => {
-    // Tier 30-49 but domain ai-platform — the divergence OD-2 exists for.
-    expect(activeNavDomainId('/ai-configuration', all)).toBe('ai-platform');
+    // Tier 30-49 but domain platform-ops — the divergence OD-2 exists for.
+    expect(activeNavDomainId('/storage', all)).toBe('platform-ops');
     // …and the converse: a tier-10-19 route that is NOT AI platform work.
     expect(activeNavDomainId('/rate-limits', all)).toBe('platform-ops');
   });
 
   it('returns undefined for a route the rail does not own', () => {
     // Both moved to the user menu in Phase A; neither belongs to a domain.
+    // /ai-configuration is gone from the rail entirely (TASK-932) — the route
+    // now redirects, so it resolves no domain either.
     expect(activeNavDomainId('/account', all)).toBeUndefined();
     expect(activeNavDomainId('/developer', all)).toBeUndefined();
+    expect(activeNavDomainId('/ai-configuration', all)).toBeUndefined();
     expect(activeNavDomainId('/nope', all)).toBeUndefined();
   });
 
@@ -880,7 +785,8 @@ describe('activeNavDomainId (AC-6 — selection is derived from the URL)', () =>
 describe('domainLandingRoute (Open Question — a rail click always navigates)', () => {
   it("lands on the domain's first visible entry", () => {
     expect(domainLandingRoute('overview', [...NAV_ENTRIES])).toBe('/dashboard');
-    expect(domainLandingRoute('platform-ops', [...NAV_ENTRIES])).toBe('/rate-limits');
+    // TASK-932: /features is now the first Platform Ops entry (order 1).
+    expect(domainLandingRoute('platform-ops', [...NAV_ENTRIES])).toBe('/features');
   });
 
   it('needs no special case when a domain has exactly one visible route', () => {
@@ -893,13 +799,116 @@ describe('domainLandingRoute (Open Question — a rail click always navigates)',
   });
 
   it('skips entries the caller cannot see rather than linking to a 403', () => {
-    // /rate-limits (manage:all) is the first platform-ops entry declared; a
-    // caller holding only read:AuditLog must land on the audit log instead.
+    // /features and /rate-limits (both manage:all) are declared first in
+    // Platform Ops; a caller holding only read:AuditLog must land on the
+    // audit log instead.
     const auditOnly: PermissionRule[] = [{ action: 'read', subject: 'AuditLog' }];
     expect(domainLandingRoute('platform-ops', visibleNavEntries(auditOnly, ['DOCTOR']))).toBe('/audit-logs');
   });
 
   it('returns undefined for a domain with nothing visible', () => {
     expect(domainLandingRoute('playground', visibleNavEntries([{ action: 'read', subject: 'AuditLog' }], ['DOCTOR']))).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The rendered inventory (TASK-932 §3.1) — per domain, per tier, as a super
+// admin and a tenant admin actually SEE it (through `visibleNavEntries`, not
+// the raw declaration), with every gate open so ability is the only variable.
+// A future reorder is now a deliberate edit to a literal table, not a diff
+// that only touches nav-config.ts.
+// ---------------------------------------------------------------------------
+
+/** Builds the same {domain: {tier: [label, ...]}} shape the rail actually renders. */
+function renderedInventory(rules: readonly PermissionRule[] | null, roles: readonly string[], gates: FeatureGateMap): Record<string, Record<string, string[]>> {
+  const visible = visibleNavEntries(rules, roles, gates);
+  const table: Record<string, Record<string, string[]>> = {};
+  for (const domain of NAV_DOMAINS) {
+    const domainEntries = visible.filter((entry) => entry.domain === domain.id);
+    if (domainEntries.length === 0) continue;
+    const byTier: Record<string, string[]> = {};
+    for (const section of NAV_SECTIONS) {
+      const labels = domainEntries.filter((entry) => entry.tier === section.tier).map((entry) => entry.label);
+      if (labels.length > 0) byTier[section.tier] = labels;
+    }
+    table[domain.id] = byTier;
+  }
+  return table;
+}
+
+describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () => {
+  it('renders the exact §3.1 inventory for a super admin with every gate open', () => {
+    expect(renderedInventory(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN)).toEqual({
+      overview: { '10-19': ['Dashboard', 'Monitoring', 'Releases'] },
+      tenancy: {
+        '10-19': ['Tenants', 'Entitlements & plans', 'Tenant storage', 'Billing & invoices'],
+        '20-29': ['Tenant profile'],
+        '30-49': ['Departments'],
+      },
+      'platform-ops': {
+        '10-19': [
+          'Feature availability',
+          'Rate limits',
+          'AI operations — runs',
+          'AI operations — metrics',
+          'Consumption & cost',
+          'Queues & jobs',
+          'Schedulers',
+          'Audit logs',
+          'Database Studio',
+          'Agentic policy',
+          'MLflow',
+        ],
+        '20-29': ['Settings registry', 'Settings rows & secrets', 'Tools & MCP'],
+        '30-49': ['Storage browser'],
+      },
+      'ai-platform': {
+        '10-19': ['AI models', 'AI services', 'LM Studio', 'vLLM', 'Ollama', 'llama.cpp'],
+        '20-29': ['AI providers'],
+      },
+      'knowledge-agents': {
+        '30-49': ['Agents', 'Prompt templates', 'Context Schemas', 'Document Templates', 'Knowledge Base', 'DNA writing styles', 'Workflow Studio', 'Workflow Assignments'],
+      },
+      clinical: { '30-49': ['Patient consent', 'Transcription jobs', 'Consultations'] },
+      'workflow-harness': { '30-49': ['Harness policy', 'Harness observability', 'Harness workflows', 'Workflow Runs'] },
+      'identity-access': {
+        '10-19': ['Security policy'],
+        '20-29': ['Users', 'Roles', 'Policies', 'API keys'],
+        '30-49': ['Identity providers', 'Allowed origins'],
+      },
+      playground: {
+        '50-59': ['Consultation Scribe', 'Live Transcription', 'My Voice Enrollment & Profiles', 'My DNA Writing Style', 'LLM Playground'],
+      },
+    });
+  });
+
+  it('renders the platform-tier gates as CLOSED by default (D-1) — a super admin sees none of the four gated entries with no gate map', () => {
+    const inventory = renderedInventory(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], {});
+    expect(inventory['platform-ops']?.['10-19']).not.toContain('Agentic policy');
+    expect(inventory['platform-ops']?.['10-19']).not.toContain('MLflow');
+    expect(inventory['platform-ops']?.['20-29']).not.toContain('Tools & MCP');
+    expect(inventory['workflow-harness']).toBeUndefined();
+  });
+
+  it('renders the tenant-admin-visible subset — every platform-tier and gated entry disappears', () => {
+    // Reflects the CASL fixture above verbatim (canAny over TENANT_ADMIN_RULES):
+    // manage:Department, manage:User, manage:PromptTemplate,
+    // manage:TenantAllowedOrigin, read+update:Tenant, read:AuditLog, read:Role.
+    // /tenants and /rbac/roles are read-satisfied by that last pair even
+    // though the tenant admin holds no `manage` on either — client-side
+    // ability ignores row conditions (server enforces them; see ability.ts).
+    expect(renderedInventory(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN)).toEqual({
+      tenancy: { '10-19': ['Tenants'], '20-29': ['Tenant profile'], '30-49': ['Departments'] },
+      'platform-ops': { '10-19': ['Audit logs'] },
+      'knowledge-agents': { '30-49': ['Prompt templates'] },
+      'identity-access': { '20-29': ['Users', 'Roles'], '30-49': ['Allowed origins'] },
+      playground: {
+        '50-59': ['Consultation Scribe', 'Live Transcription', 'My Voice Enrollment & Profiles', 'My DNA Writing Style', 'LLM Playground'],
+      },
+    });
+  });
+
+  it('never widens the tenant-admin inventory when every gate is CLOSED — a tenant admin held none of the gated entries anyway', () => {
+    expect(renderedInventory(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], {})).toEqual(renderedInventory(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN));
   });
 });

@@ -46,12 +46,14 @@ describe('DomainRail', () => {
     expect(screen.getByRole('link', { name: 'Overview' }).getAttribute('data-active')).toBe('false');
   });
 
-  it('follows the domain axis, not the tier axis, on a tenant-tier AI route (OD-2)', async () => {
-    // /ai-configuration is tier 30-49 but domain ai-platform — the divergence
-    // that makes the two axes worth keeping separate.
-    usePathnameMock.mockReturnValue('/ai-configuration');
+  it('follows the domain axis, not the tier axis, on a tenant-tier Platform Ops route (OD-2)', async () => {
+    // /storage is tier 30-49 but domain platform-ops — the divergence that
+    // makes the two axes worth keeping separate. (/ai-configuration, the
+    // route this test used to pin, was removed from the rail by TASK-932 —
+    // its "Speech & Voice" entry is gone entirely and the URL now redirects.)
+    usePathnameMock.mockReturnValue('/storage');
     renderInShell(<DomainRail />);
-    expect((await screen.findByRole('link', { name: 'AI Platform' })).getAttribute('data-active')).toBe('true');
+    expect((await screen.findByRole('link', { name: 'Platform Ops' })).getAttribute('data-active')).toBe('true');
   });
 
   it('resolves a detail route to its parent entry domain', async () => {
@@ -108,10 +110,12 @@ describe('DomainRail', () => {
 
     tabStops[0]?.focus();
     // The handler lives on the list, so events are fired where they really
-    // originate — on the focused item, bubbling up.
+    // originate — on the focused item, bubbling up. TASK-932 moved Identity &
+    // Access to the second-to-last rail position (Playground stays last), so
+    // the next domain after it is now Playground, not Platform Ops.
     const list = screen.getByRole('navigation', { name: 'Capability domains' }).querySelector('ul') as HTMLUListElement;
     fireEvent.keyDown(list, { key: 'ArrowDown' });
-    expect(document.activeElement?.textContent).toBe('Platform Ops');
+    expect(document.activeElement?.textContent).toBe('Playground');
     fireEvent.keyDown(list, { key: 'ArrowUp' });
     expect(document.activeElement?.textContent).toBe('Identity & Access');
     fireEvent.keyDown(list, { key: 'Home' });
@@ -140,5 +144,23 @@ describe('DomainRail', () => {
     const { container } = renderInShell(<DomainRail variant="inline" />, { width: 375 });
     await screen.findByRole('link', { name: 'Overview' });
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe('DomainRail — platform-wide feature gates (TASK-932 §3.2)', () => {
+  it('hides the whole Workflow & Harness domain when its gate is off — every one of its entries is gated', async () => {
+    renderInShell(<DomainRail />, {
+      gates: { 'console.mlflow.enabled': true, 'console.agenticPolicy.enabled': true, 'console.tools.mcp.enabled': true, 'console.workflowHarness.enabled': false },
+    });
+    await screen.findByRole('link', { name: 'Overview' });
+    expect(railLinks().map((link) => link.textContent)).not.toContain('Workflow & Harness');
+  });
+
+  it('keeps Platform Ops visible when only its gated entries are closed — the domain has ungated members too', async () => {
+    renderInShell(<DomainRail />, {
+      gates: { 'console.mlflow.enabled': false, 'console.agenticPolicy.enabled': false, 'console.tools.mcp.enabled': false, 'console.workflowHarness.enabled': true },
+    });
+    await screen.findByRole('link', { name: 'Overview' });
+    expect(railLinks().map((link) => link.textContent)).toContain('Platform Ops');
   });
 });
