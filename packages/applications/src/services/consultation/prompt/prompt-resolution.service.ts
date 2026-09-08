@@ -98,7 +98,7 @@ import {
   type IFindAllProps,
   type PromptTemplate,
 } from '@arcaai/domains';
-import { WORKFLOW_NODE_REGISTRY, type WorkflowGraph, type WorkflowGraphNode } from '@arcaai/workflow-contract';
+import { CORE_PALETTE_KEY, WORKFLOW_NODE_REGISTRY, type WorkflowGraph, type WorkflowGraphNode } from '@arcaai/workflow-contract';
 
 import { IAgentAssignmentService } from '../../agent-assignment/IAgentAssignmentService';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
@@ -407,7 +407,9 @@ interface ResolvedPromptId {
 // ============================================================================
 
 /** The palette whose assigned definition governs a consultation. */
-const CONSULTATION_PALETTE_KEY = 'consultation';
+// TASK-930 moved every consultation graph and assignment onto the CORE palette; a literal here
+// silently answered the unwired default for every tenant (TASK-932 R-16a, the empty DNA handoff).
+const CONSULTATION_PALETTE_KEY = CORE_PALETTE_KEY;
 
 /**
  * The generation task a node serves, as declared by its `taskKey` config key.

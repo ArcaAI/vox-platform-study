@@ -19,7 +19,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { ContextPrimitive, type ContextKindDeclaration } from '../../consultation-context-schema/context-schema-definition';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
-import type { WorkflowGraph } from '@arcaai/workflow-contract';
+import { CORE_PALETTE_KEY, type WorkflowGraph } from '@arcaai/workflow-contract';
 import { endpointSequenceFromGraph, resolveEndpointSequence } from './endpoint-sequence';
 import { ILoopConfigService } from './ILoopConfigService';
 import { HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT, HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY } from './loop-lifecycle.constants';
@@ -30,7 +30,9 @@ export const LOOP_CONFIG_MAX_DEPTH = 3;
 export const LOOP_CONFIG_MAX_ACTIONS = 200;
 
 /** The palette whose assigned definition governs a consultation. */
-const CONSULTATION_PALETTE_KEY = 'consultation';
+// TASK-930 moved every consultation graph and assignment onto the CORE palette; a literal here
+// silently answered the unwired default for every tenant (TASK-932 R-16a, the empty DNA handoff).
+const CONSULTATION_PALETTE_KEY = CORE_PALETTE_KEY;
 
 /**
  * Per-primitive default action list a subscribed kind resolves to.

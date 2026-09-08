@@ -57,7 +57,7 @@ describe('LoopConfigService.resolveForConsultation — idle bound', () => {
     // A governing definition is enough to keep the config ENABLED, so these
     // cases exercise the bound rather than the disabled branch.
     mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'tenant' });
-    mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({ id: 'wfdef-1', slug: 'consultation-default', paletteKey: 'consultation' });
+    mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({ id: 'wfdef-1', slug: 'consultation-default', paletteKey: 'core' });
   });
 
   it('is a registered `global-kv` descriptor, not an env var', () => {

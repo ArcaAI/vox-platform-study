@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { UserProfileRepository, UserSettingsRepository, WorkflowDefinitionRepository } from '@arcaai/domains';
 import type { WorkflowGraph, WorkflowGraphNode } from '@arcaai/workflow-contract';
-import { classesOf } from '@arcaai/workflow-contract';
+import { CORE_PALETTE_KEY, classesOf } from '@arcaai/workflow-contract';
 import { IWorkflowAssignmentService } from '../workflow-assignment/IWorkflowAssignmentService';
 import { DNA_STYLE_PREFERENCE, parseDnaStylePreference } from './dna-style-preference';
 
@@ -52,7 +52,9 @@ export interface DoctorDnaPreference {
 }
 
 /** The palette whose assigned definition governs a consultation (mirrors `PromptResolutionService`). */
-const CONSULTATION_PALETTE_KEY = 'consultation';
+// TASK-930 moved every consultation graph and assignment onto the CORE palette; a literal here
+// silently answered the unwired default for every tenant (TASK-932 R-16a, the empty DNA handoff).
+const CONSULTATION_PALETTE_KEY = CORE_PALETTE_KEY;
 
 /** / DD-6 — the node type that carries the DNA-redaction pass. */
 const DNA_REDACTION_NODE_TYPE = 'agent.dna_redaction';

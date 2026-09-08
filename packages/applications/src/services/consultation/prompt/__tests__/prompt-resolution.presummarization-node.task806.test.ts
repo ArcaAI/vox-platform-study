@@ -66,7 +66,7 @@ function approvedTemplate(id: string, approvedVersionNumber: number | null = 1) 
 }
 
 function definitionWithNodes(nodes: unknown[]) {
-  return { id: 'wfdef-1', slug: 'consultation-default', paletteKey: 'consultation', graph: { version: 1, nodes, edges: [] } };
+  return { id: 'wfdef-1', slug: 'consultation-default', paletteKey: 'core', graph: { version: 1, nodes, edges: [] } };
 }
 
 function assignConsultationGraph(nodes: unknown[]): void {
@@ -142,7 +142,7 @@ describe('pre-summary tier-1a — the agent.presummarization node', () => {
 
     await buildService().resolve({ tenantId: TENANT, departmentId: 'dept-should-be-ignored', promptType: 'pre-summary' });
 
-    expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', null);
+    expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'core', null);
   });
 });
 

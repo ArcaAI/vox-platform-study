@@ -65,7 +65,7 @@ function publishGraph(nodes: unknown[]) {
   mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({
     id: 'wfdef-1',
     slug: 'consultation-default',
-    paletteKey: 'consultation',
+    paletteKey: 'core',
     graph: { version: 1, nodes, edges: [] },
   });
 }
@@ -239,7 +239,7 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
       // cascade was consulted, and that is unchanged: a NULL department, every time.
       await expect(service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' })).rejects.toThrow();
 
-      expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', null);
+      expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'core', null);
     });
 
     it('is unchanged for the compat signature — which never reached the tier anyway (RF-5)', async () => {

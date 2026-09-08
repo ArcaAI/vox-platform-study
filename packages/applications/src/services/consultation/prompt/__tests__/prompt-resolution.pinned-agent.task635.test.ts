@@ -63,7 +63,7 @@ function publishDefinition(nodes: unknown[]) {
   mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({
     id: 'wfdef-1',
     slug: 'consultation-default',
-    paletteKey: 'consultation',
+    paletteKey: 'core',
     graph: { version: 1, nodes, edges: [] },
   });
 }
@@ -161,6 +161,6 @@ describe('PromptResolutionService — pinnedAgentId', () => {
 
     expect(result.promptId).toBe('tpl-new-default');
     expect(result.resolvedAgentId).toBe('note_new_default');
-    expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPT);
+    expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'core', DEPT);
   });
 });
