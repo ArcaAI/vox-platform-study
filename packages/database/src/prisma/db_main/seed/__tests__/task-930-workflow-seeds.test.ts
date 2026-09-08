@@ -152,7 +152,8 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
    * skipped, so the day a v3 body grows a placeholder without a binding, this goes red.
    */
   it('every ArcaAI agent binds `instruction.variables` for exactly the `{{context.*}}` its template reads, each to a field the trigger schema declares', () => {
-    const contextFields = new Set(Object.keys((NOTE_CONTEXT_SCHEMA_DEFINITION.kinds.find((kind) => kind.key === 'context') as { fields: { properties: Record<string, unknown> } }).fields.properties));
+    const kinds = (NOTE_CONTEXT_SCHEMA_DEFINITION as unknown as { kinds: Array<{ key: string; fields: { properties: Record<string, unknown> } }> }).kinds;
+    const contextFields = new Set(Object.keys(kinds.find((kind) => kind.key === 'context')!.fields.properties));
     const contentById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((template) => [template.id, String(template.content)]));
     for (const spec of ARCAAI_AGENT_SPECS) {
       const instruction = spec.instruction as { promptTemplateId: string; variables?: Record<string, { value: string } | { path: string }> };
