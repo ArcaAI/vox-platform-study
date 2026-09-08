@@ -25,7 +25,7 @@
  * handing an admin a free-text editor, so the assertion is on the whole descriptor list, not just
  * on a missing field.
  */
-import { NODE_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
+import { ACTION_CONFIG_SCHEMAS, NODE_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
 import { describe, expect, it } from 'vitest';
 import { toFieldDescriptors, type FieldDescriptor } from '../schema-form';
 
@@ -40,29 +40,32 @@ function findField(fields: FieldDescriptor[], path: string): FieldDescriptor | u
   return undefined;
 }
 
+/** Both halves of the authorable surface: a node's own config, and an action's sub-config. */
+const ALL_SCHEMAS = { ...NODE_CONFIG_SCHEMAS, ...ACTION_CONFIG_SCHEMAS } as Record<string, Parameters<typeof toFieldDescriptors>[0]>;
+
 const TOGGLEABLE_NODE_KEYS = [
-  'consultation.realtimeSummary',
-  'consultation.extractEntities',
+  'core.agent',
+  'core.classify',
+  'core.data',
   'consultation.sensors',
-  'consultation.suggestions',
-  'agent.important_findings',
+  'consultation.retrieveEvidence',
+  'prompt.template_ref',
 ] as const;
 
 /** D-1: the clinical guard nodes now OFFER the toggle — the opt-out is authorable, and recorded. */
 const GUARD_NODE_KEYS = [
   'consultation.consentGate',
-  'consultation.captureBinding',
   'consultation.phiHop',
   'consultation.persistDraft',
   'consultation.finalizeAssurance',
 ] as const;
 
 /** What still offers NO way to switch it off. */
-const UNDISABLEABLE_NODE_KEYS = ['core.trigger', 'core.output', 'consultation.hitlGate'] as const;
+const UNDISABLEABLE_NODE_KEYS = ['core.trigger', 'core.output'] as const;
 
 describe('the per-node enable/disable toggle is an authorable control in the node inspector', () => {
   it.each(TOGGLEABLE_NODE_KEYS)('%s renders `enabled` as a boolean field, defaulting to on', (key) => {
-    const enabled = findField(toFieldDescriptors(NODE_CONFIG_SCHEMAS[key]), 'enabled');
+    const enabled = findField(toFieldDescriptors(ALL_SCHEMAS[key]), 'enabled');
 
     expect(enabled).toBeDefined();
     // `boolean` is what `field-renderers.tsx` draws as a `<Switch>`; `raw-json` would be
@@ -75,7 +78,7 @@ describe('the per-node enable/disable toggle is an authorable control in the nod
 
 describe('a clinical guard node renders the toggle too, since D-1 (TASK-890)', () => {
   it.each(GUARD_NODE_KEYS)('%s renders `enabled` as a boolean field, defaulting to on', (key) => {
-    const enabled = findField(toFieldDescriptors(NODE_CONFIG_SCHEMAS[key]), 'enabled');
+    const enabled = findField(toFieldDescriptors(ALL_SCHEMAS[key]), 'enabled');
 
     expect(enabled).toBeDefined();
     expect(enabled?.kind).toBe('boolean');
@@ -86,7 +89,7 @@ describe('a clinical guard node renders the toggle too, since D-1 (TASK-890)', (
 
 describe('a graph boundary and the human sign-off offer no way to switch them off', () => {
   it.each(UNDISABLEABLE_NODE_KEYS)('%s has no `enabled` field, and no raw-JSON editor over the whole config', (key) => {
-    const fields = toFieldDescriptors(NODE_CONFIG_SCHEMAS[key]);
+    const fields = toFieldDescriptors(ALL_SCHEMAS[key]);
 
     expect(findField(fields, 'enabled')).toBeUndefined();
     // A raw-JSON descriptor over ONE typed-but-unrepresentable property (`core.trigger`'s
@@ -96,11 +99,17 @@ describe('a graph boundary and the human sign-off offer no way to switch them of
     expect(fields.filter((field) => field.kind === 'raw-json' && (field.path === '' || field.path === 'config'))).toEqual([]);
   });
 
-  // `consultation.hitlGate` is stricter still: it sits in `RUNTIME_PROPERTY_EXCLUSIONS`, so it
-  // offers NO runtime knob and no escape hatch of any kind (TASK-859 invariant 5).
-  it('consultation.hitlGate offers no raw-JSON escape hatch at all', () => {
-    const fields = toFieldDescriptors(NODE_CONFIG_SCHEMAS['consultation.hitlGate']);
+  // `consultation.hitlGate` was stricter still — it sat in `RUNTIME_PROPERTY_EXCLUSIONS`, so it
+  // offered NO runtime knob and no escape hatch of any kind. TASK-893 Phase 4 retired that node
+  // type; the durable human wait is `core.humanReview`, which is `review`-classed and compiles as
+  // an ordinary stage, so it DOES take the runtime fold. Invariant 5 ("the system never signs") is
+  // about who DECIDES rather than which nodes may be skipped, so what this asserts is that no
+  // field of the generated form stands in for a signature.
+  it('core.humanReview offers no field that stands in for a review decision', () => {
+    const fields = toFieldDescriptors(NODE_CONFIG_SCHEMAS['core.humanReview']);
 
-    expect(fields.filter((field) => field.kind === 'raw-json')).toEqual([]);
+    expect(findField(fields, 'decision')).toBeUndefined();
+    expect(findField(fields, 'approved')).toBeUndefined();
+    expect(fields.filter((field) => field.kind === 'raw-json' && (field.path === '' || field.path === 'config'))).toEqual([]);
   });
 });
