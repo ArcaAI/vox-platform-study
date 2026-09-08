@@ -66,6 +66,11 @@ const ALLOWED: Array<{ file: string; reason: string }> = [
     file: 'services/consultation/live-documentation/live-documentation.service.module.ts',
     reason: 'module wiring — names the endpoint in a doc comment, posts nothing',
   },
+  {
+    file: 'services/agent/agent-invocation.service.ts',
+    reason:
+      'NER agent invocation (§2.4). The caller submits this text ITSELF through the scoped public route POST /agents/:slug/invocations and receives character OFFSETS into it; `pseudonymize` is not length-preserving, so redacting first would return spans that index a document the caller never sees. Unlike hops 1 and 2, HOPE is not moving a patient text the caller never sent. Owner ruling 2026-09-08 (TASK-930 README §4.4).',
+  },
 ];
 
 function listTsFiles(dir: string): string[] {
