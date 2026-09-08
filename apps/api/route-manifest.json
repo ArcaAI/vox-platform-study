@@ -746,6 +746,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "AgentPromoteToSystemController",
+      "handler": "promoteToSystem",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/promote-to-system",
+      "routePath": "/admin/agents/promote-to-system",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelAdminController",
       "handler": "fetchAll",
       "method": "GET",

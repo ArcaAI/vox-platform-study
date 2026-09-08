@@ -278,7 +278,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "type": "string"
           },
@@ -637,7 +638,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "type": "string"
           },
@@ -752,7 +754,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "type": "string"
           },
@@ -4795,7 +4798,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "example": "TEXT_GENERATION",
             "type": "string"
@@ -10768,7 +10772,7 @@
       "LiveDocRealtimeNodeResponse": {
         "properties": {
           "canonicalType": {
-            "description": "The PIPELINE node type this one stands for. `agent.ner` and `agent.transcription` are the target catalogue’s names for existing capabilities and run the same handlers, so a consumer keyed by type must treat the alias and its canonical form as ONE capability.",
+            "description": "The CAPABILITY this node runs (`transcribe` | `extractEntities` | `generateDocument` | …), derived from the agent it references. Since TASK-893 the type no longer distinguishes two realtime nodes — every one of them is a `core.agent` — so this is the field a consumer keys on. Falls back to the node type when no capability can be derived.",
             "type": "string"
           },
           "enabled": {
@@ -10804,7 +10808,7 @@
             "type": "boolean"
           },
           "type": {
-            "description": "Registered node type, e.g. `consultation.realtimeSummary`",
+            "description": "Registered node type — since TASK-893 every realtime node is `core.agent`",
             "type": "string"
           }
         },
@@ -14156,6 +14160,90 @@
         },
         "required": [
           "enabled"
+        ],
+        "type": "object"
+      },
+      "PromoteAgentToSystemCopied": {
+        "properties": {
+          "contextSchemas": {
+            "description": "Context schemas copied into SYSTEM because SYSTEM carried no schema of that slug.",
+            "type": "number"
+          },
+          "promptTemplates": {
+            "description": "Global-owned prompt templates deep-copied into SYSTEM and re-bound on the promoted agent.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "promptTemplates",
+          "contextSchemas"
+        ],
+        "type": "object"
+      },
+      "PromoteAgentToSystemRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Why this became the platform default. Recorded verbatim on the WORM promotion record.",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "sourceSlug": {
+            "description": "The agent to promote, by slug, in the Global build tenant.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "Which immutable Global version to promote. Defaults to Global’s ACTIVE PUBLISHED version.",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "sourceSlug",
+          "changeReason"
+        ],
+        "type": "object"
+      },
+      "PromoteAgentToSystemResponse": {
+        "properties": {
+          "agentId": {
+            "description": "The SYSTEM Agent row this promotion created, published and activated.",
+            "type": "string"
+          },
+          "copied": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PromoteAgentToSystemCopied"
+              }
+            ],
+            "description": "The referenced content this promotion had to copy so the SYSTEM row binds nothing it cannot read."
+          },
+          "promotionId": {
+            "description": "The immutable promotion record id (the WORM audit row in SYSTEM).",
+            "type": "string"
+          },
+          "slug": {
+            "description": "The agent lineage slug in SYSTEM — the same slug it carries in Global.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The version number minted in SYSTEM’s lineage. The previous version stays as history.",
+            "type": "number"
+          },
+          "warnings": {
+            "description": "Non-blocking operator alerts raised while copying.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agentId",
+          "slug",
+          "versionNumber",
+          "copied",
+          "promotionId",
+          "warnings"
         ],
         "type": "object"
       },
@@ -18585,7 +18673,8 @@
                 "agents",
                 "agentAssignments",
                 "documentTemplates",
-                "workflowDefinitions"
+                "workflowDefinitions",
+                "workflowAssignments"
               ],
               "type": "string"
             },
@@ -22399,7 +22488,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "example": "SPEECH_TO_TEXT",
             "type": "string"
@@ -24311,6 +24401,14 @@
             },
             "type": "array"
           },
+          "kind": {
+            "description": "WHICH vocabulary this entry belongs to. `node` = a registered node TYPE, authorable on a graph and offered in the palette. `action` = an `ACTION_CATALOGUE` entry a `core.action` instance delegates to: it is served here because the client resolves an instance`s effective ports by looking its `actionKey` up in this same list, but it is NOT a node type and must never be added to a graph directly.",
+            "enum": [
+              "node",
+              "action"
+            ],
+            "type": "string"
+          },
           "lane": {
             "description": "WHICH RUNTIME executes it. realtime carries a latency budget; durable must survive a restart.",
             "enum": [
@@ -24357,12 +24455,13 @@
             "type": "string"
           },
           "type": {
-            "description": "The node type string authored on a graph node.",
+            "description": "The node type string authored on a graph node, or — for `kind: \"action\"` — the `actionKey` a `core.action` delegates to.",
             "type": "string"
           }
         },
         "required": [
           "type",
+          "kind",
           "implemented",
           "activityName",
           "classes",
@@ -25122,7 +25221,8 @@
               "enum": [
                 "SPEECH_TO_TEXT",
                 "TEXT_GENERATION",
-                "TEXT_TO_SPEECH"
+                "TEXT_TO_SPEECH",
+                "NAMED_ENTITY_RECOGNITION"
               ],
               "type": "string"
             }
@@ -25877,7 +25977,8 @@
               "enum": [
                 "SPEECH_TO_TEXT",
                 "TEXT_GENERATION",
-                "TEXT_TO_SPEECH"
+                "TEXT_TO_SPEECH",
+                "NAMED_ENTITY_RECOGNITION"
               ],
               "type": "string"
             }
@@ -25995,6 +26096,56 @@
           }
         ],
         "summary": "Import an exported agent bundle as a DRAFT in the caller tenant",
+        "tags": [
+          "admin-agents"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/promote-to-system": {
+      "post": {
+        "description": "The platform-admin path of owner decision #4 for an AGENT: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), which is the reference set every customer tenant is provisioned from. Copies the Agent row and its `AgentModelFallback` chain into SYSTEM as a new version of the same slug (`max(versionNumber)+1`, so the previous SYSTEM version stays as history), re-resolves every model BY SLUG in the SYSTEM catalogue, then recompiles, PUBLISHES and ACTIVATES it — the half a tenant-to-tenant push (`POST admin/agents/{slug}/sync`) deliberately omits, because publishing into a customer tenant would re-point that customer’s live consultations and SYSTEM runs none. Referenced content travels with it: a Global-owned `instruction.promptTemplateId` is deep-copied into SYSTEM (APPROVED where the source was, `sourceTemplateId` stamped) and re-bound, while a SYSTEM-owned one is left alone; `contextSchemaId` binds the SYSTEM schema of the same slug, copied when SYSTEM carries none. `instruction.evalGate` is STRIPPED — a golden set is a corpus of encrypted PHI and not even the pointer crosses a tenant boundary. One WORM `AgentPromotion` record is written. Requires a platform administrator and an elevated tenant-less context.",
+        "operationId": "AgentPromoteToSystemController_promoteToSystem",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteAgentToSystemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromoteAgentToSystemResponse"
+                }
+              }
+            },
+            "description": "The published SYSTEM agent version and what the promotion copied"
+          },
+          "403": {
+            "description": "Not a platform administrator, or the context is not elevated and tenant-less."
+          },
+          "404": {
+            "description": "The Global build tenant has no such agent, or no such version in that lineage."
+          },
+          "409": {
+            "description": "The resolved Global version is not PUBLISHED (`AGENT_NOT_PUBLISHED`), the SYSTEM catalogue carries no model of a bound slug (`MODEL_NOT_RESOLVABLE`), or the bound context schema has no published version to copy (`CONTEXT_SCHEMA_NOT_PUBLISHED`)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Promote an agent from the Global build tenant into the SYSTEM reference set",
         "tags": [
           "admin-agents"
         ]
@@ -50519,7 +50670,8 @@
               "enum": [
                 "SPEECH_TO_TEXT",
                 "TEXT_GENERATION",
-                "TEXT_TO_SPEECH"
+                "TEXT_TO_SPEECH",
+                "NAMED_ENTITY_RECOGNITION"
               ],
               "type": "string"
             }
@@ -59384,6 +59536,56 @@
           }
         ],
         "summary": "SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/v1/workflows/{slug}/runs/{runId}/stream-ticket": {
+      "post": {
+        "description": "The API-key and service-account equivalent of `POST /auth/stream-ticket`, which is JWT-only. The scope is derived from the path (`workflow_run:<runId>`) and the run’s ownership is proved before the ticket is issued, so nothing broader than this run can be minted. Open the returned `url` — the ticket is consumed on first use and cannot be replayed.",
+        "operationId": "WorkflowsController_issueRunStreamTicket",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The ticket, its absolute expiry, its scope, and the socket URL to open with it."
+          },
+          "401": {
+            "description": "No caller identity to bind the ticket to."
+          },
+          "403": {
+            "description": "Scope violation."
+          },
+          "404": {
+            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mint a single-use, 30-second ticket for this run’s WebSocket stream.",
         "tags": [
           "workflows"
         ]

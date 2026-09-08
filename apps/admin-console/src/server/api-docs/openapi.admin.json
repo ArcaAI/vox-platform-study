@@ -278,7 +278,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "type": "string"
           },
@@ -637,7 +638,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "type": "string"
           },
@@ -752,7 +754,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "type": "string"
           },
@@ -4795,7 +4798,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "example": "TEXT_GENERATION",
             "type": "string"
@@ -10768,7 +10772,7 @@
       "LiveDocRealtimeNodeResponse": {
         "properties": {
           "canonicalType": {
-            "description": "The PIPELINE node type this one stands for. `agent.ner` and `agent.transcription` are the target catalogue’s names for existing capabilities and run the same handlers, so a consumer keyed by type must treat the alias and its canonical form as ONE capability.",
+            "description": "The CAPABILITY this node runs (`transcribe` | `extractEntities` | `generateDocument` | …), derived from the agent it references. Since TASK-893 the type no longer distinguishes two realtime nodes — every one of them is a `core.agent` — so this is the field a consumer keys on. Falls back to the node type when no capability can be derived.",
             "type": "string"
           },
           "enabled": {
@@ -10804,7 +10808,7 @@
             "type": "boolean"
           },
           "type": {
-            "description": "Registered node type, e.g. `consultation.realtimeSummary`",
+            "description": "Registered node type — since TASK-893 every realtime node is `core.agent`",
             "type": "string"
           }
         },
@@ -14156,6 +14160,90 @@
         },
         "required": [
           "enabled"
+        ],
+        "type": "object"
+      },
+      "PromoteAgentToSystemCopied": {
+        "properties": {
+          "contextSchemas": {
+            "description": "Context schemas copied into SYSTEM because SYSTEM carried no schema of that slug.",
+            "type": "number"
+          },
+          "promptTemplates": {
+            "description": "Global-owned prompt templates deep-copied into SYSTEM and re-bound on the promoted agent.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "promptTemplates",
+          "contextSchemas"
+        ],
+        "type": "object"
+      },
+      "PromoteAgentToSystemRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Why this became the platform default. Recorded verbatim on the WORM promotion record.",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "sourceSlug": {
+            "description": "The agent to promote, by slug, in the Global build tenant.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "Which immutable Global version to promote. Defaults to Global’s ACTIVE PUBLISHED version.",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "sourceSlug",
+          "changeReason"
+        ],
+        "type": "object"
+      },
+      "PromoteAgentToSystemResponse": {
+        "properties": {
+          "agentId": {
+            "description": "The SYSTEM Agent row this promotion created, published and activated.",
+            "type": "string"
+          },
+          "copied": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PromoteAgentToSystemCopied"
+              }
+            ],
+            "description": "The referenced content this promotion had to copy so the SYSTEM row binds nothing it cannot read."
+          },
+          "promotionId": {
+            "description": "The immutable promotion record id (the WORM audit row in SYSTEM).",
+            "type": "string"
+          },
+          "slug": {
+            "description": "The agent lineage slug in SYSTEM — the same slug it carries in Global.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The version number minted in SYSTEM’s lineage. The previous version stays as history.",
+            "type": "number"
+          },
+          "warnings": {
+            "description": "Non-blocking operator alerts raised while copying.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agentId",
+          "slug",
+          "versionNumber",
+          "copied",
+          "promotionId",
+          "warnings"
         ],
         "type": "object"
       },
@@ -18585,7 +18673,8 @@
                 "agents",
                 "agentAssignments",
                 "documentTemplates",
-                "workflowDefinitions"
+                "workflowDefinitions",
+                "workflowAssignments"
               ],
               "type": "string"
             },
@@ -22399,7 +22488,8 @@
             "enum": [
               "SPEECH_TO_TEXT",
               "TEXT_GENERATION",
-              "TEXT_TO_SPEECH"
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
             ],
             "example": "SPEECH_TO_TEXT",
             "type": "string"
@@ -24311,6 +24401,14 @@
             },
             "type": "array"
           },
+          "kind": {
+            "description": "WHICH vocabulary this entry belongs to. `node` = a registered node TYPE, authorable on a graph and offered in the palette. `action` = an `ACTION_CATALOGUE` entry a `core.action` instance delegates to: it is served here because the client resolves an instance`s effective ports by looking its `actionKey` up in this same list, but it is NOT a node type and must never be added to a graph directly.",
+            "enum": [
+              "node",
+              "action"
+            ],
+            "type": "string"
+          },
           "lane": {
             "description": "WHICH RUNTIME executes it. realtime carries a latency budget; durable must survive a restart.",
             "enum": [
@@ -24357,12 +24455,13 @@
             "type": "string"
           },
           "type": {
-            "description": "The node type string authored on a graph node.",
+            "description": "The node type string authored on a graph node, or — for `kind: \"action\"` — the `actionKey` a `core.action` delegates to.",
             "type": "string"
           }
         },
         "required": [
           "type",
+          "kind",
           "implemented",
           "activityName",
           "classes",
@@ -25203,7 +25302,8 @@
               "enum": [
                 "SPEECH_TO_TEXT",
                 "TEXT_GENERATION",
-                "TEXT_TO_SPEECH"
+                "TEXT_TO_SPEECH",
+                "NAMED_ENTITY_RECOGNITION"
               ],
               "type": "string"
             }
@@ -26135,7 +26235,8 @@
               "enum": [
                 "SPEECH_TO_TEXT",
                 "TEXT_GENERATION",
-                "TEXT_TO_SPEECH"
+                "TEXT_TO_SPEECH",
+                "NAMED_ENTITY_RECOGNITION"
               ],
               "type": "string"
             }
@@ -26282,6 +26383,70 @@
           }
         ],
         "summary": "Import an exported agent bundle as a DRAFT in the caller tenant",
+        "tags": [
+          "admin-agents"
+        ],
+        "x-hope-abilities": [
+          "manage:Agent"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:agent:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/promote-to-system": {
+      "post": {
+        "description": "The platform-admin path of owner decision #4 for an AGENT: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), which is the reference set every customer tenant is provisioned from. Copies the Agent row and its `AgentModelFallback` chain into SYSTEM as a new version of the same slug (`max(versionNumber)+1`, so the previous SYSTEM version stays as history), re-resolves every model BY SLUG in the SYSTEM catalogue, then recompiles, PUBLISHES and ACTIVATES it — the half a tenant-to-tenant push (`POST admin/agents/{slug}/sync`) deliberately omits, because publishing into a customer tenant would re-point that customer’s live consultations and SYSTEM runs none. Referenced content travels with it: a Global-owned `instruction.promptTemplateId` is deep-copied into SYSTEM (APPROVED where the source was, `sourceTemplateId` stamped) and re-bound, while a SYSTEM-owned one is left alone; `contextSchemaId` binds the SYSTEM schema of the same slug, copied when SYSTEM carries none. `instruction.evalGate` is STRIPPED — a golden set is a corpus of encrypted PHI and not even the pointer crosses a tenant boundary. One WORM `AgentPromotion` record is written. Requires a platform administrator and an elevated tenant-less context.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentPromoteToSystemController_promoteToSystem",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteAgentToSystemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromoteAgentToSystemResponse"
+                }
+              }
+            },
+            "description": "The published SYSTEM agent version and what the promotion copied"
+          },
+          "403": {
+            "description": "Not a platform administrator, or the context is not elevated and tenant-less."
+          },
+          "404": {
+            "description": "The Global build tenant has no such agent, or no such version in that lineage."
+          },
+          "409": {
+            "description": "The resolved Global version is not PUBLISHED (`AGENT_NOT_PUBLISHED`), the SYSTEM catalogue carries no model of a bound slug (`MODEL_NOT_RESOLVABLE`), or the bound context schema has no published version to copy (`CONTEXT_SCHEMA_NOT_PUBLISHED`)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Promote an agent from the Global build tenant into the SYSTEM reference set",
         "tags": [
           "admin-agents"
         ],
@@ -57202,7 +57367,7 @@
     },
     "/api/v1/agents": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `agent:definition:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:definition:read`).\n\n**API key scopes** — `agent:definition:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_list",
         "parameters": [
           {
@@ -57213,7 +57378,8 @@
               "enum": [
                 "SPEECH_TO_TEXT",
                 "TEXT_GENERATION",
-                "TEXT_TO_SPEECH"
+                "TEXT_TO_SPEECH",
+                "NAMED_ENTITY_RECOGNITION"
               ],
               "type": "string"
             }
@@ -57249,17 +57415,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:agent:definition:read"
+        ]
       }
     },
     "/api/v1/agents/{slug}": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `agent:definition:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:definition:read`).\n\n**API key scopes** — `agent:definition:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_get",
         "parameters": [
           {
@@ -57304,17 +57473,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:agent:definition:read"
+        ]
       }
     },
     "/api/v1/agents/{slug}/invocations": {
       "post": {
-        "description": "The body is validated against the agent’s `inputSchema` (default: `{ text, variables? }`). `mode=blocking` answers `200 application/json`; `mode=stream` answers `200 text/event-stream` with the TEXT service’s frames relayed verbatim.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The body is validated against the agent’s `inputSchema` (default: `{ text, variables? }`). `mode=blocking` answers `200 application/json`; `mode=stream` answers `200 text/event-stream` with the TEXT service’s frames relayed verbatim.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_invoke",
         "parameters": [
           {
@@ -57370,17 +57542,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
       }
     },
     "/api/v1/agents/{slug}/speech": {
       "post": {
-        "description": "Body `{ text }` or `{ ssml }` (SSML only when the agent enables it). The agent’s voice/format/speed/model are applied over the tenant’s TTS configuration and BYO credentials.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Body `{ text }` or `{ ssml }` (SSML only when the agent enables it). The agent’s voice/format/speed/model are applied over the tenant’s TTS configuration and BYO credentials.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_speech",
         "parameters": [
           {
@@ -57421,17 +57596,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
       }
     },
     "/api/v1/agents/{slug}/transcriptions": {
       "post": {
-        "description": "Body `{ mediaId, consultationId?, language? }` — the media must already be uploaded. The agent is resolved to a `ResolvedAsrSpec` (TASK-861) the job is keyed to and reproducible from; no pipeline row is involved. Progress streams from the returned `sseUrl`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Body `{ mediaId, consultationId?, language? }` — the media must already be uploaded. The agent is resolved to a `ResolvedAsrSpec` (TASK-861) the job is keyed to and reproducible from; no pipeline row is involved. Progress streams from the returned `sseUrl`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_transcribe",
         "parameters": [
           {
@@ -57475,12 +57653,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
       }
     },
     "/api/v1/audio/pipelines": {
@@ -67916,7 +68097,7 @@
     },
     "/api/v1/workflows": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:definition:read`.\n\n**Abilities** — `list:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:definition:read`).\n\n**API key scopes** — `workflow:definition:read`.\n\n**Abilities** — `list:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_list",
         "parameters": [],
         "responses": {
@@ -67951,17 +68132,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:definition:read"
+        ]
       }
     },
     "/api/v1/workflows/{slug}/invoke": {
       "post": {
-        "description": "Superseded by `POST :slug/runs` , which is the same handler plus response modes. Retained because the shipped `@arcaai/vox-node` contract and the seeded examples call this path; it delegates verbatim and always answers `mode=async`. New integrations should use `:slug/runs`. If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure does NOT restrict provider choice:  R-4 (owner ruling, 2026-08-20) allows a publicly-exposed workflow to select a cloud provider — the tenant carries that egress risk, consistent with the platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task Defaults), not only here.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `create:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Superseded by `POST :slug/runs` , which is the same handler plus response modes. Retained because the shipped `@arcaai/vox-node` contract and the seeded examples call this path; it delegates verbatim and always answers `mode=async`. New integrations should use `:slug/runs`. If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure does NOT restrict provider choice:  R-4 (owner ruling, 2026-08-20) allows a publicly-exposed workflow to select a cloud provider — the tenant carries that egress risk, consistent with the platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task Defaults), not only here.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:write`).\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `create:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_invoke",
         "parameters": [
           {
@@ -68032,17 +68216,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:write"
+        ]
       }
     },
     "/api/v1/workflows/{slug}/runs": {
       "post": {
-        "description": "The handler every non-clinical invocation surface converges on — REST, webhook relay, `@arcaai/vox` and `@arcaai/vox-node`. **Response mode** is chosen with `?mode=`: `async` (default) answers 202 with `runId` + `statusUrl` + `streamUrl`; `blocking` waits for the run to finish and answers 200 with the terminal status, or **504** at a hard ceiling of ~60s with a pointer to streaming; `stream` answers `text/event-stream` directly, the same snapshot-then-delta contract as `GET :slug/runs/:runId/stream`. **Idempotency**: send `Idempotency-Key` and a retry JOINS the existing run instead of starting (and billing) a second — the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. **Disconnecting never cancels the run**: it is a durable execution, so abandoning the HTTP request abandons only your view of it. To run a workflow AGAINST A CONSULTATION, use `POST /consultations/{consultationId}/workflows/{slug}/runs` — a consultation graph is not invocable here, and consultation identity is never accepted in the request body.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `create:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The handler every non-clinical invocation surface converges on — REST, webhook relay, `@arcaai/vox` and `@arcaai/vox-node`. **Response mode** is chosen with `?mode=`: `async` (default) answers 202 with `runId` + `statusUrl` + `streamUrl`; `blocking` waits for the run to finish and answers 200 with the terminal status, or **504** at a hard ceiling of ~60s with a pointer to streaming; `stream` answers `text/event-stream` directly, the same snapshot-then-delta contract as `GET :slug/runs/:runId/stream`. **Idempotency**: send `Idempotency-Key` and a retry JOINS the existing run instead of starting (and billing) a second — the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. **Disconnecting never cancels the run**: it is a durable execution, so abandoning the HTTP request abandons only your view of it. To run a workflow AGAINST A CONSULTATION, use `POST /consultations/{consultationId}/workflows/{slug}/runs` — a consultation graph is not invocable here, and consultation identity is never accepted in the request body.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:write`).\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `create:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_startRun",
         "parameters": [
           {
@@ -68144,17 +68331,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:write"
+        ]
       }
     },
     "/api/v1/workflows/{slug}/runs/{runId}": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:read`).\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_getRunStatus",
         "parameters": [
           {
@@ -68209,17 +68399,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:read"
+        ]
       }
     },
     "/api/v1/workflows/{slug}/runs/{runId}/cancel": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `update:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:write`).\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `update:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_cancelRun",
         "parameters": [
           {
@@ -68274,17 +68467,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:write"
+        ]
       }
     },
     "/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}": {
       "get": {
-        "description": "A graph may carry several review nodes, so a review is addressed by `(runId, nodeId)`. `exists: false` is a NORMAL 200 — the node has not been reached yet, or the review already settled and its durable child is gone. It is deliberately different from a 404, which means the RUN is not yours: a reviewer UI must be able to tell \"nothing to decide here\" from \"you are looking at someone else’s run\". `decision` is `null` until a human sets it — a timeout never reads as an approval.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "A graph may carry several review nodes, so a review is addressed by `(runId, nodeId)`. `exists: false` is a NORMAL 200 — the node has not been reached yet, or the review already settled and its durable child is gone. It is deliberately different from a 404, which means the RUN is not yours: a reviewer UI must be able to tell \"nothing to decide here\" from \"you are looking at someone else’s run\". `decision` is `null` until a human sets it — a timeout never reads as an approval.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:read`).\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_getReview",
         "parameters": [
           {
@@ -68354,17 +68550,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:read"
+        ]
       }
     },
     "/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide": {
       "post": {
-        "description": "Body `{ decision: \"approved\" | \"rejected\", comment?, editedPayload? }`. **`reviewerId` is not accepted** — the acting user is resolved from the session and stamped server-side, so a caller cannot attribute an approval to somebody else; sending the field is a 400 (the global pipe forbids undeclared properties). `editedPayload` is honoured only when the node was authored with `allowEdit`; the workflow drops it otherwise. A review is decided ONCE: a second decision on the same node is ignored by the durable child, so this route is safe to retry. Returns when the signal was SENT — the graph resumes on its own clock.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `update:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Body `{ decision: \"approved\" | \"rejected\", comment?, editedPayload? }`. **`reviewerId` is not accepted** — the acting user is resolved from the session and stamped server-side, so a caller cannot attribute an approval to somebody else; sending the field is a 400 (the global pipe forbids undeclared properties). `editedPayload` is honoured only when the node was authored with `allowEdit`; the workflow drops it otherwise. A review is decided ONCE: a second decision on the same node is ignored by the durable child, so this route is safe to retry. Returns when the signal was SENT — the graph resumes on its own clock.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:write`).\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `update:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_decideReview",
         "parameters": [
           {
@@ -68447,17 +68646,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:write"
+        ]
       }
     },
     "/api/v1/workflows/{slug}/runs/{runId}/stream": {
       "get": {
-        "description": "Snapshot-then-delta. The first frame is a `workflow.run.progress`/`workflow.run.completed` snapshot of current status; every frame after it is an event PUSHED by the interpreter as it happens (node started/completed/failed, run completed), carried on the run event stream. Each pushed frame's `id` is an opaque resume token — echo it back as `Last-Event-ID` to resume exactly where you left off. The snapshot frame carries no `id` (there is no stream position to name). If your position has aged out of the retained window, the stream re-sends a snapshot rather than silently skipping the gap.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Snapshot-then-delta. The first frame is a `workflow.run.progress`/`workflow.run.completed` snapshot of current status; every frame after it is an event PUSHED by the interpreter as it happens (node started/completed/failed, run completed), carried on the run event stream. Each pushed frame's `id` is an opaque resume token — echo it back as `Last-Event-ID` to resume exactly where you left off. The snapshot frame carries no `id` (there is no stream position to name). If your position has aged out of the retained window, the stream re-sends a snapshot rather than silently skipping the gap.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:read`).\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_streamRunStatus",
         "parameters": [
           {
@@ -68523,17 +68725,87 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:read"
+        ]
+      }
+    },
+    "/api/v1/workflows/{slug}/runs/{runId}/stream-ticket": {
+      "post": {
+        "description": "The API-key and service-account equivalent of `POST /auth/stream-ticket`, which is JWT-only. The scope is derived from the path (`workflow_run:<runId>`) and the run’s ownership is proved before the ticket is issued, so nothing broader than this run can be minted. Open the returned `url` — the ticket is consumed on first use and cannot be replayed.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:read`).\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowsController_issueRunStreamTicket",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The ticket, its absolute expiry, its scope, and the socket URL to open with it."
+          },
+          "401": {
+            "description": "No caller identity to bind the ticket to."
+          },
+          "403": {
+            "description": "Scope violation."
+          },
+          "404": {
+            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mint a single-use, 30-second ticket for this run’s WebSocket stream.",
+        "tags": [
+          "workflows"
+        ],
+        "x-hope-abilities": [
+          "read:WorkflowRun"
+        ],
+        "x-hope-api-key-scopes": [
+          "workflow:run:read"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:read"
+        ]
       }
     },
     "/api/v1/workflows/{slug}/schema": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:definition:read`.\n\n**Abilities** — `read:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:definition:read`).\n\n**API key scopes** — `workflow:definition:read`.\n\n**Abilities** — `read:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_getSchema",
         "parameters": [
           {
@@ -68573,12 +68845,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflow:definition:read"
+        ]
       }
     },
     "/metrics": {

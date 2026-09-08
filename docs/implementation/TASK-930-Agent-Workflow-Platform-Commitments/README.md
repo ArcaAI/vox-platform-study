@@ -405,6 +405,37 @@ agent's TASK (`SPEECH_TO_TEXT` → transcribe, `NAMED_ENTITY_RECOGNITION` → ex
 lane uses; flip the pinned "current behaviour" test to the intended one; prove it against the seeded
 `general-medicine-consultation` graph.
 
+**DONE** — `3ad564b4c` + `65ef67e59` on `dev-2.2`. RED pasted first (the pinned test flipped:
+`n_asr: 'generateDocument'` → expected `'transcribe'`; the new seed-driven suite showed the seeded
+graph making **3 summarization calls and 0 entity extractions per flush**), then GREEN (5/5; the
+live-documentation + agent suites 66 files / 811). `resolveAgent` resolves through
+`AgentResolverService.resolve({ tenantId: session.tenantId, agentSlug })`; `task` is assigned
+directly (the `@arcaai/types` and lane literals are the same four, so divergence is a compile
+error); `outputSchema` / `parameters` come from `compiledConfig` and feed contract N4. Fail-closed as
+`resolveRealtimeTextAgent`: 404 on unknown / unpublished / cross-tenant, `AGENT_VERSION_DRIFT` on a
+stale pin — the executor degrades the node with a named reason. Gates: applications tsc 0, lint 0
+errors, **12 248 passed / 0 failed** (the one failed FILE is the unmigrated `:5433` DB); `api:build`
+12/12; api **4 270 passed**.
+
+Two by-products worth knowing: adding `AgentServiceModule` to `LiveDocumentationServiceModule`
+also closes a latent TASK-876 gap — `TextAgentResolverService` was `@Optional()`-injected but
+unreachable from that injector, so `core.agent` text resolution would have degraded in production
+DI; and `realtimeCapabilityIndex` (degrade-reason attribution) is still slug-blind — pre-existing,
+flagged, out of G-1's scope.
+
+### 4.8 Original request cross-checked against the prior session transcript
+
+The orchestrator read every human message in the prior session's transcript
+(`4b178bc8-…jsonl`, four messages). Message 1 is the four-part brief §1 restates clause for clause —
+including the text past where the earlier summary was cut: the two codegen packages exist "for
+generating context schema defined by tenant admin to be used in any workflows and agents", the
+ALaaS path `~/Desktop/igglo/ARCAAI/ALaaSv3.0/apps/`, and the delegation "I'll leave you to make any
+decision for implementation and making changes to the code" that §3 relies on. Messages 2–4 ("Try
+again", "document all details to tickets, along with all current working lanes", "capture all
+memory into document, put them to each ticket folders") are satisfied by §4.1, `INTERFACES.md` and
+the per-ticket `MEMORY.md` snapshots. Nothing in the original request is unaccounted for.
+
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
@@ -445,6 +476,7 @@ _Pending — filled at close with per-lane evidence, merge commits, gates and th
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (F-RT) | G-1 fixed and green (§4.7); the original session transcript cross-checked against §1 (§4.8); five-artifact regeneration started; DB resets await the owner's explicit consent (Prisma's agent guard). |
 | 2026-09-08 (fix-up) | F-TS and F-PY reported and merged (§4.6): the integrated tree builds and every TS suite is green; harness 34 → 6 reds (the six are a pre-existing task-355 patch-marker defect → own ticket). G-1 (realtime `resolveAgent`) dispatched as lane F-RT before the local-test gate. |
 | 2026-09-08 (merge) | N → P → R → S → K merged on `dev-2.2` with per-merge punch-list fixes (§4.5); the integrated tree fails the applications build on R's blast radius; two fix-up lanes (F-TS in the primary, F-PY in R's re-pointed worktree) dispatched under recorded rulings for the 34 harness reds. |
 | 2026-09-08 (wave 3, S) | Lane S reported DONE on its opus resume and was verified; the legacy-slug punch-list row corrected to the constant's real home; the post-R `seed:regen:workflows` dependency recorded. Only R outstanding. |
