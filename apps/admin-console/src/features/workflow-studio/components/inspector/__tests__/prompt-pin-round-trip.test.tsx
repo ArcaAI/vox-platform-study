@@ -47,7 +47,7 @@
 
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ACTION_CONFIG_SCHEMAS, NODE_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
+import { ACTION_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
 import { renderWithProviders } from '@/test/render';
 import { fromWorkflowGraph, toWorkflowGraph } from '../../../lib/graph-serialization';
 import type { GraphStoreNode } from '../../../store/types';
