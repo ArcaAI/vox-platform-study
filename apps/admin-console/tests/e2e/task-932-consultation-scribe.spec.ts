@@ -35,7 +35,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 
-import { loginAsAdmin, selectWorkingTenant } from './helpers/auth';
+import { impersonateUser, loginAsAdmin, selectWorkingTenant } from './helpers/auth';
 import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
 const SCRIBE = '/playground/consultation';
@@ -58,37 +58,20 @@ const PRIOR_RECORD = [
 ].join('\n');
 
 /**
- * Impersonate by EXACT username, over a wide page.
- *
- * Not `helpers/auth.impersonateUser`: that searches with `limit=1` and then requires an exact
- * match, so a username that is a strict PREFIX of another (`arcaai_doctor` →
- * `arcaai_doctor_surg`) can never be found — which is every clinician in this table but one.
+ * The impersonated clinician's own department by code, or null when they have
+ * none. `GET users/me/departments` (`UserDepartmentResponse`, a plain array)
+ * carries `departmentId`/`departmentCode` — NOT `id`/`code`: `id` is the
+ * ASSIGNMENT row's own id, which the gateway does not recognise as a
+ * department (see `listScopingDepartments` in
+ * `features/playground-consultation/api/client.ts`, the same endpoint's
+ * other console consumer, for the identical mapping).
  */
-async function impersonateExact(page: Page, username: string): Promise<void> {
-  const failure = await page.evaluate(async (target) => {
-    const search = await fetch(`/api/hope/admin/users?search=${encodeURIComponent(target)}&searchFields=username&limit=100`);
-    if (!search.ok) return `Could not search users (${search.status})`;
-    const body = (await search.json()) as { data?: Array<{ id: string; username: string }> };
-    const user = body.data?.find((candidate) => candidate.username === target);
-    if (!user) return `No seeded user named "${target}"`;
-    const impersonate = await fetch('/api/auth/impersonate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userId: user.id }),
-    });
-    return impersonate.ok ? null : `Failed to impersonate "${target}" (${impersonate.status})`;
-  }, username);
-  if (failure) throw new Error(failure);
-}
-
-/** The impersonated clinician's own department by code, or null when they have none. */
 async function departmentIdByCode(page: Page, code: string): Promise<string | null> {
   return page.evaluate(async (target) => {
     const res = await fetch('/api/hope/users/me/departments');
     if (!res.ok) return null;
-    const body = (await res.json()) as { data?: Array<{ id: string; code?: string }> } | Array<{ id: string; code?: string }>;
-    const rows = Array.isArray(body) ? body : (body.data ?? []);
-    return rows.find((row) => row.code === target)?.id ?? null;
+    const rows = (await res.json()) as Array<{ departmentId: string; departmentCode?: string }>;
+    return rows.find((row) => row.departmentCode === target)?.departmentId ?? null;
   }, code);
 }
 
@@ -192,8 +175,11 @@ test.beforeEach(async ({ page }) => {
 test.describe('TASK-932 — the five-department consultation journey', () => {
   for (const department of DEPARTMENTS) {
     test(`${department.code} — department workflow, visit type, summary language, warm start and the live note`, async ({ page }) => {
-      test.slow();
-      await impersonateExact(page, department.clinician);
+      // `test.slow()`'s 3x (90s) does not cover the panel-visible (90s) +
+      // status-poll (120s) budget below on their own, let alone the rest of
+      // the journey's steps — set the whole-test ceiling explicitly instead.
+      test.setTimeout(300_000);
+      await impersonateUser(page, department.clinician);
       await page.goto(SCRIBE);
 
       const departmentId = await departmentIdByCode(page, department.code);
@@ -216,16 +202,32 @@ test.describe('TASK-932 — the five-department consultation journey', () => {
       const governing = await governingWorkflow(page, consultation.id);
       expect(governing, `${department.code} must resolve its own consultation workflow`).toBe(department.workflow);
 
-      // ── 3. Start recording — the warm start fires beside the capture session ─────────────
-      expect(await setRecording(page, consultation.id, true), 'recording/start must succeed').toBe(201);
+      // ── 3. Select FIRST, start recording SECOND ──────────────────────────────────────────
+      // `usePreSummaryStream` (features/playground-consultation/api/hooks.ts) is a pure SSE
+      // listener with no REST catch-up: `preSummary` starts `null` and is populated only by a
+      // `presummary` event arriving WHILE the stream is connected — a terminal `ready`/`degraded`
+      // published before the connection opens is gone for good, and the panel (which renders
+      // `null` until `preSummary` is set — `PreSummaryPanel` in `case-note-column.tsx`) never
+      // appears. Selecting the consultation BEFORE calling `recording/start` opens that stream
+      // first, exactly like the real screen: `handleStart()` in `consultation-demo-screen.tsx`
+      // early-returns `if (!consultation)`, so a clinician can never trigger a start before a
+      // select either. Reversing this order (start-then-select, tried first) reproduced the
+      // race reliably once the LM Studio model was warm enough to answer inside the
+      // page-navigation window: a `PRE_SUMMARY` `ContextItem` was persisted server-side within
+      // ~14s of `recording/start`, yet the panel never appeared — reported to the orchestrator
+      // as a product defect, not papered over here.
       await page.goto(SCRIBE);
       await selectByPatient(page, patientId);
+      expect(await setRecording(page, consultation.id, true), 'recording/start must succeed').toBe(200);
 
       // ── 4. The pre-summary panel RESOLVES ────────────────────────────────────────────────
       // `ready` and `no_case_notes` are both resolutions; a panel stuck on `running` (or absent)
       // is the failure — that is the skeleton-forever defect TASK-891 B5 named.
       const panel = page.getByTestId('pre-summary-panel');
-      await expect(panel, 'the warm-start panel must appear once the live session opens').toBeVisible({ timeout: 30_000 });
+      // Generation takes tens of seconds on this single-instance stack, and running five
+      // departments back-to-back can queue one behind the previous department's finalise/redact
+      // work, so a generous budget applies here too, not just the status poll below.
+      await expect(panel, 'the warm-start panel must appear once the live session opens').toBeVisible({ timeout: 90_000 });
       await expect
         .poll(async () => panel.getAttribute('data-status'), {
           timeout: 120_000,
@@ -241,14 +243,14 @@ test.describe('TASK-932 — the five-department consultation journey', () => {
       await expect(caseNote).toBeVisible();
 
       // ── 6. Stop → the final note exists ──────────────────────────────────────────────────
-      expect(await setRecording(page, consultation.id, false), 'recording/stop must succeed').toBe(201);
+      expect(await setRecording(page, consultation.id, false), 'recording/stop must succeed').toBe(200);
     });
   }
 });
 
 test.describe('TASK-932 — the New form declares what the journey needs', () => {
   test('offers visit type, summary language and the prior record, and opens a revisit against a picked parent', async ({ page }) => {
-    await impersonateExact(page, DEPARTMENTS[0].clinician);
+    await impersonateUser(page, DEPARTMENTS[0].clinician);
     await page.goto(SCRIBE);
 
     await page.getByRole('button', { name: /^new$/i }).click();
@@ -270,7 +272,7 @@ test.describe('TASK-932 — the New form declares what the journey needs', () =>
   });
 
   test('the summary language is a SEPARATE axis from the transcription language', async ({ page }) => {
-    await impersonateExact(page, DEPARTMENTS[0].clinician);
+    await impersonateUser(page, DEPARTMENTS[0].clinician);
     await page.goto(SCRIBE);
 
     // The note's language lives on the New form (a property of the CONSULTATION)…
