@@ -26,6 +26,7 @@ import {
   SysEventType,
   WorkflowDefinitionStatus,
 } from '@arcaai/domains';
+import type { JsonValue } from '@arcaai/domains';
 import { canonicalJson } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
@@ -178,7 +179,7 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
         contextSchemaId: contextSchema.id,
         // SYSTEM's own pin governs: the source's number is a version inside GLOBAL's lineage.
         contextSchemaVersionNumber: null,
-        instruction,
+        instruction: instruction as JsonValue | null,
         parameters: source.parameters ?? null,
         inputSchema: source.inputSchema ?? null,
         outputSchema: source.outputSchema ?? null,
