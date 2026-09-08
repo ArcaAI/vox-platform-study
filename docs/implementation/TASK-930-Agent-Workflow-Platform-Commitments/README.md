@@ -339,6 +339,72 @@ is integration work, not lane work, and it runs as two fix-up lanes partitioned 
 | Audio two-lane (2) | Rebuild the two tests on `core.agent` — N's `interpreter_core_agent` is merged now, so the ownership boundary that stopped R is gone. |
 | Pre-existing at baseline (6) | Leave failing; list them by name in the report. Not this wave's. |
 
+### 4.6 Fix-up lane reports (wave 3)
+
+**F-TS — DONE-WITH-GAPS.** 18 commits on `dev-2.2` (`474cc2728`…`17aa15a77`), tree clean.
+`build:packages` 22/22; applications tsc 0 / eslint 0 errors / **12 242 passed, 0 failed** (one
+FILE, `membership-bounded-sync.integration`, needs the `:5433` DB migrated — orchestrator); api
+build 12/12, **4 270 passed**, lint 0 errors; admin-console **2 640 passed**, tsc + lint clean;
+workflow-contract 839; database 1 651. It also prettier-formatted the nine files the lanes left
+unformatted.
+
+Source defects it fixed (integration, not test edits): the realtime flush projection / degrade
+reason / admin read-out now key on a **capability** (`realtimeCapabilityOf()`) instead of the
+retired `canonicalRealtimeNodeType`; `node-prompt-binding.ts` reads a `core.action`'s
+`config.action.promptTemplateId` (previously **every core graph pinned no prompt version**, so a
+template edit silently re-prompted a published clinical workflow); `config-resolver.service.ts`
+`isGenerationNode` uses `classesOf` (previously **auto-summary stayed ON for a graph that switched it
+off**); `GET /admin/workflow-nodes` serves the 17 action descriptors with a `kind: 'node' | 'action'`
+label, and the Studio palette rail filters on it (otherwise 17 actions become draggable node types
+the compiler refuses).
+
+Tests deleted, each traced to D-9: `workflow-definition.hyperparameter-capability.task847` (whole
+file — authored on the deleted `agentic.agent`; its severity split is already pinned on `core.agent`
+by `…core-agent-clamp.task876`); one `prompt-resolution.node-tier.task815` case (schema-default
+`taskKey` — no surviving node declares one); two `assigned-agent-reasoning.task891` cases (ran as
+deleted `agent.grammar` / `agent.important_findings`).
+
+**Gaps it left open — none red, all real:**
+
+| # | Gap | Disposition |
+|---|---|---|
+| G-1 | **`RealtimeCapabilities.resolveAgent` is unimplemented on `LiveDocumentationService`**: a slug-form `core.agent` on the realtime lane always resolves to `TEXT_GENERATION`, so the seeded `general-medicine-consultation` / `arcaai-*` graphs' ASR and NER nodes would GENERATE A NOTE instead of transcribing / extracting. Pinned as current behaviour in `live-documentation.realtime-capabilities.task852`. | **Blocks the ask #2 local test — fixed by lane F-RT before that gate (§4.7).** |
+| G-2 | `proposeCorrections` / `extractFindings` are implemented but unreachable — no `core.*` node resolves to either capability; grammar corrections and important-findings mining are gone from the realtime lane. | Follow-up ticket (owner decides whether they return as `core.action` delegates). |
+| G-3 | `PromptResolutionService` graph tier 1a is unauthorable under `core` (no node schema carries `promptTemplateId` + `taskKey` where the resolver reads); prompts ride on the agent row (§8.3) and the graph tier is inert source. | Follow-up ticket — delete the inert tier or re-home it. |
+| G-4 | `openapi.json` / `route-manifest.json` stale (`kind` field) | five-artifact regen, this wave. |
+| G-5 | `.fixup-ts-report.md` leaked into three intermediate commits; removed at the tip, no rebase. | Accepted — history only. |
+
+**F-PY — DONE.** `fixup-930-harness` @ `c2d182ee2`, 7 commits, merged. Provenance proved in-tree.
+`pnpm harness:test` **34 → 6 failed / 2 201 passed**; ruff + mypy (150 files) clean;
+py-workflow-contract 75. Applied: replay histories re-fixtured onto `core.*` (the pre-stream era is
+now synthesised, since the shipped interpreter always emits a run-completed event); the agentic-loop
+subsystem deleted (`loop_workflow.py`, `nodes/agentic.py` — 531 lines, 8 activities reachable only
+through `core.data` — their tests and fixtures, both worker registrations); the `core.agent` speech
+path restored to the delta lane — **a real regression**: `agentic.tts` streamed every synthesis
+frame, its `_run_speech` replacement stored the artifact and streamed nothing. Deviation, accepted:
+`loop_activities.py` was KEPT — the live `core.loop` schedules `interpreter.loop_state_checkpoint`
+through it; only its docstrings were re-keyed.
+
+Correction to §4.3/§4.5: R's split double-counted — the 2 audio reds were inside the 22; the true
+split is 6 replay + 22 agentic-loop + 6 pre-existing = 34.
+
+**The 6 pre-existing reds are a live defect, not fixture rot:** `HarnessDocWorkflow` no longer
+issues `workflow.patched("task-355-optimistic-delivery")` while real recorded histories carry the
+marker (`TMPRL1100 Non-deprecated patch marker … no corresponding change command`). Same deploy
+hazard class as the drain precondition → **its own ticket**, out of this wave.
+
+A pre-existing `stash@{0}: On dev-2.2: 2608.26` sits on the shared stash stack. Not this wave's;
+left untouched; the owner should inspect or drop it.
+
+### 4.7 Lane F-RT — the realtime `resolveAgent` gap (G-1)
+
+Dispatched after F-TS on `dev-2.2` (primary, sole writer). Scope: implement
+`RealtimeCapabilities.resolveAgent` so a slug-form `core.agent` on the realtime lane resolves to the
+agent's TASK (`SPEECH_TO_TEXT` → transcribe, `NAMED_ENTITY_RECOGNITION` → extractEntities,
+`TEXT_GENERATION` → generateDocument) through the same tenant-scoped agent resolution the durable
+lane uses; flip the pinned "current behaviour" test to the intended one; prove it against the seeded
+`general-medicine-consultation` graph.
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
@@ -379,6 +445,7 @@ _Pending — filled at close with per-lane evidence, merge commits, gates and th
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (fix-up) | F-TS and F-PY reported and merged (§4.6): the integrated tree builds and every TS suite is green; harness 34 → 6 reds (the six are a pre-existing task-355 patch-marker defect → own ticket). G-1 (realtime `resolveAgent`) dispatched as lane F-RT before the local-test gate. |
 | 2026-09-08 (merge) | N → P → R → S → K merged on `dev-2.2` with per-merge punch-list fixes (§4.5); the integrated tree fails the applications build on R's blast radius; two fix-up lanes (F-TS in the primary, F-PY in R's re-pointed worktree) dispatched under recorded rulings for the 34 harness reds. |
 | 2026-09-08 (wave 3, S) | Lane S reported DONE on its opus resume and was verified; the legacy-slug punch-list row corrected to the constant's real home; the post-R `seed:regen:workflows` dependency recorded. Only R outstanding. |
 | 2026-09-08 (wave 3, later) | P, N, K reported (§4.3) and were verified against their trees — all merge clean. The two fable lanes (R, S) hit that model's session limit mid-step with substantial committed progress; both resumed on opus. Owner ruling recorded on the PHI egress grep-gate (§4.4). Test infra brought up. |
