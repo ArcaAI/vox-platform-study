@@ -61,11 +61,87 @@ rotation is the owner's action (TASK-930 Q-3).
 
 ## 4. Implementation Summary
 
-_Pending._
+**Where this stands: the packages are AT 3.1.0 and green; they are not yet PUBLISHED.** Lane K's
+work merged at `069d8c548` (+ the punch-list commit `63c070bce`), and `a58b42361` applied the
+changesets across the family. The publish and the `SDK-3.1.0` tag are the orchestrator's next
+action, and the ALaaS consumer update (lane A) follows it — which is why this ticket stays
+`In Progress`.
+
+### 4.1 What shipped in the packages (lane K, `task-931-sdk`, 15 commits, entirely in-row)
+
+| Surface | Change |
+|---|---|
+| **NER as a task** | `AgentTask` gains `'NAMED_ENTITY_RECOGNITION'` in **both** SDKs, with `NamedEntityRecognitionInput` / `NamedEntityRecognitionOutput` / `RecognizedEntity` for the DEFAULT shape (`{ entities: [{ text, label, start, end, score? }] }`). They are convenience types, not a constraint — the answer is the agent's own `outputSchema`. One-shot: `?mode=stream` on a NER agent is a gateway **400 `MODE_UNSUPPORTED`**, so `stream` / `invokeAndStream` fails rather than answering slowly |
+| **Credential planes** | The hard-coded `assertApiKeyPlane` became an overridable **`assertCredentialClass()`**, so `hope.agents.*` and `hope.workflows.*` accept a service account now that TASK-930 declares the five `svc:*` scopes on those routes; the consultation-bound plane (`hope.consultations.workflows`) keeps the strict form and still exports `CredentialClassError`. The construction-time rule is unchanged: a service-account client never sends `X-Tenant-Id`, because `workingTenantId` binds at token EXCHANGE |
+| **Socket transport** (closes S-5, TASK-914 / TASK-898) | `transport: 'sse' \| 'socket'` on `streamRun` / `waitForRun` / `runAndStream` (vox-node, zero-dep `core/socket.ts` over `globalThis.WebSocket` → **Node 22+**, `SocketUnavailableError` naming that floor rather than falling back silently) and `useWorkflowRun({ transport: 'socket' })` in the browser (`WorkflowRunSocketClient`). Both mint the run-scoped single-use ticket `POST /workflows/{slug}/runs/{runId}/stream-ticket` → `{ ticket, expiresAt, scope, url }` and open the `url` returned — never a JWT in a query string. Coded to contract amendment **A-1**, so `expiresAt` is epoch ms, not `expiresIn`. **SSE stays the default: it is the only lane that RESUMES** (`Last-Event-ID`) |
+| **`@arcaai/vox-codegen` business plane** (closes S-3) | `--api-key <key> [--agents] [--workflows]` emits `Agent_<Slug>_Input/_Output` and `Workflow_<Slug>_Input/_Output` plus slug-keyed contract maps, through the same JSON-Schema-subset transpiler the context-schema mode uses. It never calls an admin route — an API key cannot. The two modes are mutually exclusive by refusal, not by guess. `HOPE_API_KEY` is the env fallback for `--api-key` (a key on argv is visible in `ps`) and is declared in `turbo.json#globalEnv` + the env samples (`63c070bce`, `0bb865d31`) |
+| **A live bug found on the way** | `useAudioCapture` read `options.sttPipelineId` and nothing else, although `V1SdkConfig` had gained `sttAgentSlug` and `mapV1ConfigToV2` already preferred it. A compat app that had moved to the agent slug AND drove capture from this hook — which the playground does, because whichever hook calls `audio.start()` first wins the shared-audio race — started its session with **no selector at all** and silently ran the tenant default. It now forwards `sttAgentSlug` as `agentSlug`, at most one selector per session body |
+| **Demo call sites** (closes S-7) | the five first-party sites in `apps/example`, `apps/compat-playground` and `apps/quick-compat-app` select an ASR **agent**; `sttPipelineId` itself is untouched and still honoured (removed in R4, TASK-901) |
+
+### 4.2 Release mechanics (closes S-1, S-2, S-4)
+
+- **`SDK_VERSION` is derived from `package.json` at build time** (`cf62eff3d`). It was a
+  hand-maintained literal reading `3.0.0` while the package was `3.0.1`, so every request from the
+  shipped SDK announced the wrong version in `User-Agent` — discoverable only mid-incident, while
+  correlating SDK versions in gateway logs.
+- **The CI `publish-sdk` job writes an `.npmrc` for GitHub Packages, not GitLab.** The old job could
+  never have published: `changeset publish` honours each package's OWN `publishConfig.registry`, and
+  every publishable manifest names `npm.pkg.github.com` — which is where the 2.0.x / 3.0.x releases
+  actually went, by hand from an operator's machine.
+- **`@arcaai/vox-codegen` left the Changesets `ignore` list** and joined the publish build list, so
+  it is versioned and published with the family instead of by hand.
+- **Versioned at `a58b42361`:** the eight-package `fixed` group (`@arcaai/vox`, `@arcaai/vox-node`,
+  `@arcaai/room`, `@arcaai/stt`, `@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/med-ner`,
+  `@arcaai/pipeline`) plus `@arcaai/vox-codegen` — **nine packages at 3.1.0**, four changesets
+  consumed. Minor and non-breaking by design (D-10): a new task value, new scopes ACCEPTED, a new
+  transport OPTION, new codegen flags. Nothing was removed, and the R4 set stays for TASK-901,
+  because ALaaS and three first-party demo apps still sit on `sttPipelineId` — a breaking release
+  would have blocked ask #4's own consumer update.
+
+### 4.3 Documentation drift closed (S-6, TASK-928)
+
+`hope.admin.*` is **49** areas, not the 52 claimed in three places (`ai-task-defaults`,
+`pipeline-policy` and `tenant-tts-config` left with the routes they wrapped). Rule
+`.claude/rules/08-vox-sdk.md` now lists **five** entry points (`/compat` existed and was undocumented),
+the credential planes, the socket lane, both codegen modes and the 3.1.0 surface.
+`docs/architecture/vox-node-gateway-gaps.md` G3 ("webhooks never fire") is closed — delivery shipped
+in TASK-890. New example `examples/05-agents-and-workflows.ts` runs an agent, streams a workflow and
+releases a human-review node end to end.
+
+### 4.4 Gates
+
+Lane K, pasted in its report: `sdk:test` **3 704 passed / 244 files**, `sdk-node:test` **452 / 30
+files**, `vox-codegen` **55**, `vox-node-codegen` **36**, `check:exports` clean, every build / lint /
+typecheck 0. Re-run at the bumped version in `a58b42361`: `sdk:build`, `sdk-node:build`, `sdk:test`,
+`sdk-node:test`, `sdk-codegen:test` and `check:exports` all exit 0. On the integrated tree
+(`61e05e089`+): `pnpm typecheck:all` 0 errors, `pnpm lint:all` 0 errors, workspace `pnpm test:unit`
+**23 803 passed / 0 failed**, and the vox-node admin generation check green at **49 areas / 417
+routes / 413 schemas**.
+
+`apps/quick-compat-app` typecheck **cannot** run until 3.1.0 is on the registry — it installs the
+PUBLISHED package. Re-run it after the publish.
+
+### 4.5 Publish evidence
+
+<!-- PUBLISH-EVIDENCE -->
+
+_Not yet run. The runbook is §3; the orchestrator fills this section with the actual
+`changeset publish` output, the nine published versions, the `SDK-3.1.0` tag, and the
+`apps/quick-compat-app` typecheck re-run._
+
+### 4.6 Still open
+
+| # | Item | Owner |
+|---|---|---|
+| 1 | **The publish itself** (§4.5) and the `SDK-3.1.0` tag | orchestrator |
+| 2 | **Lane A — the ALaaSv3.0 consumer update**, held until 3.1.0 is on the registry: pin both apps to `3.1.0` + regenerate both `pnpm-lock.yaml` (they still pin `2.0.4` / `2.0.7`, so a Docker build fails `ERR_PNPM_OUTDATED_LOCKFILE`), `useSMR` → `useText` (the import no longer exists), `sttPipelineId` / `batchSttPipelineId` → `sttAgentSlug` via `VITE_SDK_STT_AGENT_SLUG`, `.npmrc` token → `${GITHUB_TOKEN}` interpolation, `Dockerfile.ui` → a BuildKit secret like its sibling. Edits land uncommitted on the owner's dirty `codeSwitchImplementation` branch and are reported file by file | lane A |
+| 3 | **Rotate the GitHub PAT committed in both ALaaS `.npmrc` files** (A-2 / TASK-930 Q-3). No agent can do this | **owner** |
+| 4 | Cosmetic: both SDK CHANGELOGs now carry the generated `## 3.1.0` block ABOVE the file's own preamble, while their hand-written `[Unreleased]` section still holds the same 3.1.0 notes. Harmless duplication; fold `[Unreleased]` into `[3.1.0]` at the next release rather than mid-publish | next release |
 
 ## 5. Change History
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (close) | §4 filled: lane K's delivered surface (NER task, `assertCredentialClass`, socket transport on the A-1 ticket shape, the codegen business plane, the `useAudioCapture` selector bug), the release mechanics that close S-1..S-4 and S-6..S-7, and the gates. Nine packages versioned to **3.1.0** at `a58b42361`; **not published** — §4.5 carries a `<!-- PUBLISH-EVIDENCE -->` placeholder for the orchestrator. Status stays `In Progress`: the publish, the `SDK-3.1.0` tag and lane A's ALaaS update are all still ahead, and the committed GitHub PAT is still the owner's to rotate. Rule 08 amended with a compact 3.1.0 block. |
 | 2026-09-08 (later) | Lanes K and A killed by the account spend limit (HTTP 429) and relaunched; lane log §3.1; K carries the A-1 stream-ticket amendment. |
 | 2026-09-08 | Created. Discovery findings S-1..S-7 and A-1..A-2; 3.1.0 decided (minor); lane K spawned. |
