@@ -26,14 +26,35 @@ export async function loginAsAdmin(page: Page): Promise<void> {
  * Impersonates the given (seeded) username via the BFF impersonate route.
  * Runs inside the page for the same cookie reason as selectWorkingTenant;
  * call after loginAsAdmin().
+ *
+ * The user search is scoped by the BFF to the elevated session's working
+ * tenant, so a `limit=1` prefix search (e.g. "arcaai_doctor") can resolve to
+ * the WRONG user ("arcaai_doctor_bren") and an earlier `selectWorkingTenant`
+ * (which may have landed on a tenant this username does not belong to) can
+ * make the search come back empty entirely. Search wide, match the username
+ * EXACTLY, and if that still comes up empty, clear the working tenant (the
+ * unscoped search reaches every tenant) and retry once before failing.
  */
 export async function impersonateUser(page: Page, username: string): Promise<void> {
   const result = await page.evaluate(async (targetUsername) => {
-    const search = await fetch(`/api/hope/admin/users?search=${encodeURIComponent(targetUsername)}&searchFields=username&limit=1`);
-    if (!search.ok) return `Could not find user "${targetUsername}" (${search.status})`;
-    const body = (await search.json()) as { data?: Array<{ id: string; username: string }> };
-    const user = body.data?.find((u) => u.username === targetUsername);
+    async function findUser(): Promise<{ id: string; username: string } | undefined> {
+      const search = await fetch(
+        `/api/hope/admin/users?search=${encodeURIComponent(targetUsername)}&searchFields=username&limit=50`,
+      );
+      if (!search.ok) return undefined;
+      const body = (await search.json()) as { data?: Array<{ id: string; username: string }> };
+      return body.data?.find((u) => u.username === targetUsername);
+    }
+
+    let user = await findUser();
+    if (!user) {
+      // A working tenant set by an earlier step scopes the search to that
+      // tenant's users only — clear it and retry before giving up.
+      await fetch('/api/auth/working-tenant', { method: 'DELETE' });
+      user = await findUser();
+    }
     if (!user) return `No seeded user named "${targetUsername}"`;
+
     const impersonate = await fetch('/api/auth/impersonate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

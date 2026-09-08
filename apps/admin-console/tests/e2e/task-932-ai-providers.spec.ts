@@ -63,12 +63,17 @@ test.describe('AI providers — platform tier (no working tenant)', () => {
 
     // R-11: the defect was tenant wording on a platform row. Whatever state the
     // row is in, it must never claim to be disabled "for this tenant".
-    const card = page.locator('[aria-labelledby]').filter({ has: weightStore });
+    // `[aria-labelledby]` also matches the ANCESTOR `<section>` this card sits
+    // in (itself labelled by its own h2) — `.last()` is the innermost match,
+    // the card itself, in DOM order.
+    const card = page.locator('[aria-labelledby]').filter({ has: weightStore }).last();
     await expect(card).not.toContainText('Disabled for this tenant');
   });
 
   test('saves an LM Studio endpoint and then resets it to the built-in default', async ({ page }) => {
-    const card = page.locator('[aria-labelledby]').filter({ has: page.getByRole('heading', { level: 3, name: 'LM Studio' }) });
+    // `.last()`: the innermost `[aria-labelledby]` match is the card, not its
+    // ancestor `<section>` (see the comment above).
+    const card = page.locator('[aria-labelledby]').filter({ has: page.getByRole('heading', { level: 3, name: 'LM Studio' }) }).last();
     const endpoint = card.locator('input[id$="-baseUrl"]');
     await expect(endpoint).toBeVisible();
 
