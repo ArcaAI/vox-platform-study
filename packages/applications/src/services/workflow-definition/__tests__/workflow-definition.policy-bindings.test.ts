@@ -45,24 +45,42 @@ const DOC_LIVE = 'a41b6d0c-2f38-4c77-9a51-6d2e7b0c4f93';
 const GRAPH = {
   version: 1,
   nodes: [
-    { id: 'n_prompt', type: 'prompt.template_ref', config: { promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41' } },
+    { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
+    // TASK-893 — `prompt.template_ref` is an ACTION now, so the prompt binding rides under
+    // `config.action`; `core.action`'s schema is `additionalProperties: false`, which is why it
+    // cannot ride at the top level any more (see `node-prompt-binding.ts`).
     {
-      id: 'n_gen',
-      type: 'generate.text',
-      config: { taskKey: 'text.finalize', promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41', promptVersionNumber: 4 },
+      id: 'n_prompt',
+      type: 'core.action',
+      config: { actionKey: 'prompt.template_ref', action: { promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41' } },
+      position: { x: 1, y: 0 },
     },
     {
+      id: 'n_gen',
+      type: 'core.action',
+      config: { actionKey: 'prompt.template_ref', action: { promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41', promptVersionNumber: 4 } },
+      position: { x: 2, y: 0 },
+    },
+    // The DOCUMENT binding is declared by `core.agent`'s own schema, at the top level.
+    {
       id: 'n_synth',
-      type: 'consultation.synthesize',
-      config: { producesCode: false, onError: 'fail', documentTemplateId: DOC_SYNTH, documentVersionNumber: 2 },
+      type: 'core.agent',
+      config: { agentRef: { slug: 'synthesizer' }, onError: 'fail', documentTemplateId: DOC_SYNTH, documentVersionNumber: 2 },
+      position: { x: 3, y: 0 },
     },
     {
       id: 'n_live',
-      type: 'consultation.realtimeSummary',
-      config: { onError: 'degrade', documentTemplateId: DOC_LIVE, documentVersionNumber: 7 },
+      type: 'core.agent',
+      config: { agentRef: { slug: 'live-note' }, onError: 'degrade', documentTemplateId: DOC_LIVE, documentVersionNumber: 7 },
+      position: { x: 4, y: 0 },
     },
-    { id: 'n_suggest', type: 'consultation.suggestions', config: { onError: 'degrade', documentTemplateId: DOC_LIVE } },
-    { id: 'n_out', type: 'output.deliver', config: { outputs: [{ key: 'note', primitive: 'TEXT' }] } },
+    {
+      id: 'n_suggest',
+      type: 'core.agent',
+      config: { agentRef: { slug: 'suggester' }, onError: 'degrade', documentTemplateId: DOC_LIVE },
+      position: { x: 5, y: 0 },
+    },
+    { id: 'n_out', type: 'core.output', config: { protocols: ['http'] }, position: { x: 6, y: 0 } },
   ],
   edges: [],
 };
@@ -102,7 +120,7 @@ const definitionEntity = (overrides: Record<string, unknown> = {}) => ({
   tenantId: 'tenant-1',
   slug: 'discharge_summary',
   name: 'Discharge Summary',
-  paletteKey: 'summarization',
+  paletteKey: 'core',
   versionNumber: 1,
   status: WorkflowDefinitionStatus.DRAFT,
   graph: GRAPH,

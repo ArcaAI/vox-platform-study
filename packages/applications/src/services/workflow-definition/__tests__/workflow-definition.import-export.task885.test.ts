@@ -55,10 +55,14 @@ const mockRoutingPolicyService = { getById: vi.fn(), resolveDefault: vi.fn() };
 const BOUND_GRAPH = {
   version: 1,
   nodes: [
+    // TASK-893 — `prompt.template_ref` is an ACTION now; the walker rewrites nested config too.
     {
       id: 'n_gen',
-      type: 'noop',
-      config: { promptTemplateId: 'tpl-1', promptVersionNumber: 4, evalGate: { goldenSetId: 'gs-secret', enabled: true }, temperature: 0.3 },
+      type: 'core.action',
+      config: {
+        actionKey: 'prompt.template_ref',
+        action: { promptTemplateId: 'tpl-1', promptVersionNumber: 4, evalGate: { goldenSetId: 'gs-secret', enabled: true }, temperature: 0.3 },
+      },
     },
   ],
   edges: [],
@@ -70,7 +74,7 @@ const entity = (overrides: Record<string, unknown> = {}) => ({
   slug: 'discharge_summary',
   name: 'Discharge Summary',
   description: 'The one we use',
-  paletteKey: 'summarization',
+  paletteKey: 'core',
   versionNumber: 3,
   parentVersionId: null,
   status: WorkflowDefinitionStatus.PUBLISHED,
@@ -104,8 +108,12 @@ const bundle = (overrides: Partial<WorkflowDefinitionBundle> = {}): WorkflowDefi
     payload: {
       name: 'Discharge Summary',
       description: 'The one we use',
-      paletteKey: 'summarization',
-      graph: { version: 1, nodes: [{ id: 'n_gen', type: 'noop', config: { promptTemplateRef: { name: 'Discharge Summary Prompt' } } }], edges: [] },
+      paletteKey: 'core',
+      graph: {
+        version: 1,
+        nodes: [{ id: 'n_gen', type: 'core.action', config: { actionKey: 'prompt.template_ref', action: { promptTemplateRef: { name: 'Discharge Summary Prompt' } } } }],
+        edges: [],
+      },
       references: [{ nodeId: 'n_gen', kind: 'promptTemplate', key: 'Discharge Summary Prompt' }],
     },
     ...overrides,
@@ -158,10 +166,15 @@ describe('WorkflowDefinitionService — workflow import/export (TASK-885)', () =
       expect(result.schemaVersion).toBe(1);
       expect(result.source).toEqual({ tenantKind: 'tenant', slug: 'discharge_summary', version: 3 });
       expect(result.payload.name).toBe('Discharge Summary');
-      expect(result.payload.paletteKey).toBe('summarization');
+      expect(result.payload.paletteKey).toBe('core');
 
       const nodeConfig = (result.payload.graph as { nodes: { config: Record<string, unknown> }[] }).nodes[0].config;
-      expect(nodeConfig).toEqual({ promptTemplateRef: { name: 'Discharge Summary Prompt' }, temperature: 0.3 });
+      // The rewrite reaches the DELEGATE config a `core.action` carries — the walker recurses,
+      // and the `actionKey` selecting that delegate travels verbatim.
+      expect(nodeConfig).toEqual({
+        actionKey: 'prompt.template_ref',
+        action: { promptTemplateRef: { name: 'Discharge Summary Prompt' }, temperature: 0.3 },
+      });
       expect(result.payload.references).toEqual([{ nodeId: 'n_gen', kind: 'promptTemplate', key: 'Discharge Summary Prompt' }]);
 
       const serialized = JSON.stringify(result);
@@ -230,7 +243,7 @@ describe('WorkflowDefinitionService — workflow import/export (TASK-885)', () =
       expect(created.isActive).toBe(false);
       expect(created.parentVersionId).toBeNull();
       // The reference was rewritten into THIS tenant's row id.
-      expect(created.graph.nodes[0].config).toEqual({ promptTemplateId: 'tpl-target-9' });
+      expect(created.graph.nodes[0].config).toEqual({ actionKey: 'prompt.template_ref', action: { promptTemplateId: 'tpl-target-9' } });
       // Recomputed here, never carried.
       expect(created.validationReport).toBeDefined();
       expect(created.compiledConfig).toBeNull();
@@ -246,8 +259,8 @@ describe('WorkflowDefinitionService — workflow import/export (TASK-885)', () =
       withAgent.payload.graph = {
         version: 1,
         nodes: [
-          { id: 'n_gen', type: 'noop', config: { promptTemplateRef: { name: 'Discharge Summary Prompt' } } },
-          { id: 'n_agent', type: 'noop', config: { agentRef: { slug: 'soap-writer' } } },
+          { id: 'n_gen', type: 'core.action', config: { actionKey: 'prompt.template_ref', action: { promptTemplateRef: { name: 'Discharge Summary Prompt' } } } },
+          { id: 'n_agent', type: 'core.agent', config: { agentRef: { slug: 'soap-writer' } } },
         ],
         edges: [],
       };
