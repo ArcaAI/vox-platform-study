@@ -366,6 +366,30 @@ export class CredentialClassError extends Error {
   }
 }
 
+/**
+ * Thrown when `transport: 'socket'` is asked for on a runtime with no `globalThis.WebSocket`.
+ *
+ * This package ships ZERO runtime dependencies, so the socket lane is the platform global and
+ * nothing else — which makes the WebSocket's availability the runtime floor, not a detail. Node
+ * gained a global `WebSocket` in 22; Bun, Deno and edge runtimes have always had one.
+ *
+ * Deliberately NOT a silent fallback to SSE. `socket` is chosen for a reason — usually a proxy
+ * that buffers `text/event-stream` — and quietly serving the transport the caller ruled out
+ * would reproduce the exact symptom they switched away from, with nothing in the logs to say so.
+ */
+export class SocketUnavailableError extends Error {
+  constructor() {
+    super(
+      "`transport: 'socket'` needs a global `WebSocket`, and this runtime has none. That means Node 22 or newer (the release that " +
+        'added it), or any of Bun / Deno / an edge runtime. `@arcaai/vox-node` has zero runtime dependencies and will not import a ' +
+        "polyfill on your behalf. Upgrade the runtime, or stay on the default SSE lane (`transport: 'sse'`), which is also the only " +
+        'lane that resumes with `Last-Event-ID`.',
+    );
+    this.name = 'SocketUnavailableError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 /** Constructor options for {@link APIConnectionError}. */
 export interface APIConnectionErrorInit {
   message?: string;
