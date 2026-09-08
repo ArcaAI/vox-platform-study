@@ -470,10 +470,7 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
    * repositories, so the shape validation, the version checksum and the pin move stay in ONE
    * place — the same reasoning `TenantReferenceSetService.copyDocumentTemplates` records.
    */
-  private async resolveContextSchemaInSystem(
-    source: AgentEntity,
-    warnings: string[],
-  ): Promise<{ id: string | null; copied: boolean }> {
+  private async resolveContextSchemaInSystem(source: AgentEntity, warnings: string[]): Promise<{ id: string | null; copied: boolean }> {
     const boundId = source.contextSchemaId ?? null;
     if (!boundId) return { id: null, copied: false };
 
