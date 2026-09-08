@@ -525,6 +525,70 @@ class TestContextAndDelegation:
         assert by_id["n_live"].reason == "realtime_lane"
 
     @pytest.mark.asyncio
+    async def test_a_realtime_onStart_agent_is_skipped_by_the_durable_interpreter(self):
+        """TASK-932 D-9 — `onStart` is a REALTIME cadence, so it hands off like every other one.
+
+        The pre-summary node carries `execution: {lane: realtime, cadence: onStart}`. The skip is
+        decided by `_configured_realtime`, which reads the LANE and never the cadence — this test
+        exists so that stays true: a future cadence-aware branch that let `onStart` through would
+        run the pre-summary twice, once in the interpreter and once in the live session that owns
+        it, and write two PRE_SUMMARY context items for one consultation.
+        """
+        body = _body(
+            [
+                {"stageIndex": 0, "nodes": [_trigger()]},
+                {
+                    "stageIndex": 1,
+                    "nodes": [
+                        _node(
+                            "n_presummary",
+                            "core.agent",
+                            "interpreter.core_agent",
+                            config={
+                                "agentRef": {"slug": "case-notes-pre-summary"},
+                                "execution": {"lane": "realtime", "cadence": "onStart"},
+                            },
+                        )
+                    ],
+                },
+            ]
+        )
+        _, by_id = await _run(
+            body, subject=RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001")
+        )
+        assert by_id["n_presummary"].status == "SKIPPED"
+        assert by_id["n_presummary"].reason == "realtime_lane"
+
+    @pytest.mark.asyncio
+    async def test_a_realtime_onStart_agent_RUNS_here_when_no_live_executor_owns_the_run(self):
+        """TASK-932 D-9, the other half of TASK-930 D-1.
+
+        On the exposure plane there is no live session, so nothing would ever run the warm-start
+        node. It runs here, exactly as a `perTurn` realtime node does.
+        """
+        body = _body(
+            [
+                {"stageIndex": 0, "nodes": [_trigger()]},
+                {
+                    "stageIndex": 1,
+                    "nodes": [
+                        _node(
+                            "n_presummary",
+                            "core.agent",
+                            "interpreter.core_agent",
+                            config={
+                                "agentRef": {"slug": "case-notes-pre-summary"},
+                                "execution": {"lane": "realtime", "cadence": "onStart"},
+                            },
+                        )
+                    ],
+                },
+            ]
+        )
+        _, by_id = await _run(body)
+        assert by_id["n_presummary"].status == "SUCCEEDED"
+
+    @pytest.mark.asyncio
     async def test_a_realtime_lane_agent_RUNS_here_when_no_live_executor_owns_the_run(self):
         """TASK-930 D-1 — on the exposure plane the skip handed the node to nobody.
 
