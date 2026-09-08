@@ -105,11 +105,11 @@ All lanes branch from `dev-2.2 @ 7793d09ca` (the plan commit). Bootstrapped 2026
 
 | Lane | Ticket | Worktree · branch | Model | State (2026-09-08, wave 3) |
 |---|---|---|---|---|
-| R | TASK-893 | `../hope-v2-t893-r` · `task-893-retire` | fable | waves 1+2 both died before writing anything — **zero commits, clean tree**. Wave 3 starts the lane from the base with INTERFACES §7 as the design of record |
-| N | TASK-930 | `../hope-v2-t930-n` · `task-930-ner-plane` | opus | `66241bb57` (enum + migration + domains enum) and `96a4af2d1` (NER contract in `agent-schemas.ts` + tests) landed; `packages/types/src/agent.ts` (A-5 widening) left UNCOMMITTED. Wave 3 **resumes**: commit that file first, then §2.4 invocation, §3 scopes, §4 ticket, §5 outputSchema, §2.5 console |
-| P | TASK-930 | `../hope-v2-t930-p` · `task-930-promotion` | opus | zero commits, but wave 2 left ~1 000 uncommitted lines under `packages/applications/src/services/agentPromotion/` (service + interface + DTO + test). Wave 3 **commits that first**, then judges it against §6 and adds the controller/module, §6.2 409 check, §6.3 reference set, §6.4 console |
-| S | TASK-930 | `../hope-v2-t930-s` · `task-930-seeds` | fable | `eeb232436` carries the §2.1 enum line only (no migration, by contract). Both waves died during reading — the seed rebuild itself is unstarted. Wave 3 works against a throwaway `hope_seed_930` DB |
-| K | TASK-931 | `../hope-v2-t931-k` · `task-931-sdk` | opus | `cf62eff3d` (`SDK_VERSION` from `package.json`) landed; changesets + `.gitlab/ci/publish.yml` + CHANGELOG left UNCOMMITTED. Wave 3 **resumes** against the A-1 ticket shape |
+| R | TASK-893 | `../hope-v2-t893-r` · `task-893-retire` | fable → **opus** | wave 3's fable run reached 7 commits (Phase 2 TS+Py, realtime rekey, applications retarget, Studio dropdown, registry deletion) then hit the fable session limit (429, resets 21:20 Saigon) with the legacy-test deletion uncommitted; **resumed 17:25 on opus** from its own `.lane-report.md`. Before that: waves 1+2 both died before writing anything — **zero commits, clean tree**. Wave 3 starts the lane from the base with INTERFACES §7 as the design of record |
+| N | TASK-930 | `../hope-v2-t930-n` · `task-930-ner-plane` | opus | **DONE-WITH-GAPS @ `9128d7507`** (§4.3). Was: `66241bb57` (enum + migration + domains enum) and `96a4af2d1` (NER contract in `agent-schemas.ts` + tests) landed; `packages/types/src/agent.ts` (A-5 widening) left UNCOMMITTED. Wave 3 **resumes**: commit that file first, then §2.4 invocation, §3 scopes, §4 ticket, §5 outputSchema, §2.5 console |
+| P | TASK-930 | `../hope-v2-t930-p` · `task-930-promotion` | opus | **DONE @ `4a634f8c8`** (§4.3). Was: zero commits, but wave 2 left ~1 000 uncommitted lines under `packages/applications/src/services/agentPromotion/` (service + interface + DTO + test). Wave 3 **commits that first**, then judges it against §6 and adds the controller/module, §6.2 409 check, §6.3 reference set, §6.4 console |
+| S | TASK-930 | `../hope-v2-t930-s` · `task-930-seeds` | fable → **opus** | wave 3's fable run reached 8 commits (§8.1 deletion, §8.2 schema, §8.3 agents, §8.4/8.5/8.6 workflows + generator + regen script) then hit the same 429 with the §6.3 copier RED test uncommitted; **resumed 17:25 on opus**, briefed with P's kind set and N's five scopes. Before that: `eeb232436` carries the §2.1 enum line only (no migration, by contract). Both waves died during reading — the seed rebuild itself is unstarted. Wave 3 works against a throwaway `hope_seed_930` DB |
+| K | TASK-931 | `../hope-v2-t931-k` · `task-931-sdk` | opus | **DONE @ `0bf31a4e6`** (§4.3). Was: `cf62eff3d` (`SDK_VERSION` from `package.json`) landed; changesets + `.gitlab/ci/publish.yml` + CHANGELOG left UNCOMMITTED. Wave 3 **resumes** against the A-1 ticket shape |
 | A | TASK-931 | ALaaSv3.0 working tree | — | held back until the 3.1.0 publish; its edits do not gate the lanes |
 
 Merge order stays **N → P → R → S → K**; A lands after the 3.1.0 publish. Every brief is in the
@@ -162,6 +162,49 @@ that must NOT land on `dev-2.2`; drop it in the merge. Its cross-lane request (l
 `26-tenant-reference-set.ts` the same `workflowAssignments` clone) is already contract §6.3, so it
 needs verification at merge, not a new instruction.
 
+**Lane N — DONE-WITH-GAPS.** `task-930-ner-plane` @ `9128d7507`, 12 commits, tree clean, merges
+clean against `dev-2.2`. Out-of-row edits, each verified and accepted: `route-manifest.json`
+(A-3), `service-account-surface-audit.ts` + test (A-2), `workflow-contract/src/index.ts` (the
+A-4 export, from the earlier run — R was told not to duplicate it), and one hunk in
+`interpreter/models.py` widening the Python `AgentTask` Literal (without it
+`ResolvedAgent.model_validate` refuses a NER agent and degrades the node as `agent_unresolvable`).
+
+Delivered: `POST /workflows/:slug/runs/:runId/stream-ticket` → 201 `{ ticket, expiresAt (epoch ms),
+scope: 'workflow_run:<runId>', url }`, ownership proved via `getRunStatus` before the mint (A-1 as
+written); the fourth derived scope family (`svc:agent:definition:read`, `svc:agent:invocation:write`,
+`svc:workflow:definition:read`, `svc:workflow:run:read`, `svc:workflow:run:write`) on all 5 agent +
+10 workflow routes, `svc:admin:*` deliberately NOT reaching them; `AgentInvocationService.invokeNer`
+→ `{ entities: {text,label,start,end,score?}[], model, charCount }`; the invocations route dispatches on
+the RESOLVED task (NER + `?mode=stream` → 400 `MODE_UNSUPPORTED`); `outputSchemaResponseFormat()` TS +
+`output_schema_response_format()` Python applied in `invokeText` / `_run_text_generation`; the console
+authors a NER agent.
+
+Gates pasted: migration proved on a shadow DB (`-- This is an empty migration.`), domains 1 899 +
+gen checks "no drift" / "coverage OK", workflow-contract 1 713, api **4 265 / 0 failed**,
+route-manifest 736 routes, boot smoke `:8971` healthy, harness interpreter 591 + ruff clean, console
+agents 66 + tsc 0 + eslint 0, applications 12 280 with **one real failure — the gap below**.
+
+Deviations, accepted: `model_name = wireModelId ?? sourceUri` (built-in NER rows declare no
+`wireModelId`, so the literal §2.4 would 503 at nlp — same posture `buildSpeechRequest` uses for
+built-in TTS); `clinical_taxonomy` not injected (needs a runtime catalogue read; §2.3 promises spans
+only). Watch item: the task-mismatch 400 message changed wording — check SDK/e2e string asserts.
+
+**Lane K — DONE.** `task-931-sdk` @ `0bf31a4e6`, 15 commits, tree clean, entirely in-row, nothing
+under the generated `vox-node/src/resources/admin/**` touched, merges clean.
+
+Delivered: NER task + `NamedEntityRecognition*` types in both SDKs; `assertApiKeyPlane` replaced by an
+overridable `assertCredentialClass()` so service accounts reach the agent/workflow planes while the
+consultation plane stays strict; `transport: 'sse' | 'socket'` on `streamRun` / `waitForRun` /
+`runAndStream` (vox-node, zero-dep `core/socket.ts`) and `useWorkflowRun` (browser,
+`WorkflowRunSocketClient`), both coded to A-1; `useAudioCapture` forwards `sttAgentSlug` — a live
+bug, since a compat app that had moved to the agent slug ran capture with NO selector; `vox-codegen`
+business-plane mode emitting `Agent_<Slug>_Input/_Output` and slug-keyed contract maps; release
+mechanics (nine minors — three plus the six `linked` audio packages, expected).
+
+Gates pasted: `sdk:test` 3 704 / 244 files, `sdk-node:test` 452 / 30 files, codegen 55 + 36,
+`check:exports` clean, all builds/lints/typechecks 0. `apps/quick-compat-app` typecheck cannot run
+until 3.1.0 is on the registry (it installs the PUBLISHED package) — re-run after publish.
+
 ### 4.4 Orchestrator punch list — the unowned files, resolved (wave 3)
 
 Lane S reported four cross-lane needs that share one root cause: **the §1 ownership table has no
@@ -176,6 +219,12 @@ that has not landed yet.
 | `tests/contracts/tenant-reference-set-parity.contract.test.ts:36` | `SEED_DECLARED_EXCEPTIONS` drops `workflowDefinitions` — §6.3 makes the seed copier and the runtime service copy the same kind set, which is exactly what this contract exists to pin | with the S merge (P's §6.3 half is already on `task-930-promotion`) |
 | `live-documentation.*.task858` / `…task852`, `day1-loop-defaults.task686` | retarget imports off deleted seeds 23 / 24 / 07e | with the S merge |
 | `packages/applications/src/services/consultation-context-schema/context-schema-definition.ts` | check only — S folds `DAY1_CONTEXT_SCHEMA_SLUG` into the new schema because it has **no runtime reader** (`LoopConfigService` reads `isDefault`). Verify that still holds after R's retirement | at merge |
+| `packages/applications/src/services/consultation/__tests__/nlp-egress-redacted.grep-gate.test.ts` | **Owner ruling (orchestrator, 2026-09-08): allow-list entry for `services/agent/agent-invocation.service.ts`**, reason as lane N drafted it — the caller submits this text itself through a scoped public API and receives character OFFSETS into it; `pseudonymize` is not length-preserving, so redacting first would return spans that index a document the caller never sees, i.e. highlight the wrong words in a clinical note. This is the gate's own documented review moment; the unredacted hop is caller-owned text, unlike the transcript/DNA hops where HOPE moves a patient's text the caller never sent. **Flagged to the owner; overrule before the N merge if the posture is wrong.** | with the N merge |
+| `apps/api/tests/e2e/task-776-credential-classes.spec.ts:183-188` | uses `GET /workflows` as the "no `@RequiredSvcScopes` → 403" example; it now HAS one and returns 200 once the seeded account holds `svc:workflow:definition:read` (which lane S is adding). Repoint at a still-undeclared business route (a `/consultations/:id/workflows*` route) or drop the case | with the S merge, before e2e |
+| `turbo.json#globalEnv` | `+= HOPE_API_KEY` — `vox-codegen`'s business-plane mode reads it as the fallback for `--api-key` (a key on argv is visible in `ps`); currently one `turbo/no-undeclared-env-vars` warning | with the K merge |
+| `packages/vox-node/src/__tests__/workflows.contract.task850.test.ts` `PENDING_GATEWAY_ROUTES` | empty the set in the manifest-regeneration commit — it lists the stream-ticket route as pending and gates the `svcScopes` assertions behind a `MANIFEST_PREDATES_TASK930` flag; left as is, a genuinely missing route stops being noticed | with the five-artifact regen |
+| `apps/admin-console/src/shared/docs/sdk-snippets.ts` | optional — `SdkSnippetAgentTask` has no NER arm; N mapped NER to the invoke-shaped snippet at the call site (correct, same route). A NER-specific `{ entities }` example is a docs nicety, not a gate | after merge, if time |
+| `packages/workflow-contract/src/index.ts`, `interpreter/nodes/core.py` | the only N ∩ R overlaps, both by contract (disjoint hunks). Merge N first; resolve R's side against N's landed lines | with the R merge |
 
 Also carried to merge time:
 
@@ -226,6 +275,7 @@ _Pending — filled at close with per-lane evidence, merge commits, gates and th
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (wave 3, later) | P, N, K reported (§4.3) and were verified against their trees — all merge clean. The two fable lanes (R, S) hit that model's session limit mid-step with substantial committed progress; both resumed on opus. Owner ruling recorded on the PHI egress grep-gate (§4.4). Test infra brought up. |
 | 2026-09-08 (wave 3) | Prior session's artifacts reviewed; measured per-lane state recorded in §4.1 (R and S effectively unstarted, N and K resuming from one commit each, P holding ~1 000 uncommitted lines). Five lanes relaunched from the same worktrees under a new account budget, tiers R/S `fable` · N/P/K `opus`, with a `RESUME.md` commit-discipline addendum. Lane A still held to after the publish. |
 | 2026-09-08 (later) | Six lanes spawned (R N P S K + A); all six killed by the account spend limit (HTTP 429, limit resets Sep 11) — N and K after one commit each, the rest before committing; all six relaunched/resumed. Lane log §4.1, contract amendments A-1..A-6 §4.2 (applied to `INTERFACES.md`). |
 | 2026-09-08 | Created from the owner's four-part brief. Five discovery lanes measured the current state (§2); ten decisions recorded (§3); five-lane plan with a written contract (`INTERFACES.md`). Status `In Progress`. |
