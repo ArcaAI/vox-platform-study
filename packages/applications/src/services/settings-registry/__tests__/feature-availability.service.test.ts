@@ -107,6 +107,28 @@ describe('resolveEffectiveForTenant', () => {
     expect(items.every((i) => i.sourceScope === 'default')).toBe(true);
   });
 
+  it('omits a `maxScope: system` key entirely for a NON-elevated caller', () => {
+    // `GET admin/settings/registry/registration.selfSignupEnabled` already
+    // answers 404 for a tenant admin (D-5 — the key is platform-only). Handing
+    // the SAME key's effective VALUE back from this route would give away what
+    // the other one hides, and the value it gives away is the platform row:
+    // `resolveEffectiveForTenant` resolves system-scoped keys on the platform
+    // lane no matter which tenant asked.
+    const { svc } = makeService({ roles: ['TENANT_ADMIN'], clsTenantId: ARCAAI });
+    const items = svc.resolveEffectiveForTenant(ARCAAI);
+
+    expect(items.some((i) => i.key === 'registration.selfSignupEnabled')).toBe(false);
+    // ...and the gates the console actually needs to render ITS tenant are
+    // still there, or the omission would break navigation instead of a leak.
+    expect(items.some((i) => i.key === 'console.mlflow.enabled')).toBe(true);
+    expect(items.length).toBe(svc.descriptors().filter((d) => d.maxScope !== 'system').length);
+  });
+
+  it('still gives a platform administrator the system-scoped key', () => {
+    const { svc } = makeService();
+    expect(svc.resolveEffectiveForTenant(null).some((i) => i.key === 'registration.selfSignupEnabled')).toBe(true);
+  });
+
   it('resolves a `maxScope: system` key on the PLATFORM lane even when a tenant is supplied', () => {
     // Its consumer has no tenant in hand, so consulting a tenant row here would
     // report a value the cascade will never enforce.

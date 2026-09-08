@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GlobalSettingService } from '../globalSetting.service';
 import { SysEventType, ValueType } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
+import { buildSecretSettingFilter } from '../globalSetting.dto.mapper';
 
 // Define ResourceStatus locally to avoid mock issues
 const ResourceStatus = {
@@ -1160,6 +1161,104 @@ describe('GlobalSettingService', () => {
         service.create({ tenantId: SYSTEM_TENANT_ID, name: 'n', key: 'k', value: 'v', dataType: ValueType.String } as never),
       ).rejects.toThrow(/super administrators only/i);
       expect(mockGlobalSettingRepository.restore).not.toHaveBeenCalled();
+    });
+  });
+
+
+  /**
+   * TASK-932 R-1 / D-5 — platform settings belong to the platform admin, and a
+   * tenant admin must not be able to READ them.
+   *
+   * `GlobalSetting` is a member of `SYSTEM_SHARED_READ_MODELS`
+   * (`packages/database/src/extensions/tenant-scope.ts`), so any read that
+   * names no tenant is WIDENED to `tenantId IN [caller, SYSTEM]` and the
+   * platform's rows arrive alongside the caller's own. That widening is right
+   * for the resolvers that inherit a default on ABSENCE and wrong for the admin
+   * row list, which is a DIRECTORY of the platform's configuration. An explicit
+   * `where.tenantId` defeats it — `mergeSharedReadTenantIntoWhere` returns early
+   * when the caller pinned one — which is the same technique
+   * `AiProviderConnectionService.readTier` uses. So the pin lives here, and the
+   * shared-read membership the inheriting resolvers depend on is untouched.
+   *
+   * The by-id read is a 404, not a 403: an admin who can enumerate key names
+   * from the source tree must not be able to confirm a platform row one request
+   * at a time. The WRITE lane stays a 403 (the TASK-890 OD-P guard above) — a
+   * caller who already holds the id is being told "you may not write this",
+   * which is a different sentence.
+   */
+  describe('TASK-932 read visibility — a non-elevated caller sees only its own tenant', () => {
+    const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+    function asSuperAdmin(workingTenantId: string | null = null): void {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+        if (key === 'tenantId') return workingTenantId;
+        return null;
+      });
+    }
+
+    beforeEach(() => {
+      mockGlobalSettingRepository.findAll.mockResolvedValue([]);
+      mockGlobalSettingRepository.count.mockResolvedValue(0);
+    });
+
+    it('pins the list to the caller own tenant, so the shared-read widening cannot serve SYSTEM rows', async () => {
+      await service.fetchAll({ limit: 200, page: 1 });
+
+      expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1' } }));
+      // The count must carry the SAME predicate, or the page disagrees with its
+      // own total and the missing rows look like a paging bug.
+      expect(mockGlobalSettingRepository.count).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1' } }));
+    });
+
+    it('keeps the secretsOnly facet AND the pin — a facet must never drop the tenant', async () => {
+      await service.fetchAll({ limit: 10, page: 1, secretsOnly: true });
+
+      expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { AND: [{ tenantId: 'tenant-1' }, buildSecretSettingFilter()] } }),
+      );
+    });
+
+    it('leaves an unscoped super admin unpinned — the platform tier reads every row', async () => {
+      asSuperAdmin(null);
+      await service.fetchAll({ limit: 200, page: 1 });
+
+      expect(mockGlobalSettingRepository.findAll.mock.calls[0][0].where).toBeUndefined();
+    });
+
+    it('404s a SYSTEM row by id for a tenant admin, and audits no view of it', async () => {
+      const row = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID });
+      mockGlobalSettingRepository.findById.mockResolvedValue(row);
+
+      await expect(service.fetchById('sys-1')).rejects.toBeInstanceOf(DataNotFoundException);
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('still serves the caller its OWN row by id', async () => {
+      const row = createMockGlobalSettingEntity({ id: 'own-1', tenantId: 'tenant-1' });
+      mockGlobalSettingRepository.findById.mockResolvedValue(row);
+
+      await expect(service.fetchById('own-1')).resolves.toBe(row);
+    });
+
+    it('lets a super admin read the SYSTEM row by id', async () => {
+      asSuperAdmin();
+      const row = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID });
+      mockGlobalSettingRepository.findById.mockResolvedValue(row);
+
+      await expect(service.fetchById('sys-1')).resolves.toBe(row);
+    });
+
+    it('404s the by-tenant list for any tenant that is not the caller own — SYSTEM included', async () => {
+      await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: SYSTEM_TENANT_ID })).rejects.toBeInstanceOf(DataNotFoundException);
+      await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-2' })).rejects.toBeInstanceOf(DataNotFoundException);
+      expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
+    });
+
+    it('lets a super admin list the SYSTEM tenant rows', async () => {
+      asSuperAdmin();
+      await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: SYSTEM_TENANT_ID })).resolves.toBeDefined();
+      expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: SYSTEM_TENANT_ID } }));
     });
   });
 

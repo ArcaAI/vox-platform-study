@@ -322,6 +322,26 @@ describe('model-registry:s3 resolves to the platform storage (D-7)', () => {
     expect(res.outcome).toBe('absent');
   });
 
+  it('never serves a CUSTOMER tenant the platform storage credential', async () => {
+    // D-7 names exactly one lane: `resolveCredential('model-registry','s3', SYSTEM)`.
+    // The row the fallback reads is the SYSTEM one WHOEVER asked, so with no
+    // tenant condition every tenant inherits the platform's own object-storage
+    // secret — a platform credential handed to a customer, and metered
+    // `funding: 'platform'` while it happens.
+    const { svc } = makeService({
+      rows: {
+        [`${SYSTEM_TENANT_ID}:model-registry:s3`]: row({ service: 'model-registry', provider: 's3', extraJson: { inheritsPlatformStorage: true } }),
+      },
+      storageRows: [SYSTEM_STORAGE_ROW],
+      secretsByKey: STORAGE_SECRETS,
+    });
+
+    const res = await svc.resolveCredential('model-registry', 's3', TENANT);
+    expect(res.outcome).toBe('absent');
+    expect(res.apiKey).toBeUndefined();
+    expect(res.source).toBeUndefined();
+  });
+
   it('never applies to a different provider on the same plane', async () => {
     const { svc } = makeService({
       rows: { [`${SYSTEM_TENANT_ID}:model-registry:huggingface`]: row({ service: 'model-registry', provider: 'huggingface' }) },
