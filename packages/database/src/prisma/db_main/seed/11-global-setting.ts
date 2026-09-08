@@ -9,9 +9,11 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SE
  * every tenant (Global + customer tenants) so the admin panel and SDK
  * always see populated configuration.
  *
- * Every tenant gets the same 18 settings (consolidated):
+ * Every tenant gets the same 13 settings (consolidated):
  *   - general       (3) — session limits, language, timeouts
- *   - feature-flags (6) — toggles for platform capabilities
+ *   - feature-flags (1) — `enable-consultation-sharing`, the one flag here with
+ *                         a real runtime consumer (TASK-932 R-8 removed five
+ *                         advisory rows that had none)
  *   - stt           (2) — speech-to-text defaults
  *   - text           (1) — Azure deployment name (non-secret)
  *   - ux-constants  (4) — static model lists + guardrail provider catalog
@@ -141,11 +143,6 @@ function tenantSettings(
     genMaxConcurrentSessions: string;
     genDefaultLanguage: string;
     genSessionTimeout: string;
-    ffTranscription: string;
-    ffDnaStyle: string;
-    ffCrossChain: string;
-    ffNer: string;
-    ffCodeSwitching: string;
     ffConsultationSharing: string;
     sttModel: string;
     sttVad: string;
@@ -194,67 +191,28 @@ function tenantSettings(
       description: 'Idle session timeout in minutes before automatic logout',
     },
 
-    // ── feature-flags (6) ───────────────────────────────────────────
-    {
-      id: ids.ffTranscription,
-      tenantId,
-      namespace: 'feature-flags',
-      name: 'Real-Time Transcription',
-      key: 'enable-transcription',
-      value: 'true',
-      defaultValue: 'true',
-      dataType: ValueType.Boolean,
-      description: 'Enable real-time speech-to-text transcription during consultations',
-      locked: true,
-    },
-    {
-      id: ids.ffDnaStyle,
-      tenantId,
-      namespace: 'feature-flags',
-      name: 'DNA Writing Style',
-      key: 'enable-dna-style',
-      value: 'true',
-      defaultValue: 'true',
-      dataType: ValueType.Boolean,
-      description: 'Enable DNA-based writing style analysis and personalised summaries',
-      locked: true,
-    },
-    {
-      id: ids.ffCrossChain,
-      tenantId,
-      namespace: 'feature-flags',
-      name: 'Cross-Chain Summary',
-      key: 'enable-cross-chain-summary',
-      value: 'false',
-      defaultValue: 'false',
-      dataType: ValueType.Boolean,
-      description: 'Enable cross-chain summary generation across multiple consultations',
-      locked: true,
-    },
-    {
-      id: ids.ffNer,
-      tenantId,
-      namespace: 'feature-flags',
-      name: 'NER Extraction',
-      key: 'enable-ner-extraction',
-      value: 'true',
-      defaultValue: 'true',
-      dataType: ValueType.Boolean,
-      description: 'Enable named-entity recognition extraction from transcripts',
-      locked: true,
-    },
-    {
-      id: ids.ffCodeSwitching,
-      tenantId,
-      namespace: 'feature-flags',
-      name: 'Code Switching',
-      key: 'enable-code-switching',
-      value: 'false',
-      defaultValue: 'false',
-      dataType: ValueType.Boolean,
-      description: 'Enable multi-language code-switching detection in transcription',
-      locked: true,
-    },
+    // ── feature-flags (1) ───────────────────────────────────────────
+    //
+    // TASK-932 R-8 -- FIVE ROWS WERE REMOVED FROM HERE, and they are listed in
+    // `RETIRED_GLOBAL_SETTING_KEYS` below so an already-provisioned database
+    // sweeps its copies to DELETED rather than keeping them ENABLED forever:
+    //
+    //   enable-transcription  enable-dna-style  enable-cross-chain-summary
+    //   enable-ner-extraction  enable-code-switching
+    //
+    // None of them had a runtime consumer. No gateway module read them, and the
+    // SDK's own `TENANT_CONFIG_KEYS.ENABLE_REAL_TIME_TRANSCRIPTION` constant is
+    // `'enable-real-time-transcription'` -- which does not even MATCH the seeded
+    // `'enable-transcription'`, so the computed flag was doubly disconnected.
+    // Toggling one in the console changed nothing at runtime, which is exactly
+    // the kind of control surface the owner asked to be removed rather than
+    // labelled: the console shipped an `isAdvisoryFeatureFlag()` marker to warn
+    // an admin that a toggle did nothing, and a toggle that needs that warning
+    // should not exist. That marker is deleted with these rows.
+    //
+    // `enable-consultation-sharing` STAYS: it is genuinely enforced, by
+    // `ConsultationController.isSharingEnabled()`, which gates cross-doctor
+    // shared-patient reads.
     {
       id: ids.ffConsultationSharing,
       tenantId,
@@ -421,11 +379,6 @@ export const ALL_SETTINGS: SettingDef[] = [
     genMaxConcurrentSessions: IDS.GLOBAL_MAX_CONCURRENT_SESSIONS,
     genDefaultLanguage: IDS.GLOBAL_DEFAULT_LANGUAGE,
     genSessionTimeout: IDS.GLOBAL_SESSION_TIMEOUT,
-    ffTranscription: IDS.GLOBAL_FF_TRANSCRIPTION,
-    ffDnaStyle: IDS.GLOBAL_FF_DNA_STYLE,
-    ffCrossChain: IDS.GLOBAL_FF_CROSS_CHAIN,
-    ffNer: IDS.GLOBAL_FF_NER,
-    ffCodeSwitching: IDS.GLOBAL_FF_CODE_SWITCHING,
     ffConsultationSharing: IDS.GLOBAL_FF_CONSULTATION_SHARING,
     sttModel: IDS.GLOBAL_STT_MODEL,
     sttVad: IDS.GLOBAL_STT_VAD,
@@ -441,11 +394,6 @@ export const ALL_SETTINGS: SettingDef[] = [
     genMaxConcurrentSessions: IDS.ARCAAI_MAX_CONCURRENT_SESSIONS,
     genDefaultLanguage: IDS.ARCAAI_DEFAULT_LANGUAGE,
     genSessionTimeout: IDS.ARCAAI_SESSION_TIMEOUT,
-    ffTranscription: IDS.ARCAAI_FF_TRANSCRIPTION,
-    ffDnaStyle: IDS.ARCAAI_FF_DNA_STYLE,
-    ffCrossChain: IDS.ARCAAI_FF_CROSS_CHAIN,
-    ffNer: IDS.ARCAAI_FF_NER,
-    ffCodeSwitching: IDS.ARCAAI_FF_CODE_SWITCHING,
     ffConsultationSharing: IDS.ARCAAI_FF_CONSULTATION_SHARING,
     sttModel: IDS.ARCAAI_STT_MODEL,
     sttVad: IDS.ARCAAI_STT_VAD,
@@ -586,6 +534,16 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
 // =============================================================================
 
 export const RETIRED_GLOBAL_SETTING_KEYS: ReadonlyArray<{ namespace: string; key: string }> = [
+  // TASK-932 R-8 — the five advisory `feature-flags` rows with no runtime
+  // consumer. Dropping them from the seeded arrays stops a FRESH database
+  // getting them; this list is what retires the copies an already-provisioned
+  // one holds. They are toggles that did nothing, so retiring them removes a
+  // control surface rather than a capability.
+  { namespace: 'feature-flags', key: 'enable-transcription' },
+  { namespace: 'feature-flags', key: 'enable-dna-style' },
+  { namespace: 'feature-flags', key: 'enable-cross-chain-summary' },
+  { namespace: 'feature-flags', key: 'enable-ner-extraction' },
+  { namespace: 'feature-flags', key: 'enable-code-switching' },
   { namespace: 'smr', key: 'default-smr-provider' },
   { namespace: 'smr', key: 'default-smr-model' },
   { namespace: 'ux-constants', key: 'smr-provider-models' },

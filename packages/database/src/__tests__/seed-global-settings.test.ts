@@ -9,11 +9,12 @@ const SETTING_PREFIXES = ['ARCAAI', 'GLOBAL'] as const;
 const GENERAL_SUFFIXES = ['MAX_CONCURRENT_SESSIONS', 'DEFAULT_LANGUAGE', 'SESSION_TIMEOUT'] as const;
 
 const CORE_SUFFIXES = [
-  'FF_TRANSCRIPTION',
-  'FF_DNA_STYLE',
-  'FF_CROSS_CHAIN',
-  'FF_NER',
-  'FF_CODE_SWITCHING',
+  // TASK-932 R-8 — FF_TRANSCRIPTION / FF_DNA_STYLE / FF_CROSS_CHAIN / FF_NER /
+  // FF_CODE_SWITCHING were here. Their rows had NO runtime consumer (the SDK's
+  // own key constant does not even match the seeded `enable-transcription`), so
+  // they are no longer emitted and `RETIRED_GLOBAL_SETTING_KEYS` sweeps the
+  // copies an already-provisioned database holds. Their ids stay reserved in
+  // `00-constants.ts`, like every other retired block.
   'FF_CONSULTATION_SHARING',
   'STT_MODEL',
   'STT_VAD',
@@ -75,6 +76,18 @@ const SYSTEM_WIDE_KEYS = [
   // from these arrays, so the count assertion follows on its own.
 ] as const;
 
+/**
+ * Suffixes whose ID CONSTANTS are still declared in `00-constants.ts` but whose
+ * rows are no longer emitted.
+ *
+ * Retired ids are kept reserved rather than deleted, so a future block cannot
+ * silently reuse a UUID an already-provisioned database still holds a row
+ * under. `TOTAL_IDS` therefore counts them, and `suffixesFor` does not — the two
+ * questions ("which ids exist" and "which rows are seeded") stopped having the
+ * same answer when TASK-932 R-8 removed the five advisory feature flags.
+ */
+const RETIRED_CORE_SUFFIXES = ['FF_TRANSCRIPTION', 'FF_DNA_STYLE', 'FF_CROSS_CHAIN', 'FF_NER', 'FF_CODE_SWITCHING'] as const;
+
 function suffixesFor(prefix: string) {
   return PREFIXES_WITH_GENERAL.has(prefix) ? [...GENERAL_SUFFIXES, ...CORE_SUFFIXES] : [...CORE_SUFFIXES];
 }
@@ -87,7 +100,10 @@ function settingIdKey(prefix: (typeof SETTING_PREFIXES)[number], suffix: string)
   return `${prefix}_${suffix}` as keyof typeof SEED_GLOBAL_SETTING_IDS;
 }
 
-const TOTAL_IDS = SETTING_PREFIXES.reduce((sum, p) => sum + suffixesFor(p).length, 0) + PLATFORM_WIDE_KEYS.length + SYSTEM_WIDE_KEYS.length;
+const TOTAL_IDS =
+  SETTING_PREFIXES.reduce((sum, p) => sum + suffixesFor(p).length + RETIRED_CORE_SUFFIXES.length, 0) +
+  PLATFORM_WIDE_KEYS.length +
+  SYSTEM_WIDE_KEYS.length;
 
 describe('Global Settings Seed Data (11-global-setting)', () => {
   describe('every tenant has all expected setting IDs', () => {
@@ -211,9 +227,16 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
           expect(generalKeys).toEqual(['default-language', 'max-concurrent-sessions', 'session-timeout']);
         });
 
-        it('emits the enable-transcription feature flag', () => {
-          const flag = settingsForTenant(tenantId).find((s) => s.namespace === 'feature-flags' && s.key === 'enable-transcription');
-          expect(flag).toBeDefined();
+        // TASK-932 R-8 — the ONE `feature-flags` row left is the one that is
+        // actually read (`ConsultationController.isSharingEnabled`). The five
+        // advisory rows are asserted ABSENT rather than merely not asserted
+        // present: a toggle that changes nothing is worse than no toggle, and
+        // this is what stops one being re-added by copy-paste.
+        it('emits enable-consultation-sharing and no other feature flag', () => {
+          const flags = settingsForTenant(tenantId)
+            .filter((s) => s.namespace === 'feature-flags')
+            .map((s) => s.key);
+          expect(flags).toEqual(['enable-consultation-sharing']);
         });
 
         // The guardrail namespace is RETIRED (superseded
