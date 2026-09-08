@@ -78,7 +78,6 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     read_text_primary,
     wire_provider,
 )
-from harness.temporal.interpreter.nodes.agentic import interpreter_agentic_data
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 from harness.temporal.models import HarnessPolicy
 
@@ -1491,8 +1490,56 @@ async def interpreter_core_output(payload: NodeActivityInput) -> NodeActivityRes
 
 @activity.defn(name="interpreter.core_data")
 async def interpreter_core_data(payload: NodeActivityInput) -> NodeActivityResult:
-    """The Data node under its `core` key — the SAME deterministic reshape as `agentic.data`."""
-    return await interpreter_agentic_data(payload)
+    """Deterministic reshape — the tier-2 escape hatch.
+
+    The mapping language is intentionally tiny: dotted reads out of this node's bound inputs,
+    renamed writes onto its output, plus literal constants. Anything richer is a transformation
+    language, which is a second place for tenant logic to live and a second thing to audit.
+
+    An unresolved mapping marked ``required`` DEGRADES the node observably; an optional one is
+    simply absent from the output. Neither ever invents a value — a fabricated field is worse
+    than a missing one, because a downstream schema check would pass on it.
+
+    TASK-893: the body moved here verbatim from the retired ``agentic.data`` activity, which
+    ``core.data`` had been delegating to. The reason prefix is the only change, and it now names
+    the node type that actually ran.
+    """
+    started = now()
+    config = _config(payload)
+    bound = _bound(payload)
+
+    output: dict[str, Any] = {}
+    constants = config.get("constants")
+    if isinstance(constants, dict):
+        output.update(constants)
+
+    missing_required: list[str] = []
+    mappings = config.get("mappings")
+    for mapping in mappings if isinstance(mappings, list) else []:
+        if not isinstance(mapping, dict):
+            continue
+        source = mapping.get("from")
+        target = mapping.get("to")
+        if not isinstance(source, str) or not isinstance(target, str):
+            continue
+        value = resolve_dotted_path(bound, source)
+        if value is MISSING:
+            if mapping.get("required") is True:
+                missing_required.append(source)
+            continue
+        output[target] = value
+
+    await record_and_flush(payload, status=STATUS_OK, started=started)
+    if missing_required:
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason=(
+                "core.data: required mapping(s) did not resolve: "
+                f"{', '.join(sorted(missing_required))}"
+            ),
+            output={"data": output},
+        )
+    return NodeActivityResult(status="SUCCEEDED", output={"data": output})
 
 
 @activity.defn(name="interpreter.core_note")

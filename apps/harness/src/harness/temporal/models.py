@@ -811,9 +811,9 @@ class SpeechSynthesisResult(BaseModel):
     exists. The concatenation is the artifact.
 
     **This model never becomes an activity RESULT.** ``dispatch_speech_synthesis`` is called as a
-    plain coroutine from inside ``interpreter.agentic_tts`` (exactly as ``agentic.stt`` calls
-    ``dispatch_batch_transcription``), so the bytes live and die as a local variable inside one
-    activity body. What Temporal records is the claim-check ref the node returns.
+    plain coroutine from inside ``interpreter.core_agent``'s speech path (exactly as its
+    transcription path calls ``dispatch_batch_transcription``), so the bytes live and die as a
+    local variable inside one activity body. What Temporal records is the claim-check ref the node returns.
     """
 
     model_config = ConfigDict(extra="forbid")

@@ -263,7 +263,7 @@ class RunEventProducer:
         digest: str,
         terminated: bool,
     ) -> str | None:
-        """One ``agentic.loop`` iteration, settled. The CONTROL lane's per-iteration entry point.
+        """One ``core.loop`` iteration, settled. The CONTROL lane's per-iteration entry point.
 
         Called from ``interpreter.loop_state_checkpoint`` — the activity that already runs
         exactly once per iteration — so this adds NO Temporal command and needs no
