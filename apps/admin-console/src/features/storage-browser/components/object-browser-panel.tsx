@@ -128,6 +128,7 @@ export function ObjectBrowserPanel({
   hasSearch,
   onClearSearch,
   onRequestUpload,
+  readOnly = false,
 }: {
   onNavigate: (prefix: string) => void;
   /** Folders-first entries for the current prefix; the grid paginates client-side. */
@@ -139,7 +140,15 @@ export function ObjectBrowserPanel({
   onSelectFile: (key: string) => void;
   hasSearch: boolean;
   onClearSearch: () => void;
-  onRequestUpload: () => void;
+  /** Omit in `readOnly` mode — the empty state then carries no upload CTA. */
+  onRequestUpload?: () => void;
+  /**
+   * TASK-932 "All tenants" browse view (an unscoped platform admin with no
+   * working tenant): folders still navigate, but file rows are inert — no
+   * download/delete surface exists for that scope — and the upload CTA is
+   * hidden.
+   */
+  readOnly?: boolean;
 }) {
   const columns = useMemo<ColumnDef<BrowserEntry>[]>(
     () => [
@@ -234,12 +243,16 @@ export function ObjectBrowserPanel({
     <EmptyState
       icon={IconFolderOpen}
       title="No objects here"
-      description="Nothing is stored under this prefix yet. Uploads land at the bucket root."
+      description={
+        onRequestUpload ? 'Nothing is stored under this prefix yet. Uploads land at the bucket root.' : 'Nothing is stored under this prefix yet.'
+      }
       action={
-        <Button onClick={onRequestUpload}>
-          <IconUpload aria-hidden />
-          Upload files
-        </Button>
+        onRequestUpload ? (
+          <Button onClick={onRequestUpload}>
+            <IconUpload aria-hidden />
+            Upload files
+          </Button>
+        ) : undefined
       }
     />
   );
@@ -265,7 +278,13 @@ export function ObjectBrowserPanel({
       error={error instanceof Error ? error : null}
       errorState={(err) => <ErrorState error={err} onRetry={onRetry} />}
       emptyState={empty}
-      onRowClick={(row) => (row.kind === 'folder' ? onNavigate(row.prefix) : onSelectFile(row.key))}
+      onRowClick={(row) => {
+        if (row.kind === 'folder') {
+          onNavigate(row.prefix);
+        } else if (!readOnly) {
+          onSelectFile(row.key);
+        }
+      }}
     />
   );
 }

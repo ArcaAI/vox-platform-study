@@ -7,6 +7,7 @@ import {
   getFileInfo,
   getStorageHealth,
   listBuckets,
+  listBucketsAllTenants,
   listObjects,
   updateBucket,
   uploadFile,
@@ -52,6 +53,7 @@ describe('storageBrowserKeys', () => {
     expect(storageBrowserKeys.objects('consult-audio', 'a/')).not.toEqual(storageBrowserKeys.objects('consult-audio', 'b/'));
     expect(storageBrowserKeys.bucket('consult-audio')).not.toEqual(storageBrowserKeys.buckets());
     expect(storageBrowserKeys.health()[0]).toBe('storage-browser');
+    expect(storageBrowserKeys.bucketsAllTenants()).not.toEqual(storageBrowserKeys.buckets());
   });
 });
 
@@ -72,6 +74,12 @@ describe('storage-browser client', () => {
     ]);
     expect(calls[1].body).toEqual({ name: 'exports' });
     expect(calls[3].body).toEqual({ description: 'Consultation audio' });
+  });
+
+  it('lists the "All tenants" listing with includePhysical=true', async () => {
+    const calls = installFetchMock();
+    await listBucketsAllTenants();
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/storage/buckets?includePhysical=true']);
   });
 
   it('lists objects with an optional prefix filter', async () => {

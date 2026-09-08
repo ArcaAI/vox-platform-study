@@ -26,6 +26,7 @@ import {
   SetTenantBucketDefaultsRequest,
   TenantBucketDefaultsResponse,
   TenantBucketObjectResponse,
+  TenantBucketPhysicalResponse,
   TenantBucketResponse,
   TenantBucketTreeNodeResponse,
   TenantBucketTreeResponse,
@@ -78,6 +79,66 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     });
 
     return buckets.map(TenantBucketDtoMapper.toResponse);
+  }
+
+  /**
+   * "All tenants" storage-browser listing (TASK-932 Lane T): every registered
+   * `TenantBucket` row across every tenant, MERGED with the physical bucket
+   * list from the storage provider (`IS3Service.listAllBuckets`) so a
+   * platform admin can also see orphaned/unregistered physical buckets and
+   * registered rows whose physical bucket has vanished.
+   *
+   * Restricted to an unscoped SUPER_ADMIN (no working tenant) — unlike
+   * `listBuckets()`, a tenant-bound caller (even a super admin who picked a
+   * working tenant) gets a 400 rather than falling back to its own tenant's
+   * buckets: this method's whole point is cross-tenant + physical
+   * enumeration, and a tenant-bound caller must never reach it.
+   */
+  async listBucketsCrossTenantWithPhysical(): Promise<TenantBucketPhysicalResponse[]> {
+    const tenantId = this.tenantId;
+    if (tenantId || !isSuperAdmin(this.clsService.get('user'))) {
+      throw new BadRequestException('includePhysical is only available to a platform admin with no tenant context');
+    }
+
+    const [registeredRows, physicalBuckets] = await Promise.all([
+      this.tenantBucketRepository.findAllCrossTenant(),
+      this.s3Service.listAllBuckets(),
+    ]);
+
+    const uniqueTenantIds = [...new Set(registeredRows.map((bucket) => bucket.tenantId))];
+    const tenants = uniqueTenantIds.length ? await this.tenantRepository.findAll({ filters: { id: { in: uniqueTenantIds } } }) : [];
+    const tenantNameById = new Map(tenants.map((tenant) => [tenant.id, tenant.name]));
+
+    const physicalByName = new Map(physicalBuckets.map((bucket) => [bucket.name, bucket]));
+    const registeredNames = new Set(registeredRows.map((bucket) => bucket.name));
+
+    const registered: TenantBucketPhysicalResponse[] = registeredRows.map((bucket) => ({
+      name: bucket.name,
+      creationDate: bucket.createdAt.toISOString(),
+      tenantId: bucket.tenantId,
+      tenantName: tenantNameById.get(bucket.tenantId) ?? null,
+      registered: true,
+      physicalMissing: !physicalByName.has(bucket.name),
+    }));
+
+    const unregistered: TenantBucketPhysicalResponse[] = physicalBuckets
+      .filter((bucket) => !registeredNames.has(bucket.name))
+      .map((bucket) => ({
+        name: bucket.name,
+        creationDate: bucket.creationDate,
+        tenantId: null,
+        tenantName: null,
+        registered: false,
+        physicalMissing: false,
+      }));
+
+    const combined = [...registered, ...unregistered];
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { count: combined.length, registeredCount: registered.length, unregisteredCount: unregistered.length },
+    });
+
+    return combined;
   }
 
   async getBucketById(id: string): Promise<TenantBucketResponse | null> {

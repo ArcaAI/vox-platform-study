@@ -11,6 +11,20 @@ export interface StorageBucket {
   creationDate?: string;
 }
 
+/**
+ * GET /storage/buckets?includePhysical=true rows (TASK-932 Lane T) — the
+ * storage browser "All tenants" view for an unscoped platform admin (no
+ * working tenant): every tenant's registered buckets merged with the
+ * physical bucket list from the provider. `tenantId`/`tenantName` are null
+ * for an unregistered physical bucket.
+ */
+export interface StorageBucketWithScope extends StorageBucket {
+  tenantId: string | null;
+  tenantName: string | null;
+  registered: boolean;
+  physicalMissing: boolean;
+}
+
 /** POST /storage/buckets body (CreateBucketRequest). */
 export interface CreateBucketRequest {
   name: string;

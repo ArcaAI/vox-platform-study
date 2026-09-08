@@ -5,12 +5,20 @@ import {
   SetTenantBucketDefaultsRequest,
   TenantBucketDefaultsResponse,
   TenantBucketObjectResponse,
+  TenantBucketPhysicalResponse,
   TenantBucketResponse,
   TenantBucketTreeResponse,
 } from './dto';
 
 export abstract class ITenantBucketService {
   abstract listBuckets(options?: { includeDisabled?: boolean }): Promise<TenantBucketResponse[]>;
+  /**
+   * "All tenants" storage-browser listing (TASK-932 Lane T): every registered
+   * `TenantBucket` row across every tenant, merged with the physical bucket
+   * list from the storage provider. Restricted to an unscoped SUPER_ADMIN (no
+   * working tenant) — throws `BadRequestException` for any tenant-bound caller.
+   */
+  abstract listBucketsCrossTenantWithPhysical(): Promise<TenantBucketPhysicalResponse[]>;
   abstract getBucketById(id: string): Promise<TenantBucketResponse | null>;
   abstract getBucketTree(id: string, prefix?: string): Promise<TenantBucketTreeResponse>;
   abstract getBucketBySlug(slug: string): Promise<TenantBucketResponse | null>;
