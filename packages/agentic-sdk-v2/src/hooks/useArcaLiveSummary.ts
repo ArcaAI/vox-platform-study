@@ -70,7 +70,13 @@ export function useArcaLiveSummary(): UseArcaLiveSummaryReturn {
 
       sse.onMessage((data: string) => {
         try {
-          const next = JSON.parse(data) as LiveSummarySnapshot;
+          const next = JSON.parse(data) as LiveSummarySnapshot & { event?: unknown };
+          // The gateway multiplexes typed sub-plane events — per-section patches
+          // (`event: 'section.patch'`) and the warm-start pre-summary lifecycle
+          // (`event: 'presummary'`) — onto this channel. They are NOT snapshots: folding
+          // one over the last full-state payload wiped `entities` / `runningSummary`
+          // milliseconds after every flush. Only an undiscriminated payload is a snapshot.
+          if (typeof next.event === 'string') return;
           setSnapshot(next);
           if (next.closed) {
             sse.disconnect();

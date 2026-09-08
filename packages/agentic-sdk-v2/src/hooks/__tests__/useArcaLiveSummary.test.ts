@@ -98,6 +98,28 @@ describe('useArcaLiveSummary', () => {
     expect(result.current.status).toBe('open');
   });
 
+  // TASK-932 — the gateway publishes per-SECTION patches (`event: 'section.patch'`) and the
+  // warm-start pre-summary lifecycle (`event: 'presummary'`) on the SAME channel as the full-state
+  // snapshot. This hook models only the snapshot; folding a typed sub-plane event over it wiped
+  // `entities` / `runningSummary` ~50 ms after every flush, so the console's entity chips and
+  // running summary blinked out the moment a flush landed.
+  it('ignores typed sub-plane events on the channel — a section.patch never replaces the snapshot', () => {
+    const { result } = renderHook(() => useArcaLiveSummary());
+    act(() => result.current.start('c-1'));
+    act(() => handlers.open?.());
+    const full = snapshot({ entities: [{ text: 'aspirin', type: 'MEDICATION', start: 0, end: 7 } as any] });
+    act(() => handlers.message?.(JSON.stringify(full)));
+    act(() =>
+      handlers.message?.(
+        JSON.stringify({ event: 'section.patch', consultationId: 'c-1', documentKey: 'soap', sectionKey: 'plan', revision: 1, content: 'rest', updatedAt: 'later' }),
+      ),
+    );
+    act(() => handlers.message?.(JSON.stringify({ event: 'presummary', consultationId: 'c-1', status: 'degraded' })));
+
+    expect(result.current.snapshot).toEqual(full);
+    expect(result.current.status).toBe('open');
+  });
+
   it('closes on the terminal snapshot and disconnects', () => {
     const { result } = renderHook(() => useArcaLiveSummary());
     act(() => result.current.start('c-1'));
