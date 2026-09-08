@@ -42,6 +42,7 @@ import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../ag
 // TASK-890 §3.2/§3.3 — the ONE prompt grammar and the ONE scope. The realtime and durable lanes
 // render the SAME `core.agent` node, so they must render it the same way.
 import {
+  CORE_PALETTE_KEY,
   guardrailOptOutOf,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
@@ -1373,7 +1374,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     if (!this.workflowAssignments) return { lane: null, assignmentSource: 'platform-default' };
     try {
-      const assignment = await this.workflowAssignments.resolve(tenantId, 'consultation', departmentId);
+      const assignment = await this.workflowAssignments.resolve(tenantId, CORE_PALETTE_KEY, departmentId);
       if (!assignment.workflowDefinitionSlug) return { lane: null, assignmentSource: assignment.source };
       const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug);
       if (!definition?.compiledConfig) return { lane: null, assignmentSource: assignment.source };
