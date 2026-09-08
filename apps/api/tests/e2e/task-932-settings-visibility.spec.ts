@@ -364,7 +364,9 @@ test.describe('TASK-932 R-1 — the legacy settings ROW list is tenant-pinned', 
  * here counts. The spec restores `true` so the stack is left as it was found,
  * with rate limiting ON.
  */
-const SEEDED_ELSEWHERE_KEY = 'rate-limit.enabled';
+// A NUMERIC seeded key in the `rate-limit` namespace: toggling it by one is harmless to a
+// parallel suite, unlike `rate-limit.enabled`, which switches the login throttle for everyone.
+const SEEDED_ELSEWHERE_KEY = 'rate-limit.tier.relaxed.limit';
 
 test.describe('TASK-932 — a platform row seeded under another namespace is adopted, not duplicated', () => {
   test('the seeded version is reported, the write lands on THAT row, and one SYSTEM row remains', async ({ request }) => {
@@ -380,10 +382,9 @@ test.describe('TASK-932 — a platform row seeded under another namespace is ado
     const etag = before.headers()['etag'];
     expect(etag, 'a stored row must render an ETag for the client to echo').toBeTruthy();
 
-    // Toggle RELATIVE to whatever the stack holds (an orchestrator may have
-    // switched rate limiting off for a run): a same-value write is a no-op 400
-    // by design, and this test is about adoption, not about the value.
-    const flipped = seeded.value !== true;
+    // Toggle RELATIVE to whatever the stack holds: a same-value write is a
+    // no-op 400 by design, and this test is about adoption, not the value.
+    const flipped = Number(seeded.value) + 1;
     const write = await request.put(path, { headers: { ...headers, 'If-Match': etag! }, data: { value: flipped, scope: 'system' } });
     expect(write.status(), await write.text()).toBe(200);
     const written = (await write.json()) as { value: unknown; version: number };
@@ -401,9 +402,9 @@ test.describe('TASK-932 — a platform row seeded under another namespace is ado
     // Leave the stack as we found it (whatever the value was before this test).
     const restore = await request.put(path, {
       headers: { ...headers, 'If-Match': `"${written.version}"` },
-      data: { value: seeded.value === true, scope: 'system' },
+      data: { value: Number(seeded.value), scope: 'system' },
     });
     expect(restore.status(), await restore.text()).toBe(200);
-    expect((await restore.json()).value).toBe(seeded.value === true);
+    expect((await restore.json()).value).toBe(Number(seeded.value));
   });
 });
