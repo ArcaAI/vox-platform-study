@@ -1,18 +1,18 @@
 """``LoopWorkflow`` — the ``core.loop`` body (TASK-864 §3.3): ``foreach`` / ``while`` over a
 compiled SUB-GRAPH, one iteration per generation.
 
-``AgenticLoopWorkflow`` (``loop_workflow.py``) iterates an ORCHESTRATOR node with sub-agents —
-the deliberation shape. The ``core`` vocabulary's Loop is the general form: its body is a
-compiled sub-graph (``compiledConfig.loops[].body``, the nodes carrying ``parentId``), walked
-stage by stage exactly as the interpreter walks the top level, once per iteration. Everything
-that made the agentic loop safe is kept, because it is the same shape:
+The Loop's body is a compiled sub-graph (``compiledConfig.loops[].body``, the nodes carrying
+``parentId``), walked stage by stage exactly as the interpreter walks the top level, once per
+iteration. The shape is:
 
 * **One iteration per generation, then ``continue_as_new``.** History stays bounded whatever
   the iteration count; the loop's whole memory is its input (``CoreLoopState``).
 * **The three carried bounds are pure arithmetic** (``max_iterations``, ``max_total_tokens``,
   ``no_progress_iterations``), checked on entry and after the iteration by
-  ``exhausted_bound`` — the agentic loop's own function, reused. ``max_duration_seconds``
-  is the PARENT's timer, for the reason ``loop_workflow.py`` records at length.
+  ``exhausted_bound``. ``max_duration_seconds`` cannot be one of them and is the PARENT's
+  timer: a workflow timer does not survive ``continue_as_new``, and the only way to carry a
+  deadline across the boundary would be a wall-clock read inside ``@workflow.defn``. See
+  ``workflow.py::_run_core_loop``, which races the child handle against its own sleep.
 * **The checkpoint is an activity** (``interpreter.loop_state_checkpoint``, reused): it digests
   the iteration, counts tokens, offloads a large carry-forward and emits the
   ``workflow.loop.iteration`` run event — nothing here hashes a blob or touches Redis.
@@ -49,11 +49,9 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
     from harness.temporal.interpreter.compiled_config import CompiledLoopBody, CompiledNode
     from harness.temporal.interpreter.loop_activities import loop_state_checkpoint
-    from harness.temporal.interpreter.loop_workflow import exhausted_bound
     from harness.temporal.interpreter.models import (
-        AgenticLoopBounds,
-        AgenticLoopState,
         CoreLoopBounds,
+        LoopStopReason,
         CoreLoopInput,
         CoreLoopResult,
         CoreLoopState,
@@ -96,24 +94,22 @@ def core_loop_workflow_id(run_id: str, node_id: str, iteration_path: str = "") -
     return f"{CORE_LOOP_WORKFLOW_ID_PREFIX}{run_id}-{node_id}{suffix}"
 
 
-def _as_agentic_state(state: CoreLoopState) -> AgenticLoopState:
-    """Project the carried state onto the agentic loop's shape so ``exhausted_bound`` is reused
-    verbatim rather than re-derived."""
-    return AgenticLoopState(
-        iterations=state.iterations,
-        tokens_used=state.tokens_used,
-        no_progress_streak=state.no_progress_streak,
-        digest=state.digest,
-    )
+def exhausted_bound(state: CoreLoopState, bounds: CoreLoopBounds) -> LoopStopReason | None:
+    """Which of the three CARRIED bounds is exhausted, or ``None``. Pure.
 
+    Fixed priority (see the module docstring): iterations, tokens, no-progress. ``>=`` rather
+    than ``>`` throughout, because the counters record work already DONE — a loop that has run
+    ``max_iterations`` iterations has spent its budget, it does not get one more.
 
-def _as_agentic_bounds(inp: CoreLoopInput) -> AgenticLoopBounds:
-    return AgenticLoopBounds(
-        maxIterations=inp.bounds.max_iterations,
-        maxDurationSeconds=inp.bounds.max_duration_seconds,
-        maxTotalTokens=inp.bounds.max_total_tokens,
-        noProgressIterations=inp.bounds.no_progress_iterations,
-    )
+    ``max_duration_seconds`` is absent by design and is the PARENT's; see the module docstring.
+    """
+    if state.iterations >= bounds.max_iterations:
+        return "max_iterations"
+    if state.tokens_used >= bounds.max_total_tokens:
+        return "max_total_tokens"
+    if state.no_progress_streak >= bounds.no_progress_iterations:
+        return "no_progress_iterations"
+    return None
 
 
 def _collect(value: Any, path: str | None) -> Any:
@@ -147,10 +143,10 @@ class LoopWorkflow:
 
     @workflow.run
     async def run(self, inp: CoreLoopInput) -> CoreLoopResult:
-        bounds = _as_agentic_bounds(inp)
+        bounds = inp.bounds
 
         # 1) Inherited bounds — a spent budget stops here without running anything.
-        inherited = exhausted_bound(_as_agentic_state(inp.state), bounds)
+        inherited = exhausted_bound(inp.state, bounds)
         if inherited is not None:
             return _result(inp, inp.state, inherited)
 
@@ -254,7 +250,7 @@ class LoopWorkflow:
         if inp.mode == "foreach" and index + 1 >= len(inp.items):
             return _result(inp, next_state, "items_exhausted")
 
-        spent = exhausted_bound(_as_agentic_state(next_state), bounds)
+        spent = exhausted_bound(next_state, bounds)
         if spent is not None:
             return _result(inp, next_state, spent)
 

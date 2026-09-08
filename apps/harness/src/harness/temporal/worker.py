@@ -41,10 +41,6 @@ from harness.temporal.interpreter.loop_activities import (
     loop_state_checkpoint,
     loop_state_rehydrate,
 )
-from harness.temporal.interpreter.loop_workflow import (
-    AgenticLoopWorkflow,
-    AgenticSubAgentWorkflow,
-)
 from harness.temporal.interpreter.review_workflow import ReviewGateWorkflow
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.workflows import (
@@ -315,12 +311,6 @@ async def run_worker() -> None:
             # inherits the parent's and must be hosted by this same worker — the identical rule
             # ConsultationLoopWorkflow/SpecialistWorkflow are on this list for.
             ConsultationGateWorkflow,
-            # the same inheritance rule again, one level deeper. The interpreter starts
-            # `AgenticLoopWorkflow` as a child with no explicit task_queue; the loop in turn starts
-            # `AgenticSubAgentWorkflow` the same way. Both inherit this queue, so both must be
-            # hosted here or a loop node hangs waiting for a worker that never polls for it.
-            AgenticLoopWorkflow,
-            AgenticSubAgentWorkflow,
             # TASK-864 — the `core` vocabulary's two child workflow types (a human review and a
             # sub-graph loop), started by the interpreter with no explicit task_queue and
             # therefore served here.
