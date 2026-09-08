@@ -14,14 +14,15 @@ package's own tests need ( Task 4).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import Any
 
-from temporalio import activity as temporal_activity
 from temporalio import workflow
 
+from harness.temporal.interpreter.node_spec import NodeSpec, _registered_activity_name
+
 with workflow.unsafe.imports_passed_through():
+    from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
     from harness.temporal.interpreter.activities import (
         interpreter_core_end,
         interpreter_core_start,
@@ -91,7 +92,6 @@ with workflow.unsafe.imports_passed_through():
     )
     from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
     from harness.temporal.interpreter.nodes.core import (
-        ACTION_KEYS,
         interpreter_core_action,
         interpreter_core_agent,
         interpreter_core_classify,
@@ -115,90 +115,16 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.nodes.text_generate import interpreter_text_generate
 
 
-def _registered_activity_name(fn: Callable[..., Any]) -> str:
-    """The Temporal-registered name of an ``@activity.defn`` callable.
-
-    Uses ``activity._Definition.from_callable`` — the same SDK-internal helper the Worker itself
-    uses to introspect an activity list at registration time; there is no public accessor in this
-    SDK version. Computed HERE (registry.py, a plain module the workflow only ever
-    pass-through-imports) rather than inside ``workflow.py``'s own sandboxed module namespace —
-    calling into ``temporalio.activity`` internals directly from sandboxed workflow code tripped
-    the sandbox's import restrictions during workflow validation (observed: a
-    ``urllib.request.Request.__mro_entries__`` restriction fired at ``prepare_workflow`` time).
-    Doing the introspection in a pass-through module and storing the plain string result on
-    ``NodeSpec`` sidesteps that entirely.
-    """
-    defn = temporal_activity._Definition.from_callable(fn)  # noqa: SLF001 - no public API
-    if defn is None or defn.name is None:
-        raise ValueError(f"{fn!r} is not a valid @activity.defn callable with a fixed name")
-    return defn.name
-
-
-@dataclass(frozen=True)
-class NodeSpec:
-    """One entry in the node-type registry.
-
-    ``activity`` is a CALLABLE reference (never a string) — see the module docstring.
-    ``activity_name`` is the same activity's Temporal-registered name, precomputed at registry-
-    build time (see ``_registered_activity_name``) — the workflow's S-4 cross-check
-    (contracts/ compares against this field, never the callable
-    itself, and never re-derives the name inside the sandboxed workflow module. ``kind`` is
-    reserved for a future ``child_workflow`` dispatch (mirroring ``LoopActionSpec.kind``); v1 only
-    ever uses ``"activity"``. ``critical``/``external_write`` are code-owned safety properties,
-    never tenant-configurable (contracts/execution-semantics.md)
-
-    output_keys is (option A), and it is the ONE piece of the port contract
-    that is SHARED with the TypeScript side rather than TS-only. A port NAME is an authoring
-    handle — ``out``, ``entities``, ``verdict``, what the Studio canvas draws and what a graph
-    edge's ``fromPort``/``toPort`` names — but this interpreter threads values by reading a KEY
-    out of the producing activity's own ``NodeActivityResult.output`` dict, and no activity in
-    this platform emits a key called ``"out"``. Until OD-15 the only bridge was
-    ``_resolve_bound_inputs``' whole-object fallback, which is precisely the untyped bundle the
-    port vocabulary exists to abolish (a bundle cannot be typed as "contains a document", so
-    generated prose could reach NER again).
-
-    So each entry maps EVERY declared output port name to the output key it carries, or to
-    ``None`` for a ``control`` port, which carries no payload at all. That ``None`` is
-    load-bearing: it is what lets ``_resolve_bound_inputs`` tell a legitimate ORDERING edge
-    (skip, contribute nothing) apart from an edge naming a port that does not exist (raise).
-
-    Authored here by hand and asserted against the SAME committed fixture the TypeScript
-    projection is asserted against (``node-registry.snapshot.json``) — see
-    ``test_node_registry_parity.py``. Never add it to one side only.
-
-    lane is the SECOND shared field ( lane A, item 17/7), and it is shared for the
-    same kind of reason: it changes what this interpreter DOES. "realtime" means
-    live executor owns the node, so ``_dispatch_node`` SKIPS it with ``reason="realtime_lane"``
-    rather than running it a second time. Before this, ``descriptor.lane`` said ``durable`` on
-    every node while ``REALTIME_NODE_TYPES`` (a hand-kept set in the applications layer) said
-    otherwise for three of them — two sources of truth for one fact, and the durable interpreter
-    read neither. The failure that made it urgent is concrete: ``consultation.realtimeSummary`` is
-    ``external_write``, so both runtimes executing it means two engines writing one consultation's
-    document.
-
-    Skipping loses nothing that was working. In the DURABLE lane
-    ``consultation.captureBinding`` emits no transcript at all, so ``consultation.extractEntities``
-    and ``consultation.realtimeSummary`` already degraded on ``no_bound_text`` every time. The skip
-    turns a silent degrade into an OBSERVABLE one and names the runtime that owns the work.
-    """
-
-    key: str
-    implemented: bool
-    activity: Callable[..., Any]
-    activity_name: str = field(init=False)
-    kind: str = "activity"
-    critical: bool = False
-    external_write: bool = False
-    default_timeout_seconds: int = 60
-    default_max_attempts: int = 1
-    entitlement_key: str | None = None
-    output_keys: Mapping[str, str | None] = field(default_factory=dict)
-    lane: str = "durable"
-
-    def __post_init__(self) -> None:
-        # frozen dataclass: use object.__setattr__ for the derived field.
-        object.__setattr__(self, "activity_name", _registered_activity_name(self.activity))
-
+__all__ = [
+    "ACTION_CATALOGUE",
+    "CORE_LOOP_NODE_TYPE",
+    "CORE_REVIEW_NODE_TYPE",
+    "NODE_REGISTRY",
+    "NodeSpec",
+    "_registered_activity_name",
+    "effective_spec",
+    "output_keys_for",
+]
 
 NODE_REGISTRY: dict[str, NodeSpec] = {
     "noop": NodeSpec(
@@ -974,12 +900,8 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
     ),
 }
 
-# TASK-864 — the `core.action` catalogue: `actionKey -> the legacy node's own spec`. Its
-# `critical` / `external_write` / `lane` / `output_keys` are what the interpreter applies to a
-# `core.action` INSTANCE (`effective_spec`), because the action IS the legacy node under a key.
-ACTION_CATALOGUE: dict[str, NodeSpec] = {
-    key: NODE_REGISTRY[key] for key in ACTION_KEYS if key in NODE_REGISTRY
-}
+# TASK-893 — the `core.action` catalogue is a first-class table (`action_catalogue.py`);
+# `effective_spec` resolves a `core.action` instance through it, never through NODE_REGISTRY.
 
 #: The node types the interpreter dispatches as CHILD WORKFLOWS under the TASK-864 patch, rather
 #: than as activities. Named once so `_dispatch_node` and the registry agree.
@@ -990,9 +912,9 @@ CORE_REVIEW_NODE_TYPE = "core.humanReview"
 def effective_spec(node_type: str, config: Mapping[str, Any] | None) -> NodeSpec | None:
     """The spec whose SAFETY properties govern an instance.
 
-    For `core.action` that is the delegated action's spec (a `consultation.persistDraft` action
-    writes exactly as the legacy node did, so a sandbox must suppress it exactly as before); for
-    everything else it is the type's own. `None` for an unknown type or an unknown action key.
+    For `core.action` that is the catalogue descriptor's spec (a `consultation.persistDraft`
+    action writes, so a sandbox must suppress it); for everything else it is the type's own.
+    `None` for an unknown type or an unknown action key.
     """
     spec = NODE_REGISTRY.get(node_type)
     if spec is None:
@@ -1006,6 +928,6 @@ def effective_spec(node_type: str, config: Mapping[str, Any] | None) -> NodeSpec
 def output_keys_for(
     node_type: str, config: Mapping[str, Any] | None
 ) -> Mapping[str, str | None] | None:
-    """The output sockets an INSTANCE publishes — a `core.action`'s are its delegate's."""
+    """The output sockets an INSTANCE publishes — a `core.action`'s are its catalogue entry's."""
     spec = effective_spec(node_type, config)
     return None if spec is None else spec.output_keys
