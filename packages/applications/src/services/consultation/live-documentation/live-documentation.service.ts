@@ -92,6 +92,7 @@ import { HarnessLiveAssistService } from '../harness/harness-live-assist.service
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
+import { readSummaryLanguage, summaryLanguageName } from '../consultation/summary-language';
 // the clinical-document SHAPE catalog. The live loop no longer knows
 // what a SOAP note is: it resolves a COMPILED template once per session and
 // reads its strict `responseFormat`, its section list and its prose instruction
@@ -545,6 +546,15 @@ interface LiveSession {
    * node publishes is the pipeline's output either way.
    */
   sttPipelineId?: string | null;
+  /**
+   * TASK-932 §3.7 — the consultation's declared SUMMARY language, frozen at `start()`.
+   *
+   * `null` = undeclared, which is not English: the operating frame then says nothing about an
+   * output language and the department body decides, exactly as it did before this ticket. Frozen
+   * with the agent, the template and the lane for the same reason all three are — the note being
+   * produced must not change language halfway through because a row was edited.
+   */
+  summaryLanguage?: string | null;
 }
 
 /**
@@ -1267,6 +1277,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     try {
       const consultation = await this.consultationRepository.findById(session.consultationId);
       governed = tenantWorkflowGoverns(consultation?.metadata);
+      // TASK-932 §3.7 — freeze the declared summary language off the SAME row read, so the
+      // operating frame costs no extra I/O on the start path.
+      session.summaryLanguage = readSummaryLanguage(consultation?.metadata);
     } catch (error) {
       this.logger.warn({
         message: 'Governing-engine marker could not be read — this engine keeps the consultation so it is still documented',
@@ -2129,6 +2142,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       elidedParts > 0,
       this.stablePrefixFor(agent, template),
       template.compiled.title,
+      this.operatingFrame(template, session.summaryLanguage),
     );
 
     // TEXT first (a structured S/O/A/P running note), then NER over the resulting
@@ -2164,7 +2178,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const graph = lane
       ? await this.runGraphLane(session, lane, {
           buildPrompt: (sourceText) =>
-            this.buildTextUserPrompt(priorNote, sourceText, notes, elidedParts > 0, this.stablePrefixFor(agent, template), template.compiled.title),
+            this.buildTextUserPrompt(
+              priorNote,
+              sourceText,
+              notes,
+              elidedParts > 0,
+              this.stablePrefixFor(agent, template),
+              template.compiled.title,
+              this.operatingFrame(template, session.summaryLanguage),
+            ),
           agent,
           template,
           signal,
@@ -3449,6 +3471,53 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       : `${agent.stableUserPrefix}\n\n${template.compiled.promptInstruction}`;
   }
 
+  /**
+   * TASK-932 §3.7 — the OPERATING FRAME: the four steps a partial-summary turn actually performs.
+   *
+   * ## Why this is not in the department body
+   *
+   * The v3 department corpus is the CLINICAL instruction — what belongs under which heading,
+   * which source may supply it, how a date is written. It is the customer's signed-off content
+   * and this ticket does not touch a byte of it. What it does not say, because it predates the
+   * realtime lane, is how a TURN works: that the transcript arriving is partial and possibly
+   * code-switched, that a running note already exists and must be extended rather than restarted,
+   * and that the output language is a separate axis from the transcript's.
+   *
+   * Every one of those is a property of the RUNTIME, identical for all 22 department bodies, so
+   * stating it once here is what keeps it out of 22 prompts that would then drift.
+   *
+   * ## The steps, and why each is stated
+   *
+   *  1. TRANSLATE INTERNALLY. Malayalam-English code-switching is the default STT posture
+   *     (`ASR_PARAMETERS.decoding.languageMode: 'ml-en'`, code-switching on), so a turn routinely
+   *     arrives mixed. Left unsaid, the model mirrors whatever language dominates the last few
+   *     seconds and the note changes language mid-consultation.
+   *  2. MERGE, don't restart. The prior note is already in the prompt (`Current <title> so far`),
+   *     but "here is your previous output" is not an instruction to preserve it.
+   *  3. WRITE IN the declared language — omitted entirely when none was declared, because
+   *     undeclared is not English (TASK-891 OD-1's posture, applied to the output axis).
+   *  4. FILL the resolved template's sections, BY KEY. The section list is the compiled
+   *     template's own, so a department shape and its prompt cannot disagree.
+   */
+  private operatingFrame(template: ResolvedDocumentTemplate, summaryLanguage: string | null | undefined): string {
+    const sectionKeys = template.compiled.sectionKeys;
+    const languageName = summaryLanguageName(summaryLanguage);
+    const languageStep = languageName
+      ? `Write every section value in ${languageName}${languageName === summaryLanguage ? '' : ` (${summaryLanguage})`}, whatever language was spoken. Keep the section keys and headings exactly as given, in English.`
+      : 'No output language was declared for this consultation: follow the clinical instruction above, and do not switch language part-way through the note.';
+
+    return [
+      '',
+      '',
+      'HOW TO PRODUCE THIS TURN:',
+      "1. The transcript is PARTIAL and may be code-switched or not in English. Read it in whatever language it is in and understand it in English internally; never transcribe another language's words into the note untranslated.",
+      '2. This is an UPDATE, not a fresh note. Keep everything the running note above already records, extend a section the new transcript adds to, and revise one only where the new transcript contradicts it.',
+      `3. ${languageStep}`,
+      `4. Fill the sections of this document and no others, using these keys exactly: ${sectionKeys.join(', ')}. A section the consultation has not reached is null — never a placeholder, never invented content.`,
+      '5. The consultation is still in progress. Write no closing summary, no sign-off and no statement that the encounter has ended.',
+    ].join('\n');
+  }
+
   private buildTextUserPrompt(
     priorNote: string,
     delta: string,
@@ -3460,6 +3529,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // the tenant actually published; a model told to update a SOAP note and
     // decoded against a discharge summary is being given two different jobs.
     documentTitle: string = PLATFORM_TEMPLATE.compiled.title,
+    // TASK-932 §3.7 — the operating frame, already rendered. Passed in rather than built here so
+    // this method stays a pure string assembly and the frame is testable on its own.
+    operatingFrame = '',
   ): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
@@ -3485,7 +3557,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       ? `\n\nUpdate the existing ${documentTitle} above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
       : `\n\nFrom the transcript and any clinician notes/labs above, produce the running ${documentTitle} now.`;
 
-    return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock;
+    // The frame goes LAST, after the delta instruction: it is the turn's procedure, and a
+    // trailing block is what the model reads immediately before generating. It is deliberately
+    // NOT part of `stablePrefix` — the prefix is byte-identical across every flush of a session
+    // so the engine can reuse its cached KV, and the frame carries the same bytes for the same
+    // session, so appending it here costs the cache nothing while keeping the prefix's contract
+    // (tenant-governed prose + compiled structure) unmuddied.
+    return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock + operatingFrame;
   }
 
   /**

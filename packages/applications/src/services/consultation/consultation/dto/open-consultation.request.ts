@@ -1,6 +1,7 @@
 import { IsString, IsOptional, IsDateString, IsObject, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
+import { SUMMARY_LANGUAGE_PATTERN } from '../summary-language';
 
 /**
  * Open Consultation Request
@@ -70,6 +71,32 @@ export class OpenConsultationRequest {
     message: 'workflowDefinitionSlug must be 2-80 lowercase alphanumerics, - or _, starting and ending alphanumeric',
   })
   workflowDefinitionSlug?: string;
+
+  /**
+   * TASK-932 §3.7 — the language the NOTE is written in.
+   *
+   * NOT the STT language mode, and the distinction is the whole point of the field: a
+   * Malayalam-English consultation is routinely documented in English. TASK-891 OD-1 governs
+   * DECODING and leaves it undeclared by default ("the code-switch is always enabled"); this
+   * governs OUTPUT and is likewise undeclared by default — absent means the agent's own body
+   * decides, which is what every consultation did before this ticket. Declaring one never sets
+   * the other.
+   *
+   * Declared here because it has to be: the gateway's global pipe runs `forbidNonWhitelisted`,
+   * so an undeclared field REJECTS THE WHOLE OPEN with a 400 rather than being ignored.
+   *
+   * Honoured on `open` and on `revisit`. A re-open of an ALREADY-OPEN consultation keeps the
+   * language it was opened with, exactly as it keeps its governing workflow.
+   */
+  @ApiPropertyOptional({
+    description:
+      'BCP-47 language tag the generated notes should be written in (`en`, `ml`, `en-IN`). Independent of the STT language mode: absent means undeclared, and the agent decides.',
+    example: 'ml',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(SUMMARY_LANGUAGE_PATTERN, { message: 'language must be a BCP-47 tag such as `en`, `ml` or `en-IN`' })
+  language?: string;
 
   @ApiPropertyOptional({ description: 'Additional metadata' })
   @IsOptional()

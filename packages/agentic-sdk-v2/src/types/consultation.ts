@@ -65,6 +65,13 @@ export interface Consultation {
   department?: string;
   /** Lifecycle status. Optional for backward-compat — absent when backend hasn't adopted the extended enum. */
   status?: ConsultationStatus;
+  /**
+   * TASK-932 — the language the generated notes are written in, as declared at open.
+   *
+   * `undefined` = undeclared (the agent decides). Set it with
+   * {@link OpenSessionInput.language}; it is independent of the STT language mode.
+   */
+  language?: string;
   /** Custom metadata */
   metadata?: Record<string, unknown>;
   /** Context items (when loaded) */
@@ -141,6 +148,23 @@ export interface OpenSessionInput {
    * platform default engine rather than failing the open.
    */
   workflowDefinitionSlug?: string;
+  /**
+   * TASK-932 — the language the generated NOTES are written in (BCP-47: `en`, `ml`, `en-IN`).
+   *
+   * NOT the STT language mode, and the difference is the point of the field: a Malayalam-English
+   * consultation is routinely documented in English. `audio.start({ languageMode })` governs what
+   * the microphone is allowed to HEAR and has no default (TASK-891 OD-1: "the code-switch is
+   * always enabled … to use a specific language, the SDK or end-user must declare the language
+   * code"); this governs what the note is WRITTEN IN. Declaring either never sets the other.
+   *
+   * Omit it and the note's language is undeclared — which is not English: the tenant's own agent
+   * body decides, exactly as it did before this field existed.
+   *
+   * Honoured by `session.open()` and by a re-visit. Re-opening an ALREADY-OPEN consultation keeps
+   * the language it was opened with, the same way it keeps its governing workflow. Read it back
+   * on {@link Consultation.language}.
+   */
+  language?: string;
   /** Custom metadata */
   metadata?: Record<string, unknown>;
 }

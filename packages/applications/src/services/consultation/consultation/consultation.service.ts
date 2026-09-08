@@ -44,6 +44,7 @@ import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/ICons
 import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
 import { readGoverningEngineMarker } from '../governing-engine';
 import { withWorkflowSelectionMarker } from './workflow-selection';
+import { withSummaryLanguage } from './summary-language';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
 
@@ -332,9 +333,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // Two keys, two claims: `workflowSelection` says what was ASKED FOR, `governingEngine` says
     // what TOOK OWNERSHIP. Neither is inferred from the other. Caller metadata is merged, not
     // replaced — see `workflow-selection.ts` for why the key is not stripped from caller input.
-    const metadata = request.workflowDefinitionSlug
+    const withSelection = request.workflowDefinitionSlug
       ? withWorkflowSelectionMarker(request.metadata, request.workflowDefinitionSlug)
       : request.metadata;
+    // TASK-932 §3.7 — the declared SUMMARY language, recorded on the row so the realtime frame
+    // and the finalize prompt read one value rather than each re-deriving one. Applied AFTER the
+    // selection marker for the same reason that one merges rather than replaces: client metadata
+    // from `OpenConsultationRequest` survives untouched, and the two markers are independent.
+    const metadata = request.language ? withSummaryLanguage(withSelection, request.language) : withSelection;
 
     const consultation = ConsultationFactory.CreateNewVisit({
       tenantId,
@@ -471,6 +477,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // purposes. Kill-switch-gated; → 429 when over the rolling-monthly cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
 
+    // TASK-932 §3.7 — a re-visit is a new consultation, so it declares its own summary language.
+    // It is NOT inherited from the parent: a follow-up may legitimately be documented in another
+    // language, and inferring one from a visit weeks ago would be a decision nobody made.
+    const revisitMetadata = request.language ? withSummaryLanguage(request.metadata, request.language) : request.metadata;
+
     const consultation = ConsultationFactory.CreateRevisit({
       tenantId,
       patientId: request.patientId,
@@ -478,7 +489,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       doctorId,
       departmentId: request.departmentId,
       parentConsultationId,
-      metadata: request.metadata as Parameters<typeof ConsultationFactory.CreateRevisit>[0]['metadata'],
+      metadata: revisitMetadata as Parameters<typeof ConsultationFactory.CreateRevisit>[0]['metadata'],
       createdBy: userId ?? undefined,
     });
 

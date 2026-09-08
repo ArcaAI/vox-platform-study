@@ -38,6 +38,7 @@ import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto'
 import { HarnessAuditService } from '../../harness-audit';
 import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
+import { readSummaryLanguage } from '../consultation/summary-language';
 import { ISummaryService } from './ISummaryService';
 import {
   GenerateSummaryRequest,
@@ -427,7 +428,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // disagreed with the one the summary path used for the same concept.
       visitType: this.visitType(consultation).label,
       transcript: content,
-      conversationLanguage: this.resolveConversationLanguage(request.options),
+      conversationLanguage: this.resolveConversationLanguage(request.options, consultation),
       dnaStyleId: request.dnaStyleId,
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
@@ -658,7 +659,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
       transcript: content,
-      conversationLanguage: this.resolveConversationLanguage(request.options),
+      conversationLanguage: this.resolveConversationLanguage(request.options, consultation),
       dnaStyleId: effectiveDnaStyleId,
       preSummaryText: latestPreSummaryText ?? undefined,
       // The SAME agent that ran live reviews and
@@ -1858,10 +1859,24 @@ export class SummaryService extends BaseService implements ISummaryService {
     };
   }
 
-  private resolveConversationLanguage(options?: Record<string, unknown>): string {
+  private resolveConversationLanguage(options?: Record<string, unknown>, consultation?: { metadata?: unknown }): string {
     const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
+    if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate;
 
-    return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : 'en';
+    // TASK-932 §3.7 — the consultation's OWN declared summary language, second.
+    //
+    // Per-request options win, because a caller asking for one note in another language is
+    // asking about THIS generation. The consultation's declaration is what the clinician chose
+    // when they opened it, and it is the tier that was missing: with the writing-style and
+    // language dropdowns gone from the scribe (TASK-891 OD-5), nothing on the console could
+    // reach `options` at all, so every finalize fell to the literal below.
+    //
+    // `'en'` remains the last resort and is NOT a policy statement about the platform's default
+    // language — it is this prompt variable's pre-existing fallback, kept so an undeclared
+    // consultation renders byte-identically to before this ticket. The place a default language
+    // is refused is the STT channel (OD-1), which this does not touch.
+    const declared = readSummaryLanguage(consultation?.metadata);
+    return declared ?? 'en';
   }
 
   /**
