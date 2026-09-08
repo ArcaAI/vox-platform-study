@@ -11,7 +11,14 @@
  * E2E_ADMIN_USERNAME / E2E_ADMIN_PASSWORD.
  */
 
+import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
+
+// TASK-932: specs that need a microphone run in the `chromium-audio` project, where
+// Chromium's fake capture device replays this clinical WAV (16 kHz mono PCM). The
+// default `chromium` project ignores them so a plain run never asks for a mic.
+const AUDIO_SPECS = /task-932-(consultation-scribe|live-transcription)\.spec\.ts$/;
+const FAKE_MIC_WAV = path.resolve(__dirname, 'tests/e2e/fixtures/audio/cardiology_consult_01.wav');
 
 // Mirror the root playwright.config.ts convention: `.env.test` sets CI=false,
 // so the flag must be parsed, never truthiness-coerced.
@@ -47,9 +54,27 @@ export default defineConfig({
     { name: 'setup', testMatch: '**/auth.setup.ts' },
     {
       name: 'chromium',
+      testIgnore: AUDIO_SPECS,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'test-results/.auth/admin.json',
+      },
+      dependencies: ['setup'],
+    },
+    {
+      name: 'chromium-audio',
+      testMatch: AUDIO_SPECS,
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'test-results/.auth/admin.json',
+        permissions: ['microphone'],
+        launchOptions: {
+          args: [
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+            `--use-file-for-fake-audio-capture=${FAKE_MIC_WAV}`,
+          ],
+        },
       },
       dependencies: ['setup'],
     },
