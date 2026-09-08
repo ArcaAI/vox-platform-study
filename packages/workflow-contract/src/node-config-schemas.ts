@@ -1037,10 +1037,14 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
         }),
         cadence: Object.freeze({
           type: 'string',
-          enum: Object.freeze(['once', 'perTurn', 'onEnd']),
+          enum: Object.freeze(['once', 'perTurn', 'onStart', 'onEnd']),
           default: 'once',
           summary: 'When this step runs during the session.',
-          description: 'WHEN it runs — once at start, per live turn, or once at the close.',
+          description:
+            'WHEN it runs — `once` at the run`s start, `onStart` once when the LIVE session opens (before any turn), ' +
+            '`perTurn` on every live turn, `onEnd` once at the close. `onStart` is a REALTIME cadence: it is the ' +
+            'warm-start slot (pre-summary of the prior record) the live executor runs in parallel with the capture ' +
+            'session, and the durable interpreter skips it with every other `execution.lane: realtime` node.',
         }),
       }),
     }),
@@ -1049,6 +1053,23 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
     onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
   }),
 });
+
+/**
+ * TASK-932 D-9 — the execution cadences a `core.agent` / `core.action` instance may declare,
+ * exported so a runtime reads the vocabulary instead of re-typing its string literals.
+ *
+ * `onStart` is the REALTIME warm-start slot: it runs ONCE when the live session opens, before
+ * the first turn, in parallel with the capture session. It is what makes the pre-summary of the
+ * prior record a node of the graph rather than a call the console happens to make; the durable
+ * interpreter skips it exactly as it skips every other `execution.lane: 'realtime'` node with a
+ * live owner (`_configured_realtime` in `apps/harness/.../interpreter/workflow.py`), so no
+ * harness registry change is implied by adding it — the vocabulary the interpreter mirrors is
+ * `NODE_REGISTRY` / `ACTION_CATALOGUE`, and neither reads a cadence.
+ */
+export const NODE_EXECUTION_CADENCES = Object.freeze(['once', 'perTurn', 'onStart', 'onEnd'] as const);
+
+/** One of {@link NODE_EXECUTION_CADENCES}. */
+export type NodeExecutionCadence = (typeof NODE_EXECUTION_CADENCES)[number];
 
 const CORE_CLASSIFY_SCHEMA: NodeConfigSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -1342,7 +1363,7 @@ const CORE_ACTION_SCHEMA: NodeConfigSchema = Object.freeze({
       additionalProperties: false,
       properties: Object.freeze({
         lane: Object.freeze({ type: 'string', enum: Object.freeze(['durable', 'realtime']) }),
-        cadence: Object.freeze({ type: 'string', enum: Object.freeze(['once', 'perTurn', 'onEnd']) }),
+        cadence: Object.freeze({ type: 'string', enum: Object.freeze(['once', 'perTurn', 'onStart', 'onEnd']) }),
       }),
     }),
     onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
