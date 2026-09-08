@@ -37,7 +37,7 @@
  */
 import type { CorePrismaClient } from '../../../client';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SEED_USER_IDS } from './00-constants';
-import { definitionChecksum } from './07e-consultation-loop-defaults';
+import { definitionChecksum } from './07e-consultation-note-context-schema';
 
 const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
