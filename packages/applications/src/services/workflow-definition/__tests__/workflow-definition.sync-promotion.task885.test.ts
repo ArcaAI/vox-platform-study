@@ -56,6 +56,9 @@ const mockEntitlements = {
   isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
 };
 const mockPromptTemplateRepository = { findById: vi.fn(), findByName: vi.fn() };
+/** TASK-930 §6.2 — promotion refuses a graph whose `core.agent` slugs are not published in
+ *  SYSTEM, so the fixture's own core graph needs a repository that says they are. */
+const mockAgentRepository = { findPublishedActiveBySlug: vi.fn(async (_tenantId: string, slug: string) => ({ id: `agent-${slug}`, slug })) };
 const mockAgentPromotion = { promote: vi.fn() };
 const mockEvalGate = { evaluateWorkflowPromotion: vi.fn() };
 const mockPolicyEngine = { buildAbility: vi.fn() };
@@ -118,7 +121,7 @@ const construct = () =>
     undefined,
     undefined,
     undefined,
-    undefined,
+    mockAgentRepository as never,
     undefined,
     undefined,
     undefined,
@@ -201,7 +204,17 @@ describe('WorkflowDefinitionService — sync among own tenants (TASK-885)', () =
 
   it('refuses the WHOLE sync, naming the tenant, when a target cannot resolve a reference — never a partial estate', async () => {
     mockRepository.findPublishedBySlug.mockResolvedValue(
-      entity({ graph: { version: 1, nodes: [{ id: 'n1', type: 'noop', config: { promptTemplateId: 'tpl-1' } }], edges: [] } }),
+      entity({
+        graph: {
+          version: 1,
+          nodes: [
+            { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
+            { id: 'n1', type: 'core.action', config: { actionKey: 'prompt.template_ref', action: { promptTemplateId: 'tpl-1' } }, position: { x: 1, y: 0 } },
+            { id: 'o1', type: 'core.output', config: { protocols: ['http'] }, position: { x: 2, y: 0 } },
+          ],
+          edges: [{ id: 'e1', from: 'n1', to: 'o1', fromPort: 'out', toPort: 'in' }],
+        },
+      }),
     );
     mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'tpl-1', name: 'SOAP Prompt' });
     mockPromptTemplateRepository.findByName.mockImplementation((tenantId: string) =>

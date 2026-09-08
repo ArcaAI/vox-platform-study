@@ -35,7 +35,15 @@ const mockEntitlements = {
 };
 const mockSttPipelineCompiler = { compileAndPublish: vi.fn() };
 
-const VALID_GRAPH = { version: 1, nodes: [{ id: 'n1', type: 'noop', config: {} }], edges: [] };
+/** TASK-893 — the only vocabulary left is `core`; `noop` and every legacy palette are gone. */
+const VALID_GRAPH = {
+  version: 1,
+  nodes: [
+    { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
+    { id: 'o1', type: 'core.output', config: { protocols: ['http'] }, position: { x: 1, y: 0 } },
+  ],
+  edges: [{ id: 'e1', from: 't1', to: 'o1', fromPort: 'out', toPort: 'in' }],
+};
 
 const savedEntity = {
   id: 'def-1',
@@ -43,7 +51,7 @@ const savedEntity = {
   slug: 'discharge_summary',
   name: 'Discharge Summary',
   description: null,
-  paletteKey: 'summarization',
+  paletteKey: 'core',
   versionNumber: 1,
   parentVersionId: null,
   status: WorkflowDefinitionStatus.DRAFT,
@@ -91,26 +99,25 @@ describe(' W1 — server-side paletteKey validation (C-5/D-5)', () => {
     );
   });
 
-  it('the known set is derived from the registry and carries the four real palettes', () => {
-    // added `agentic` — the eight GENERIC node types. It arrives here for free, which is
-    // the property this test is really about: `KNOWN_PALETTE_KEYS` is DERIVED from
-    // `WORKFLOW_NODE_REGISTRY.paletteKey`, so a new palette needs no edit to the service.
+  it('the known set is derived from the registry, which declares exactly one palette', () => {
+    // The property this test is really about is unchanged: `KNOWN_PALETTE_KEYS` is DERIVED from
+    // `WORKFLOW_NODE_REGISTRY.paletteKey`, so a palette needs no edit to the service to become
+    // authorable — and `EXPOSURE_ALLOWED_PALETTES` is deliberately NOT derived alongside it, so a
+    // palette becomes PUBLICLY INVOKABLE only by an affirmative decision. An allow-list that grows
+    // by default is not an allow-list.
     //
-    // `EXPOSURE_ALLOWED_PALETTES` is deliberately NOT widened alongside it (see the assertion
-    // below): a palette becomes AUTHORABLE by being registered, and becomes PUBLICLY INVOKABLE
-    // only by an affirmative decision. An allow-list that grows by default is not an allow-list.
-    //
-    // TASK-864 added `core` — the node vocabulary (trigger/agent/classify/human-review/
-    // variable/if-else/loop/note/output) — the same way: registered, therefore authorable;
-    // still NOT publicly invokable until the exposure allow-list says so.
-    expect([...KNOWN_PALETTE_KEYS].sort()).toEqual(['agentic', 'consultation', 'core', 'stt', 'summarization']);
-    // TASK-864 A6 is that second affirmative decision for `core`: the exposure boundary became
-    // class-based and `core.output` declares the protocols a graph may be invoked over, so a
-    // core-vocabulary workflow is invokable — `consultation` and `stt` stay refused.
-    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['core', 'summarization']);
+    // TASK-893 retired the legacy vocabulary outright (D-6/D-9): `summarization`, `consultation`,
+    // `stt` and `agentic` are not deprecated-but-authorable, they are GONE, so both sets collapse
+    // onto `core`. The exposure boundary that matters now is the CLASS-based clinical-write rule,
+    // not palette membership — see `exposure-palette-policy.ts`.
+    expect([...KNOWN_PALETTE_KEYS].sort()).toEqual(['core']);
+    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['core']);
   });
 
-  it.each(['summarisation', 'Summarization', 'stt ', 'clinical', ''])(
+  // The four RETIRED palettes are in this list on purpose: after TASK-893 a graph authored under
+  // one of them is refused at the door rather than accepted and later found to reference node
+  // types that no longer exist.
+  it.each(['summarization', 'consultation', 'stt', 'agentic', 'Core', 'core ', 'clinical', ''])(
     'rejects an unknown paletteKey %j with 400 and writes nothing',
     async (paletteKey) => {
       await expect(service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey, graph: VALID_GRAPH })).rejects.toBeInstanceOf(
@@ -121,7 +128,7 @@ describe(' W1 — server-side paletteKey validation (C-5/D-5)', () => {
     },
   );
 
-  it.each(['summarization', 'stt', 'consultation'])('accepts the registry-declared palette %j', async (paletteKey) => {
+  it.each(['core'])('accepts the registry-declared palette %j', async (paletteKey) => {
     await expect(service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey, graph: VALID_GRAPH })).resolves.toBeDefined();
 
     expect(mockWorkflowDefinitionRepository.create).toHaveBeenCalledTimes(1);

@@ -74,8 +74,13 @@ const VALID_GRAPH = {
  *  SYSTEM-shared read and reaches a tenant as a per-tenant clone with a DIFFERENT id. */
 const PROMPT_BOUND_GRAPH = {
   version: 1,
-  nodes: [{ id: 'n_gen', type: 'noop', config: { promptTemplateId: 'tpl-system-1', promptVersionNumber: 3 } }],
-  edges: [],
+  nodes: [
+    { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
+    // TASK-893 — `prompt.template_ref` is an ACTION now, so the binding rides under `action`.
+    { id: 'n_gen', type: 'core.action', config: { actionKey: 'prompt.template_ref', action: { promptTemplateId: 'tpl-system-1', promptVersionNumber: 3 } }, position: { x: 1, y: 0 } },
+    { id: 'o1', type: 'core.output', config: { protocols: ['http'] }, position: { x: 2, y: 0 } },
+  ],
+  edges: [{ id: 'e1', from: 'n_gen', to: 'o1', fromPort: 'out', toPort: 'in' }],
 };
 
 /** Missing `edges` — `workflowGraphProblems` short-circuits before any rule or compile runs. */
