@@ -13,12 +13,22 @@
  *    against the live registry.
  */
 import { describe, expect, it } from 'vitest';
+import { ACTION_PORTS } from '../node-ports';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 import type { WorkflowNodeDescriptor } from '../node-registry';
 import { WORKFLOW_PORT_PRIMITIVES } from '../port-model';
 import { isValidConnection, nodeDescriptorContractProblems } from '../port-validation';
 
 const DESCRIPTORS = Object.values(WORKFLOW_NODE_REGISTRY);
+
+/** TASK-893 — the OD-15 sweeps below must also cover the SEVENTEEN action port tables. An action
+ *  is what a `core.action` node's sockets actually resolve to (`effectivePorts`), so a data
+ *  output with no `outputKey` there is exactly as unresolvable at runtime as one on a node type.
+ *  Shaped as a descriptor-alike so the three `it.each` blocks take both without branching. */
+const PORT_BEARERS = [
+  ...DESCRIPTORS.map((descriptor) => ({ key: descriptor.key, inputs: descriptor.inputs, outputs: descriptor.outputs })),
+  ...Object.entries(ACTION_PORTS).map(([key, ports]) => ({ key, inputs: ports.inputs, outputs: ports.outputs })),
+];
 
 /** A minimal conforming descriptor, mutated per-test to exercise one rule at a time. */
 function descriptorFixture(overrides: Partial<WorkflowNodeDescriptor> = {}): WorkflowNodeDescriptor {
@@ -175,28 +185,30 @@ describe('evalGate (OD-11) — optional, and shape-checked when present', () => 
  * type is invisible to a JSON consumer of `GET /admin/workflow-nodes`.
  */
 describe('OD-15 — outputKey is declared on every data output port, and on no control port', () => {
-  it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares an outputKey on every data OUTPUT port', (_key, descriptor) => {
+  it.each(PORT_BEARERS.map((b) => [b.key, b] as const))('%s declares an outputKey on every data OUTPUT port', (_key, descriptor) => {
     const missing = descriptor.outputs.filter((port) => port.primitive !== 'control' && !port.outputKey).map((port) => port.name);
     expect(missing, `${descriptor.key}: data output ports with no outputKey — the interpreter cannot resolve them`).toEqual([]);
   });
 
-  it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares NO outputKey on a control port', (_key, descriptor) => {
+  it.each(PORT_BEARERS.map((b) => [b.key, b] as const))('%s declares NO outputKey on a control port', (_key, descriptor) => {
     const offenders = [...descriptor.inputs, ...descriptor.outputs]
       .filter((port) => port.primitive === 'control' && (port as { outputKey?: string }).outputKey !== undefined)
       .map((port) => port.name);
     expect(offenders, `${descriptor.key}: control ports carry no payload, so they can name no output key`).toEqual([]);
   });
 
-  it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares NO outputKey on an INPUT port (a socket is bound by toPort)', (_key, descriptor) => {
+  it.each(PORT_BEARERS.map((b) => [b.key, b] as const))('%s declares NO outputKey on an INPUT port (a socket is bound by toPort)', (_key, descriptor) => {
     const offenders = descriptor.inputs.filter((port) => (port as { outputKey?: string }).outputKey !== undefined).map((port) => port.name);
     expect(offenders).toEqual([]);
   });
 
-  it('the two nodes whose descriptor contradicted their activity now declare real data outputs (OD-15)', () => {
+  it('the two actions whose ports contradicted their activity declare real data outputs (OD-15)', () => {
     // `persistDraft` emits `{contextItemId, text}` and `finalizeAssurance` genuinely consumes the
-    // former — yet both declared `[NEXT]` only, so NO legal edge could express that flow.
-    const persist = WORKFLOW_NODE_REGISTRY['consultation.persistDraft'];
-    const assure = WORKFLOW_NODE_REGISTRY['consultation.finalizeAssurance'];
+    // former — yet both declared `[NEXT]` only, so NO legal edge could express that flow. Both
+    // are ACTIONS since TASK-893 Phase 4; the invariant and the fix are unchanged, so the flow is
+    // asserted through `core.action` instances resolved by `actionKey`.
+    const persist = ACTION_PORTS['consultation.persistDraft'];
+    const assure = ACTION_PORTS['consultation.finalizeAssurance'];
 
     expect(persist.outputs.filter((p) => p.primitive !== 'control').map((p) => [p.name, p.outputKey])).toEqual([
       ['out', 'text'],
@@ -204,8 +216,10 @@ describe('OD-15 — outputKey is declared on every data output port, and on no c
     ]);
     expect(assure.outputs.filter((p) => p.primitive !== 'control').map((p) => [p.name, p.outputKey])).toEqual([['contextItemId', 'contextItemId']]);
 
-    // …and the flow is now expressible as a type-checked edge.
-    expect(isValidConnection('consultation.persistDraft', 'contextItemId', 'consultation.finalizeAssurance', 'contextItemId')).toBe(true);
-    expect(isValidConnection('consultation.persistDraft', 'out', 'consultation.finalizeAssurance', 'in')).toBe(true);
+    // …and the flow is still expressible as a type-checked edge.
+    const fromNodeConfig = { actionKey: 'consultation.persistDraft' };
+    const toNodeConfig = { actionKey: 'consultation.finalizeAssurance' };
+    expect(isValidConnection('core.action', 'contextItemId', 'core.action', 'contextItemId', { fromNodeConfig, toNodeConfig })).toBe(true);
+    expect(isValidConnection('core.action', 'out', 'core.action', 'in', { fromNodeConfig, toNodeConfig })).toBe(true);
   });
 });
