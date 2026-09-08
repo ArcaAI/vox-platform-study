@@ -122,9 +122,21 @@ export class FeatureAvailabilityService {
    * `sourceScope` is reported so the console can SAY that a value is inherited
    * rather than chosen, which is the difference between a checkbox and a
    * checkbox someone can reason about.
+   *
+   * TASK-932 R-1 — a `maxScope: 'system'` key is OMITTED for a non-elevated
+   * caller. Such a key is resolved on the PLATFORM lane whatever tenant asked
+   * (the `null` below), so returning it would hand a tenant admin the platform
+   * row's value — the same value `GET admin/settings/registry/:key` already
+   * answers 404 for, which would make one route give away what the other
+   * hides. Nothing is lost: a key the cascade will never honour per tenant
+   * cannot gate anything on a tenant's console. Elevation is read from CLS
+   * rather than passed in, so it comes from the same place as
+   * `assertPlatformMatrixAccess` and no future caller can forget it.
    */
   resolveEffectiveForTenant(tenantId: string | null): EffectiveFeature[] {
-    return this.descriptors().map((descriptor) => {
+    const elevated = isSuperAdmin(this.cls.get('user'));
+    const visible = elevated ? this.descriptors() : this.descriptors().filter((d) => d.maxScope !== 'system');
+    return visible.map((descriptor) => {
       const resolved = this.tenantSettings.resolve<boolean>(descriptor.key, descriptor.maxScope === 'system' ? null : tenantId);
       return {
         key: descriptor.key,

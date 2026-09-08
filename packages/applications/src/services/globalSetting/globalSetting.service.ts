@@ -70,6 +70,33 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   /**
+   * TASK-932 R-1 (D-5) — the tenant a non-elevated caller's READS are pinned to,
+   * or `null` when the caller is a platform administrator.
+   *
+   * `GlobalSetting` is a member of `SYSTEM_SHARED_READ_MODELS`
+   * (`packages/database/src/extensions/tenant-scope.ts`), so a read that names
+   * no tenant is WIDENED to `tenantId IN [caller, SYSTEM]`. That is exactly
+   * right for the resolvers that inherit a platform default on ABSENCE, and
+   * exactly wrong for this admin surface, which lists ROWS: the platform's own
+   * configuration arrives interleaved with the tenant's, and the owner rule is
+   * that platform settings are the platform administrator's alone.
+   *
+   * The fix belongs here and not in the shared-read set, which the inheriting
+   * resolvers still depend on. An EXPLICIT `where.tenantId` defeats the
+   * widening — `mergeSharedReadTenantIntoWhere` returns early once the caller
+   * has pinned one — the same technique `AiProviderConnectionService.readTier`
+   * uses to address one tier at a time.
+   *
+   * A platform administrator is deliberately NOT pinned: unscoped they read
+   * every row, and with a working tenant selected the controller already routes
+   * them through `fetchAllByTenantId` for that tenant.
+   */
+  private get ownTenantReadPin(): string | null {
+    if (isSuperAdmin(this.requestUser)) return null;
+    return this.tenantId;
+  }
+
+  /**
    * Envelope-encrypt a SECRET setting's plaintext `value`
    * into `encryptedValue` under the CURRENT Vault Transit key version, so the
    * ciphertext the reveal path prefers always reflects the latest value (and,
@@ -190,10 +217,15 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
   async fetchAll(props: PaginatedQuery & { secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>> {
     const { limit, page, secretsOnly } = props;
+    // TASK-932 R-1 — a non-elevated caller reads its OWN tenant and nothing
+    // else. Without the explicit pin the shared-read widening serves the SYSTEM
+    // platform rows alongside the tenant's own (see `ownTenantReadPin`).
+    const pin = this.ownTenantReadPin;
+    const tenantClause = pin ? { tenantId: pin } : undefined;
     // 'GlobalSetting' opts the list into model-aware filter
     // coercion: `dataType` (enum ValueType) member-validates with a 400 on an
     // unknown member instead of a Prisma server-side error.
-    const where = GlobalSettingService.resolveListWhere(secretsOnly);
+    const where = GlobalSettingService.resolveListWhere(secretsOnly, ...(tenantClause ? [tenantClause] : [])) ?? tenantClause;
     const globalSettings = await this.globalSettingRepository.findAll({
       ...withFormattedPaginatedProps(props, 'GlobalSetting'),
       ...(where ? { where } : {}),
@@ -219,6 +251,18 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string; secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>> {
     const { tenantId, limit, page, secretsOnly } = props;
+    // TASK-932 R-1 — a non-elevated caller may only ask about its OWN tenant.
+    // `where: { tenantId: SYSTEM }` is accepted by the shared-read merge
+    // (SYSTEM is half of the `[caller, SYSTEM]` pair it allows), so without
+    // this guard `GET admin/settings/tenant/00000000-…` hands a tenant admin
+    // the whole platform tier. 404 rather than 403: which tenants exist, and
+    // whether the platform tier is readable at all, are existence questions
+    // (the house 404-over-403 posture) — a foreign CUSTOMER tenant answers the
+    // same way, where the scope extension previously threw a raw 500.
+    const pin = this.ownTenantReadPin;
+    if (pin && tenantId !== pin) {
+      throw new DataNotFoundException('globalSetting', tenantId);
+    }
     // With the secretsOnly facet the tenant scope moves INSIDE the
     // AND group (formatFindAllProps drops sibling keys next to `where.AND`);
     // without it the bare `{ tenantId }` shape is kept byte-for-byte.
@@ -277,6 +321,19 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
   async fetchById(id: EntityId): Promise<GlobalSettingEntity> {
     const globalSetting = await this.globalSettingRepository.findById(id);
+
+    // TASK-932 R-1 — the shared-read widening lets a tenant admin's `findById`
+    // resolve a SYSTEM row, so the row has to be checked after it is loaded.
+    // A 404 (`DataNotFoundException` → the global filter's generic
+    // `Resource not found`) and NOT a 403: the answer must be byte-identical to
+    // a genuinely missing id, or an admin who can read the platform's key names
+    // out of the source tree can confirm each row's existence one request at a
+    // time. The guard precedes the audit event on purpose — a read that is
+    // refused is not a view.
+    const pin = this.ownTenantReadPin;
+    if (pin && globalSetting.tenantId !== pin) {
+      throw new DataNotFoundException('globalSetting', String(id));
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: globalSetting.id,
