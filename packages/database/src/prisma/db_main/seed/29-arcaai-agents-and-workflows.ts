@@ -30,9 +30,18 @@
 import type { CorePrismaClient } from '../../../client';
 import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from './04-department';
-import { ARCAAI_CLINICAL_APPROVED_VERSION } from './07b-arcaai-clinical-templates';
+import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATE_IDS } from './07b-arcaai-clinical-templates';
 import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
-import { SUMMARIZATION_PARAMETERS, arcaaiAgentId, seedAgentSpecs, type SeedAgentSpec, type SeedAgentsClient } from './25-agents';
+import {
+  PRE_SUMMARY_AGENT_SLUG,
+  PRE_SUMMARY_PARAMETERS,
+  SUMMARIZATION_PARAMETERS,
+  arcaaiAgentId,
+  preSummaryPromptVariables,
+  seedAgentSpecs,
+  type SeedAgentSpec,
+  type SeedAgentsClient,
+} from './25-agents';
 import { cloneId } from './26-tenant-reference-set';
 import {
   CORE_PALETTE_KEY,
@@ -87,7 +96,42 @@ export const arcaaiWorkflowSlug = (row: ArcaaiDepartmentRow): string => `arcaai-
 // Agents — 11 × 2
 // =============================================================================
 
-export const ARCAAI_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_TABLE.flatMap((row) =>
+/**
+ * TASK-932 D-9 — ArcaAI's OWN warm-start agent.
+ *
+ * The tenant carries the same lineage key as the platform (`case-notes-pre-summary`) bound to a
+ * DIFFERENT body: the v3 corpus' pre-summary, which is the one the customer signed off — dated
+ * provenance parentheses, event dates kept inline and unreformatted, one bullet per diagnosis,
+ * status-post interventions, English-only output. Seeded HERE rather than left to phase 26,
+ * because `copyAgents` skips a slug the tenant already has and this phase runs first: the tenant's
+ * own body wins, and the SYSTEM copy is simply not made.
+ *
+ * `promptVersionNumber` tracks `ARCAAI_CLINICAL_APPROVED_VERSION` like every department agent, so
+ * a corpus roll-back is one constant for the whole tenant, warm start included.
+ */
+export const ARCAAI_PRE_SUMMARY_AGENT_SPEC: SeedAgentSpec = {
+  id: arcaaiAgentId(23),
+  tenantId: ARCAAI,
+  slug: PRE_SUMMARY_AGENT_SLUG,
+  name: 'Case-notes pre-summary (warm start)',
+  description: `The ArcaAI warm start: one pass over the patient's prior case notes on the department corpus' approved v${ARCAAI_CLINICAL_APPROVED_VERSION} pre-summary body; guardrail screening ON.`,
+  task: 'TEXT_GENERATION',
+  modelSlug: 'lms-gemma-4-e2b-it-qat',
+  fallbackModelSlugs: [],
+  instruction: {
+    promptTemplateId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    promptVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION,
+    variables: preSummaryPromptVariables(),
+  },
+  parameters: PRE_SUMMARY_PARAMETERS,
+  outputSchema: null,
+  status: 'PUBLISHED',
+  isActive: true,
+  tags: ['tier:tenant-authored', 'task:llm', 'capability:pre-summary', 'phase:pre-summary'],
+  provenance: null,
+};
+
+export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_TABLE.flatMap((row) =>
   VISIT_TYPES.map((visit, visitIndex): SeedAgentSpec => ({
     id: arcaaiAgentId((row.ordinal - 1) * VISIT_TYPES.length + visitIndex + 1),
     tenantId: ARCAAI,
@@ -106,6 +150,9 @@ export const ARCAAI_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_TABLE.flatM
     provenance: null,
   })),
 );
+
+/** The 22 department agents plus the tenant's own warm start — what phase 29 writes. */
+export const ARCAAI_AGENT_SPECS: SeedAgentSpec[] = [...ARCAAI_DEPARTMENT_AGENT_SPECS, ARCAAI_PRE_SUMMARY_AGENT_SPEC];
 
 // =============================================================================
 // Workflows — 11
