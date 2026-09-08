@@ -15,6 +15,7 @@ import {
   ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
+  WorkflowAssignmentRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
 import { BaseService } from '../../../common';
@@ -26,6 +27,7 @@ import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../
 import { IConsultationContextSchemaService } from '../../consultation-context-schema/IConsultationContextSchemaService';
 import { IDocumentTemplateService } from '../../document-template/IDocumentTemplateService';
 import { IPromptManagementService } from '../../prompt-management/IPromptManagementService';
+import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { IWorkflowDefinitionService } from '../../workflow-definition/IWorkflowDefinitionService';
 import {
   ITenantReferenceSetService,
@@ -57,6 +59,22 @@ interface PromptClonePort {
 interface WorkflowClonePort {
   cloneFromSystem(slug: string, targetTenantId: string): Promise<{ definitionId: string; created: boolean }>;
 }
+/**
+ * TASK-930 §6.3 — the assignment WRITE goes through the owning service, not the repository, so
+ * the checks that make an assignment meaningful (the palette is registered, the slug resolves to
+ * a PUBLISHED definition in THIS tenant, the WORM change row) run exactly once, where they live.
+ */
+interface WorkflowAssignmentWritePort {
+  upsert(dto: {
+    scope: PipelinePolicyScope;
+    scopeId?: string | null;
+    paletteKey: string;
+    workflowDefinitionSlug: string;
+    selectorTags?: string[];
+    reason?: string;
+  }): Promise<unknown>;
+}
+
 interface ContextSchemaClonePort {
   cloneFromSystem(slug: string, tenantId: string): Promise<{ id: string }>;
 }
@@ -139,6 +157,7 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly assignmentRepository: AgentAssignmentRepository,
     private readonly workflowDefinitionRepository: WorkflowDefinitionRepository,
+    private readonly workflowAssignmentRepository: WorkflowAssignmentRepository,
     private readonly contextSchemaRepository: ConsultationContextSchemaRepository,
     private readonly documentTemplateRepository: DocumentTemplateRepository,
     private readonly documentTemplateVersionRepository: DocumentTemplateVersionRepository,
@@ -196,6 +215,7 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
         agentAssignments: { ...EMPTY },
         documentTemplates: { ...EMPTY },
         workflowDefinitions: { ...EMPTY },
+        workflowAssignments: { ...EMPTY },
       },
       warnings: [],
     };
@@ -245,6 +265,8 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
         return this.copyDocumentTemplates(tenantId, summary);
       case 'workflowDefinitions':
         return this.copyWorkflowDefinitions(tenantId, summary);
+      case 'workflowAssignments':
+        return this.copyWorkflowAssignments(tenantId, summary);
     }
   }
 
@@ -540,6 +562,103 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
           summary,
           `workflowDefinitions: '${source.slug}' was ${refused ? 'not clonable and was skipped' : 'not provisioned'}`,
           { tenantId, slug: source.slug },
+          error,
+        );
+      }
+    }
+  }
+
+  /**
+   * TASK-930 §6.3 — SYSTEM's TENANT-scope workflow assignments, so a provisioned tenant does not
+   * merely HAVE the platform workflows but actually RUNS them.
+   *
+   * ## Why this is a kind and not a line in `copyWorkflowDefinitions`
+   *
+   * `WorkflowAssignmentService.resolve` cascades `department → tenant → platform-default` and has
+   * NO SYSTEM tier. So a tenant with a perfect cloned library and no assignment routes exactly as
+   * an empty tenant does — the clone changes nothing observable. The assignment is the row that
+   * makes provisioning mean something, and it is separate because "which workflows do I have" and
+   * "which one do I run" are separately repairable.
+   *
+   * ## TENANT scope only, and the skip is stated
+   *
+   * A DEPARTMENT-scope row's `scopeId` is a department of the SOURCE tenant. Departments are
+   * tenant TOPOLOGY, not content: the id means nothing in the target, and there is no slug to
+   * re-point it by the way a definition or a template is re-pointed. Copying one would dangle, or
+   * — worse — land on an unrelated department that happens to share an id. So DEPARTMENT rows are
+   * skipped; and because a tenant silently missing a routing rule is precisely the failure this
+   * service's warnings exist to prevent, the skip is REPORTED rather than merely counted.
+   *
+   * `selectorKey` travels: a tag-qualified row is a different row of the same tier (TASK-891), not
+   * a variant of the unqualified one, so dropping the selector would collapse two rules into one.
+   *
+   * Missing-only, per row, like every other kind: a tier+selector the tenant already holds is
+   * never rewritten, which is what makes a re-sync safe to run unattended.
+   */
+  private async copyWorkflowAssignments(tenantId: string, summary: ReferenceSetSummary): Promise<void> {
+    const outcome = summary.kinds.workflowAssignments;
+
+    let sources: Array<{ scope: PipelinePolicyScope; paletteKey: string; workflowDefinitionSlug: string; selectorKey: string }> = [];
+    try {
+      // Every SYSTEM row, both scopes — the DEPARTMENT ones are read precisely so their exclusion
+      // can be REPORTED. Filtering them in the query would make the skip invisible.
+      sources = await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, () =>
+        this.workflowAssignmentRepository.findAll({ filters: { tenantId: SYSTEM_TENANT_ID } as never }),
+      );
+    } catch (error) {
+      outcome.failed += 1;
+      this.warn(summary, 'workflowAssignments: the SYSTEM assignments could not be read', { tenantId }, error);
+      return;
+    }
+    if (sources.length === 0) return;
+
+    const assignments = this.port<WorkflowAssignmentWritePort>(IWorkflowAssignmentService);
+    if (!assignments) {
+      outcome.failed += 1;
+      summary.warnings.push('workflowAssignments: the workflow-assignment service is not wired, so no assignment was provisioned.');
+      return;
+    }
+
+    for (const source of sources) {
+      if (source.scope !== PipelinePolicyScope.TENANT) {
+        outcome.skipped += 1;
+        summary.warnings.push(
+          `workflowAssignments: the SYSTEM ${source.scope} assignment for palette '${source.paletteKey}' was skipped — a ` +
+            'DEPARTMENT-scope row names a department of the source tenant, which is tenant topology and has no meaning here.',
+        );
+        continue;
+      }
+      try {
+        const existing = await runInTenantContext(this.clsService, tenantId, () =>
+          this.workflowAssignmentRepository.findForScopeSelector(
+            tenantId,
+            PipelinePolicyScope.TENANT,
+            null,
+            source.paletteKey,
+            source.selectorKey ?? '',
+          ),
+        );
+        if (existing) {
+          outcome.skipped += 1;
+          continue;
+        }
+        await runInTenantContext(this.clsService, tenantId, () =>
+          assignments.upsert({
+            scope: PipelinePolicyScope.TENANT,
+            scopeId: null,
+            paletteKey: source.paletteKey,
+            workflowDefinitionSlug: source.workflowDefinitionSlug,
+            selectorTags: source.selectorKey ? source.selectorKey.split(',') : [],
+            reason: 'Provisioned from the platform reference set',
+          }),
+        );
+        outcome.added += 1;
+      } catch (error) {
+        outcome.failed += 1;
+        this.warn(
+          summary,
+          `workflowAssignments: '${source.paletteKey}' -> '${source.workflowDefinitionSlug}' was not provisioned`,
+          { tenantId, paletteKey: source.paletteKey, workflowDefinitionSlug: source.workflowDefinitionSlug },
           error,
         );
       }

@@ -1088,7 +1088,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // TASK-930 §6.2 — before the eval gate, because it is cheaper and its failure is more
     // actionable: a graph naming an agent SYSTEM does not carry cannot run for ANY tenant
     // provisioned from it, whatever the evals say.
-    await this.assertReferencedAgentsInSystem(source.graph as WorkflowGraph);
+    await this.assertReferencedAgentsInSystem(source.graph as unknown as WorkflowGraph);
 
     // The gate runs BEFORE the promotion, so a block writes nothing at all.
     const verdict = (await this.evalPromotionGate?.evaluateWorkflowPromotion({
