@@ -185,9 +185,17 @@ export function SettingRegistryDrawer({
         },
         onError: (error) => {
           const status = error instanceof GatewayError ? error.status : undefined;
-          if (status === 412 || status === 428) {
-            // Adopt whatever is now stored so the admin re-applies against the
-            // winning value. Re-submitting is the overwrite OCC prevents.
+          if (status === 412) {
+            // `OccConflictAlert` tells the admin their unsaved edits are kept
+            // locally — resetting here would make that false. Re-read the
+            // winning value and leave the typed draft in place; "Reload
+            // latest" is the explicit discard (M2).
+            void settingQuery.refetch();
+            return;
+          }
+          if (status === 428) {
+            // A stale tab / client bug, not a conflict to compare against — the
+            // draft's precondition is meaningless here either way.
             reset();
             void settingQuery.refetch();
             return;
