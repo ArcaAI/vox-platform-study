@@ -1588,13 +1588,21 @@ const NODE_RUNTIME_PROPERTIES: Readonly<Record<string, NodeConfigSchema>> = Obje
 // property was a configuration promise nothing kept. Model selection is the agent's alone.
 
 /**
- * `consultation.hitlGate` is the ONE exclusion, and it is structural rather than a carve-out: it
- * is the only `gate`-classed node type, so the compiler lifts it out of `stages` into `gates` and
- * routes it through `compileGate` — which reads `timeoutSeconds` (already declared on its own
- * schema, scoped to the human wait) and NO retry policy at all. `CompiledGate` has no `retry`
- * field, so offering one would be a configuration promise the runtime cannot keep.
+ * EMPTY since TASK-893 Phase 4, and deliberately kept rather than deleted.
+ *
+ * Its one member was `consultation.hitlGate`, the only `gate`-classed node type: the compiler
+ * lifted it out of `stages` into `gates` and routed it through `compileGate`, which reads
+ * `timeoutSeconds` (declared on its own schema, scoped to the human wait) and NO retry policy at
+ * all — `CompiledGate` has no `retry` field, so offering one would have been a configuration
+ * promise the runtime cannot keep. That node type left the vocabulary with the legacy palettes;
+ * the durable human wait is now `core.humanReview`, which is `review`-classed and compiles as an
+ * ordinary stage, so it takes the runtime fold like every other node.
+ *
+ * The hook stays because the CONDITION it encodes is still live: a node type whose config the
+ * COMPILER consumes rather than an activity cannot be offered knobs the compiled artifact has no
+ * field for. The next such type belongs here, not in a fresh carve-out.
  */
-const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set(['consultation.hitlGate']);
+const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set<string>();
 
 /**
  * The node types the rule catalogue requires to be PRESENT on every path from `core.start` to a
