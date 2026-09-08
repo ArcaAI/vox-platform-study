@@ -133,10 +133,13 @@ import {
   type RealtimeCapabilities,
   type RealtimeCapabilityKey,
   type RealtimeLane,
+  type RealtimeNode,
   type RealtimeResolvedAgentView,
   type RealtimeRunResult,
   type SectionPatchDto,
 } from './realtime';
+import { PRE_SUMMARY_EVENT, type PreSummaryEventDto, type PreSummaryStatus } from './realtime/dto/section-patch.dto';
+import { ILivePreSummaryRunner, type ILivePreSummaryRunner as ILivePreSummaryRunnerPort } from './live-pre-summary.port';
 import { readGoverningEngineMarker, tenantWorkflowGoverns } from '../governing-engine';
 // lane A — the consultation's OWN workflow selection, durable from create.
 import { readWorkflowSelectionMarker } from '../consultation/workflow-selection';
@@ -555,6 +558,14 @@ interface LiveSession {
    * produced must not change language halfway through because a row was edited.
    */
   summaryLanguage?: string | null;
+  /**
+   * TASK-932 D-9 — the WARM START, kicked off at `start()` and never awaited by a flush.
+   *
+   * Held on the session only so a `stop()` racing it can be reasoned about and a test can await
+   * it: nothing downstream depends on its value. The pre-summary it produces is read from the
+   * database (`resolveWarmStartPreSummary`) and from the live feed, not from here.
+   */
+  onStartPromise?: Promise<void>;
 }
 
 /**
@@ -852,6 +863,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // keeps its arity; ABSENT ⇒ `CoreAgentHandler` falls back to TEXT_GENERATION exactly as it did
     // before this ticket, which is why the read-out reports that same fallback.
     @Optional() @Inject(AgentResolverService) private readonly agentResolver?: AgentResolverService,
+    // TASK-932 D-9 — how a WARM-START (`onStart`) node actually generates. The GRAPH decides that
+    // the warm start happens and which agent it names; this runs it, over the pre-summary
+    // pipeline that already exists (`live-pre-summary.port.ts` documents the seam it does not
+    // close). Optional + trailing so every positional fixture keeps its arity; ABSENT ⇒ a graph
+    // that declares a warm start publishes `degraded: warm_start_unwired` rather than silently
+    // doing nothing, because a panel that never resolves is the skeleton-forever defect again.
+    @Optional() @Inject(ILivePreSummaryRunner) private readonly preSummaryRunner?: ILivePreSummaryRunnerPort,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1054,8 +1072,127 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // resolved until the lane it is named on exists.
     session.templatePromise = this.ensureTemplateResolved(session);
     session.substratePromise = this.ensureSubstrateResolved(session);
+    // TASK-932 D-9 — the WARM START, kicked off with the same fire-and-forget shape as everything
+    // above it and for the same reason: `start()` is synchronous for the recording controller.
+    //
+    // It runs IN PARALLEL with the capture session opening, which is the whole point of the
+    // `onStart` cadence and of the graph edge that authors it (`n_trigger.next -> n_presummary`
+    // sits beside `n_trigger.next -> n_asr`, not before it). Sequencing the pre-summary ahead of
+    // capture would make the microphone wait on an LLM call over the patient's whole prior record.
+    session.onStartPromise = this.runOnStartNodes(session);
 
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
+  }
+
+  // ------------------------------------------------------------------
+  // TASK-932 D-9 — the WARM START (`onStart` cadence)
+  // ------------------------------------------------------------------
+
+  /**
+   * Run the session's `onStart` nodes ONCE, and publish what happened.
+   *
+   * ## What makes this a graph step rather than a call the console makes
+   *
+   * Everything that DECIDES is on the graph: whether a warm start happens at all
+   * (`lane.onStart` is empty for every lane that authors none), which agent it is
+   * (`agentRef.slug`), that it runs on the realtime lane at the `onStart` cadence, and that it
+   * DEGRADES rather than fails (`onError`). The durable interpreter skips the same node with
+   * `reason: 'realtime_lane'` whenever a live session owns the run, so exactly one runtime
+   * executes it — the invariant TASK-864/TASK-930 made structural, extended to a new cadence
+   * rather than worked around.
+   *
+   * ## NEVER THROWS, NEVER BLOCKS
+   *
+   * This is background work for a consultation that is already recording. Every failure is a
+   * `degraded` event with a PHI-safe reason; nothing here can fail a session, stop a flush, or
+   * delay the microphone. `enabled: false` on the node is honoured exactly as the flush lane
+   * honours it — an authored-but-switched-off warm start publishes nothing at all, because the
+   * tenant turned it off rather than it having gone wrong.
+   */
+  private async runOnStartNodes(session: LiveSession): Promise<void> {
+    let nodes: readonly RealtimeNode[] = [];
+    try {
+      const lane = session.laneSnapshot !== undefined ? session.laneSnapshot : await (session.lanePromise ?? this.ensureLaneResolved(session));
+      nodes = (lane?.onStart ?? []).filter((node) => node.enabled);
+    } catch {
+      // A lane that cannot be resolved has already been logged by `ensureLaneResolved`, which
+      // never rejects; this catch exists only so a future change there cannot take the session
+      // down through this path.
+      return;
+    }
+    if (nodes.length === 0) return;
+
+    // The substrate gate can stand this engine down entirely (a governed consultation whose
+    // durable run owns the document). Asked BEFORE anything is published: a warm start written
+    // beside a document this engine does not own is the same exclusivity hazard as a flush.
+    const allowed = session.substrateAllowed ?? (await (session.substratePromise ?? this.ensureSubstrateResolved(session)));
+    if (!allowed) return;
+
+    for (const node of nodes) {
+      const agentSlug = readAgentRef(node.config)?.slug ?? null;
+      await this.publishPreSummary(session, { status: 'running', agentSlug });
+
+      if (!this.preSummaryRunner) {
+        this.logger.warn({
+          message: 'A warm-start node is authored but no pre-summary runner is wired — publishing a named degrade rather than nothing',
+          consultationId: session.consultationId,
+          nodeId: node.nodeId,
+          agentSlug,
+        });
+        await this.publishPreSummary(session, { status: 'degraded', error: 'warm_start_unwired', agentSlug });
+        continue;
+      }
+
+      // `run` is contractually total, so there is no try/catch here by design: a rejection would
+      // be a broken implementation of the port, and swallowing it here would hide that.
+      const result = await this.preSummaryRunner.run({
+        consultationId: session.consultationId,
+        tenantId: session.tenantId,
+        userId: session.userId ?? null,
+        agentSlug,
+      });
+
+      await this.publishPreSummary(session, {
+        status: result.status,
+        agentSlug,
+        ...(result.content === undefined ? {} : { content: result.content }),
+        ...(result.reason === undefined ? {} : { error: result.reason }),
+      });
+
+      this.logger.log({
+        message: result.status === 'ready' ? 'Warm-start pre-summary ready' : 'Warm-start pre-summary degraded',
+        consultationId: session.consultationId,
+        nodeId: node.nodeId,
+        agentSlug,
+        // PHI-safe: a reason CODE and a LENGTH, never the text.
+        reason: result.reason ?? null,
+        contentChars: result.content?.length ?? 0,
+      });
+    }
+  }
+
+  /**
+   * Publish one `presummary` event on the consultation's live channel.
+   *
+   * `safeChannelPublish`, not `safePublish`: this is an ADDITIVE event beside the whole-document
+   * payload, exactly like `section.patch`, and it must not overwrite the snapshot cache — a
+   * client reconnecting mid-consultation asks that cache for the running NOTE, and answering
+   * with a pre-summary would replace the clinician's document with its own background material.
+   */
+  private async publishPreSummary(
+    session: LiveSession,
+    fields: { status: PreSummaryStatus; content?: string; error?: string; agentSlug?: string | null },
+  ): Promise<void> {
+    const event: PreSummaryEventDto = {
+      event: PRE_SUMMARY_EVENT,
+      consultationId: session.consultationId,
+      status: fields.status,
+      ...(fields.content === undefined ? {} : { content: fields.content }),
+      ...(fields.error === undefined ? {} : { error: fields.error }),
+      ...(fields.agentSlug ? { agentSlug: fields.agentSlug } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    await this.safeChannelPublish(this.channel(session.consultationId), JSON.stringify(event));
   }
 
   isActive(consultationId: string): boolean {
