@@ -1,13 +1,18 @@
 /**
- * The one AI provider screen (`/ai-providers`, TASK-862).
+ * The one AI provider screen (`/ai-providers`).
  *
  * These cases pin the DECISIONS, not the markup:
- *   * tenancy is a CONTROL: an elevated caller lands on the SYSTEM tier and
- *     every read carries `?tenantId=SYSTEM`; switching to the working tenant
- *     re-parameterises the reads (the client-side shape of "every config cache
- *     key carries the tenant");
- *   * a tenant admin is pinned to their own tenant and sees no tier switch;
- *   * every capability the gateway serves has a tab;
+ *   * TENANCY IS THE WORKING TENANT (TASK-932 R-12) — there is no scope toggle.
+ *     Elevated with no working tenant → the platform tier; with one → that
+ *     tenant, and the "Acting on" banner; a tenant admin → their own tenant;
+ *   * the platform view leads with the built-in engines and the weight store,
+ *     because "where is LM Studio's endpoint" was the question this screen could
+ *     not answer at all;
+ *   * platform cards never speak tenant wording, and a keyless built-in row
+ *     reads as a DEFAULT, not as "no key · Disabled for this tenant";
+ *   * "Reset to default" exists on platform-managed rows and POSTs the reset
+ *     route, never the write route;
+ *   * the tenant view carries only BYO cards and no platform plane;
  *   * the connection ceilings render and travel on the PUT body;
  *   * "Test connection" POSTs the ephemeral probe and never the write route;
  *   * the "Used by" panel lists routing bindings, and renders a 403 as
@@ -20,7 +25,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { PermissionRule } from '@/shared/auth/ability';
-import { PROVIDER_SERVICES } from '../../api/types';
 import { AiProvidersScreen } from '../ai-providers-screen';
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
@@ -33,7 +37,8 @@ beforeAll(() => {
 const ALL: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
 const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
 
-const ELEVATED_SESSION = {
+/** Elevated, with a working tenant selected → the TENANT tier. */
+const WORKING_TENANT_SESSION = {
   user: { id: 'u-9', username: 'super_admin', email: 'root@arca.ai', roles: ['SUPER_ADMIN'] },
   isElevated: true,
   workingTenantId: 'tnt-1' as string | null,
@@ -45,8 +50,16 @@ const ELEVATED_SESSION = {
   effectiveTenantId: 'tnt-1' as string | null,
 };
 
+/** Elevated, NO working tenant → the PLATFORM tier. */
+const PLATFORM_SESSION = {
+  ...WORKING_TENANT_SESSION,
+  workingTenantId: null,
+  workingTenantName: null,
+  effectiveTenantId: null,
+};
+
 const TENANT_SESSION = {
-  ...ELEVATED_SESSION,
+  ...WORKING_TENANT_SESSION,
   user: { id: 'u-1', username: 'tenant_admin', email: 'admin@arca.ai', roles: ['TENANT_ADMIN'] },
   isElevated: false,
   effectiveIsElevated: false,
@@ -100,15 +113,16 @@ interface RecordedCall {
 }
 
 interface StubOptions {
-  session?: typeof ELEVATED_SESSION;
+  session?: typeof WORKING_TENANT_SESSION;
   permissions?: PermissionRule[];
   routingForbidden?: boolean;
   /** Per-`tenantId` stored rows, keyed `service/provider`. */
   rows?: Record<string, Record<string, Record<string, unknown>>>;
   probe?: { ok: boolean; message: string; probe: 'auth' | 'reachability'; source: 'request' | 'tenant' | 'platform' };
+  readiness?: { checkedAt: string; engines: { provider: string; status: 'up' | 'down' | 'unknown'; latencyMs: number | null; loadedCount: number; listedCount: number; detail: string | null }[] };
 }
 
-function stubFetch({ session = ELEVATED_SESSION, permissions = ALL, routingForbidden, rows = {}, probe }: StubOptions = {}): RecordedCall[] {
+function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbidden, rows = {}, probe, readiness }: StubOptions = {}): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
     'fetch',
@@ -125,6 +139,10 @@ function stubFetch({ session = ELEVATED_SESSION, permissions = ALL, routingForbi
       const path = url.pathname;
       const tenantId = url.searchParams.get('tenantId') ?? 'cls';
 
+      if (path === '/api/hope/admin/ai-services/readiness') {
+        return Response.json(readiness ?? { checkedAt: '2026-09-09T00:00:00.000Z', engines: [] });
+      }
+
       if (path === '/api/hope/admin/routing-policies') {
         if (routingForbidden) return Response.json({ statusCode: 403, message: 'managed by super admins' }, { status: 403 });
         return Response.json(tenantId === SYSTEM_TENANT ? [binding()] : []);
@@ -135,14 +153,17 @@ function stubFetch({ session = ELEVATED_SESSION, permissions = ALL, routingForbi
         if (action === 'test' && method === 'POST') {
           return Response.json(probe ?? { ok: true, message: 'Connected — key accepted', probe: 'auth', source: 'request' });
         }
+        if (action === 'reset' && method === 'POST') {
+          return Response.json(row(service!, provider!, tenantId, { baseUrl: 'http://hope-lmstudio:1234/v1', enabled: true, hasKey: true, version: 4 }));
+        }
         if (method === 'PUT') {
           const current = rows[tenantId]?.[`${service}/${provider}`] ?? {};
-          return Response.json(row(service, provider, tenantId, { ...current, ...(body as Record<string, unknown>), hasKey: true, version: 1 }), {
+          return Response.json(row(service!, provider!, tenantId, { ...current, ...(body as Record<string, unknown>), hasKey: true, version: 1 }), {
             headers: { etag: '"1"' },
           });
         }
         const stored = rows[tenantId]?.[`${service}/${provider}`];
-        return Response.json(row(service, provider, tenantId, stored), { headers: { etag: stored ? `"${stored.version ?? 1}"` : '"0"' } });
+        return Response.json(row(service!, provider!, tenantId, stored), { headers: { etag: stored ? `"${stored.version ?? 1}"` : '"0"' } });
       }
 
       throw new Error(`Unhandled fetch: ${method} ${raw}`);
@@ -158,68 +179,167 @@ afterEach(() => {
   toast.error.mockClear();
 });
 
-describe('AiProvidersScreen — tenancy is a control', () => {
-  it('lands an elevated caller on the SYSTEM tier and reads every row with ?tenantId=SYSTEM', async () => {
+describe('AiProvidersScreen — the working tenant decides the scope (R-12)', () => {
+  it('puts an elevated caller with NO working tenant on the platform tier and reads with ?tenantId=SYSTEM', async () => {
     const calls = stubFetch();
     renderWithProviders(<AiProvidersScreen />);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'AI providers' })).toBeDefined();
-    await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
+    await screen.findByRole('heading', { level: 3, name: 'LM Studio' });
 
     const providerReads = calls.filter((c) => c.url.includes('/api/hope/admin/providers/') && c.method === 'GET');
     expect(providerReads.length).toBeGreaterThan(0);
     for (const call of providerReads) {
       expect(new URL(call.url, 'http://test.local').searchParams.get('tenantId')).toBe(SYSTEM_TENANT);
     }
-    expect(screen.getByText('Scope: Platform default (SYSTEM)')).toBeDefined();
+    expect(screen.getByText('Scope: Platform (SYSTEM)')).toBeDefined();
   });
 
-  it('re-parameterises every read when the tier switches to the working tenant', async () => {
-    const calls = stubFetch();
+  it('has NO scope toggle — the shell switcher is the only tenancy control', async () => {
+    stubFetch();
+    renderWithProviders(<AiProvidersScreen />);
+    await screen.findByRole('heading', { level: 3, name: 'LM Studio' });
+
+    expect(screen.queryByRole('radio', { name: /Platform default/ })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Configuration tier' })).toBeNull();
+  });
+
+  it('follows the working tenant into the tenant tier, banner and all', async () => {
+    const calls = stubFetch({ session: WORKING_TENANT_SESSION });
     renderWithProviders(<AiProvidersScreen />);
     await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
 
-    const tenantTier = await screen.findByRole('radio', { name: /Tenant configuration — Sunrise Medical Group/ });
-    await act(async () => {
-      fireEvent.click(tenantTier);
-    });
-
-    await waitFor(() => {
-      const tenantReads = calls.filter(
-        (c) => c.url.includes('/api/hope/admin/providers/') && new URL(c.url, 'http://test.local').searchParams.get('tenantId') === 'tnt-1',
-      );
-      expect(tenantReads.length).toBeGreaterThan(0);
-    });
-    expect(await screen.findByText('Scope: Sunrise Medical Group')).toBeDefined();
+    for (const call of calls.filter((c) => c.url.includes('/api/hope/admin/providers/'))) {
+      expect(new URL(call.url, 'http://test.local').searchParams.get('tenantId')).toBe('tnt-1');
+    }
+    expect(screen.getByText('Scope: Sunrise Medical Group')).toBeDefined();
     // Tenant-tier mutations carry the "Acting on" banner (rule 12 §5).
     expect((await screen.findByRole('status')).textContent).toMatch(/Acting on «Sunrise Medical Group»/);
   });
 
-  it('pins a tenant admin to their own tenant with no tier switch', async () => {
+  it('pins a tenant admin to their own tenant', async () => {
     const calls = stubFetch({ session: TENANT_SESSION });
     renderWithProviders(<AiProvidersScreen />);
     await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
 
-    expect(screen.queryByRole('radio', { name: /Platform default/ })).toBeNull();
     for (const call of calls.filter((c) => c.url.includes('/api/hope/admin/providers/'))) {
       expect(new URL(call.url, 'http://test.local').searchParams.get('tenantId')).toBe('tnt-1');
     }
   });
 });
 
-describe('AiProvidersScreen — the provider grid', () => {
-  it('renders one tab per capability the gateway serves', async () => {
+describe('AiProvidersScreen — the platform view (R-3, R-11)', () => {
+  it('renders the three platform sections, built-ins first', async () => {
     stubFetch();
+    renderWithProviders(<AiProvidersScreen />);
+
+    // Wait for the session to arrive: until it does the screen shows a skeleton
+    // rather than guessing a tier, so only the always-present "Used by" heading
+    // exists (which `findAllByRole` would otherwise settle for).
+    await screen.findByRole('heading', { level: 2, name: 'Built-in inference services' });
+    const headings = await screen.findAllByRole('heading', { level: 2 });
+    const titles = headings.map((h) => h.textContent);
+    expect(titles).toContain('Built-in inference services');
+    expect(titles).toContain('Platform default cloud connections');
+    expect(titles).toContain('Model registry (built-in)');
+    expect(titles.indexOf('Built-in inference services')).toBeLessThan(titles.indexOf('Platform default cloud connections'));
+  });
+
+  it('renders a card for every built-in engine and for the weight store', async () => {
+    stubFetch();
+    renderWithProviders(<AiProvidersScreen />);
+
+    for (const label of ['LM Studio', 'Ollama', 'vLLM', 'llama.cpp', 'Hugging Face Hub', 'S3 / MinIO weight store']) {
+      expect(await screen.findByRole('heading', { level: 3, name: label }), `${label} card missing`).toBeDefined();
+    }
+  });
+
+  it('never speaks tenant wording on a platform card — the R-11 defect', async () => {
+    stubFetch({
+      rows: { [SYSTEM_TENANT]: { 'model-registry/s3': { enabled: true, hasKey: false, version: 2, extraJson: { inheritsPlatformStorage: true } } } },
+    });
+    renderWithProviders(<AiProvidersScreen />);
+    const card = (await screen.findByRole('heading', { level: 3, name: 'S3 / MinIO weight store' })).closest('[aria-labelledby]') as HTMLElement;
+
+    expect(card.textContent).not.toContain('Disabled for this tenant');
+    expect(card.textContent).toContain('Built-in default');
+    expect(card.textContent).toContain('Using platform storage credentials');
+  });
+
+  it('shows the readiness the sweep measured, and says "not measured" rather than inventing a verdict', async () => {
+    stubFetch({
+      readiness: {
+        checkedAt: '2026-09-09T00:00:00.000Z',
+        engines: [{ provider: 'lm-studio', status: 'up', latencyMs: 12, loadedCount: 1, listedCount: 4, detail: null }],
+      },
+    });
+    renderWithProviders(<AiProvidersScreen />);
+
+    const lmStudio = (await screen.findByRole('heading', { level: 3, name: 'LM Studio' })).closest('[aria-labelledby]') as HTMLElement;
+    expect(lmStudio.textContent).toContain('reachable');
+    expect(lmStudio.textContent).toContain('1/4 loaded');
+
+    const ollama = (await screen.findByRole('heading', { level: 3, name: 'Ollama' })).closest('[aria-labelledby]') as HTMLElement;
+    expect(ollama.textContent).not.toContain('not answering');
+  });
+
+  it('"Reset to default" POSTs the reset route after a confirmation, and never the write route', async () => {
+    const calls = stubFetch({ rows: { [SYSTEM_TENANT]: { 'llm/lm-studio': { baseUrl: 'http://localhost:1234/v1', enabled: true, hasKey: true, version: 3 } } } });
+    renderWithProviders(<AiProvidersScreen />);
+    await screen.findByRole('heading', { level: 3, name: 'LM Studio' });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reset LM Studio to its built-in default' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm reset' }));
+    });
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.includes('/llm/lm-studio/reset'))).toBe(true));
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+    const reset = calls.find((c) => c.url.includes('/reset'))!;
+    expect(new URL(reset.url, 'http://test.local').searchParams.get('tenantId')).toBe(SYSTEM_TENANT);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/restored to its built-in default/)));
+  });
+
+  it('lets an engine endpoint be saved without a key — a self-hosted engine authenticates nobody', async () => {
+    const calls = stubFetch({ rows: { [SYSTEM_TENANT]: { 'llm/lm-studio': { baseUrl: 'http://hope-lmstudio:1234/v1', enabled: true, version: 3 } } } });
+    renderWithProviders(<AiProvidersScreen />);
+    const card = (await screen.findByRole('heading', { level: 3, name: 'LM Studio' })).closest('[aria-labelledby]') as HTMLElement;
+
+    fireEvent.change(card.querySelector('input[id$="-baseUrl"]') as HTMLInputElement, { target: { value: 'http://localhost:1234/v1' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Save key for LM Studio|Save for LM Studio/ }));
+    });
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url.includes('/llm/lm-studio'))).toBe(true));
+    expect((calls.find((c) => c.method === 'PUT')!.body as Record<string, unknown>).baseUrl).toBe('http://localhost:1234/v1');
+  });
+});
+
+describe('AiProvidersScreen — the tenant view', () => {
+  it('shows only BYO cards: no built-in engine and no weight store', async () => {
+    stubFetch({ session: TENANT_SESSION });
     renderWithProviders(<AiProvidersScreen />);
     await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
 
-    const serviceTabs = screen.getAllByRole('tab');
-    expect(serviceTabs).toHaveLength(PROVIDER_SERVICES.length);
+    expect(screen.queryByRole('heading', { level: 3, name: 'LM Studio' })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 3, name: 'S3 / MinIO weight store' })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Built-in inference services' })).toBeNull();
+  });
+
+  it('offers no reset — built-in defaults are not a tenant concept', async () => {
+    stubFetch({ session: TENANT_SESSION });
+    renderWithProviders(<AiProvidersScreen />);
+    await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
+
+    expect(screen.queryByRole('button', { name: /Reset .* to its built-in default/ })).toBeNull();
   });
 
   it('shows the three-state badge and the ceilings on a stored row, and sends the ceilings on save', async () => {
     const calls = stubFetch({
-      rows: { [SYSTEM_TENANT]: { 'llm/azure': { hasKey: true, keyVersion: 2, enabled: true, maxConcurrent: 8, timeoutS: 60, version: 3 } } },
+      session: TENANT_SESSION,
+      rows: { 'tnt-1': { 'llm/azure': { hasKey: true, keyVersion: 2, enabled: true, maxConcurrent: 8, timeoutS: 60, version: 3 } } },
     });
     renderWithProviders(<AiProvidersScreen />);
     const card = (await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' })).closest('[aria-labelledby]') as HTMLElement;
@@ -238,11 +358,11 @@ describe('AiProvidersScreen — the provider grid', () => {
     const put = calls.find((c) => c.method === 'PUT');
     expect(put?.body).toMatchObject({ maxConcurrent: 8, rpmLimit: 600, timeoutS: 60, tpmLimit: null, expectedVersion: 3 });
     expect((put?.body as Record<string, unknown>).apiKey).toBeUndefined();
-    expect(new URL(put!.url, 'http://test.local').searchParams.get('tenantId')).toBe(SYSTEM_TENANT);
+    expect(new URL(put!.url, 'http://test.local').searchParams.get('tenantId')).toBe('tnt-1');
   });
 
   it('refuses a non-integer ceiling instead of sending it', async () => {
-    stubFetch({ rows: { [SYSTEM_TENANT]: { 'llm/azure': { hasKey: true, enabled: true, version: 3 } } } });
+    stubFetch({ session: TENANT_SESSION, rows: { 'tnt-1': { 'llm/azure': { hasKey: true, enabled: true, version: 3 } } } });
     renderWithProviders(<AiProvidersScreen />);
     const card = (await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' })).closest('[aria-labelledby]') as HTMLElement;
 
@@ -252,7 +372,7 @@ describe('AiProvidersScreen — the provider grid', () => {
   });
 
   it('"Test connection" POSTs the ephemeral probe with the typed key and never touches the write route', async () => {
-    const calls = stubFetch({ probe: { ok: true, message: 'Connected — key accepted', probe: 'auth', source: 'request' } });
+    const calls = stubFetch({ session: TENANT_SESSION, probe: { ok: true, message: 'Connected — key accepted', probe: 'auth', source: 'request' } });
     renderWithProviders(<AiProvidersScreen />);
     const card = (await screen.findByRole('heading', { level: 3, name: 'OpenAI' })).closest('[aria-labelledby]') as HTMLElement;
 
@@ -269,7 +389,7 @@ describe('AiProvidersScreen — the provider grid', () => {
   });
 
   it('reports a failed probe as an error toast, never as a saved row', async () => {
-    const calls = stubFetch({ probe: { ok: false, message: 'Rejected — invalid key', probe: 'auth', source: 'request' } });
+    const calls = stubFetch({ session: TENANT_SESSION, probe: { ok: false, message: 'Rejected — invalid key', probe: 'auth', source: 'request' } });
     renderWithProviders(<AiProvidersScreen />);
     const card = (await screen.findByRole('heading', { level: 3, name: 'OpenAI' })).closest('[aria-labelledby]') as HTMLElement;
     fireEvent.change(card.querySelector('input[type="password"]') as HTMLInputElement, { target: { value: 'bad' } });
@@ -302,18 +422,18 @@ describe('AiProvidersScreen — used by', () => {
 });
 
 describe('AiProvidersScreen — accessibility', () => {
-  it('has no axe violations (light theme)', async () => {
+  it('has no axe violations on the platform view (light theme)', async () => {
     stubFetch();
     const { container } = renderWithProviders(<AiProvidersScreen />);
-    await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
+    await screen.findByRole('heading', { level: 3, name: 'LM Studio' });
     await screen.findByRole('table', { name: 'Task configurations bound to a provider' });
     await waitFor(async () => expect(await axe(container)).toHaveNoViolations());
   });
 
-  it('has no axe violations (dark theme)', async () => {
+  it('has no axe violations on the tenant view (dark theme)', async () => {
     document.documentElement.classList.add('dark');
     try {
-      stubFetch();
+      stubFetch({ session: TENANT_SESSION });
       const { container } = renderWithProviders(<AiProvidersScreen />);
       await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
       await waitFor(async () => expect(await axe(container)).toHaveNoViolations());
