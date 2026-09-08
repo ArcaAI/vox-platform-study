@@ -23,6 +23,8 @@ import type {
   FinalizeAgentTestRequest,
   ImportAgentRequest,
   NewAgentVersionRequest,
+  PromoteAgentToSystemRequest,
+  PromoteAgentToSystemResponse,
   PublishAgentRequest,
   SyncAgentRequest,
   TestAgentRequest,
@@ -37,8 +39,8 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers AgentAdminController, AgentAssignmentAdminController
- * (21 routes). Several controllers sharing one scope share one
+ * Backed by controllers AgentAdminController, AgentAssignmentAdminController, AgentPromoteToSystemController
+ * (22 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -51,7 +53,7 @@ export class AdminAgentResource extends AdminResource {
    * `GET /api/v1/admin/agent-assignments` — `AgentAssignmentAdminController.fetchAll`.
    */
   agentAssignmentAdminFetchAll(
-    options: AdminRequestOptions & { query?: { task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' } } = {},
+    options: AdminRequestOptions & { query?: { task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION' } } = {},
   ): Promise<AgentAssignmentResponse[]> {
     return this.request<AgentAssignmentResponse[]>({
       method: 'GET',
@@ -139,7 +141,7 @@ export class AdminAgentResource extends AdminResource {
    * `GET /api/v1/admin/agents` — `AgentAdminController.fetchAll`.
    */
   agentAdminFetchAll(
-    options: AdminRequestOptions & { query?: { task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' } } = {},
+    options: AdminRequestOptions & { query?: { task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION' } } = {},
   ): Promise<AgentResponse[]> {
     return this.request<AgentResponse[]>({
       method: 'GET',
@@ -383,6 +385,23 @@ export class AdminAgentResource extends AdminResource {
     return this.request<AgentResponse>({
       method: 'POST',
       path: 'admin/agents/import',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Promote an agent from the Global build tenant into the SYSTEM reference set
+   *
+   * The platform-admin path of owner decision #4 for an AGENT: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), which is the reference set every customer tenant is provisioned from. Copies the Agent row and its `AgentModelFallback` chain into SYSTEM as a new version of the same slug (`max(versionNumber)+1`, so the previous SYSTEM version stays as history), re-resolves every model BY SLUG in the SYSTEM catalogue, then recompiles, PUBLISHES and ACTIVATES it — the half a tenant-to-tenant push (`POST admin/agents/{slug}/sync`) deliberately omits, because publishing into a customer tenant would re-point that customer’s live consultations and SYSTEM runs none. Referenced content travels with it: a Global-owned `instruction.promptTemplateId` is deep-copied into SYSTEM (APPROVED where the source was, `sourceTemplateId` stamped) and re-bound, while a SYSTEM-owned one is left alone; `contextSchemaId` binds the SYSTEM schema of the same slug, copied when SYSTEM carries none. `instruction.evalGate` is STRIPPED — a golden set is a corpus of encrypted PHI and not even the pointer crosses a tenant boundary. One WORM `AgentPromotion` record is written. Requires a platform administrator and an elevated tenant-less context.
+   *
+   * `POST /api/v1/admin/agents/promote-to-system` — `AgentPromoteToSystemController.promoteToSystem`.
+   */
+  promoteToSystem(body: PromoteAgentToSystemRequest, options: AdminRequestOptions = {}): Promise<PromoteAgentToSystemResponse> {
+    return this.request<PromoteAgentToSystemResponse>({
+      method: 'POST',
+      path: 'admin/agents/promote-to-system',
       body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,

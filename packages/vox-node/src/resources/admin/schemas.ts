@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 410 component schemas the generated surface transitively
+ * Only the 413 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -38,7 +38,7 @@ export interface AgentAssignmentResponse {
   scopeId?: string | null;
   /** TASK-884 — the canonical `key:value` selector qualifying this assignment; empty = the tier’s unqualified row. */
   selectorTags: string[];
-  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
   tenantId: string;
   /** ISO timestamp */
   updatedAt: string;
@@ -150,7 +150,7 @@ export interface AgentResponse {
   sourceVersionNumber?: number | null;
   status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
   tags: string[];
-  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
   tenantId: string;
   tools?: Array<Record<string, unknown>> | null;
   /** ISO timestamp */
@@ -1196,7 +1196,7 @@ export interface CreateAgentRequest {
   slug: string;
   tags?: string[];
   /** The ONE task this agent performs. */
-  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
   /** `[{ mcpServerId, toolName }]` — TEXT_GENERATION only. */
   tools?: Array<Record<string, unknown>>;
 }
@@ -2863,7 +2863,7 @@ export interface LiveDocRealtimeCapabilitiesResponse {
 }
 
 export interface LiveDocRealtimeNodeResponse {
-  /** The PIPELINE node type this one stands for. `agent.ner` and `agent.transcription` are the target catalogue’s names for existing capabilities and run the same handlers, so a consumer keyed by type must treat the alias and its canonical form as ONE capability. */
+  /** The CAPABILITY this node runs (`transcribe` | `extractEntities` | `generateDocument` | …), derived from the agent it references. Since TASK-893 the type no longer distinguishes two realtime nodes — every one of them is a `core.agent` — so this is the field a consumer keys on. Falls back to the node type when no capability can be derived. */
   canonicalType: string;
   /** Effective enabled state. Absent config reads as ENABLED; only a literal `false` disables. */
   enabled: boolean;
@@ -2879,7 +2879,7 @@ export interface LiveDocRealtimeNodeResponse {
   timeoutMs: number;
   /** Whether this node type offers the `enabled` switch at all. FALSE for registry-class `mandatory` types (consent gate, capture binding, PHI hop, persist, finalize, HITL gate) — a mandatory node an admin could switch off is that gate being routed around by another means. */
   togglable: boolean;
-  /** Registered node type, e.g. `consultation.realtimeSummary` */
+  /** Registered node type — since TASK-893 every realtime node is `core.agent` */
   type: string;
 }
 
@@ -3842,6 +3842,37 @@ export interface PolicyValidationResponse {
 export interface PrismaStudioStatusResponse {
   /** Whether the Prisma Studio shell is enabled in this environment (ENABLE_PRISMA_STUDIO flag). */
   enabled: boolean;
+}
+
+export interface PromoteAgentToSystemCopied {
+  /** Context schemas copied into SYSTEM because SYSTEM carried no schema of that slug. */
+  contextSchemas: number;
+  /** Global-owned prompt templates deep-copied into SYSTEM and re-bound on the promoted agent. */
+  promptTemplates: number;
+}
+
+export interface PromoteAgentToSystemRequest {
+  /** Why this became the platform default. Recorded verbatim on the WORM promotion record. */
+  changeReason: string;
+  /** The agent to promote, by slug, in the Global build tenant. */
+  sourceSlug: string;
+  /** Which immutable Global version to promote. Defaults to Global’s ACTIVE PUBLISHED version. */
+  versionNumber?: number;
+}
+
+export interface PromoteAgentToSystemResponse {
+  /** The SYSTEM Agent row this promotion created, published and activated. */
+  agentId: string;
+  /** The referenced content this promotion had to copy so the SYSTEM row binds nothing it cannot read. */
+  copied: PromoteAgentToSystemCopied;
+  /** The immutable promotion record id (the WORM audit row in SYSTEM). */
+  promotionId: string;
+  /** The agent lineage slug in SYSTEM — the same slug it carries in Global. */
+  slug: string;
+  /** The version number minted in SYSTEM’s lineage. The previous version stays as history. */
+  versionNumber: number;
+  /** Non-blocking operator alerts raised while copying. */
+  warnings: string[];
 }
 
 export interface PromoteExemplarRequest {
@@ -4959,7 +4990,9 @@ export interface SyncDirectoryUsersResponse {
 
 export interface SyncReferenceSetRequest {
   /** Restrict the run to these kinds. Omit for the whole reference set. */
-  kinds?: Array<'contextSchemas' | 'promptTemplates' | 'agents' | 'agentAssignments' | 'documentTemplates' | 'workflowDefinitions'>;
+  kinds?: Array<
+    'contextSchemas' | 'promptTemplates' | 'agents' | 'agentAssignments' | 'documentTemplates' | 'workflowDefinitions' | 'workflowAssignments'
+  >;
   /** `missing-only` (default) adds what the tenant lacks and touches nothing it has. `refresh-locked` is accepted but NOT IMPLEMENTED yet: it currently behaves as `missing-only` and the response says so in `warnings`. Its intent is to additionally re-copy rows still marked `templateLocked` (pristine clones) while never touching a row the tenant has edited. */
   mode?: 'missing-only' | 'refresh-locked';
 }
@@ -6227,7 +6260,7 @@ export interface UpsertAgentAssignmentRequest {
   /** TASK-884 — the optional `key:value` tag selector this assignment is qualified by, e.g. `["specialty:rheumatology"]`. A tier may hold one row per selector plus one unqualified row; resolution tries the most specific MATCHING selector first and the unqualified row last. Omitted (or empty) = the tier’s unqualified assignment. A bare key is refused. The selector identifies the row: changing it addresses a DIFFERENT assignment, it does not re-tag this one. */
   selectorTags?: string[];
   /** The agent task this assignment governs. */
-  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
 }
 
 export interface UpsertAiProviderConnectionRequest {
@@ -6794,6 +6827,8 @@ export interface WorkflowNodeResponse {
   implemented: boolean;
   /** Declared input ports. */
   inputs: WorkflowNodePortResponse[];
+  /** WHICH vocabulary this entry belongs to. `node` = a registered node TYPE, authorable on a graph and offered in the palette. `action` = an `ACTION_CATALOGUE` entry a `core.action` instance delegates to: it is served here because the client resolves an instance`s effective ports by looking its `actionKey` up in this same list, but it is NOT a node type and must never be added to a graph directly. */
+  kind: 'node' | 'action';
   /** WHICH RUNTIME executes it. realtime carries a latency budget; durable must survive a restart. */
   lane: 'realtime' | 'durable';
   /** Declared output ports. */
@@ -6808,7 +6843,7 @@ export interface WorkflowNodeResponse {
   schemaVersion: number;
   /** WHEN the node runs — orthogonal to lane. on-start once at the opening, per-turn as new material arrives, on-end once at the close. */
   trigger: 'on-start' | 'per-turn' | 'on-end';
-  /** The node type string authored on a graph node. */
+  /** The node type string authored on a graph node, or — for `kind: "action"` — the `actionKey` a `core.action` delegates to. */
   type: string;
 }
 
