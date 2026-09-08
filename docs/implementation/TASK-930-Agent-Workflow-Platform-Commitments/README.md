@@ -130,6 +130,38 @@ Found by lane N's completed discovery sub-reports before the interruption; every
 | A-5 | `AGENT_TASK_SERVICE` widens to `'stt' \| 'llm' \| 'tts' \| null` and `AgentCompiledConfig.service` likewise: `MODEL_TASK_TYPE_SERVICE[TOKEN_CLASSIFICATION]` is `null` by design (nlp serves the classification family from the bucket, no connection plane). NER rows are `provider: 'built-in'`, so `providerClassOf` yields `platform-self-host` before the service is consulted and publish is not blocked. | Discovered in `agent.service.ts:1831-1897`; without it every NER publish would fail `MODEL_UNAVAILABLE`. |
 | A-6 | nlp `POST /api/v1/classify/tokens` takes `model_name` = `AiModel.sourceUri` (required) + `model_path` = `localPath`, answers entities as `{ text, entity_type, confidence, position:{start,end} }`; the gateway maps them to the §2.3 output. Usage is recorded with the existing `buildNerUsageEvent` (`operation: 'ner.extract'`) after `assertMeterQuota(tenantId, 'monthlyNlpTextUnits')`. | Reuses the three existing gateway NER callers' contract instead of inventing a fourth. |
 
+### 4.3 Lane reports (wave 3)
+
+**Lane P — DONE.** `task-930-promotion` @ `4a634f8c8`, 11 commits, tree clean, all 17 changed
+files inside its §1 ownership rows (verified by the orchestrator, not taken on report). Its first
+action was committing the ~1 000 rescued lines; the service was judged sound against §6.1 and kept
+— its two real defects were missing barrel exports and a `JsonValue` cast, and the failing test was
+the fixture, not the service.
+
+Delivered: `POST admin/agents/promote-to-system` (`@CanManage('Agent')` + `@ForbidApiKey` +
+`@RequiredSvcScopes('svc:admin:agent:manage')`, `AUTH-NOTE` marker) →
+`{ agentId, slug, versionNumber, copied: { promptTemplates, contextSchemas }, promotionId, warnings }`;
+`WorkflowDefinitionService.assertReferencedAgentsInSystem` → 409 `AGENTS_NOT_IN_SYSTEM` (§6.2);
+`REFERENCE_SET_KINDS` at seven entries with `workflowAssignments` last, TENANT scope only (§6.3).
+
+Gates pasted: applications typecheck/lint clean, `12 279 passed | 0 failed`; `api:build` 12 tasks;
+api tests `4 261 passed`; api lint clean; a real boot smoke on `:8972` returning
+`{"status":"healthy"}` — which also proves the deny-by-default boot audit accepted the new route.
+One test FILE errors on `$connect()` because the `:5433` test DB is down — orchestrator-owned infra,
+not a lane defect.
+
+Two deviations from the contract, both **accepted** by the orchestrator:
+
+| Deviation | Ruling |
+|---|---|
+| The response carries `promotionId` + `warnings` beyond the four declared fields | Accepted — additive, and an exact mirror of the existing `PromoteWorkflowToSystemResponse`. Consistency with the workflow route outranks a literal reading of §6.1. |
+| §6.1's "same versions" implemented as: copy the source's APPROVED snapshot, restart the SYSTEM lineage at v1, re-pin `promptVersionNumber: 1` | Accepted — verbatim what `AgentPromotionService.materializeTemplate` already does, improved by stamping `sourceTemplateId` (making re-promotion idempotent) and marking `APPROVED` only where the source was. |
+
+Carried to merge time: P committed a `.lane-report.md` at its worktree root — a lane scratch file
+that must NOT land on `dev-2.2`; drop it in the merge. Its cross-lane request (lane S must give
+`26-tenant-reference-set.ts` the same `workflowAssignments` clone) is already contract §6.3, so it
+needs verification at merge, not a new instruction.
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
