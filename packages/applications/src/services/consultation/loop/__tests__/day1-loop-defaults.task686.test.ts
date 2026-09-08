@@ -33,9 +33,9 @@ import { contextSchemaDefinitionProblems, computeDefinitionChecksum } from '../.
 import { LoopConfigService } from '../loop-config.service';
 
 import {
-  DAY1_CONTEXT_SCHEMAS,
-  DAY1_CONTEXT_SCHEMA_DEFINITION,
-  DAY1_CONTEXT_SCHEMA_VERSIONS,
+  NOTE_CONTEXT_SCHEMAS,
+  NOTE_CONTEXT_SCHEMA_DEFINITION,
+  NOTE_CONTEXT_SCHEMA_VERSIONS,
 } from '../../../../../../database/src/prisma/db_main/seed/07e-consultation-note-context-schema';
 
 // =============================================================================
@@ -44,27 +44,33 @@ import {
 
 describe('The seeded context-schema definition', () => {
   it('is accepted by the real publish validator with zero problems', () => {
-    expect(contextSchemaDefinitionProblems(DAY1_CONTEXT_SCHEMA_DEFINITION)).toEqual([]);
+    expect(contextSchemaDefinitionProblems(NOTE_CONTEXT_SCHEMA_DEFINITION)).toEqual([]);
   });
 
-  it('declares exactly the owner-specified E1 vocabulary, on the five platform primitives', () => {
-    const kinds = (DAY1_CONTEXT_SCHEMA_DEFINITION as { kinds: { key: string; primitive: string }[] }).kinds;
+  it('declares the owner-specified E1 vocabulary plus the STRUCTURED prompt context (TASK-930 §8.2)', () => {
+    const kinds = (NOTE_CONTEXT_SCHEMA_DEFINITION as { kinds: { key: string; primitive: string }[] }).kinds;
+    // The four day-1 item kinds are unchanged. The fifth is the trigger context the clinical
+    // prompts bind (`{{trigger.context.*}}`) — TASK-930 folded `07g`'s legacy schema into this
+    // ONE tenant-cloned schema rather than keeping a second one beside it.
     expect(kinds.map((k) => [k.key, k.primitive])).toEqual([
       ['audio_stream', 'STREAM_AUDIO'],
       ['work_note', 'TEXT'],
       ['case_note', 'TEXT'],
       ['attachment', 'DOCUMENT'],
+      ['context', 'STRUCTURED'],
     ]);
   });
 
-  it('declares one output — the note `harness.finalize` actually produces', () => {
-    const outputs = (DAY1_CONTEXT_SCHEMA_DEFINITION as { outputs: { key: string }[] }).outputs;
-    expect(outputs.map((o) => o.key)).toEqual(['soap_note']);
+  it('declares one output — the note the consultation workflow actually produces', () => {
+    const outputs = (NOTE_CONTEXT_SCHEMA_DEFINITION as { outputs: { key: string }[] }).outputs;
+    // `soap_note` went with the legacy vocabulary; the rebuilt seed set names it `case_note`,
+    // which is what `casenote-finalization` and the graph's `core.output` schema agree on.
+    expect(outputs.map((o) => o.key)).toEqual(['case_note']);
   });
 
   it('seeds a checksum computed by the same algorithm the publish path uses', () => {
-    for (const version of DAY1_CONTEXT_SCHEMA_VERSIONS) {
-      expect(version.checksum).toBe(computeDefinitionChecksum(DAY1_CONTEXT_SCHEMA_DEFINITION));
+    for (const version of NOTE_CONTEXT_SCHEMA_VERSIONS) {
+      expect(version.checksum).toBe(computeDefinitionChecksum(NOTE_CONTEXT_SCHEMA_DEFINITION));
     }
   });
 });
@@ -76,9 +82,9 @@ describe('The seeded context-schema definition', () => {
 
 describe('The seeded schema rows are servable', () => {
   it('are TENANT-scoped defaults, ENABLED, PUBLISHED, with a non-null pin that resolves to a seeded version', () => {
-    expect(DAY1_CONTEXT_SCHEMAS.length).toBeGreaterThan(0);
+    expect(NOTE_CONTEXT_SCHEMAS.length).toBeGreaterThan(0);
 
-    for (const schema of DAY1_CONTEXT_SCHEMAS) {
+    for (const schema of NOTE_CONTEXT_SCHEMAS) {
       // findDefaultForScope(tenantId, TENANT, null) filters on exactly these.
       expect(schema.scope).toBe('TENANT');
       expect(schema.departmentId).toBeNull();
@@ -90,7 +96,7 @@ describe('The seeded schema rows are servable', () => {
       expect(['PUBLISHED', 'APPROVED']).toContain(schema.status);
 
       // findBySchemaAndVersionNumber(schema.id, pinnedVersionNumber) must hit.
-      const version = DAY1_CONTEXT_SCHEMA_VERSIONS.find(
+      const version = NOTE_CONTEXT_SCHEMA_VERSIONS.find(
         (v) => v.schemaId === schema.id && v.versionNumber === schema.pinnedVersionNumber,
       );
       expect(version).toBeDefined();
@@ -111,7 +117,7 @@ const mockContextSchemaVersionRepository = { findBySchemaAndVersionNumber: vi.fn
 const mockWorkflowAssignments = { resolve: vi.fn() };
 const mockWorkflowDefinitionRepository = { findPublishedBySlug: vi.fn() };
 
-const TENANT_ID = DAY1_CONTEXT_SCHEMAS[0]!.tenantId;
+const TENANT_ID = NOTE_CONTEXT_SCHEMAS[0]!.tenantId;
 const DEPARTMENT_ID = 'department-1';
 const CONSULTATION_ID = 'consultation-1';
 
@@ -141,11 +147,11 @@ describe('LoopConfigService against the seeded rows', () => {
     mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(null);
     // DEPARTMENT tier misses; the seeded TENANT-scoped default answers.
     mockContextSchemaRepository.findDefaultForScope.mockImplementation(async (_tenantId: string, scope: string) =>
-      scope === 'TENANT' ? DAY1_CONTEXT_SCHEMAS[0] : null,
+      scope === 'TENANT' ? NOTE_CONTEXT_SCHEMAS[0] : null,
     );
     mockContextSchemaVersionRepository.findBySchemaAndVersionNumber.mockResolvedValue({
       id: 'schema-version-1',
-      definition: DAY1_CONTEXT_SCHEMA_DEFINITION,
+      definition: NOTE_CONTEXT_SCHEMA_DEFINITION,
     });
     service = buildService();
   });
@@ -167,6 +173,9 @@ describe('LoopConfigService against the seeded rows', () => {
       { kindKey: 'work_note', actions: ['client.emit'] },
       { kindKey: 'case_note', actions: ['client.emit'] },
       { kindKey: 'attachment', actions: ['document.extract_text', 'client.emit'] },
+      // The STRUCTURED trigger context is client-supplied like the notes, so it subscribes the
+      // same single action — declared, not inert.
+      { kindKey: 'context', actions: ['client.emit'] },
     ]);
     // Every subscription resolved to at least one action — a subscription with
     // an empty action list is the "running but inert" failure mode. `audio_stream`
@@ -202,8 +211,8 @@ describe('LoopConfigService against the seeded rows', () => {
    */
   it.each([
     ['soft-deleted / un-defaulted (repository answers null)', null],
-    ['reverted to DRAFT', { ...DAY1_CONTEXT_SCHEMAS[0], status: 'DRAFT' }],
-    ['un-pinned', { ...DAY1_CONTEXT_SCHEMAS[0], pinnedVersionNumber: null }],
+    ['reverted to DRAFT', { ...NOTE_CONTEXT_SCHEMAS[0], status: 'DRAFT' }],
+    ['un-pinned', { ...NOTE_CONTEXT_SCHEMAS[0], pinnedVersionNumber: null }],
   ])('K7 — %s returns the loop to enabled: false', async (_label, schemaRow) => {
     mockContextSchemaRepository.findDefaultForScope.mockImplementation(async (_tenantId: string, scope: string) =>
       scope === 'TENANT' ? schemaRow : null,
