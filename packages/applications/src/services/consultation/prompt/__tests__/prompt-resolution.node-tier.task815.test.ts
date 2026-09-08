@@ -61,7 +61,7 @@ function approvedTemplate(id: string, approvedVersionNumber: number | null = 1) 
 
 /** A published definition whose graph carries `nodes`. */
 function definitionWithNodes(nodes: unknown[]) {
-  return { id: 'wfdef-row-1', slug: 'consultation-default', paletteKey: 'consultation', graph: { version: 1, nodes, edges: [] } };
+  return { id: 'wfdef-row-1', slug: 'consultation-default', paletteKey: 'core', graph: { version: 1, nodes, edges: [] } };
 }
 
 describe('Tier-1a — workflow node config', () => {
@@ -80,8 +80,9 @@ describe('Tier-1a — workflow node config', () => {
       mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'department' });
       mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(
         definitionWithNodes([
-          { id: 'note_writer', type: 'consultation.synthesize', config: { taskKey: 'text.finalize', promptTemplateId: FINALIZE_TEMPLATE } },
-          { id: 'running_note', type: 'consultation.realtimeSummary', config: { promptTemplateId: LIVE_TEMPLATE, promptVersionNumber: 3 } },
+          { id: 'note_writer', type: 'core.agent', config: { taskKey: 'text.finalize', promptTemplateId: FINALIZE_TEMPLATE } },
+          // TASK-893 — selection is by `promptTemplateId` + effective task, never by node type.
+          { id: 'running_note', type: 'core.agent', config: { taskKey: 'text.live', promptTemplateId: LIVE_TEMPLATE, promptVersionNumber: 3 } },
         ]),
       );
       mockPromptTemplateRepository.findById.mockResolvedValue(approvedTemplate(LIVE_TEMPLATE, 7));
@@ -96,24 +97,6 @@ describe('Tier-1a — workflow node config', () => {
       expect(result.resolvedVersionNumber).toBe(3);
       expect(result.resolvedAgentId).toBe('running_note');
       expect(result.resolvedCapability).toBe('live');
-    });
-
-    it('falls back to the schema DEFAULT taskKey when the node does not state one', async () => {
-      // `consultation.realtimeSummary` declares `taskKey` with `default: 'text.live'`,
-      // so a node that omits the key is still a live node. Reading the default
-      // from the registry is what keeps authored graphs and the resolver agreeing.
-      mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'tenant' });
-      mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(
-        definitionWithNodes([{ id: 'running_note', type: 'consultation.realtimeSummary', config: { promptTemplateId: LIVE_TEMPLATE } }]),
-      );
-      mockPromptTemplateRepository.findById.mockResolvedValue(approvedTemplate(LIVE_TEMPLATE, 2));
-      mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 2, content: 'NODE LIVE PROMPT v2' });
-
-      const result = await buildService().resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'live' });
-
-      expect(result.resolvedFrom).toBe('agent');
-      expect(result.resolvedAgentId).toBe('running_note');
-      expect(result.resolvedVersionNumber).toBe(2);
     });
 
     it('skips the tier when the graph has no live node — never serves a finalize prompt live', async () => {

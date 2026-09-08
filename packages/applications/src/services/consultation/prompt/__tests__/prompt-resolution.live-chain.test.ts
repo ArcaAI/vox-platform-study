@@ -38,7 +38,7 @@ const AGENT_TEMPLATE = '71000000-0000-0000-0009-000000000001';
 
 /** A published `consultation` definition whose graph carries `nodes`. */
 function definitionWithNodes(nodes: unknown[]) {
-  return { id: 'wfdef-1', slug: 'consultation-default', paletteKey: 'consultation', graph: { version: 1, nodes, edges: [] } };
+  return { id: 'wfdef-1', slug: 'consultation-default', paletteKey: 'core', graph: { version: 1, nodes, edges: [] } };
 }
 
 /** The graph shape that used to be "a department default agent with a live binding". */
@@ -48,13 +48,16 @@ function graphWithLiveNode(promptTemplateId: string | null, promptVersionNumber?
     definitionWithNodes([
       // The finalize node is always present, and never eligible for the live
       // chain — the regression lock for "a note prompt must not be served live".
-      { id: 'note_writer', type: 'generate.text', config: { taskKey: 'text.finalize', promptTemplateId: 'base-note-template' } },
+      { id: 'note_writer', type: 'core.agent', config: { taskKey: 'text.finalize', promptTemplateId: 'base-note-template' } },
       ...(promptTemplateId
         ? [
             {
               id: 'running_note',
-              type: 'consultation.realtimeSummary',
-              config: { promptTemplateId, ...(promptVersionNumber ? { promptVersionNumber } : {}) },
+              // TASK-893 — the tier selects on `promptTemplateId` + the EFFECTIVE task key, never
+              // on node type (see `promptBearingNodesForTask`). The retired node types were the
+              // only ones whose schema DECLARED a default `taskKey`, so the fixture states it.
+              type: 'core.agent',
+              config: { taskKey: 'text.live', promptTemplateId, ...(promptVersionNumber ? { promptVersionNumber } : {}) },
             },
           ]
         : []),
