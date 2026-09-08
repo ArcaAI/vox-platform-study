@@ -267,11 +267,14 @@ describe('WorkflowDefinitionService — Global -> SYSTEM promotion (TASK-885)', 
     );
     mockRepository.update.mockImplementation((_id: string, updated: unknown) => Promise.resolve(updated));
     mockRepository.findAllVersionsBySlug.mockResolvedValue([]);
-    mockAgentPromotion.promote.mockResolvedValue({
-      id: 'promo-1',
-      targetDefinitionVersionId: 'sys-draft-1',
-      targetDefinitionSlug: 'soap',
-      warnings: [],
+    // TASK-930 D-4 — the promotion runs the caller's publish INSIDE its transaction, so the
+    // double has to honour `afterWrite`; a `mockResolvedValue` models a promotion service that
+    // silently drops it, which is the one thing `promoteToSystem` now refuses to return from.
+    mockAgentPromotion.promote.mockImplementation(async (_dto: unknown, options?: { afterWrite?: (d: unknown) => Promise<void> }) => {
+      await options?.afterWrite?.(
+        entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false }),
+      );
+      return { id: 'promo-1', targetDefinitionVersionId: 'sys-draft-1', targetDefinitionSlug: 'soap', warnings: [] };
     });
     mockEvalGate.evaluateWorkflowPromotion.mockResolvedValue({
       mode: 'warn',
@@ -291,6 +294,8 @@ describe('WorkflowDefinitionService — Global -> SYSTEM promotion (TASK-885)', 
 
     expect(mockAgentPromotion.promote).toHaveBeenCalledWith(
       expect.objectContaining({ sourceDefinitionSlug: 'soap', fromTenantId: GLOBAL, toTenantId: SYSTEM_TENANT_ID }),
+      // D-4 — the publish travels as the promotion's in-transaction step.
+      expect.objectContaining({ afterWrite: expect.any(Function) }),
     );
     // The SYSTEM row is recompiled and published — it IS the platform template.
     const published = mockRepository.update.mock.calls.find((call) => call[0] === 'sys-draft-1')![1];
