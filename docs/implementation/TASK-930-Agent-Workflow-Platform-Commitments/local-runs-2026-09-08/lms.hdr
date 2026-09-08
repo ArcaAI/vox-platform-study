@@ -1,0 +1,21 @@
+HTTP/1.1 200 OK
+X-Powered-By: Express
+Vary: Origin
+Access-Control-Expose-Headers: ETag
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 99
+X-RateLimit-Reset: 60
+Cache-Control: private, no-cache
+ETag: "1"
+RateLimit-Policy: "default";q=100;w=60
+RateLimit: "default";r=100;t=60
+Content-Type: application/json; charset=utf-8
+Content-Length: 378
+Date: Tue, 08 Sep 2026 14:41:29 GMT
+Connection: keep-alive
+Keep-Alive: timeout=65
+

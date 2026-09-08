@@ -1,0 +1,16 @@
+# HTTP 202 text/event-stream
+event: workflow.run.progress
+data: {"schemaVersion":1,"id":"592c50a2-d14a-41ef-9b6b-c4cec6002020","tenantId":"50000000-0000-0000-0000-000000000000","type":"workflow.run.progress","occurredAt":"2026-09-08T14:34:55.521Z","correlationId":"01a08171-8445-7eb4-99d9-9a2caf975466","causationId":null,"idempotencyKey":"wf:run:01a08171-8445-7eb4-99d9-9a2caf975466:status:RUNNING","payload":{"runId":"01a08171-8445-7eb4-99d9-9a2caf975466","slug":"general-medicine-consultation","workflowVersionNumber":1,"status":"RUNNING","stages":[],"startedAt":"2026-09-08T14:34:55.475054+00:00","endedAt":null}}
+
+event: workflow.node.started
+id: eyJ2IjoxLCJ0IjoicmVkaXMtc3RyZWFtIiwiYyI6IjE3ODg4NzgwOTU1OTItMCJ9
+data: {"schemaVersion":1,"id":"d9b38041-d30c-4ece-83f0-dc3d72d0f2ea","tenantId":"50000000-0000-0000-0000-000000000000","type":"workflow.node.started","occurredAt":"2026-09-08T14:34:55.592290+00:00","correlationId":"01a08171-8445-7eb4-99d9-9a2caf975466","causationId":null,"idempotencyKey":"wf:run:01a08171-8445-7eb4-99d9-9a2caf975466:node:n_trigger:1:started","payload":{"nodeId":"n_trigger","nodeType":"core.trigger","stageIndex":0}}
+
+event: workflow.node.failed
+id: eyJ2IjoxLCJ0IjoicmVkaXMtc3RyZWFtIiwiYyI6IjE3ODg4NzgwOTU3MDItMCJ9
+data: {"schemaVersion":1,"id":"3edb976a-804c-497d-885c-84f2eb8ee6bc","tenantId":"50000000-0000-0000-0000-000000000000","type":"workflow.node.failed","occurredAt":"2026-09-08T14:34:55.702465+00:00","correlationId":"01a08171-8445-7eb4-99d9-9a2caf975466","causationId":null,"idempotencyKey":"wf:run:01a08171-8445-7eb4-99d9-9a2caf975466:node:n_trigger:1","payload":{"nodeId":"n_trigger","nodeType":"core.trigger","stageIndex":0,"status":"FAILED","reason":"activity_error: RuntimeError: core.trigger: run payload violates the declared context schema: (root): Additional properties are not allowed ('consultationId', 'externalPatientId', 'userId' were unexpected)"}}
+
+event: workflow.run.completed
+id: eyJ2IjoxLCJ0IjoicmVkaXMtc3RyZWFtIiwiYyI6IjE3ODg4NzgwOTU3MjctMCJ9
+data: {"schemaVersion":1,"id":"99708c08-0eab-47c8-aec4-909ff19d10c3","tenantId":"50000000-0000-0000-0000-000000000000","type":"workflow.run.completed","occurredAt":"2026-09-08T14:34:55.727323+00:00","correlationId":"01a08171-8445-7eb4-99d9-9a2caf975466","causationId":null,"idempotencyKey":"wf:run:01a08171-8445-7eb4-99d9-9a2caf975466:completed","payload":{"status":"FAILED"}}
+

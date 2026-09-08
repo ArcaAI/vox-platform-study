@@ -1,0 +1,1 @@
+{"statusCode":503,"error":"Service Unavailable","message":"Transcription is temporarily unavailable. Please retry.","code":"GATEWAY.DOWNSTREAM_UNAVAILABLE","correlationId":"01a08164-84e7-7a57-a13b-1ba7c5953d81"}

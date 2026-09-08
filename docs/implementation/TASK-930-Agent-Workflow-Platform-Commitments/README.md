@@ -630,6 +630,42 @@ belongs with the §6.9 runs.
 ### 6.9 Local runtime tests — the ask #2 / #3 gate
 
 <!-- LOCAL-TEST-EVIDENCE -->
+**Run 1 (2026-09-08, lane LOCAL, dev stack on the freshly seeded dev DB) — FAILED on four of four
+proofs.** Raw requests, responses, scripts and the transcript: [`local-runs-2026-09-08/`](./local-runs-2026-09-08/)
+(`EVIDENCE.md` is the index). This is the gate the owner's brief put in front of "moving on", and it
+did its job: every suite on the integrated tree was green (23 803 unit, 1 180 e2e, 2 201 harness),
+and the seeded Global set still could not run end to end. Six defects, all at seams BETWEEN lanes:
+
+| # | Sev | Defect | Where |
+|---|---|---|---|
+| D-1 | high | The 4 consultation-palette graphs declare `kinds: ['consultation','api']` and an output schema they cannot satisfy on the API plane: every producing node (`n_asr`, `n_ner`, `n_summary`) is `lane: realtime` and the durable interpreter SKIPS it (`interpreter/workflow.py:505`), so `n_finalize` degrades "nothing bound" and `n_output` fails `'case_note' is a required property`. 4/4 definitions, incl. all three random ArcaAI picks (`neur`, `rheum`, `gen`; seed `20260908`). | seeds (S) × lane semantics (R) × interpreter (N) |
+| D-2 | **critical** | The consultation plane is dead at the first node: dispatch injects `consultationId` / `externalPatientId` / `userId` into the run payload (`consultation-workflow-dispatch.service.ts:242`) and `core.trigger` validates it against the context schema with `additionalProperties: false` → `run payload violates the declared context schema`, reproduced with `{"input":{}}`. | dispatch (R) × trigger schema (S/§8.2) |
+| D-3 | high | No TEXT_GENERATION works locally: the seed wrote the k3s hostname `http://hope-lmstudio:1234/v1` because `SEED_LMSTUDIO_BASE_URL` is unset in `.env.dev` (a documented failure mode, `17-ai-provider-connection.ts:45-60`); after a `PUT /admin/providers/llm/lm-studio` → 200 + `/test` → ok, `apps/text` still answers 503 "no connection is configured" for Global AND SYSTEM — consistent with its effective-config NEGATIVE cache (rule 06) holding the first miss; unverified until `text` is restarted. | local env + text relay |
+| D-4 | **critical** | `POST /admin/workflow-definitions/promote-to-system` is a closed loop: 403 with `X-Tenant-Id`, 400 "Tenant ID is required" without — and the 400 is thrown AFTER COMMIT (`INSERT WorkflowDefinition → INSERT AgentPromotion → COMMIT → throw` in the post-commit `publishEntity`, `workflow-definition.service.ts:1120`, the tenant read in `workflow-assignment.service.ts:294` / `agent-assignment.service.ts:268`), leaving an orphan SYSTEM DRAFT `general-medicine-consultation` v2. §6.2's 409 `AGENTS_NOT_IN_SYSTEM` therefore never runs. Pre-existing route; P's check sits behind it. | promotion (P) |
+| D-5 | high | `reference-set/sync` lands cloned workflow definitions DRAFT/inactive → `workflowAssignments: failed 1` ("No PUBLISHED 'core' workflow definition"), no governing workflow, no `sourceTemplateSlug` provenance. The agent half is correct (6 SYSTEM agents + 4 TENANT assignments with provenance). | reference set (P) |
+| D-6 | medium | A faithful clone of the seeded, published `general-medicine-summarization` cannot be published: `parameters.generation.reasoning` is refused as unsupported by `lm-studio/lms-gemma-4-e2b-it-qat`. The seed bypasses the publish gate the API enforces. | seed row (S) vs publish gate (N) |
+
+Environment, not code: proof 1 never got a session id — opening `realtime-transcription` triggers a
+first-use Hugging Face download of the private whisper GGUF repo (the cache held 1.8 MB with three
+stalled `.incomplete` blobs), and the gateway's `timeout: 15000` (`streamingSession.service.ts:246`)
+aborts it → `503 GATEWAY.DOWNSTREAM_UNAVAILABLE`. The agent resolves correctly (fallback probe 200;
+bogus slug 404). **Owner action: warm the repo with the HF token** (`hf download
+taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF` into `~/.cache/hope-hf`); no agent
+holds that token. Also by design: seeded SDK API keys carry no `workflow:*` scope (`02-apikey.ts:126`),
+so the exposure plane was exercised with a tenant-admin JWT — a Global key with workflow scopes is a
+seed nicety worth adding.
+
+What the run PROVED: the agent promotion path works end to end (`promote-to-system` 200, SYSTEM row
+with `sourceTenantId` / `sourceAgentId` / `sourceVersionNumber`, cloned into a fresh tenant with
+provenance); consultation open + the assignment cascade pick the workflow; the durable lane runs
+(`n_visit` `core.condition` succeeded, `n_review` approved, decided terminal states).
+
+Dev-DB residue from the run (all enumerated at the end of `EVIDENCE.md`): the lm-studio endpoint
+PUT, a probe agent + its SYSTEM promotion, the D-4 orphan SYSTEM DRAFT, tenant `LOCAL_LANE_PROOF`, one
+consultation, eight runs.
+
+**Fix wave W (§4.11) follows; §6.9 is re-run after it.**
+
 
 _Not yet run: these need the owner's explicit consent to reset and reseed the dev database (the
 TASK-890 consent text applies), the local stack up, and `gemma-4-e2b-it-qat` loaded in LM Studio.
@@ -672,6 +708,7 @@ Each is real, each is out of this wave's brief, and each is recorded here so it 
 | Date | Change |
 |---|---|
 | 2026-09-08 (docs close) | §6 filled: the four asks answered against C-1..C-5, the per-lane delivered surface, the nine merge commits, the one additive migration, the six API changes, the five regenerated artifacts and the final gate chain (`typecheck:all` 0 · `lint:all` 0 · unit **23 803 / 0** · harness **2 201 / 6** pre-existing). Five follow-ups raised (§6.10: the task-355 patch-marker drift, G-2, G-3, the slug-blind `realtimeCapabilityIndex`, and the post-publish re-runs). §6.9 carries a marked `<!-- LOCAL-TEST-EVIDENCE -->` placeholder — the ask #2/#3 runtime runs are blocked on the owner's database-reset consent, so the status stays `In Progress`. Rule amendments landed with it: 05 (the promotion gate, and the boundary condition on the existence-before-privilege ordering rule), 08 (SDK 3.1.0), 00 (D-8 provenance), 06 (the harness vocabulary and its drain precondition). |
+| 2026-09-08 (LOCAL) | Lane A done → TASK-931 `Completed`; worktrees and lane branches removed under the §4.9 containment proof; the local runtime gate ran and FAILED on D-1..D-6 (§6.9) — fix wave W dispatched (§4.11). |
 | 2026-09-08 (e2e) | SDK 3.1.0 published (TASK-931 §4.5); `quick-compat-app` on 3.1.0 (FU-5 closed); test DB rebuilt; F-E2E retargeted the eleven vocabulary-era e2e failures — suite 1 180 passed / 0 failed; FU-6 escalated (§4.10). |
 | 2026-09-08 (runtime) | Owner reset both DBs; both verified (SYSTEM 5/2, Global 5/2, ArcaAI 27/13, NER enum, zero legacy node types). The last applications integration file passes (2/2). Test API on :8968 and the dev stack on :8868 started; e2e and lane LOCAL (the four §6.9 runs) dispatched. History rewrite recorded with the containment proof (§4.9). |
 | 2026-09-08 (F-RT) | G-1 fixed and green (§4.7); the original session transcript cross-checked against §1 (§4.8); five-artifact regeneration started; DB resets await the owner's explicit consent (Prisma's agent guard). |

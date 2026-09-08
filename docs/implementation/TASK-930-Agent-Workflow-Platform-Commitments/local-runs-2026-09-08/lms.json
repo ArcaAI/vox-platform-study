@@ -1,0 +1,1 @@
+{"models":[],"tenantId":"00000000-0000-0000-0000-000000000000","service":"llm","provider":"lm-studio","baseUrl":"http://hope-lmstudio:1234/v1","region":null,"apiVersion":null,"deploymentName":null,"hasKey":true,"keyVersion":1,"enabled":true,"extraJson":null,"maxConcurrent":null,"rpmLimit":null,"tpmLimit":null,"timeoutS":null,"version":1,"updatedAt":"2026-09-08T14:27:59.858Z"}
