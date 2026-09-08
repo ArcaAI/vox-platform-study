@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto';
-import { ConflictException, Inject, Injectable, Logger, type MessageEvent, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  type MessageEvent,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -9,7 +19,6 @@ import {
   AgentSessionKind,
   AgentStepStatus,
   AgentStepType,
-  AgentTask,
   ConsultationRepository,
   ContextItemEntity,
   ContextItemFactory,
@@ -618,26 +627,6 @@ function realtimeCapabilityIndex(lane: RealtimeLane): Map<string, RealtimeCapabi
     for (const node of stage.nodes) index.set(node.nodeId, realtimeCapabilityOf(node.type, node.config));
   }
   return index;
-}
-
-/**
- * TASK-930 (G-1) — `AgentTask` (the persisted enum) → `RealtimeAgentTask` (the lane's own union).
- *
- * Written out rather than cast: the lane types its four tasks locally so it needs no enum from
- * the agent plane, and a fifth member added to `AgentTask` must surface as a compile error here
- * rather than as a silent `TEXT_GENERATION` at run time.
- */
-function realtimeAgentTaskOf(task: AgentTask): RealtimeAgentTask {
-  switch (task) {
-    case AgentTask.SPEECH_TO_TEXT:
-      return 'SPEECH_TO_TEXT';
-    case AgentTask.NAMED_ENTITY_RECOGNITION:
-      return 'NAMED_ENTITY_RECOGNITION';
-    case AgentTask.TEXT_TO_SPEECH:
-      return 'TEXT_TO_SPEECH';
-    case AgentTask.TEXT_GENERATION:
-      return 'TEXT_GENERATION';
-  }
 }
 
 function storedMode(result: { value: unknown; sourceScope: string }): AgenticTranscriptMode | undefined {
@@ -3625,19 +3614,23 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * `AgentServiceModule`), so the fail-closed branches below are the ones that run.
    */
   private async resolveRealtimeAgentView(ref: RealtimeAgentRef, tenantId: string): Promise<RealtimeResolvedAgentView | null> {
-    if (ref.slug === undefined || !this.agentResolver) return null;
-    const resolved = await this.agentResolver.resolve({ tenantId, agentSlug: ref.slug });
+    const { slug, versionNumber } = ref as { slug?: string; versionNumber?: number };
+    if (slug === undefined || !this.agentResolver) return null;
+    const resolved = await this.agentResolver.resolve({ tenantId, agentSlug: slug });
     // The resolver serves the ACTIVE published version and takes no pin, so honouring one means
     // REFUSING a different version — a pin that ran whatever is active would be no pin at all.
-    if (ref.versionNumber !== undefined && resolved.versionNumber !== ref.versionNumber) {
+    if (versionNumber !== undefined && resolved.versionNumber !== versionNumber) {
       throw new ConflictException({
         code: 'AGENT_VERSION_DRIFT',
-        message: `Agent '${resolved.slug}' is pinned to v${ref.versionNumber} but the active published version is v${resolved.versionNumber}.`,
+        message: `Agent '${resolved.slug}' is pinned to v${versionNumber} but the active published version is v${resolved.versionNumber}.`,
       });
     }
+    // `ResolvedAgent.task` and `RealtimeAgentTask` are the SAME four literals, declared twice so
+    // the lane needs no enum from the agent plane. Assigned directly rather than mapped: a fifth
+    // task added to one and not the other must surface here as a compile error.
     return {
       slug: resolved.slug,
-      task: realtimeAgentTaskOf(resolved.task),
+      task: resolved.task,
       outputSchema: resolved.compiledConfig?.outputSchema,
       parameters: resolved.compiledConfig?.parameters ?? null,
     };
