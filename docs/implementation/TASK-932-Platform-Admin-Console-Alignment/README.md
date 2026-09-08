@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | `Review` — plan written 2026-09-09, awaiting owner go-ahead (Phase 3 gate) |
+| **Status** | `In Progress` — owner go 2026-09-09; wave 1 running (lanes N, S, P, T, W) |
 | **Branch** | `dev-2.2` (merge target for every lane) |
 | **Classification** | `feature` + `bugfix` + `refactor` (console, gateway, applications, seeds, e2e) |
 | **Owner request** | 2026-09-09 — the sixteen items in §1.1, then start the dev stack, reset the dev DB (consent given for `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`), and prove everything in a browser, including ≥5 seeded ArcaAI consultation workflows in the playground |
@@ -85,6 +85,12 @@
 - `pnpm stack:dev` supervises api, stt, stt-worker, text, guardrail, nlp, harness, worker, admin (5176). `dev-doctor` requires LM Studio at `localhost:1234`. `scripts/dev-service.sh` defaults `LM_STUDIO_MODEL=gemma-4-e4b-it-qat` (retired) while the seed expects `gemma-4-e2b-it-qat` — export `LM_STUDIO_MODEL=gemma-4-e2b-it-qat` locally.
 - Reset: `RUN_SEED=all NODE_ENV=development pnpm db:all` (destructive `db push --force-reset` + seed + Temporal orphan cleanup). Prisma's AI-agent guard requires `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` = the exact consent text of the user's message (no newlines/quotes) — see §4.4.
 - Browser e2e: `apps/admin-console/tests/e2e` (Playwright; `auth.setup.ts` logs in `super_admin`/`password123`; specs skip when the stack is down; `impersonateUser`/`selectWorkingTenant` helpers). No fake-microphone project exists at app level (package-level configs do use `--use-fake-device-for-media-stream`); WAV fixtures exist under `apps/stt/tests/e2e/fixtures/clinical/`.
+
+### 2.7 R-6 reproduced in the browser (orchestrator, 2026-09-09, primary checkout, live stack)
+
+Logged in as `super_admin` with **no working tenant**, `/settings-registry` lists 215 keys ("166 editable here"). Clicking **Edit** on `consultation.realtime.textTimeoutMs` opens the drawer in an error state: *"Couldn't load this data — Platform admins must pass ?tenantId to scope this request."* Network: `GET /api/hope/admin/settings/registry/consultation.realtime.textTimeoutMs?scope=system → 400` with body `{"message":"Platform admins must pass ?tenantId= to scope this request.","code":"HTTP.BAD_REQUEST"}`. Source: `apps/api/src/shared/tenant-scope.ts:33` (`resolveScopedTenantId`) called from `settings-registry-write.controller.ts` / `settings-catalog.controller.ts` for the effective read — a super admin with no working tenant is refused even though `scope=system` names the SYSTEM row unambiguously.
+
+After selecting the working tenant **ArcaAI**, the same drawer loads (`200`) and the save works: `PUT …/registry/consultation.realtime.textTimeoutMs → 200` (system scope, "stored row v1"). So the platform admin can write only after picking a customer tenant, and the write still lands on the **platform** row — the drawer never offered the tenant scope. Two defects for Lane S: (a) `scope=system` must resolve `SYSTEM_TENANT_ID` for an elevated caller with no working tenant (`?tenantId` is for tenant scope only); (b) with a customer working tenant selected, the drawer must default to (or offer) the tenant scope and label the platform write explicitly. The value was left at `60001` on the dev DB (reset in wave 3).
 
 ---
 
@@ -268,4 +274,6 @@ _Pending — filled per wave with pasted gate output and runtime evidence._
 
 | Date | Change |
 |---|---|
+| 2026-09-09 | **Lane N merged** (`678695988`, six commits on `task-932/nav`): rail order Overview · Tenancy · Platform Ops · AI Platform · …; `NavEntry.order` + `gate`, `shared/feature-gates/` (`useFeatureGates`, `FeatureGateBoundary`), four gated screens, Speech & Voice retired (`/ai-configuration` → `/agents?task=SPEECH_TO_TEXT`), e2e `task-932-nav-tree.spec.ts`. Orchestrator follow-ups `57cdc9f17`: `/ai-model-defaults` repointed to avoid a two-hop redirect; rule 13 §Routing gained the feature-gate paragraph. Merged-tree gates: console lint exit 0, typecheck exit 0, `pnpm --filter @arcaai/admin-console test` → 297 files / 2676 tests passed. Lane deviation noted: it built `dist/` for `@arcaai/ui` and the SDK chain locally (gitignored) so the app tests could load, and it used `git stash` once to bisect a pre-existing failure — the stash stack was left clean (`stash@{0}` is an older unrelated entry). Known pre-existing: `tests/e2e/app-shell.spec.ts:96` still expects the retired Workbench link (fix in wave 3). |
+| 2026-09-09 | Owner said **go**. Plan committed at `46aedc4f3`; five worktrees `../hope-v2-task-932-{nav,settings,providers,storage,seeds}` on `task-932/*` off `dev-2.2`, env files copied, `pnpm install` run by the orchestrator. R-6 reproduced live (§2.7) before Lane S started. |
 | 2026-09-09 | Ticket opened. Eight read-only discovery lanes (`sonnet`) mapped nav, settings registry, platform-ops, providers/weight store, seeds/prompts v3, playground/realtime lane, dev-stack/e2e harness, and prior owner statements (2026-08-24, 2026-09-05 transcripts; TASK-890 OD-A/B/L/P; TASK-891 OD-1…OD-5). Plan §3–§5 written; status `Review` pending the owner's go-ahead. |
