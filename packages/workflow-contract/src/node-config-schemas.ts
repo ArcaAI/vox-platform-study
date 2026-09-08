@@ -2143,83 +2143,6 @@ const CORE_ACTION_SCHEMA: NodeConfigSchema = Object.freeze({
  * runtime knobs into every entry — see the ADDENDUM at the foot of this module.
  */
 const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze({
-  noop: NOOP_SCHEMA,
-  'core.start': BOUNDARY_MARKER_SCHEMA,
-  'core.end': BOUNDARY_MARKER_SCHEMA,
-  'input.context_binding': INPUT_CONTEXT_BINDING_SCHEMA,
-  'prompt.template_ref': PROMPT_TEMPLATE_REF_SCHEMA,
-  'generate.text': GENERATE_TEXT_SCHEMA,
-  'guardrail.check': GUARDRAIL_CHECK_SCHEMA,
-  'output.deliver': OUTPUT_DELIVER_SCHEMA,
-  'stt.audioInput': STT_AUDIO_INPUT_SCHEMA,
-  'stt.vad': STT_VAD_SCHEMA,
-  'stt.noiseFilter': STT_NOISE_FILTER_SCHEMA,
-  'stt.diarization': STT_DIARIZATION_SCHEMA,
-  'stt.languageDetection': STT_LANGUAGE_DETECTION_SCHEMA,
-  'stt.asrEngine': STT_ASR_ENGINE_SCHEMA,
-  'stt.transcriptOutput': STT_TRANSCRIPT_OUTPUT_SCHEMA,
-  'stt.phiHop': STT_PHI_HOP_SCHEMA,
-  // Consultation palette (closing D-9) — ordered by pipeline position, the
-  // same order `node-registry.ts` uses, so the two files read as the same pipeline.
-  'consultation.consentGate': CONSULTATION_CONSENT_GATE_SCHEMA,
-  'consultation.captureBinding': CONSULTATION_CAPTURE_BINDING_SCHEMA,
-  'consultation.extractEntities': CONSULTATION_EXTRACT_ENTITIES_SCHEMA,
-  'consultation.bindTerminology': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
-  'consultation.phiHop': CONSULTATION_PHI_HOP_SCHEMA,
-  'consultation.retrieveEvidence': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
-  'consultation.assemblePrompt': CONSULTATION_ASSEMBLE_PROMPT_SCHEMA,
-  'consultation.synthesize': CONSULTATION_SYNTHESIZE_SCHEMA,
-  'consultation.sensors': CONSULTATION_SENSORS_SCHEMA,
-  'consultation.inferentialSensors': CONSULTATION_SENSORS_SCHEMA,
-  'consultation.persistDraft': CONSULTATION_PERSIST_DRAFT_SCHEMA,
-  'consultation.finalizeAssurance': CONSULTATION_FINALIZE_ASSURANCE_SCHEMA,
-  'consultation.hitlGate': CONSULTATION_HITL_GATE_SCHEMA,
-  'consultation.realtimeSummary': CONSULTATION_REALTIME_SUMMARY_SCHEMA,
-  'consultation.suggestions': CONSULTATION_SUGGESTIONS_SCHEMA,
-  'consultation.proposeCorrections': CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA,
-  // The endpoint stage, in the order the default sequence runs them.
-  'session.timeout': SESSION_TIMEOUT_SCHEMA,
-  'summary.finalize': SUMMARY_FINALIZE_SCHEMA,
-  'feedback.capture': FEEDBACK_CAPTURE_SCHEMA,
-  'livedoc.stop': LIVEDOC_STOP_SCHEMA,
-  'harness.finalize': HARNESS_FINALIZE_SCHEMA,
-  // The TARGET CATALOGUE , in catalogue order. Each entry reuses the schema of the
-  // engine it delegates to — see the block above `AGENT_DNA_REDACTION_SCHEMA`.
-  'agent.transcription': CONSULTATION_CAPTURE_BINDING_SCHEMA,
-  'agent.normalization': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
-  'agent.ner': CONSULTATION_EXTRACT_ENTITIES_SCHEMA,
-  // Lane R (R1) — the realtime grammar pass shares the correction engine's config surface for
-  // the same reason the three generation entries share theirs: one engine, one authorable
-  // schema. In particular it inherits `promptTemplateId`, which is where the correction prompt
-  // comes from — a bound template, never a literal in runtime code.
-  'agent.grammar': CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA,
-  // DD-9 — three palette entries, ONE generation engine, therefore ONE config surface.
-  'agent.presummarization': CONSULTATION_SYNTHESIZE_SCHEMA,
-  'agent.summarization': CONSULTATION_SYNTHESIZE_SCHEMA,
-  'agent.discharge_summary': CONSULTATION_SYNTHESIZE_SCHEMA,
-  'agent.retrieval': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
-  'agent.feedback': FEEDBACK_CAPTURE_SCHEMA,
-  'agent.important_findings': AGENT_IMPORTANT_FINDINGS_SCHEMA,
-  'agent.dna_redaction': AGENT_DNA_REDACTION_SCHEMA,
-  'agent.dna_style': AGENT_DNA_STYLE_SCHEMA,
-  // The guards. `guard.phi` and `guard.moderation` reuse the redaction and content-safety
-  // engines' own schemas; only groundedness had no node to inherit from.
-  'guard.phi': CONSULTATION_PHI_HOP_SCHEMA,
-  'guard.moderation': GUARDRAIL_CHECK_SCHEMA,
-  'guard.groundedness': GUARD_GROUNDEDNESS_SCHEMA,
-  // the GENERIC catalogue. Behaviour is configuration, not type; every binding is a
-  // ROW REFERENCE. See the block above `ROW_REFERENCE_PROPERTY` for why nothing here names a
-  // provider, a model, an endpoint or a credential.
-  'agentic.input': AGENTIC_INPUT_SCHEMA,
-  'agentic.output': AGENTIC_OUTPUT_SCHEMA,
-  'agentic.agent': AGENTIC_AGENT_SCHEMA,
-  'agentic.guardrail': AGENTIC_GUARDRAIL_SCHEMA,
-  'agentic.data': AGENTIC_DATA_SCHEMA,
-  'agentic.loop': AGENTIC_LOOP_SCHEMA,
-  'agentic.stt': AGENTIC_STT_SCHEMA,
-  'agentic.tts': AGENTIC_TTS_SCHEMA,
-  // TASK-864 — the `core` vocabulary. `core.data` reuses the Data node's schema verbatim: the
-  // mapping language is the same tiny one, and a second copy is a second thing to audit.
   'core.trigger': CORE_TRIGGER_SCHEMA,
   'core.agent': CORE_AGENT_SCHEMA,
   'core.classify': CORE_CLASSIFY_SCHEMA,
@@ -2231,6 +2154,27 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
   'core.output': CORE_OUTPUT_SCHEMA,
   'core.data': AGENTIC_DATA_SCHEMA,
   'core.action': CORE_ACTION_SCHEMA,
+});
+
+/** TASK-893 — the authored schemas of the 17 ACTIONS behind `core.action`, keyed by action key (see `ACTION_CONFIG_SCHEMAS`). */
+const AUTHORED_ACTION_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze({
+  'prompt.template_ref': PROMPT_TEMPLATE_REF_SCHEMA,
+  'consultation.consentGate': CONSULTATION_CONSENT_GATE_SCHEMA,
+  'consultation.bindTerminology': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
+  'consultation.phiHop': CONSULTATION_PHI_HOP_SCHEMA,
+  'consultation.retrieveEvidence': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
+  'consultation.sensors': CONSULTATION_SENSORS_SCHEMA,
+  'consultation.inferentialSensors': CONSULTATION_SENSORS_SCHEMA,
+  'consultation.persistDraft': CONSULTATION_PERSIST_DRAFT_SCHEMA,
+  'consultation.finalizeAssurance': CONSULTATION_FINALIZE_ASSURANCE_SCHEMA,
+  'session.timeout': SESSION_TIMEOUT_SCHEMA,
+  'summary.finalize': SUMMARY_FINALIZE_SCHEMA,
+  'feedback.capture': FEEDBACK_CAPTURE_SCHEMA,
+  'livedoc.stop': LIVEDOC_STOP_SCHEMA,
+  'harness.finalize': HARNESS_FINALIZE_SCHEMA,
+  'guard.phi': CONSULTATION_PHI_HOP_SCHEMA,
+  'guard.moderation': GUARDRAIL_CHECK_SCHEMA,
+  'guard.groundedness': GUARD_GROUNDEDNESS_SCHEMA,
 });
 
 // ===========================================================================================
@@ -2390,24 +2334,11 @@ const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set(['consultation.
  * earns the `GUARDRAIL_OPTED_OUT` warning above.
  */
 export const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
-  // summarization palette
-  'input.context_binding',
-  'generate.text',
-  'guardrail.check',
-  'output.deliver',
-  // stt palette
-  'stt.audioInput',
-  'stt.asrEngine',
-  'stt.transcriptOutput',
-  // consultation palette
-  'consultation.consentGate',
-  'consultation.captureBinding',
-  'consultation.phiHop',
-  'consultation.persistDraft',
-  'consultation.finalizeAssurance',
-  'consultation.hitlGate',
   // TASK-864 — the `core` graph boundaries. A trigger or an output that can be switched off is a
   // graph with no entry or no exit; both carry the `mandatory` class in `node-registry.ts`.
+  // TASK-893: the legacy palettes' mandatory clinical guards are gone; a mandatory ACTION
+  // (`consultation.consentGate`, `consultation.phiHop`, …) carries `mandatory` in its catalogue
+  // entry's classes, resolved per instance by `classesOf('core.action', config)`.
   'core.trigger',
   'core.output',
 ]);
@@ -2439,4 +2370,14 @@ function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfi
  */
 export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
   Object.fromEntries(Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withRuntimeProperties(key, schema)])),
+);
+
+/**
+ * TASK-893 — the config schemas of the 17 ACTIONS behind `core.action` (`action-catalogue.ts`),
+ * keyed by action key, with the same runtime knobs folded in as every node schema (the
+ * interpreter merges `timeoutSeconds` / `retry` / `onError` from the node into the action's own
+ * config). Validated under the node's `action` sub-config (`actionConfigSchemaOf`).
+ */
+export const ACTION_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
+  Object.fromEntries(Object.entries(AUTHORED_ACTION_CONFIG_SCHEMAS).map(([key, schema]) => [key, withRuntimeProperties(key, schema)])),
 );

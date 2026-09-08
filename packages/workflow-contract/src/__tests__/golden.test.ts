@@ -21,7 +21,7 @@ import type { WorkflowGraph } from '../graph-model';
 import { workflowNodeClassLookup } from '../node-registry';
 import { evaluatePredicate } from '../predicates';
 import type { WorkflowEvaluationContext } from '../predicates/context';
-import { DRAFT_CONSULTATION_RULE_SET, DRAFT_CORE_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
+import { DRAFT_CORE_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
 import type { DraftWorkflowRule } from '../rule-catalogue';
 
 const GOLDEN_DIR = path.join(__dirname, 'golden');
@@ -45,11 +45,7 @@ const NODE_CLASSES: Record<string, readonly string[]> = {
   'core.end': ['boundary', 'terminal'],
 };
 
-const ALL_RULES: readonly DraftWorkflowRule[] = [
-  ...DRAFT_SUMMARIZATION_RULE_SET,
-  ...DRAFT_CONSULTATION_RULE_SET,
-  ...DRAFT_CORE_RULE_SET,
-];
+const ALL_RULES: readonly DraftWorkflowRule[] = [...DRAFT_SUMMARIZATION_RULE_SET, ...DRAFT_CORE_RULE_SET];
 
 /** One context per palette a rule can declare — the shape is kept parallel across palettes for
  *  the same "generic engine" reason `validate.ts`'s merge is additive. */
@@ -60,7 +56,7 @@ function contextFor(paletteKey: string): WorkflowEvaluationContext {
       // Fixture-local stub FIRST (the summarization fixtures use invented type keys that are
       // deliberately not registered), then the REAL registry — a palette whose rules select by
       // `nodeClass` (consultation's WF-CONS-019) can only be exercised against real classes.
-      classesOf: (type: string) => NODE_CLASSES[type] ?? workflowNodeClassLookup.classesOf(type),
+      classesOf: (type: string, config?: Readonly<Record<string, unknown>>) => NODE_CLASSES[type] ?? workflowNodeClassLookup.classesOf(type, config),
       paletteOf: () => paletteKey,
     },
   };

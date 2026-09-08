@@ -292,9 +292,11 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
   }
 
   // ---------------------------------------------------------------------------------------
-  // NEW, `core.*` only (release 1 scope).
+  // The per-node schema, context-schema, guardrail and template checks. Release 1 scoped them to
+  // `core.*` nodes so the legacy palettes' seeded graphs stayed publishable; TASK-893 retired
+  // those palettes, so every check now runs on every node of every graph.
   // ---------------------------------------------------------------------------------------
-  const coreNodes = nodes.filter((node) => node.type.startsWith('core.'));
+  const coreNodes = nodes;
 
   // The per-node config SCHEMA — the check nobody ran.
   for (const node of coreNodes) {
