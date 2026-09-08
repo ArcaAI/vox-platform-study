@@ -354,6 +354,12 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'Read and write governed settings through their descriptors.',
   },
   {
+    name: 'admin-settings-features',
+    displayName: 'Feature Availability',
+    plane: 'admin',
+    description: "Which features exist for a tenant, and the platform admin's cross-tenant matrix that decides it.",
+  },
+  {
     name: 'admin-storage-config',
     displayName: 'Storage Config',
     plane: 'admin',

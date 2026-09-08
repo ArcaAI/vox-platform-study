@@ -1,6 +1,7 @@
 import { EffectiveSettingsModule } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
 import { SettingsCatalogController } from './settings-catalog.controller';
+import { SettingsFeaturesController } from './settings-features.controller';
 import { SettingsRegistryWriteController } from './settings-registry-write.controller';
 
 /**
@@ -16,6 +17,9 @@ import { SettingsRegistryWriteController } from './settings-registry-write.contr
   // `SettingsRegistryWriteController` adds the static
   // `admin/settings/registry/:key` read/write lane. It rides the same
   // registered-before-GlobalSettingModule mechanism as the catalog routes.
-  controllers: [SettingsCatalogController, SettingsRegistryWriteController],
+  // `SettingsFeaturesController` adds the TASK-932 feature-availability plane
+  // (`admin/settings/features/*`). Same registered-before-GlobalSettingModule
+  // mechanism as the other two, so the static segment wins over `:id`.
+  controllers: [SettingsCatalogController, SettingsRegistryWriteController, SettingsFeaturesController],
 })
 export class SettingsCatalogModule {}

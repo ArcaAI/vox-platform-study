@@ -2,17 +2,19 @@ import {
   EffectiveSettingsService,
   HOPE_SETTINGS_REGISTRY,
   IActiveUserContext,
+  type SettingDescriptor,
   type SettingScope,
   SettingsRegistryWriteService,
   isSuperAdmin,
+  isTenantVisibleSetting,
 } from '@arcaai/applications';
-import { Body, Controller, Get, NotFoundException, Param, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { CanManage, CanRead, ExpectedVersion, ForbidApiKey, NoOptimisticConcurrency, RequiredSvcScopes } from '../../decorators';
-import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { EffectiveSettingResponse } from './dto/setting-catalog.response';
-import { WriteRegistrySettingRequest, WriteRegistrySettingResponse } from './dto/registry-setting.dto';
+import { ResetRegistrySettingResponse, WriteRegistrySettingRequest, WriteRegistrySettingResponse } from './dto/registry-setting.dto';
+import { resolveSettingsReadTenantId } from './settings-scope';
 
 /**
  * The settings registry READ/WRITE lane.
@@ -71,19 +73,17 @@ export class SettingsRegistryWriteController {
     @Query('doctorId') doctorId?: string,
     @Query('scope') scope?: SettingScope,
   ): Promise<EffectiveSettingResponse> {
-    const descriptor = HOPE_SETTINGS_REGISTRY.get(key);
-    // An unknown key on a path segment is a genuine "no such resource" — 404,
-    // unlike the 400 the write lane returns for an unknown key in a body.
-    if (!descriptor) {
-      throw new NotFoundException(`Unknown setting '${key}'.`);
-    }
-    // A tenant admin may not read a global-only key's value through this lane;
-    // it is already filtered out of the catalog listing for them.
-    if (descriptor.globalOnly && !isSuperAdmin(this.cls.get('user'))) {
-      throw new NotFoundException(`Unknown setting '${key}'.`);
-    }
+    this.descriptorOr404(key);
 
-    const resolvedTenant = resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), tenantId);
+    // TASK-932 R-6 — the READ resolves against the row the caller intends to
+    // WRITE. `scope=system` is the platform row on the reserved SYSTEM tenant,
+    // so it needs neither `?tenantId` nor a working tenant; asking for one was
+    // what made a platform admin unable to open — and therefore to save — any
+    // setting from an unscoped session. See `settings-scope.ts`.
+    const resolvedTenant = resolveSettingsReadTenantId(this.cls.get('user'), this.cls.get('tenantId'), {
+      scope: scope ?? 'system',
+      ...(tenantId ? { queryTenantId: tenantId } : {}),
+    });
     const effective = await this.effective.resolveEffective(key, {
       tenantId: resolvedTenant,
       departmentId: departmentId ?? null,
@@ -133,10 +133,62 @@ export class SettingsRegistryWriteController {
     // and subsequent ones cannot blind-overwrite.
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<WriteRegistrySettingResponse> {
+    // Existence FIRST, and the same 404 the GET gives: a key a tenant admin may
+    // not see must not be discoverable by writing to it either. The write lane's
+    // own `globalOnly` 403 stays as the backstop for a key that IS visible.
+    this.descriptorOr404(key);
     return this.writeService.write(key, request.value, {
       ...(request.scope ? { scope: request.scope } : {}),
       // Header wins over body, matching the house precedence (department.controller).
       ...((expectedFromHeader ?? request.expectedVersion) !== undefined ? { expectedVersion: expectedFromHeader ?? request.expectedVersion } : {}),
     });
+  }
+
+  @Delete('registry/:key')
+  @CanManage('GlobalSetting')
+  @NoOptimisticConcurrency(
+    'reset-to-inherited: the outcome (no row) does not depend on what the row contained, and the batch matrix save resets cells the caller never opened',
+  )
+  @ApiOperation({
+    summary: "Reset one TENANT override so the key resumes inheriting the platform default.",
+    description:
+      'Removes the working tenant row for `key`, after which the cascade resolves `SYSTEM` -> descriptor default again. ' +
+      'Idempotent: a key with no override answers 200 with `removed: false` rather than 404, so a "reset every tenant" sweep does not fail on the tenants that never had one. ' +
+      '`scope=system` is refused 400 -- the platform row is the top of the cascade, so there is nothing above it to inherit; write the descriptor default explicitly instead. ' +
+      'A super administrator resets another tenant by selecting it as the working tenant, exactly as a write does.',
+  })
+  @ApiParam({ name: 'key', description: 'Registry key, e.g. `console.mlflow.enabled`.' })
+  @ApiQuery({ name: 'scope', required: false, enum: ['tenant'], description: 'Defaults to `tenant`. `system` is refused.' })
+  @ApiResponse({ status: 200, type: ResetRegistrySettingResponse })
+  @ApiResponse({ status: 400, description: '`scope=system`, a locked tier, an unwritable tier, or a scope deeper than the descriptor `maxScope`.' })
+  @ApiResponse({ status: 403, description: 'The setting is super-admin-only.' })
+  @ApiResponse({ status: 404, description: 'Unknown key, or a platform-only key addressed by a tenant administrator.' })
+  async resetSetting(@Param('key') key: string, @Query('scope') scope?: SettingScope): Promise<ResetRegistrySettingResponse> {
+    this.descriptorOr404(key);
+    return this.writeService.reset(key, { scope: scope ?? 'tenant' });
+  }
+
+  /**
+   * The descriptor, or a 404 that cannot tell "unknown" from "not yours".
+   *
+   * TASK-932 R-1 / D-5 -- a tenant administrator addresses only the keys its own
+   * tenant can hold an opinion on. Anything else answers 404 rather than 403, so
+   * this lane cannot be walked as a directory of the platform's configuration by
+   * someone who can read the key names out of the source tree. It is existence
+   * hiding for a config surface, not the cross-tenant posture: a VISIBLE key
+   * refused at a scope the caller may not write still returns the write lane's
+   * 403.
+   */
+  private descriptorOr404(key: string): SettingDescriptor {
+    const descriptor = HOPE_SETTINGS_REGISTRY.get(key);
+    // An unknown key on a path segment is a genuine "no such resource" -- 404,
+    // unlike the 400 the write lane returns for an unknown key in a body.
+    if (!descriptor) {
+      throw new NotFoundException(`Unknown setting '${key}'.`);
+    }
+    if (!isSuperAdmin(this.cls.get('user')) && !isTenantVisibleSetting(descriptor)) {
+      throw new NotFoundException(`Unknown setting '${key}'.`);
+    }
+    return descriptor;
   }
 }
