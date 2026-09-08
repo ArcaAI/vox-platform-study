@@ -45,7 +45,7 @@ export function App() {
             apiEndpoint: connected.apiEndpoint,
             websocketUrl: websocketUrlFor(connected.apiEndpoint),
             credentials: { apiKey: connected.apiKey },
-            sttPipelineId: connected.pipelineId,
+            sttAgentSlug: connected.sttAgentSlug,
             environment: 'development',
             // Required for the BIDIRECTIONAL provider switch. Without it the
             // SDK can only switch one way (pipeline → tenant default), and
@@ -55,7 +55,7 @@ export function App() {
           }}
         >
           <div className="panels">
-            <LiveTranscription pipelineId={connected.pipelineId} language={connected.language} />
+            <LiveTranscription pipelineId={connected.pipelineId} sttAgentSlug={connected.sttAgentSlug} language={connected.language} />
             <BatchUpload pipelineId={connected.pipelineId} language={connected.language} />
           </div>
         </ArcaCompatProvider>

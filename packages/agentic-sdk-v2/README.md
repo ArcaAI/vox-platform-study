@@ -29,7 +29,7 @@ Peer dependencies: `react` / `react-dom` `^18.3.0 || ^19.0.4`.
 | `@arcaai/vox/core`            | Provider, hooks, types, client — no audio/ML plugin code. Includes `useBatchTranscription` (pre-recorded file upload + monitoring)   |
 | `@arcaai/vox/plugins`         | `useArcaAudio`, `useTtsPlayback`/`useTtsStream`, `PluginManager`, pipelines. Also re-exports the **deprecated** `useVAD`, `useSTT`, `useNoiseFilter`, `useSttProviderToggle` (removed in R4) |
 | `@arcaai/vox/plugins/med-ner` | **Deprecated** (removed in R4) — `useMedNER` only; isolates the optional `@arcaai/med-ner` dependency |
-| `@arcaai/vox/compat`          | v1 (`@arcaai/agentic-sdk`) source-compatible hooks for migrating apps — see [Migrating from v1](#migrating-from-v1-arcaaivoxcompat)  |
+| `@arcaai/vox/compat`          | v1 (`@arcaai/agentic-sdk`) source-compatible hooks for migrating apps — see [Migrating from v1](#migrating-from-v1-arcaaivoxcompat). `V1SdkConfig.sttAgentSlug` supersedes the deprecated `sttPipelineId`, in `mapV1ConfigToV2` **and** in `useAudioCapture` (3.1.0) |
 
 Use `/core` for dashboard-style surfaces that only need API access; audio and ML dependencies stay out of that graph. (`@arcaai/vox` itself carries no ADMINISTRATION surface — see [Business plane only](#business-plane-only-no-management-surface).)
 
@@ -283,6 +283,17 @@ await start(slug, input, { consultationId });   // writes into a clinical record
 - **There is no "list my runs" call.** The business plane exposes a run only by `runId`
   (`GET /workflows/:slug/runs/:runId`); listing is admin-plane and API-key-forbidden. Keep the
   `runId` you were handed — you cannot re-discover it.
+- **`transport: 'socket'` (3.1.0) reads the run over a WebSocket instead.**
+  `useWorkflowRun({ transport: 'socket' })` mints a run-scoped, single-use ticket
+  (`POST /workflows/:slug/runs/:runId/stream-ticket`) and opens the `url` it returns — never a JWT
+  in a query string, the same rule as the SSE lane. Everything else is identical: the same
+  `events`, `status`, `lastEventId` and `stopWatching()`.
+
+  **SSE stays the default, because it is the only lane that RESUMES.** The socket's ticket is
+  single-use, so a dropped socket ends the watch (re-`watch(slug, runId, lastEventId)` from the
+  cursor you kept), where SSE reconnects and loses no frames. Reach for `socket` when a proxy in
+  front of you buffers `text/event-stream` — the symptom is a run that looks stalled and then
+  completes all at once — or when a socket is the per-tab connection budget you already hold.
 
 ### Personalization and models
 

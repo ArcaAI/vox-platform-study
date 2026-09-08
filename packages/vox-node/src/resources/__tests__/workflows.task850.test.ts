@@ -340,7 +340,17 @@ describe('Error surfaces a developer actually sees', () => {
   });
 });
 
-describe('The workflow plane is API-key-only — a service-account client is refused early', () => {
+/**
+ * AMENDED TASK-931. This suite pinned "the workflow plane is API-key-only": every route recorded
+ * `svcScopes: []`, so a service-account client was refused at the call site rather than left to
+ * collect a 403 no role grant could fix.
+ *
+ * TASK-930 §3 declares the scopes, so half of that is no longer true. What survives is the
+ * CONSULTATION-bound plane, which gained none — running a workflow that writes into a clinical
+ * record stays a human-credential power. The refusal below is now that plane's alone; the reach
+ * of the unbound plane is pinned in `task931-agent-plane.test.ts`.
+ */
+describe('The consultation-bound workflow plane is API-key-only — a service-account client is refused early', () => {
   it('throws a plane-specific error instead of letting the gateway answer a confusing 403', async () => {
     const { fetch, calls } = stubFetch([() => json(HANDLE, 202)]);
     const hope = new HopeClient({
@@ -350,7 +360,7 @@ describe('The workflow plane is API-key-only — a service-account client is ref
       maxRetries: 0,
     });
 
-    const error = await hope.workflows.run('visit-summary', { input: {} }).catch((e: unknown) => e);
+    const error = await hope.consultations.workflows.run('con-1', 'visit-summary', { input: {} }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toMatch(/service account/i);
@@ -359,14 +369,14 @@ describe('The workflow plane is API-key-only — a service-account client is ref
     expect(calls).toHaveLength(0);
   });
 
-  it('applies to the consultation-bound plane and to streaming as well', async () => {
+  it('applies to listing and to streaming a run started on it', async () => {
     const { fetch } = stubFetch([() => json(HANDLE, 202)]);
     const hope = new HopeClient({ baseUrl: 'http://localhost:8868', serviceAccount: { clientId: 'a', clientSecret: 'b' }, fetch, maxRetries: 0 });
 
     await expect(hope.consultations.workflows.list('con-1')).rejects.toThrow(/service account/i);
     await expect(
       (async () => {
-        for await (const _ of hope.workflows.streamRun('s', 'r')) void _;
+        for await (const _ of hope.consultations.workflows.runAndStream('con-1', 's', { input: {} })) void _;
       })(),
     ).rejects.toThrow(/service account/i);
   });

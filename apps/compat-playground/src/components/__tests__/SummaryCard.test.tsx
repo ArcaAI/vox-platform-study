@@ -55,6 +55,7 @@ const CONFIG: PlaygroundConfig = {
   apiKey: 'test-key',
   tenantId: '',
   pipelineId: '',
+  sttAgentSlug: '',
   languageMode: 'en',
   department: 'cardiology',
   visitType: 'New Patient',

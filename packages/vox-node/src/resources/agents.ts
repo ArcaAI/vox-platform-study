@@ -14,10 +14,16 @@
  * POST /api/v1/agents/{slug}/transcriptions            -> transcribe()
  * ```
  *
- * Hand-authored, like `hope.workflows`: this is the business plane (API key or
- * JWT, `svcScopes: []`). Administration of agents — CRUD, versions, publish,
- * assignments — is `hope.admin.agent.*`, GENERATED from the admin plane, and
- * deliberately not duplicated here.
+ * Hand-authored, like `hope.workflows`: this is the BUSINESS plane. Since
+ * TASK-930 it accepts BOTH machine credential classes — an API key, and a
+ * service account holding `svc:agent:definition:read` /
+ * `svc:agent:invocation:write`. Until then the gateway declared `svcScopes: []`
+ * here and this resource refused a service-account client at the call site;
+ * that refusal is gone, because the scopes it explained away now exist.
+ *
+ * Administration of agents — CRUD, versions, publish, assignments — is
+ * `hope.admin.agent.*`, GENERATED from the admin plane, service-account ONLY,
+ * and deliberately not duplicated here.
  *
  * Realtime ASR is NOT here either: a browser captures audio and opens the
  * stream session through `@arcaai/vox` (`audio.start({ agentSlug })`). This
@@ -38,7 +44,7 @@ import type {
   TranscribeSource,
   TranscriptionJobHandle,
 } from '../types/agent';
-import { assertApiKeyPlane, type StartRunOptions } from './workflows';
+import type { StartRunOptions } from './workflows';
 
 /**
  * Every gateway route this plane calls, in `route-manifest.json`'s own spelling.
@@ -58,8 +64,6 @@ const BLOCKING_NON_RETRYABLE: ReadonlySet<number> = new Set([504]);
 
 /** Options for {@link AgentsResource.invoke} / {@link AgentsResource.invokeAndStream} — the same knobs as a workflow run start. */
 export type InvokeAgentOptions = StartRunOptions;
-
-const SURFACE = 'The agent invocation plane (`hope.agents`)';
 
 function agentPath(slug: string): string {
   return `agents/${encodePathSegment(slug)}`;
@@ -96,15 +100,10 @@ function toInvocationEvent(data: string, resumeToken: string | undefined): Agent
  * ```
  */
 export class AgentsResource {
-  constructor(
-    private readonly transport: Transport,
-    /** `true` when this client authenticates as a service account — see `assertApiKeyPlane`. */
-    private readonly isServiceAccount = false,
-  ) {}
+  constructor(private readonly transport: Transport) {}
 
   /** `GET /api/v1/agents[?task=…]` — published, active agents visible to the tenant. Never `null`: `[]` means none. */
   async list(options: { task?: AgentTask; signal?: AbortSignal } = {}): Promise<AgentSummary[]> {
-    assertApiKeyPlane(this.isServiceAccount, SURFACE);
     const response = await this.transport.request<{ data?: AgentSummary[] }>({
       path: 'agents',
       query: options.task === undefined ? undefined : { task: options.task },
@@ -115,7 +114,6 @@ export class AgentsResource {
 
   /** `GET /api/v1/agents/{slug}` — summary plus `inputSchema` / `outputSchema` / `protocols`. */
   async get(slug: string, options: { signal?: AbortSignal } = {}): Promise<AgentSummary> {
-    assertApiKeyPlane(this.isServiceAccount, SURFACE);
     return this.transport.request<AgentSummary>({ path: agentPath(slug), signal: options.signal });
   }
 
@@ -139,7 +137,6 @@ export class AgentsResource {
     input: Record<string, unknown>,
     options: InvokeAgentOptions = {},
   ): Promise<AgentInvocationResult<TOutput>> {
-    assertApiKeyPlane(this.isServiceAccount, SURFACE);
     const headers = idempotencyHeaders(options);
     return this.transport.request<AgentInvocationResult<TOutput>>({
       method: 'POST',
@@ -169,7 +166,6 @@ export class AgentsResource {
     input: Record<string, unknown>,
     options: InvokeAgentOptions = {},
   ): AsyncGenerator<AgentInvocationEvent, void, void> {
-    assertApiKeyPlane(this.isServiceAccount, SURFACE);
     const response = await this.transport.stream({
       method: 'POST',
       path: `${agentPath(slug)}/invocations`,
@@ -192,7 +188,6 @@ export class AgentsResource {
    * The body is handed back unbuffered so a long clip can be streamed onward.
    */
   async synthesize(slug: string, body: SpeechRequest, options: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<SpeechSynthesis> {
-    assertApiKeyPlane(this.isServiceAccount, SURFACE);
     const response = await this.transport.stream({
       method: 'POST',
       path: `${agentPath(slug)}/speech`,
@@ -220,7 +215,6 @@ export class AgentsResource {
     source: TranscribeSource,
     options: { signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<TranscriptionJobHandle> {
-    assertApiKeyPlane(this.isServiceAccount, SURFACE);
     let body: unknown;
     if (source.file !== undefined) {
       const form = new FormData();

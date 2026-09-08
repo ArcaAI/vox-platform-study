@@ -55,6 +55,15 @@ export type {
 export { RESERVED_RUN_IDENTITY_KEYS, reservedRunIdentityKeysIn } from './core/run-identity';
 
 /**
+ * The run-socket ticket shape (TASK-931). Exported because the ticket is minted over an
+ * ordinary route: an integrator may want to mint one here and hand it to a socket somewhere
+ * else — a browser, a worker — rather than iterate {@link WorkflowsResource.streamRun} in this
+ * process. `resolveSocketUrl` is the other half of that hand-off.
+ */
+export { resolveSocketUrl } from './core/socket';
+export type { SocketFrame, WorkflowRunStreamTicket } from './core/socket';
+
+/**
  * Inbound-webhook signature verification. HOPE signs every
  * delivery `X-Hope-Webhook-Signature: sha256=<hex>` over the RAW body
  * (`services/webhook/webhook-delivery.processor.ts`); this is the receiver
@@ -87,7 +96,7 @@ export type { ServiceAccountCredentials } from './core/service-account-token';
 /**
  * The `/api/v1/admin/**` surface: the hand-authored
  * {@link AdminResource} base, the {@link AdminNamespace} that `hope.admin` is
- * an instance of, and the 52 generated per-area resources.
+ * an instance of, and the 49 generated per-area resources.
  *
  * Five admin controllers are deliberately ABSENT and stay absent by owner
  * decision — see `resources/admin/index.ts` for the table naming each decision.
@@ -111,6 +120,7 @@ export {
   QuotaExceededError,
   RateLimitError,
   ReservedRunIdentityError,
+  SocketUnavailableError,
   VersionConflictError,
 } from './core/errors';
 export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } from './core/errors';
@@ -173,6 +183,9 @@ export type {
   AgentSummary,
   AgentTask,
   InvokeAgentRequest,
+  NamedEntityRecognitionInput,
+  NamedEntityRecognitionOutput,
+  RecognizedEntity,
   SpeechRequest,
   SpeechSynthesis,
   TranscribeSource,

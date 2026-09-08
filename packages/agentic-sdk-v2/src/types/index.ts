@@ -130,6 +130,7 @@ export {
 // consultation workflow DISCOVERY (which engine governs a consultation).
 export type { ConsultationWorkflow, SelectableConsultationWorkflow } from './consultationWorkflow';
 export type { AgentTask, SelectableAgent, SelectableAsrAgent } from './agent';
+export type { NamedEntityRecognitionInput, NamedEntityRecognitionOutput, RecognizedEntity } from './agent';
 // TASK-890 (OD-F) — invoking a published agent from the browser.
 export type { AgentInvocationFrame, AgentInvocationInput, AgentInvocationResult } from './agent';
 

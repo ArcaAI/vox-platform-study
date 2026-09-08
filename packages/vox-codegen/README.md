@@ -1,12 +1,22 @@
 # @arcaai/vox-codegen
 
-Build-time TypeScript codegen CLI for a tenant's `ConsultationContextSchema`
-(TASK-668). Emits named TS types from the SAME discovery bundle `@arcaai/vox`
-reads at session start (`GET /tenants/me/context-schema`, TASK-658/661) — an
-**accessory to runtime discovery, never a replacement**. A tenant can publish
-a new kind between two runs of this generator; the SDK's
-`useConsultationSchema()` remains the wire contract, and this file will not
-know about the change until regenerated.
+Build-time TypeScript codegen CLI for a tenant's HOPE configuration. **Two
+modes, one per credential class, mutually exclusive:**
+
+| Mode | Credential | Emits |
+|---|---|---|
+| `--tenant <id> --token <jwt>` | SUPER_ADMIN JWT | the tenant's consultation CONTEXT SCHEMA (TASK-668) |
+| `--api-key <key> [--agents] [--workflows]` | tenant API key | what the tenant PUBLISHES: `Agent_<Slug>_Input` / `_Output`, `Workflow_<Slug>_Input` / `_Output` (TASK-931) |
+
+Both emit named TS types from the SAME data the runtime reads, and both are an
+**accessory to runtime discovery, never a replacement**. A tenant can publish a
+new kind, agent version or workflow between two runs of this generator; the
+SDK's `useConsultationSchema()` / `hope.agents.list()` remain the wire contract,
+and a generated file will not know about the change until regenerated.
+
+Mixing the two is a refusal, not a guess: they authenticate differently, read
+different routes and answer different questions, so "which did you mean" has no
+safe default.
 
 ## Placement decision (recorded per the ticket)
 
@@ -75,21 +85,65 @@ migrate onto it.
 ## CLI
 
 ```
-vox-codegen — emit TypeScript types from a tenant's consultation context schema
+vox-codegen — emit TypeScript types from a tenant's HOPE configuration
 
-Usage:
-  vox-codegen --tenant <id> [options]
+CONSULTATION CONTEXT SCHEMA (super-admin JWT)
+  vox-codegen --tenant <id> --token <jwt> [options]
 
-Options:
-  --tenant <id>       Tenant id to generate types for (required)
-  --token <jwt>       Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
-  --base-url <url>    Gateway origin (default: http://localhost:8868, or HOPE_API_BASE_URL)
-  --department <id>   Prefer this department's schema default, falling back to the tenant default
-  --out <path>        Output file path (default: ./consultation-context-schema.generated.ts)
+  --tenant <id>        Tenant id to generate types for (required)
+  --token <jwt>        Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
+  --department <id>    Prefer this department's schema default, falling back to the tenant default
+  --out <path>         Output FILE path (default: ./consultation-context-schema.generated.ts)
   --watch              Keep polling and regenerate whenever the schema changes
-  --interval <ms>       Poll interval in watch mode (default: 5000)
-  -h, --help              Show this help
+  --interval <ms>      Poll interval in watch mode (default: 5000)
+
+PUBLISHED AGENTS AND WORKFLOWS (API key — the business plane)
+  vox-codegen --api-key <key> [--agents] [--workflows] [options]
+
+  --api-key <key>      Tenant API key (or set HOPE_API_KEY). Never reaches an admin route.
+  --agents             Emit Agent_<Slug>_Input / _Output for every published agent
+  --workflows          Emit Workflow_<Slug>_Input / _Output for every published workflow
+  --out <dir>          Output DIRECTORY (default: ./generated)
+
+COMMON
+  --base-url <url>     Gateway origin (default: http://localhost:8868, or HOPE_API_BASE_URL)
+  -h, --help           Show this help
 ```
+
+### The business-plane mode (`--agents` / `--workflows`)
+
+```bash
+npx @arcaai/vox-codegen --api-key "$HOPE_API_KEY" --base-url http://localhost:8868 \
+  --agents --workflows --out ./src/generated
+```
+
+Writes one file per requested plane — `agents.generated.ts`,
+`workflows.generated.ts` — so a workflow edit does not dirty the agents another
+team imports. Each carries a type pair per entry plus a map keyed by the **slug**,
+because the slug is what a call site actually passes:
+
+```ts
+import type { Agent_NoteWriter_Input, AgentContractMap, AgentSlug } from './generated/agents.generated';
+
+const input: Agent_NoteWriter_Input = { text: note };
+const { output } = await hope.agents.invoke<AgentContractMap['note-writer']['output']>('note-writer', input);
+```
+
+**It reads four routes and no admin route:** `GET /agents`, `GET /agents/{slug}`,
+`GET /workflows`, `GET /workflows/{slug}/schema`, all with `X-API-Key`. That
+restriction is structural rather than a rule to remember — an API key can never
+reach `/admin/*` — and it is the right restriction: what a tenant PUBLISHES is
+exactly what an integrator needs to type.
+
+An entry whose schema the definition does not declare renders **`unknown`**, not
+`Record<string, unknown>`. "No declared contract" and "any contract is fine" are
+different facts, and generating the second from the first produces code that
+compiles and then 400s.
+
+`--watch` is **not** available here: the context-schema mode polls one endpoint
+and compares its `etag`, while a published catalogue is N definitions with no
+aggregate validator, so a watch would be an N-request poll that cannot tell
+"unchanged" from "not read yet".
 
 **Auth.** The CLI calls `GET /tenants/me/context-schema` as a super-admin
 "manage as tenant" request: `Authorization: Bearer <token>` for a

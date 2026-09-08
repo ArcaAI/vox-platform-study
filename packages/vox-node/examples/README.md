@@ -10,6 +10,7 @@ vars it needs.
 | [`02-presummary-stream.ts`](./02-presummary-stream.ts) | Streaming a pre-summary: iterating deltas, then `.result()` |
 | [`03-consultation-async.ts`](./03-consultation-async.ts) | `generateAsync` + `jobs.waitFor` — the recommended pattern for long transcripts |
 | [`04-error-handling.ts`](./04-error-handling.ts) | Catching the typed error hierarchy, incl. the 404-over-403 nuance |
+| [`05-agents-and-workflows.ts`](./05-agents-and-workflows.ts) | Invoking a published agent (incl. NER), streaming a workflow run over SSE and over a socket, and releasing a `core.humanReview` node |
 
 ## Running an example
 
@@ -30,6 +31,13 @@ way without a local install.
 `03-consultation-async.ts` additionally needs `HOPE_CONSULTATION_ID` — an
 existing consultation id in your tenant, since this SDK does not create
 consultations (see the package README's "The two summarization families").
+
+`05-agents-and-workflows.ts` reads two optional slugs (`HOPE_AGENT_SLUG`,
+`HOPE_WORKFLOW_SLUG`) and falls back to the first published entry of each. Its
+human-review section runs only when you also set `HOPE_REVIEW_NODE_ID` — a
+review is addressed by `(runId, nodeId)`, because one graph may carry several.
+Its socket section needs **Node 22 or newer**: this SDK has zero runtime
+dependencies, so the socket lane is `globalThis.WebSocket` and nothing else.
 
 ## Getting an API key
 
