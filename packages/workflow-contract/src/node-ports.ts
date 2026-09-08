@@ -112,7 +112,6 @@ function ports(inputs: readonly WorkflowPortDescriptor[], outputs: readonly Work
  * `inputs: []`, because a node with no declared ports is exactly the D-4 state this closes.
  */
 export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.freeze({
-
   // -------------------------------------------------------------------------------------------
   // TASK-864 — the `core` vocabulary: the owner's nine primitives plus the two platform-action
   // node types (`core.data`, `core.action`). One palette, composed; behaviour is CONFIGURATION.

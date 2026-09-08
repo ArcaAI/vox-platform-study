@@ -707,41 +707,6 @@ const ROW_REFERENCE_PROPERTY = Object.freeze({
 });
 
 /**
- * The agent node's ONE provider binding, in two mutually exclusive shapes.
- *
- * `routingPolicyId` PINS one specific `AiRoutingPolicy` row — the owner's *"agent nodes bind to
- * exactly one provider configuration"*, taken literally. `taskKey` instead names the TASK and
- * lets the standard tenant → SYSTEM cascade elect the configuration, which is what a tenant wants
- * when they mean "whatever we currently use for finalize".
- *
- * Both are offered because neither alone is right: pinning a SYSTEM row id in a tenant graph
- * freezes the platform default and takes the tenant's own override out of the picture, while
- * task-key resolution alone cannot express "this node, specifically, uses the cheap model".
- * EXACTLY ONE must be present — `agenticNodeConfigProblems` (`agentic-contract.ts`) enforces
- * that, because a JSON Schema `oneOf` would need a discriminator the authorable subset requires
- * and neither shape has a natural one.
- */
-const PROVIDER_CONFIG_REF_PROPERTY: NodeConfigSchema = Object.freeze({
-  type: 'object',
-  additionalProperties: false,
-  properties: Object.freeze({
-    routingPolicyId: Object.freeze({
-      ...ROW_REFERENCE_PROPERTY,
-      description:
-        'The `AiRoutingPolicy` row this node generates through — the provider CONFIGURATION (connection + model + modelRef), by id. A REFERENCE: the provider name, the model id, the endpoint and the credential all live on that row and its `AiProviderConnection`, never here. Resolution fails CLOSED on a row that is absent, disabled or owned by another tenant.',
-    }),
-    taskKey: Object.freeze({
-      type: 'string',
-      minLength: 1,
-      maxLength: 64,
-      description:
-        'Resolve the tenant`s ELECTED default configuration for this task key instead of pinning one row — the standard tenant → SYSTEM cascade, widening only on absence. Mutually exclusive with `routingPolicyId`.',
-    }),
-  }),
-  description: 'Which provider configuration serves this node. Exactly one of `routingPolicyId` / `taskKey`.',
-});
-
-/**
  * The generation hyper-parameters, INCLUDING the two program finding F-12 recorded as absent.
  *
  * `frequencyPenalty` and `presencePenalty` are not universally supported — llama.cpp and vLLM
@@ -784,59 +749,6 @@ const GENERATION_HYPERPARAMETERS_PROPERTY: NodeConfigSchema = Object.freeze({
   }),
   summary: 'Fine-tuning knobs for how the agent generates text.',
   description: 'Generation hyper-parameters. Every key is capability-gated against the bound provider configuration — never silently dropped.',
-});
-
-/**
- * The agent's TOOL bindings — the owner's *"tenant admin can set some tools for agents to call"*,
- * which `WorkflowNodeDescriptor` had nowhere to hold (F-12: *"zero tool/MCP fields"*).
- *
- * A binding is `(mcpServerId, toolName)` and NOTHING else, and the omissions are the design.
- * delivered the tenant-scoped `McpServer` registry: `baseUrl`, `transport`, `authRef`
- * (a Vault reference, never a secret), `toolAllowlist`, `phiBoundary` and `enabled` all live on
- * that row, behind a deny-by-default SSRF egress guard. A `baseUrl` on a graph node would route
- * around every one of those — the guard, the allowlist, the PHI boundary and the enabled flag —
- * so the graph names the row and the ACTIVITY resolves it.
- */
-const AGENT_TOOLS_PROPERTY: NodeConfigSchema = Object.freeze({
-  type: 'array',
-  maxItems: 32,
-  items: Object.freeze({
-    type: 'object',
-    additionalProperties: false,
-    required: Object.freeze(['mcpServerId', 'toolName']),
-    properties: Object.freeze({
-      mcpServerId: Object.freeze({
-        ...ROW_REFERENCE_PROPERTY,
-        description:
-          'The tenant`s `McpServer` row . Its `baseUrl`/`authRef`/`toolAllowlist`/`enabled` are resolved in the activity; a disabled row FAILS CLOSED.',
-      }),
-      toolName: Object.freeze({ type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]{1,128}$' }),
-    }),
-  }),
-  description: 'Tools this agent may call, as (server, tool) REFERENCES. Never a URL, a header or a credential.',
-});
-
-/** A reference to another node IN THE SAME GRAPH. Guard attachment is a graph fact. */
-const NODE_ID_REFERENCE_LIST = Object.freeze({
-  type: 'array',
-  maxItems: 8,
-  items: Object.freeze({ type: 'string', pattern: '^[a-z0-9_]{2,48}$' }),
-});
-
-/**
- * The owner's *"optional guardrail nodes on input/output"*. Guards are NODES in the graph, and
- * this names which ones wrap this agent — so the guardrail's own configuration, its policy
- * binding and its verdict all stay on the guard node where the rule catalogue can already see
- * them, rather than being duplicated into the agent's config.
- */
-const AGENT_GUARDS_PROPERTY: NodeConfigSchema = Object.freeze({
-  type: 'object',
-  additionalProperties: false,
-  properties: Object.freeze({
-    input: NODE_ID_REFERENCE_LIST,
-    output: NODE_ID_REFERENCE_LIST,
-  }),
-  description: 'Guardrail NODE ids in this graph that wrap this agent`s input / output. References, checked at publish.',
 });
 
 /** A tenant-authored JSON Schema, carried verbatim. Validated by `authorableJsonSchemaProblems`
