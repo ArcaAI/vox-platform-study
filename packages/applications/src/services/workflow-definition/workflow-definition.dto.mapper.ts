@@ -74,6 +74,7 @@ export class WorkflowDefinitionDtoMapper {
   static toNodeResponse(descriptor: WorkflowNodeDescriptor): WorkflowNodeResponse {
     const dto = new WorkflowNodeResponse();
     dto.type = descriptor.key;
+    dto.kind = 'node';
     dto.implemented = descriptor.implemented;
     dto.activityName = descriptor.activityName;
     dto.classes = [...descriptor.classes];
@@ -126,6 +127,9 @@ export class WorkflowDefinitionDtoMapper {
     const host = WORKFLOW_NODE_REGISTRY['core.action'];
     const dto = new WorkflowNodeResponse();
     dto.type = descriptor.key;
+    // NOT a node type: the palette must not offer it, and a graph must never carry it as a
+    // `node.type` — a `core.action` instance names it in `config.actionKey` instead.
+    dto.kind = 'action';
     // Every kept action is dispatchable — an unimplemented one would have been dropped, not kept.
     dto.implemented = true;
     dto.activityName = descriptor.activityName;
