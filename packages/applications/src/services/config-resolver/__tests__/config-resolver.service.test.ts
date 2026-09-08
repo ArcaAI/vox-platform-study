@@ -163,6 +163,20 @@ describe('ConfigResolver.resolveEffectiveDnaStyleEnabled — the agent.dna_style
     expect(r).toEqual({ effective: false, tenantEnabled: true, doctorToggle: false, doctorPreferenceVersion: 3 });
   });
 
+  it('TASK-932 — a `core.agent` declaring `dna.enabled` is the DNA node of the `core` vocabulary', async () => {
+    publishGraph([{ id: 'n_finalize', type: 'core.agent', config: { agentRef: { slug: 'casenote-finalization' }, dna: { enabled: true } } }]);
+    const r = await makeResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r).toEqual({ effective: true, tenantEnabled: true, doctorToggle: null, doctorPreferenceVersion: 0 });
+  });
+
+  it('TASK-932 — a `core.agent` WITHOUT `dna.enabled` declares no DNA pass', async () => {
+    publishGraph([{ id: 'n_finalize', type: 'core.agent', config: { agentRef: { slug: 'casenote-finalization' } } }]);
+    preference('true');
+    const r = await makeResolver().resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.tenantEnabled).toBe(false);
+    expect(r.effective).toBe(false);
+  });
+
   it('a node the tenant switched OFF is not a configured node', async () => {
     publishGraph([{ id: 'style', type: 'agent.dna_style', config: { enabled: false } }]);
     preference('true');

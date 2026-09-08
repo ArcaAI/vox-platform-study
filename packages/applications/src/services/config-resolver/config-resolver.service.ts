@@ -101,6 +101,15 @@ function isActiveNodeOf(node: WorkflowGraphNode, type: string): boolean {
 }
 
 /**
+ * TASK-932 R-16a — a `core.agent` that DECLARES the DNA writing-style pass (`config.dna.enabled`).
+ * The `core` vocabulary has no `agent.dna_style` / `agent.dna_redaction` node type; the workflow
+ * names its DNA agent (TASK-891 OD-5) by flagging the finalizing agent instead.
+ */
+function declaresDna(node: WorkflowGraphNode): boolean {
+  return isActiveNodeOf(node, CORE_AGENT_NODE_TYPE) && asRecord(asRecord(node.config).dna).enabled === true;
+}
+
+/**
  * A node that generates a document: a `core.agent`, or any `generation`-classed instance.
  *
  * TASK-893 — resolved through the contract's own `classesOf`, which answers for an INSTANCE
@@ -193,7 +202,7 @@ export class ConfigResolver {
    */
   async resolveEffectiveDnaStyleEnabled(ctx: ConfigResolutionContext): Promise<ResolvedDnaStyle> {
     const [graph, preference] = await Promise.all([this.resolveGoverningGraph(ctx, 'DNA-style'), this.resolveDoctorDnaPreference(ctx.doctorId)]);
-    const tenantEnabled = graph !== null && graph.nodes.some((node) => isActiveNodeOf(node, DNA_STYLE_NODE_TYPE));
+    const tenantEnabled = graph !== null && graph.nodes.some((node) => isActiveNodeOf(node, DNA_STYLE_NODE_TYPE) || declaresDna(node));
     return {
       effective: tenantEnabled && (preference.enabled ?? true),
       tenantEnabled,
@@ -223,7 +232,7 @@ export class ConfigResolver {
    */
   async resolveEffectiveDnaRedactionEnabled(ctx: ConfigResolutionContext): Promise<ResolvedDnaStyle> {
     const [graph, preference] = await Promise.all([this.resolveGoverningGraph(ctx, 'DNA-redaction'), this.resolveDoctorDnaPreference(ctx.doctorId)]);
-    const node = graph?.nodes.find((candidate) => isActiveNodeOf(candidate, DNA_REDACTION_NODE_TYPE)) ?? null;
+    const node = graph?.nodes.find((candidate) => isActiveNodeOf(candidate, DNA_REDACTION_NODE_TYPE) || declaresDna(candidate)) ?? null;
     const tenantEnabled = node !== null;
     const honoursDoctorOptIn = node === null || effectiveConfigOf(node).requireDoctorOptIn !== false;
     return {

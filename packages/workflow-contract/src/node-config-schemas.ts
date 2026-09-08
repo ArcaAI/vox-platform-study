@@ -943,6 +943,29 @@ const CEL_EXPRESSION_PROPERTY = Object.freeze({
  * attributable rather than merely computed. A pushed `true` never turns a platform kill-switch
  * back on: `apps/text` keeps `platform.enabled` as the floor.
  */
+/**
+ * TASK-932 R-16a — the DNA writing-style declaration on a `core.agent` instance.
+ *
+ * TASK-891 OD-5: the workflow NAMES the DNA-redaction agent. In the `core` vocabulary that agent
+ * is the finalizing `core.agent` (cadence `onEnd`) whose instruction renders
+ * `{{context.dna_style_text}}`; `dna.enabled: true` is how the graph DECLARES it, and it is what
+ * the gateway's DNA gate (`ConfigResolver.resolveEffectiveDnaStyleEnabled`) reads — the legacy
+ * `agent.dna_style` node type is not part of this vocabulary, so without this flag the
+ * clinician's style could never reach the note.
+ */
+const DNA_PROPERTY = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    enabled: Object.freeze({
+      type: 'boolean',
+      summary: 'Apply the clinician\'s DNA writing style when this agent generates.',
+      description:
+        'TRUE declares this node as the DNA writing-style pass (TASK-891 OD-5). The clinician\'s own opt-out still vetoes it; ABSENT means the graph declares no DNA pass.',
+    }),
+  }),
+});
+
 const GUARDRAIL_OVERRIDE_PROPERTY = Object.freeze({
   type: 'object',
   additionalProperties: false,
@@ -1081,6 +1104,7 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
     }),
     ...DOCUMENT_BINDING_PROPERTIES,
     guardrail: GUARDRAIL_OVERRIDE_PROPERTY,
+    dna: DNA_PROPERTY,
     onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
   }),
 });

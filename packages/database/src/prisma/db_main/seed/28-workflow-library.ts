@@ -169,7 +169,7 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
       {
         id: 'n_finalize',
         type: 'core.agent',
-        config: { agentRef: { slug: 'casenote-finalization' }, execution: { lane: 'durable', cadence: 'onEnd' }, guardrail: { enabled: true }, onError: 'fail' },
+        config: { agentRef: { slug: 'casenote-finalization' }, execution: { lane: 'durable', cadence: 'onEnd' }, guardrail: { enabled: true }, dna: { enabled: true }, onError: 'fail' },
       },
       {
         id: 'n_review',
