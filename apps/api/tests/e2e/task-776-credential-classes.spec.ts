@@ -55,6 +55,8 @@ const CONSULTATION_ARCAAI = '90000000-0000-0000-0001-000000000001';
 
 /** Business-plane route: `@RequiredScopes('consultation:session:read')`. */
 const CONSULTATION = (id: string) => `/api/v1/consultations/${id}`;
+/** Business-plane route with API-key scopes but NO service-account scopes (deny-by-default example). */
+const CONSULTATION_WORKFLOWS = (id: string) => `/api/v1/consultations/${id}/workflows`;
 /** Admin-plane route: `@ForbidApiKey()` via policy A2. */
 const ADMIN_USERS = '/api/v1/admin/users';
 /**
@@ -181,14 +183,15 @@ test.describe('credential-class semantics', () => {
 
   test.describe('deny-by-default scopes', () => {
     test('service-account token on a route with no @RequiredSvcScopes is 403', async ({ request }) => {
-      // /workflows declares @RequiredScopes (API keys) but no @RequiredSvcScopes.
-      const res = await request.get(WORKFLOWS, { headers: { 'X-Service-Account-Token': svcToken } });
+      // TASK-930 admitted service accounts to `/workflows`; the consultation-bound workflow list
+      // still declares @RequiredScopes (API keys) but no @RequiredSvcScopes.
+      const res = await request.get(CONSULTATION_WORKFLOWS(CONSULTATION_GLOBAL), { headers: { 'X-Service-Account-Token': svcToken } });
       expect(res.status()).toBe(403);
       expect((await res.json()).message).toBe('This route does not accept service-account authentication');
     });
 
     test('the same route is reachable by a JWT — the 403 is about the CREDENTIAL CLASS, not the route', async ({ request }) => {
-      const res = await request.get(WORKFLOWS, { headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      const res = await request.get(CONSULTATION_WORKFLOWS(CONSULTATION_GLOBAL), { headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
       expect(res.status()).toBe(200);
     });
 
