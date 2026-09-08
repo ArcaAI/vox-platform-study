@@ -598,6 +598,24 @@ W1's dev-DB residue: consultations `01a081ba-d6a6…` / `01a081bb-d695…` (pati
 Merge W2 into `dev-2.2` after W1 lands; re-run §6.9 (lane LOCAL) on the result; then FU-6 and the
 statuses.
 
+### 4.12 After wave W — merges, activation, gates, cleanup (2026-09-08 evening)
+
+W1 (on `dev-2.2` directly), W2, W3 and W4 are all merged; `NLP_WARM_MODELS` is declared in
+`turbo.json#globalEnv`, the generated env surfaces and `.env.dev`; `SEED_LMSTUDIO_BASE_URL` is in
+`.env.dev`. Post-merge gates on the integrated tree: applications **12 260 / 0**, api **4 270 / 0**,
+database 1 685, guardrail 518, text 1 664, nlp 653 (+ 2 pre-existing `test_metrics_endpoint_task636`
+cases that depend on the local `.env.dev` — FU-11), harness 2 218 (+ the 6 pre-existing task-355 reds,
+FU-1). All three artifact drift checks green (737 routes; 656 / 199 portal ops; vox-node 49 / 417 / 413).
+
+Two operational findings worth keeping: (1) **regenerating the API artifacts while the dev stack runs
+is unreliable** — the gateway's `nest --watch` starts with `rimraf dist`, so `apps/api/dist/scripts/
+emit-openapi.js` can vanish between `api:build` and `api:openapi`; stop the stack (or at least the api
+target) first. (2) A worker relaunched by hand outside `scripts/dev-stack.sh` is invisible to the
+supervisor; the fix is a supervised restart, which is what the stack restart after the merges did.
+
+The three `.claude/worktrees` trees (W2, W3, W4) were removed and their branches deleted under the
+same gate as the wave-3 lanes — every branch an ancestor of HEAD, every tree clean.
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
@@ -814,6 +832,7 @@ Each is real, each is out of this wave's brief, and each is recorded here so it 
 | Date | Change |
 |---|---|
 | 2026-09-08 (docs close) | §6 filled: the four asks answered against C-1..C-5, the per-lane delivered surface, the nine merge commits, the one additive migration, the six API changes, the five regenerated artifacts and the final gate chain (`typecheck:all` 0 · `lint:all` 0 · unit **23 803 / 0** · harness **2 201 / 6** pre-existing). Five follow-ups raised (§6.10: the task-355 patch-marker drift, G-2, G-3, the slug-blind `realtimeCapabilityIndex`, and the post-publish re-runs). §6.9 carries a marked `<!-- LOCAL-TEST-EVIDENCE -->` placeholder — the ask #2/#3 runtime runs are blocked on the owner's database-reset consent, so the status stays `In Progress`. Rule amendments landed with it: 05 (the promotion gate, and the boundary condition on the existence-before-privilege ordering rule), 08 (SDK 3.1.0), 00 (D-8 provenance), 06 (the harness vocabulary and its drain precondition). |
+| 2026-09-08 (wave W) | W1–W4 merged (D-1, D-2, D-4, D-5, D-6, D-7 fixed; D-3 resolved; D-8 misattributed); activation, artifacts and gates green (§4.12); agent worktrees removed. Pending: the owner's dev-DB reseed, then the LOCAL re-run (§6.9). |
 | 2026-09-08 (LOCAL) | Lane A done → TASK-931 `Completed`; worktrees and lane branches removed under the §4.9 containment proof; the local runtime gate ran and FAILED on D-1..D-6 (§6.9) — fix wave W dispatched (§4.11). |
 | 2026-09-08 (e2e) | SDK 3.1.0 published (TASK-931 §4.5); `quick-compat-app` on 3.1.0 (FU-5 closed); test DB rebuilt; F-E2E retargeted the eleven vocabulary-era e2e failures — suite 1 180 passed / 0 failed; FU-6 escalated (§4.10). |
 | 2026-09-08 (runtime) | Owner reset both DBs; both verified (SYSTEM 5/2, Global 5/2, ArcaAI 27/13, NER enum, zero legacy node types). The last applications integration file passes (2/2). Test API on :8968 and the dev stack on :8868 started; e2e and lane LOCAL (the four §6.9 runs) dispatched. History rewrite recorded with the containment proof (§4.9). |
