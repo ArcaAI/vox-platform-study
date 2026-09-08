@@ -49,8 +49,30 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function readBinding(node: WorkflowGraphNode): NodePromptBinding | null {
+/**
+ * WHERE a node carries its binding — the node's own config, or one level down.
+ *
+ * TASK-893 moved it. `prompt.template_ref` is no longer a node type; it is an entry in
+ * `ACTION_CATALOGUE`, so a `core` graph binds a template on a `core.action` whose delegate config
+ * lives under `config.action`. `core.action`'s schema is `additionalProperties: false`, so the key
+ * CANNOT be authored at the top level any more — and a collector that only looked there returned
+ * nothing for every `core` graph: no `promptTemplateRefs` in the compiled artifact (so a published
+ * clinical workflow re-prompts on the next template edit, the exact failure the pin exists to
+ * prevent), no "new version available" affordance, and no node for `movePin` to find. Silently.
+ *
+ * Still keyed off the PRESENCE of the key rather than a node-type allow-list, for the reason
+ * {@link collectPromptBindings} gives — the search is just two levels deep now. Top level wins
+ * when both carry one, so a node type that goes back to declaring it directly needs no change.
+ */
+function bindingHolder(node: WorkflowGraphNode): Record<string, unknown> | null {
   const config = isPlainObject(node.config) ? node.config : {};
+  if (typeof config[PROMPT_TEMPLATE_ID_KEY] === 'string') return config;
+  const delegate = config.action;
+  return isPlainObject(delegate) && typeof delegate[PROMPT_TEMPLATE_ID_KEY] === 'string' ? delegate : null;
+}
+
+function readBinding(node: WorkflowGraphNode): NodePromptBinding | null {
+  const config = bindingHolder(node) ?? {};
   const templateId = config[PROMPT_TEMPLATE_ID_KEY];
   if (typeof templateId !== 'string' || templateId.length === 0) return null;
 
@@ -92,14 +114,19 @@ export function withMovedPin(graph: WorkflowGraph, nodeId: string, versionNumber
   const target = nodes.find((node) => node.id === nodeId);
   if (!target || !readBinding(target)) return null;
 
-  return {
-    ...graph,
-    nodes: nodes.map((node) =>
-      node.id === nodeId
-        ? { ...node, config: { ...(isPlainObject(node.config) ? node.config : {}), [PROMPT_VERSION_NUMBER_KEY]: versionNumber } }
-        : node,
-    ),
+  // The pin is written back WHERE the binding was read (see `bindingHolder`). Writing it at the
+  // top level of a `core.action` would put a key its `additionalProperties: false` schema refuses,
+  // so the next publish of a re-pinned node would fail validation.
+  const repin = (node: WorkflowGraphNode): WorkflowGraphNode => {
+    const config = isPlainObject(node.config) ? node.config : {};
+    if (typeof config[PROMPT_TEMPLATE_ID_KEY] === 'string') {
+      return { ...node, config: { ...config, [PROMPT_VERSION_NUMBER_KEY]: versionNumber } };
+    }
+    const delegate = isPlainObject(config.action) ? config.action : {};
+    return { ...node, config: { ...config, action: { ...delegate, [PROMPT_VERSION_NUMBER_KEY]: versionNumber } } };
   };
+
+  return { ...graph, nodes: nodes.map((node) => (node.id === nodeId ? repin(node) : node)) };
 }
 
 /**

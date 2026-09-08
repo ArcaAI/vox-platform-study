@@ -60,7 +60,19 @@ const mockAgentPromotion = { promote: vi.fn() };
 const mockEvalGate = { evaluateWorkflowPromotion: vi.fn() };
 const mockPolicyEngine = { buildAbility: vi.fn() };
 
-const PLAIN_GRAPH = { version: 1, nodes: [{ id: 'n1', type: 'noop', config: {} }], edges: [] };
+/** TASK-893 — the only vocabulary left is `core`; `noop` and the `summarization` palette are gone. */
+const PLAIN_GRAPH = {
+  version: 1,
+  nodes: [
+    { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
+    { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 'summarizer' } }, position: { x: 1, y: 0 } },
+    { id: 'o1', type: 'core.output', config: { protocols: ['http'] }, position: { x: 2, y: 0 } },
+  ],
+  edges: [
+    { id: 'e1', from: 't1', to: 'a1', fromPort: 'out', toPort: 'context' },
+    { id: 'e2', from: 'a1', to: 'o1', fromPort: 'out', toPort: 'in' },
+  ],
+};
 
 const entity = (overrides: Record<string, unknown> = {}) => ({
   id: 'def-1',
@@ -68,7 +80,7 @@ const entity = (overrides: Record<string, unknown> = {}) => ({
   slug: 'soap',
   name: 'SOAP',
   description: null,
-  paletteKey: 'summarization',
+  paletteKey: 'core',
   versionNumber: 2,
   parentVersionId: null,
   status: WorkflowDefinitionStatus.PUBLISHED,
