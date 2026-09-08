@@ -53,8 +53,11 @@ export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNo
   const searchId = useId();
   const [query, setQuery] = useState('');
   // TASK-893: the registry carries the `core` vocabulary only — nothing is deprecated, so the
-  // rail offers every registered type.
-  const offered = descriptors;
+  // rail offers every registered node TYPE. It does NOT offer the action catalogue: those entries
+  // ride in the same payload so `effectiveNodePorts` can resolve a `core.action` instance's
+  // sockets, but an action is chosen through that node's `actionKey`, never dragged onto a canvas
+  // — a node whose type is an action key is one the compiler refuses (WF-C-002).
+  const offered = useMemo(() => descriptors.filter((descriptor) => descriptor.kind !== 'action'), [descriptors]);
   const filtered = useMemo(() => offered.filter((descriptor) => matchesQuery(descriptor, query)), [offered, query]);
 
   if (loading) {

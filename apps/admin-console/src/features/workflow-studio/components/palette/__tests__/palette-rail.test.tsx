@@ -29,7 +29,21 @@ const MANDATORY: WorkflowNodeDescriptor = { ...NOOP, type: 'guardrail_gate', cla
 const GATED: WorkflowNodeDescriptor = { ...NOOP, type: 'premium_step', paletteKey: 'summarization', entitlementKey: 'feature.premium' };
 const UNIMPLEMENTED: WorkflowNodeDescriptor = { ...NOOP, type: 'future_step', implemented: false, paletteKey: 'summarization' };
 
+/**
+ * TASK-893 — an ACTION_CATALOGUE entry, served in the same payload so `effectiveNodePorts` can
+ * resolve a `core.action` instance's sockets. It is not a node type and must never be offered.
+ */
+const ACTION: WorkflowNodeDescriptor = { ...NOOP, type: 'guard.phi', kind: 'action', paletteKey: 'core' };
+
 describe('PaletteRail', () => {
+  it('never offers an ACTION as a node type — a graph node typed on an action key does not compile', () => {
+    const onAddNode = vi.fn();
+    render(<PaletteRail descriptors={[NOOP, ACTION]} onAddNode={onAddNode} />);
+
+    expect(screen.queryByRole('button', { name: /guard\.phi|Guard Phi/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /noop/i })).toBeTruthy();
+  });
+
   it('renders a Skeleton row per item while loading', () => {
     const { container } = render(<PaletteRail descriptors={[]} loading onAddNode={vi.fn()} />);
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
