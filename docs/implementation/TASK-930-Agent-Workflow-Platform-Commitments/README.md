@@ -493,6 +493,17 @@ that removed it", which is no longer true. Pinned as CURRENT behaviour at
 `GUARDRAIL_OPTED_OUT` loop in `publishFindings`. The policy question underneath — WHICH actions are
 mandatory for a `core` graph that may be API-only — is the owner's.
 
+### 4.11 Fix wave W — the six seam defects (dispatched 2026-09-08 after §6.9)
+
+| Lane | Tree | Defects | Ownership |
+|---|---|---|---|
+| **W1** (opus) | primary checkout, sole writer of it | D-2 (dispatch envelope vs `core.trigger` context schema), D-1 (lane semantics of the seeded graphs vs the durable interpreter's `realtime` skip), D-6 (seed `parameters.generation.reasoning` vs the publish gate) | `packages/applications/src/services/consultation/workflow-dispatch/**`, `packages/workflow-contract/src/**`, `apps/harness/src/harness/temporal/interpreter/**`, `packages/database/src/prisma/db_main/seed/**` (+ regen), their tests |
+| **W2** (opus) | fresh isolated worktree | D-4 (`promote-to-system` for workflows: tenant context + the post-commit throw), D-5 (reference set publishes cloned definitions, TENANT assignment, provenance) | `packages/applications/src/services/{workflow-definition,agentPromotion,tenant/reference-set}/**`, `apps/api/src/modules/{agent-promotion,workflow-definition,tenant}/**`, their tests |
+| orchestrator | runtime | D-3 (`SEED_LMSTUDIO_BASE_URL` in `.env.dev`, the SYSTEM-tier endpoint, restart `text`, verify a generate) and the whisper warm (owner) | `.env.dev`, the stack |
+
+Merge W2 into `dev-2.2` after W1 lands; re-run §6.9 (lane LOCAL) on the result; then FU-6 and the
+statuses.
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
