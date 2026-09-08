@@ -62,6 +62,8 @@ interface WizardState {
   systemPrompt: string;
   initialPrompt: string;
   hotwords: string;
+  /** TASK-930 — the NER label set, comma-separated in the field and split on submit (same shape as `hotwords`). */
+  labels: string;
   parameters: Record<string, unknown>;
   inputSchema: Record<string, unknown> | null;
   outputSchema: Record<string, unknown> | null;
@@ -80,6 +82,7 @@ const INITIAL: WizardState = {
   systemPrompt: '',
   initialPrompt: '',
   hotwords: '',
+  labels: '',
   parameters: {},
   inputSchema: null,
   outputSchema: null,
@@ -107,6 +110,15 @@ export function buildCreateRequest(state: WizardState): CreateAgentRequest {
       .map((word) => word.trim())
       .filter(Boolean);
     instruction = { ...(state.initialPrompt ? { initialPrompt: state.initialPrompt } : {}), ...(hotwords.length ? { hotwords } : {}) };
+  } else if (state.task === 'NAMED_ENTITY_RECOGNITION') {
+    // TASK-930 — a NER agent's instruction is its LABEL SET and nothing else. Omitted entirely
+    // when empty: a fixed-label checkpoint (`medical-ner`) carries its own taxonomy, so an
+    // empty `labels: []` would be a declaration the author did not make.
+    const labels = state.labels
+      .split(',')
+      .map((label) => label.trim())
+      .filter(Boolean);
+    instruction = labels.length ? { labels } : undefined;
   }
   return {
     slug: state.slug,
@@ -424,6 +436,14 @@ export function CreateAgentWizard({
                 />
               </div>
             </>
+          ) : state.task === 'NAMED_ENTITY_RECOGNITION' ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="agent-labels">Entity labels</Label>
+              <Input id="agent-labels" placeholder="comma-separated" value={state.labels} onChange={(event) => patch({ labels: event.target.value })} />
+              <p className="text-muted-foreground text-xs">
+                What to extract. Honoured by zero-shot extractors; a fixed-label checkpoint emits its own set and ignores this.
+              </p>
+            </div>
           ) : (
             <p className="text-muted-foreground text-sm">
               A text-to-speech agent carries no instruction — the voice is a parameter on the next step.
@@ -476,7 +496,9 @@ export function CreateAgentWizard({
                 ? state.initialPrompt || state.hotwords
                   ? 'Initial prompt / hotwords'
                   : '—'
-                : 'None'}
+                : state.task === 'NAMED_ENTITY_RECOGNITION'
+                  ? state.labels || '— (the checkpoint’s own labels)'
+                  : 'None'}
           </dd>
           <dt className="text-muted-foreground">Context schema</dt>
           <dd>

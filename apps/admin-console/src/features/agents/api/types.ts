@@ -3,16 +3,17 @@
  * registry/template pickers the create wizard needs. Mirrors the gateway DTOs
  * (`packages/applications/src/services/agent/dto`, `agent-assignment/dto`).
  */
-export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
 export type AgentStatus = 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
 export type AgentAssignmentScope = 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
 
-export const AGENT_TASKS: readonly AgentTask[] = ['SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_TO_SPEECH'];
+export const AGENT_TASKS: readonly AgentTask[] = ['SPEECH_TO_TEXT', 'TEXT_GENERATION', 'TEXT_TO_SPEECH', 'NAMED_ENTITY_RECOGNITION'];
 
 export const AGENT_TASK_LABEL: Record<AgentTask, string> = {
   SPEECH_TO_TEXT: 'Speech-to-text',
   TEXT_GENERATION: 'Text generation',
   TEXT_TO_SPEECH: 'Text-to-speech',
+  NAMED_ENTITY_RECOGNITION: 'Named entity recognition',
 };
 
 /** The registry `AiModel.taskType` a model must carry to back each agent task (AGENT_TASK_MODEL_TASK_TYPE). */
@@ -20,6 +21,7 @@ export const AGENT_TASK_MODEL_TASK_TYPE: Record<AgentTask, string> = {
   SPEECH_TO_TEXT: 'AUTOMATIC_SPEECH_RECOGNITION',
   TEXT_GENERATION: 'TEXT_GENERATION',
   TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
+  NAMED_ENTITY_RECOGNITION: 'TOKEN_CLASSIFICATION',
 };
 
 export interface AgentFallback {
