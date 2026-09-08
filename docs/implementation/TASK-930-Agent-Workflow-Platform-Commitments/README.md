@@ -468,7 +468,145 @@ Orchestrator sequence after the lanes report:
 
 ## 6. Implementation Summary
 
-_Pending — filled at close with per-lane evidence, merge commits, gates and the local test log._
+### 6.1 Where this stands
+
+**Every code lane is delivered, merged and green on `dev-2.2`; the runtime proof is not yet run.**
+Five lanes (N, P, R, S, K) merged in the contract order, three fix-up lanes (F-TS, F-PY, F-RT)
+closed the integration, the five API artifacts were regenerated, and the SDK family was versioned to
+3.1.0. What remains is the part that needs the owner's consent to reset the dev database and the
+local stack: the **ask #2 / #3 runtime runs** (§6.9) and, after them, the SDK publish and the ALaaS
+consumer update (TASK-931). Status stays `In Progress` until §6.9 is filled.
+
+Measured against the plan base `7793d09ca`: **147 commits, 380 files, +25 858 / −30 849** — the
+wave DELETED more than it added, which is what a retirement plus a seed rebuild should look like.
+
+### 6.2 The four asks, answered
+
+| Ask | Answer |
+|---|---|
+| **1 (a)** agents (single task) + workflows (chains, parallel + sequential) | Already true at runtime and now named: the compiler groups independent nodes into one `CompiledStage`, the durable interpreter runs a stage with `asyncio.gather` and the realtime executor with `Promise.all` (C-5). No change was needed beyond making the Studio honest about it |
+| **1 (b)** an input and an output schema per agent/workflow, for developers | **C-4 closed.** `Agent.outputSchema` was authorable, published and unused; it now becomes the default `response_format: json_schema` when it is an explicit object schema and no `responseFormat` hyper-parameter is set — `outputSchemaResponseFormat()` (TS) and `output_schema_response_format()` (Python), applied in `invokeText` / `_run_text_generation`. The declared contract and the enforced one are the same object (D-5). `@arcaai/vox-codegen --agents --workflows` types them for the integrator |
+| **1 (c)** publish and expose via webhook / API / socket / http-SSE, usable with an API key **or a service account** | **C-2 and C-3 closed.** Five derived `svc:*` scopes reach all 5 agent + 10 workflow routes (D-3), and a run-scoped stream ticket makes the socket lane usable without a JWT (D-4) — see §6.6 |
+| **1 (d)** developers integrate with `@arcaai/vox-node` and `@arcaai/vox` | SDK 3.1.0, TASK-931 §4 |
+| **1 (e)** every agent node declares a provider + model available to the tenant | **C-1 closed.** `AgentTask.NAMED_ENTITY_RECOGNITION` (D-1) makes NER a first-class agent task backed by `TOKEN_CLASSIFICATION` catalogue rows, so the tenant picks the NER provider + model on the agent row instead of through a bare `modelSlug` on a classify node or the super-admin-only `AiRoutingPolicy`. Guardrail deliberately stays platform policy (D-2, OD-R) |
+| **2** delete the old seed data; seed the Global → SYSTEM → tenant promotion process | Lane S rebuilt the whole seed set in `core.*` (D-8) and lane P built the missing agent half of promotion (D-7). §6.3 |
+| **3** ArcaAI seed data as agents and workflows | Generated from the department × visit-type table: **27 agents, 13 workflows, 1 TENANT + 11 DEPARTMENT assignments**. The three-at-random run is §6.9 |
+| **4** SDK production readiness, version bump, release, codegen, ALaaS | TASK-931 — packages at 3.1.0, publish and ALaaS still ahead |
+
+### 6.3 Delivered surface, per lane
+
+The full reports are §4.3 (lanes), §4.6 (fix-ups) and §4.7 (F-RT); this is the surface they left.
+
+| Lane | Delivered |
+|---|---|
+| **N** — NER plane | `AgentTask.NAMED_ENTITY_RECOGNITION` + migration; `AgentInvocationService.invokeNer` → `{ entities: [{text,label,start,end,score?}], model, charCount }` over nlp `POST /classify/tokens` (A-6), metered with the existing `buildNerUsageEvent`; the invocations route dispatches on the RESOLVED task; the fourth derived `svc:*` scope family; `POST /workflows/:slug/runs/:runId/stream-ticket`; `outputSchemaResponseFormat()` TS + Python; the console authors a NER agent |
+| **P** — promotion | `POST admin/agents/promote-to-system` (agent row + `AgentModelFallback` chain + a Global-owned prompt template deep-copied with `sourceTemplateId`, `evalGate` STRIPPED, one WORM `AgentPromotion`); `assertReferencedAgentsInSystem` → **409 `AGENTS_NOT_IN_SYSTEM`** on workflow promotion; `REFERENCE_SET_KINDS` at seven entries with `workflowAssignments` last, TENANT scope only |
+| **R** — retirement (TASK-893 Phases 2 + 4) | The action catalogue as a first-class table in both languages (17 keys), `WORKFLOW_NODE_REGISTRY` 72 → 11, `registry.py` 64 → 11, `NODE_ACTIVITIES` 65 → 29, `WF-CONS-*` / `WF-SUMM-*` deleted. Detail: [TASK-893 §6](../TASK-893-Workflow-Studio-Redesign/README.md) |
+| **S** — seeds | The legacy set deleted; ONE trigger context schema `consultation_note_context`; Global and SYSTEM each 5 agents (1 STT, 2 TEXT_GENERATION, 1 TTS, 1 NER) + 2 workflows, SYSTEM stamped `sourceTenantId = Global` (D-8's provenance); ArcaAI generated (27/13/12); the seed copier cloning `workflowDefinitions` + TENANT-scope `workflowAssignments` with a parity test proving the re-stamped clone equals a real `compile()`; the five `svc:*` scopes in `94-service-account.ts` |
+| **K** — SDK 3.1.0 | TASK-931 §4.1 |
+| **F-TS** — TS integration | The applications blast radius closed with SOURCE fixes, not test edits — the realtime projection re-keyed on a capability, prompt bindings read from a `core.action` delegate (before this, **every core graph pinned no prompt version**), `isGenerationNode` via `classesOf` (before this, **auto-summary stayed ON for a graph that switched it off**), and `GET /admin/workflow-nodes` serving the 17 action descriptors with a `kind` label |
+| **F-PY** — harness | Replay histories re-fixtured onto `core.*`; the agentic-loop subsystem deleted (531 lines, 8 activities, both worker registrations); `core.agent`'s speech path restored to the delta lane — a real regression, since `_run_speech` had replaced a node that streamed every synthesis frame |
+| **F-RT** — realtime `resolveAgent` (G-1) | A slug-form `core.agent` on the realtime lane resolves to its agent's TASK through `AgentResolverService`. Without it the seeded `general-medicine-consultation` graph made **3 summarization calls and 0 entity extractions per flush** — the ASR and NER nodes would have generated a note instead of transcribing and extracting. Fail-closed like `resolveRealtimeTextAgent`: 404 on unknown / unpublished / cross-tenant, `AGENT_VERSION_DRIFT` on a stale pin |
+
+### 6.4 Merge commits
+
+| # | Commit | What |
+|---|---|---|
+| 1 | `7cdb72796` (+ `431498fb0`, `be104fe26`) | lane N |
+| 2 | `8eca8ed79` | lane P |
+| 3 | `699c0ca33` (+ `5f3cd983a`) | lane R |
+| 4 | `b1b223ba6` (+ `bfff14051`, `a22884f03`, `c4208c1aa`) | lane S |
+| 5 | `069d8c548` (+ `63c070bce`) | lane K |
+| 6 | `474cc2728`…`17aa15a77` | F-TS, direct on `dev-2.2` |
+| 7 | `2232354c6` (+ `adac3459d`) | F-PY |
+| 8 | `3ad564b4c`, `65ef67e59` | F-RT (G-1) |
+| 9 | `61e05e089`, `0bb865d31`, `a58b42361` | the five API artifacts, the `env:sync` fix, SDK 3.1.0 |
+
+Every lane's `.lane-report.md` was dropped from its merge; no lockfile moved, so no `pnpm install`.
+
+### 6.5 Database migration
+
+**One**, and it is additive: `20260907182330_task_930_agent_task_ner` — `ALTER TYPE core."AgentTask"
+ADD VALUE 'NAMED_ENTITY_RECOGNITION'`. Proved on a throwaway shadow database, after which
+`prisma migrate diff` printed `-- This is an empty migration.`; the domain enum
+(`packages/domains/src/enums/generated/AgentTask.ts`) and the Python `AgentTask` Literal in
+`interpreter/models.py` moved with it — without the Python half `ResolvedAgent.model_validate`
+refuses a NER agent and the node degrades as `agent_unresolvable`. No table was created or dropped
+by this wave; the seed rebuild is data, not schema.
+
+### 6.6 API changes
+
+| Route | Change |
+|---|---|
+| `POST /api/v1/admin/agents/promote-to-system` | **NEW.** `@CanManage('Agent')` + `@ForbidApiKey()` + `@RequiredSvcScopes('svc:admin:agent:manage')`, with `isSuperAdmin` AND an elevated tenant-less context enforced imperatively (`AUTH-NOTE` marker; rule `05-nestjs-api.md` gained a row for the pattern). → `{ agentId, slug, versionNumber, copied: { promptTemplates, contextSchemas }, promotionId, warnings }` |
+| `POST /api/v1/admin/workflow-definitions/promote-to-system` | **Amended:** refuses **409 `AGENTS_NOT_IN_SYSTEM`** when a `core.agent` node names an agent SYSTEM does not carry. The check runs BEFORE anything is written, so a block writes nothing |
+| `POST /api/v1/workflows/{slug}/runs/{runId}/stream-ticket` | **NEW.** 201 `{ ticket, expiresAt (epoch ms), scope: 'workflow_run:<runId>', url }`, 30 s TTL, ownership proved via `getRunStatus` before the mint. `apiKeyScopes: ['workflow:run:read']`, `svcScopes: ['svc:workflow:run:read']` — the API-key and service-account equivalent of the JWT-only `POST /auth/stream-ticket`, with the scope DERIVED from the path rather than taken from the caller |
+| 5 agent + 10 workflow routes | **`svc:*` scopes declared** — `svc:agent:definition:read`, `svc:agent:invocation:write`, `svc:workflow:definition:read`, `svc:workflow:run:read`, `svc:workflow:run:write`, derived (never hand-written) through `deriveFamilyInto()` from the existing API-key scope sources (A-2) and registered in the boot audit. `svc:admin:*` deliberately does NOT reach them |
+| `POST /api/v1/agents/{slug}/invocations` | Dispatches on the RESOLVED agent task; a NER agent with `?mode=stream` is **400 `MODE_UNSUPPORTED`** (one-shot task). A declared `outputSchema` now constrains the engine |
+| `GET /api/v1/admin/workflow-nodes` | Serves the 17 `core.action` descriptors alongside the 11 node types, each labelled `kind: 'node' \| 'action'`. Without it the Studio's `effectiveNodePorts` fell back to the generic superset — six sockets where the action has one — and the palette rail would have offered actions as draggable node types the compiler refuses |
+
+### 6.7 Artifacts
+
+All five regenerated together on the integrated tree (`61e05e089`) with the three drift checks
+green: `route-manifest.json` **737 routes**; `openapi.json`; the API portal **656 admin / 199
+business operations**; and `packages/vox-node/src/resources/admin/**` at **49 areas / 417 routes /
+413 schemas**. The seed `.generated.ts` blobs were regenerated after the R merge (`a22884f03`),
+because they are checksum-bound to the node registry that lane R changed.
+
+### 6.8 Gate evidence — the final chain
+
+Run on the integrated tree at `61e05e089`+ (unit after the `env:sync` fix in `0bb865d31`):
+
+| Gate | Result |
+|---|---|
+| `pnpm typecheck:all` | **0 errors** |
+| `pnpm lint:all` | **0 errors** |
+| workspace `pnpm test:unit` | **23 803 passed / 0 failed** |
+| `pnpm harness:test` | **2 201 passed / 6 failed** — the six are the pre-existing task-355 patch-marker drift, named in §6.10: `test_gating_consolidation_replay.py` ×2 and `test_replay_compat.py::TestReplayCompatibility::test_post_*` ×4 |
+| five API artifacts | regenerated, all three drift checks green (§6.7) |
+| SDK family | `sdk:build`, `sdk-node:build`, `sdk:test`, `sdk-node:test`, `sdk-codegen:test`, `check:exports` all exit 0 at 3.1.0 |
+
+`pnpm test:e2e` has NOT been run (the isolated test infra was down for most of the wave, and one
+e2e spec was edited during the S merge). It is the one gate TASK-893's Phase 4 still owes, and it
+belongs with the §6.9 runs.
+
+### 6.9 Local runtime tests — the ask #2 / #3 gate
+
+<!-- LOCAL-TEST-EVIDENCE -->
+
+_Not yet run: these need the owner's explicit consent to reset and reseed the dev database (the
+TASK-890 consent text applies), the local stack up, and `gemma-4-e2b-it-qat` loaded in LM Studio.
+The orchestrator fills this section with:_
+
+1. _Global `realtime-transcription` streams._
+2. _`general-medicine-consultation` end to end, both through the API plane
+   (`POST /workflows/…/runs?mode=stream`) and through a consultation._
+3. _The promotion round-trip: Global → SYSTEM → a fresh tenant via `reference-set/sync`._
+4. _Three ArcaAI department workflows picked at random, each run to a decided review (ask #3)._
+
+_Until then, ask #2's "test locally before moving on" and ask #3's "test at least three at random"
+are unproven, which is the whole reason this ticket is still `In Progress`._
+
+### 6.10 Follow-up tickets to raise
+
+Each is real, each is out of this wave's brief, and each is recorded here so it is not lost:
+
+| # | Finding | Why it is its own ticket |
+|---|---|---|
+| **FU-1** | **The task-355 patch-marker drift.** `HarnessDocWorkflow` no longer issues `workflow.patched("task-355-optimistic-delivery")` while real recorded histories carry the marker, so replay fails `TMPRL1100 Non-deprecated patch marker … no corresponding change command` (6 tests). Pre-existing at this wave's baseline | It is the same DEPLOY hazard class as the drain precondition — a live replay defect, not fixture rot, and fixing it means deciding whether the marker returns or the histories are retired |
+| **FU-2** | **G-2 — `proposeCorrections` / `extractFindings` are implemented but unreachable.** No `core.*` node resolves to either capability, so grammar corrections and important-findings mining left the realtime lane with the retired node types | The owner decides whether they come back as `core.action` delegates or are removed; either way it is a capability decision, not integration work |
+| **FU-3** | **G-3 — `PromptResolutionService` graph tier 1a is unauthorable under `core`.** No node schema carries `promptTemplateId` + `taskKey` where the resolver reads; prompts ride on the agent row, so the graph tier is inert source | Delete the inert tier or re-home it — a resolver change with its own test surface |
+| **FU-4** | **`realtimeCapabilityIndex` is slug-blind.** Degrade-reason attribution still keys on node type, so two slug-form `core.agent` nodes cannot be told apart in the read-out. Pre-existing, surfaced by F-RT and explicitly out of G-1's scope | Same shape as the TASK-893 per-node overlay carve-out: attribution needs an identity the current payload does not carry |
+| **FU-5** | Optional: `SdkSnippetAgentTask` has no NER arm (the console maps NER to the invoke-shaped snippet at the call site, which is correct but generic), and `apps/quick-compat-app`'s typecheck cannot run until 3.1.0 is published | Docs nicety and a post-publish re-run; neither is a gate |
+
+### 6.11 Owner actions still open
+
+- **Consent to reset the dev database**, which §6.9 is blocked on.
+- **Rotate the GitHub PAT** committed in both ALaaS `.npmrc` files (Q-3). No agent can do this.
+- **A pre-existing `stash@{0}: On dev-2.2: 2608.26`** sits on the shared stash stack. Not this
+  wave's, left untouched — inspect or drop it.
+- `~/.zshrc:149` and `.env.dev:1651` still export the exFAT `HF_HOME`; the launch config overrides
+  it for the stack only (Q-4).
 
 ---
 
@@ -476,6 +614,7 @@ _Pending — filled at close with per-lane evidence, merge commits, gates and th
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (docs close) | §6 filled: the four asks answered against C-1..C-5, the per-lane delivered surface, the nine merge commits, the one additive migration, the six API changes, the five regenerated artifacts and the final gate chain (`typecheck:all` 0 · `lint:all` 0 · unit **23 803 / 0** · harness **2 201 / 6** pre-existing). Five follow-ups raised (§6.10: the task-355 patch-marker drift, G-2, G-3, the slug-blind `realtimeCapabilityIndex`, and the post-publish re-runs). §6.9 carries a marked `<!-- LOCAL-TEST-EVIDENCE -->` placeholder — the ask #2/#3 runtime runs are blocked on the owner's database-reset consent, so the status stays `In Progress`. Rule amendments landed with it: 05 (the promotion gate, and the boundary condition on the existence-before-privilege ordering rule), 08 (SDK 3.1.0), 00 (D-8 provenance), 06 (the harness vocabulary and its drain precondition). |
 | 2026-09-08 (F-RT) | G-1 fixed and green (§4.7); the original session transcript cross-checked against §1 (§4.8); five-artifact regeneration started; DB resets await the owner's explicit consent (Prisma's agent guard). |
 | 2026-09-08 (fix-up) | F-TS and F-PY reported and merged (§4.6): the integrated tree builds and every TS suite is green; harness 34 → 6 reds (the six are a pre-existing task-355 patch-marker defect → own ticket). G-1 (realtime `resolveAgent`) dispatched as lane F-RT before the local-test gate. |
 | 2026-09-08 (merge) | N → P → R → S → K merged on `dev-2.2` with per-merge punch-list fixes (§4.5); the integrated tree fails the applications build on R's blast radius; two fix-up lanes (F-TS in the primary, F-PY in R's re-pointed worktree) dispatched under recorded rulings for the 34 harness reds. |
