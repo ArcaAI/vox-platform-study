@@ -436,6 +436,32 @@ memory into document, put them to each ticket folders") are satisfied by §4.1, 
 the per-ticket `MEMORY.md` snapshots. Nothing in the original request is unaccounted for.
 
 
+### 4.9 `dev-2.2` history was rewritten by the owner on 2026-09-08 20:04:49 — how the cleanup gate copes
+
+After the docs lane's last commit (`345f55db6`) a `git filter-branch` rewrote **every** commit on
+`dev-2.2` (3 708 commits), removing all 234 `Co-Authored-By` trailers, and `origin/dev-2.2` was
+updated to the result (`5b6b88f15`). No agent ran it (the docs lane's transcript contains no
+`filter-branch`); the timestamp and the pushed upstream identify it as an owner action. The
+**tree is byte-identical** (`tree(345f55db6) == tree(HEAD)`), so no content was lost — but every
+hash changed, the plan base `7793d09ca` and the nine merge commits are no longer ancestors of
+HEAD, and `git branch --merged` lists NO lane branch.
+
+Rule 14 §5's "merge before you remove" gate therefore cannot use ancestry. The proof it uses
+instead, verified by the orchestrator:
+
+| Branch | ancestor of the pre-rewrite head `345f55db6`? |
+|---|---|
+| `task-930-ner-plane` @ `9128d7507` | yes |
+| `task-930-promotion` @ `4a634f8c8` | yes |
+| `task-893-retire` @ `6dfd9783c` (worktree now on `fixup-930-harness`) | yes |
+| `task-930-seeds` @ `5eb24b9a1` | yes |
+| `task-931-sdk` @ `0bf31a4e6` | yes |
+| `fixup-930-harness` @ `c2d182ee2` | yes |
+
+and `tree(345f55db6) == tree(HEAD)` — so every branch's content is in HEAD by construction. The
+pre-rewrite head stays reachable through the reflog for the life of this checkout; nothing was
+reset, because the rewrite is the owner's decision and the content is intact.
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
@@ -615,6 +641,7 @@ Each is real, each is out of this wave's brief, and each is recorded here so it 
 | Date | Change |
 |---|---|
 | 2026-09-08 (docs close) | §6 filled: the four asks answered against C-1..C-5, the per-lane delivered surface, the nine merge commits, the one additive migration, the six API changes, the five regenerated artifacts and the final gate chain (`typecheck:all` 0 · `lint:all` 0 · unit **23 803 / 0** · harness **2 201 / 6** pre-existing). Five follow-ups raised (§6.10: the task-355 patch-marker drift, G-2, G-3, the slug-blind `realtimeCapabilityIndex`, and the post-publish re-runs). §6.9 carries a marked `<!-- LOCAL-TEST-EVIDENCE -->` placeholder — the ask #2/#3 runtime runs are blocked on the owner's database-reset consent, so the status stays `In Progress`. Rule amendments landed with it: 05 (the promotion gate, and the boundary condition on the existence-before-privilege ordering rule), 08 (SDK 3.1.0), 00 (D-8 provenance), 06 (the harness vocabulary and its drain precondition). |
+| 2026-09-08 (runtime) | Owner reset both DBs; both verified (SYSTEM 5/2, Global 5/2, ArcaAI 27/13, NER enum, zero legacy node types). The last applications integration file passes (2/2). Test API on :8968 and the dev stack on :8868 started; e2e and lane LOCAL (the four §6.9 runs) dispatched. History rewrite recorded with the containment proof (§4.9). |
 | 2026-09-08 (F-RT) | G-1 fixed and green (§4.7); the original session transcript cross-checked against §1 (§4.8); five-artifact regeneration started; DB resets await the owner's explicit consent (Prisma's agent guard). |
 | 2026-09-08 (fix-up) | F-TS and F-PY reported and merged (§4.6): the integrated tree builds and every TS suite is green; harness 34 → 6 reds (the six are a pre-existing task-355 patch-marker defect → own ticket). G-1 (realtime `resolveAgent`) dispatched as lane F-RT before the local-test gate. |
 | 2026-09-08 (merge) | N → P → R → S → K merged on `dev-2.2` with per-merge punch-list fixes (§4.5); the integrated tree fails the applications build on R's blast radius; two fix-up lanes (F-TS in the primary, F-PY in R's re-pointed worktree) dispatched under recorded rulings for the 34 harness reds. |
