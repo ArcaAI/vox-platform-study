@@ -220,6 +220,20 @@ describe('WorkflowDefinitionService.cloneFromSystem — the reference-set copy (
     expect(createdEntity!.templateLocked).toBe(true);
   });
 
+  it('REPORTS the provenance it stamps — the response DTO carries the source columns', async () => {
+    // The runtime gate read a correctly-stamped clone as having no provenance because the DTO
+    // omitted these two fields entirely, so no API response could ever show them.
+    currentTenantId = TENANT; // `clone` is the ordinary tenant-scoped verb, unlike cloneFromSystem
+    const response = await service.clone(
+      'sys-tpl-1',
+      { targetSlug: 'general-medicine-consultation', name: 'x', description: null } as never,
+      { sourceTemplateSlug: 'general-medicine-consultation', templateLocked: true },
+    );
+
+    expect(response.sourceTemplateSlug).toBe('general-medicine-consultation');
+    expect(response.templateLocked).toBe(true);
+  });
+
   it('restores the caller’s context and is missing-only — an existing clone is left alone', async () => {
     mockRepository.findMaxVersionNumber.mockResolvedValue(1 as never);
     mockRepository.findAllVersionsBySlug.mockResolvedValue([{ id: 'existing-1' }] as never);

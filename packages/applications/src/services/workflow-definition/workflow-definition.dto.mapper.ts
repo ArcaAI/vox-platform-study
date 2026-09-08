@@ -54,6 +54,8 @@ export class WorkflowDefinitionDtoMapper {
     dto.publishedAt = entity.publishedAt ? entity.publishedAt.toISOString() : null;
     dto.deprecatedAt = entity.deprecatedAt ? entity.deprecatedAt.toISOString() : null;
     dto.isActive = entity.isActive;
+    dto.sourceTemplateSlug = entity.sourceTemplateSlug ?? null;
+    dto.templateLocked = entity.templateLocked ?? false;
     dto.resourceStatus = String(entity.resourceStatus);
     dto.createdAt = entity.createdAt.toISOString();
     dto.updatedAt = entity.updatedAt.toISOString();

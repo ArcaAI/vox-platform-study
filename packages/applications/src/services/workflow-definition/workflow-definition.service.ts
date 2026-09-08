@@ -568,10 +568,32 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * a definition behaves exactly as it does today — the legacy dispatch path — and a tenant that
    * has one owns it outright.
    *
-   * The copy lands as a DRAFT, exactly as `clone` does. A definition that nobody in the tenant
-   * has reviewed must not become the graph that serves its consultations; the tenant admin
-   * publishes it when they mean to, and until then the assignment cascade correctly sees
-   * nothing. MISSING-ONLY by slug.
+   * ## The copy lands PUBLISHED and ACTIVE (TASK-930 D-5)
+   *
+   * It used to land as a DRAFT, "exactly as `clone` does". That reasoning is right for the
+   * ad-hoc verb and wrong here. `clone` copies a workflow a tenant admin picked by hand, which
+   * nobody has reviewed — it must not silently become the graph serving consultations. The
+   * REFERENCE SET is the opposite case: the platform provisioning a tenant from a template a
+   * platform admin already reviewed and PUBLISHED into SYSTEM. And `WorkflowAssignmentService`
+   * will only point an assignment at a PUBLISHED + ACTIVE definition, so a DRAFT here does not
+   * mean "awaiting review" — it means `workflowAssignments` fails on the very next step of the
+   * same sync and the tenant is left with a library it cannot run (the D-5 finding: two DRAFT
+   * definitions, zero assignments, no governing workflow).
+   *
+   * The seed copier (`seed/26-tenant-reference-set.ts`) already writes these clones PUBLISHED +
+   * active, so this also makes the two copiers agree — which is what
+   * `tenant-reference-set-parity.contract.test.ts` exists to keep true.
+   *
+   * Publishing through `publishEntity` is deliberately NOT the seed's hand-stamping: it
+   * RECOMPILES the graph against this tenant's own catalogue and context-schema pin and writes
+   * that tenant's `compiledConfig` + checksum. The seed re-stamps the frozen artifact by hand
+   * (`restampCompiledConfig`) only because it has no service layer to call; at runtime, the
+   * compile IS the re-stamp, and it is the more correct of the two.
+   *
+   * A publish that refuses aborts this clone, and `TenantReferenceSetService.copyWorkflowDefinitions`
+   * already reports a per-definition failure with its reason — better than provisioning a row
+   * that cannot be assigned. MISSING-ONLY by slug; provenance (`sourceTemplateSlug`,
+   * `templateLocked`) is stamped by `clone`.
    */
   async cloneFromSystem(slug: string, targetTenantId: string): Promise<{ definitionId: string; created: boolean }> {
     const templates = await this.workflowDefinitionRepository.findSystemTemplates(this.databaseService.baseClient);
@@ -591,6 +613,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         { targetSlug: source.slug, name: source.name, description: source.description ?? null } as CloneWorkflowDefinitionRequest,
         { sourceTemplateSlug: source.slug, templateLocked: true },
       );
+      // D-5 — the row is the tenant's now; publish it so the assignment can name it.
+      await this.publishEntity(await this.workflowDefinitionRepository.findById(created.id), { activate: true });
       return { definitionId: created.id, created: true };
     });
   }

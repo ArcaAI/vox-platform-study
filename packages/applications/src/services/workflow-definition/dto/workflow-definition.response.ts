@@ -79,6 +79,19 @@ export class WorkflowDefinitionResponse {
   @ApiProperty({ description: 'The movable pointer: the version the dispatcher resolves for new runs.' })
   isActive: boolean;
 
+  /**
+   * TASK-930 D-5 — reference-set provenance. These columns were written from the start
+   * (`cloneFromSystem` passes them through `clone`) but were absent from this DTO, so the API
+   * could never show where a provisioned workflow came from — which is how the runtime gate read
+   * a correctly-stamped clone as having none. The agent plane reports its own provenance; this is
+   * the workflow equivalent.
+   */
+  @ApiPropertyOptional({ nullable: true, description: 'The SYSTEM template slug this row was provisioned from, if any.' })
+  sourceTemplateSlug: string | null;
+
+  @ApiProperty({ description: 'True when the row came from the reference set and a re-sync may refresh it.' })
+  templateLocked: boolean;
+
   @ApiProperty()
   resourceStatus: string;
 
