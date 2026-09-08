@@ -268,7 +268,31 @@ pnpm admin:test:e2e       # task-932-* specs; then the manual browser pass
 
 ## 6. Implementation Summary
 
-_Pending — filled per wave with pasted gate output and runtime evidence._
+Status as of the last Change History row (the rows below carry the pasted evidence; this section is the map).
+
+### 6.1 Shipped on `dev-2.2` (merged, gated, live on the dev stack)
+
+| Requirement | Delivered | Proof |
+|---|---|---|
+| R-1 platform settings hidden from tenant admins | catalog = tenant-or-deeper `maxScope` and not `globalOnly`; platform keys 404 on the registry/effective routes; the LEGACY row list/by-id/by-tenant reads are tenant-pinned (Fixer A) | API e2e `task-932-settings-visibility` (19), console `task-932-settings-registry` (9) |
+| R-2/R-9 nav order + explicit tree | rail Overview · Tenancy · Platform Ops · AI Platform · …; `NavEntry.order`; literal inventory test for both audiences | unit `nav-config.test.ts`; console `task-932-nav-tree` (6) |
+| R-3 built-in integrations configure/reset | platform tier of `/ai-providers` shows LM Studio/Ollama/vLLM/llama.cpp with endpoint/key/enabled/readiness + **Reset to default** (`POST admin/providers/:service/:provider/reset`, `BUILT_IN_CONNECTION_DEFAULTS`, seed parity contract) | API e2e `task-932-providers` (14 incl. internal), console `task-932-ai-providers` (6) |
+| R-4/R-10/R-14 platform-wide gates | `console.tools.mcp.enabled`, `console.mlflow.enabled`, `console.agenticPolicy.enabled`, `console.workflowHarness.enabled` (default hidden), `useFeatureGates` + `FeatureGateBoundary`, Tools & MCP/MLflow/Agentic policy under Platform Ops | console `task-932-nav-tree`, `task-932-feature-matrix` |
+| R-5 storage without a working tenant | all-tenants view: registered + physical MinIO buckets, tenant column, read-only browse (`GET storage/buckets?includePhysical=true`) | API e2e `task-932-storage-cross-tenant` (5), console `task-932-storage-browser` (4) |
+| R-6 platform-admin writes; locked tiers | `scope=system` resolves SYSTEM with no working tenant; drawer scope control; `locked`/`lockReason` on bootstrap/credential/data-plane tiers; the write lane ADOPTS seeded rows across namespaces (Fixer C) and 412s a stale version on a vanished row | live proof in the Change History; API e2e adoption test; unit 36 files / 363 tests |
+| R-7 registry UX | `AdminDataGrid` with facets, group-by category, skeletons, axe | unit + console e2e |
+| R-8 feature matrix | `/features`: tri-state cells (platform column two-state), batch save, reset, `GET/PUT admin/settings/features/matrix`, `DELETE …/registry/:key?scope=tenant`; `Feature Flags` dissolved into `Feature Availability` (8 keys); advisory rows removed | API e2e `task-932-feature-matrix` (10), console (10) |
+| R-11/R-12/R-13 providers | no scope toggle (working tenant decides); tenant tier = cloud BYO only; weight store = enabled keyless SYSTEM row resolving to the platform storage credentials (SYSTEM only); Speech & Voice retired | API + console provider specs |
+| R-15 seeds on v3 | `case-notes-pre-summary` agent + `onStart` node on all graphs; 22 department SOAP shapes named on the realtime nodes; DNA block in the finalize instruction; summary language on open | seed tests 83 files / 1697; reseed counts |
+| R-16b live transcription language | language select wired to the streaming session and the batch tab | console `task-932-live-transcription` (7) |
+
+### 6.2 Still open — R-16a finalize (Fixer D in flight)
+
+The department journeys prove department → workflow, summary language, the warm-start pre-summary and a live turn; they do NOT yet prove transcript-from-audio, SOAP section patches, NER chips, or the final DNA-redacted note, because the durable `n_finalize` degrades with no bound input (see the Change History). Fixer D's deliverable closes it; until it is merged and re-proven live, R-16a is **not** complete.
+
+### 6.3 Follow-ups recorded (not this ticket)
+
+`GlobalSettingService.create` can still create a duplicate platform key (needs a `(tenantId, key)` unique index); `AppSettingsService` tenant lane filters `namespace === 'registry'`; `enable-consultation-sharing` / `enable-local-raw-capture` remain legacy rows; the storage health probe lists a `hope-public` bucket the local MinIO lacks; harness `test_replay_compat` 6 pre-existing failures; `usePreSummaryStream` has no REST catch-up; `settings-registry-screen.test.tsx` `openKey` jsdom flake; tenant admins' READ of a SYSTEM row is 404 while PATCH/DELETE stay 403 (owner call); other admin lists over `SYSTEM_SHARED_READ_MODELS` (`AiModel`, `AiRoutingPolicy`, `RbacRole`, `AsrPipeline`) share the widening shape Fixer A pinned for `GlobalSetting`.
 
 ## 7. Change History
 
