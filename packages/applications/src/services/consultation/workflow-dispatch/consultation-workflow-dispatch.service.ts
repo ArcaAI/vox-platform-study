@@ -17,7 +17,6 @@ import {
   IConsultationWorkflowDispatchService,
 } from './IConsultationWorkflowDispatchService';
 
-
 /** Mirrors `interpreterSessionId` in the exposure plane. */
 function interpreterSessionId(runId: string): string {
   return `wf-${runId}`;

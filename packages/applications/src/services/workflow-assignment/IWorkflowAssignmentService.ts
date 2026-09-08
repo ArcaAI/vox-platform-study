@@ -34,12 +34,7 @@ export interface IWorkflowAssignmentService {
    * Returns the slug AND its source so the dispatcher (and the runs tab) can say WHY a
    * workflow was chosen.
    */
-  resolve(
-    tenantId: string,
-    paletteKey: string,
-    departmentId?: string | null,
-    selectorTags?: readonly string[],
-  ): Promise<ResolvedWorkflowAssignment>;
+  resolve(tenantId: string, paletteKey: string, departmentId?: string | null, selectorTags?: readonly string[]): Promise<ResolvedWorkflowAssignment>;
 
   listForPalette(paletteKey: string): Promise<WorkflowAssignmentResponse[]>;
   getById(id: string): Promise<WorkflowAssignmentResponse>;

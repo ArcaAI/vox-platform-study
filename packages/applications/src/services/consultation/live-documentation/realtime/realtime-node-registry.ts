@@ -20,7 +20,16 @@
  * Every handler reads its port descriptors out of `NODE_PORTS` / `effectivePorts`. That is what
  * keeps the type check structural: this file cannot widen a socket it does not own.
  */
-import { ACTION_CATALOGUE, NODE_CONFIG_SCHEMAS, NODE_PORTS, WORKFLOW_NODE_REGISTRY, actionDelegateOf, effectivePorts, type WorkflowNodePorts, type WorkflowPortDescriptor } from '@arcaai/workflow-contract';
+import {
+  ACTION_CATALOGUE,
+  NODE_CONFIG_SCHEMAS,
+  NODE_PORTS,
+  WORKFLOW_NODE_REGISTRY,
+  actionDelegateOf,
+  effectivePorts,
+  type WorkflowNodePorts,
+  type WorkflowPortDescriptor,
+} from '@arcaai/workflow-contract';
 import type { HarnessLiveAssistProposalDto } from '../../harness/dto';
 import type { LiveSummaryEntityDto, LiveSummarySectionDto, LiveSummaryStatsDto, LiveSummaryVitalsDto } from '../dto';
 import { outputSchemaResponseFormat, type JsonSchemaResponseFormat } from './output-schema-response-format.stub';
@@ -291,7 +300,10 @@ class CoreAgentHandler implements RealtimeNodeHandler {
         if (!sourceText) return { capability: 'extractEntities', output: { data: { entities: [] }, text: '', entities: [] } };
         const result = await ctx.capabilities.extractEntities({ sourceText, tenantId: ctx.tenantId }, ctx.signal);
         // `vitals` rides on the SAME response — it is a projection, not a second call.
-        return { capability: 'extractEntities', output: { data: { entities: result.entities }, text: sourceText, entities: result.entities, vitals: result.vitals } };
+        return {
+          capability: 'extractEntities',
+          output: { data: { entities: result.entities }, text: sourceText, entities: result.entities, vitals: result.vitals },
+        };
       }
       case 'TEXT_TO_SPEECH':
         throw new Error('core.agent: a TEXT_TO_SPEECH agent is not a realtime-lane node — speech is a durable artifact');
@@ -305,7 +317,10 @@ class CoreAgentHandler implements RealtimeNodeHandler {
           { sourceText: material, tenantId: ctx.tenantId, config: ctx.config, agentRef, ...(responseFormat === undefined ? {} : { responseFormat }) },
           ctx.signal,
         );
-        return { capability: 'generateDocument', output: { text: result.text, sections: result.sections, stats: result.stats, repaired: result.repaired } };
+        return {
+          capability: 'generateDocument',
+          output: { text: result.text, sections: result.sections, stats: result.stats, repaired: result.repaired },
+        };
       }
     }
   }
