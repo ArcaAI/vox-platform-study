@@ -500,6 +500,7 @@ mandatory for a `core` graph that may be API-only — is the owner's.
 | **W1** (opus) | primary checkout, sole writer of it | D-2 (dispatch envelope vs `core.trigger` context schema), D-1 (lane semantics of the seeded graphs vs the durable interpreter's `realtime` skip), D-6 (seed `parameters.generation.reasoning` vs the publish gate) | `packages/applications/src/services/consultation/workflow-dispatch/**`, `packages/workflow-contract/src/**`, `apps/harness/src/harness/temporal/interpreter/**`, `packages/database/src/prisma/db_main/seed/**` (+ regen), their tests |
 | **W2** (opus) | fresh isolated worktree | D-4 (`promote-to-system` for workflows: tenant context + the post-commit throw), D-5 (reference set publishes cloned definitions, TENANT assignment, provenance) | `packages/applications/src/services/{workflow-definition,agentPromotion,tenant/reference-set}/**`, `apps/api/src/modules/{agent-promotion,workflow-definition,tenant}/**`, their tests |
 | orchestrator | runtime | D-3 — DONE (resolved, see §6.9); the whisper warm (owner); an uncancelled direct warm-up of nlp's guard models so the environment converges before W3 lands | `.env.dev`, the stack |
+| **W4** (opus) | fresh isolated worktree (Python only) | D-8: why guardrail presents a token nlp rejects on the dev launch (nlp accepts the shared `INTERNAL_ACCESS_TOKEN`; rejects the legacy `GUARDRAIL_SERVICE_TOKEN`) | `apps/guardrail/**`, `apps/nlp/**` (auth/config), `packages/py-env/**` |
 | **W3** (opus) | fresh isolated worktree (Python only) — first run stalled on a >600 s silent pytest call with nothing committed and its worktree was auto-cleaned; **relaunched** with commit-after-every-green-step and background-only suites | D-7: nlp's model cache survives a cancelled requester (single-flight, shielded), optional startup warm-up of the seeded guard models, guardrail's breaker not amplifying a cold start, text's guardrail client logging the exception class and a configurable cold-start budget | `apps/nlp/**`, `apps/guardrail/**`, `apps/text/src/text/services/external_guardrail.py` + tests |
 
 **W2 — DONE (unmerged until W1 releases the primary).** `worktree-agent-aa320f3b773c86b14` @
@@ -547,6 +548,47 @@ below (§4.12).
 Activation after merge: `NLP_WARM_MODELS=fastino/gliner2-privacy-filter-PII-multi,fastino/gliguard-LLMGuardrails-300M`
 in `.env.dev`; the name into `turbo.json#globalEnv`; `pnpm env:python-surface && pnpm env:sync`;
 restart nlp, guardrail, text.
+
+**W1 — DONE, on `dev-2.2` directly** (`fb617c551`, `98fdbd724`, `6149d339f`, `9bb499dd4`).
+D-2: the five `RESERVED_RUN_IDENTITY_KEYS` are a RUN ENVELOPE — `core.trigger` validates the run
+payload MINUS them (`_authored_context`, `nodes/core.py`), the published `context` output is
+unchanged, and `additionalProperties: false` stays exactly as sharp for author-supplied keys (a caller
+still cannot reach the reserved keys: gateway 400 + `sanitize_run_payload`). Only the Python
+interpreter validates a trigger payload, so there is no second implementation. **Live smoke on the dev
+stack: RED run `01a081ba-ee21…` failed at `n_trigger` with the D-2 message; GREEN run
+`01a081bb-d729…` → `n_trigger SUCCEEDED`.** D-1 was TWO defects: (S1) the durable interpreter's
+`realtime` skip is a hand-off, so it now happens only when a live owner exists (`_has_live_owner`) —
+an exposure-plane run has no live session, so its `core.agent` nodes run durably; (S2) the seeded
+graph laundered its own result: `n_output.in` was fed from `n_review.out` (the review DECISION), so
+`{case_note}` was unreachable on every plane — now `n_finalize.data → n_output.in` with the review
+edge as ordering. **INTERFACES §8.4 amended: `core.output` publishes `{case_note (required),
+redactions}`, not `{case_note, entities}`** (only live audio produces entities). New
+`test_seeded_consultation_graph_task930.py` drives the SEEDED compiled config through the real
+interpreter to `n_output SUCCEEDED`. D-6: the seed row was right and the capability metadata stale —
+`reasoning` rides `extra.reasoning_effort → extra_body`, which `openai_compat.py` forwards for
+lm-studio and which TASK-891 measured (5 168 ms/184 reasoning tokens unset vs 1 237 ms/30 with
+`minimal`); dropping it would have silently restored the engine default on the 20 s realtime budget
+for all 24 summarization agents. `reasoning` joins the two LM Studio rows' capabilities and the
+contract's `GENERATION_HYPERPARAMETERS`; a new `task-930-agent-publish-gate.test.ts` pushes all 32
+seeded agents through `agentConfigProblems` WITH the bound model's capabilities — the arm the earlier
+seed test omitted. Gates: workflow-contract 839, applications **12 251 / 0**, database 1 685, harness
+2 218 passed / 6 pre-existing, ruff + mypy clean, `build:packages` 22/22. Regenerated blobs:
+`28-…generated.ts` `d0e0f1f2…`, `29-…generated.ts` `77e79503…`; `REGISTRY_CHECKSUM` unchanged.
+
+**A dev-DB RESEED is required** for D-1 (graph) and D-6 (capabilities) to reach the running system —
+the seed is create-only, so only `pnpm db:all` (force-reset + reseed) applies them. Owner consent
+again, per Prisma's guard. W1 restarted the harness Temporal worker by hand (it had no watcher and
+was serving pre-fix `core.py`); it now runs outside `dev-stack.sh` — the next stack restart reclaims it.
+
+**Follow-ups W1 measured (renumbered; FU-8 was taken by W3):**
+
+| # | Finding |
+|---|---|
+| FU-8 | `warmModels` has no control-plane producer anywhere; W3's `NLP_WARM_MODELS` is the bootstrap stand-in until one exists (owner ruling above). |
+| FU-9 | **The realtime → durable handover does not exist.** Nothing transports the live lane's node outputs into the durable run (`_node_outputs` is written only by the durable dispatch; the interpreter's only signal is `cancel`; `context-added` / `consultation-ending` address `ConsultationLoopWorkflow`, a different workflow-id space), and `execution.cadence` (`once` / `perTurn` / `onEnd`) is read NOWHERE in the Python interpreter — so `n_finalize`, authored `durable, onEnd`, runs milliseconds after consultation open with nothing bound, on the consultation plane, permanently (visible in the GREEN D-2 smoke: `n_finalize DEGRADED nothing bound`). **This is the gap between "the consultation plane dispatches the workflow" (proven) and "the consultation produces a case note through it" (not yet possible).** Owner design decision. |
+| FU-10 | `CompiledNode.on_error` is parsed and never read by the durable interpreter (behaviour comes from `spec.critical` alone) while the realtime lane honours it — a live divergence between the two runtimes. |
+
+W1's dev-DB residue: consultations `01a081ba-d6a6…` / `01a081bb-d695…` (patients `W1-SMOKE-PT-000{1,2}`), runs `01a081ba-ee21…` (FAILED) and `01a081bb-d729…` (RUNNING at `n_review`).
 
 Merge W2 into `dev-2.2` after W1 lands; re-run §6.9 (lane LOCAL) on the result; then FU-6 and the
 statuses.
