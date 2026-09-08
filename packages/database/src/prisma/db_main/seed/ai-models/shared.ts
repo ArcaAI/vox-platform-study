@@ -372,7 +372,19 @@ export type NlpModelCapability = AiModelCapability;
  * `apps/text/src/text/providers/` references a penalty parameter at all. So a row declaring the
  * three is stating a verified fact about this platform, not a vendor's brochure.
  */
-export type GenerationParamName = 'temperature' | 'maxTokens' | 'topP' | 'frequencyPenalty' | 'presencePenalty' | 'stopSequences' | 'seed';
+export type GenerationParamName =
+  | 'temperature'
+  | 'maxTokens'
+  | 'topP'
+  | 'frequencyPenalty'
+  | 'presencePenalty'
+  | 'stopSequences'
+  | 'seed'
+  /** TASK-891's `parameters.generation.reasoning`. It does NOT ride the resolved parameter set —
+   *  it rides `GenerateRequest.extra.reasoning_effort` -> `extra_body`, which only the
+   *  OpenAI-compatible adapters forward (`openai_compat.py#_apply_request_extras`). Declare it
+   *  only on a row whose engine actually carries that ride-along. */
+  | 'reasoning';
 
 /** Shape of one `DEFAULT_AI_MODELS` seed row. */
 export interface AiModelSeed {

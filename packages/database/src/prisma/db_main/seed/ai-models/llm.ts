@@ -32,6 +32,26 @@ import {
 const TEXT_PLANE_GENERATION_PARAMS: GenerationParamName[] = ['temperature', 'maxTokens', 'topP'];
 
 /**
+ * The LM Studio tier declares one MORE parameter than the resolved set above: `reasoning`.
+ *
+ * It is not part of `defaults.py`'s `{temperature, max_tokens, top_p}` because it does not travel
+ * that way at all. `parameters.generation.reasoning` (TASK-891 C1 / OD-4) maps to
+ * `GenerateRequest.extra.reasoning_effort` and is forwarded into the SDK's `extra_body` by
+ * `apps/text/src/text/providers/openai_compat.py#_apply_request_extras` — pinned by
+ * `apps/text/src/text/tests/unit/test_runtime_profile_extras.py`, which asserts exactly
+ * `extra_body == {"ttl": 900, "reasoning_effort": "none"}` for the `lm-studio` provider.
+ *
+ * And it is honoured, not merely accepted: measured on `gemma-4-e2b-it-qat` under LM Studio on
+ * 2026-09-07, unset gave 5168 ms / 184 reasoning tokens against 1237 ms / 30 with `minimal`
+ * (`agent-schemas.ts:126-131`).
+ *
+ * So on the LM Studio rows `reasoning` is honest capability. It is deliberately NOT added to the
+ * Azure row: `AzureOpenAIProvider` is its own class and forwards no `extra`, so there the
+ * parameter WOULD be dropped on the wire and the publish gate is right to refuse it.
+ */
+const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERATION_PARAMS, 'reasoning'];
+
+/**
  * text-generation catalogue (TASK-860 — the owner's catalogue, exactly): the
  * granite-guardian safety LLM, four Gemma 4 rows on LM Studio, and the Azure
  * OpenAI cloud row. Retired here (see `retired.ts`): `lms-gemma-4-12b-qat`,
@@ -158,7 +178,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 2048,
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio', 'default', 'summarization', 'mmproj'],
-    metaData: { hubArtifact: 'google/gemma-4-E2B-it-qat-q4_0-gguf', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
+    metaData: { hubArtifact: 'google/gemma-4-E2B-it-qat-q4_0-gguf', supportedGenerationParams: LM_STUDIO_GENERATION_PARAMS },
   },
   {
     // The E4B tier of the catalogue, and the harness LLM-as-judge's alternate.
@@ -192,7 +212,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 3072,
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio', 'mmproj', 'judge'],
-    metaData: { hubArtifact: 'google/gemma-4-E4B-it-qat-q4_0-gguf', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
+    metaData: { hubArtifact: 'google/gemma-4-E4B-it-qat-q4_0-gguf', supportedGenerationParams: LM_STUDIO_GENERATION_PARAMS },
   },
 
   // =========================================================================
