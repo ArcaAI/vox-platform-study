@@ -40,8 +40,39 @@ import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/h
 test.describe.configure({ mode: 'serial' });
 
 const TENANT_GLOBAL = '50000000-0000-0000-0000-000000000000';
-/** A PUBLISHED SYSTEM TEXT_GENERATION agent, visible to every tenant (`seed/25-agents.ts`). */
-const AGENT_SLUG = 'platform-summarization';
+/** A PUBLISHED SYSTEM TEXT_GENERATION agent, visible to every tenant (`seed/25-agents.ts`).
+ *
+ *  Was `platform-summarization` until TASK-930 D-8 deleted and rebuilt the seeds: the reference
+ *  set is now five agents (`realtime-transcription`, `medical-ner`,
+ *  `general-medicine-summarization`, `casenote-finalization`, `text-to-speech`), so the old slug
+ *  resolves 404 — the agent, not the route, is what moved. */
+const AGENT_SLUG = 'general-medicine-summarization';
+
+/**
+ * The `{{trigger.context.*}}` placeholders the seeded agent's instruction binds.
+ *
+ * `AgentInvocationService.invokeText` renders the instruction through the one prompt grammar and
+ * refuses a 400 naming the FIRST unresolved path, so an invocation that supplies none of these
+ * never reaches the model — and this spec is about metering, not about prompt authoring. The
+ * envelope nesting is the schema's: `consultation_note_context` declares several kinds, so the
+ * payload is not single-kind, no unwrap happens, and `{{trigger.context.x}}` reads
+ * `context.context.x`. `fields` on that kind is deliberately OPEN (`seed/07e-…`), so extra keys
+ * are accepted and a drifted instruction shows up as a 400 naming the new path rather than as a
+ * silent half-rendered prompt.
+ */
+const AGENT_CONTEXT = {
+  context: {
+    language: 'en',
+    visit_type: 'new-visit',
+    chief_complaint: 'mild headache',
+    current_department: 'General Medicine',
+    safe_age: '42',
+    safe_dob: '1984-01-01',
+    safe_gender: 'female',
+    formatted_vitals: 'BP 120/80',
+    formatted_previous_visits: 'none',
+  },
+};
 
 interface OutboxRow {
   id: string;
@@ -113,7 +144,7 @@ test.describe('TASK-890 — an agent invocation is metered', () => {
     const since = new Date();
     const response = await request.post(`/api/v1/agents/${AGENT_SLUG}/invocations`, {
       headers: bearer(doctorToken),
-      data: { text: 'Summarise: patient reports a mild headache.' },
+      data: { text: 'Summarise: patient reports a mild headache.', context: AGENT_CONTEXT },
     });
 
     test.skip(response.status() === 502 || response.status() === 503, `apps/text unreachable from the gateway (${response.status()})`);
@@ -127,7 +158,7 @@ test.describe('TASK-890 — an agent invocation is metered', () => {
     const since = new Date();
     const response = await request.post(`/api/v1/agents/${AGENT_SLUG}/invocations?mode=stream`, {
       headers: { ...bearer(doctorToken), Accept: 'text/event-stream' },
-      data: { text: 'Summarise: patient reports a mild headache.' },
+      data: { text: 'Summarise: patient reports a mild headache.', context: AGENT_CONTEXT },
     });
 
     test.skip(response.status() === 502 || response.status() === 503, `apps/text unreachable from the gateway (${response.status()})`);
@@ -223,7 +254,7 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
     const since = new Date();
     const response = await request.post(`/api/v1/agents/${AGENT_SLUG}/invocations`, {
       headers: bearer(doctorToken),
-      data: { text: 'Summarise: patient reports a mild headache.' },
+      data: { text: 'Summarise: patient reports a mild headache.', context: AGENT_CONTEXT },
     });
 
     // If the tenant still resolves ungated the precheck cannot fire, and a
