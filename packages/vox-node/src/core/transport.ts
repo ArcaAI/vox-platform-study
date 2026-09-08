@@ -180,6 +180,17 @@ export class Transport {
     this.fetchImpl = config.fetch ?? fetch;
   }
 
+  /**
+   * The configured gateway origin, verbatim.
+   *
+   * Exposed for the ONE thing `request`/`stream` cannot do: a WebSocket is not a `fetch`, so
+   * the run-socket lane (`core/socket.ts`) has to build its own absolute URL. Read-only, and
+   * NOT a general escape hatch — a resource that needs an HTTP call has {@link request}.
+   */
+  get baseUrl(): string {
+    return this.config.baseUrl;
+  }
+
   /** Perform one HTTP attempt (no retry) and return the raw `Response`. Throws {@link APIConnectionError}/{@link APITimeoutError} on a connect-phase or timeout failure. */
   private async performAttempt(options: TransportRequestOptions): Promise<Response> {
     const method = options.method ?? 'GET';
