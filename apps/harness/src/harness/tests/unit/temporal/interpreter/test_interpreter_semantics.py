@@ -30,6 +30,10 @@ from harness.temporal.interpreter.registry import NODE_REGISTRY, NodeSpec
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.tests.unit.temporal._temporal_sync import await_history_event
 
+#: TASK-893 — this suite drives the interpreter through the retired `noop`/`passthrough` seed
+#: types, which now exist only as test scaffolding (see `../conftest.py`).
+pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
+
 _BUCKET = "harness-claim-check"
 
 

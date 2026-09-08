@@ -788,9 +788,23 @@ class TestSuggestionInstructionIsGoverned:
 
 
 class TestRegistryMembership:
-    def test_the_three_new_node_types_are_registered_and_implemented(self):
+    def test_the_three_realtime_node_types_are_retired(self):
+        """TASK-893 Phase 4 — `consultation.realtimeSummary`, `consultation.suggestions` and
+        `consultation.proposeCorrections` are gone as NODE TYPES.
+
+        The capabilities are not: they are the gateway's realtime lane, which keys its handlers by
+        the resolved AGENT TASK and by action key rather than by a node type
+        (`realtime-node-registry.ts`), and a node opts into that lane per instance through
+        `execution.lane`. So the assertion that replaces the registration is the retirement, in
+        both directions — no spec, and no activity served under the old names.
+        """
+        from harness.temporal.interpreter.activities import NODE_ACTIVITIES
         from harness.temporal.interpreter.registry import NODE_REGISTRY
 
+        served = {
+            temporal_activity._Definition.from_callable(fn).name  # noqa: SLF001
+            for fn in NODE_ACTIVITIES
+        }
         for key, activity_name in (
             ("consultation.realtimeSummary", "interpreter.consultation_realtime_summary"),
             ("consultation.suggestions", "interpreter.consultation_suggestions"),
@@ -799,17 +813,14 @@ class TestRegistryMembership:
                 "interpreter.consultation_propose_corrections",
             ),
         ):
-            assert key in NODE_REGISTRY, f"{key} missing from NODE_REGISTRY"
-            spec = NODE_REGISTRY[key]
-            assert spec.implemented is True
-            assert spec.activity_name == activity_name
+            assert key not in NODE_REGISTRY, f"{key} is still dispatchable"
+            assert activity_name not in served, f"{activity_name} is served but nothing dispatches it"
 
-    def test_correction_and_suggestion_nodes_write_nothing_externally(self):
-        """Both are PROPOSAL surfaces — they must not be classed as external writers."""
+    def test_no_node_type_declares_the_realtime_lane_any_more(self):
+        """The lane is a per-INSTANCE choice (`execution.lane`), never a property of a type."""
         from harness.temporal.interpreter.registry import NODE_REGISTRY
 
-        assert NODE_REGISTRY["consultation.suggestions"].external_write is False
-        assert NODE_REGISTRY["consultation.proposeCorrections"].external_write is False
+        assert [key for key, spec in NODE_REGISTRY.items() if spec.lane == "realtime"] == []
 
     def test_every_registered_node_activity_is_served_by_the_worker(self):
         """The gap this ticket found: the registry and the worker's activity list are two

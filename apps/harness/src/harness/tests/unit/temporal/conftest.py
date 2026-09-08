@@ -12,10 +12,14 @@ of being deleted with the vocabulary or, worse, kept in the shipped registry whe
 activity the worker serves that no graph can reach — the precise drift
 ``test_every_registered_node_activity_is_served_by_the_worker`` exists to catch.
 
-The fixture is autouse and session-scoped: it puts the two specs back into ``NODE_REGISTRY`` for
-the duration of the run and removes them afterwards, so a test that asserts the SHIPPED registry
-shape must read it through ``harness.temporal.interpreter.registry`` at call time (they all do).
-Workers built by these suites add the two activities explicitly via ``SCAFFOLD_ACTIVITIES``.
+The fixture is OPT-IN, not autouse. A session-scoped autouse version would put the two specs into
+``NODE_REGISTRY`` for every test in the tree, including the census guards that assert the SHIPPED
+registry is exactly the eleven ``core.*`` types — which would make those guards pass against a
+registry no deploy ever has. A suite that needs the scaffolding declares it:
+
+    pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
+
+and adds ``SCAFFOLD_ACTIVITIES`` to any worker it builds.
 """
 
 from __future__ import annotations
@@ -43,8 +47,8 @@ _SCAFFOLD_SPECS = {
 }
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _interpreter_test_scaffolding() -> None:
+@pytest.fixture
+def interpreter_scaffolding() -> None:
     for key, spec in _SCAFFOLD_SPECS.items():
         NODE_REGISTRY.setdefault(key, spec)
     yield
