@@ -51,7 +51,6 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.loop_activities import loop_state_checkpoint
     from harness.temporal.interpreter.models import (
         CoreLoopBounds,
-        LoopStopReason,
         CoreLoopInput,
         CoreLoopResult,
         CoreLoopState,
@@ -59,6 +58,7 @@ with workflow.unsafe.imports_passed_through():
         EvaluateExpressionResult,
         LoopCheckpointInput,
         LoopStateCheckpoint,
+        LoopStopReason,
         NodeActivityInput,
         NodeActivityResult,
         ReviewGateInput,
