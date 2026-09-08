@@ -56,9 +56,9 @@ import {
   IconSparkles,
   IconStack2,
   IconStethoscope,
-  IconTargetArrow,
   IconTelescope,
   IconTimeline,
+  IconToggleRight,
   IconTopologyStar3,
   IconUserCircle,
   IconUsers,
@@ -69,18 +69,28 @@ import {
   type TablerIcon,
 } from '@tabler/icons-react';
 import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
+import type { FeatureGateKey, FeatureGateMap } from '@/shared/feature-gates/keys';
 
 /**
  * Full route map from the capabilities matrix (section 3, frames 10-40, as
- * reviewed 2026-07-04: AI models re-tiered to 10-19, tenant frontend config
- * folded into the tenant-detail tab). All design gates cleared (B0/B1/B2
- * approved 2026-07-05; Playground 50-59 approved 2026-07-06). The
- * sidebar only renders implemented entries the caller's ability grants.
+ * reviewed 2026-07-04) plus the TASK-932 §3.1 rail reorder. All design gates
+ * cleared (B0/B1/B2 approved 2026-07-05; Playground 50-59 approved
+ * 2026-07-06). The sidebar only renders implemented entries the caller's
+ * ability grants AND, for a `gate`-carrying entry, whose platform-wide
+ * feature-availability key resolves `true` (§3.2; see `visibleNavEntries`).
  *
- * (Corrected by: this comment claimed "AI models is hidden
- * (implemented: false)". It has not been hidden since the screen became the
- * AI-models HUB — the entry below is `implemented: true`, gated on
- * `manage:all`. The stale sentence read as a live rule and is gone.)
+ * TASK-932: the rail domain order became Overview · Tenancy · Platform Ops ·
+ * AI Platform · Knowledge & Agents · Clinical · Workflow & Harness ·
+ * Identity & Access · Playground (Platform Ops moved ahead of AI Platform per
+ * owner request R-2). `/tools-mcp`, `/ai-services/mlflow` and
+ * `/agentic-policy` moved into Platform Ops; `/ai-configuration` ("Speech &
+ * Voice") was removed from the rail entirely (the route itself becomes a
+ * redirect, see its page); `/features` (the feature-availability matrix,
+ * Lane S) is new, first in Platform Ops. Every entry now carries an explicit
+ * `order` — its position within its own domain+tier — and `NAV_ENTRIES` is
+ * declared in that order, so a future reorder touches both the field and the
+ * array position in the same diff (see `nav-config.test.ts`'s inventory
+ * tests).
  */
 export type NavTier = '10-19' | '20-29' | '30-49' | '50-59';
 
@@ -89,12 +99,10 @@ export type NavTier = '10-19' | '20-29' | '30-49' | '50-59';
  *
  * ORTHOGONAL to `NavTier`, and deliberately so: tier answers *who may
  * open a screen* and keeps governing the `(global)`/`(shared)`/`(tenant)` route
- * groups and their guards; domain answers *where a user looks for it*. Where
- * the two disagree — `/ai-configuration` is tier `30-49` but domain
- * `ai-platform` — the divergence is the point, not drift.
+ * groups and their guards; domain answers *where a user looks for it*.
  */
 export type NavDomainId =
-  'overview' | 'tenancy' | 'ai-platform' | 'knowledge-agents' | 'clinical' | 'workflow-harness' | 'identity-access' | 'platform-ops' | 'playground';
+  'overview' | 'tenancy' | 'platform-ops' | 'ai-platform' | 'knowledge-agents' | 'clinical' | 'workflow-harness' | 'identity-access' | 'playground';
 
 export interface NavDomain {
   id: NavDomainId;
@@ -108,12 +116,12 @@ export interface NavDomain {
 export const NAV_DOMAINS: readonly NavDomain[] = [
   { id: 'overview', label: 'Overview', icon: IconHome, order: 1 },
   { id: 'tenancy', label: 'Tenancy', icon: IconBuildingSkyscraper, order: 2 },
-  { id: 'ai-platform', label: 'AI Platform', icon: IconCpu, order: 3 },
-  { id: 'knowledge-agents', label: 'Knowledge & Agents', icon: IconBulb, order: 4 },
-  { id: 'clinical', label: 'Clinical', icon: IconReportMedical, order: 5 },
-  { id: 'workflow-harness', label: 'Workflow & Harness', icon: IconTopologyStar3, order: 6 },
-  { id: 'identity-access', label: 'Identity & Access', icon: IconLockAccess, order: 7 },
-  { id: 'platform-ops', label: 'Platform Ops', icon: IconServerBolt, order: 8 },
+  { id: 'platform-ops', label: 'Platform Ops', icon: IconServerBolt, order: 3 },
+  { id: 'ai-platform', label: 'AI Platform', icon: IconCpu, order: 4 },
+  { id: 'knowledge-agents', label: 'Knowledge & Agents', icon: IconBulb, order: 5 },
+  { id: 'clinical', label: 'Clinical', icon: IconReportMedical, order: 6 },
+  { id: 'workflow-harness', label: 'Workflow & Harness', icon: IconTopologyStar3, order: 7 },
+  { id: 'identity-access', label: 'Identity & Access', icon: IconLockAccess, order: 8 },
   { id: 'playground', label: 'Playground', icon: IconFlask2, order: 9 },
 ];
 
@@ -135,6 +143,14 @@ export interface NavRouteEntry {
 export interface NavEntry extends NavRouteEntry {
   /** Rail bucket. Purely additive — it changes no guard, tier or route (AC-1/AC-2). */
   domain: NavDomainId;
+  /** Position within this entry's domain+tier; declaration order in `NAV_ENTRIES` matches it. */
+  order: number;
+  /**
+   * Platform-wide feature-availability key (TASK-932 §3.2). When set, the
+   * entry is visible only while `gates[gate] === true` — absent, `false`,
+   * loading and error all hide it. Omit for an entry no gate governs.
+   */
+  gate?: FeatureGateKey;
 }
 
 /**
@@ -158,8 +174,9 @@ export const NAV_SECTIONS: readonly NavSection[] = [
 ];
 
 export const NAV_ENTRIES: readonly NavEntry[] = [
-  // Tier 10-19 — super admin (cross-tenant). Tenant frontend config is a
-  // tenant-detail tab (matrix row 6), not a standalone nav entry.
+  // ---------------------------------------------------------------------
+  // Overview — tier 10-19 only.
+  // ---------------------------------------------------------------------
   {
     route: '/dashboard',
     domain: 'overview',
@@ -168,6 +185,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconLayoutDashboard,
     required: [['manage', 'PlatformMetrics']],
     implemented: true,
+    order: 1,
   },
   {
     route: '/monitoring',
@@ -180,6 +198,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['read', 'TenantTelemetry'],
     ],
     implemented: true,
+    order: 2,
   },
   {
     // service version & release registry. Same gate as
@@ -195,7 +214,12 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['read', 'TenantTelemetry'],
     ],
     implemented: true,
+    order: 3,
   },
+
+  // ---------------------------------------------------------------------
+  // Tenancy — tiers 10-19, 20-29, 30-49.
+  // ---------------------------------------------------------------------
   {
     route: '/tenants',
     domain: 'tenancy',
@@ -207,6 +231,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['update', 'Tenant'],
     ],
     implemented: true,
+    order: 1,
   },
   {
     route: '/entitlements',
@@ -216,6 +241,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconLicense,
     required: [['manage', 'all']],
     implemented: true,
+    order: 2,
   },
   {
     route: '/tenants/storage',
@@ -228,164 +254,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['read', 'Storage'],
     ],
     implemented: true,
-  },
-  // Super-admin only per the 2026-07-04 review (backend guard re-pin:).
-  // Unhidden: the screen is now the AI-models HUB (registry grid +
-  // live LM Studio/Ollama discovery + register), i.e. the surface a super admin
-  // uses to see what the serving engines actually host. It was hidden only while
-  // it was registry-only. The manage:all gate is unchanged.
-  {
-    route: '/ai-models',
-    domain: 'ai-platform',
-    label: 'AI models',
-    tier: '10-19',
-    icon: IconBrain,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    route: '/rate-limits',
-    domain: 'platform-ops',
-    label: 'Rate limits',
-    tier: '10-19',
-    icon: IconGauge,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  // Platform credential policy — password complexity/rotation and the entropy
-  // behind every machine credential the platform issues. SUPER_ADMIN-only:
-  // every backing key is a `globalOnly` descriptor, so the gateway 403s a
-  // tenant admin regardless of what the nav shows.
-  {
-    route: '/security-policy',
-    domain: 'identity-access',
-    label: 'Security policy',
-    tier: '10-19',
-    icon: IconLockCog,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  // Phase 3B agentic super-admin console (all SUPER_ADMIN-only).
-  {
-    route: '/agentic-policy',
-    domain: 'ai-platform',
-    label: 'Agentic policy',
-    tier: '10-19',
-    icon: IconShieldBolt,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  // `/prompt-studio` retired — prompt governance folded into the elevated-only
-  // Governance tab of the prompt-template surface (one authoritative surface
-  // per resource). `/prompt-studio` still resolves for one release via a
-  // redirect page; `/ai-services` takes the freed slot, surfacing the
-  // guardrail/NLP status + config backends that had no screen.
-  //
-  // The fold originally landed governance on `/agents`, and this comment still
-  // said so after `/agents` itself retired — pointing the reader at
-  // a redirect. The live target is `/prompt-templates?tab=governance`.
-  {
-    route: '/ai-services',
-    domain: 'ai-platform',
-    label: 'AI services',
-    tier: '10-19',
-    icon: IconServerCog,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  // The three PLATFORM AI BACKENDS that had no screen of their own. All three
-  // sit under `/ai-services/*` because they are the same kind of thing as the
-  // guardrail/NLP surface above it: read-only operator views over a backend the
-  // console does not own.
-  //
-  // Separate rail entries rather than tabs of `/ai-services`, because the rail
-  // IS the inventory — an operator should be able to see WHICH engines and
-  // registries this platform has without opening a screen and hunting a tab.
-  {
-    route: '/ai-services/lm-studio',
-    domain: 'ai-platform',
-    label: 'LM Studio',
-    tier: '10-19',
-    icon: IconCpu2,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    route: '/ai-services/vllm',
-    domain: 'ai-platform',
-    label: 'vLLM',
-    tier: '10-19',
-    icon: IconRocket,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  // Ollama and llama.cpp joined the rail with the readiness sweep (TASK-890
-  // §3.12). Both were already PROBED by the platform — `admin/ai-models/
-  // discovery` enumerates all four engines, and the sweep now reports each one's
-  // status every 30 seconds — but neither had a screen, so a down engine showed
-  // up only as a model row that would not serve. The rail is the engine
-  // inventory; an engine missing from it is a blind spot, not a simplification.
-  {
-    route: '/ai-services/ollama',
-    domain: 'ai-platform',
-    label: 'Ollama',
-    tier: '10-19',
-    icon: IconServerBolt,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    route: '/ai-services/llama-cpp',
-    domain: 'ai-platform',
-    label: 'llama.cpp',
-    tier: '10-19',
-    icon: IconBinaryTree,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    // MLflow is rendered NATIVELY through the gateway rather than framed: it
-    // frame-denies by default, authenticates nobody of its own, and has no
-    // browser-reachable URL. See `features/mlflow/components/mlflow-screen.tsx`.
-    route: '/ai-services/mlflow',
-    domain: 'ai-platform',
-    label: 'MLflow',
-    tier: '10-19',
-    icon: IconAtom,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  // TASK-862 (README §3.4): the AI Platform domain lists AI models · AI
-  // providers · AI services · Agentic policy. The three `/ai-operations/*`
-  // dashboards are OBSERVABILITY over runs, latency and spend — Platform Ops
-  // work, filed under AI only because of a shared URL prefix — so they move
-  // there. Domain and route are independent (OD-2/OD-3): URLs are unchanged.
-  {
-    route: '/ai-operations/runs',
-    domain: 'platform-ops',
-    label: 'AI operations — runs',
-    tier: '10-19',
-    icon: IconTimeline,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    route: '/ai-operations/metrics',
-    domain: 'platform-ops',
-    label: 'AI operations — metrics',
-    tier: '10-19',
-    icon: IconChartHistogram,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    route: '/ai-operations/consumption',
-    domain: 'platform-ops',
-    label: 'Consumption & cost',
-    tier: '10-19',
-    icon: IconReportMoney,
-    required: [['manage', 'all']],
-    implemented: true,
+    order: 3,
   },
   {
     route: '/billing',
@@ -395,117 +264,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconReceipt,
     required: [['manage', 'all']],
     implemented: true,
-  },
-  {
-    route: '/queues',
-    domain: 'platform-ops',
-    label: 'Queues & jobs',
-    tier: '10-19',
-    icon: IconStack2,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    route: '/schedulers',
-    domain: 'platform-ops',
-    label: 'Schedulers',
-    tier: '10-19',
-    icon: IconCalendarTime,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    route: '/audit-logs',
-    domain: 'platform-ops',
-    label: 'Audit logs',
-    tier: '10-19',
-    icon: IconHistory,
-    required: [['read', 'AuditLog']],
-    implemented: true,
-  },
-  // Renamed from `/pstudio` (read as a typo'd "prompt
-  // studio"). Console-only rename — the gateway path stays `/admin/pstudio/*`.
-  {
-    route: '/db-studio',
-    domain: 'platform-ops',
-    label: 'Database Studio',
-    tier: '10-19',
-    icon: IconDatabaseSearch,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-
-  // Tier 20-29 — shared (cross-tenant or tenant-scoped)
-  { route: '/users', domain: 'identity-access', label: 'Users', tier: '20-29', icon: IconUsers, required: [['manage', 'User']], implemented: true },
-  {
-    route: '/rbac/roles',
-    domain: 'identity-access',
-    label: 'Roles',
-    tier: '20-29',
-    icon: IconUserShield,
-    required: [
-      ['read', 'Role'],
-      ['manage', 'Role'],
-    ],
-    implemented: true,
-  },
-  {
-    route: '/rbac/policies',
-    domain: 'identity-access',
-    label: 'Policies',
-    tier: '20-29',
-    icon: IconShieldLock,
-    required: [
-      ['read', 'Policy'],
-      ['manage', 'Policy'],
-    ],
-    implemented: true,
-  },
-  {
-    route: '/api-keys',
-    domain: 'identity-access',
-    label: 'API keys',
-    tier: '20-29',
-    icon: IconKey,
-    required: [
-      ['read', 'ApiKey'],
-      ['manage', 'ApiKey'],
-    ],
-    implemented: true,
-  },
-  //  — the descriptor-driven registry lane. 210
-  // descriptors existed with exactly ONE console consumer (the Agentic Context
-  // tab, a single hardcoded category), so `GET admin/settings/catalog` +
-  // `PUT admin/settings/registry/:key` were fully functional and unreachable.
-  //
-  // Distinct from `/settings` below, which is the LEGACY raw-row CRUD over the
-  // same table keyed by a key-name regex. That screen keeps row + secret
-  // administration; this one owns the descriptor-governed keys, where tier /
-  // maxScope / failMode / killSwitch / floorDirection / sourceScope apply.
-  //
-  // `read:GlobalSetting` rather than `manage:` — the catalog is RBAC-filtered
-  // and readable by any admin; which keys are WRITABLE, and at which scope, is
-  // decided per descriptor in the drawer and enforced by the gateway.
-  {
-    route: '/settings-registry',
-    domain: 'platform-ops',
-    label: 'Settings registry',
-    tier: '20-29',
-    icon: IconListDetails,
-    required: [
-      ['read', 'GlobalSetting'],
-      ['manage', 'GlobalSetting'],
-    ],
-    implemented: true,
-  },
-  {
-    route: '/settings',
-    domain: 'platform-ops',
-    label: 'Settings rows & secrets',
-    tier: '20-29',
-    icon: IconSettings,
-    required: [['manage', 'GlobalSetting']],
-    implemented: true,
+    order: 4,
   },
   {
     route: '/tenant-profile',
@@ -518,53 +277,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['update', 'Tenant'],
     ],
     implemented: true,
+    order: 1,
   },
-  // `/developer` and `/account` used to sit here. moved them out of
-  // the rail into USER_MENU_ENTRIES (below) — they are personal chrome, not
-  // capability domains. Tier and ability gate are unchanged.
-
-  // TASK-862 — THE one AI provider screen. Tier 20-29 because it renders
-  // cross-tenant for a super admin and tenant-scoped for a tenant admin, and
-  // because tenancy is a CONTROL on the screen rather than a route: the SYSTEM
-  // (platform-default) tier and the working tenant are the two tiers of ONE
-  // cascade. It replaced the five-tab `/ai-platform` hub (one-release redirect
-  // here); the model catalogue is `/ai-models`, engine status `/ai-services/*`,
-  // and task routing moves to the registry election (TASK-860) + the Agent
-  // (TASK-863). The gate mirrors `ProviderConnectionController`'s
-  // `CanRead`/`CanManage('GlobalSetting')`.
-  {
-    route: '/ai-providers',
-    domain: 'ai-platform',
-    label: 'AI providers',
-    tier: '20-29',
-    icon: IconCpu,
-    required: [
-      ['read', 'GlobalSetting'],
-      ['manage', 'GlobalSetting'],
-    ],
-    implemented: true,
-  },
-  // / OD-7 (2026-09-01): `/tools-mcp` MOVED here from tier 10-19.
-  // Tenant admins may configure MCP connectors, which makes this a
-  // shared-audience screen — it renders cross-tenant for a super admin and
-  // tenant-scoped for a tenant admin. Its ability gate narrows from the
-  // `manage:all` super-admin proxy to the resource's own `manage:McpServer`,
-  // the grant seeded tenant-admin roles have always held (`manage:all` still
-  // matches it, so super admins are unaffected). Domain: `knowledge-agents`
-  // since TASK-862 — MCP connectors are the TOOLS an agent calls, so they sit
-  // beside Agents and Workflow Studio (README §3.4), not under provider
-  // configuration. Domain and tier are orthogonal (OD-2/OD-3).
-  {
-    route: '/tools-mcp',
-    domain: 'knowledge-agents',
-    label: 'Tools & MCP',
-    tier: '20-29',
-    icon: IconPlugConnected,
-    required: [['manage', 'McpServer']],
-    implemented: true,
-  },
-
-  // Tier 30-49 — tenant-admin scope (a super admin needs a working tenant)
   {
     route: '/departments',
     domain: 'tenancy',
@@ -573,33 +287,192 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconSitemap,
     required: [['manage', 'Department']],
     implemented: true,
+    order: 1,
+  },
+
+  // ---------------------------------------------------------------------
+  // Platform Ops — tiers 10-19, 20-29, 30-49. TASK-932 R-2/R-4: moved ahead
+  // of AI Platform in the rail, and gained the four platform-wide-gated
+  // entries plus the new feature-availability matrix screen.
+  // ---------------------------------------------------------------------
+  {
+    // The feature-availability matrix (§3.3, Lane S owns the route — this
+    // worktree carries only the nav entry). Deliberately UNGATED: the screen
+    // that controls the other three platform-wide gates cannot gate itself.
+    route: '/features',
+    domain: 'platform-ops',
+    label: 'Feature availability',
+    tier: '10-19',
+    icon: IconToggleRight,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 1,
   },
   {
-    route: '/identity-providers',
-    domain: 'identity-access',
-    label: 'Identity providers',
-    tier: '30-49',
-    icon: IconFingerprint,
-    required: [
-      ['read', 'TenantIdentityProvider'],
-      ['manage', 'TenantIdentityProvider'],
-    ],
+    route: '/rate-limits',
+    domain: 'platform-ops',
+    label: 'Rate limits',
+    tier: '10-19',
+    icon: IconGauge,
+    required: [['manage', 'all']],
     implemented: true,
+    order: 2,
   },
-  // Retiered from 10-19: tenant admins now manage their own
-  // exact-origin rows; wildcard/SYSTEM rows stay SUPER_ADMIN-only, enforced
-  // in the service, not the nav gate.
+  // TASK-862 (README §3.4): the three `/ai-operations/*` dashboards are
+  // OBSERVABILITY over runs, latency and spend — Platform Ops work, filed
+  // under AI only because of a shared URL prefix. Domain and route are
+  // independent (OD-2/OD-3): URLs are unchanged.
   {
-    route: '/allowed-origins',
-    domain: 'identity-access',
-    label: 'Allowed origins',
-    tier: '30-49',
-    icon: IconWorld,
+    route: '/ai-operations/runs',
+    domain: 'platform-ops',
+    label: 'AI operations — runs',
+    tier: '10-19',
+    icon: IconTimeline,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 3,
+  },
+  {
+    route: '/ai-operations/metrics',
+    domain: 'platform-ops',
+    label: 'AI operations — metrics',
+    tier: '10-19',
+    icon: IconChartHistogram,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 4,
+  },
+  {
+    route: '/ai-operations/consumption',
+    domain: 'platform-ops',
+    label: 'Consumption & cost',
+    tier: '10-19',
+    icon: IconReportMoney,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 5,
+  },
+  {
+    route: '/queues',
+    domain: 'platform-ops',
+    label: 'Queues & jobs',
+    tier: '10-19',
+    icon: IconStack2,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 6,
+  },
+  {
+    route: '/schedulers',
+    domain: 'platform-ops',
+    label: 'Schedulers',
+    tier: '10-19',
+    icon: IconCalendarTime,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 7,
+  },
+  {
+    route: '/audit-logs',
+    domain: 'platform-ops',
+    label: 'Audit logs',
+    tier: '10-19',
+    icon: IconHistory,
+    required: [['read', 'AuditLog']],
+    implemented: true,
+    order: 8,
+  },
+  // Renamed from `/pstudio` (read as a typo'd "prompt studio"). Console-only
+  // rename — the gateway path stays `/admin/pstudio/*`.
+  {
+    route: '/db-studio',
+    domain: 'platform-ops',
+    label: 'Database Studio',
+    tier: '10-19',
+    icon: IconDatabaseSearch,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 9,
+  },
+  {
+    // Phase 3B agentic super-admin console (all SUPER_ADMIN-only). TASK-932
+    // R-4: moved from `ai-platform` into `platform-ops`, and hidden behind
+    // `console.agenticPolicy.enabled` (default off — D-1) until a platform
+    // admin turns it on for the whole platform or a working tenant.
+    route: '/agentic-policy',
+    domain: 'platform-ops',
+    label: 'Agentic policy',
+    tier: '10-19',
+    icon: IconShieldBolt,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 10,
+    gate: 'console.agenticPolicy.enabled',
+  },
+  {
+    // MLflow is rendered NATIVELY through the gateway rather than framed: it
+    // frame-denies by default, authenticates nobody of its own, and has no
+    // browser-reachable URL. See `features/mlflow/components/mlflow-screen.tsx`.
+    // TASK-932 R-4: moved from `ai-platform` into `platform-ops`, gated on
+    // `console.mlflow.enabled` (default off — D-1).
+    route: '/ai-services/mlflow',
+    domain: 'platform-ops',
+    label: 'MLflow',
+    tier: '10-19',
+    icon: IconAtom,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 11,
+    gate: 'console.mlflow.enabled',
+  },
+  //  — the descriptor-driven registry lane. 210
+  // descriptors existed with exactly ONE console consumer (the Agentic Context
+  // tab, a single hardcoded category), so `GET admin/settings/catalog` +
+  // `PUT admin/settings/registry/:key` were fully functional and unreachable.
+  //
+  // Distinct from `/settings` below, which is the LEGACY raw-row CRUD over the
+  // same table keyed by a key-name regex. That screen keeps row + secret
+  // administration; this one owns the descriptor-governed keys, where tier /
+  // maxScope / failMode / killSwitch / floorDirection / sourceScope apply.
+  {
+    route: '/settings-registry',
+    domain: 'platform-ops',
+    label: 'Settings registry',
+    tier: '20-29',
+    icon: IconListDetails,
     required: [
-      ['read', 'TenantAllowedOrigin'],
-      ['manage', 'TenantAllowedOrigin'],
+      ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
     ],
     implemented: true,
+    order: 1,
+  },
+  {
+    route: '/settings',
+    domain: 'platform-ops',
+    label: 'Settings rows & secrets',
+    tier: '20-29',
+    icon: IconSettings,
+    required: [['manage', 'GlobalSetting']],
+    implemented: true,
+    order: 2,
+  },
+  // / OD-7 (2026-09-01): `/tools-mcp` moved from tier 10-19 to 20-29 —
+  // tenant admins may configure MCP connectors, gated by the resource's own
+  // `manage:McpServer` rather than the `manage:all` super-admin proxy.
+  // TASK-932 R-4: moved DOMAIN from `knowledge-agents` into `platform-ops`
+  // (this table exists to make exactly this kind of move visible in a diff)
+  // and gated on `console.tools.mcp.enabled` (default off — D-1).
+  {
+    route: '/tools-mcp',
+    domain: 'platform-ops',
+    label: 'Tools & MCP',
+    tier: '20-29',
+    icon: IconPlugConnected,
+    required: [['manage', 'McpServer']],
+    implemented: true,
+    order: 3,
+    gate: 'console.tools.mcp.enabled',
   },
   {
     route: '/storage',
@@ -612,12 +485,113 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['manage', 'Storage'],
     ],
     implemented: true,
+    order: 1,
   },
-  // `/agents` — TASK-863: the first-class, task-typed, publishable Agent (ASR ·
-  // text generation · TTS) — one task, one registry model, task-typed
-  // instruction/parameters/I-O schemas, versioned and published like a workflow
-  // definition. Its own resource (`manage:Agent`), no longer a prompt-template
-  // screen in disguise; the retired Agent Catalog redirect is gone with it.
+
+  // ---------------------------------------------------------------------
+  // AI Platform — tiers 10-19, 20-29.
+  // ---------------------------------------------------------------------
+  // Super-admin only per the 2026-07-04 review. The screen is the AI-models
+  // HUB (registry grid + live LM Studio/Ollama discovery + register).
+  {
+    route: '/ai-models',
+    domain: 'ai-platform',
+    label: 'AI models',
+    tier: '10-19',
+    icon: IconBrain,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 1,
+  },
+  // `/prompt-studio` retired — prompt governance folded into the elevated-only
+  // Governance tab of the prompt-template surface (one authoritative surface
+  // per resource). `/ai-services` took its freed slot, surfacing the
+  // guardrail/NLP status + config backends that had no screen.
+  {
+    route: '/ai-services',
+    domain: 'ai-platform',
+    label: 'AI services',
+    tier: '10-19',
+    icon: IconServerCog,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 2,
+  },
+  // The four PLATFORM AI BACKENDS as separate rail entries rather than tabs of
+  // `/ai-services`, because the rail IS the inventory — an operator should be
+  // able to see WHICH engines this platform has without opening a screen and
+  // hunting a tab.
+  {
+    route: '/ai-services/lm-studio',
+    domain: 'ai-platform',
+    label: 'LM Studio',
+    tier: '10-19',
+    icon: IconCpu2,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 3,
+  },
+  {
+    route: '/ai-services/vllm',
+    domain: 'ai-platform',
+    label: 'vLLM',
+    tier: '10-19',
+    icon: IconRocket,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 4,
+  },
+  {
+    route: '/ai-services/ollama',
+    domain: 'ai-platform',
+    label: 'Ollama',
+    tier: '10-19',
+    icon: IconServerBolt,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 5,
+  },
+  {
+    route: '/ai-services/llama-cpp',
+    domain: 'ai-platform',
+    label: 'llama.cpp',
+    tier: '10-19',
+    icon: IconBinaryTree,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 6,
+  },
+  // TASK-862 (README §3.4): the ONE AI provider screen. Tier 20-29 because it
+  // renders cross-tenant for a super admin and tenant-scoped for a tenant
+  // admin, and because tenancy is a CONTROL on the screen rather than a
+  // route: the SYSTEM (platform-default) tier and the working tenant are the
+  // two tiers of ONE cascade. Mirrors `ProviderConnectionController`'s
+  // `CanRead`/`CanManage('GlobalSetting')`.
+  {
+    route: '/ai-providers',
+    domain: 'ai-platform',
+    label: 'AI providers',
+    tier: '20-29',
+    icon: IconCpu,
+    required: [
+      ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
+    ],
+    implemented: true,
+    order: 1,
+  },
+
+  // ---------------------------------------------------------------------
+  // Knowledge & Agents — tier 30-49 only. TASK-862 (README §3.4): Agents ·
+  // Prompt templates · Context schemas · Document templates · Knowledge base ·
+  // DNA writing styles · Workflow Studio · Assignments — authoring surfaces.
+  // `/tools-mcp` (the tools agents call) left this domain for Platform Ops in
+  // TASK-932 R-4.
+  // ---------------------------------------------------------------------
+  // TASK-863: the first-class, task-typed, publishable Agent (ASR · text
+  // generation · TTS) — one task, one registry model, task-typed
+  // instruction/parameters/I-O schemas, versioned and published like a
+  // workflow definition. Its own resource (`manage:Agent`).
   {
     route: '/agents',
     domain: 'knowledge-agents',
@@ -626,6 +600,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconRobot,
     required: [['manage', 'Agent']],
     implemented: true,
+    order: 1,
   },
   // Prompt instruction templates have their own route: the
   // pre-summary/summary resolution map, template CRUD + versions, and clinical
@@ -638,6 +613,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconFileText,
     required: [['manage', 'PromptTemplate']],
     implemented: true,
+    order: 2,
   },
   {
     // tenant-defined consultation context vocabulary.
@@ -648,14 +624,14 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconSchema,
     required: [['manage', 'ConsultationContextSchema']],
     implemented: true,
+    order: 3,
   },
   {
-    // tenant-defined clinical document SHAPES. The deliberate
-    // sibling of Context Schemas: that screen governs what context may be
-    // SUBMITTED, this one governs what document comes BACK. `manage` mirrors
+    // tenant-defined clinical document SHAPES. The deliberate sibling of
+    // Context Schemas: that screen governs what context may be SUBMITTED,
+    // this one governs what document comes BACK. `manage` mirrors
     // `DocumentTemplateAdminController`'s class-level
-    // `@CanManage('DocumentTemplate')` gate, which is the whole gate — this
-    // resource carries no imperative privilege check.
+    // `@CanManage('DocumentTemplate')` gate, which is the whole gate.
     route: '/document-templates',
     domain: 'knowledge-agents',
     label: 'Document Templates',
@@ -663,11 +639,10 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconFileDescription,
     required: [['manage', 'DocumentTemplate']],
     implemented: true,
+    order: 4,
   },
-  // institutional-RAG knowledge documents — the only real
-  // clinical "memory" concept the platform has today (admin-uploaded
-  // guidelines/protocols, chunked+embedded, retrieved to ground summary
-  // generation with citations). `manage` mirrors `KnowledgeController`'s
+  // institutional-RAG knowledge documents — the only real clinical "memory"
+  // concept the platform has today. `manage` mirrors `KnowledgeController`'s
   // class-level `@CanManage('KnowledgeDocument')` gate.
   {
     route: '/knowledge',
@@ -677,6 +652,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconBook2,
     required: [['manage', 'KnowledgeDocument']],
     implemented: true,
+    order: 5,
   },
   {
     route: '/dna-writing-styles',
@@ -686,12 +662,46 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconDna,
     required: [['manage', 'DnaWritingStyleReport']],
     implemented: true,
+    order: 6,
   },
-  // the consent register. Tier 30-49 because grants key on
-  // (tenantId, externalPatientId, purpose): a super admin reads them through
-  // the working tenant, never cross-tenant. `manage:ConsentGrant` mirrors
-  // `ConsentGrantController`'s class-level `@CanManage('ConsentGrant')`.
+  // Workflow Studio v1 — the graph-authoring surface over `WorkflowDefinition`
+  // (`admin/workflow-definitions` + read-only `admin/workflow-nodes` registry
+  // controllers). `manage` mirrors `WorkflowDefinitionController`'s
+  // class-level `@CanManage('WorkflowDefinition')` gate.
   {
+    route: '/workflow-studio',
+    domain: 'knowledge-agents',
+    label: 'Workflow Studio',
+    tier: '30-49',
+    icon: IconBinaryTree2,
+    required: [['manage', 'WorkflowDefinition']],
+    implemented: true,
+    order: 7,
+  },
+  // The assignment matrix. A sub-route of the Studio (rule 13 "one
+  // authoritative editor per backend resource": the Studio owns
+  // `WorkflowDefinition`, so it owns which definition governs which
+  // tenant/department too), given its own nav entry rather than a tab so it
+  // shows up alongside the sibling `/workflow-runs` entry for the same domain.
+  {
+    route: '/workflow-studio/assignments',
+    domain: 'knowledge-agents',
+    label: 'Workflow Assignments',
+    tier: '30-49',
+    icon: IconLayoutGrid,
+    required: [['manage', 'WorkflowDefinition']],
+    implemented: true,
+    order: 8,
+  },
+
+  // ---------------------------------------------------------------------
+  // Clinical — tier 30-49 only.
+  // ---------------------------------------------------------------------
+  {
+    // the consent register. Tier 30-49 because grants key on
+    // (tenantId, externalPatientId, purpose): a super admin reads them through
+    // the working tenant, never cross-tenant. `manage:ConsentGrant` mirrors
+    // `ConsentGrantController`'s class-level `@CanManage('ConsentGrant')`.
     route: '/consent',
     domain: 'clinical',
     label: 'Patient consent',
@@ -699,9 +709,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconFileCheck,
     required: [['manage', 'ConsentGrant']],
     implemented: true,
+    order: 1,
   },
-  // TASK-861: `/audio/pipelines` RETIRED (redirect stub → `/agents?task=SPEECH_TO_TEXT`);
-  // the ASR Agent replaces the pipeline. 59 -> 58, tier 30-49 22 -> 21.
   {
     route: '/audio/transcription-jobs',
     domain: 'clinical',
@@ -713,7 +722,23 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['manage', 'Tenant'],
     ],
     implemented: true,
+    order: 2,
   },
+  {
+    route: '/consultations',
+    domain: 'clinical',
+    label: 'Consultations',
+    tier: '30-49',
+    icon: IconStethoscope,
+    required: [['manage', 'Consultation']],
+    implemented: true,
+    order: 3,
+  },
+
+  // ---------------------------------------------------------------------
+  // Workflow & Harness — tier 30-49 only. TASK-932 R-4: the WHOLE domain is
+  // gated on `console.workflowHarness.enabled` (default off — D-1).
+  // ---------------------------------------------------------------------
   {
     route: '/harness/policy',
     domain: 'workflow-harness',
@@ -725,6 +750,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['manage', 'HarnessPolicy'],
     ],
     implemented: true,
+    order: 1,
+    gate: 'console.workflowHarness.enabled',
   },
   {
     route: '/harness/observability',
@@ -738,6 +765,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['read', 'HarnessWorkflow'],
     ],
     implemented: true,
+    order: 2,
+    gate: 'console.workflowHarness.enabled',
   },
   {
     route: '/harness/workflows',
@@ -750,14 +779,14 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['manage', 'HarnessWorkflow'],
     ],
     implemented: true,
+    order: 3,
+    gate: 'console.workflowHarness.enabled',
   },
-  // TASK-861: `/harness/pipeline-policy` RETIRED (redirect stub → `/workflow-studio/assignments`);
-  // its toggles become node `enabled` flags on the assigned workflow. 58 -> 57, tier 30-49 21 -> 20.
   // the DEFINITION-scoped runs/observability view — distinct from
   // `/ai-operations/runs` (tier 10-19, cross-tenant platform ops over every
-  // agentic session, This one reads `WorkflowRun`, the workflow-
-  // substrate read model, and links to its cross-tenant sibling rather than
-  // duplicating it (rule 13 "one authoritative editor" + cross-link posture).
+  // agentic session). This one reads `WorkflowRun`, the workflow-substrate
+  // read model, and links to its cross-tenant sibling rather than duplicating
+  // it (rule 13 "one authoritative editor" + cross-link posture).
   {
     route: '/workflow-runs',
     domain: 'workflow-harness',
@@ -766,82 +795,105 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconListTree,
     required: [['read', 'WorkflowRun']],
     implemented: true,
-  },
-  // Workflow Studio v1 — the graph-authoring surface over `WorkflowDefinition`
-  // ( `admin/workflow-definitions` + read-only `admin/workflow-nodes` registry
-  // controllers). `manage` mirrors `WorkflowDefinitionController`'s class-level
-  // `@CanManage('WorkflowDefinition')` gate — the console never widens past what the gateway
-  // itself requires.
-  // TASK-862 (README §3.4): Knowledge & Agents lists Agents · Workflow Studio ·
-  // Assignments · Prompt templates · Context schemas · Document templates ·
-  // Knowledge base — authoring surfaces. The Studio and its assignment matrix
-  // move here; `/workflow-runs` stays with the harness (observability).
-  {
-    route: '/workflow-studio',
-    domain: 'knowledge-agents',
-    label: 'Workflow Studio',
-    tier: '30-49',
-    icon: IconBinaryTree2,
-    required: [['manage', 'WorkflowDefinition']],
-    implemented: true,
-  },
-  // half (a) Task 6 — the assignment matrix. A sub-route of the Studio
-  // (rule 13 "one authoritative editor per backend resource": the Studio owns
-  // `WorkflowDefinition`, so it owns which definition governs which
-  // tenant/department too), given its own nav entry rather than a tab so it
-  // shows up alongside the sibling `/workflow-runs` entry for the same domain.
-  // Design gate waived for this screen (owner decision).
-  {
-    route: '/workflow-studio/assignments',
-    domain: 'knowledge-agents',
-    label: 'Workflow Assignments',
-    tier: '30-49',
-    icon: IconLayoutGrid,
-    required: [['manage', 'WorkflowDefinition']],
-    implemented: true,
-  },
-  // Was the four-tab tenant AI hub (Models · Speech · Voice · Providers).
-  // NARROWED it to two: the Models and Providers tabs were the TENANT
-  // half of a two-tier cascade whose SYSTEM half lived on a different route,
-  // and both moved to `/ai-platform`, where the tier is a control rather than a
-  // route. The URL is unchanged, so this is a narrowing and takes no redirect.
-  //
-  // Speech stayed deliberately: `TenantSttConfig` is a pipeline BINDING resolved
-  // on its own row, not provider configuration on the routing cascade. Folding
-  // it into a provider console would recreate the by-which-table grouping
-  // exists to remove. TASK-888 retired `TenantTtsConfig`, so the Voice tab reads
-  // nothing any more and is gated on `Agent` instead; `required` is therefore
-  // the ONE remaining read, and each tab is separately `<RequirePermission>`-gated
-  // in the screen.
-  //
-  // DEPRECATED (TASK-862, removed in R4): the last binding retires with the ASR
-  // Agent, when this route becomes a one-release `redirect('/agents')`. The
-  // Models/Providers halves it used to link to now live on `/ai-providers`.
-  {
-    route: '/ai-configuration',
-    domain: 'ai-platform',
-    label: 'Speech & Voice',
-    tier: '30-49',
-    icon: IconTargetArrow,
-    required: [['read', 'TenantSttConfig']],
-    implemented: true,
-  },
-  {
-    route: '/consultations',
-    domain: 'clinical',
-    label: 'Consultations',
-    tier: '30-49',
-    icon: IconStethoscope,
-    required: [['manage', 'Consultation']],
-    implemented: true,
+    order: 4,
+    gate: 'console.workflowHarness.enabled',
   },
 
-  // Tier 50-59 — Playground (approved 2026-07-06; moved into the
-  // console shell under (console)/(tenant)). End-user demo
-  // planes run under the admin's OWN account, so the backend guards are
-  // plain @Authorize() — visibility is role-gated (SUPER_ADMIN or
-  // TENANT_ADMIN) via visibleNavEntries, mirroring the (tenant) tier guard.
-  // Labels reconciled to the page titles: nav = breadcrumb = title.
+  // ---------------------------------------------------------------------
+  // Identity & Access — tiers 10-19, 20-29, 30-49.
+  // ---------------------------------------------------------------------
+  // Platform credential policy — password complexity/rotation and the entropy
+  // behind every machine credential the platform issues. SUPER_ADMIN-only:
+  // every backing key is a `globalOnly` descriptor, so the gateway 403s a
+  // tenant admin regardless of what the nav shows.
+  {
+    route: '/security-policy',
+    domain: 'identity-access',
+    label: 'Security policy',
+    tier: '10-19',
+    icon: IconLockCog,
+    required: [['manage', 'all']],
+    implemented: true,
+    order: 1,
+  },
+  { route: '/users', domain: 'identity-access', label: 'Users', tier: '20-29', icon: IconUsers, required: [['manage', 'User']], implemented: true, order: 1 },
+  {
+    route: '/rbac/roles',
+    domain: 'identity-access',
+    label: 'Roles',
+    tier: '20-29',
+    icon: IconUserShield,
+    required: [
+      ['read', 'Role'],
+      ['manage', 'Role'],
+    ],
+    implemented: true,
+    order: 2,
+  },
+  {
+    route: '/rbac/policies',
+    domain: 'identity-access',
+    label: 'Policies',
+    tier: '20-29',
+    icon: IconShieldLock,
+    required: [
+      ['read', 'Policy'],
+      ['manage', 'Policy'],
+    ],
+    implemented: true,
+    order: 3,
+  },
+  {
+    route: '/api-keys',
+    domain: 'identity-access',
+    label: 'API keys',
+    tier: '20-29',
+    icon: IconKey,
+    required: [
+      ['read', 'ApiKey'],
+      ['manage', 'ApiKey'],
+    ],
+    implemented: true,
+    order: 4,
+  },
+  {
+    route: '/identity-providers',
+    domain: 'identity-access',
+    label: 'Identity providers',
+    tier: '30-49',
+    icon: IconFingerprint,
+    required: [
+      ['read', 'TenantIdentityProvider'],
+      ['manage', 'TenantIdentityProvider'],
+    ],
+    implemented: true,
+    order: 1,
+  },
+  // Retiered from 10-19: tenant admins now manage their own exact-origin
+  // rows; wildcard/SYSTEM rows stay SUPER_ADMIN-only, enforced in the
+  // service, not the nav gate.
+  {
+    route: '/allowed-origins',
+    domain: 'identity-access',
+    label: 'Allowed origins',
+    tier: '30-49',
+    icon: IconWorld,
+    required: [
+      ['read', 'TenantAllowedOrigin'],
+      ['manage', 'TenantAllowedOrigin'],
+    ],
+    implemented: true,
+    order: 2,
+  },
+
+  // ---------------------------------------------------------------------
+  // Playground — tier 50-59 only (approved 2026-07-06; moved into the console
+  // shell under (console)/(tenant)). End-user demo planes run under the
+  // admin's OWN account, so the backend guards are plain @Authorize() —
+  // visibility is role-gated (SUPER_ADMIN or TENANT_ADMIN) via
+  // visibleNavEntries, mirroring the (tenant) tier guard. Labels reconciled
+  // to the page titles: nav = breadcrumb = title.
+  // ---------------------------------------------------------------------
   {
     route: '/playground/consultation',
     domain: 'playground',
@@ -850,6 +902,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconHeartbeat,
     required: [],
     implemented: true,
+    order: 1,
   },
   {
     route: '/playground/live-transcription',
@@ -859,6 +912,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconBroadcast,
     required: [],
     implemented: true,
+    order: 2,
   },
   {
     route: '/playground/voice-profiles',
@@ -868,6 +922,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconUserScan,
     required: [],
     implemented: true,
+    order: 3,
   },
   {
     route: '/playground/dna-writing-style',
@@ -877,13 +932,18 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconDna2,
     required: [],
     implemented: true,
+    order: 4,
   },
-  { route: '/playground/llm', domain: 'playground', label: 'LLM Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
-  // TASK-893 OD-3: `/playground/workbench` RETIRED (redirect stub -> `/workflow-studio`). Running a
-  // definition against a fixture is no longer a separate screen — the Studio's inspector carries
-  // the Run tab, the fixture picker and the per-node trace, so an admin tests the graph they are
-  // editing instead of navigating to a second surface that executes the SAVED one. 59 -> 58, tier
-  // 50-59 6 -> 5, and the tier's `required: []` convention now holds for every entry in it again.
+  {
+    route: '/playground/llm',
+    domain: 'playground',
+    label: 'LLM Playground',
+    tier: '50-59',
+    icon: IconSparkles,
+    required: [],
+    implemented: true,
+    order: 5,
+  },
 ];
 
 /**
@@ -930,6 +990,17 @@ function isGranted(rules: readonly PermissionRule[] | null | undefined, entry: N
 }
 
 /**
+ * Platform-wide feature-availability gate (TASK-932 §3.2). An entry with no
+ * `gate` is unaffected; a gated entry needs `gates[gate] === true` exactly —
+ * absent (loading/error/not-yet-returned) and `false` both hide it. This is
+ * the SAME fail-closed rule `FeatureGateBoundary` applies to the route
+ * itself, so a nav entry and its route can never disagree.
+ */
+function isGateOpen(entry: NavEntry, gates: FeatureGateMap | undefined): boolean {
+  return entry.gate === undefined || gates?.[entry.gate] === true;
+}
+
+/**
  * Implemented entries the caller's ability grants, in declaration order.
  * Tier 50-59 additionally requires an admin role (`roles`), mirroring the
  * (console)/(tenant) tier guard — ability rules alone cannot express it.
@@ -939,10 +1010,15 @@ export function matchNavEntry(pathname: string, entries: readonly NavRouteEntry[
   return entries.filter((e) => pathname === e.route || pathname.startsWith(`${e.route}/`)).sort((a, b) => b.route.length - a.route.length)[0];
 }
 
-export function visibleNavEntries(rules: readonly PermissionRule[] | null | undefined, roles?: readonly string[] | null): NavEntry[] {
+export function visibleNavEntries(
+  rules: readonly PermissionRule[] | null | undefined,
+  roles?: readonly string[] | null,
+  gates?: FeatureGateMap,
+): NavEntry[] {
   return NAV_ENTRIES.filter((entry) => {
     if (!entry.implemented) return false;
     if (entry.tier === '50-59' && !isAdminTier(roles)) return false;
+    if (!isGateOpen(entry, gates)) return false;
     return isGranted(rules, entry);
   });
 }
@@ -956,10 +1032,15 @@ export function visibleUserMenuEntries(rules: readonly PermissionRule[] | null |
  * Rail domains the caller can actually reach: a domain shows
  * when at least one of its entries is visible. Derived from `visibleNavEntries`
  * so there is exactly ONE ability mechanism — including the playground's
- * role check, which no ability rule can express.
+ * role check and the feature-gate check, neither of which any ability rule
+ * can express.
  */
-export function visibleNavDomains(rules: readonly PermissionRule[] | null | undefined, roles?: readonly string[] | null): NavDomain[] {
-  const reachable = new Set(visibleNavEntries(rules, roles).map((entry) => entry.domain));
+export function visibleNavDomains(
+  rules: readonly PermissionRule[] | null | undefined,
+  roles?: readonly string[] | null,
+  gates?: FeatureGateMap,
+): NavDomain[] {
+  const reachable = new Set(visibleNavEntries(rules, roles, gates).map((entry) => entry.domain));
   return NAV_DOMAINS.filter((domain) => reachable.has(domain.id));
 }
 
