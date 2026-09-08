@@ -393,8 +393,8 @@ test.describe('TASK-932 — a platform row seeded under another namespace is ado
     // THE ASSERTION THE DEFECT WOULD FAIL: one row, not two.
     const rows = await request.get(`${SETTINGS}/tenant/${SYSTEM_TENANT_ID}?search=${SEEDED_ELSEWHERE_KEY}&limit=100`, { headers });
     expect(rows.status(), await rows.text()).toBe(200);
-    const listed = (await rows.json()) as { items: Array<{ key: string; namespace?: string; tenantId?: string | null }> };
-    const forKey = listed.items.filter((item) => item.key === SEEDED_ELSEWHERE_KEY);
+    const listed = (await rows.json()) as { data: Array<{ key: string; namespace?: string; tenantId?: string | null }> };
+    const forKey = listed.data.filter((item) => item.key === SEEDED_ELSEWHERE_KEY);
     expect(forKey, `exactly one SYSTEM row may exist for '${SEEDED_ELSEWHERE_KEY}'`).toHaveLength(1);
     expect(forKey[0]!.namespace, 'the adopted row keeps its own namespace — nothing is migrated').toBe('rate-limit');
 
