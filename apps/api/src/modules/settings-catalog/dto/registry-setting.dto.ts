@@ -69,3 +69,22 @@ export class WriteRegistrySettingResponse {
   @ApiProperty({ description: 'Scope the value was set at.' })
   scope!: string;
 }
+
+/** Response for a successful registry RESET (a tenant override removed). */
+export class ResetRegistrySettingResponse {
+  @ApiProperty({ description: 'The registry key whose tenant override was reset.' })
+  key!: string;
+
+  @ApiProperty({ description: 'Storage tier the row lived in.' })
+  tier!: string;
+
+  @ApiProperty({ description: 'Scope that was reset. Always `tenant` today.' })
+  scope!: string;
+
+  @ApiProperty({
+    description:
+      'False when there was no override to remove. Idempotent by design: a "reset every tenant" sweep must not fail on the tenants that never had one.',
+    example: true,
+  })
+  removed!: boolean;
+}
