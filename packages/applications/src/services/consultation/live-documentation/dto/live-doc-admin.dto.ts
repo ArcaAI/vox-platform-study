@@ -147,12 +147,12 @@ export class LiveDocRealtimeNodeResponse {
   @ApiProperty({ description: 'Node id as authored in the graph (trajectories cite it)' })
   nodeId: string;
 
-  @ApiProperty({ description: 'Registered node type, e.g. `consultation.realtimeSummary`' })
+  @ApiProperty({ description: 'Registered node type — since TASK-893 every realtime node is `core.agent`' })
   type: string;
 
   @ApiProperty({
     description:
-      'The PIPELINE node type this one stands for. `agent.ner` and `agent.transcription` are the target catalogue’s names for existing capabilities and run the same handlers, so a consumer keyed by type must treat the alias and its canonical form as ONE capability.',
+      'The CAPABILITY this node runs (`transcribe` | `extractEntities` | `generateDocument` | …), derived from the agent it references. Since TASK-893 the type no longer distinguishes two realtime nodes — every one of them is a `core.agent` — so this is the field a consumer keys on. Falls back to the node type when no capability can be derived.',
   })
   canonicalType: string;
 
