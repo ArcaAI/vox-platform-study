@@ -182,6 +182,14 @@ export interface TestProviderConnectionResult {
 /**
  * The three states of a `(service, provider)` row as the console names them —
  * the same vocabulary as `CONNECTION_ENABLED_SEMANTICS` in the gateway.
+ *
+ * TENANT-TIER VOCABULARY, and only that. Every word in it ("platform default",
+ * "bring your own", "disabled for this tenant") describes a tenant's relation to
+ * a credential it does not own. Applied to a SYSTEM row it produced the defect
+ * TASK-932 R-11 names: the platform's own weight store rendered as "no key ·
+ * Disabled for this tenant" — tenant wording, on a platform row, about the thing
+ * every model fetch depends on. `platformStateOf` below is the platform tier's
+ * own vocabulary; neither is a substitute for the other.
  */
 export type ConnectionState = 'platform-default' | 'bring-your-own' | 'disabled';
 
@@ -189,6 +197,48 @@ export function connectionStateOf(row: Pick<ProviderConnection, 'version' | 'has
   if (row.version === 0) return 'platform-default';
   if (!row.enabled) return 'disabled';
   return row.hasKey ? 'bring-your-own' : 'platform-default';
+}
+
+/**
+ * What a PLATFORM-tier row is, in the platform's own words (TASK-932).
+ *
+ *   `not-configured` no row yet — nothing serves this provider.
+ *   `built-in`       enabled with no credential of its own: a self-hosted engine
+ *                    (which authenticates nobody) or a built-in plane running on
+ *                    the platform's own credentials.
+ *   `configured`     enabled with a credential an admin supplied.
+ *   `off`            disabled — the PLATFORM's veto, not a tenant's.
+ */
+export type PlatformConnectionState = 'not-configured' | 'built-in' | 'configured' | 'off';
+
+export function platformStateOf(row: Pick<ProviderConnection, 'version' | 'hasKey' | 'enabled'>): PlatformConnectionState {
+  if (row.version === 0) return 'not-configured';
+  if (!row.enabled) return 'off';
+  return row.hasKey ? 'configured' : 'built-in';
+}
+
+/**
+ * ── Inference readiness, narrowed to what an ENGINE CARD renders ────────────
+ *
+ * A hand-declared BFF mirror of `InferenceReadinessResponse`
+ * (@arcaai/applications), carrying only the `engines[]` half: this screen has no
+ * use for the per-model verdicts, and copying the whole shape would invite it to
+ * grow a second model catalogue. The full document lives on `/ai-services`.
+ */
+export interface ReadinessEngine {
+  /** Canonical provider spelling (`lmstudio` folded to `lm-studio`). */
+  provider: string;
+  /** `unknown` = the aggregator itself did not answer — NOT a synonym for "down". */
+  status: 'up' | 'down' | 'unknown';
+  latencyMs: number | null;
+  loadedCount: number;
+  listedCount: number;
+  detail: string | null;
+}
+
+export interface InferenceReadinessSnapshot {
+  checkedAt: string;
+  engines: ReadinessEngine[];
 }
 
 /**

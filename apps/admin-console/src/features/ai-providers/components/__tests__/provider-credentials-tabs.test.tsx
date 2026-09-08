@@ -1,13 +1,15 @@
 /**
- * Provider credential tabs — the widened capability plane.
+ * Provider credential tabs — the CLOUD VENDOR plane.
  *
- * Before this, three of the six capabilities the gateway serves had no tab at
- * all: a tenant's Qdrant Cloud key and the platform's embeddings connections
- * were reachable by API and by nothing else. These tests pin the tab bar to the
- * derived list, and pin the one capability that is legitimately empty
- * (`rerank`) to an EXPLANATION rather than a blank panel — an empty grid reads
- * as a broken screen, and the reason (platform infrastructure, tenant rows are
- * 403) is exactly what the admin came to find out.
+ * TASK-862 widened this from three tabs to seven, because a tenant's Qdrant
+ * Cloud key and the platform's embeddings connections were reachable by API and
+ * by nothing else. TASK-932 narrows it again, and the two moves are not in
+ * tension: what belongs here is a capability a VENDOR ACCOUNT can be brought to.
+ * `rerank` has none (the only reranker is the platform's own TEI service) and
+ * `model-registry` is the platform's weight-FETCH plane, which now has its own
+ * section on the platform screen — so their tabs were two clicks to a paragraph
+ * saying there is nothing here, and on the tenant tier the gateway now 404s
+ * those reads outright.
  */
 
 import { cleanup, screen, waitFor } from '@testing-library/react';
@@ -15,7 +17,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import { PROVIDER_SERVICES } from '../../api/types';
+import { cloudConfigurableServices } from '../provider-meta';
 import { ProviderCredentialsTabs } from '../provider-credentials-tabs';
+
+const CLOUD_SERVICES = cloudConfigurableServices(PROVIDER_SERVICES);
 
 /** Every credential card reads its own row; a placeholder row is the "no credential" state. */
 function stubFetch() {
@@ -57,17 +62,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('ProviderCredentialsTabs — every capability the gateway serves', () => {
-  it('renders one tab per capability, including the three P1-C.1 added', async () => {
+describe('ProviderCredentialsTabs — every capability a vendor account can serve', () => {
+  it('renders one tab per cloud-configurable capability', async () => {
     stubFetch();
     renderWithProviders(<ProviderCredentialsTabs tenantId="t-1" />);
 
     const tabs = await screen.findAllByRole('tab');
-    expect(tabs).toHaveLength(PROVIDER_SERVICES.length);
+    expect(tabs).toHaveLength(CLOUD_SERVICES.length);
 
-    for (const label of ['Text generation', 'Speech-to-text', 'Text-to-speech', 'Embeddings', 'Rerank', 'Vector store', 'Model registry']) {
+    for (const label of ['Text generation', 'Speech-to-text', 'Text-to-speech', 'Embeddings', 'Vector store']) {
       expect(screen.getByRole('tab', { name: label })).toBeDefined();
     }
+  });
+
+  it('drops the tabs with no vendor card — rerank and the model registry are platform planes', async () => {
+    stubFetch();
+    renderWithProviders(<ProviderCredentialsTabs tenantId="t-1" />);
+    await screen.findByRole('tab', { name: 'Text generation' });
+
+    expect(screen.queryByRole('tab', { name: 'Rerank' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Model registry' })).toBeNull();
   });
 
   it('opens on Text generation (llm) so the existing entry point is unchanged', async () => {
@@ -82,7 +96,7 @@ describe('ProviderCredentialsTabs — every capability the gateway serves', () =
     stubFetch();
     const { container } = renderWithProviders(<ProviderCredentialsTabs tenantId="t-1" />);
     await screen.findByRole('tab', { name: 'Vector store' });
-    await waitFor(() => expect(screen.queryAllByRole('tab')).toHaveLength(PROVIDER_SERVICES.length));
+    await waitFor(() => expect(screen.queryAllByRole('tab')).toHaveLength(CLOUD_SERVICES.length));
 
     expect(await axe(container)).toHaveNoViolations();
   });

@@ -15,4 +15,9 @@ export const providerConnectionKeys = {
   service: (service: ProviderService, tenantId?: string) => [...providerConnectionKeys.tenant(tenantId), service] as const,
   row: (service: ProviderService, provider: string, tenantId?: string) => [...providerConnectionKeys.service(service, tenantId), 'row', provider] as const,
   bindings: (tenantId: string) => [...providerConnectionKeys.tenant(tenantId), 'bindings'] as const,
+  /**
+   * The readiness snapshot is PLATFORM-WIDE — one observation of the engines
+   * this deployment runs — so it is the one key here that carries no tenant.
+   */
+  readiness: () => [...providerConnectionKeys.root, 'readiness'] as const,
 };

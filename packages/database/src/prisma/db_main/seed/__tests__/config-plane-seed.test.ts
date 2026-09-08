@@ -172,11 +172,28 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => expect(c.tenantId).toBe(SYSTEM_TENANT_ID));
   });
 
-  it('enables exactly the five built-in-local llm rows and the one in-process TTS engine Day-1 (seed-authoritative)', () => {
+  it('enables the built-in-local llm rows, the in-process TTS engine and the weight-fetch plane Day-1 (seed-authoritative)', () => {
+    // TASK-932 R-11/D-7 added the two `model-registry` rows to this list, and
+    // ONLY those. On a PLATFORM-MANAGED plane a blank enabled row is a
+    // configured state, not an absence: `s3` resolves to the platform's own
+    // object storage (`inheritsPlatformStorage`), and a blank `huggingface`
+    // pulls public repos anonymously — which is the correct resolved state for
+    // a public repo, and what `apps/stt` reads as `absent`. Seeded DISABLED,
+    // the console rendered the platform's own weight store as "no key ·
+    // Disabled for this tenant".
     const enabled = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.enabled)
       .map((c) => `${c.service}:${c.provider}`)
       .sort();
-    expect(enabled).toEqual(['llm:built-in', 'llm:llama-cpp', 'llm:lm-studio', 'llm:ollama', 'llm:vllm', 'tts:kokoro']);
+    expect(enabled).toEqual([
+      'llm:built-in',
+      'llm:llama-cpp',
+      'llm:lm-studio',
+      'llm:ollama',
+      'llm:vllm',
+      'model-registry:huggingface',
+      'model-registry:s3',
+      'tts:kokoro',
+    ]);
   });
 
   /*
@@ -201,13 +218,29 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
   });
 
   it('keeps every cloud vendor row disabled (no keyless cloud row serves)', () => {
-    // The exclusions are the two PLATFORM classes, and they are excluded for the same reason the
+    // The exclusions are the PLATFORM classes, and they are excluded for the same reason the
     // assertion exists: this test guards against a keyless row that would reach a VENDOR and 401.
     // A self-hosted endpoint and an in-process engine reach no vendor at all, so enabling one
     // spends nothing and authenticates to nobody.
-    SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => !isBuiltInLocalLlm(c) && !isInProcessEngine(c)).forEach((c) => {
+    //
+    // `model-registry` joined them in TASK-932 (R-11/D-7) on exactly that test, not by exception:
+    // a blank `s3` row reaches the platform's OWN object store through the storage cascade, and a
+    // blank `huggingface` row reaches the Hub ANONYMOUSLY — a public repo pull, which is a
+    // success, not a 401. Neither can spend a vendor account nobody configured, because there is
+    // no vendor account on either row.
+    SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => !isBuiltInLocalLlm(c) && !isInProcessEngine(c) && c.service !== 'model-registry').forEach((c) => {
       expect(c.enabled, `cloud ${c.service}:${c.provider} must seed disabled`).toBe(false);
     });
+  });
+
+  it('seeds the weight-fetch plane ENABLED and blank — the platform default an admin can then override', () => {
+    const registry = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'model-registry');
+    expect(registry.map((c) => c.provider).sort()).toEqual(['huggingface', 's3']);
+    registry.forEach((c) => {
+      expect(c.enabled, `${c.provider} must seed enabled`).toBe(true);
+      expect(c.apiKeyPlaintext, `${c.provider} must seed with NO key material`).toBeNull();
+    });
+    expect(registry.find((c) => c.provider === 's3')!.extraJson).toEqual({ inheritsPlatformStorage: true });
   });
 
   it('never seeds ciphertext into source (the column is filled at seed time, via Vault)', () => {

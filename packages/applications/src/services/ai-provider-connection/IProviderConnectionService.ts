@@ -169,6 +169,17 @@ export interface ResolvedProviderCredential {
   extras?: Record<string, unknown>;
   /** DERIVED from the row that supplied the credential. Never stamped by a caller. */
   funding?: ProviderFunding;
+  /**
+   * TASK-932 D-7 — which PLANE answered, when it was not a connection row.
+   *
+   * Present only for `'platform-storage'`: the `model-registry:s3` built-in
+   * default, whose endpoint and key pair come from the platform storage cascade
+   * rather than from the row. ADDITIVE and optional so the existing consumer
+   * (`apps/stt/src/stt/core/model_credentials.py`, which parses `apiKey`,
+   * `baseUrl`, `extras.accessKeyId` and `funding`) is unchanged — it simply does
+   * not read this field.
+   */
+  source?: 'platform-storage';
 }
 
 // C2 published aliases — the program doc names these; downstream lanes import them.
@@ -212,6 +223,18 @@ export interface IProviderConnectionService {
     tenantId?: string,
     expectedVersion?: number,
   ): Promise<AiProviderConnectionResponse>;
+
+  /**
+   * TASK-932 R-3 — restore ONE platform-managed row to its built-in default
+   * (`BUILT_IN_CONNECTION_DEFAULTS`). SUPER_ADMIN-only, SYSTEM tier only.
+   *
+   * Not a DELETE: a deleted SYSTEM engine row is a 503 in `apps/text`, not a
+   * return to the default, because the base URL travels only through the
+   * injected override fold. No `If-Match` — the whole point is "whatever it says
+   * now, put it back", so a stale token would refuse exactly the caller who most
+   * needs it.
+   */
+  resetRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse>;
 
   /**
    * TASK-890 §3.7a (OD-A) — declare the models this tenant's connection serves.

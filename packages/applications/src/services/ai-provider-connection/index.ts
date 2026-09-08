@@ -1,5 +1,7 @@
 export * from './assert-provider-available';
 export * from './constants';
+export * from './built-in-defaults';
+export * from './platform-storage-credential';
 export * from './provider-extras';
 export * from './provider-requirements';
 export * from './dto';

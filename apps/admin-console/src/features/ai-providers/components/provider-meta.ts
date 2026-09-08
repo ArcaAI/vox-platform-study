@@ -14,14 +14,91 @@ export interface ProviderField {
   store?: 'column' | 'extra';
 }
 
+/**
+ * HOW a provider is served, which decides WHO sees its card and what the card
+ * is allowed to say. Mirrors `ProviderClass` in @arcaai/applications
+ * (`ai-provider-connection/constants.ts`), minus `cloud-platform` — that is not
+ * a property of the PROVIDER, it is what a `cloud-byo` provider becomes when the
+ * row happens to be the SYSTEM one, and the tier already tells us that.
+ *
+ *   `cloud-byo`     a vendor account a tenant can bring. Rendered on BOTH tiers:
+ *                   the tenant's own key, or the platform default it inherits.
+ *   `engine-served` an inference engine the platform RUNS. Platform tier only.
+ *   `built-in`      the platform's weight-fetch plane (`model-registry`).
+ *                   Platform tier only.
+ */
+export type ProviderCardClass = 'cloud-byo' | 'engine-served' | 'built-in';
+
 export interface ProviderMeta {
   id: string;
   label: string;
   fields: readonly ProviderField[];
+  /** Defaults to `cloud-byo` — the class every card had before TASK-932. */
+  providerClass?: ProviderCardClass;
   /** Overrides for the secret input (Vertex uploads a service-account JSON, not a key). */
   keyLabel?: string;
   keyPlaceholder?: string;
+  /** One line under the title, for a card whose purpose is not self-evident. */
+  hint?: string;
 }
+
+/**
+ * TASK-932 R-3 — the BUILT-IN inference services, and the reason this list did
+ * not exist before.
+ *
+ * These four engines have always had SYSTEM `AiProviderConnection` rows (the
+ * seed writes them, `apps/text` resolves its base URL from them, and a deleted
+ * row is a 503) — but no card, because `PROVIDERS_BY_SERVICE` mirrored
+ * `CLOUD_BYO_PROVIDERS`, which lists exactly what a TENANT may bring. So the
+ * endpoints an operator most needs to change were writable over HTTP and
+ * unreachable from the console: to point LM Studio at a laptop you re-seeded the
+ * database. They are PLATFORM-TIER ONLY (the gateway 403s a tenant write and
+ * 404s a tenant read), which is why they live in their own list rather than
+ * being folded into the service map above.
+ *
+ * `built-in` (in-process, no endpoint) is deliberately absent: it has a
+ * connection row for classification purposes, and no address to configure.
+ */
+const BUILT_IN_ENGINE_PROVIDERS: readonly ProviderMeta[] = [
+  {
+    id: 'lm-studio',
+    label: 'LM Studio',
+    providerClass: 'engine-served',
+    hint: 'OpenAI-compatible local server. Running it on your workstation? Point this at http://localhost:1234/v1.',
+    keyLabel: 'API key (optional)',
+    keyPlaceholder: 'LM Studio accepts any token — leave blank',
+    fields: [{ name: 'baseUrl', label: 'Endpoint', placeholder: 'http://hope-lmstudio:1234/v1' }],
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    providerClass: 'engine-served',
+    hint: 'Runs beside the node rather than as a cluster service.',
+    keyLabel: 'API key (optional)',
+    keyPlaceholder: 'Ollama needs none — leave blank',
+    fields: [{ name: 'baseUrl', label: 'Endpoint', placeholder: 'http://localhost:11434' }],
+  },
+  {
+    id: 'vllm',
+    label: 'vLLM',
+    providerClass: 'engine-served',
+    keyLabel: 'API key (optional)',
+    keyPlaceholder: 'Leave blank unless the server enforces one',
+    fields: [{ name: 'baseUrl', label: 'Endpoint', placeholder: 'http://hope-vllm:8000/v1' }],
+  },
+  {
+    id: 'llama-cpp',
+    label: 'llama.cpp',
+    providerClass: 'engine-served',
+    hint: 'Serves ONE model chosen at load time, so the weights must be named as well as the endpoint.',
+    keyLabel: 'API key (optional)',
+    keyPlaceholder: 'Leave blank unless the server enforces one',
+    fields: [
+      { name: 'baseUrl', label: 'Endpoint', placeholder: 'http://hope-llama-cpp:8080' },
+      { name: 'modelPath', label: 'Model path or URL', placeholder: '/models/…  or  s3://hope-models/…', store: 'extra' },
+    ],
+  },
+];
 
 /** LLM tab — mirrors `CLOUD_BYO_PROVIDERS.llm`. */
 const LLM_PROVIDERS: readonly ProviderMeta[] = [
@@ -179,6 +256,8 @@ const MODEL_REGISTRY_PROVIDERS: readonly ProviderMeta[] = [
   {
     id: 'huggingface',
     label: 'Hugging Face Hub',
+    providerClass: 'built-in',
+    hint: 'Blank pulls public repos anonymously. A token is what reaches a gated repo.',
     keyLabel: 'Access token',
     keyPlaceholder: 'hf_…',
     fields: [{ name: 'model', label: 'Model id (org/repo)', placeholder: 'openai/whisper-large-v3', store: 'extra' }],
@@ -186,17 +265,27 @@ const MODEL_REGISTRY_PROVIDERS: readonly ProviderMeta[] = [
   {
     id: 's3',
     label: 'S3 / MinIO weight store',
+    providerClass: 'built-in',
+    hint: 'Left blank, this is the platform’s own object storage — the endpoint and key pair come from the platform storage configuration.',
     // An S3 credential is a PAIR: the SECRET half is the encrypted key, and the
     // non-secret principal id rides in extras (the ServiceAccount.clientId
     // precedent). Neither half alone can sign a request.
     keyLabel: 'Secret access key',
-    keyPlaceholder: 'S3 secret access key',
+    keyPlaceholder: 'Leave blank to use the platform storage credentials',
     fields: [
-      { name: 'baseUrl', label: 'Endpoint', placeholder: 'https://s3.us-east-1.amazonaws.com' },
-      { name: 'accessKeyId', label: 'Access key id', placeholder: 'AKIA…', store: 'extra' },
+      { name: 'baseUrl', label: 'Endpoint', placeholder: 'Leave blank for the platform’s own storage' },
+      { name: 'accessKeyId', label: 'Access key id', placeholder: 'Leave blank for the platform’s own storage', store: 'extra' },
     ],
   },
 ];
+
+/**
+ * The PLATFORM-managed engine cards, per service (TASK-932). Rendered only on
+ * the platform tier; a service with no entry runs no engine of its own.
+ */
+export const BUILT_IN_PROVIDERS_BY_SERVICE: Partial<Record<ProviderService, readonly ProviderMeta[]>> = {
+  llm: BUILT_IN_ENGINE_PROVIDERS,
+};
 
 /** Per-service provider metadata, keyed to drive each tab's credential grid. */
 export const PROVIDERS_BY_SERVICE: Record<ProviderService, readonly ProviderMeta[]> = {
@@ -208,3 +297,35 @@ export const PROVIDERS_BY_SERVICE: Record<ProviderService, readonly ProviderMeta
   vector: VECTOR_PROVIDERS,
   'model-registry': MODEL_REGISTRY_PROVIDERS,
 };
+
+/** The class of one card, with the historical default applied. */
+export function classOf(meta: ProviderMeta): ProviderCardClass {
+  return meta.providerClass ?? 'cloud-byo';
+}
+
+/**
+ * The CLOUD VENDOR cards for one service — the ones that mean "a tenant's own
+ * account" on the tenant tier and "the platform default a tenant inherits" on
+ * the platform tier. The same list either way; only the wording differs, which
+ * is `ProviderCredentialCard`'s job, not this one's.
+ *
+ * The platform-managed cards (the built-in engines, the two model-registry
+ * rows) are deliberately NOT here: they belong to their own sections on the
+ * platform screen, and a customer tenant may not see them at all — the gateway
+ * now 404s a tenant read of one (TASK-932 R-12), so listing them under a tenant
+ * tab would render two cards whose every request fails.
+ */
+export function cloudProvidersFor(service: ProviderService): readonly ProviderMeta[] {
+  return PROVIDERS_BY_SERVICE[service].filter((meta) => classOf(meta) === 'cloud-byo');
+}
+
+/** Services with at least one cloud vendor card — the rest get no tab at all. */
+export function cloudConfigurableServices(services: readonly ProviderService[]): readonly ProviderService[] {
+  return services.filter((service) => cloudProvidersFor(service).length > 0);
+}
+
+/** The built-in inference engines the PLATFORM runs, across every service. */
+export const BUILT_IN_ENGINE_CARDS: readonly ProviderMeta[] = BUILT_IN_ENGINE_PROVIDERS;
+
+/** The built-in weight-fetch plane (`model-registry`), platform tier only. */
+export const MODEL_REGISTRY_CARDS: readonly ProviderMeta[] = MODEL_REGISTRY_PROVIDERS;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { IconPlugConnectedX, IconTestPipe } from '@tabler/icons-react';
+import { IconPlugConnectedX, IconRestore, IconTestPipe } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -13,17 +13,27 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
-import { useDeleteProviderConnection, useProviderConnection, usePutProviderConnection, useTestProviderConnection } from '../api/hooks';
+import {
+  useDeleteProviderConnection,
+  useProviderConnection,
+  usePutProviderConnection,
+  useResetProviderConnection,
+  useTestProviderConnection,
+} from '../api/hooks';
 import {
   CONNECTION_CEILINGS,
   connectionStateOf,
   declarableService,
+  platformStateOf,
   type ConnectionCeiling,
   type ConnectionState,
+  type PlatformConnectionState,
   type ProviderService,
+  type ReadinessEngine,
 } from '../api/types';
 import { ConnectionModelsEditor } from './connection-models-editor';
-import type { ProviderField, ProviderMeta } from './provider-meta';
+import { classOf, type ProviderField, type ProviderMeta } from './provider-meta';
+import type { ProviderTier } from './use-provider-scope';
 
 /** Rule 10: skeleton shaped like the loaded card. */
 function CardSkeleton() {
@@ -56,6 +66,28 @@ const STATE_LABEL: Record<ConnectionState, { label: string; variant: 'default' |
   disabled: { label: 'Disabled for this tenant', variant: 'destructive' },
 };
 
+/**
+ * The PLATFORM tier's own vocabulary (TASK-932 R-11).
+ *
+ * The map above is written from a tenant's point of view and says so in every
+ * word. Rendering it on a SYSTEM row is what produced "no key · Disabled for
+ * this tenant" on the platform's own weight store — three claims, all wrong: it
+ * needs no key, there is no tenant, and it was not a refusal.
+ */
+const PLATFORM_STATE_LABEL: Record<PlatformConnectionState, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+  'not-configured': { label: 'Not configured', variant: 'outline' },
+  'built-in': { label: 'Built-in default', variant: 'secondary' },
+  configured: { label: 'Configured', variant: 'default' },
+  off: { label: 'Off', variant: 'destructive' },
+};
+
+/** Readiness, as an engine card shows it. `unknown` = not measured, never a verdict. */
+const READINESS_LABEL: Record<ReadinessEngine['status'], { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+  up: { label: 'reachable', variant: 'secondary' },
+  down: { label: 'not answering', variant: 'destructive' },
+  unknown: { label: 'not measured', variant: 'outline' },
+};
+
 /** Parse a ceiling input: blank = clear (null); a positive integer = the cap; anything else = invalid. */
 function parseCeiling(raw: string): number | null | undefined {
   const trimmed = raw.trim();
@@ -82,11 +114,20 @@ export function ProviderCredentialCard({
   service,
   meta,
   tenantId,
+  tier = 'tenant',
+  readiness,
+  resettable = false,
   enabled: queriesEnabled = true,
 }: {
   service: ProviderService;
   meta: ProviderMeta;
   tenantId?: string;
+  /** Which tier this card is editing — it decides the WORDING, not the route. */
+  tier?: ProviderTier;
+  /** The last readiness observation for this engine, when there is one. */
+  readiness?: ReadinessEngine | undefined;
+  /** Whether this `(service, provider)` ships a built-in default to reset to. */
+  resettable?: boolean;
   enabled?: boolean;
 }) {
   const uid = useId();
@@ -94,12 +135,14 @@ export function ProviderCredentialCard({
   const putMutation = usePutProviderConnection();
   const deleteMutation = useDeleteProviderConnection();
   const testMutation = useTestProviderConnection();
+  const resetMutation = useResetProviderConnection();
 
   const [apiKey, setApiKey] = useState('');
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
   const [ceilingDraft, setCeilingDraft] = useState<Partial<Record<ConnectionCeiling, string>> | null>(null);
   const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   if (query.isPending) return <CardSkeleton />;
   if (query.error || !query.data) {
@@ -110,7 +153,15 @@ export function ProviderCredentialCard({
   const etag = query.data.etag;
   const hasKey = current.hasKey;
   const enabled = enabledDraft ?? current.enabled;
+  const platformTier = tier === 'platform';
   const state = connectionStateOf(current);
+  const platformState = platformStateOf(current);
+  const badge = platformTier ? PLATFORM_STATE_LABEL[platformState] : STATE_LABEL[state];
+  const providerClass = classOf(meta);
+  // A built-in plane row with nothing on it is not "unconfigured" — it is the
+  // platform's own default serving it (TASK-932 D-7). Said in words, because
+  // "no key" on this card previously read as a fault.
+  const runningOnPlatformDefaults = platformTier && providerClass !== 'cloud-byo' && current.version > 0 && current.enabled && !hasKey;
   const currentColumns = current as unknown as Record<string, unknown>;
 
   /** Stored value for a field: a column reads its column, an `extra` field reads `extraJson[name]`. */
@@ -122,9 +173,13 @@ export function ProviderCredentialCard({
   const ceilingValueOf = (name: ConnectionCeiling): string => ceilingDraft?.[name] ?? (current[name] == null ? '' : String(current[name]));
 
   const invalidCeilings = CONNECTION_CEILINGS.filter((c) => parseCeiling(ceilingValueOf(c.name)) === undefined).map((c) => c.label);
-  // A key is required on the FIRST save; afterwards the stored key stays and
-  // the other fields (endpoint, ceilings, enabled) can be edited on their own.
-  const canSave = invalidCeilings.length === 0 && !putMutation.isPending && (apiKey.trim().length > 0 || hasKey);
+  // A key is required on the FIRST save of a VENDOR account; afterwards the
+  // stored key stays and the other fields (endpoint, ceilings, enabled) can be
+  // edited on their own. A platform-managed row is exempt: a self-hosted engine
+  // authenticates nobody, and a built-in plane row is keyless BY DEFAULT, so
+  // demanding a key would make the normal case unsavable (TASK-932).
+  const keyOptional = providerClass !== 'cloud-byo';
+  const canSave = invalidCeilings.length === 0 && !putMutation.isPending && (keyOptional || apiKey.trim().length > 0 || hasKey);
 
   function buildBody(): Record<string, unknown> {
     const body: Record<string, unknown> = { enabled };
@@ -193,6 +248,26 @@ export function ProviderCredentialCard({
     );
   }
 
+  function handleReset() {
+    resetMutation.mutate(
+      { service, provider: meta.id, tenantId },
+      {
+        onSuccess: () => {
+          toast.success(`${meta.label} restored to its built-in default`);
+          setConfirmingReset(false);
+          // Drop every draft: what is on screen now is the SERVER's answer, and
+          // keeping a typed endpoint next to a "restored" toast would show the
+          // operator the value they just discarded.
+          setApiKey('');
+          setDraft(null);
+          setCeilingDraft(null);
+          setEnabledDraft(null);
+        },
+        onError: (error) => toast.error(error.message),
+      },
+    );
+  }
+
   function handleRemove() {
     deleteMutation.mutate(
       { service, provider: meta.id, tenantId },
@@ -215,13 +290,27 @@ export function ProviderCredentialCard({
         <h3 id={`${uid}-title`} className="text-sm font-medium">
           {meta.label}
         </h3>
-        <Badge variant={STATE_LABEL[state].variant}>{STATE_LABEL[state].label}</Badge>
+        <Badge variant={badge.variant}>{badge.label}</Badge>
         {hasKey ? (
           <Badge variant="secondary">key configured{current.keyVersion != null ? ` · v${current.keyVersion}` : ''}</Badge>
-        ) : (
+        ) : keyOptional ? null : (
           <Badge variant="outline">no key</Badge>
         )}
+        {readiness ? (
+          <Badge variant={READINESS_LABEL[readiness.status].variant} title={readiness.detail ?? undefined}>
+            {READINESS_LABEL[readiness.status].label}
+            {readiness.status === 'up' ? ` · ${readiness.loadedCount}/${readiness.listedCount} loaded` : ''}
+          </Badge>
+        ) : null}
       </div>
+      {meta.hint ? <p className="text-muted-foreground text-xs">{meta.hint}</p> : null}
+      {runningOnPlatformDefaults ? (
+        <p className="text-muted-foreground text-xs">
+          {meta.id === 's3'
+            ? 'Using platform storage credentials — endpoint and key pair come from the platform storage configuration.'
+            : 'Running on the built-in default — no credential is stored on this connection.'}
+        </p>
+      ) : null}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${uid}-key`} className="text-muted-foreground text-xs font-medium">
@@ -299,9 +388,13 @@ export function ProviderCredentialCard({
           connection entirely returns this provider to "use platform default".
         */}
         <p id={`${uid}-enabled-help`} className="text-muted-foreground pl-10 text-xs">
-          {enabled
-            ? 'Your credential serves this provider. Remove the connection to fall back to the platform-provided key.'
-            : 'Disabled blocks this provider for your tenant entirely — including the platform-provided key. Remove the connection instead to use the platform default.'}
+          {platformTier
+            ? enabled
+              ? 'This connection serves every tenant that has no opinion of its own.'
+              : 'Off means this provider serves nobody — no tenant can inherit it, and nothing falls through to another provider.'
+            : enabled
+              ? 'Your credential serves this provider. Remove the connection to fall back to the platform-provided key.'
+              : 'Disabled blocks this provider for your tenant entirely — including the platform-provided key. Remove the connection instead to use the platform default.'}
         </p>
       </div>
 
@@ -313,7 +406,12 @@ export function ProviderCredentialCard({
         `discoveredModels` comes from the last probe on THIS card, so "derive"
         reflects the credential the admin just tested.
       */}
-      {current.version > 0 && declarableService(service) ? (
+      {/*
+        NEVER on the platform tier: `declareModels` refuses a SYSTEM connection
+        outright (403 — "platform models are declared in /admin/ai-models"), so
+        the editor could only ever fail there. One home per fact.
+      */}
+      {!platformTier && current.version > 0 && declarableService(service) ? (
         <ConnectionModelsEditor
           service={service}
           provider={meta.id}
@@ -338,14 +436,40 @@ export function ProviderCredentialCard({
           variant="outline"
           size="sm"
           onClick={handleTest}
-          disabled={testMutation.isPending || (apiKey.trim().length === 0 && !hasKey)}
+          // A keyless probe is meaningful for a self-hosted engine and for the
+          // built-in plane — it is a REACHABILITY test of the endpoint, which is
+          // the only question those rows can be wrong about.
+          disabled={testMutation.isPending || (!keyOptional && apiKey.trim().length === 0 && !hasKey)}
           aria-label={`Test the ${meta.label} connection`}
-          title={apiKey.trim().length === 0 && !hasKey ? 'Enter a key (or save one) to test this connection' : undefined}
+          title={!keyOptional && apiKey.trim().length === 0 && !hasKey ? 'Enter a key (or save one) to test this connection' : undefined}
         >
           {testMutation.isPending ? <Spinner /> : <IconTestPipe aria-hidden />}
           Test connection
         </Button>
-        {current.version > 0 ? (
+        {resettable ? (
+          confirmingReset ? (
+            <>
+              <span className="text-muted-foreground text-xs">
+                Restore the built-in default
+                {meta.fields.find((f) => f.name === 'baseUrl')?.placeholder ? ` (${meta.fields.find((f) => f.name === 'baseUrl')!.placeholder})` : ''}? Any
+                stored credential on this connection is removed.
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmingReset(false)} disabled={resetMutation.isPending}>
+                Cancel
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleReset} disabled={resetMutation.isPending}>
+                {resetMutation.isPending ? <Spinner /> : null}
+                Confirm reset
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setConfirmingReset(true)} aria-label={`Reset ${meta.label} to its built-in default`}>
+              <IconRestore aria-hidden />
+              Reset to default
+            </Button>
+          )
+        ) : null}
+        {!resettable && current.version > 0 ? (
           confirmingRemove ? (
             <>
               <span className="text-muted-foreground text-xs">Remove this connection and use the platform default?</span>
