@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `In Progress` |
+| **Status** | `Completed` — 3.1.0 published (§4.5), `quick-compat-app` on 3.1.0, ALaaS updated (§4.7); owner actions A-1..A-3 recorded |
 | **Type** | `feature` (SDK surface) + `infrastructure` (release mechanics) + `docs` |
 | **Branch** | `dev-2.2` (lane K worktree `../hope-v2-t931-k`, branch `task-931-sdk`) |
 | **Raised** | 2026-09-08 |
@@ -159,6 +159,43 @@ _Not yet run. The runbook is §3; the orchestrator fills this section with the a
 | 2 | **Lane A — the ALaaSv3.0 consumer update**, held until 3.1.0 is on the registry: pin both apps to `3.1.0` + regenerate both `pnpm-lock.yaml` (they still pin `2.0.4` / `2.0.7`, so a Docker build fails `ERR_PNPM_OUTDATED_LOCKFILE`), `useSMR` → `useText` (the import no longer exists), `sttPipelineId` / `batchSttPipelineId` → `sttAgentSlug` via `VITE_SDK_STT_AGENT_SLUG`, `.npmrc` token → `${GITHUB_TOKEN}` interpolation, `Dockerfile.ui` → a BuildKit secret like its sibling. Edits land uncommitted on the owner's dirty `codeSwitchImplementation` branch and are reported file by file | lane A |
 | 3 | **Rotate the GitHub PAT committed in both ALaaS `.npmrc` files** (A-2 / TASK-930 Q-3). No agent can do this | **owner** |
 | 4 | Cosmetic: both SDK CHANGELOGs now carry the generated `## 3.1.0` block ABOVE the file's own preamble, while their hand-written `[Unreleased]` section still holds the same 3.1.0 notes. Harmless duplication; fold `[Unreleased]` into `[3.1.0]` at the next release rather than mid-publish | next release |
+
+
+### 4.7 Lane A — ALaaSv3.0 on SDK 3.1.0 (2026-09-08)
+
+**DONE.** Separate repo `~/Desktop/igglo/ARCAAI/ALaaSv3.0`, branch `codeSwitchImplementation` @
+`e6996dd`, four commits, nothing pushed (the owner pushes): `8be0fff` web_ui → `@arcaai/vox` 3.1.0;
+`a60cd8d` the ASR Agent named instead of the deprecated pipeline id; `2681c60` the live GitHub PAT
+removed from both `.npmrc`s; `e6996dd` audio-stream-svc → `@arcaai/vox-node` 3.1.0. The package
+manager is pnpm (both Dockerfiles use `--frozen-lockfile`); the stale `package-lock.json` the
+previous run half-bumped was corrected.
+
+Evidence: `web_ui` `npm run build` → 2 316 modules, built in 4.6 s; `audio-stream-svc` `nest build`
+exit 0, `npm test` 43/43 tests passed (three SUITES fail on pre-existing jest config — missing
+`moduleNameMapper` for `src/…` imports and an untransformed ESM dep — proven unrelated: the svc
+lockfile diff is exactly `@arcaai/vox-node 2.0.4 → 3.1.0`).
+
+One 2.x → 3.x break the half-step had never reached: `useSMR` was renamed `useText` on the compat
+entry; imported as `useText as useSMR` in the two consumers (same props, same return). Selectors:
+**5 of 7** references moved to `sttAgentSlug` (`constants.js` → `VITE_SDK_STT_AGENT_SLUG`,
+`ClinicalPage.jsx`, `useClinicalLogic.js` where `useAudioCapture` now carries the slug); the
+`batchSttPipelineId` pair stays on `pipelineId` **by contract** — `uploadAudioFile` /
+`FileTranscriptionService` accept only `pipelineId` in 3.1.0 (until R4). Env plumbing renamed in
+`Dockerfile.ui`, both compose files, `.env.example`, the integration doc.
+
+**Owner actions from lane A:**
+
+| # | Action |
+|---|---|
+| A-1 | **Rotate the leaked classic PAT** (`ghp_nmmW…`, `read:packages`) on GitHub. It sits in seven commits already pushed to `origin`; removing it from the tree revokes nothing. Neither Docker build ever needed the literal (build arg / BuildKit secret). |
+| A-2 | Confirm the ALaaS tenant's ASR agent slug and set `VITE_SDK_STT_AGENT_SLUG` in the deployment env. The code fallback `'realtime-transcription'` is the seeded reference agent (cloned into every tenant), an informed guess — a BLANK slug makes `mapAudioSettings` emit no `stt` key, i.e. live STT silently OFF. |
+| A-3 | Optional: `auto-install-peers=false` in web_ui's `.npmrc` drops the deprecated `@arcaai/med-ner` peer and ~1.1 MB of client-AI chunks still emitted into `dist`. |
+
+3.1.0 surfaces ALaaS could adopt next (report only): the service-account plane (one `HopeClient`
+for admin + invoke; `workingTenantId` binds at exchange), `transport: 'socket'` when a proxy
+buffers SSE, NER as an agent task (`hope.agents.invoke`, one-shot), `vox-codegen --api-key` for
+typed contracts from the published catalogue, native agent batch transcription (the only path off
+`batchSttPipelineId` before R4).
 
 ## 5. Change History
 
