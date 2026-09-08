@@ -44,7 +44,7 @@ const rule = (overrides: Record<string, unknown> = {}) =>
     rationale: null,
     predicateType: overrides.predicateType ?? WorkflowRulePredicateType.REQUIRED_NODE_TYPE,
     predicateConfig: overrides.predicateConfig ?? { nodeType: 'consultation.phiHop' },
-    paletteKey: overrides.paletteKey ?? 'consultation',
+    paletteKey: overrides.paletteKey ?? 'core',
     severity: overrides.severity ?? WorkflowRuleSeverity.ERROR,
     ruleVersion: overrides.ruleVersion ?? 1,
     effectiveFrom: new Date('2026-08-22T00:00:00Z'),
@@ -87,7 +87,7 @@ describe(' W3(b) — WorkflowInvariantRuleService', () => {
         title: 'No PHI hop skipped',
         predicateType: WorkflowRulePredicateType.REQUIRED_NODE_TYPE,
         predicateConfig: { nodeType: 'consultation.phiHop' },
-        paletteKey: 'consultation',
+        paletteKey: 'core',
         // A hostile body: the service must ignore this entirely.
         tenantId: SYSTEM_TENANT_ID,
       } as any);

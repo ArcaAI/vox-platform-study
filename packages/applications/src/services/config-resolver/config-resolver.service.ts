@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { UserProfileRepository, UserSettingsRepository, WorkflowDefinitionRepository } from '@arcaai/domains';
 import type { WorkflowGraph, WorkflowGraphNode } from '@arcaai/workflow-contract';
-import { WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
+import { classesOf } from '@arcaai/workflow-contract';
 import { IWorkflowAssignmentService } from '../workflow-assignment/IWorkflowAssignmentService';
 import { DNA_STYLE_PREFERENCE, parseDnaStylePreference } from './dna-style-preference';
 
@@ -100,11 +100,19 @@ function isActiveNodeOf(node: WorkflowGraphNode, type: string): boolean {
   return isEnabled(node) && effectiveTypeOf(node) === type;
 }
 
-/** A node that generates a document: a `core.agent`, or any `generation`-classed type (delegated or not). */
+/**
+ * A node that generates a document: a `core.agent`, or any `generation`-classed instance.
+ *
+ * TASK-893 — resolved through the contract's own `classesOf`, which answers for an INSTANCE
+ * (`core.action` → its delegate's classes ∪ `{'action'}`). The previous form looked the effective
+ * type up in `WORKFLOW_NODE_REGISTRY`, and for a `core.action` the effective type is an ACTION
+ * key — which the retirement moved out of that registry into `ACTION_CATALOGUE`. The lookup could
+ * therefore never hit, so a delegated generation node read as "not a generation node" and
+ * auto-summary stayed ON for a graph that had switched it off.
+ */
 function isGenerationNode(node: WorkflowGraphNode): boolean {
-  const type = effectiveTypeOf(node);
-  if (type === CORE_AGENT_NODE_TYPE) return true;
-  return WORKFLOW_NODE_REGISTRY[type]?.classes.includes(GENERATION_CLASS) ?? false;
+  if (node.type === CORE_AGENT_NODE_TYPE) return true;
+  return classesOf(node.type, nodeConfigOf(node)).includes(GENERATION_CLASS);
 }
 
 /** Whether one node declares the re-visit carry-forward binding. */

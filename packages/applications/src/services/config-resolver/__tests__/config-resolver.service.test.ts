@@ -63,32 +63,44 @@ describe('ConfigResolver.resolveAutoSummaryEnabled — the generation node`s `en
   });
 
   it('ON when the graph declares no generation node at all (nothing to switch off)', async () => {
-    publishGraph([{ id: 'ner', type: 'consultation.extractEntities' }]);
+    publishGraph([{ id: 'guard', type: 'core.action', config: { actionKey: 'guard.phi' } }]);
     await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
   });
 
   it('ON when the graph`s generation node is enabled', async () => {
-    publishGraph([{ id: 'synth', type: 'consultation.synthesize', config: { taskKey: 'text.finalize' } }]);
+    publishGraph([{ id: 'synth', type: 'core.agent', config: { agentRef: { slug: 'soap' } } }]);
     await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
   });
 
   it('OFF when every generation node the graph declares is switched off', async () => {
     publishGraph([
-      { id: 'synth', type: 'consultation.synthesize', config: { enabled: false } },
-      { id: 'sum', type: 'agent.summarization', config: { enabled: false } },
+      { id: 'synth', type: 'core.agent', config: { agentRef: { slug: 'soap' }, enabled: false } },
+      { id: 'sum', type: 'core.agent', config: { agentRef: { slug: 'summary' }, enabled: false } },
     ]);
     await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(false);
   });
 
-  it('a core.agent node counts as a generation node; a core.action delegating to one too', async () => {
+  it('a core.agent node counts as a generation node; one of several still enabled keeps it ON', async () => {
     publishGraph([{ id: 'a', type: 'core.agent', config: { agentRef: { slug: 'soap' } } }]);
     await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
-    publishGraph([{ id: 'a', type: 'core.action', config: { actionKey: 'consultation.synthesize', enabled: false } }]);
-    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(false);
+    publishGraph([
+      { id: 'a', type: 'core.agent', config: { agentRef: { slug: 'soap' }, enabled: false } },
+      { id: 'b', type: 'core.agent', config: { agentRef: { slug: 'summary' } } },
+    ]);
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
+  });
+
+  it('a core.action is a generation node only when its DELEGATE is generation-classed', async () => {
+    // TASK-893 — the class lookup resolves the INSTANCE through the contract's `classesOf`, so a
+    // delegated node answers with its ACTION's classes. No KEPT action is `generation`-classed
+    // (every agent-shaped key became `core.agent`), which is exactly why a graph of actions alone
+    // declares no generation node and auto-summary stays at its ON default.
+    publishGraph([{ id: 'a', type: 'core.action', config: { actionKey: 'summary.finalize', enabled: false } }]);
+    await expect(makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT })).resolves.toBe(true);
   });
 
   it('resolves the assignment for the consultation`s department', async () => {
-    publishGraph([{ id: 'synth', type: 'consultation.synthesize' }]);
+    publishGraph([{ id: 'synth', type: 'core.agent', config: { agentRef: { slug: 'soap' } } }]);
     await makeResolver().resolveAutoSummaryEnabled({ tenantId: TENANT, departmentId: DEPT });
     expect(workflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPT);
   });
