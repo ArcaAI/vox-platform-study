@@ -20,14 +20,19 @@ function graph(nodes: WorkflowGraph['nodes'], edges: WorkflowGraph['edges']): Wo
   return { version: 1, nodes, edges };
 }
 
+/** `core.data`'s one required field. The port-typing assertions never read it, but the publish
+ *  gate validates every node's config, so a bare `{}` would fail on the schema rather than on
+ *  the port relation the test is actually about. */
+const DATA_CONFIG = { mappings: [{ from: 'in.value', to: 'value' }] } as const;
+
 describe('workflowEdgePortProblems — an edge must resolve to declared ports on both ends', () => {
   it('accepts an edge whose port types match exactly', () => {
     expect(
       workflowEdgePortProblems(
         graph(
           [
-            { id: 'asr', type: 'stt.asrEngine', config: {} },
-            { id: 'out', type: 'stt.transcriptOutput', config: {} },
+            { id: 'asr', type: 'core.data', config: DATA_CONFIG },
+            { id: 'out', type: 'core.data', config: DATA_CONFIG },
           ],
           [{ id: 'e1', from: 'asr', fromPort: 'out', to: 'out', toPort: 'in' }],
         ),
@@ -40,10 +45,10 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
       workflowEdgePortProblems(
         graph(
           [
-            { id: 'gen', type: 'generate.text', config: {} },
-            { id: 'guard', type: 'guardrail.check', config: {} },
+            { id: 'gen', type: 'core.action', config: { actionKey: 'consultation.sensors', action: { onError: 'degrade' } } },
+            { id: 'guard', type: 'core.action', config: { actionKey: 'guard.moderation', action: { guardrailType: 'groundedness', failOn: 'unsafe_or_unknown', onFail: 'mark' } } },
           ],
-          [{ id: 'e1', from: 'gen', fromPort: 'out', to: 'guard', toPort: 'in' }],
+          [{ id: 'e1', from: 'gen', fromPort: 'document', to: 'guard', toPort: 'in' }],
         ),
       ),
     ).toEqual([]);
@@ -53,24 +58,24 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
     const problems = workflowEdgePortProblems(
       graph(
         [
-          { id: 'audio', type: 'stt.audioInput', config: {} },
-          { id: 'out', type: 'stt.transcriptOutput', config: {} },
+          { id: 'audio', type: 'core.agent', config: { agentRef: { slug: 'demo-agent' } } },
+          { id: 'out', type: 'core.data', config: DATA_CONFIG },
         ],
-        [{ id: 'e1', from: 'audio', fromPort: 'out', to: 'out', toPort: 'in' }],
+        [{ id: 'e1', from: 'audio', fromPort: 'audio', to: 'out', toPort: 'in' }],
       ),
     );
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('/edges/0');
-    expect(problems[0]).toContain('stream<audio>');
-    expect(problems[0]).toContain('transcript');
+    expect(problems[0]).toContain('audio');
+    expect(problems[0]).toContain('object');
   });
 
   it('REFUSES an unknown output port name (D-5: a non-empty string is not a port)', () => {
     const problems = workflowEdgePortProblems(
       graph(
         [
-          { id: 'asr', type: 'stt.asrEngine', config: {} },
-          { id: 'out', type: 'stt.transcriptOutput', config: {} },
+          { id: 'asr', type: 'core.data', config: DATA_CONFIG },
+          { id: 'out', type: 'core.data', config: DATA_CONFIG },
         ],
         [{ id: 'e1', from: 'asr', fromPort: 'not_a_port', to: 'out', toPort: 'in' }],
       ),
@@ -84,8 +89,8 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
     const problems = workflowEdgePortProblems(
       graph(
         [
-          { id: 'asr', type: 'stt.asrEngine', config: {} },
-          { id: 'out', type: 'stt.transcriptOutput', config: {} },
+          { id: 'asr', type: 'core.data', config: DATA_CONFIG },
+          { id: 'out', type: 'core.data', config: DATA_CONFIG },
         ],
         [{ id: 'e1', from: 'asr', fromPort: 'out', to: 'out', toPort: 'not_a_port' }],
       ),
@@ -98,8 +103,8 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
     const problems = workflowEdgePortProblems(
       graph(
         [
-          { id: 'asr', type: 'stt.asrEngine', config: {} },
-          { id: 'out', type: 'stt.transcriptOutput', config: {} },
+          { id: 'asr', type: 'core.data', config: DATA_CONFIG },
+          { id: 'out', type: 'core.data', config: DATA_CONFIG },
         ],
         // `in` is an INPUT port on stt.asrEngine — it cannot be an edge source.
         [{ id: 'e1', from: 'asr', fromPort: 'in', to: 'out', toPort: 'in' }],
@@ -114,7 +119,7 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
       graph(
         [
           { id: 'a', type: 'not.a.node', config: {} },
-          { id: 'b', type: 'core.end', config: {} },
+          { id: 'b', type: 'core.output', config: {} },
         ],
         [{ id: 'e1', from: 'a', fromPort: 'next', to: 'b', toPort: 'after' }],
       ),
@@ -131,11 +136,11 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
     const problems = workflowEdgePortProblems(
       graph(
         [
-          { id: 'audio', type: 'stt.audioInput', config: {} },
-          { id: 'out', type: 'stt.transcriptOutput', config: {} },
+          { id: 'audio', type: 'core.agent', config: { agentRef: { slug: 'demo-agent' } } },
+          { id: 'out', type: 'core.data', config: DATA_CONFIG },
         ],
         [
-          { id: 'e1', from: 'audio', fromPort: 'out', to: 'out', toPort: 'in' },
+          { id: 'e1', from: 'audio', fromPort: 'audio', to: 'out', toPort: 'in' },
           { id: 'e2', from: 'audio', fromPort: 'nope', to: 'out', toPort: 'in' },
         ],
       ),
@@ -148,8 +153,8 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
       workflowEdgePortProblems(
         graph(
           [
-            { id: 'start', type: 'core.start', config: {} },
-            { id: 'end', type: 'core.end', config: {} },
+            { id: 'start', type: 'core.trigger', config: {} },
+            { id: 'end', type: 'core.output', config: {} },
           ],
           [{ id: 'e1', from: 'start', fromPort: 'next', to: 'end', toPort: 'after' }],
         ),
@@ -160,16 +165,16 @@ describe('workflowEdgePortProblems — an edge must resolve to declared ports on
 
 describe('isValidConnection — the canvas predicate (same relation, one edge at a time)', () => {
   it('agrees with workflowEdgePortProblems on a legal connection', () => {
-    expect(isValidConnection('stt.asrEngine', 'out', 'stt.transcriptOutput', 'in')).toBe(true);
+    expect(isValidConnection('core.data', 'out', 'core.data', 'in')).toBe(true);
   });
 
   it('is false for an unregistered node type', () => {
-    expect(isValidConnection('not.a.node', 'out', 'core.end', 'after')).toBe(false);
+    expect(isValidConnection('not.a.node', 'out', 'core.output', 'after')).toBe(false);
   });
 
   it('is false for an unknown port on either end', () => {
-    expect(isValidConnection('stt.asrEngine', 'nope', 'stt.transcriptOutput', 'in')).toBe(false);
-    expect(isValidConnection('stt.asrEngine', 'out', 'stt.transcriptOutput', 'nope')).toBe(false);
+    expect(isValidConnection('core.data', 'nope', 'core.data', 'in')).toBe(false);
+    expect(isValidConnection('core.data', 'out', 'core.data', 'nope')).toBe(false);
   });
 
   it('never throws on arbitrary input', () => {
@@ -184,8 +189,8 @@ describe('the publish gate (now `publishFindings`, via the string adapter)', () 
       workflowPublishProblems(
         graph(
           [
-            { id: 'asr', type: 'stt.asrEngine', config: {} },
-            { id: 'out', type: 'stt.transcriptOutput', config: {} },
+            { id: 'asr', type: 'core.data', config: DATA_CONFIG },
+            { id: 'out', type: 'core.data', config: DATA_CONFIG },
           ],
           [{ id: 'e1', from: 'asr', fromPort: 'out', to: 'out', toPort: 'in' }],
         ),
@@ -207,9 +212,9 @@ describe('the publish gate (now `publishFindings`, via the string adapter)', () 
   });
 
   it('surfaces a descriptor-contract violation for a node type used by the graph', () => {
-    const problems = workflowPublishProblems(graph([{ id: 'a', type: 'core.start', config: {} }], []), {
+    const problems = workflowPublishProblems(graph([{ id: 'a', type: 'core.data', config: DATA_CONFIG }], []), {
       registry: {
-        'core.start': { ...WORKFLOW_NODE_REGISTRY['core.start'], lane: 'durable', idempotent: false },
+        'core.data': { ...WORKFLOW_NODE_REGISTRY['core.data'], lane: 'durable', idempotent: false },
       },
     });
     expect(problems.some((problem) => problem.includes('idempotent'))).toBe(true);
@@ -218,43 +223,42 @@ describe('the publish gate (now `publishFindings`, via the string adapter)', () 
 
 describe('requires[] — guard attachment, checked PER NODE INSTANCE', () => {
   // Every node in the shipped registry declares `requires: []` (no node demands a guard
-  // attachment yet — the `guard.*` node types the target catalogue names do not exist).
-  // The MECHANISM is what this ticket delivers, so it is exercised against a synthetic
-  // registry overlay rather than by inventing a clinical policy the owner has not set.
+  // attachment). The MECHANISM is what this ticket delivers, so it is exercised against a
+  // synthetic registry overlay rather than by inventing a clinical policy the owner has not set.
   const overlay = {
-    'generate.text': { ...WORKFLOW_NODE_REGISTRY['generate.text'], requires: ['guardrail.check'] },
+    'core.agent': { ...WORKFLOW_NODE_REGISTRY['core.agent'], requires: ['core.data'] },
   };
 
   it('REFUSES a node instance whose required guard is not attached to THAT instance', () => {
     const problems = workflowPublishProblems(
       graph(
         [
-          { id: 'gen_a', type: 'generate.text', config: {} },
-          { id: 'gen_b', type: 'generate.text', config: {} },
-          { id: 'guard', type: 'guardrail.check', config: {} },
+          { id: 'gen_a', type: 'core.agent', config: { agentRef: { slug: 'demo-agent' } } },
+          { id: 'gen_b', type: 'core.agent', config: { agentRef: { slug: 'demo-agent' } } },
+          { id: 'guard', type: 'core.data', config: DATA_CONFIG },
         ],
-        [{ id: 'e1', from: 'gen_a', fromPort: 'out', to: 'guard', toPort: 'in' }],
+        [{ id: 'e1', from: 'gen_a', fromPort: 'data', to: 'guard', toPort: 'in' }],
       ),
       { registry: overlay },
     );
     // `gen_a` is guarded; `gen_b` is not — per-instance, not per-type.
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('gen_b');
-    expect(problems[0]).toContain('guardrail.check');
+    expect(problems[0]).toContain('core.data');
   });
 
   it('accepts a graph where every instance carries its required guard', () => {
     const problems = workflowPublishProblems(
       graph(
         [
-          { id: 'gen_a', type: 'generate.text', config: {} },
-          { id: 'gen_b', type: 'generate.text', config: {} },
-          { id: 'guard_a', type: 'guardrail.check', config: {} },
-          { id: 'guard_b', type: 'guardrail.check', config: {} },
+          { id: 'gen_a', type: 'core.agent', config: { agentRef: { slug: 'demo-agent' } } },
+          { id: 'gen_b', type: 'core.agent', config: { agentRef: { slug: 'demo-agent' } } },
+          { id: 'guard_a', type: 'core.data', config: DATA_CONFIG },
+          { id: 'guard_b', type: 'core.data', config: DATA_CONFIG },
         ],
         [
-          { id: 'e1', from: 'gen_a', fromPort: 'out', to: 'guard_a', toPort: 'in' },
-          { id: 'e2', from: 'gen_b', fromPort: 'out', to: 'guard_b', toPort: 'in' },
+          { id: 'e1', from: 'gen_a', fromPort: 'data', to: 'guard_a', toPort: 'in' },
+          { id: 'e2', from: 'gen_b', fromPort: 'data', to: 'guard_b', toPort: 'in' },
         ],
       ),
       { registry: overlay },
@@ -267,8 +271,8 @@ describe('requires[] — guard attachment, checked PER NODE INSTANCE', () => {
       workflowPublishProblems(
         graph(
           [
-            { id: 'gen', type: 'generate.text', config: {} },
-            { id: 'deliver', type: 'output.deliver', config: {} },
+            { id: 'gen', type: 'core.data', config: DATA_CONFIG },
+            { id: 'deliver', type: 'core.output', config: {} },
           ],
           [{ id: 'e1', from: 'gen', fromPort: 'out', to: 'deliver', toPort: 'in' }],
         ),
