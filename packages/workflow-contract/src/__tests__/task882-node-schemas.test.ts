@@ -6,8 +6,9 @@
  *    reads the binding (`api_client.py:384`, `_llm_policy.py:134`), so the property was a
  *    configuration promise nothing kept.
  * 2. `carryForward` — the re-visit carry-forward decision lives on the assigned graph, not on
- *    the retired `agentic.revisit.carryForwardEnabled` key: the consultation palette's prompt
- *    composition node and the `core` vocabulary's agent node each declare it.
+ *    the retired `agentic.revisit.carryForwardEnabled` key. It was declared by the consultation
+ *    palette's prompt-composition node and by the `core` vocabulary's agent node; TASK-893
+ *    Phase 4 retired the former, so `core.agent.overrides` is the one remaining carrier.
  */
 import { describe, expect, it } from 'vitest';
 import { NODE_CONFIG_SCHEMAS } from '../node-config-schemas';
@@ -23,14 +24,16 @@ describe('TASK-882 — `llmBinding` is declared by no node type', () => {
 });
 
 describe('TASK-882 — `carryForward` rides on the context/agent node', () => {
-  it('`consultation.assemblePrompt` declares an optional boolean `carryForward`', () => {
-    const property = propertiesOf('consultation.assemblePrompt').carryForward;
-    expect(property).toMatchObject({ type: 'boolean' });
-    expect(NODE_CONFIG_SCHEMAS['consultation.assemblePrompt'].required).not.toContain('carryForward');
+  it('no node declares `carryForward` at the TOP level any more', () => {
+    // `consultation.assemblePrompt` was the one that did, and it left with the legacy palettes.
+    // The decision now rides where the agent's other per-node adjustments do — under `overrides`.
+    const topLevel = Object.keys(NODE_CONFIG_SCHEMAS).filter((key) => Object.hasOwn(propertiesOf(key), 'carryForward'));
+    expect(topLevel).toEqual([]);
   });
 
   it('`core.agent.overrides` declares an optional boolean `carryForward`', () => {
     const overrides = propertiesOf('core.agent').overrides as { properties?: Record<string, Record<string, unknown>> };
     expect(overrides.properties?.carryForward).toMatchObject({ type: 'boolean' });
+    expect(NODE_CONFIG_SCHEMAS['core.agent'].required).not.toContain('carryForward');
   });
 });

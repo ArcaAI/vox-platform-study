@@ -47,76 +47,6 @@
 
 export type NodeConfigSchema = Readonly<Record<string, unknown>>;
 
-/** Summarization palette — copied verbatim from `contracts/nodes/*.schema.json`. */
-const INPUT_CONTEXT_BINDING_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/input.context_binding.schema.json',
-  title: 'input.context_binding node config (N-1, safety class: mandatory)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['contextSchema', 'bindings'],
-  properties: {
-    contextSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['schemaVersion', 'kinds'],
-      properties: {
-        schemaVersion: { type: 'string', const: '1.0' },
-        kinds: {
-          type: 'array',
-          minItems: 1,
-          maxItems: 64,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['key', 'label', 'primitive', 'phiClass', 'cardinality', 'lifecycle', 'producedBy'],
-            properties: {
-              key: { type: 'string', pattern: '^[a-z0-9_]{2,48}$' },
-              label: { type: 'string', minLength: 1, maxLength: 200 },
-              primitive: { type: 'string', enum: ['TEXT', 'STRUCTURED'] },
-              phiClass: { type: 'string', enum: ['PHI', 'NON_PHI'] },
-              cardinality: { type: 'string', enum: ['ONE', 'MANY'] },
-              lifecycle: { type: 'string', enum: ['PRE', 'DURING', 'POST', 'ANY'] },
-              producedBy: { type: 'array', minItems: 1, items: { type: 'string', enum: ['CLIENT', 'AGENT', 'SYSTEM'] } },
-              required: { type: 'boolean' },
-              description: { type: 'string', maxLength: 2000 },
-            },
-          },
-        },
-        outputs: {
-          type: 'array',
-          maxItems: 64,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['key', 'primitive'],
-            properties: {
-              key: { type: 'string', pattern: '^[a-z0-9_]{2,48}$' },
-              label: { type: 'string', maxLength: 200 },
-              description: { type: 'string', maxLength: 2000 },
-              primitive: { type: 'string', enum: ['TEXT', 'STRUCTURED'] },
-            },
-          },
-        },
-      },
-    },
-    bindings: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 64,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['kindKey', 'from'],
-        properties: {
-          kindKey: { type: 'string', pattern: '^[a-z0-9_]{2,48}$' },
-          from: { type: 'string', minLength: 1, maxLength: 128 },
-        },
-      },
-    },
-  },
-});
-
 /**
  * DD-11's prompt binding, as two config keys on the node that carries it.
  *
@@ -267,26 +197,6 @@ const PROMPT_TEMPLATE_REF_SCHEMA: NodeConfigSchema = Object.freeze({
   },
 });
 
-const GENERATE_TEXT_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/generate.text.schema.json',
-  title: 'generate.text node config (N-3, safety class: mandatory, critical)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['taskKey'],
-  properties: {
-    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'] },
-    ...PROMPT_BINDING_PROPERTIES,
-    ...DOCUMENT_BINDING_PROPERTIES,
-    systemPrompt: { type: 'string', maxLength: 50000 },
-    temperature: { type: 'number', minimum: 0, maximum: 2 },
-    maxTokens: { type: 'integer', minimum: 1 },
-    topP: { type: 'number', minimum: 0, maximum: 1 },
-    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
-    onError: { type: 'string', enum: ['fail', 'degrade'] },
-  },
-});
-
 const GUARDRAIL_CHECK_SCHEMA: NodeConfigSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://arcaai.dev/hope/workflow-nodes/guardrail.check.schema.json',
@@ -310,150 +220,6 @@ const GUARDRAIL_CHECK_SCHEMA: NodeConfigSchema = Object.freeze({
     // only together with a real promotion mechanism.
     onFail: { type: 'string', enum: ['mark'] },
   },
-});
-
-const OUTPUT_DELIVER_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/output.deliver.schema.json',
-  title: 'output.deliver node config (N-5, safety class: mandatory)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['outputs'],
-  properties: {
-    outputs: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 64,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['key', 'primitive'],
-        properties: {
-          key: { type: 'string', pattern: '^[a-z0-9_]{2,48}$' },
-          label: { type: 'string', maxLength: 200 },
-          description: { type: 'string', maxLength: 2000 },
-          primitive: { type: 'string', enum: ['TEXT', 'STRUCTURED'] },
-        },
-      },
-    },
-  },
-});
-
-// -----------------------------------------------------------------------------------------
-// STT palette — copied verbatim from `contracts/nodes/*.schema.json`.
-// -----------------------------------------------------------------------------------------
-const STT_AUDIO_INPUT_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/stt.audioInput.schema.json',
-  title: 'stt.audioInput node config (mandatory)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['mode'],
-  properties: {
-    mode: { type: 'string', enum: ['realtime', 'batch'] },
-    mediaId: { type: 'string', minLength: 1, maxLength: 128 },
-    audioUri: { type: 'string', minLength: 1, maxLength: 2048 },
-  },
-});
-
-const STT_VAD_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/stt.vad.schema.json',
-  title: 'stt.vad node config (optional)',
-  type: 'object',
-  additionalProperties: false,
-  properties: { modelSlug: { type: 'string', minLength: 1, maxLength: 100 } },
-});
-
-const STT_NOISE_FILTER_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/stt.noiseFilter.schema.json',
-  title: 'stt.noiseFilter node config (optional)',
-  type: 'object',
-  additionalProperties: false,
-  properties: { modelSlug: { type: 'string', minLength: 1, maxLength: 100 } },
-});
-
-const STT_DIARIZATION_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/stt.diarization.schema.json',
-  title: 'stt.diarization node config (optional)',
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    modelSlug: { type: 'string', minLength: 1, maxLength: 100 },
-    embeddingModelSlug: { type: 'string', minLength: 1, maxLength: 100 },
-  },
-});
-
-const STT_LANGUAGE_DETECTION_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/stt.languageDetection.schema.json',
-  title: 'stt.languageDetection node config (optional)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['mode'],
-  properties: {
-    mode: { type: 'string', enum: ['single', 'code_switch', 'auto'] },
-    languageModeId: { type: 'string', enum: ['en', 'ml', 'ml-en', 'vi', 'vi-en', 'auto'] },
-  },
-});
-
-const STT_ASR_ENGINE_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/stt.asrEngine.schema.json',
-  title: 'stt.asrEngine node config (mandatory)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['modelSlug'],
-  properties: {
-    modelSlug: { type: 'string', minLength: 1, maxLength: 100 },
-    onError: { type: 'string', enum: ['fail', 'degrade'] },
-  },
-});
-
-const STT_TRANSCRIPT_OUTPUT_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/stt.transcriptOutput.schema.json',
-  title: 'stt.transcriptOutput node config (mandatory)',
-  type: 'object',
-  additionalProperties: false,
-  properties: {},
-});
-
-const STT_PHI_HOP_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/stt.phiHop.schema.json',
-  title: 'stt.phiHop node config (optional guardrail redaction — PLACEHOLDER, not landed)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['mode'],
-  properties: { mode: { type: 'string', enum: ['pseudonymize', 'full-redact'] } },
-});
-
-// -----------------------------------------------------------------------------------------
-// Palette-agnostic utility/marker nodes — no committed schema document; read directly off
-// the interpreter activity (`activities.py`, cited in this module's docstring).
-// -----------------------------------------------------------------------------------------
-const NOOP_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'noop node config (test/smoke-test utility, all fields optional)',
-  description:
-    'Mirrors interpreter_noop (activities.py): accepts raise_error to exercise the DEGRADED path and sleep_seconds to hold the node in flight, both test conveniences rather than business config.',
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    raise_error: { type: 'boolean' },
-    sleep_seconds: { type: 'number', minimum: 0 },
-  },
-});
-
-/** `core.start`/`core.end` execute nothing and read no config (activities.py) — the schema
- *  says so explicitly rather than leaving the node's config an unexplained "no schema known". */
-const BOUNDARY_MARKER_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'boundary marker node config (none — the node executes nothing)',
-  type: 'object',
-  additionalProperties: false,
-  properties: {},
 });
 
 // -----------------------------------------------------------------------------------------
@@ -555,68 +321,6 @@ const CONSULTATION_CONSENT_GATE_SCHEMA: NodeConfigSchema = Object.freeze({
   properties: {},
 });
 
-/**
- * `consultation.hitlGate` — the ONE node in the registry carrying the `gate` class, which is
- * what makes its config surface unique.
- *
- * Its ACTIVITY reads no config. Its real consumer is the TYPESCRIPT COMPILER: `compileGate`
- * (`compiler.ts:153-166`) lifts a `gate`-classed node out of `stages` into `gates` and reads
- * four fields straight off `node.config` — `gateType`, `blocking`, `timeoutSeconds`,
- * `onTimeout`. Declaring `{}` here (as the first pass did) told the Studio inspector this node
- * takes no configuration, so an admin could not author the blocking/timeout behaviour of the
- * platform's only durable human wait even though the compiler honours it.
- *
- * `onError` is absent on purpose: `compileGate` never reads it, and `hitlGate` is not
- * `activity`-classed, so WF-CONS-019 does not apply.
- */
-const CONSULTATION_HITL_GATE_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation.hitlGate node config (N-13, the one durable human wait — consumed by compileGate, not by the activity)',
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    gateType: { type: 'string', minLength: 1, maxLength: 64, description: 'Defaults to the node type when unset (compiler.ts:158).' },
-    blocking: { type: 'boolean', default: true, description: 'Anything other than an explicit `false` blocks (compiler.ts:159).' },
-    timeoutSeconds: { type: 'integer', minimum: 1, description: 'Clamped to the compiled caps; defaults to `caps.maxNodeSeconds`.' },
-    onTimeout: {
-      type: 'string',
-      minLength: 1,
-      maxLength: 64,
-      // compiler.ts:161-164 states the invariant: a timeout ALWAYS resolves to a non-approval
-      // outcome. No enum is declared because the compiler accepts any string and defaults to
-      // 'TIMED_OUT'; pinning a taxonomy here would be a new design decision, not a wiring-up.
-      description: 'Outcome recorded when the wait times out; defaults to TIMED_OUT. Never a value meaning "approved" (INV-001/INV-147/INV-181).',
-    },
-  },
-});
-
-const CONSULTATION_CAPTURE_BINDING_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation.captureBinding node config (N-2, safety class: mandatory)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['onError'],
-  properties: {
-    action: { type: 'string', minLength: 1, maxLength: 64, description: 'Capture action to bind (`payload.config["action"]`).' },
-    persistSnapshot: { type: 'boolean', default: true, description: 'Persist a capture snapshot alongside the binding.' },
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
-
-const CONSULTATION_EXTRACT_ENTITIES_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation.extractEntities node config (N-3, the NER node)',
-  type: 'object',
-  additionalProperties: false,
-  // `requiresFinalized` is REQUIRED by WF-CONS-017, which additionally pins it to `true`. The
-  // schema governs SHAPE and the rule governs VALUE — keeping the split is why a golden `fail`
-  // fixture authoring `false` still parses and then fails on the rule it was written to exercise.
-  required: ['requiresFinalized', 'onError'],
-  properties: {
-    requiresFinalized: { type: 'boolean', description: 'WF-CONS-017 — extraction may only read a FINALIZED transcript segment.' },
-    language: { type: 'string', minLength: 2, maxLength: 16, default: 'en' },
-    persist: { type: 'boolean', default: true, description: 'Persist extracted entities (the node`s externalWrite leg).' },
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
-
 const CONSULTATION_BIND_TERMINOLOGY_SCHEMA: NodeConfigSchema = Object.freeze({
   title: 'consultation.bindTerminology node config (N-4)',
   type: 'object',
@@ -702,53 +406,6 @@ const CARRY_FORWARD_PROPERTY: NodeConfigSchema = Object.freeze({
     "Re-visit carry-forward. When true, a consultation with a parent visit carries the parent's most authoritative summary into this prompt as a labeled, non-authoritative prior that must be re-confirmed against the current transcript. Absent is OFF.",
 });
 
-const CONSULTATION_ASSEMBLE_PROMPT_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation.assemblePrompt node config (N-7)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['requiresFinalized', 'onError'],
-  properties: {
-    requiresFinalized: { type: 'boolean', description: 'WF-CONS-018 — the prompt may only be assembled from FINALIZED material.' },
-    // The prompt-assembly node is the one most likely to reference a MANAGED template rather
-    // than the inline `template` string below, so it must be able to carry — and keep — a pin.
-    ...PROMPT_BINDING_PROPERTIES,
-    template: { type: 'string', maxLength: 50000 },
-    dnaStyleId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' },
-    conversationLanguage: { type: 'string', minLength: 2, maxLength: 16 },
-    carryForward: CARRY_FORWARD_PROPERTY,
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
-
-/**
- * `interpreter_consultation_synthesize` is `return await interpreter_text_generate(payload)` —
- * verbatim delegation to the summarization palette's N-3 (`consultation_compose.py:151-200`,
- * which states the reason: one generation engine, not a second copy). Its config surface is
- * therefore `generate.text`'s, plus `producesCode`.
- */
-const CONSULTATION_SYNTHESIZE_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation.synthesize node config (N-8, generation)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['producesCode', 'onError'],
-  properties: {
-    producesCode: {
-      type: 'boolean',
-      description:
-        'WF-CONS-015 pins this to false — the synthesizer drafts prose. Code binding belongs to consultation.bindTerminology, against a terminology server, not to a language model recalling codes.',
-    },
-    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'] },
-    ...PROMPT_BINDING_PROPERTIES,
-    ...DOCUMENT_BINDING_PROPERTIES,
-    systemPrompt: { type: 'string', maxLength: 50000 },
-    temperature: { type: 'number', minimum: 0, maximum: 2 },
-    maxTokens: { type: 'integer', minimum: 1 },
-    topP: { type: 'number', minimum: 0, maximum: 1 },
-    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
-
 /** `consultation.sensors` (deterministic) and `consultation.inferentialSensors` (LLM judge).
  *  Neither activity reads `payload.config` beyond the palette-wide error policy — model and
  *  provider selection is `AiRoutingPolicy`'s (SYSTEM default row), never a node literal
@@ -795,82 +452,6 @@ const CONSULTATION_FINALIZE_ASSURANCE_SCHEMA: NodeConfigSchema = Object.freeze({
 // expressible in the authorable subset, and the SOAP shape is code-owned rather than tenant
 // business, so the enum is the honest authorable surface and the default keeps working.
 // -----------------------------------------------------------------------------------------
-/**
- * NOTE — the committed seed carries a DEAD `publishTo` this schema deliberately omits.
- *
- * `seed/23-arcaai-workflow-authoring.ts:134` authors
- * `{ publishTo: 'live-summary', onError: 'degrade' }` on the `n_realtime` node. Nothing reads
- * `publishTo`: `grep -rn "publishTo" apps/harness packages/workflow-contract` returns nothing.
- * The activity publishes to a FIXED channel (`consultation:live-summary:{id}`), not a
- * configurable one, so the key is decorative — it describes a capability the runtime does not
- * have.
- *
- * It is deliberately NOT declared here. `additionalProperties: false` plus an undeclared key is
- * the honest statement that the field does nothing; adding it to keep the seed "valid" would
- * document a knob that silently gates nothing, which is the same mistake as
- * `guardrail.check.onFail: 'abort'`.
- *
- * This is LATENT, not live: `configSchema` is never enforced during validation or publish — its
- * only consumer is `workflow-definition.dto.mapper.ts:86`, which surfaces it to the UI. So the
- * seed keeps working today. **The seed-migration lane must DROP `publishTo` from that node**
- * (alongside the port rewrite described in `node-ports.ts` NOTE), rather than this
- * schema being loosened to accommodate it.
- */
-const CONSULTATION_REALTIME_SUMMARY_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation.realtimeSummary node config (W1, generation, externalWrite — publishes to the live feed)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['onError'],
-  properties: {
-    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
-    ...PROMPT_BINDING_PROPERTIES,
-    ...DOCUMENT_BINDING_PROPERTIES,
-    windowChars: { type: 'integer', minimum: 1, description: 'How much of the tail of the running transcript each interim summary reads.' },
-    systemPrompt: { type: 'string', maxLength: 50000 },
-    temperature: { type: 'number', minimum: 0, maximum: 2 },
-    maxTokens: { type: 'integer', minimum: 1 },
-    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
-
-const CONSULTATION_SUGGESTIONS_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation.suggestions node config (W2, generation — a PROPOSAL surface, writes nothing)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['onError'],
-  properties: {
-    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
-    ...PROMPT_BINDING_PROPERTIES,
-    ...DOCUMENT_BINDING_PROPERTIES,
-    maxSuggestions: {
-      type: 'integer',
-      minimum: 0,
-      description: 'Upper bound on suggestions returned per turn; 0 disables the surface without removing the node.',
-    },
-    temperature: { type: 'number', minimum: 0, maximum: 2 },
-    maxTokens: { type: 'integer', minimum: 1 },
-    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
-
-const CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation.proposeCorrections node config (W3, generation — PROPOSES corrections, never applies them)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['onError'],
-  properties: {
-    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
-    ...PROMPT_BINDING_PROPERTIES,
-    ...DOCUMENT_BINDING_PROPERTIES,
-    language: { type: 'string', minLength: 2, maxLength: 16, default: 'en' },
-    temperature: { type: 'number', minimum: 0, maximum: 2 },
-    maxTokens: { type: 'integer', minimum: 1 },
-    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
 
 // ---------------------------------------------------------------------------------------------
 // The ENDPOINT STAGE — the five `trigger: 'on-end'` endpoint node types.
@@ -986,108 +567,6 @@ const HARNESS_FINALIZE_SCHEMA: NodeConfigSchema = Object.freeze({
 // do not fork the engine", and a forked SCHEMA is how a forked implementation starts. Only the
 // two node types with no existing engine node carry a schema of their own, below.
 // -----------------------------------------------------------------------------------------
-
-/**
- * `agent.dna_redaction` — the DNA writing-style redaction pass, which turns from a
- * resolver flag triple into a NODE.
- *
- * The triple was `dnaRedactionEnabled` (tenant cascade) AND the doctor's `dnaStyleEnabled` opt-in
- * AND the department default agent's `dnaStylePolicy` veto. The veto retired with
- * `DepartmentAgent` and stays retired (owner ruling: "a consultation both surviving gates enable
- * IS redacted"). What remains migrates here as follows, and the split is deliberate:
- *
- *  - the TENANT gate becomes the NODE ITSELF. A tenant enables redaction by placing this node in
- *    its published graph; there is no separate boolean that can disagree with the graph.
- *  - the DOCTOR opt-in stays a doctor-scope setting, because it is a clinician's own preference
- * over their own writing style ( P-4 makes that ownership explicit). `requireDoctorOptIn`
- *    is the node's declaration of whether it honours that opt-in — default TRUE, which is the
- *    two-gate behaviour verbatim.
- */
-const AGENT_DNA_REDACTION_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'agent.dna_redaction node config (§11 — the DNA-redaction pass as a node)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['onError'],
-  properties: {
-    requireDoctorOptIn: {
-      type: 'boolean',
-      default: true,
-      description:
-        "Whether the consulting doctor's own DNA opt-in is still required for this node to redact. TRUE reproduces the surviving two-gate behaviour exactly; FALSE makes the tenant's placement of this node sufficient.",
-    },
-    dnaStyleId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' },
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
-
-/**
- * `agent.dna_style` — TASK-882: the DNA WRITING-STYLE gate as a node.
- *
- * It replaces the tenant/department tier of the retired `pipeline.dnaStyleEnabled` toggle: a
- * tenant applies (and learns) a doctor's DNA writing style by placing this node, enabled, on its
- * consultation graph. The doctor's own opt-out is NOT on the node — it is the clinician's
- * preference over their own writing style (`UserSettings`, `dna` / `styleEnabled`), written by
- * `PUT dna-writing-styles/settings` and always honoured. The node therefore carries nothing but
- * the shared `onError`; presence + `enabled` IS the configuration.
- */
-const AGENT_DNA_STYLE_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'agent.dna_style node config (TASK-882 — the DNA writing-style gate as a node)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['onError'],
-  properties: {
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
-
-/**
- * `agent.important_findings` — the tenant's OWN definition of what matters, as a node.
- *
- * found no importance layer of any kind on the platform, and put the design
- * question to the owner. The answer was not a taxonomy, it was a configuration contract:
- *
- * > "'Important' information or findings will be mined/generated/extracted by agent following a
- * > set of instructions defined/declared/overwriten by tenant admin for using LLM to detect,
- * > extract, picking-up knowledge from consultation context."
- *
- * Read that as a schema and it says exactly what may and may not appear below. What MAY: a
- * binding to the tenant's instructions, and the tuning knobs a bounded LLM call needs. What may
- * NOT, and is asserted absent by `important-findings-and-grounding.task815.test.ts`: a severity
- * enum, a red-flag term list, an allergy-alert class, an importance threshold. Every one of those
- * is the platform answering the question the owner assigned to the tenant admin — and a
- * `default` on any of them would make the platform's answer the one that ships.
- *
- * `promptTemplateId` is therefore the whole capability. The instruction set is a `PromptTemplate`
- * the tenant authors, versions and approves through the governance every other governed prompt
- * goes through, and the tenant -> SYSTEM cascade is expressed the way this substrate expresses
- * every binding: the node names a template id, which may be the tenant's own or the SYSTEM
- * platform default it inherits. `evalGate` rides along with the prompt binding for the same
- * reason it does everywhere else (see `PROMPT_BINDING_PROPERTIES`).
- *
- * `taskKey` selects the `AiTaskDefault` routing key, NOT a model: selection resolves tenant ->
- * SYSTEM at run time and FAILS CLOSED. There is no provider or model field here, deliberately.
- */
-const AGENT_IMPORTANT_FINDINGS_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'agent.important_findings node config (§14a — important findings as tenant-authored instructions)',
-  type: 'object',
-  additionalProperties: false,
-  required: ['onError'],
-  properties: {
-    ...PROMPT_BINDING_PROPERTIES,
-    taskKey: {
-      type: 'string',
-      description:
-        'The AiTaskDefault routing key this node selects its text provider/model under. A ROUTING key, never a model id — selection resolves tenant -> SYSTEM and fails closed.',
-    },
-    maxFindings: {
-      type: 'integer',
-      minimum: 1,
-      description:
-        'Upper bound on findings returned per turn. A bounded-output knob, not a ranking policy — WHICH findings matter is the tenant instruction`s answer, never this node`s.',
-    },
-    onError: CONSULTATION_ON_ERROR,
-  },
-});
 
 /**
  * What ONE grounding policy may be pointed at — and it is the node's own evaluation inputs, not
@@ -1228,41 +707,6 @@ const ROW_REFERENCE_PROPERTY = Object.freeze({
 });
 
 /**
- * The agent node's ONE provider binding, in two mutually exclusive shapes.
- *
- * `routingPolicyId` PINS one specific `AiRoutingPolicy` row — the owner's *"agent nodes bind to
- * exactly one provider configuration"*, taken literally. `taskKey` instead names the TASK and
- * lets the standard tenant → SYSTEM cascade elect the configuration, which is what a tenant wants
- * when they mean "whatever we currently use for finalize".
- *
- * Both are offered because neither alone is right: pinning a SYSTEM row id in a tenant graph
- * freezes the platform default and takes the tenant's own override out of the picture, while
- * task-key resolution alone cannot express "this node, specifically, uses the cheap model".
- * EXACTLY ONE must be present — `agenticNodeConfigProblems` (`agentic-contract.ts`) enforces
- * that, because a JSON Schema `oneOf` would need a discriminator the authorable subset requires
- * and neither shape has a natural one.
- */
-const PROVIDER_CONFIG_REF_PROPERTY: NodeConfigSchema = Object.freeze({
-  type: 'object',
-  additionalProperties: false,
-  properties: Object.freeze({
-    routingPolicyId: Object.freeze({
-      ...ROW_REFERENCE_PROPERTY,
-      description:
-        'The `AiRoutingPolicy` row this node generates through — the provider CONFIGURATION (connection + model + modelRef), by id. A REFERENCE: the provider name, the model id, the endpoint and the credential all live on that row and its `AiProviderConnection`, never here. Resolution fails CLOSED on a row that is absent, disabled or owned by another tenant.',
-    }),
-    taskKey: Object.freeze({
-      type: 'string',
-      minLength: 1,
-      maxLength: 64,
-      description:
-        'Resolve the tenant`s ELECTED default configuration for this task key instead of pinning one row — the standard tenant → SYSTEM cascade, widening only on absence. Mutually exclusive with `routingPolicyId`.',
-    }),
-  }),
-  description: 'Which provider configuration serves this node. Exactly one of `routingPolicyId` / `taskKey`.',
-});
-
-/**
  * The generation hyper-parameters, INCLUDING the two program finding F-12 recorded as absent.
  *
  * `frequencyPenalty` and `presencePenalty` are not universally supported — llama.cpp and vLLM
@@ -1307,59 +751,6 @@ const GENERATION_HYPERPARAMETERS_PROPERTY: NodeConfigSchema = Object.freeze({
   description: 'Generation hyper-parameters. Every key is capability-gated against the bound provider configuration — never silently dropped.',
 });
 
-/**
- * The agent's TOOL bindings — the owner's *"tenant admin can set some tools for agents to call"*,
- * which `WorkflowNodeDescriptor` had nowhere to hold (F-12: *"zero tool/MCP fields"*).
- *
- * A binding is `(mcpServerId, toolName)` and NOTHING else, and the omissions are the design.
- * delivered the tenant-scoped `McpServer` registry: `baseUrl`, `transport`, `authRef`
- * (a Vault reference, never a secret), `toolAllowlist`, `phiBoundary` and `enabled` all live on
- * that row, behind a deny-by-default SSRF egress guard. A `baseUrl` on a graph node would route
- * around every one of those — the guard, the allowlist, the PHI boundary and the enabled flag —
- * so the graph names the row and the ACTIVITY resolves it.
- */
-const AGENT_TOOLS_PROPERTY: NodeConfigSchema = Object.freeze({
-  type: 'array',
-  maxItems: 32,
-  items: Object.freeze({
-    type: 'object',
-    additionalProperties: false,
-    required: Object.freeze(['mcpServerId', 'toolName']),
-    properties: Object.freeze({
-      mcpServerId: Object.freeze({
-        ...ROW_REFERENCE_PROPERTY,
-        description:
-          'The tenant`s `McpServer` row . Its `baseUrl`/`authRef`/`toolAllowlist`/`enabled` are resolved in the activity; a disabled row FAILS CLOSED.',
-      }),
-      toolName: Object.freeze({ type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]{1,128}$' }),
-    }),
-  }),
-  description: 'Tools this agent may call, as (server, tool) REFERENCES. Never a URL, a header or a credential.',
-});
-
-/** A reference to another node IN THE SAME GRAPH. Guard attachment is a graph fact. */
-const NODE_ID_REFERENCE_LIST = Object.freeze({
-  type: 'array',
-  maxItems: 8,
-  items: Object.freeze({ type: 'string', pattern: '^[a-z0-9_]{2,48}$' }),
-});
-
-/**
- * The owner's *"optional guardrail nodes on input/output"*. Guards are NODES in the graph, and
- * this names which ones wrap this agent — so the guardrail's own configuration, its policy
- * binding and its verdict all stay on the guard node where the rule catalogue can already see
- * them, rather than being duplicated into the agent's config.
- */
-const AGENT_GUARDS_PROPERTY: NodeConfigSchema = Object.freeze({
-  type: 'object',
-  additionalProperties: false,
-  properties: Object.freeze({
-    input: NODE_ID_REFERENCE_LIST,
-    output: NODE_ID_REFERENCE_LIST,
-  }),
-  description: 'Guardrail NODE ids in this graph that wrap this agent`s input / output. References, checked at publish.',
-});
-
 /** A tenant-authored JSON Schema, carried verbatim. Validated by `authorableJsonSchemaProblems`
  *  at publish (the same subset a `ConsultationContextSchema` is bound by) and enforced again at
  *  the node boundary at run time — TIER 3, where correctness actually lives. */
@@ -1367,93 +758,6 @@ const TENANT_IO_SCHEMA_PROPERTY: NodeConfigSchema = Object.freeze({
   type: 'object',
   summary: 'The shape of the data — its fields and types.',
   description: 'A tenant-defined JSON Schema (authorable subset) describing the payload crossing this boundary.',
-});
-
-const AGENTIC_INPUT_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.input.schema.json',
-  title: 'agentic.input node config — the graph`s typed entry point',
-  type: 'object',
-  additionalProperties: false,
-  required: Object.freeze(['ioSchema']),
-  properties: Object.freeze({
-    ioSchema: TENANT_IO_SCHEMA_PROPERTY,
-    sourceKey: Object.freeze({
-      type: 'string',
-      pattern: '^[a-z0-9_]{2,48}$',
-      description: 'Which key of the run payload this node binds. Defaults to the whole payload.',
-    }),
-  }),
-});
-
-const AGENTIC_OUTPUT_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.output.schema.json',
-  title: 'agentic.output node config — the graph`s typed exit point',
-  type: 'object',
-  additionalProperties: false,
-  required: Object.freeze(['ioSchema']),
-  properties: Object.freeze({
-    ioSchema: TENANT_IO_SCHEMA_PROPERTY,
-    onSchemaViolation: Object.freeze({
-      type: 'string',
-      enum: Object.freeze(['fail', 'degrade']),
-      default: 'fail',
-      description:
-        'TIER 3. `fail` refuses to emit a payload that does not match the declared schema; `degrade` emits it and marks the node DEGRADED. Never silently emits a mismatch.',
-    }),
-  }),
-});
-
-const AGENTIC_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.agent.schema.json',
-  title: 'agentic.agent node config — the GENERIC agent (behaviour is configuration, not type)',
-  type: 'object',
-  additionalProperties: false,
-  required: Object.freeze(['providerConfigRef']),
-  properties: Object.freeze({
-    providerConfigRef: PROVIDER_CONFIG_REF_PROPERTY,
-    // The INSTRUCTION prompt, as an APPROVED, version-pinned template reference — the same
-    // binding every generation node already carries , spread whole so this node cannot
-    // fall out of step with the group. It brings `evalGate` with it, which is the point:
-    // the golden-set gate binds to the NODE, and a generic agent is the node most in need of one.
-    // `systemPrompt` stays available for the un-templated case and is capped, but a template is
-    // the supported path — free text on a node has no approval workflow and no version history.
-    ...PROMPT_BINDING_PROPERTIES,
-    // DD-2. A generic agent is `generation`-classed, and every generation-classed node carries
-    // the document-SHAPE binding (`node-config-schemas.test.ts` asserts that as a set equality).
-    // It is also what makes one composed agent a discharge summary and another a note without
-    // forking the model call — the same argument `agent.discharge_summary` records.
-    ...DOCUMENT_BINDING_PROPERTIES,
-    systemPrompt: Object.freeze({ type: 'string', maxLength: 50000 }),
-    generation: GENERATION_HYPERPARAMETERS_PROPERTY,
-    guards: AGENT_GUARDS_PROPERTY,
-    tools: AGENT_TOOLS_PROPERTY,
-    responseFormat: Object.freeze({ type: 'string', enum: Object.freeze(['text', 'json', 'json_schema']) }),
-    responseSchema: TENANT_IO_SCHEMA_PROPERTY,
-    onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
-  }),
-});
-
-const AGENTIC_GUARDRAIL_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.guardrail.schema.json',
-  title: 'agentic.guardrail node config — the generic guardrail, bound to a tenant policy',
-  type: 'object',
-  additionalProperties: false,
-  required: Object.freeze(['guardrailType', 'onFail']),
-  properties: Object.freeze({
-    // A guardrail TYPE is a policy key `apps/guardrail` resolves per tenant — never a model id,
-    // never a threshold literal. The threshold and the label taxonomy ride on the AiModel row
-    // the tenant → SYSTEM cascade selected ( phases 3 & 6).
-    guardrailType: Object.freeze({ type: 'string', minLength: 1, maxLength: 64 }),
-    failOn: Object.freeze({ type: 'string', enum: Object.freeze(['unsafe_or_unknown']), default: 'unsafe_or_unknown' }),
-    // `abort` is deliberately absent for the reason `GUARDRAIL_CHECK_SCHEMA` records at length:
-    // no v1 mechanism promotes a per-node config value over the code-owned `critical` registry
-    // property, so accepting it would be a promise the runtime cannot keep.
-    onFail: Object.freeze({ type: 'string', enum: Object.freeze(['mark']) }),
-  }),
 });
 
 /**
@@ -1564,94 +868,6 @@ const AGENTIC_LOOP_BOUNDS_PROPERTY: NodeConfigSchema = Object.freeze({
       summary: 'Stops early if repeats keep producing the same result.',
       description: 'Stop after this many consecutive iterations that produce no change in the orchestrator`s working state.',
     }),
-  }),
-});
-
-const AGENTIC_LOOP_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.loop.schema.json',
-  title: 'agentic.loop node config — orchestrator + sub-agents, bounded on three axes',
-  type: 'object',
-  additionalProperties: false,
-  required: Object.freeze(['bounds', 'orchestratorNodeId']),
-  properties: Object.freeze({
-    bounds: AGENTIC_LOOP_BOUNDS_PROPERTY,
-    orchestratorNodeId: Object.freeze({
-      type: 'string',
-      pattern: '^[a-z0-9_]{2,48}$',
-      description: 'The MASTER agent node in this graph. A node REFERENCE.',
-    }),
-    subAgentNodeIds: NODE_ID_REFERENCE_LIST,
-    // The Loop node earns its existence only for RUNTIME-UNKNOWN step counts :
-    // chaining, routing, sectioning and voting are all graph SHAPES and need no loop.
-    terminationKey: Object.freeze({
-      type: 'string',
-      pattern: '^[a-z0-9_]{2,48}$',
-      description: 'Key on the orchestrator`s output whose truthiness ends the loop early.',
-    }),
-  }),
-});
-
-const AGENTIC_STT_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.stt.schema.json',
-  title: 'agentic.stt node config — BATCH transcription of a stored artifact',
-  type: 'object',
-  additionalProperties: false,
-  required: Object.freeze(['pipelineRef']),
-  properties: Object.freeze({
-    // The published `stt`-palette definition compiles to an `AsrPipeline` row (; this
-    // node names that row. Engine, model, language pack and every threshold live on it — none of
-    // them are authorable here, which is what keeps STT selection inside the same cascade every
-    // other model selection uses.
-    pipelineRef: Object.freeze({
-      type: 'object',
-      additionalProperties: false,
-      properties: Object.freeze({
-        pipelineId: Object.freeze({
-          ...ROW_REFERENCE_PROPERTY,
-          description: 'An `AsrPipeline` row id. A REFERENCE — never an engine name or a model id.',
-        }),
-        pipelineSlug: Object.freeze({
-          type: 'string',
-          minLength: 1,
-          maxLength: 128,
-          description: 'Resolve the tenant`s pipeline by slug through the tenant → SYSTEM cascade instead of pinning an id.',
-        }),
-      }),
-      description: 'Which ASR pipeline transcribes. Exactly one of `pipelineId` / `pipelineSlug`.',
-    }),
-    language: Object.freeze({
-      type: 'string',
-      minLength: 2,
-      maxLength: 16,
-      description: 'BCP-47 hint. Absent means the pipeline`s own language detection decides.',
-    }),
-    pollTimeoutSeconds: Object.freeze({ type: 'integer', minimum: 1, maximum: 3600, default: 900 }),
-  }),
-});
-
-const AGENTIC_TTS_SCHEMA: NodeConfigSchema = Object.freeze({
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.tts.schema.json',
-  title: 'agentic.tts node config — speech synthesis to a stored artifact (OD-4)',
-  type: 'object',
-  additionalProperties: false,
-  required: Object.freeze(['providerConfigRef']),
-  properties: Object.freeze({
-    // Same binding shape as the agent node, and for the same reason: a voice is served by a
-    // provider configuration, so the connection, the model and the credential resolve through the
-    // tenant → SYSTEM cascade rather than being named here.
-    providerConfigRef: PROVIDER_CONFIG_REF_PROPERTY,
-    voiceRef: Object.freeze({
-      type: 'string',
-      minLength: 1,
-      maxLength: 128,
-      description: 'A voice IDENTIFIER within the bound configuration`s catalogue — resolved against it, never an endpoint.',
-    }),
-    language: Object.freeze({ type: 'string', minLength: 2, maxLength: 16 }),
-    format: Object.freeze({ type: 'string', enum: Object.freeze(['wav', 'mp3', 'ogg', 'pcm']) }),
-    speed: Object.freeze({ type: 'number', minimum: 0.25, maximum: 4 }),
   }),
 });
 
@@ -2143,83 +1359,6 @@ const CORE_ACTION_SCHEMA: NodeConfigSchema = Object.freeze({
  * runtime knobs into every entry — see the ADDENDUM at the foot of this module.
  */
 const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze({
-  noop: NOOP_SCHEMA,
-  'core.start': BOUNDARY_MARKER_SCHEMA,
-  'core.end': BOUNDARY_MARKER_SCHEMA,
-  'input.context_binding': INPUT_CONTEXT_BINDING_SCHEMA,
-  'prompt.template_ref': PROMPT_TEMPLATE_REF_SCHEMA,
-  'generate.text': GENERATE_TEXT_SCHEMA,
-  'guardrail.check': GUARDRAIL_CHECK_SCHEMA,
-  'output.deliver': OUTPUT_DELIVER_SCHEMA,
-  'stt.audioInput': STT_AUDIO_INPUT_SCHEMA,
-  'stt.vad': STT_VAD_SCHEMA,
-  'stt.noiseFilter': STT_NOISE_FILTER_SCHEMA,
-  'stt.diarization': STT_DIARIZATION_SCHEMA,
-  'stt.languageDetection': STT_LANGUAGE_DETECTION_SCHEMA,
-  'stt.asrEngine': STT_ASR_ENGINE_SCHEMA,
-  'stt.transcriptOutput': STT_TRANSCRIPT_OUTPUT_SCHEMA,
-  'stt.phiHop': STT_PHI_HOP_SCHEMA,
-  // Consultation palette (closing D-9) — ordered by pipeline position, the
-  // same order `node-registry.ts` uses, so the two files read as the same pipeline.
-  'consultation.consentGate': CONSULTATION_CONSENT_GATE_SCHEMA,
-  'consultation.captureBinding': CONSULTATION_CAPTURE_BINDING_SCHEMA,
-  'consultation.extractEntities': CONSULTATION_EXTRACT_ENTITIES_SCHEMA,
-  'consultation.bindTerminology': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
-  'consultation.phiHop': CONSULTATION_PHI_HOP_SCHEMA,
-  'consultation.retrieveEvidence': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
-  'consultation.assemblePrompt': CONSULTATION_ASSEMBLE_PROMPT_SCHEMA,
-  'consultation.synthesize': CONSULTATION_SYNTHESIZE_SCHEMA,
-  'consultation.sensors': CONSULTATION_SENSORS_SCHEMA,
-  'consultation.inferentialSensors': CONSULTATION_SENSORS_SCHEMA,
-  'consultation.persistDraft': CONSULTATION_PERSIST_DRAFT_SCHEMA,
-  'consultation.finalizeAssurance': CONSULTATION_FINALIZE_ASSURANCE_SCHEMA,
-  'consultation.hitlGate': CONSULTATION_HITL_GATE_SCHEMA,
-  'consultation.realtimeSummary': CONSULTATION_REALTIME_SUMMARY_SCHEMA,
-  'consultation.suggestions': CONSULTATION_SUGGESTIONS_SCHEMA,
-  'consultation.proposeCorrections': CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA,
-  // The endpoint stage, in the order the default sequence runs them.
-  'session.timeout': SESSION_TIMEOUT_SCHEMA,
-  'summary.finalize': SUMMARY_FINALIZE_SCHEMA,
-  'feedback.capture': FEEDBACK_CAPTURE_SCHEMA,
-  'livedoc.stop': LIVEDOC_STOP_SCHEMA,
-  'harness.finalize': HARNESS_FINALIZE_SCHEMA,
-  // The TARGET CATALOGUE , in catalogue order. Each entry reuses the schema of the
-  // engine it delegates to — see the block above `AGENT_DNA_REDACTION_SCHEMA`.
-  'agent.transcription': CONSULTATION_CAPTURE_BINDING_SCHEMA,
-  'agent.normalization': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
-  'agent.ner': CONSULTATION_EXTRACT_ENTITIES_SCHEMA,
-  // Lane R (R1) — the realtime grammar pass shares the correction engine's config surface for
-  // the same reason the three generation entries share theirs: one engine, one authorable
-  // schema. In particular it inherits `promptTemplateId`, which is where the correction prompt
-  // comes from — a bound template, never a literal in runtime code.
-  'agent.grammar': CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA,
-  // DD-9 — three palette entries, ONE generation engine, therefore ONE config surface.
-  'agent.presummarization': CONSULTATION_SYNTHESIZE_SCHEMA,
-  'agent.summarization': CONSULTATION_SYNTHESIZE_SCHEMA,
-  'agent.discharge_summary': CONSULTATION_SYNTHESIZE_SCHEMA,
-  'agent.retrieval': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
-  'agent.feedback': FEEDBACK_CAPTURE_SCHEMA,
-  'agent.important_findings': AGENT_IMPORTANT_FINDINGS_SCHEMA,
-  'agent.dna_redaction': AGENT_DNA_REDACTION_SCHEMA,
-  'agent.dna_style': AGENT_DNA_STYLE_SCHEMA,
-  // The guards. `guard.phi` and `guard.moderation` reuse the redaction and content-safety
-  // engines' own schemas; only groundedness had no node to inherit from.
-  'guard.phi': CONSULTATION_PHI_HOP_SCHEMA,
-  'guard.moderation': GUARDRAIL_CHECK_SCHEMA,
-  'guard.groundedness': GUARD_GROUNDEDNESS_SCHEMA,
-  // the GENERIC catalogue. Behaviour is configuration, not type; every binding is a
-  // ROW REFERENCE. See the block above `ROW_REFERENCE_PROPERTY` for why nothing here names a
-  // provider, a model, an endpoint or a credential.
-  'agentic.input': AGENTIC_INPUT_SCHEMA,
-  'agentic.output': AGENTIC_OUTPUT_SCHEMA,
-  'agentic.agent': AGENTIC_AGENT_SCHEMA,
-  'agentic.guardrail': AGENTIC_GUARDRAIL_SCHEMA,
-  'agentic.data': AGENTIC_DATA_SCHEMA,
-  'agentic.loop': AGENTIC_LOOP_SCHEMA,
-  'agentic.stt': AGENTIC_STT_SCHEMA,
-  'agentic.tts': AGENTIC_TTS_SCHEMA,
-  // TASK-864 — the `core` vocabulary. `core.data` reuses the Data node's schema verbatim: the
-  // mapping language is the same tiny one, and a second copy is a second thing to audit.
   'core.trigger': CORE_TRIGGER_SCHEMA,
   'core.agent': CORE_AGENT_SCHEMA,
   'core.classify': CORE_CLASSIFY_SCHEMA,
@@ -2231,6 +1370,27 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
   'core.output': CORE_OUTPUT_SCHEMA,
   'core.data': AGENTIC_DATA_SCHEMA,
   'core.action': CORE_ACTION_SCHEMA,
+});
+
+/** TASK-893 — the authored schemas of the 17 ACTIONS behind `core.action`, keyed by action key (see `ACTION_CONFIG_SCHEMAS`). */
+const AUTHORED_ACTION_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze({
+  'prompt.template_ref': PROMPT_TEMPLATE_REF_SCHEMA,
+  'consultation.consentGate': CONSULTATION_CONSENT_GATE_SCHEMA,
+  'consultation.bindTerminology': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
+  'consultation.phiHop': CONSULTATION_PHI_HOP_SCHEMA,
+  'consultation.retrieveEvidence': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
+  'consultation.sensors': CONSULTATION_SENSORS_SCHEMA,
+  'consultation.inferentialSensors': CONSULTATION_SENSORS_SCHEMA,
+  'consultation.persistDraft': CONSULTATION_PERSIST_DRAFT_SCHEMA,
+  'consultation.finalizeAssurance': CONSULTATION_FINALIZE_ASSURANCE_SCHEMA,
+  'session.timeout': SESSION_TIMEOUT_SCHEMA,
+  'summary.finalize': SUMMARY_FINALIZE_SCHEMA,
+  'feedback.capture': FEEDBACK_CAPTURE_SCHEMA,
+  'livedoc.stop': LIVEDOC_STOP_SCHEMA,
+  'harness.finalize': HARNESS_FINALIZE_SCHEMA,
+  'guard.phi': CONSULTATION_PHI_HOP_SCHEMA,
+  'guard.moderation': GUARDRAIL_CHECK_SCHEMA,
+  'guard.groundedness': GUARD_GROUNDEDNESS_SCHEMA,
 });
 
 // ===========================================================================================
@@ -2340,13 +1500,21 @@ const NODE_RUNTIME_PROPERTIES: Readonly<Record<string, NodeConfigSchema>> = Obje
 // property was a configuration promise nothing kept. Model selection is the agent's alone.
 
 /**
- * `consultation.hitlGate` is the ONE exclusion, and it is structural rather than a carve-out: it
- * is the only `gate`-classed node type, so the compiler lifts it out of `stages` into `gates` and
- * routes it through `compileGate` — which reads `timeoutSeconds` (already declared on its own
- * schema, scoped to the human wait) and NO retry policy at all. `CompiledGate` has no `retry`
- * field, so offering one would be a configuration promise the runtime cannot keep.
+ * EMPTY since TASK-893 Phase 4, and deliberately kept rather than deleted.
+ *
+ * Its one member was `consultation.hitlGate`, the only `gate`-classed node type: the compiler
+ * lifted it out of `stages` into `gates` and routed it through `compileGate`, which reads
+ * `timeoutSeconds` (declared on its own schema, scoped to the human wait) and NO retry policy at
+ * all — `CompiledGate` has no `retry` field, so offering one would have been a configuration
+ * promise the runtime cannot keep. That node type left the vocabulary with the legacy palettes;
+ * the durable human wait is now `core.humanReview`, which is `review`-classed and compiles as an
+ * ordinary stage, so it takes the runtime fold like every other node.
+ *
+ * The hook stays because the CONDITION it encodes is still live: a node type whose config the
+ * COMPILER consumes rather than an activity cannot be offered knobs the compiled artifact has no
+ * field for. The next such type belongs here, not in a fresh carve-out.
  */
-const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set(['consultation.hitlGate']);
+const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set<string>();
 
 /**
  * The node types the rule catalogue requires to be PRESENT on every path from `core.start` to a
@@ -2390,24 +1558,11 @@ const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set(['consultation.
  * earns the `GUARDRAIL_OPTED_OUT` warning above.
  */
 export const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
-  // summarization palette
-  'input.context_binding',
-  'generate.text',
-  'guardrail.check',
-  'output.deliver',
-  // stt palette
-  'stt.audioInput',
-  'stt.asrEngine',
-  'stt.transcriptOutput',
-  // consultation palette
-  'consultation.consentGate',
-  'consultation.captureBinding',
-  'consultation.phiHop',
-  'consultation.persistDraft',
-  'consultation.finalizeAssurance',
-  'consultation.hitlGate',
   // TASK-864 — the `core` graph boundaries. A trigger or an output that can be switched off is a
   // graph with no entry or no exit; both carry the `mandatory` class in `node-registry.ts`.
+  // TASK-893: the legacy palettes' mandatory clinical guards are gone; a mandatory ACTION
+  // (`consultation.consentGate`, `consultation.phiHop`, …) carries `mandatory` in its catalogue
+  // entry's classes, resolved per instance by `classesOf('core.action', config)`.
   'core.trigger',
   'core.output',
 ]);
@@ -2439,4 +1594,14 @@ function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfi
  */
 export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
   Object.fromEntries(Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withRuntimeProperties(key, schema)])),
+);
+
+/**
+ * TASK-893 — the config schemas of the 17 ACTIONS behind `core.action` (`action-catalogue.ts`),
+ * keyed by action key, with the same runtime knobs folded in as every node schema (the
+ * interpreter merges `timeoutSeconds` / `retry` / `onError` from the node into the action's own
+ * config). Validated under the node's `action` sub-config (`actionConfigSchemaOf`).
+ */
+export const ACTION_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
+  Object.fromEntries(Object.entries(AUTHORED_ACTION_CONFIG_SCHEMAS).map(([key, schema]) => [key, withRuntimeProperties(key, schema)])),
 );

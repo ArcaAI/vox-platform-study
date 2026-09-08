@@ -6,10 +6,12 @@
  * so both sides assert against the SAME committed fixture instead of against each other —
  * `test_node_registry_parity.py` is the Python half of this guard.
  *
- * The one deliberate asymmetry (TASK-867): a fixture entry with `implemented: false` exists on
- * THIS side only. `registry.py` cannot hold a spec without a registered activity callable, and
- * the interpreter skips "no spec" and "unimplemented spec" identically, so the Python half
- * asserts those keys are ABSENT there while this side keeps them for the deprecation window.
+ * TASK-893 Phase 4 CLOSED the one deliberate asymmetry this guard used to carry. A fixture entry
+ * with `implemented: false` used to exist on THIS side only — `registry.py` cannot hold a spec
+ * without a registered activity callable, so the eight retired `stt.*` keys were kept here for
+ * the deprecation window and asserted absent there. That window is over: the deprecated
+ * vocabulary is deleted, every remaining key is implemented, and the two registries are now a
+ * plain one-to-one mapping over the eleven `core.*` types.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -81,18 +83,9 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
     expect(projectRegistry()).toEqual(loadFixtureEntries());
   });
 
-  it('`implemented: false` is exactly the retired `stt` palette (TASK-861 step 10 / TASK-867) — the keys the Python registry has NO spec for', () => {
-    const unimplemented = loadFixtureEntries().filter((entry) => !entry.implemented).map((entry) => entry.key);
-    expect(unimplemented).toEqual([
-      'stt.asrEngine',
-      'stt.audioInput',
-      'stt.diarization',
-      'stt.languageDetection',
-      'stt.noiseFilter',
-      'stt.phiHop',
-      'stt.transcriptOutput',
-      'stt.vad',
-    ]);
+  it('has no `implemented: false` entry left — the TS/Python asymmetry is closed (TASK-893)', () => {
+    expect(loadFixtureEntries().filter((entry) => !entry.implemented)).toEqual([]);
+    expect(Object.values(WORKFLOW_NODE_REGISTRY).filter((descriptor) => !descriptor.implemented)).toEqual([]);
   });
 
   it('the fixture is sorted by key (so a diff never looks like an unrelated reorder)', () => {
@@ -101,93 +94,23 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
     expect(entries).toEqual(sorted);
   });
 
-  it('carries exactly the seed + boundary + summarization + stt + consultation + endpoint-stage + agentic + core keys, no more, no less', () => {
+  it('carries exactly the eleven `core.*` keys, no more, no less', () => {
     expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual([
-      // lane A — the target catalogue and the guards.
-      'agent.discharge_summary',
-      'agent.dna_redaction',
-      // TASK-882 — the DNA writing-style gate, out of the retired PipelinePolicy cascade.
-      'agent.dna_style',
-      'agent.feedback',
-      // Lane R (R1) — the realtime grammar/spelling pass.
-      'agent.grammar',
-      // Lane N — the first catalogue entry with NO pipeline counterpart: important
-      // findings did not exist in any form, so this is a real implementation rather than a delegation.
-      'agent.important_findings',
-      'agent.ner',
-      'agent.normalization',
-      'agent.presummarization',
-      'agent.retrieval',
-      'agent.summarization',
-      'agent.transcription',
-      // the GENERIC (`agentic`) catalogue: the eight node types of the owner's
-      // specification, closing program finding F-12's have/missing table.
-      'agentic.agent',
-      'agentic.data',
-      'agentic.guardrail',
-      'agentic.input',
-      'agentic.loop',
-      'agentic.output',
-      'agentic.stt',
-      'agentic.tts',
-      'consultation.assemblePrompt',
-      'consultation.bindTerminology',
-      'consultation.captureBinding',
-      'consultation.consentGate',
-      'consultation.extractEntities',
-      'consultation.finalizeAssurance',
-      'consultation.hitlGate',
-      'consultation.inferentialSensors',
-      'consultation.persistDraft',
-      'consultation.phiHop',
-      'consultation.proposeCorrections',
-      'consultation.realtimeSummary',
-      'consultation.retrieveEvidence',
-      'consultation.sensors',
-      'consultation.suggestions',
-      'consultation.synthesize',
-      // TASK-864 — the `core` vocabulary. Sorted position: `core.action` < `core.agent` <
-      // ... < `core.end` < ... < `core.start` < `core.trigger` < `core.variable`.
+      // TASK-864 introduced this vocabulary alongside the legacy palettes; TASK-893 Phase 4
+      // deleted everything else, so it is now the whole node registry. The seventeen ACTIONS
+      // behind `core.action` are NOT node types — they live in `ACTION_CATALOGUE` and have their
+      // own parity fixture (`action-catalogue.snapshot.json`).
       'core.action',
       'core.agent',
       'core.classify',
       'core.condition',
       'core.data',
-      'core.end',
       'core.humanReview',
       'core.loop',
       'core.note',
       'core.output',
-      'core.start',
       'core.trigger',
       'core.variable',
-      // the endpoint stage. Sorted position, not pipeline position; the list is
-      // asserted sorted so a future addition never looks like a reorder.
-      'feedback.capture',
-      'generate.text',
-      'guard.groundedness',
-      'guard.moderation',
-      'guard.phi',
-      'guardrail.check',
-      // TASK-882 — the two endpoint stages that had no node type, so the whole stage can be declared
-      // on a graph.
-      'harness.finalize',
-      'input.context_binding',
-      'livedoc.stop',
-      'noop',
-      'output.deliver',
-      'passthrough',
-      'prompt.template_ref',
-      'session.timeout',
-      'stt.asrEngine',
-      'stt.audioInput',
-      'stt.diarization',
-      'stt.languageDetection',
-      'stt.noiseFilter',
-      'stt.phiHop',
-      'stt.transcriptOutput',
-      'stt.vad',
-      'summary.finalize',
     ]);
   });
 });

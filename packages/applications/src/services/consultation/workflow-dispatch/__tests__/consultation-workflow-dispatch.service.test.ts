@@ -45,7 +45,7 @@ const publishedDefinition = {
   slug: 'arcaai-consultation-v1',
   versionNumber: 3,
   name: 'ArcaAI Consultation',
-  paletteKey: 'consultation',
+  paletteKey: 'core',
   compiledConfig: { formatVersion: 1, stages: [], checksum: 'abc' },
 };
 
@@ -79,7 +79,7 @@ describe('ConsultationWorkflowDispatchService', () => {
 
     // TASK-891 — no `parentConsultationId` means this is a NEW visit, so the reserved
     // `visit-type:new-visit` tag rides on the same cascade call the department already used.
-    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:new-visit']);
+    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'core', DEPARTMENT, ['visit-type:new-visit']);
   });
 
   // TASK-891 — plumbing for OD-2/OD-3: the reserved `visit-type:<key>` tag lets a
@@ -95,7 +95,7 @@ describe('ConsultationWorkflowDispatchService', () => {
         parentConsultationId: 'parent-1',
       });
 
-      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:revisit']);
+      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'core', DEPARTMENT, ['visit-type:revisit']);
     });
 
     it('tags a consultation with no parent link visit-type:new-visit', async () => {
@@ -107,7 +107,7 @@ describe('ConsultationWorkflowDispatchService', () => {
         parentConsultationId: null,
       });
 
-      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:new-visit']);
+      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'core', DEPARTMENT, ['visit-type:new-visit']);
     });
 
     // Regression: a caller that omits `parentConsultationId` altogether (every call site
@@ -123,7 +123,7 @@ describe('ConsultationWorkflowDispatchService', () => {
         userId: USER,
       });
 
-      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:new-visit']);
+      expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'core', DEPARTMENT, ['visit-type:new-visit']);
     });
 
     it('does NOT tag the STT-palette resolution — visit type is a consultation/document-template axis, not an ASR axis', async () => {

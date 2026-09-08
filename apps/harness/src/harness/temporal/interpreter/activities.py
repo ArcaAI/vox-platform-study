@@ -25,6 +25,7 @@ from harness.temporal.activities import (
     _TrajectoryBatch as TrajectoryBatch,  # reuse, never a second emitter (Task 7) — noqa: SLF001
 )
 from harness.temporal.claim_check import ClaimCheckRef, load_blob, open_store
+from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
 from harness.temporal.interpreter.models import (
     NodeActivityInput,
@@ -32,52 +33,7 @@ from harness.temporal.interpreter.models import (
     RunEventBatch,
     RunEventSpec,
 )
-from harness.temporal.interpreter.nodes.agent_catalogue import AGENT_CATALOGUE_ACTIVITIES
-from harness.temporal.interpreter.nodes.agentic import AGENTIC_ACTIVITIES
-from harness.temporal.interpreter.nodes.consultation import (
-    interpreter_consultation_consent_gate,
-    interpreter_consultation_hitl_gate,
-    interpreter_consultation_phi_hop,
-)
-from harness.temporal.interpreter.nodes.consultation_capture import (
-    interpreter_consultation_capture_binding,
-)
-from harness.temporal.interpreter.nodes.consultation_compose import (
-    interpreter_consultation_assemble_prompt,
-    interpreter_consultation_retrieve_evidence,
-    interpreter_consultation_synthesize,
-)
-from harness.temporal.interpreter.nodes.consultation_endpoint import (
-    interpreter_feedback_capture,
-    interpreter_harness_finalize,
-    interpreter_livedoc_stop,
-    interpreter_session_timeout,
-    interpreter_summary_finalize,
-)
-from harness.temporal.interpreter.nodes.consultation_nlp import (
-    interpreter_consultation_bind_terminology,
-    interpreter_consultation_extract_entities,
-)
-from harness.temporal.interpreter.nodes.consultation_persist import (
-    interpreter_consultation_finalize_assurance,
-    interpreter_consultation_persist_draft,
-)
-from harness.temporal.interpreter.nodes.consultation_realtime import (
-    interpreter_consultation_propose_corrections,
-    interpreter_consultation_realtime_summary,
-    interpreter_consultation_suggestions,
-)
-from harness.temporal.interpreter.nodes.consultation_verify import (
-    interpreter_consultation_inferential_sensors,
-    interpreter_consultation_sensors,
-)
-from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
 from harness.temporal.interpreter.nodes.core import CORE_ACTIVITIES
-from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
-from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
-from harness.temporal.interpreter.nodes.guards import GUARD_ACTIVITIES
-from harness.temporal.interpreter.nodes.template_ref import interpreter_template_ref
-from harness.temporal.interpreter.nodes.text_generate import interpreter_text_generate
 from harness.temporal.interpreter.run_events import (
     EVENT_LOOP_ITERATION,
     EVENT_NODE_COMPLETED,
@@ -181,74 +137,34 @@ async def interpreter_core_end(payload: NodeActivityInput) -> NodeActivityResult
     return NodeActivityResult(status="SUCCEEDED")
 
 
+#: The activity callables the seventeen catalogue actions run, derived FROM the catalogue rather
+#: than listed by hand — the list and the catalogue cannot disagree if one is computed from the
+#: other. Order is the catalogue's, de-duplicated (`guard.phi` and `consultation.phiHop` share an
+#: activity), so the served set stays stable across runs.
+ACTION_ACTIVITIES: list[Callable[..., Any]] = list(
+    dict.fromkeys(spec.activity for spec in ACTION_CATALOGUE.values())
+)
+
 NODE_ACTIVITIES: list[Callable[..., Any]] = [
-    interpreter_noop,
-    interpreter_passthrough,
-    # Graph boundary markers (palette-agnostic) — see above.
-    interpreter_core_start,
-    interpreter_core_end,
-    # Summarization palette (/5) — see nodes/{context_binding,template_ref,
-    # text_generate,guardrail_check,deliver}.py.
-    interpreter_context_binding,
-    interpreter_template_ref,
-    interpreter_text_generate,
-    interpreter_guardrail_check,
-    interpreter_deliver,
-    # STT palette — RETIRED (TASK-861 step 10 / TASK-867): no activity is served; see the
-    # matching note in registry.py's NODE_REGISTRY.
-    # Consultation palette — all 13 node types. consentGate/phiHop/hitlGate came from
-    # (nodes/consultation.py); the other ten are the wrappers that complete the palette, grouped
-    # by pipeline stage in nodes/consultation_{capture,nlp,compose,verify,persist}.py.
-    interpreter_consultation_consent_gate,
-    interpreter_consultation_capture_binding,
-    interpreter_consultation_extract_entities,
-    interpreter_consultation_bind_terminology,
-    interpreter_consultation_phi_hop,
-    interpreter_consultation_retrieve_evidence,
-    interpreter_consultation_assemble_prompt,
-    interpreter_consultation_synthesize,
-    interpreter_consultation_sensors,
-    interpreter_consultation_inferential_sensors,
-    interpreter_consultation_persist_draft,
-    interpreter_consultation_finalize_assurance,
-    interpreter_consultation_hitl_gate,
-    # R3's three missing capabilities (-W3) — nodes/consultation_realtime.py.
-    # This list and `registry.py`'s NODE_REGISTRY are two SEPARATE hand-maintained lists: the
-    # registry decides what the interpreter DISPATCHES, this decides what the worker SERVES. A
-    # node in the first but not the second compiles, validates and passes the cross-language
-    # parity guard, then fails at runtime with an unregistered-activity error. Nothing enforced
-    # the agreement until `test_realtime_capability_nodes.py`'s
-    # `test_every_registered_node_activity_is_served_by_the_worker`.
-    interpreter_consultation_realtime_summary,
-    interpreter_consultation_suggestions,
-    interpreter_consultation_propose_corrections,
-    # The endpoint stage — nodes/consultation_endpoint.py. Same two-list discipline
-    # as the three above: `registry.py` decides what the interpreter DISPATCHES, this decides
-    # what the worker SERVES, and a node in the first but not the second passes every static
-    # check and then fails at runtime with an unregistered-activity error.
-    interpreter_session_timeout,
-    interpreter_summary_finalize,
-    interpreter_feedback_capture,
-    # TASK-882 — the two endpoint stages that had no node type.
-    interpreter_livedoc_stop,
-    interpreter_harness_finalize,
-    # The TARGET CATALOGUE (/DD-9) and the guards — lane A.
-    # Spread from the module's own list rather than re-typed here, because this list and
-    # `registry.py`'s NODE_REGISTRY are two SEPARATE hand-maintained lists (see the note above)
-    # and a catalogue this size is exactly where a re-typed name goes missing. Every one of these
-    # is a thin delegation to an engine already in this list; they are registered separately
-    # because `NodeSpec.activity_name` is what the S-4 cross-check compares against, so a node
-    # type needs an activity NAME of its own even when the body is shared.
-    *AGENT_CATALOGUE_ACTIVITIES,
-    *GUARD_ACTIVITIES,
-    # the GENERIC (`agentic`) catalogue. Spread from the module's own list for the
-    # same reason the two above are: this list and `registry.py`'s NODE_REGISTRY are two SEPARATE
-    # hand-maintained lists, and a node in the registry but not here passes every static check --
-    # including the cross-language parity guard -- then fails at runtime with an
-    # unregistered-activity error.
-    *AGENTIC_ACTIVITIES,
-    # TASK-864 — the `core` vocabulary (nodes/core.py), including `interpreter.core_evaluate`,
-    # the CEL activity `LoopWorkflow` calls for `until`. Same two-list discipline as above.
+    # TASK-893 Phase 4 — the served set is now exactly what the interpreter DISPATCHES:
+    #   * the eleven `core.*` node types (`registry.py`'s NODE_REGISTRY), plus
+    #   * the seventeen ACTIONS behind `core.action` (`action_catalogue.py`), which
+    #     `interpreter_core_action` calls through `spec.activity`.
+    # `CORE_ACTIVITIES` also carries `interpreter.core_evaluate`, the CEL activity `LoopWorkflow`
+    # schedules for `until` — dispatched by a WORKFLOW rather than by a node spec, which is why
+    # it is served even though no NodeSpec names it.
+    #
+    # The two-list discipline this comment used to spell out is unchanged and is now MACHINE
+    # CHECKED in both directions by `test_realtime_capability_nodes.py`'s
+    # `test_every_registered_node_activity_is_served_by_the_worker`: `NODE_REGISTRY` +
+    # `ACTION_CATALOGUE` decide what is dispatched, this list decides what the worker serves, and
+    # an entry in the first but not the second passes every static check and then fails at
+    # runtime with an unregistered-activity error.
+    #
+    # Everything else that used to be served here went with its node type. The activities the
+    # SEVENTEEN actions run are spread from `ACTION_ACTIVITIES` below rather than re-typed, for
+    # the reason a hand-typed catalogue of that size always gives: a re-typed name goes missing.
+    *ACTION_ACTIVITIES,
     *CORE_ACTIVITIES,
 ]
 

@@ -14,49 +14,55 @@ from unittest.mock import AsyncMock
 import pytest
 
 from harness.services.guardrail_client import GuardrailServiceError, RedactResult
+from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import consultation as nodes_consultation
 from harness.temporal.interpreter.registry import NODE_REGISTRY
 
-_CONSULTATION_KEYS = ("consultation.consentGate", "consultation.hitlGate", "consultation.phiHop")
+# TASK-893 Phase 4: these are ACTIONS behind `core.action` now, not node types. The human wait
+# `consultation.hitlGate` did not become an action — it became the node type `core.humanReview`,
+# so its assertions moved to the registry below.
+_CONSULTATION_KEYS = ("consultation.consentGate", "consultation.phiHop")
 
 
 class TestConsultationRegistryShape:
     """Scoped to the three keys THIS module implements — the full-palette registry shape is
     asserted in consultation-node-registry.test.ts and test_consultation_pipeline_nodes.py."""
 
-    def test_all_three_keys_present(self):
+    def test_both_keys_present_in_the_action_catalogue(self):
         for key in _CONSULTATION_KEYS:
-            assert key in NODE_REGISTRY
+            assert key in ACTION_CATALOGUE
 
-    def test_only_consent_gate_and_hitl_gate_are_critical(self):
+    def test_only_the_consent_gate_and_the_human_wait_are_critical(self):
         # CR-14: "Only consultation.consentGate and consultation.hitlGate may be critical:true."
-        assert NODE_REGISTRY["consultation.consentGate"].critical is True
-        assert NODE_REGISTRY["consultation.hitlGate"].critical is True
-        assert NODE_REGISTRY["consultation.phiHop"].critical is False
+        # The human wait is `core.humanReview` since Phase 4; the rule is unchanged.
+        assert ACTION_CATALOGUE["consultation.consentGate"].critical is True
+        assert ACTION_CATALOGUE["consultation.phiHop"].critical is False
+        assert [key for key, spec in ACTION_CATALOGUE.items() if spec.critical] == ["consultation.consentGate"]
 
-    def test_hitl_gate_is_a_child_workflow_node(self):
-        # Phase B landed: the gate is implemented, but NOT as an activity dispatch —
-        # `kind="child_workflow"` routes it to `ConsultationGateWorkflow` (gate_workflow.py).
-        spec = NODE_REGISTRY["consultation.hitlGate"]
+    def test_the_human_wait_is_a_child_workflow_node(self):
+        # The gate is implemented, but NOT as an activity dispatch — `kind="child_workflow"`
+        # routes it to a gate workflow. `consultation.hitlGate` carried this until Phase 4;
+        # `core.humanReview` is the durable human wait now and carries it unchanged.
+        spec = NODE_REGISTRY["core.humanReview"]
         assert spec.implemented is True
         assert spec.kind == "child_workflow"
         assert spec.external_write is True
-        assert spec.critical is True
 
     def test_consent_gate_and_phi_hop_are_implemented(self):
-        assert NODE_REGISTRY["consultation.consentGate"].implemented is True
-        assert NODE_REGISTRY["consultation.phiHop"].implemented is True
+        assert ACTION_CATALOGUE["consultation.consentGate"].implemented is True
+        assert ACTION_CATALOGUE["consultation.phiHop"].implemented is True
 
     def test_no_consultation_vision_or_priming_key_exists(self):
         # (vision, permanently deferred) / + R-4 (priming, deferred).
-        for key in NODE_REGISTRY:
+        for key in (*NODE_REGISTRY, *ACTION_CATALOGUE):
             assert not key.startswith("consultation.vision")
         assert "consultation.priming" not in NODE_REGISTRY
+        assert "consultation.priming" not in ACTION_CATALOGUE
 
     def test_no_consultation_entry_mentions_signing(self):
         for key in _CONSULTATION_KEYS:
-            spec = NODE_REGISTRY[key]
+            spec = ACTION_CATALOGUE[key]
             module = getattr(spec.activity, "__module__", "")
             qualname = getattr(spec.activity, "__qualname__", "")
             assert "sign" not in module.lower()
@@ -64,7 +70,7 @@ class TestConsultationRegistryShape:
 
     def test_every_consultation_activity_resolves_to_a_real_activity_defn(self):
         for key in _CONSULTATION_KEYS:
-            spec = NODE_REGISTRY[key]
+            spec = ACTION_CATALOGUE[key]
             assert spec.activity_name.startswith("interpreter.consultation_")
 
 

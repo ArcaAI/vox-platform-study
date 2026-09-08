@@ -52,6 +52,11 @@ from harness.temporal.interpreter.models import (
 from harness.temporal.interpreter.review_workflow import ReviewGateWorkflow, review_gate_workflow_id
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.tests.unit.temporal._temporal_sync import await_history_event
+from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
+
+#: TASK-893 — this suite drives the interpreter through the retired `noop`/`passthrough` seed
+#: types, which now exist only as test scaffolding (see `../conftest.py`).
+pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
 
 _BUCKET = "harness-claim-check"
 _TENANT = "22222222-2222-2222-2222-222222222222"
@@ -98,6 +103,7 @@ _ACTIVITIES = [
         if getattr(a, "__temporal_activity_definition").name not in _STUBBED
     ],
     *LOOP_ACTIVITIES,
+    *SCAFFOLD_ACTIVITIES,
     stub_core_agent,
     stub_core_classify,
 ]

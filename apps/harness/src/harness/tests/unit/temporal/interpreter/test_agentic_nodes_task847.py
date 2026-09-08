@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 from temporalio import activity as temporal_activity
 
+from harness.temporal.interpreter.activities import NODE_ACTIVITIES
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import agentic
 from harness.temporal.interpreter.registry import NODE_REGISTRY
@@ -66,30 +67,44 @@ def _no_trajectory(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agentic, "record_and_flush", _noop)
 
 
-class TestDispatchability:
-    def test_all_eight_are_registered(self) -> None:
-        for key in AGENTIC_KEYS:
-            assert key in NODE_REGISTRY, f"{key} is missing from NODE_REGISTRY"
+class TestTheGenericCatalogueIsRetired:
+    """TASK-893 Phase 4 — the eight `agentic.*` NODE TYPES are gone.
 
-    def test_all_eight_are_implemented_so_a_graph_using_them_can_compile(self) -> None:
-        # `compile()` refuses any graph containing an `implemented=False` type, and this ticket's
-        # verification criterion is that a graph using every new node type compiles.
-        for key in AGENTIC_KEYS:
-            assert NODE_REGISTRY[key].implemented is True
+    They were the generic catalogue TASK-847 introduced, and the `core` vocabulary replaced every
+    one of them: `agentic.agent` -> `core.agent`, `agentic.data` -> `core.data`, `agentic.input` /
+    `agentic.output` -> `core.trigger` / `core.output`, `agentic.stt` / `agentic.tts` ->
+    `core.agent` with a SPEECH_TO_TEXT / TEXT_TO_SPEECH task, `agentic.guardrail` -> the
+    `guard.*` actions.
 
-    def test_every_one_is_served_by_the_worker(self) -> None:
-        served = {temporal_activity._Definition.from_callable(fn).name for fn in agentic.AGENTIC_ACTIVITIES}  # noqa: SLF001
-        for key in AGENTIC_KEYS:
-            assert NODE_REGISTRY[key].activity_name in served, f"{key} is dispatched but not served"
+    What this class asserts is the retirement, in both registrations: no spec dispatches them, and
+    the worker serves no activity under their names. The ACTIVITY BEHAVIOUR the rest of this file
+    covers is unaffected — `interpreter_agentic_data` is still what `core.data` runs — so those
+    suites are unchanged and still call the functions directly.
+    """
 
-    def test_the_writers_are_declared_as_writers(self) -> None:
-        # `external_write` is what a SANDBOXED run suppresses. Getting it wrong on `agentic.stt`
-        # would mean a sandbox test-run dispatching a real transcription job.
-        assert NODE_REGISTRY["agentic.output"].external_write is True
-        assert NODE_REGISTRY["agentic.stt"].external_write is True
-        assert NODE_REGISTRY["agentic.tts"].external_write is True
-        assert NODE_REGISTRY["agentic.agent"].external_write is False
-        assert NODE_REGISTRY["agentic.data"].external_write is False
+    def test_none_of_the_eight_is_a_node_type_any_more(self) -> None:
+        for key in AGENTIC_KEYS:
+            assert key not in NODE_REGISTRY, f"{key} is still dispatchable"
+
+    def test_the_worker_serves_no_activity_under_their_names(self) -> None:
+        served = {temporal_activity._Definition.from_callable(fn).name for fn in NODE_ACTIVITIES}  # noqa: SLF001
+        for name in (
+            "interpreter.agentic_input",
+            "interpreter.agentic_output",
+            "interpreter.agentic_agent",
+            "interpreter.agentic_guardrail",
+            "interpreter.agentic_loop",
+            "interpreter.agentic_stt",
+            "interpreter.agentic_tts",
+        ):
+            assert name not in served, f"{name} is served but nothing dispatches it"
+
+    def test_the_data_activity_survives_because_core_data_runs_it(self) -> None:
+        # The one exception, and it is a DELEGATION rather than a registration: `core.data`'s
+        # activity calls `interpreter_agentic_data` in-process, so the function is live while its
+        # old node type is not, and the worker does not need to serve it under the old name.
+        assert "core.data" in NODE_REGISTRY
+        assert NODE_REGISTRY["core.data"].activity_name == "interpreter.core_data"
 
 
 class TestObservableNonExecution:

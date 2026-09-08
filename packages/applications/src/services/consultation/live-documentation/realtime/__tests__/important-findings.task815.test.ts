@@ -14,10 +14,8 @@
  *     because "a detector recognised this" and "the tenant said this matters" are two claims.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { NODE_PORTS, WORKFLOW_NODE_REGISTRY, portPrimitiveSatisfies } from '@arcaai/workflow-contract';
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from '../parse-findings';
 import { reanchorAnnotations } from '../reanchor-annotations';
-import { REALTIME_NODE_HANDLERS, REALTIME_NODE_TYPES, canonicalRealtimeNodeType, type RealtimeCapabilities } from '../realtime-node-registry';
 
 const KEY = 'agent.important_findings';
 
@@ -37,72 +35,6 @@ const ctx = (bound: Record<string, unknown>, caps = capabilities(), config: Reco
   tenantId: 'tenant-1',
   consultationId: 'consultation-1',
   capabilities: caps,
-});
-
-describe('the findings node is owned by the REALTIME runtime', () => {
-  it('is in the realtime set and has a handler — a lane node with no handler is a silent no-op', () => {
-    expect(REALTIME_NODE_TYPES.has(KEY)).toBe(true);
-    expect(REALTIME_NODE_HANDLERS[KEY]).toBeDefined();
-  });
-
-  it('declares the CONTRACT’s ports — this file cannot widen `in` from transcript to text', () => {
-    expect(REALTIME_NODE_HANDLERS[KEY].inputs).toBe(NODE_PORTS[KEY].inputs);
-    expect(REALTIME_NODE_HANDLERS[KEY].outputs).toBe(NODE_PORTS[KEY].outputs);
-  });
-
-  it('is its OWN canonical type — §14d’s alias bug cannot recur here, and must not be faked', () => {
-    // `agent.transcription`/`agent.ner` canonicalise to their pipeline counterparts. This node has
-    // none, so folding it onto one would claim an equivalence no runtime honours.
-    expect(canonicalRealtimeNodeType(KEY)).toBe(KEY);
-    expect(canonicalRealtimeNodeType('agent.ner')).toBe('consultation.extractEntities');
-  });
-});
-
-describe('what the handler passes to the model', () => {
-  it('binds the TRANSCRIPT, the context items and the same flush’s entity hints', async () => {
-    const caps = capabilities();
-    const entities = [{ text: 'aspirin', type: 'MEDICATION' }];
-    await REALTIME_NODE_HANDLERS[KEY].run(
-      ctx({ in: 'patient reports a penicillin allergy', context: [{ kind: 'CASE_NOTE', body: 'prior admission' }], entities }, caps) as never,
-    );
-    expect(caps.extractFindings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceText: 'patient reports a penicillin allergy',
-        context: [{ kind: 'CASE_NOTE', body: 'prior admission' }],
-        entities,
-        tenantId: 'tenant-1',
-      }),
-      undefined,
-    );
-  });
-
-  it('hands the node’s OWN config through — the instruction is per-instance, never global', async () => {
-    const caps = capabilities();
-    const config = { promptTemplateId: '11111111-1111-1111-1111-111111111111', maxFindings: 5 };
-    await REALTIME_NODE_HANDLERS[KEY].run(ctx({ in: 'said something' }, caps, config) as never);
-    expect((caps.extractFindings as ReturnType<typeof vi.fn>).mock.calls[0][0].config).toBe(config);
-  });
-
-  it('does not call a model on an empty turn — a finding with no source is worse than none', async () => {
-    const caps = capabilities();
-    const output = await REALTIME_NODE_HANDLERS[KEY].run(ctx({ in: '' }, caps) as never);
-    expect(caps.extractFindings).not.toHaveBeenCalled();
-    expect(output).toEqual({ findings: [] });
-  });
-
-  it('publishes under the port’s declared outputKey, so the executor can read it back', async () => {
-    const output = await REALTIME_NODE_HANDLERS[KEY].run(ctx({ in: 'something was said' }) as never);
-    const declared = NODE_PORTS[KEY].outputs.find((port) => port.name === 'out')!.outputKey!;
-    expect(Object.keys(output)).toContain(declared);
-    expect(declared).toBe('findings');
-  });
-
-  it('cannot be fed a generated note — the type lattice refuses `document -> transcript`', () => {
-    const generated = NODE_PORTS['consultation.realtimeSummary'].outputs.find((p) => p.name === 'out')!;
-    const consumed = NODE_PORTS[KEY].inputs.find((p) => p.name === 'in')!;
-    expect(portPrimitiveSatisfies(generated.primitive as never, consumed.primitive as never)).toBe(false);
-    expect(WORKFLOW_NODE_REGISTRY[KEY].lane).toBe('realtime');
-  });
 });
 
 describe('parsing the model reply — never fabricate, never anchor to nothing', () => {

@@ -16,7 +16,7 @@ export interface NodeTypeOrClass {
 
 function nodeMatches(node: WorkflowGraphNode, selector: NodeTypeOrClass, ctx: WorkflowEvaluationContext): boolean {
   if (selector.nodeType !== undefined) return node.type === selector.nodeType;
-  if (selector.nodeClass !== undefined) return ctx.registry.classesOf(node.type).includes(selector.nodeClass);
+  if (selector.nodeClass !== undefined) return ctx.registry.classesOf(node.type, node.config).includes(selector.nodeClass);
   return false;
 }
 

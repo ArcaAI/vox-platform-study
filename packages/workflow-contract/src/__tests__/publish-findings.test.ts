@@ -19,6 +19,7 @@
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { describe, expect, it } from 'vitest';
 import type { WorkflowGraph } from '../graph-model';
+import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 import { PUBLISH_FINDING_RULE_ID, publishFindings, type PublishContext } from '../publish-findings';
 
 const ctx = (overrides: Partial<PublishContext> = {}): PublishContext => ({
@@ -92,14 +93,17 @@ describe('publishFindings — the core node checks', () => {
 
 describe('publishFindings — the graph checks it inherits from workflowPublishProblems', () => {
   it('reports GUARD_REQUIRED when a node`s `requires` guard is not attached to THIS instance', () => {
+    // No shipped node declares a `requires` guard, so the MECHANISM is exercised against a
+    // synthetic overlay rather than by inventing a clinical policy the owner has not set.
+    const registry = { 'core.agent': { ...WORKFLOW_NODE_REGISTRY['core.agent'], requires: ['core.data'] } };
     const graph = {
       nodes: [
-        { id: 'g1', type: 'agent.summarization', config: {}, position: { x: 0, y: 0 } },
+        { id: 'g1', type: 'core.agent', config: { agentRef: { slug: 's' } }, position: { x: 0, y: 0 } },
         { id: 'x1', type: 'core.note', config: {}, position: { x: 1, y: 0 } },
       ],
-      edges: [{ id: 'e1', from: 'g1', to: 'x1', fromPort: 'out', toPort: 'in' }],
+      edges: [],
     } as unknown as WorkflowGraph;
-    expect(codesOf(graph)).toContain('GUARD_REQUIRED');
+    expect(codesOf(graph, ctx({ registry }))).toContain('GUARD_REQUIRED');
   });
 
   it('reports LOOP_BODY when a body node wires outside its loop', () => {
@@ -272,18 +276,21 @@ describe('publishFindings — GUARDRAIL_OPTED_OUT (§3.14)', () => {
   });
 
   it('WARNS on a DISABLED mandatory guard node, naming its type and the classes that made it mandatory (D-1)', () => {
-    const graph = coreGraph([{ id: 'g1', type: 'guardrail.check', config: { enabled: false } }]);
+    // TASK-893: the mandatory clinical guards are ACTIONS behind `core.action`, so the class
+    // that earns this warning is resolved PER INSTANCE from `actionKey` — a type-set lookup
+    // would find nothing here and the compensating control D-1 rests on would be silently gone.
+    const graph = coreGraph([{ id: 'g1', type: 'core.action', config: { actionKey: 'consultation.phiHop', enabled: false } }]);
     const findings = publishFindings(graph, ctx()).filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
     expect(findings).toHaveLength(1);
     // NEVER blocking: the opt-out is a decision on the record, not a refusal (§3.14a #6).
     expect(findings[0]?.severity).toBe('WARNING');
     expect(findings[0]?.nodeId).toBe('g1');
-    expect(findings[0]?.message).toContain('guardrail.check');
+    expect(findings[0]?.message).toContain('consultation.phiHop');
     expect(findings[0]?.message).toContain('mandatory');
   });
 
   it('WARNS on a disabled `consultation.consentGate` — the case D-1 was decided about', () => {
-    const graph = coreGraph([{ id: 'cg', type: 'consultation.consentGate', config: { enabled: false } }]);
+    const graph = coreGraph([{ id: 'cg', type: 'core.action', config: { actionKey: 'consultation.consentGate', enabled: false } }]);
     const findings = publishFindings(graph, ctx()).filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
     expect(findings.map((f) => f.nodeId)).toEqual(['cg']);
     expect(findings.every((f) => f.severity === 'WARNING')).toBe(true);
@@ -291,21 +298,21 @@ describe('publishFindings — GUARDRAIL_OPTED_OUT (§3.14)', () => {
 
   it('says nothing about a mandatory node that is present and ENABLED (absent means on)', () => {
     const graph = coreGraph([
-      { id: 'g1', type: 'guardrail.check', config: {} },
-      { id: 'g2', type: 'consultation.phiHop', config: { enabled: true, mode: 'full', onError: 'fail' } },
+      { id: 'g1', type: 'core.action', config: { actionKey: 'consultation.consentGate' } },
+      { id: 'g2', type: 'core.action', config: { actionKey: 'consultation.phiHop', enabled: true } },
     ]);
     expect(codesOf(graph)).not.toContain('GUARDRAIL_OPTED_OUT');
   });
 
   it('says nothing about a disabled OPTIONAL node — that is the ordinary kill switch, not a guardrail opt-out', () => {
-    const graph = coreGraph([{ id: 'r1', type: 'consultation.realtimeSummary', config: { enabled: false, onError: 'degrade' } }]);
+    const graph = coreGraph([{ id: 'r1', type: 'core.action', config: { actionKey: 'consultation.retrieveEvidence', enabled: false } }]);
     expect(codesOf(graph)).not.toContain('GUARDRAIL_OPTED_OUT');
   });
 
   it('names EVERY disabled mandatory node, not just the first', () => {
     const graph = coreGraph([
-      { id: 'g1', type: 'guardrail.check', config: { enabled: false } },
-      { id: 'cg', type: 'consultation.consentGate', config: { enabled: false } },
+      { id: 'g1', type: 'core.action', config: { actionKey: 'consultation.persistDraft', enabled: false } },
+      { id: 'cg', type: 'core.action', config: { actionKey: 'consultation.consentGate', enabled: false } },
     ]);
     const ids = publishFindings(graph, ctx())
       .filter((f) => f.code === 'GUARDRAIL_OPTED_OUT')

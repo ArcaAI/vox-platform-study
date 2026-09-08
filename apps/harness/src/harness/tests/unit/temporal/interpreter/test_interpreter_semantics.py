@@ -28,6 +28,11 @@ from harness.temporal.interpreter.models import CancelSignal, InterpreterInput
 from harness.temporal.interpreter.registry import NODE_REGISTRY, NodeSpec
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.tests.unit.temporal._temporal_sync import await_history_event
+from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
+
+#: TASK-893 — this suite drives the interpreter through the retired `noop`/`passthrough` seed
+#: types, which now exist only as test scaffolding (see `../conftest.py`).
+pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
 
 _BUCKET = "harness-claim-check"
 
@@ -104,7 +109,7 @@ async def _run(body: dict, *, signal_cancel_after_start: bool = False):
             env.client,
             task_queue=tq,
             workflows=[WorkflowInterpreter],
-            activities=INTERPRETER_ACTIVITIES,
+            activities=[*INTERPRETER_ACTIVITIES, *SCAFFOLD_ACTIVITIES],
         ):
             handle = await env.client.start_workflow(
                 WorkflowInterpreter.run,

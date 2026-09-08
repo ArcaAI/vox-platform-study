@@ -1,4 +1,5 @@
 import { CORE_PALETTE_KEY, actionDelegateOf, paletteOf, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
+import { isRealtimeNode } from '../consultation/live-documentation/realtime/realtime-node-registry';
 
 /**
  * The keys the interpreter reads as RUN IDENTITY, which a caller may therefore never supply
@@ -59,69 +60,24 @@ export function reservedIdentityKeysIn(input: Record<string, unknown> | undefine
  *
  * Deliberately an ALLOW-list, not a deny-list: a palette added to the registry later is refused
  * here until someone affirmatively decides it is an exposure product (config selection fails
- * closed, rule 00). Membership reasoning as of :
- *
- * `summarization` — ALLOWED. The palette the exposure plane was designed around; the
- *   seeded platform-default definition and the `InvokeWorkflowRequest` DTO example are both
- *   summarization. Its one `externalWrite` node (`output.deliver`) writes to claim-check storage,
- *   not to clinical rows.
- * - `consultation` — REFUSED. This is finding C-8 itself. Four of its thirteen nodes declare
- *   `externalWrite`, and `consultation.persistDraft` reaches the same activity the real
- *   consultation workflow uses.
- * - `stt` — REFUSED. Not because it is dangerous but because it is not a product on this plane:
- *   the palette is RETIRED (TASK-861 step 10 / TASK-867) — every `stt.*` descriptor is
- *   `implemented: false`, the interpreter carries no `stt.*` spec or activity any more, and the
- *   palette's only artifact was the `AsrPipeline` compiled at publish time; invoking such a graph
- *   over REST would promise transcription and silently deliver nothing.
- *
- * Palette-agnostic node types (`noop`, `passthrough`, `core.start`, `core.end` — `paletteKey:
- * null` in the registry) belong to no palette and are always permitted.
+ * closed, rule 00). Since TASK-893 the registry declares ONE palette — `core` — and the legacy
+ * `summarization` / `consultation` / `agentic` / `stt` palettes are gone, so the real boundary on
+ * this plane is the CLASS-based `clinicalWriteViolation` below, not palette membership.
  */
-export const EXPOSURE_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summarization', CORE_PALETTE_KEY]);
+export const EXPOSURE_ALLOWED_PALETTES: ReadonlySet<string> = new Set([CORE_PALETTE_KEY]);
 
 /**
  * Palettes invocable on the CONSULTATION-BOUND plane
  * (`POST /consultations/:consultationId/workflows/:slug/runs`) — lane A step 3.
  *
- * ## This is not `EXPOSURE_ALLOWED_PALETTES` with `consultation` added to it
- *
- * It is a SECOND, narrower plane that only exists once the server has resolved a consultation
- * binding, and the distinction is the whole safety argument. The set above is unchanged: on the
- * unbound plane a consultation graph is refused today exactly as C-8 left it. What changed is
- * that there is now a plane on which the C-8 chain has no links left to exploit, and this set
- * governs only that plane.
- *
- * The invariant, from :
- *
- *   > consultation identity comes from the URL and is re-resolved against the caller's tenant —
- *   > never from a caller-composed payload.
- *
- * preserved it with a session-bound entry point; lane A preserves it with an
- * invocation-bound one. Against C-8's four links:
- *
- * 1. **`consultationId` from caller-controlled `dto.input`** — the id is a PATH parameter,
- *    re-resolved through `IConsultationService.getById` (tenant-scoped; a foreign or unknown id
- *    is simply absent ⇒ 404) and frozen into `StartWorkflowRunInput.subject`. A caller-supplied
- *    identity key in `input` is a 400, and the harness dispatcher strips those keys from the
- *    payload unconditionally (`sanitize_run_payload`) — so the payload cannot carry identity at
- *    all, for any caller.
- * 2. **`sandbox: false`, so external-write suppression never fires** — still true, and no longer
- *    the thing standing between a caller and a write. Suppression answered "may this run write?";
- *    the binding answers "WHERE may it write?", and the answer is one row the caller has already
- *    been authorised for. A suppression flag could not have expressed that.
- * 3. **`consultation.persistDraft` reaches the shared activity** — it does, and now that is the
- *    FEATURE: it writes to the caller's own consultation. `persistDraft` resolves its target via
- *    `run_identity(...)`, which reads only the server-stamped keys.
- * 4. **API-key reachable; `paletteKey` is free text** — the gate still resolves NODE types, never
- *    the declared palette, and the bound plane additionally requires the
- *    `ConsultationWorkflow:execute` ability and the `workflows:execute` scope, which is a
- *    separate top-level scope prefix so an existing `workflow`-scoped key does NOT inherit it.
- *
- * `stt` stays refused on BOTH planes for its original reason (placeholder nodes that promise
- * transcription and deliver nothing), and `agentic` is refused for want of an affirmative
- * decision — config selection fails closed.
+ * A SECOND, narrower plane that only exists once the server has resolved a consultation binding
+ * from the URL (re-resolved against the caller's tenant, frozen into `StartWorkflowRunInput.subject`;
+ * a caller-supplied identity key in `input` is a 400 and the dispatcher strips those keys
+ * unconditionally). On THIS plane a clinical write is the FEATURE: it writes to the caller's own
+ * consultation, so `clinicalWriteViolation` is not applied here. Both planes admit the same one
+ * palette since TASK-893; what differs is the clinical-write rule and the required ability/scope.
  */
-export const CONSULTATION_BOUND_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summarization', 'consultation', CORE_PALETTE_KEY]);
+export const CONSULTATION_BOUND_ALLOWED_PALETTES: ReadonlySet<string> = new Set([CORE_PALETTE_KEY]);
 
 /**
  * TASK-864 — the CLASS-BASED rule that replaces palette membership as the real boundary for the
@@ -130,19 +86,17 @@ export const CONSULTATION_BOUND_ALLOWED_PALETTES: ReadonlySet<string> = new Set(
  * node's claim-check publish and a TTS artifact are external writes too, but they write to the
  * run, not to a patient record, which is exactly the distinction C-8 turned on.
  *
- * Resolved per INSTANCE: a `core.action` writes if the legacy node it delegates to writes
- * (`actionDelegateOf`), and only the consultation palette's writers are clinical.
+ * Resolved per INSTANCE: a `core.action` writes if its catalogue entry writes (`actionDelegateOf`
+ * → `externalWrite`). Every `externalWrite` action in `ACTION_CATALOGUE` writes into a
+ * consultation's own rows (`persistDraft`, `finalizeAssurance`, the endpoint stage), so the flag
+ * IS the clinical-write class.
  */
-function clinicalWriteViolation(graph: unknown): string | null {
-  const nodes = (graph as { nodes?: unknown })?.nodes;
-  if (!Array.isArray(nodes)) return null;
+function clinicalWriteViolation(nodes: ReadonlyArray<{ type: string; config?: Readonly<Record<string, unknown>> }>): string | null {
   for (const node of nodes) {
-    const record = node as { type?: unknown; config?: unknown };
-    if (record?.type !== 'core.action') continue;
-    const config = typeof record.config === 'object' && record.config !== null ? (record.config as Record<string, unknown>) : undefined;
-    const delegate = actionDelegateOf(config);
+    if (node.type !== 'core.action') continue;
+    const delegate = actionDelegateOf(node.config);
     if (delegate === undefined) continue;
-    if (delegate.externalWrite && delegate.paletteKey === 'consultation') {
+    if (delegate.externalWrite) {
       return `action '${delegate.key}' writes into a consultation — invokable only through the consultation-bound route`;
     }
   }
@@ -230,11 +184,13 @@ export function exposureBoundaryViolation(
   }
 
   const nodeTypes = collectNodeTypes(definition.graph, definition.compiledConfig);
+  const nodes = collectNodes(definition.graph, definition.compiledConfig);
 
-  // TASK-864 — the class-based rule. Checked on the UNBOUND plane only: the bound plane has a
-  // server-resolved consultation to write into, which is what makes those writes safe there.
+  // TASK-864 — the class-based rule, over the authored AND the compiled nodes (the author is not
+  // trusted, C-8). Checked on the UNBOUND plane only: the bound plane has a server-resolved
+  // consultation to write into, which is what makes those writes safe there.
   if (context.consultationBound !== true) {
-    const clinical = clinicalWriteViolation(definition.graph);
+    const clinical = clinicalWriteViolation(nodes);
     if (clinical) return clinical;
   }
 
@@ -248,33 +204,49 @@ export function exposureBoundaryViolation(
     }
   }
 
-  return realtimeOnlyViolation(nodeTypes);
+  return realtimeOnlyViolation(nodes);
+}
+
+/** Every node INSTANCE a definition carries (type + config), from the same two sources as `collectNodeTypes`. */
+function collectNodes(graph: unknown, compiledConfig: unknown): Array<{ type: string; config?: Readonly<Record<string, unknown>> }> {
+  const nodes: Array<{ type: string; config?: Readonly<Record<string, unknown>> }> = [];
+  const push = (node: unknown) => {
+    const record = node as { type?: unknown; config?: unknown };
+    if (typeof record?.type !== 'string') return;
+    nodes.push({ type: record.type, config: typeof record.config === 'object' && record.config !== null ? (record.config as Record<string, unknown>) : undefined });
+  };
+  const graphNodes = (graph as { nodes?: unknown })?.nodes;
+  if (Array.isArray(graphNodes)) graphNodes.forEach(push);
+  const stages = (compiledConfig as { stages?: unknown })?.stages;
+  if (Array.isArray(stages)) {
+    for (const stage of stages) {
+      const stageNodes = (stage as { nodes?: unknown })?.nodes;
+      if (Array.isArray(stageNodes)) stageNodes.forEach(push);
+    }
+  }
+  return nodes;
 }
 
 /**
  * A graph whose only real work is `lane: 'realtime'` is refused on BOTH planes.
  *
- * The Temporal interpreter deliberately skips every realtime node — that lane belongs to
- * in-gateway `runRealtimeLane` executor, driven by a live consultation session, not
- * by an invocation. Accepting such an invoke would return a `runId`, report `COMPLETED`, and
- * have done nothing: the developer gets a green response for work that never happened.
- *
- * This is the same honesty argument the `stt` refusal above already records, applied to a lane
- * rather than a palette, and it is deliberately narrow. A MIXED graph is allowed: realtime nodes
- * inside an otherwise durable graph are a legitimate authoring choice (the same published
- * definition governs both substrates), and the durable half really does run. Only a graph with
- * no durable work at all is a promise the interpreter cannot keep.
+ * The Temporal interpreter deliberately skips every realtime node — that lane belongs to the
+ * in-gateway `runRealtimeLane` executor, driven by a live consultation session, not by an
+ * invocation. Accepting such an invoke would return a `runId`, report `COMPLETED`, and have done
+ * nothing. Since TASK-893 lane is a property of the INSTANCE (`core.agent` / `core.action`
+ * `execution.lane`, an action inheriting its catalogue entry's), so this is judged per node, not
+ * per type — the same predicate `isRealtimeNode` applies at flush time. A MIXED graph is allowed:
+ * only a graph with no durable work at all is a promise the interpreter cannot keep.
  */
-function realtimeOnlyViolation(nodeTypes: Set<string>): string | null {
+function realtimeOnlyViolation(nodes: ReadonlyArray<{ type: string; config?: Readonly<Record<string, unknown>> }>): string | null {
   let realtime = 0;
   let durable = 0;
-  for (const nodeType of nodeTypes) {
-    const descriptor = WORKFLOW_NODE_REGISTRY[nodeType];
+  for (const node of nodes) {
+    const descriptor = WORKFLOW_NODE_REGISTRY[node.type];
     if (descriptor === undefined) continue;
-    // Boundary markers (`core.start`/`core.end`) and `noop`/`passthrough` are structural, not
-    // work — a graph of nothing but markers plus realtime nodes still does nothing durable.
-    if (descriptor.classes.includes('boundary') || nodeType === 'noop' || nodeType === 'passthrough') continue;
-    if (descriptor.lane === 'realtime') realtime += 1;
+    // Boundaries and annotations are structural, not work.
+    if (descriptor.classes.includes('boundary') || descriptor.classes.includes('annotation')) continue;
+    if (isRealtimeNode(node.type, node.config)) realtime += 1;
     else durable += 1;
   }
   if (realtime > 0 && durable === 0) {

@@ -113,401 +113,6 @@ function ports(inputs: readonly WorkflowPortDescriptor[], outputs: readonly Work
  */
 export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.freeze({
   // -------------------------------------------------------------------------------------------
-  // Palette-agnostic utility + boundary markers. These execute nothing (`core.start`/`core.end`)
-  // or nothing meaningful (`noop`/`passthrough`), so they carry ORDERING ports only. Giving
-  // `passthrough` a data port would be a false constraint for the same reason it deliberately
-  // has no config schema: it round-trips arbitrary config verbatim, and no fixed data type
-  // describes that honestly.
-  // -------------------------------------------------------------------------------------------
-  noop: ports([AFTER], [NEXT]),
-  passthrough: ports([AFTER], [NEXT]),
-  'core.start': ports([], [NEXT]),
-  'core.end': ports([AFTER], []),
-
-  // -------------------------------------------------------------------------------------------
-  // Summarization palette. `generate.text` is the one node with two distinct data
-  // inputs — the bound context and the resolved prompt — which is the clearest demonstration of
-  // why a single untyped `in` could never be type-checked.
-  //
-  // OD-15: `input.context_binding`'s activity used to return the bound kinds AS its whole output
-  // dict (`{kindKey: value, …}`), which offered no key for a socket to name. It now publishes
-  // them under `context` (`nodes/context_binding.py`) — see `port-model.ts` on why a nameless
-  // whole-object port was rejected.
-  // -------------------------------------------------------------------------------------------
-  'input.context_binding': ports([AFTER], [port('out', 'context<schemaRef>', true, true, { outputKey: 'context' }), NEXT]),
-  'prompt.template_ref': ports([AFTER], [port('out', 'text', true, true, { outputKey: 'content' }), NEXT]),
-  'generate.text': ports(
-    [port('context', 'context<schemaRef>', true, false), port('prompt', 'text', false, false), AFTER],
-    [port('out', 'document', true, true, { outputKey: 'text' }), NEXT],
-  ),
-  // `in: text` and not `in: document`: a guardrail legitimately reads ANY textual product — a
-  // generated document, a transcript, an assembled prompt — and `document`/`transcript` both
-  // widen to `text`. This is the widening direction being useful; the reverse never is.
-  'guardrail.check': ports([port('in', 'text', true, false), AFTER], [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT]),
-  'output.deliver': ports([port('in', 'document', true, false), port('verdict', 'verdict', false, true), AFTER], [NEXT]),
-
-  // -------------------------------------------------------------------------------------------
-  // STT palette — DESIGN INTENT (see this module's docstring). Audio flows through
-  // the pre-processors unchanged in type; `stt.asrEngine` is the ONLY node that turns
-  // `stream<audio>` into `transcript`, which is what makes it the palette's mandatory,
-  // non-bypassable step in type terms as well as in rule terms.
-  //
-  // Their `outputKey`s are design intent too, and honestly so: every `stt.*` activity is a
-  // registry-parity placeholder that returns DEGRADED with no `output` at all, so no binding off
-  // one ever resolves a key. Declaring the keys the real pipeline would publish keeps the table
-  // total (the OD-15 invariant is "every data output port names a key", with no palette carve-out)
-  // and states the shape the compiled `AsrPipeline` path already implies.
-  // -------------------------------------------------------------------------------------------
-  'stt.audioInput': ports(
-    [AFTER],
-    [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), port('bypass', 'stream<audio>', false, true, { outputKey: 'audio' }), NEXT],
-  ),
-  'stt.vad': ports([port('in', 'stream<audio>', true, false), AFTER], [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT]),
-  'stt.noiseFilter': ports(
-    [port('in', 'stream<audio>', true, false), AFTER],
-    [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT],
-  ),
-  'stt.diarization': ports(
-    [port('in', 'stream<audio>', true, false), AFTER],
-    [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT],
-  ),
-  'stt.languageDetection': ports(
-    [port('in', 'stream<audio>', true, false), AFTER],
-    [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT],
-  ),
-  'stt.asrEngine': ports(
-    [port('in', 'stream<audio>', true, false), AFTER],
-    [port('out', 'transcript', true, true, { outputKey: 'transcript' }), control('loop', false, true), NEXT],
-  ),
-  'stt.transcriptOutput': ports([port('in', 'transcript', true, false), AFTER], [control('loop', false, true), NEXT]),
-  // Redaction preserves the type: a redacted transcript is still a transcript, never model
-  // prose. That is what lets `asrEngine -> phiHop -> ner` stay legal while `synthesize -> ner`
-  // cannot be expressed at all.
-  'stt.phiHop': ports([port('in', 'transcript', true, false), AFTER], [port('out', 'transcript', true, true, { outputKey: 'transcript' }), NEXT]),
-
-  // -------------------------------------------------------------------------------------------
-  // Consultation palette ( +). The type assignments here carry the palette's
-  // safety semantics:
-  //
-  //   - `captureBinding` and `phiHop` are the only consultation-side producers of `transcript`
-  //     — the verbatim record of what was actually said.
-  //   - `extractEntities` (the NER node) consumes `transcript` and NOTHING else. See
-  //     `__tests__/anti-laundering.test.ts`.
-  //   - every generation node (`synthesize`, `realtimeSummary`) produces `document`, and the two
-  //     PROPOSAL surfaces (`suggestions`, `proposeCorrections`) produce `edits` — a set of
-  //     model-proposed changes a clinician accepts or rejects, never applied silently
-  //     (`node-registry.ts` records exactly that reasoning for `externalWrite: false` on them).
-  // -------------------------------------------------------------------------------------------
-  // A gate authorizes; it emits a control signal, not data.
-  'consultation.consentGate': ports([AFTER], [control('out', true, true), NEXT]),
-  // ⚠ OPEN OWNER ITEM (OD-15, recorded rather than resolved). `out: transcript` is DESIGN INTENT,
-  // exactly like the `stt.*` tables above: `interpreter_consultation_capture_binding` starts or
-  // stops the live-documentation SESSION and emits `{action, consultationId}` — it publishes no
-  // transcript, so `outputKey: 'transcript'` names a key the activity does not yet produce today.
-  // That is a THIRD descriptor-vs-activity divergence alongside the two OD-15 fixed below, and
-  // the honest options are not equivalent: retyping this port `control` would leave the whole
-  // consultation palette with NO producer of `transcript` at all, making `extractEntities`'
-  // required input unsatisfiable in every graph. Left as design intent, and the interpreter's
-  // "declared key absent from this run's output contributes nothing" rule keeps a graph that
-  // wires it DEGRADING exactly as it does today rather than raising.
-  'consultation.captureBinding': ports([AFTER], [port('out', 'transcript', true, true, { outputKey: 'transcript' }), NEXT]),
-  'consultation.extractEntities': ports(
-    [port('in', 'transcript', true, false), AFTER],
-    [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT],
-  ),
-  'consultation.bindTerminology': ports(
-    [port('in', 'entities', true, false), AFTER],
-    [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT],
-  ),
-  'consultation.phiHop': ports([port('in', 'transcript', true, false), AFTER], [port('out', 'transcript', true, true, { outputKey: 'text' }), NEXT]),
-  // OD-15: the activity now publishes the retrieved evidence as a context OBJECT under `context`
-  // (`nodes/consultation_compose.py`) — same reasoning as `input.context_binding` above.
-  'consultation.retrieveEvidence': ports(
-    [port('in', 'entities', false, true), AFTER],
-    [port('out', 'context<schemaRef>', true, true, { outputKey: 'context' }), NEXT],
-  ),
-  // ⚠ DOC-vs-CODE DIVERGENCE — RESOLVED (lane A, item 18), in the direction that makes
-  // the CODE match the contract rather than the other way round, because the divergence was
-  // hiding a real data loss.
-  //
-  // `node-types.md:117` documented this node's input as `TEXT + STRUCTURED` while the activity
-  // read NO `bound_inputs` at all. That mattered: `consultation.retrieveEvidence` publishes the
-  // StrictCitations block it retrieved, the seeded graphs wire it into this node, and nothing
-  // consumed it — so on the interpreter path the retrieved evidence was fetched, paid for, and
-  // then dropped. `interpreter_consultation_assemble_prompt` now folds the bound context into the
-  // prompt through `assemble_generation_prompt` (`temporal/prompt_cache.py`), the SAME pure
-  // helper the legacy `HarnessDocWorkflow` already uses for exactly this — so this is a wiring
-  // fix, not a new prompt design.
-  //
-  // The `transcript` input is REMOVED rather than retyped. The gateway's `assemble` builds the
-  // prompt from the consultation's own persisted transcript (`apps/api` owns that), so a second
-  // transcript arriving over a port could only DUPLICATE it inside the prompt. A port that can
-  // only cause duplication is not a contract worth keeping; ordering after the PHI hop is
-  // expressed by the `after` socket, which is what an ordering dependency is for.
-  'consultation.assemblePrompt': ports(
-    [port('in', 'context<schemaRef>', false, true), AFTER],
-    [port('out', 'text', true, true, { outputKey: 'text' }), NEXT],
-  ),
-  // `in: text` (multiple) accepts BOTH the assembled prompt and a transcript widened to text —
-  // the two things a clinical note is actually synthesized from.
-  'consultation.synthesize': ports([port('in', 'text', true, true), AFTER], [port('out', 'document', true, true, { outputKey: 'text' }), NEXT]),
-  // OD-15 — the two verifier nodes gained a `document` PASSTHROUGH output, and their activities
-  // now publish their verdict as an object under `verdict`.
-  //
-  // Both changes are forced by the same thing: a verifier sits BETWEEN synthesis and persistence
-  // on every path (WF-CONS-011 makes `sensors` non-bypassable), so with a verdict-only output
-  // there was no legal edge by which the note itself could reach `persistDraft` — `synthesize ->
-  // persistDraft` skips `sensors` and fails the rule. The verdict object exists for the same
-  // reason: `persistDraft`/`finalizeAssurance` read `scores`, `citationsMap`,
-  // `guardrailDecisions`, `ragTriadScore` and `reducedAssurance` off the bound verifier value, and
-  // a single flat key would have carried exactly one of them and silently dropped the rest.
-  'consultation.sensors': ports(
-    [port('in', 'document', true, false), port('entities', 'entities', false, true), AFTER],
-    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('document', 'document', true, true, { outputKey: 'text' }), NEXT],
-  ),
-  'consultation.inferentialSensors': ports(
-    [port('in', 'document', true, false), port('verdict', 'verdict', false, true), AFTER],
-    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('document', 'document', true, true, { outputKey: 'text' }), NEXT],
-  ),
-  // OD-15 FIX 1 of 2. `persistDraft` declared `[NEXT]` only, yet its activity emits
-  // `{contextItemId, text}` and `finalizeAssurance` genuinely consumes the former — so NO legal
-  // edge could express the platform's own persist -> assure flow. `contextItemId` is typed `text`
-  // because the vocabulary has no id primitive and an id IS a string; it is a SEPARATE socket
-  // from `out` so that both can be wired without the interpreter's last-write-wins `toPort`
-  // binding dropping one of them.
-  //
-  // `assurance` is the inferential verifier's own verdict, kept distinct from `verdict` (the
-  // computational sensors') for exactly that reason: two verdicts on one socket would leave only
-  // the last, and this is the clinical assurance record.
-  'consultation.persistDraft': ports(
-    [port('in', 'document', true, false), port('verdict', 'verdict', false, true), port('assurance', 'verdict', false, true), AFTER],
-    [port('out', 'document', true, true, { outputKey: 'text' }), port('contextItemId', 'text', true, true, { outputKey: 'contextItemId' }), NEXT],
-  ),
-  // OD-15 FIX 2 of 2. Same defect, and `contextItemId` is an INPUT here — the id whose draft this
-  // node backfills the assurance verdict onto. It republishes it so a downstream node (or a
-  // second assurance pass) can chain off the same target.
-  'consultation.finalizeAssurance': ports(
-    [
-      port('in', 'document', true, false),
-      port('contextItemId', 'text', false, false),
-      port('verdict', 'verdict', false, true),
-      port('assurance', 'verdict', false, true),
-      AFTER,
-    ],
-    [port('contextItemId', 'text', true, true, { outputKey: 'contextItemId' }), NEXT],
-  ),
-  // The draft under review is OPTIONAL on the gate: a graph may route the human wait purely as
-  // an ordering step. What the gate emits is always a control signal.
-  'consultation.hitlGate': ports([port('in', 'document', false, false), AFTER], [control('out', true, true), NEXT]),
-  'consultation.realtimeSummary': ports(
-    [port('in', 'transcript', true, false), port('entities', 'entities', false, true), AFTER],
-    [port('out', 'document', true, true, { outputKey: 'text' }), NEXT],
-  ),
-  'consultation.suggestions': ports(
-    [port('in', 'transcript', true, false), port('entities', 'entities', false, true), AFTER],
-    [port('out', 'edits', true, true, { outputKey: 'suggestions' }), NEXT],
-  ),
-  // `in: text` rather than `transcript`: corrections are proposed over ANY clinical text,
-  // including a generated note. Safe precisely because its product is `edits`, which no
-  // extraction node consumes.
-  'consultation.proposeCorrections': ports(
-    [port('in', 'text', true, false), port('entities', 'entities', false, true), AFTER],
-    [port('out', 'edits', true, true, { outputKey: 'proposals' }), NEXT],
-  ),
-
-  // -------------------------------------------------------------------------------------------
-  // The ENDPOINT STAGE. Three `trigger: 'on-end'` nodes — the ordered sequence that
-  // runs before a consultation session closes.
-  //
-  // All three declare CONTROL ports only on the output side, and that is a deliberate,
-  // load-bearing choice rather than an unfinished table. Each one's product is a STATE CHANGE,
-  // not a value: a stamped endpoint disposition, a set of LOCKED sections, a promoted
-  // correction. `output.deliver` sets the precedent — the palette's other terminal writer also
-  // declares `[NEXT]` and nothing else. Inventing a data output would mean picking a port type
-  // for it, and every candidate in the closed vocabulary would be a lie: an endpoint disposition
-  // is not a `verdict`, and "the documents I locked" is not a `document`.
-  //
-  // `feedback.capture.in: edits` is the exception, and it is the whole of DD-8. It is the ONLY
-  // `edits`-consuming node in the registry that also declares `externalWrite`, which is what
-  // makes "the only path that promotes an advisory transcript correction over the raw channel"
-  // a structural property of the port table rather than a convention someone has to remember.
-  // `consultation.proposeCorrections` produces `edits` and writes nothing; this node is where
-  // those `edits` can become real, and there is nowhere else for them to go.
-  // -------------------------------------------------------------------------------------------
-  'session.timeout': ports([AFTER], [NEXT]),
-  // `in: document` (optional, multiple): finalize legitimately runs after any number of document
-  // producers, and DD-3 is that it locks EVERY document of the consultation — not merely the
-  // ones wired into it. The port expresses ordering intent; the activity's scope is the
-  // consultation, which is why the edge is optional.
-  'summary.finalize': ports([port('in', 'document', false, true), AFTER], [NEXT]),
-  'feedback.capture': ports([port('in', 'edits', false, true), AFTER], [NEXT]),
-  // TASK-882 — the two endpoint stages that had no node type; ordering-only, like session.timeout.
-  'livedoc.stop': ports([AFTER], [NEXT]),
-  'harness.finalize': ports([AFTER], [NEXT]),
-
-  // -------------------------------------------------------------------------------------------
-  // The TARGET CATALOGUE (/DD-9) and the guards — lane A.
-  //
-  // These are the catalogue the substrate is converging ON, registered alongside the pipeline
-  // node types the seeded graphs already use rather than instead of them: a node type is a
-  // contract with every saved tenant graph, so the existing keys cannot be renamed out from under
-  // them. Each entry delegates to an engine that already exists (see `node-registry.ts` for the
-  // mapping); the port tables below are what an author actually wires, and they are the same
-  // typed sockets the rest of this file uses — in particular `agent.ner` consumes `transcript`
-  // and NOTHING else, so `document -> ner` stays a type error in the new catalogue too.
-  // -------------------------------------------------------------------------------------------
-  'agent.transcription': ports([AFTER], [port('out', 'transcript', true, true, { outputKey: 'transcript' }), NEXT]),
-  // "Normalization" here is ONTOLOGY normalization — mapping surface forms onto coded concepts
-  // (`apps/nlp/src/nlp/services/ontology_linker.py`), which is what the terminology engine behind
-  // this node does. Entities in, coded entities out; the type is unchanged because a normalized
-  // entity is still an entity.
-  'agent.normalization': ports([port('in', 'entities', true, false), AFTER], [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT]),
-  'agent.ner': ports([port('in', 'transcript', true, false), AFTER], [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT]),
-  // Lane R (R1) — the realtime grammar/spelling pass. `in: transcript`, NOT `text`, and that is
-  // the difference from `consultation.proposeCorrections` rather than an oversight: the durable
-  // sibling reviews any clinical text INCLUDING a generated note, while this one reviews the raw
-  // partial transcript a clinician is watching grow. Typing it `transcript` is what stops a
-  // generation node being wired in — `document` and `transcript` are lattice siblings, so the
-  // edge is a type error exactly as it is into `agent.ner`.
-  //
-  // `entities` (optional, multiple) takes the detector hints the SAME flush already produced, so
-  // the live pass costs one model call rather than a second NER round trip. Optional because a
-  // lane with no NER node must still be able to propose.
-  //
-  // `out: edits` — advisory. No extraction node consumes `edits`, and the only `edits` consumers
-  // that WRITE are the DD-8 promotion nodes, so this node cannot become a second promotion path.
-  'agent.grammar': ports(
-    [port('in', 'transcript', true, false), port('entities', 'entities', false, true), AFTER],
-    [port('out', 'edits', true, true, { outputKey: 'proposals' }), NEXT],
-  ),
-  // IMPORTANT FINDINGS. The port table IS the owner's sentence:
-  // "detect, extract, picking-up knowledge from consultation context (transcription,
-  // consultation context items, etc...)".
-  //
-  //  - `in: transcript` (REQUIRED) is the transcription half, and it is typed `transcript` for
-  //    the same anti-laundering reason `agent.ner`'s input is. `document` and `transcript` are
-  //    lattice siblings, so a generated note cannot be wired in — an "important finding" the
-  //    model invented and then highlighted as clinically important is the worst shape this
-  //    failure could take, and the type refuses it rather than a reviewer having to.
-  //  - `context: context<schemaRef>` (optional, multiple) is the "consultation context items"
-  //    half. Optional because a session with no case notes must still surface what was SAID.
-  //  - `entities` (optional, multiple) takes the detector hints the SAME flush already produced,
-  //    so the pass costs one model call rather than a second NER round trip — `agent.grammar`'s
-  //    shape, for `agent.grammar`'s reason.
-  //
-  // `out: entities` with `outputKey: 'findings'`. The PRIMITIVE is `entities` so findings ride
-  // the highlight path that already exists ( re-anchors transcript-sourced entities into
-  // the rendered note); the KEY is distinct so a consumer can tell a tenant-declared important
-  // finding apart from an NER entity instead of merging two different claims into one set.
-  'agent.important_findings': ports(
-    [port('in', 'transcript', true, false), port('context', 'context<schemaRef>', false, true), port('entities', 'entities', false, true), AFTER],
-    [port('out', 'entities', true, true, { outputKey: 'findings' }), NEXT],
-  ),
-  // DD-6 — pre-summarization is fed from CONTEXT SUPPLIED AT RUNTIME, never from the transcript.
-  // Today's pre-summary job already takes `caseNoteIds`: it summarizes provided context, so
-  // `in: context<schemaRef>` formalizes existing intent and widens it to admin-selected kinds.
-  // Typing it `context<schemaRef>` is also what stops a transcript being wired in by accident.
-  'agent.presummarization': ports(
-    [port('in', 'context<schemaRef>', true, true), AFTER],
-    [port('out', 'document', true, true, { outputKey: 'text' }), NEXT],
-  ),
-  // DD-9 — the other two entries over the SAME generation engine. `in: text` (multiple) accepts
-  // an assembled prompt, a transcript widened to text, or a prior document; the trigger and the
-  // bound shape are what distinguish them, exactly as DD-9 says.
-  'agent.summarization': ports([port('in', 'text', true, true), AFTER], [port('out', 'document', true, true, { outputKey: 'text' }), NEXT]),
-  'agent.discharge_summary': ports([port('in', 'text', true, true), AFTER], [port('out', 'document', true, true, { outputKey: 'text' }), NEXT]),
-  'agent.retrieval': ports(
-    [port('in', 'entities', false, true), AFTER],
-    [port('out', 'context<schemaRef>', true, true, { outputKey: 'context' }), NEXT],
-  ),
-  // The only `edits`-consuming node of the new catalogue, and it writes — same DD-8 property
-  // `feedback.capture` carries: a proposed correction becomes real HERE or nowhere.
-  'agent.feedback': ports([port('in', 'edits', false, true), AFTER], [NEXT]),
-  // Document in, redacted document out. The type is preserved for the same reason `stt.phiHop`'s
-  // is: a redacted note is still a note, so everything downstream of it stays wireable.
-  'agent.dna_redaction': ports([port('in', 'document', true, false), AFTER], [port('out', 'document', true, true, { outputKey: 'text' }), NEXT]),
-  // TASK-882 — the DNA writing-style gate; ordering-only (the style is applied at prompt assembly).
-  'agent.dna_style': ports([AFTER], [NEXT]),
-
-  // -------------------------------------------------------------------------------------------
-  // Guards. A guard's product is a VERDICT — that is what makes it a guard rather than a
-  // transformer, and it is why `requires[]` can be satisfied by an edge in EITHER direction: a
-  // pre-guard reads what is about to be produced from, a post-guard reads what was produced.
-  //
-  // `guard.phi` additionally republishes the REDACTED text, because a PHI guard that could only
-  // say "this contains PHI" without offering the safe version would force every consumer to
-  // choose between the unredacted text and nothing.
-  // -------------------------------------------------------------------------------------------
-  'guard.phi': ports(
-    [port('in', 'text', true, false), AFTER],
-    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('text', 'text', true, true, { outputKey: 'text' }), NEXT],
-  ),
-  'guard.moderation': ports([port('in', 'text', true, false), AFTER], [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT]),
-  // `in: document` and not `text`: groundedness is a claim about GENERATED prose against its
-  // sources. Asking it to score a raw transcript is a category error — a transcript is the
-  // ground, not something grounded — and `transcript` does not satisfy `document`, so the
-  // lattice refuses that wiring rather than relying on anyone remembering the distinction.
-  //
-  // the other TWO things the owner says grounding evaluates, added as OPTIONAL
-  // inputs: *"evaluate the: redacted transcript ..., redacted summary ..., highlighted important
-  // information/findings"*. `in` is the redacted summary and stays required; these two are what
-  // the node is evaluating it AGAINST.
-  //
-  //  - `transcript` is the GROUND itself, and typing it `transcript` rather than widening `in`
-  //    keeps the category distinction above intact: the thing being grounded and the thing it is
-  //    grounded against arrive on different sockets and can never be confused for one another.
-  //  - `findings` closes the loop with `agent.important_findings`: a highlighted finding is a
-  //    claim about the consultation, so it is exactly the kind of thing a grounding policy has to
-  //    be able to check.
-  //
-  // Both OPTIONAL, and that is what makes this ADDITIVE rather than a reshape: every graph saved
-  // against the one-input version still validates, so the node keeps its key and its
-  // `schemaVersion` (the `@N` suffix rule exists for ports that MOVE, not for ports that appear).
-  // The OUTPUT side is untouched, so the cross-language `outputKeys` projection does not move.
-  'guard.groundedness': ports(
-    [port('in', 'document', true, false), port('transcript', 'transcript', false, false), port('findings', 'entities', false, true), AFTER],
-    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT],
-  ),
-
-  // -------------------------------------------------------------------------------------------
-  // the GENERIC (`agentic`) catalogue
-  //
-  // These are the first node types in the platform whose SHAPE is tenant-declared, so they are
-  // also the first that cannot be typed with a refinement. They speak `object` (the unrefined
-  // STRUCTURED type this ticket added) at every boundary the tenant's own JSON Schema describes,
-  // and `text` where the payload is genuinely prose.
-  //
-  // Two typing choices carry the safety here, and neither is cosmetic:
-  //
-  //  - `agentic.stt` consumes `audio` and NOT `stream<audio>`. Those are siblings in the lattice,
-  //    so a realtime capture cannot be wired into it at all. That is the determinism boundary of
-  //    `06-python-services.md` — no per-frame audio inside a Temporal workflow — enforced by the
-  //    type system rather than by a reviewer noticing.
-  //  - `agentic.agent` produces `text` and not `document`. `document` is the type the anti-
-  //    laundering rule keys on ("generated prose, provenance intact"), and it is claimed by the
-  //    fixed-purpose generation nodes whose output really is a clinical document. A generic agent
-  //    may be doing anything at all, so claiming `document` would be asserting a provenance the
-  //    node cannot vouch for; `text` is the honest type and `text` still cannot reach a
-  //    `transcript` consumer.
-  // -------------------------------------------------------------------------------------------
-  'agentic.input': ports([AFTER], [port('out', 'object', true, true, { outputKey: 'payload' }), NEXT]),
-  'agentic.output': ports([port('in', 'object', true, true), AFTER], [port('out', 'object', true, true, { outputKey: 'payload' }), NEXT]),
-  // `context` is the OPTIONAL structured side-channel (retrieved evidence, bound context); `in`
-  // is the prompt material. Both optional-arity choices mirror the generation nodes above.
-  'agentic.agent': ports(
-    [port('in', 'text', false, true), port('context', 'object', false, true), AFTER],
-    [port('out', 'text', true, true, { outputKey: 'text' }), port('data', 'object', false, true, { outputKey: 'data' }), NEXT],
-  ),
-  'agentic.guardrail': ports([port('in', 'text', true, false), AFTER], [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT]),
-  'agentic.data': ports([port('in', 'object', true, true), AFTER], [port('out', 'object', true, true, { outputKey: 'data' }), NEXT]),
-  // The loop's own sockets are the ORCHESTRATOR's, not its body's: the body is named by node
-  // reference in config (`orchestratorNodeId`/`subAgentNodeIds`), because a loop body is not a
-  // port and modelling it as one would put control flow in the data lattice.
-  'agentic.loop': ports([port('in', 'object', false, true), AFTER], [port('out', 'object', true, true, { outputKey: 'result' }), NEXT]),
-  'agentic.stt': ports([port('in', 'audio', true, false), AFTER], [port('out', 'transcript', true, true, { outputKey: 'transcript' }), NEXT]),
-  'agentic.tts': ports([port('in', 'text', true, false), AFTER], [port('out', 'audio', true, true, { outputKey: 'audio' }), NEXT]),
-
-  // -------------------------------------------------------------------------------------------
   // TASK-864 — the `core` vocabulary: the owner's nine primitives plus the two platform-action
   // node types (`core.data`, `core.action`). One palette, composed; behaviour is CONFIGURATION.
   //
@@ -603,6 +208,62 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
       NEXT,
     ],
   ),
+});
+
+/**
+ * TASK-893 — the port tables of the 17 ACTIONS behind `core.action` (`action-catalogue.ts`),
+ * keyed by action key. An action instance's EFFECTIVE sockets are its entry here
+ * (`effectivePorts('core.action', config)`); `core.action`'s own entry above is the static
+ * SUPERSET that keeps the descriptor total. Copied verbatim from the retired node types' tables.
+ */
+export const ACTION_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.freeze({
+  'consultation.consentGate': ports([AFTER], [control('out', true, true), NEXT]),
+  'consultation.bindTerminology': ports(
+    [port('in', 'entities', true, false), AFTER],
+    [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT],
+  ),
+  'consultation.phiHop': ports([port('in', 'transcript', true, false), AFTER], [port('out', 'transcript', true, true, { outputKey: 'text' }), NEXT]),
+  'consultation.retrieveEvidence': ports(
+    [port('in', 'entities', false, true), AFTER],
+    [port('out', 'context<schemaRef>', true, true, { outputKey: 'context' }), NEXT],
+  ),
+  'consultation.sensors': ports(
+    [port('in', 'document', true, false), port('entities', 'entities', false, true), AFTER],
+    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('document', 'document', true, true, { outputKey: 'text' }), NEXT],
+  ),
+  'consultation.inferentialSensors': ports(
+    [port('in', 'document', true, false), port('verdict', 'verdict', false, true), AFTER],
+    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('document', 'document', true, true, { outputKey: 'text' }), NEXT],
+  ),
+  'consultation.persistDraft': ports(
+    [port('in', 'document', true, false), port('verdict', 'verdict', false, true), port('assurance', 'verdict', false, true), AFTER],
+    [port('out', 'document', true, true, { outputKey: 'text' }), port('contextItemId', 'text', true, true, { outputKey: 'contextItemId' }), NEXT],
+  ),
+  'consultation.finalizeAssurance': ports(
+    [
+      port('in', 'document', true, false),
+      port('contextItemId', 'text', false, false),
+      port('verdict', 'verdict', false, true),
+      port('assurance', 'verdict', false, true),
+      AFTER,
+    ],
+    [port('contextItemId', 'text', true, true, { outputKey: 'contextItemId' }), NEXT],
+  ),
+  'guard.phi': ports(
+    [port('in', 'text', true, false), AFTER],
+    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('text', 'text', true, true, { outputKey: 'text' }), NEXT],
+  ),
+  'guard.moderation': ports([port('in', 'text', true, false), AFTER], [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT]),
+  'guard.groundedness': ports(
+    [port('in', 'document', true, false), port('transcript', 'transcript', false, false), port('findings', 'entities', false, true), AFTER],
+    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT],
+  ),
+  'session.timeout': ports([AFTER], [NEXT]),
+  'feedback.capture': ports([port('in', 'edits', false, true), AFTER], [NEXT]),
+  'livedoc.stop': ports([AFTER], [NEXT]),
+  'harness.finalize': ports([AFTER], [NEXT]),
+  'summary.finalize': ports([port('in', 'document', false, true), AFTER], [NEXT]),
+  'prompt.template_ref': ports([AFTER], [port('out', 'text', true, true, { outputKey: 'content' }), NEXT]),
 });
 
 /** `{ inputs: [], outputs: [] }` for an unregistered type — callers detect that via the

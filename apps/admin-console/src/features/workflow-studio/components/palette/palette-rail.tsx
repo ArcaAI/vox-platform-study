@@ -22,16 +22,6 @@ const UTILITY_GROUP_LABEL = 'Utility';
 /** The one authoring vocabulary (TASK-864) — always the first group, whatever the registry order. */
 const CORE_PALETTE_KEY = 'core';
 
-/**
- * TASK-864 C1: a deprecated registry type is NOT offered for new nodes — it stays renderable in
- * graphs that already use it (the canvas badges it), and its `replacedBy` names the core type
- * to author instead. Hidden here rather than dropped from the registry so the deprecation window
- * is a UI decision, not a wire-contract change.
- */
-function authorable(descriptor: WorkflowNodeDescriptor): boolean {
-  return descriptor.deprecated !== true;
-}
-
 export interface PaletteRailProps {
   descriptors: WorkflowNodeDescriptor[];
   /** `undefined` = entitlement gating unknown (nothing gated); an explicit `Set` gates any
@@ -62,7 +52,9 @@ function matchesQuery(descriptor: WorkflowNodeDescriptor, query: string): boolea
 export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNode }: PaletteRailProps) {
   const searchId = useId();
   const [query, setQuery] = useState('');
-  const offered = useMemo(() => descriptors.filter(authorable), [descriptors]);
+  // TASK-893: the registry carries the `core` vocabulary only — nothing is deprecated, so the
+  // rail offers every registered type.
+  const offered = descriptors;
   const filtered = useMemo(() => offered.filter((descriptor) => matchesQuery(descriptor, query)), [offered, query]);
 
   if (loading) {
