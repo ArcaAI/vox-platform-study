@@ -55,7 +55,19 @@ const mockEntitlements = {
 };
 
 /** A graph the shape gate and `compile()` both accept. */
-const VALID_GRAPH = { version: 1, nodes: [{ id: 'n1', type: 'noop', config: {} }], edges: [] };
+/** TASK-893 — the only vocabulary left is `core`; `noop` and the `summarization` palette are gone. */
+const VALID_GRAPH = {
+  version: 1,
+  nodes: [
+    { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
+    { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 'summarizer' } }, position: { x: 1, y: 0 } },
+    { id: 'o1', type: 'core.output', config: { protocols: ['http'] }, position: { x: 2, y: 0 } },
+  ],
+  edges: [
+    { id: 'e1', from: 't1', to: 'a1', fromPort: 'out', toPort: 'context' },
+    { id: 'e2', from: 'a1', to: 'o1', fromPort: 'out', toPort: 'in' },
+  ],
+};
 
 /** A graph whose generation node pins a PROMPT TEMPLATE by row id — the binding class that
  *  cannot survive a SYSTEM -> tenant copy (D-2), because `PromptTemplate` is not a
@@ -75,7 +87,7 @@ const createMockEntity = (overrides: Record<string, unknown> = {}) => ({
   slug: overrides.slug ?? 'discharge_summary',
   name: overrides.name ?? 'Discharge Summary',
   description: overrides.description ?? null,
-  paletteKey: overrides.paletteKey ?? 'summarization',
+  paletteKey: overrides.paletteKey ?? 'core',
   versionNumber: overrides.versionNumber ?? 1,
   parentVersionId: overrides.parentVersionId ?? null,
   status: overrides.status ?? WorkflowDefinitionStatus.DRAFT,
@@ -113,7 +125,7 @@ const systemTemplate = (overrides: Record<string, unknown> = {}) =>
     registryChecksum: 'registry-checksum',
     publishedAt: new Date('2026-08-16T00:00:00Z'),
     validatedAt: new Date('2026-08-16T00:00:00Z'),
-    tags: ['platform-default', 'summarization'],
+    tags: ['platform-default', 'core'],
     ...overrides,
   });
 
@@ -169,7 +181,7 @@ describe('WorkflowDefinitionService — cloning ', () => {
       // A clone is a new lineage, never a branch inside the source's slug.
       expect(created.parentVersionId).toBeNull();
       expect(created.graph).toEqual(VALID_GRAPH);
-      expect(created.paletteKey).toBe('summarization');
+      expect(created.paletteKey).toBe('core');
 
       expect(result.slug).toBe('discharge_summary_v2');
     });

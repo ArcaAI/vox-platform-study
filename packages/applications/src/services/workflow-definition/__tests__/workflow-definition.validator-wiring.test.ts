@@ -39,7 +39,19 @@ const mockSttPipelineCompiler = { compileAndPublish: vi.fn() };
  *  behaviour is covered by `workflow-validator/__tests__/workflow-validator.service.test.ts`. */
 const mockWorkflowValidator = { validateGraph: vi.fn(), resolveRuleSetVersion: vi.fn() };
 
-const VALID_GRAPH = { version: 1, nodes: [{ id: 'n1', type: 'noop', config: {} }], edges: [] };
+/** TASK-893 — the only vocabulary left: `core`. `noop` and the `summarization` palette are gone. */
+const VALID_GRAPH = {
+  version: 1,
+  nodes: [
+    { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
+    { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 'summarizer' } }, position: { x: 1, y: 0 } },
+    { id: 'o1', type: 'core.output', config: { protocols: ['http'] }, position: { x: 2, y: 0 } },
+  ],
+  edges: [
+    { id: 'e1', from: 't1', to: 'a1', fromPort: 'out', toPort: 'context' },
+    { id: 'e2', from: 'a1', to: 'o1', fromPort: 'out', toPort: 'in' },
+  ],
+};
 
 /** A report carrying a TENANT-authored ERROR — something the bundled code catalogue cannot produce. */
 const TENANT_RULE_REPORT = {
@@ -55,7 +67,7 @@ const savedEntity = {
   slug: 'discharge_summary',
   name: 'Discharge Summary',
   description: null,
-  paletteKey: 'summarization',
+  paletteKey: 'core',
   versionNumber: 1,
   parentVersionId: null,
   status: WorkflowDefinitionStatus.DRAFT,
@@ -108,13 +120,13 @@ describe(' W3(a) — WorkflowValidatorService is wired into the definition lifec
   });
 
   it('create() resolves the rule set through the validator, with the tenant and palette', async () => {
-    await build(true).create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'summarization', graph: VALID_GRAPH });
+    await build(true).create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: VALID_GRAPH });
 
-    expect(mockWorkflowValidator.validateGraph).toHaveBeenCalledWith('tenant-1', 'summarization', VALID_GRAPH);
+    expect(mockWorkflowValidator.validateGraph).toHaveBeenCalledWith('tenant-1', 'core', VALID_GRAPH);
   });
 
   it("stores the validator's report — including a tenant rule's findings the code catalogue cannot produce", async () => {
-    await build(true).create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'summarization', graph: VALID_GRAPH });
+    await build(true).create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: VALID_GRAPH });
 
     const created = mockWorkflowDefinitionRepository.create.mock.calls[0][0];
     expect(created.validationReport.ruleSetVersion).toBe(42);
@@ -128,11 +140,11 @@ describe(' W3(a) — WorkflowValidatorService is wired into the definition lifec
 
     await build(true).publish('def-1', { activate: true });
 
-    expect(mockWorkflowValidator.validateGraph).toHaveBeenCalledWith('tenant-1', 'summarization', VALID_GRAPH);
+    expect(mockWorkflowValidator.validateGraph).toHaveBeenCalledWith('tenant-1', 'core', VALID_GRAPH);
   });
 
   it('falls back to the bundled catalogue when no validator is wired (unit fixtures)', async () => {
-    await build(false).create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'summarization', graph: VALID_GRAPH });
+    await build(false).create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey: 'core', graph: VALID_GRAPH });
 
     expect(mockWorkflowValidator.validateGraph).not.toHaveBeenCalled();
     expect(mockWorkflowDefinitionRepository.create).toHaveBeenCalledTimes(1);
