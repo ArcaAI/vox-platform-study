@@ -148,6 +148,9 @@ export const arcaaiAgentId = (n: number) => `9c000000-0000-0000-0005-${String(n)
 /** The five lineage keys, in seed order. */
 export const SEEDED_AGENT_SLUGS = ['realtime-transcription', 'medical-ner', 'general-medicine-summarization', 'casenote-finalization', 'text-to-speech'] as const;
 
+/** The ONE ASR lineage key — Global and SYSTEM both carry it (§8.3); `09-consultation.ts` names it. */
+export const ASR_AGENT_SLUG = 'realtime-transcription';
+
 // ----------------------------------------------------------------------------------------------
 // Shared configuration (exported so phase 29 builds the ArcaAI department agents the same way)
 // ----------------------------------------------------------------------------------------------

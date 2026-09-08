@@ -15,7 +15,7 @@ import {
   SEED_TRANSCRIPTION_JOB_IDS,
   SYSTEM_USER_ID,
 } from './00-constants';
-import { GLOBAL_AGENT_SPECS, PLATFORM_AGENT_SPECS } from './25-agents';
+import { ASR_AGENT_SLUG, GLOBAL_AGENT_SPECS, PLATFORM_AGENT_SPECS } from './25-agents';
 // The plaintext clinical PHI columns were dropped; seed rows must
 // persist Vault-Transit ciphertext into the sibling `encrypted*` columns.
 import { encryptSeedRow } from './phi-encryption';
@@ -1235,9 +1235,10 @@ const DEFAULT_NAMED_ENTITIES = [
 //     (`Agent.id` — rows are versions; deliberately NO FK, the job stays
 //     readable history after the agent is archived). Each job names the agent
 //     the tenant's cascade resolves: the Global playground runs its OWN
-//     `example-transcription`; ArcaAI seeds no agents and inherits the SYSTEM
-//     `platform-transcription` through the TENANT-scope assignment. Both ids
-//     are deterministic (`25-agents.ts`), so seed ORDER does not matter.
+//     copy of `realtime-transcription`; ArcaAI seeds no ASR agent of its own
+//     and inherits the SYSTEM `realtime-transcription` through the TENANT-scope
+//     assignment (phase 26 clones it). Both ids are deterministic
+//     (`25-agents.ts`), so seed ORDER does not matter.
 //     `pipelineId` is deprecated and NEVER written: `06-stt.ts` seeds no
 //     `AsrPipeline` rows any more, and the column's FK would refuse a dangling
 //     pointer.
@@ -1252,8 +1253,8 @@ const asrAgentVersionId = (specs: ReadonlyArray<{ id: string; slug: string; task
   if (!spec) throw new Error(`09-consultation: seeded SPEECH_TO_TEXT agent "${slug}" not found in 25-agents.ts`);
   return spec.id;
 };
-const GLOBAL_ASR_AGENT_VERSION_ID = asrAgentVersionId(GLOBAL_AGENT_SPECS, 'example-transcription');
-const PLATFORM_ASR_AGENT_VERSION_ID = asrAgentVersionId(PLATFORM_AGENT_SPECS, 'platform-transcription');
+const GLOBAL_ASR_AGENT_VERSION_ID = asrAgentVersionId(GLOBAL_AGENT_SPECS, ASR_AGENT_SLUG);
+const PLATFORM_ASR_AGENT_VERSION_ID = asrAgentVersionId(PLATFORM_AGENT_SPECS, ASR_AGENT_SLUG);
 
 interface TranscriptionJobSeed {
   id: string;
