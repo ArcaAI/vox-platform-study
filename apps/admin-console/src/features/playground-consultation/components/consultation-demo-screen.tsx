@@ -22,8 +22,8 @@
  * tickets minted through `/api/auth/stream-ticket`.
  */
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AgenticProvider,
   useArca,
@@ -225,6 +225,7 @@ function ScribeWorkspace() {
   const layout = useColumnLayout();
   const metrics = useLiveMetrics();
 
+  const queryClient = useQueryClient();
   const [consultation, setConsultation] = useState<ConsultationListRow | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [approved, setApproved] = useState(false);
@@ -301,7 +302,20 @@ function ScribeWorkspace() {
   // SDK-native live running-SOAP preview (opens SSE direct to the gateway via
   // the SDK client). Driven imperatively from the record/select handlers.
   const live = useArcaLiveSummary();
-  const draft = useLatestSummary(consultationId, !!consultationId);
+  // TASK-932 R-16a — the stop being settled: the durable finalizer lands the note AFTER
+  // `recording/stop` returns and sends this screen no signal, so the draft query polls (bounded)
+  // from here until the note exists, then the list is refreshed so the row says "Pending review".
+  const [awaitingFinalizeSince, setAwaitingFinalizeSince] = useState<number | null>(null);
+  // One list refresh per settled stop — a ref, not state, so the effect synchronises with the
+  // query cache without scheduling a render of its own (the hook already stops polling the
+  // moment `draft.data` exists, so the timestamp needs no clearing here).
+  const finalizeSettledRef = useRef(false);
+  const draft = useLatestSummary(consultationId, !!consultationId, { awaitingFinalizeSince });
+  useEffect(() => {
+    if (awaitingFinalizeSince === null || !draft.data || finalizeSettledRef.current) return;
+    finalizeSettledRef.current = true;
+    void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.root });
+  }, [awaitingFinalizeSince, draft.data, queryClient]);
   const progress = useHarnessProgressStream(consultationId, !!consultationId);
   const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
   // W4 — the agentic loop's live activity feed (realtime summaries etc).
@@ -412,6 +426,8 @@ function ScribeWorkspace() {
 
   function selectConsultation(next: ConsultationListRow | null) {
     setConsultation(next);
+    finalizeSettledRef.current = false;
+    setAwaitingFinalizeSince(null);
     setApproved(false);
     setSelectedCitationId(null);
     setAcceptedProposals([]);
@@ -533,6 +549,8 @@ function ScribeWorkspace() {
       // `feedback.capture` has something to promote over the raw transcript.
       const state = await recordingStop.mutateAsync({ consultationId: consultation.id, acceptedProposals });
       setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
+      finalizeSettledRef.current = false;
+      setAwaitingFinalizeSince(Date.now());
       live.stop();
       liveAssist.close();
       documentSections.close();
