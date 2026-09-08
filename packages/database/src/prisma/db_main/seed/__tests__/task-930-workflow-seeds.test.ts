@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 
 import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../00-constants';
 import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS } from '../07b-arcaai-clinical-templates';
+import { NOTE_CONTEXT_SCHEMA_DEFINITION } from '../07e-consultation-note-context-schema';
 import { GLOBAL_AGENT_SPECS, PLATFORM_AGENT_SPECS } from '../25-agents';
 import { CONSULTATION_WORKFLOW_SLUG, SUMMARIZATION_WORKFLOW_SLUG, WORKFLOW_LIBRARY_ASSIGNMENTS, WORKFLOW_LIBRARY_TARGETS, workflowLibraryDefinitions } from '../28-workflow-library';
 import { WORKFLOW_LIBRARY_GENERATED, REGISTRY_CHECKSUM } from '../28-workflow-library.generated';
@@ -140,6 +141,29 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
       expect(instruction.promptVersionNumber).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
       expect(template!.approvedVersionNumber).toBe(instruction.promptVersionNumber);
       expect(versionKeys.has(`${instruction.promptTemplateId}@${instruction.promptVersionNumber}`)).toBe(true);
+    }
+  });
+
+  /**
+   * F6 for the ArcaAI half. The v3 department corpus is SELF-CONTAINED — every one of the 22
+   * bodies inlines its instructions and reads no `{{context.*}}` at all (only the shared
+   * "Clinical Pre-Summary" template does), so "populate `instruction.variables`" resolves to the
+   * empty binding set here, which is what the specs carry. Asserted as an EQUALITY rather than
+   * skipped, so the day a v3 body grows a placeholder without a binding, this goes red.
+   */
+  it('every ArcaAI agent binds `instruction.variables` for exactly the `{{context.*}}` its template reads, each to a field the trigger schema declares', () => {
+    const contextFields = new Set(Object.keys((NOTE_CONTEXT_SCHEMA_DEFINITION.kinds.find((kind) => kind.key === 'context') as { fields: { properties: Record<string, unknown> } }).fields.properties));
+    const contentById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((template) => [template.id, String(template.content)]));
+    for (const spec of ARCAAI_AGENT_SPECS) {
+      const instruction = spec.instruction as { promptTemplateId: string; variables?: Record<string, { value: string } | { path: string }> };
+      const used = new Set([...contentById.get(instruction.promptTemplateId)!.matchAll(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g)].map((match) => match[1]!));
+      const bound = instruction.variables ?? {};
+      for (const name of used) {
+        expect(bound[name], `${spec.slug} leaves {{context.${name}}} unbound`).toEqual({ path: `trigger.context.${name}` });
+        expect(contextFields.has(name), `the trigger schema declares no ${name}`).toBe(true);
+      }
+      // No binding the template never reads — a stray variable is dead config that looks live.
+      expect(Object.keys(bound).sort()).toEqual([...used].sort());
     }
   });
 
