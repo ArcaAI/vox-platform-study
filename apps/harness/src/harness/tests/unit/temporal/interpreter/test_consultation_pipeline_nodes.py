@@ -28,6 +28,7 @@ from harness.temporal.interpreter.nodes import consultation_compose as compose
 from harness.temporal.interpreter.nodes import consultation_nlp as nlp
 from harness.temporal.interpreter.nodes import consultation_persist as persist
 from harness.temporal.interpreter.nodes import consultation_verify as verify
+from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
 from harness.temporal.interpreter.registry import NODE_REGISTRY
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
@@ -710,13 +711,13 @@ class TestFinalizeAssurance:
 # Registry shape for the ten new entries
 # ---------------------------------------------------------------------------
 
+# TASK-893 Phase 4 — six of the original ten survive, as ACTIONS behind `core.action`.
+# `captureBinding`, `extractEntities`, `assemblePrompt` and `synthesize` were retired: capture and
+# entity extraction are `core.agent` tasks (SPEECH_TO_TEXT / NAMED_ENTITY_RECOGNITION), and prompt
+# assembly plus synthesis are what a `core.agent` does with its referenced Agent.
 _NEW_KEYS = (
-    "consultation.captureBinding",
-    "consultation.extractEntities",
     "consultation.bindTerminology",
     "consultation.retrieveEvidence",
-    "consultation.assemblePrompt",
-    "consultation.synthesize",
     "consultation.sensors",
     "consultation.inferentialSensors",
     "consultation.persistDraft",
@@ -725,27 +726,26 @@ _NEW_KEYS = (
 
 
 class TestNewRegistryEntries:
-    def test_all_ten_are_registered_and_implemented(self):
+    def test_all_six_are_catalogued_and_implemented(self):
         for key in _NEW_KEYS:
-            assert key in NODE_REGISTRY, key
-            assert NODE_REGISTRY[key].implemented is True, key
+            assert key in ACTION_CATALOGUE, key
+            assert ACTION_CATALOGUE[key].implemented is True, key
 
     def test_none_of_them_is_critical(self):
-        # CR-14: only consentGate and hitlGate may be critical.
+        # CR-14: only the consent gate and the human wait may be critical.
         for key in _NEW_KEYS:
-            assert NODE_REGISTRY[key].critical is False, key
+            assert ACTION_CATALOGUE[key].critical is False, key
 
     def test_only_the_context_item_writers_are_external_write(self):
         writers = {
-            "consultation.extractEntities",
             "consultation.persistDraft",
             "consultation.finalizeAssurance",
         }
         for key in _NEW_KEYS:
-            assert NODE_REGISTRY[key].external_write is (key in writers), key
+            assert ACTION_CATALOGUE[key].external_write is (key in writers), key
 
     def test_every_activity_resolves_to_a_distinct_consultation_activity_name(self):
-        names = [NODE_REGISTRY[key].activity_name for key in _NEW_KEYS]
+        names = [ACTION_CATALOGUE[key].activity_name for key in _NEW_KEYS]
         for name in names:
             assert name.startswith("interpreter.consultation_"), name
         assert len(set(names)) == len(names)
