@@ -539,11 +539,16 @@ counts nothing, fail-closed unchanged. (4) text's guardrail client logs the exce
 is never empty again); the timeout budget is already control-plane config over a 10 s floor and was
 left alone with the reasoning in the docstring.
 
-**W3's residual (b) is the last link in D-7 and is a DEV CONFIGURATION defect, D-8:** `nlp.log` shows
-`POST /api/v1/guard/pii → 401 nlp.auth.rejected` from guardrail — the peer token guardrail sends is
-not the one nlp expects on this launch. That alone trips the breaker (`_PeerStatusError(401)`) and
-keeps guardrail answering `block` on all five reasons regardless of items 1–3. Orchestrator traces it
-below (§4.12).
+**D-8 — CLOSED as misattributed (lane W4).** The `401 nlp.auth.rejected` lines in `nlp.log` were the
+ORCHESTRATOR's own warm-up probes with `NLP_SERVICE_TOKEN` — a token nlp no longer accepts — not
+guardrail. W4 proved on the running processes (`ps eww`, both started 21:58:23, no host-env
+overrides) and on the wire (nlp `/health/detail`: shared token → 404 = auth passed; legacy → 401)
+that both services load and accept the shared `INTERNAL_ACCESS_TOKEN`, and that guardrail's log holds
+no 401 at all — its complete error set is `3× ReadTimeout` + `5× circuit for peer 'nlp' is OPEN`,
+i.e. exactly D-7. W4's diff is two comment corrections (both claimed the legacy `NLP_SERVICE_TOKEN`
+"stays accepted"; it does not — an operator following that comment 401s every hop and sees a BLOCK,
+not an auth error) plus a test pinning the delegation call site to the shared token. No launch
+change, no restart.
 
 Activation after merge: `NLP_WARM_MODELS=fastino/gliner2-privacy-filter-PII-multi,fastino/gliguard-LLMGuardrails-300M`
 in `.env.dev`; the name into `turbo.json#globalEnv`; `pnpm env:python-surface && pnpm env:sync`;
