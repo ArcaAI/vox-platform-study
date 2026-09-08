@@ -74,12 +74,32 @@ export class StorageController {
 
   @Get('buckets')
   @ApiOperation({ summary: 'List all storage buckets' })
+  @ApiQuery({
+    name: 'includePhysical',
+    required: false,
+    type: Boolean,
+    description:
+      'Storage browser "All tenants" view (TASK-932): merge every tenant\'s registered buckets with the physical bucket list from the provider. Allowed ONLY for an unscoped platform admin (no tenant context) — every other caller gets 400.',
+  })
   @ApiResponse({ status: 200, description: 'List of all buckets', type: [BucketInfoResponse] })
+  @ApiResponse({ status: 400, description: 'includePhysical requires an unscoped platform admin (no tenant context)' })
   @CanRead('Storage')
-  async listBuckets(): Promise<BucketInfoResponse[]> {
-    // Tenant-scoped: only the caller's tenant-owned buckets. Using
-    // s3Service.listAllBuckets() here would leak every physical bucket across
-    // all tenants. `creationDate` maps from the tenant
+  async listBuckets(@Query('includePhysical') includePhysical?: string): Promise<BucketInfoResponse[]> {
+    if (includePhysical === 'true') {
+      const buckets = await this.tenantBucketService.listBucketsCrossTenantWithPhysical();
+      return buckets.map((bucket) => ({
+        name: bucket.name,
+        creationDate: bucket.creationDate,
+        tenantId: bucket.tenantId,
+        tenantName: bucket.tenantName,
+        registered: bucket.registered,
+        physicalMissing: bucket.physicalMissing,
+      }));
+    }
+
+    // Tenant-scoped: only the caller's tenant-owned buckets (an unscoped
+    // SUPER_ADMIN gets every tenant's rows — see
+    // `TenantBucketService.listBuckets`). `creationDate` maps from the tenant
     // bucket record's createdAt; physical-only fields are not surfaced here.
     const buckets = await this.tenantBucketService.listBuckets();
     return buckets.map((bucket) => ({ name: bucket.name, creationDate: bucket.createdAt }));
@@ -147,7 +167,14 @@ export class StorageController {
   }
 
   @Get('buckets/:name/files')
-  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' })
+  // scope: 'super-admin' (TASK-932 Lane T) lets the storage browser's "All
+  // tenants" view (an unscoped platform admin — no working tenant) list files
+  // in ANY registered bucket by name, mirroring the same bypass already used
+  // by `TenantBucketController#listObjects` (`GET
+  // admin/tenants/storage/buckets/:id/objects`). A tenant-bound caller
+  // (working tenant selected, or a tenant admin) is unaffected: the interceptor
+  // still runs the normal ownership assertion whenever a CLS tenant is present.
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name', scope: 'super-admin' })
   @ApiOperation({ summary: 'List files in bucket' })
   @ApiParam({ name: 'name', description: 'Bucket name', type: String })
   @ApiQuery({ name: 'prefix', required: false, type: String, description: 'Path prefix filter' })
