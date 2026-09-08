@@ -16,6 +16,7 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from harness.temporal.claim_check import _MEMORY_STORE, store_blob
+from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES, interpreter_noop
 from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.models import InterpreterInput
@@ -97,7 +98,7 @@ class TestSandboxSkipsExternalWrites:
                 env.client,
                 task_queue=tq,
                 workflows=[WorkflowInterpreter],
-                activities=INTERPRETER_ACTIVITIES,
+                activities=[*INTERPRETER_ACTIVITIES, *SCAFFOLD_ACTIVITIES],
             ):
                 handle = await env.client.start_workflow(
                     WorkflowInterpreter.run,

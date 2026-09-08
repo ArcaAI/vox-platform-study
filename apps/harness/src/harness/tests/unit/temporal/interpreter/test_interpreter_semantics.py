@@ -22,6 +22,7 @@ from temporalio.worker import Worker
 
 from harness.temporal.claim_check import _MEMORY_STORE, store_blob
 from harness.temporal.interpreter import caps as interpreter_caps
+from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.models import CancelSignal, InterpreterInput
@@ -104,7 +105,7 @@ async def _run(body: dict, *, signal_cancel_after_start: bool = False):
             env.client,
             task_queue=tq,
             workflows=[WorkflowInterpreter],
-            activities=INTERPRETER_ACTIVITIES,
+            activities=[*INTERPRETER_ACTIVITIES, *SCAFFOLD_ACTIVITIES],
         ):
             handle = await env.client.start_workflow(
                 WorkflowInterpreter.run,
