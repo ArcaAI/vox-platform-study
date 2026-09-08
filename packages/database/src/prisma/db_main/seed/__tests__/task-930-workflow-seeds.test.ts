@@ -25,6 +25,8 @@ import { CONSULTATION_WORKFLOW_SLUG, SUMMARIZATION_WORKFLOW_SLUG, WORKFLOW_LIBRA
 import { WORKFLOW_LIBRARY_GENERATED, REGISTRY_CHECKSUM } from '../28-workflow-library.generated';
 import {
   ARCAAI_AGENT_SPECS,
+  ARCAAI_DEPARTMENT_AGENT_SPECS,
+  ARCAAI_PRE_SUMMARY_AGENT_SPEC,
   ARCAAI_DEFAULT_WORKFLOW_SLUG,
   ARCAAI_DEPARTMENT_TABLE,
   ARCAAI_WORKFLOW_TARGETS,
@@ -117,10 +119,15 @@ describe('TASK-930 §8.4 — Global and SYSTEM carry the identical workflow set'
 describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two agents', () => {
   const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
-  it('11 departments → 11 workflows and 22 agents, one per (department, visit type)', () => {
+  it('11 departments → 11 workflows and 22 department agents, one per (department, visit type), plus the tenant warm start', () => {
     expect(ARCAAI_DEPARTMENT_TABLE).toHaveLength(11);
     expect(ARCAAI_WORKFLOW_TARGETS).toHaveLength(ARCAAI_DEPARTMENT_TABLE.length);
-    expect(ARCAAI_AGENT_SPECS).toHaveLength(ARCAAI_DEPARTMENT_TABLE.length * VISIT_TYPES.length);
+    expect(ARCAAI_DEPARTMENT_AGENT_SPECS).toHaveLength(ARCAAI_DEPARTMENT_TABLE.length * VISIT_TYPES.length);
+    // TASK-932 D-9 — plus ONE tenant-wide agent: the warm start has no department axis and no
+    // visit-type axis (`07b`: "there is exactly ONE pre-summary prompt for the whole tenant").
+    expect(ARCAAI_AGENT_SPECS).toHaveLength(ARCAAI_DEPARTMENT_AGENT_SPECS.length + 1);
+    expect(ARCAAI_PRE_SUMMARY_AGENT_SPEC.slug).toBe('case-notes-pre-summary');
+    expect(ARCAAI_AGENT_SPECS.filter((spec) => spec.slug === ARCAAI_PRE_SUMMARY_AGENT_SPEC.slug)).toHaveLength(1);
     for (const row of ARCAAI_DEPARTMENT_TABLE) {
       expect(ARCAAI_WORKFLOW_TARGETS.filter((target) => target.slug === arcaaiWorkflowSlug(row))).toHaveLength(1);
       for (const visit of VISIT_TYPES) expect(ARCAAI_AGENT_SPECS.filter((spec) => spec.slug === arcaaiAgentSlug(row, visit))).toHaveLength(1);
@@ -177,7 +184,10 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
       expect(slugOf('n_summary_revisit')).toBe(arcaaiAgentSlug(row, 'revisit'));
       // Every core.agent slug in the graph is either a platform agent or one of THIS department's.
       const own = new Set(VISIT_TYPES.map((visit) => arcaaiAgentSlug(row, visit)));
-      const platform = new Set(['realtime-transcription', 'medical-ner', 'casenote-finalization']);
+      // `case-notes-pre-summary` is a LINEAGE KEY both tiers carry: the graph names the slug and
+      // the tenant's own row (seeded in this phase) is what resolves — never the SYSTEM one, which
+      // `copyAgents` does not make because the slug is already taken.
+      const platform = new Set(['realtime-transcription', 'medical-ner', 'casenote-finalization', 'case-notes-pre-summary']);
       for (const node of target.graph.nodes.filter((candidate) => candidate.type === 'core.agent')) {
         const slug = (node.config as { agentRef: { slug: string } }).agentRef.slug;
         expect(own.has(slug) || platform.has(slug)).toBe(true);
@@ -186,6 +196,42 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
       expect(branchTargets.find((edge) => edge.fromPort === 'new_visit')!.to).toBe('n_summary_new');
       expect(branchTargets.find((edge) => edge.fromPort === 'revisit')!.to).toBe('n_summary_revisit');
       expect(branchTargets.find((edge) => edge.fromPort === 'else')!.to).toBe('n_summary_new');
+    }
+  });
+
+  /**
+   * TASK-932 D-9 — the WARM START is on every department graph, in the shape the live executor
+   * dispatches on: a `core.agent` naming the tenant's own pre-summary lineage key, on the
+   * realtime lane at the `onStart` cadence, degrading rather than failing.
+   *
+   * The two edges are the whole of the design claim. `n_trigger.next -> n_presummary.after` is a
+   * PARALLEL branch (both handles are `multiple`), so the compiler puts the warm start in the
+   * same stage as the capture node and the pre-summary is generated WHILE the microphone opens
+   * — sequencing it ahead of capture would make recording wait on an LLM call. And
+   * `n_presummary.next -> n_finalize.after` is what satisfies WF-S-004 (every node reaches a
+   * terminal) with an ORDERING edge rather than a data one, so the finalizer's inputs are still
+   * exactly the partial summaries and the work notes its own system prompt names.
+   */
+  it('every department graph carries the `onStart` warm start, parallel to capture and reaching a terminal by ordering alone', () => {
+    for (const target of ARCAAI_WORKFLOW_TARGETS) {
+      const node = target.graph.nodes.find((candidate) => candidate.id === 'n_presummary');
+      expect(node, `${target.slug} has no n_presummary`).toBeDefined();
+      expect(node!.type).toBe('core.agent');
+      expect(node!.config).toMatchObject({
+        agentRef: { slug: 'case-notes-pre-summary' },
+        execution: { lane: 'realtime', cadence: 'onStart' },
+        guardrail: { enabled: true },
+        onError: 'degrade',
+      });
+
+      const edgeFrom = (from: string, fromPort: string, to: string) =>
+        target.graph.edges.some((edge) => edge.from === from && edge.fromPort === fromPort && edge.to === to);
+      expect(edgeFrom('n_trigger', 'next', 'n_presummary')).toBe(true);
+      expect(edgeFrom('n_trigger', 'out', 'n_presummary')).toBe(true);
+      expect(edgeFrom('n_trigger', 'next', 'n_asr')).toBe(true);
+      expect(edgeFrom('n_presummary', 'next', 'n_finalize')).toBe(true);
+      // NOT a data edge into the finalizer: `out`/`data` must not leave this node.
+      expect(target.graph.edges.filter((edge) => edge.from === 'n_presummary' && edge.fromPort !== 'next')).toEqual([]);
     }
   });
 
