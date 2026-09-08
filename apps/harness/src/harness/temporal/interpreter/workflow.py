@@ -557,6 +557,13 @@ class WorkflowInterpreter:
         A graph with no such edge — every API-plane run, and any consultation graph whose durable
         half reads nothing from the live half — never waits at all.
         """
+        # A SANDBOX run never waits. A Workbench execution is a dry run of the graph, not a
+        # consultation: there is no live session to hand off, and parking one for the length of a
+        # clinical session would turn "preview this workflow" into a two-hour wait. Its
+        # `external_write` nodes are already suppressed, so nothing it produces is persisted
+        # either — the handoff would buy it nothing even if one existed.
+        if inp.sandbox:
+            return False
         if self._live_handoff_done or not _has_live_owner(inp) or not self._live_skipped:
             return False
         return any(
