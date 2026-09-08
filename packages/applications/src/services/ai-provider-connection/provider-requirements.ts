@@ -66,6 +66,24 @@ export interface ProviderRequirement {
   columns: readonly ProviderRequirementColumn[];
   extras?: readonly ProviderExtraRequirement[];
   /**
+   * TASK-932 D-7 — an ENABLED row that carries NO credential material at all is
+   * the platform's BUILT-IN default for this provider, and requires nothing.
+   *
+   * This is the third exemption, and it is a different shape from the other two.
+   * `enabled: false` is the VETO (a row that never serves cannot fail at request
+   * time); an unlisted pair is UNKNOWN (the table records what is known). This
+   * one says: for a platform-managed plane, "blank" is itself a configured
+   * state — the weight store falls back to the platform's own storage
+   * credentials, and the Hugging Face Hub pulls public repos anonymously (which
+   * is exactly what the `absent` outcome means to `apps/stt`'s fetcher).
+   *
+   * It is all-or-nothing on purpose: the moment an operator supplies ONE part of
+   * the credential, every part is required again. A half-filled S3 row is the
+   * failure this table exists to refuse — it is neither the built-in default nor
+   * a signable request.
+   */
+  platformDefaultWhenBlank?: boolean;
+  /**
    * Why these, in one sentence. A requirement nobody can explain is a
    * requirement nobody can safely remove — and the reasons differ per provider
    * (a vendor account vs. a self-hosted server vs. a hub with no discovery).
@@ -129,12 +147,14 @@ export const PROVIDER_REQUIREMENTS: Readonly<Record<string, ProviderRequirement>
   'model-registry:huggingface': {
     columns: ['apiKey'],
     extras: [{ key: 'model', label: 'the model id (org/repo)' }],
-    why: 'The hub performs no discovery for us: the repo is named explicitly, and a token is what distinguishes an entitled pull of a gated repo from an anonymous one.',
+    platformDefaultWhenBlank: true,
+    why: 'The hub performs no discovery for us: the repo is named explicitly, and a token is what distinguishes an entitled pull of a gated repo from an anonymous one — so a blank row is the anonymous built-in default, and a partly-filled one is neither.',
   },
   'model-registry:s3': {
     columns: ['baseUrl', 'apiKey'],
     extras: [{ key: 'accessKeyId', label: 'the access key id' }],
-    why: 'An S3/MinIO credential is a PAIR: the secret half is the encrypted key, and the non-secret principal id rides in extras (the ServiceAccount.clientId precedent). Neither half alone can sign a request.',
+    platformDefaultWhenBlank: true,
+    why: 'An S3/MinIO credential is a PAIR: the secret half is the encrypted key, and the non-secret principal id rides in extras (the ServiceAccount.clientId precedent). Neither half alone can sign a request — so a blank row means the platform storage credentials, and a partly-filled one is refused.',
   },
 };
 
@@ -153,6 +173,25 @@ export interface ConnectionRequirementSubject {
   /** Whether the STORED row will hold key material — not whether this request carried one. */
   hasApiKey: boolean;
   extraJson?: unknown;
+}
+
+/**
+ * Whether NOTHING this requirement asks for has been supplied (TASK-932 D-7).
+ *
+ * Read over the requirement's OWN field list rather than over the whole row: a
+ * ceiling or a note is not credential material, and a row that carries only
+ * those is still the built-in default.
+ */
+function isBlankForRequirement(requirement: ProviderRequirement, subject: ConnectionRequirementSubject): boolean {
+  for (const column of requirement.columns) {
+    if (columnPresent(subject, column)) return false;
+  }
+  const extras = sanitizeProviderExtras(subject.extraJson);
+  for (const extra of requirement.extras ?? []) {
+    const value = extras[extra.key];
+    if (value !== undefined && String(value).trim() !== '') return false;
+  }
+  return true;
 }
 
 /** A column counts as supplied only when it holds something other than whitespace. */
@@ -178,6 +217,12 @@ export function validateProviderRequirements(service: ProviderService, provider:
 
   const requirement = requirementsFor(service, provider);
   if (!requirement) return [];
+
+  // TASK-932 D-7 — a blank row on a platform-managed plane IS the built-in
+  // default. Checked before the per-field loop, because the answer is a property
+  // of the row as a WHOLE: "nothing supplied" is configured, "something
+  // supplied" re-arms every requirement.
+  if (requirement.platformDefaultWhenBlank && isBlankForRequirement(requirement, subject)) return [];
 
   const context = `an enabled '${provider}' connection for the '${service}' capability`;
   const errors: string[] = [];

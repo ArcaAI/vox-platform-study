@@ -45,6 +45,9 @@ function assertProviderService(value: string): ProviderService {
  *                                 (TASK-890 §3.7a): each becomes a tenant-owned
  *                                 registry row; the list is a full replacement.
  *  - `DELETE :service/:provider`→ soft-delete (its declared models go with it).
+ *  - `POST :service/:provider/reset` → restore a PLATFORM-MANAGED row to its
+ *                                 built-in default (TASK-932): super-admin only,
+ *                                 SYSTEM tier only, no OCC.
  *  - `POST :service/:provider/test` → ephemeral "Test connection" probe (TASK-862):
  *                                 never persisted, no OCC; omitted fields fall
  *                                 back to the stored row (tenant → SYSTEM).
@@ -59,7 +62,12 @@ function assertProviderService(value: string): ProviderService {
  *     `CLOUD_BYO_PROVIDERS` (C5); a self-host engine → `ForbiddenException` (403,
  *     a privilege rule on the caller's own tenant — NOT the 404-over-403
  *     cross-tenant posture);
- *   - a SYSTEM row may be written only by a super admin → 403.
+ *   - a SYSTEM row may be written only by a super admin → 403;
+ *   - a CUSTOMER tenant SEES only the cloud providers it may bring an account
+ *     for (TASK-932 R-12): the built-in engines and the whole model-registry
+ *     plane are platform infrastructure, so a direct read of one under a tenant
+ *     scope is a 404 — the read half of the same boundary, in the house
+ *     existence posture rather than the privilege one.
  *
  * Tenant admins are pinned to their CLS tenant by `resolveScopedTenantId`;
  * super admins act cross-tenant — incl. the SYSTEM platform default — via
@@ -192,6 +200,47 @@ export class ProviderConnectionController {
   @ApiResponse({ status: 403, description: 'Non-listed provider on a tenant row, or a SYSTEM row without super admin.' })
   async remove(@Param('service') service: string, @Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<void> {
     return this.connectionService.deleteRow(assertProviderService(service), provider, this.resolveTenantId(tenantId));
+  }
+
+  @Post(':service/:provider/reset')
+  @HttpCode(200)
+  @CanManage('GlobalSetting')
+  @ApiOperation({
+    summary: 'Reset one built-in provider connection to its platform default (super admin only).',
+    description:
+      'Restores the endpoint, `enabled` state, extras and key material of a PLATFORM-MANAGED row — the built-in ' +
+      'inference engines (LM Studio, Ollama, vLLM, llama.cpp) and the model registry (Hugging Face, the S3/MinIO ' +
+      'weight store) — from `BUILT_IN_CONNECTION_DEFAULTS`. **This is not `DELETE`.** Deleting a SYSTEM engine row does ' +
+      'not return it to the default: `apps/text` resolves a self-hosted engine’s base URL only from the injected ' +
+      'provider overrides, with no environment fallback, so a missing row is a 503 on every generation. Connection ' +
+      'CEILINGS (`maxConcurrent`, `rpmLimit`, `tpmLimit`, `timeoutS`) are PRESERVED — they are an operator’s tuning ' +
+      'of their own hardware, not part of the row’s identity. No `If-Match`: the operation means “whatever it ' +
+      'says now, put it back”, so a stale token would refuse the caller who most needs it.',
+  })
+  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
+  @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `lm-studio`.' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform tier only — the SYSTEM tenant.' })
+  @ApiResponse({ status: 200, type: AiProviderConnectionResponse, description: 'The restored row, masked.' })
+  @ApiResponse({ status: 400, description: 'Unknown service segment.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not a platform super administrator, or a tenant tier — built-in defaults live on the platform tier only.',
+  })
+  @ApiResponse({ status: 404, description: 'This (service, provider) ships no built-in default.' })
+  async reset(
+    @Param('service') service: string,
+    @Param('provider') provider: string,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<AiProviderConnectionResponse> {
+    // AUTH-NOTE: SUPER_ADMIN-only, enforced imperatively in
+    // `AiProviderConnectionService.resetRow` (`isSuperAdmin` → 403). The
+    // decorator above understates the gate on purpose: there is no "super admin"
+    // CASL subject, and tenant admins legitimately hold `manage:GlobalSetting`
+    // for every OTHER operation on this controller. The 403 is a PRIVILEGE
+    // boundary on the caller's own tenant, not the 404-over-403 cross-tenant
+    // posture; the privilege check is row-INDEPENDENT and therefore runs first,
+    // so it leaks no existence oracle over the provider id space.
+    return this.connectionService.resetRow(assertProviderService(service), provider, this.resolveTenantId(tenantId));
   }
 
   @Post(':service/:provider/test')
