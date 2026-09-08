@@ -248,8 +248,14 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'rateLimit.enabled': 'RATE_LIMIT_ENABLED',
     'rateLimit.maxRequests': 'RATE_LIMIT_MAX_REQUESTS',
     'rateLimit.windowMs': 'RATE_LIMIT_WINDOW_MS',
-    'registration.selfSignupEnabled': 'REGISTRATION_SELF_SIGNUP_ENABLED',
-    'workflowExposure.enabled': 'WORKFLOW_EXPOSURE_ENABLED',
+    // `registration.selfSignupEnabled`, `workflowExposure.enabled` and
+    // `liveDoc.groundedness.enabled` were here. TASK-932 D-4 migrated all three
+    // to `global-kv` TOGETHER WITH THEIR READERS (`RegisterController`,
+    // `WorkflowExposureService.isExposureEnabled`,
+    // `LiveDocumentationService.resolveGroundednessEnabled`), so no env variable
+    // is the authority for any of them any more and the dotted<->env 1:1 no
+    // longer applies. The env names survive only as an unwired-fixture fallback,
+    // which is deliberately NOT a declaration.
     // `entitlements.enabledDefault` and `metering.reconcile.enabledDefault`
     // were here — the two seed-time-only companions. TASK-872 deleted both
     // descriptors: `seed/15-entitlements.ts` reads the host env directly, so
@@ -265,7 +271,6 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // pydantic field carries `GUARDRAIL_V2_GROUNDEDNESS_ENABLED` any more (the
     // live gate is `guardrail.groundedness.enabled`, tier `global-kv`, served
     // on the pull route), so this line asserted a name with no reader.
-    'liveDoc.groundedness.enabled': 'LIVE_DOC_GROUNDEDNESS_ENABLED',
     // `text.externalGuardrail.enabled` is no longer env-tier: lane B
     // deleted `TEXT_EXTERNAL_GUARDRAIL_ENABLED` and made it a `global-kv`
     // kill-switch served on the effective-config pull route, so a clinical

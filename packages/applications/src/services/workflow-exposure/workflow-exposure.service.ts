@@ -17,6 +17,8 @@ import { IActiveUserContext } from '../../interfaces';
 import { IConfigService } from '../baseServices/_meta/config';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../baseServices/redis';
+import { WORKFLOW_EXPOSURE_ENABLED_KEY } from '../settings-registry/descriptors/feature-availability.descriptors';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { WebhookService } from '../webhook/webhook.service';
 import { IS3Service } from '../baseServices/storage';
 import { IConsultationService } from '../consultation/consultation/IConsultationService';
@@ -116,6 +118,14 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // fails loud (a 404 on the public route, a 400 on rotation) rather than running unsigned.
     @Optional() private readonly webhookSecretRepository?: WorkflowWebhookSecretRepository,
     @Optional() private readonly secretsService?: SecretsService,
+    // TASK-932 D-4 - the exposure kill-switch moved from `WORKFLOW_EXPOSURE_ENABLED`
+    // (env, one value for the whole deployment, needs a redeploy) to the
+    // `global-kv` cascade, so a platform admin can withdraw the public plane from
+    // ONE tenant. `@Optional()` for the same reason every other cross-cutting
+    // dependency here is: a minimal fixture must still construct the service, and
+    // an unwired settings graph degrades to the pre-TASK-932 env read rather than
+    // to a DI error (the `resolveTextTimeoutMs` shape).
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -543,12 +553,32 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     return tenantId;
   }
 
-  /** `WORKFLOW_EXPOSURE_ENABLED` (R-1) — OFF by default; the surface's existence is not
-   *  disclosed while gated (404, same posture as `registration.selfSignupEnabled`). */
+  /** The exposure plane's gate. The surface's existence is not disclosed while
+   *  gated (404, same posture as `registration.selfSignupEnabled`). */
   private assertExposureEnabled(): void {
-    if (this.configService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED') !== true) {
+    if (!this.isExposureEnabled()) {
       throw new NotFoundException('Not found.');
     }
+  }
+
+  /**
+   * TASK-932 D-4 — resolved through the tenant → SYSTEM cascade, per call.
+   *
+   * It used to be one `process.env` read, which made "turn the public plane off
+   * for THAT tenant" impossible and "turn it off at all" a redeploy. Every call
+   * site here already stands inside a tenant context (`requireTenantId`), so the
+   * cascade has the tenant it needs; a webhook or a tenant-less internal path
+   * resolves the platform lane, which is the same answer the env read gave.
+   *
+   * With the settings graph unwired (a minimal fixture, a CLI) it degrades to the
+   * pre-TASK-932 env read rather than to the descriptor default: a fixture that
+   * pinned the flag must keep meaning what it said.
+   */
+  private isExposureEnabled(): boolean {
+    if (!this.tenantSettings) {
+      return this.configService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED') === true;
+    }
+    return this.tenantSettings.resolve<boolean>(WORKFLOW_EXPOSURE_ENABLED_KEY, this.tenantId ?? null).value === true;
   }
 
   /**

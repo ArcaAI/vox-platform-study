@@ -34,6 +34,21 @@ import {
   CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY,
 } from '../../consultation/consultation-gates.constants';
 import { SettingDescriptor } from '../registry.types';
+import { FEATURE_AVAILABILITY_CATEGORY } from './feature-availability.descriptors';
+
+/**
+ * TASK-932 R-8 — where the consultation gates that are NOT feature availability
+ * went when the "Feature Flags" category was dissolved.
+ *
+ * The membership test for `Feature Availability` is "does this capability exist
+ * for this tenant?", and these four fail it in two different ways: two are
+ * platform-only pipeline STAGE gates with no tenant row to write
+ * (`consultation.ocr.enabled`, `…requirePrimedBeforeRecording`), and two are
+ * tuning values with no on/off semantics at all (the idle timeout and its sweep
+ * cron). Filing them under an availability matrix would put four rows on a
+ * screen that cannot act on any of them.
+ */
+export const CONSULTATION_PIPELINE_CATEGORY = 'Consultation Pipeline';
 
 export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
   // The realtime graph executor's PER-TENANT rollout flag.
@@ -56,7 +71,11 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     killSwitch: true,
-    category: 'Feature Flags',
+    // TASK-932 R-8 — the "Feature Flags" category is dissolved. This key IS a
+    // feature-availability gate (does the graph executor exist for this
+    // tenant?), it is `global-kv` + boolean + `maxScope: 'tenant'`, and it is
+    // rolled out per tenant — so it belongs on the matrix with the rest.
+    category: FEATURE_AVAILABILITY_CATEGORY,
     label: 'Realtime graph executor',
     description:
       "Routes the live-documentation flush through the GRAPH EXECUTOR — a walk over the tenant's compiled realtime lane — instead of the hardcoded sequence. Defaults OFF, so an unflagged tenant runs the legacy engine unchanged; the legacy path stays executable until trajectory parity is demonstrated on the same transcript. Set a row under ONE tenant to roll it out there first. With it ON, a tenant that has authored no consultation-palette graph still serves PLATFORM_REALTIME_LANE, which encodes the legacy sequence as a graph — so enabling it is not the same as changing what the tenant's note looks like.",
@@ -79,7 +98,11 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     killSwitch: true,
-    category: 'Feature Flags',
+    // NOT `Feature Availability`, deliberately: its polarity is INVERTED
+    // (true = STOP), so a checkbox column headed "available" would read
+    // backwards. An operator stop for the whole deployment is platform
+    // operations.
+    category: 'Platform Operations',
     label: 'Consultation loop emergency stop',
     description:
       'PLATFORM-WIDE EMERGENCY STOP for the harness agentic loop. Set it to true to halt `LoopContextSignalService` — the ContextAdded / consultation-ending / loop-cancel signals sent to `ConsultationLoopWorkflow` in apps/harness — for every tenant at once, with no redeploy; it is resolved on EVERY signal. Defaults OFF, meaning NO emergency in progress: a tenant whose subscription plan includes the loop (`agenticLoop` entitlement) runs it. This switch can only ever SUBTRACT — disengaging it never grants the loop to a tenant whose plan does not include it. Replaces `harness.loop.enabled`, which conflated commercial eligibility with an operational stop and consequently shipped a code default (false) that disagreed with its own seeded row (true).',
@@ -95,7 +118,10 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     killSwitch: true,
-    category: 'Feature Flags',
+    // A pipeline STAGE gate, not a product feature a tenant is entitled to:
+    // it is platform-only (`maxScope: 'system'`), so it has no tenant row for
+    // the availability matrix to write. Categorised with its siblings.
+    category: CONSULTATION_PIPELINE_CATEGORY,
     label: 'Server-side OCR enrichment',
     description:
       'Enables `OcrEnrichmentProcessor` — the in-cluster PyMuPDF + RapidOCR pass that fills `ContextItem.metaData.extractedText` for scanned attachments the browser text-layer extractor could not read. Resolved on EVERY ContextAdded event, so it can be cut without a redeploy when the NLP service is under pressure. NOW DEFAULTS OFF: the `OCR_ENABLED` env flag it replaces defaulted ON, which violated the kill-switch defaults-OFF invariant — enabling OCR is now an explicit operator action. With it off, a scanned attachment degrades to its filename label exactly as a failed OCR pass already did. PHI posture is unchanged (bytes stay in-cluster, no third-party egress).',
@@ -112,7 +138,7 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     killSwitch: true,
-    category: 'Feature Flags',
+    category: CONSULTATION_PIPELINE_CATEGORY,
     label: 'Require PRIMED before RECORDING',
     description:
       "Enforces the session state machine's `PRIMED → RECORDING` guard on `POST :id/recording/start`. Defaults OFF: no existing SDK/admin-console caller invokes `POST :id/prime` yet, so flipping this ON without a prior client rollout would 409 every recording start. OFF logs the would-be violation and proceeds; ON enforces (409 without a prior `prime`). Deleted once `prime` is the end-to-end consent checkpoint.",
@@ -130,7 +156,7 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'GlobalSetting',
     globalOnly: true,
     failMode: 'open-to-default',
-    category: 'Feature Flags',
+    category: CONSULTATION_PIPELINE_CATEGORY,
     label: 'Consultation session idle timeout (minutes)',
     description:
       'Minutes a consultation may sit in a sweep-eligible state (PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT, REOPENED) with no clinician activity before the scheduled sweep transitions it to CLOSED_INCOMPLETE. Documented default 1440 (24h), provisional — tune down once real abandonment-rate data exists. Consumed by `ConsultationTimeoutSweepService`.',
@@ -153,7 +179,7 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'GlobalSetting',
     globalOnly: true,
     failMode: 'open-to-default',
-    category: 'Feature Flags',
+    category: CONSULTATION_PIPELINE_CATEGORY,
     label: 'Consultation session-timeout sweep schedule',
     description:
       'Cron expression for how often `ConsultationTimeoutSweepService` checks for sweep-eligible consultations past `consultation.state.sessionTimeoutMinutes`. Default every 15 minutes.',

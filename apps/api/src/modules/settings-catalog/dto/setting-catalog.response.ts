@@ -68,6 +68,27 @@ export class SettingCatalogItemResponse {
 
   @ApiPropertyOptional({ description: 'Recorded eventual home when `tier` is not where the key ends up.', example: 'global-kv' })
   targetTier?: string;
+
+  // TASK-932 R-6 / D-6 -- the LOCK, derived server-side from tier +
+  // sensitivity (`settingLockFor`), never from a key list the console would have
+  // to keep in step. A locked key is un-editable for EVERY caller including a
+  // super administrator, and the write lane refuses it with
+  // `SETTING_TIER_LOCKED`; projecting it here is what lets the screen render the
+  // reason instead of an editor that would 400.
+  @ApiPropertyOptional({ description: 'True = un-editable from any admin surface, for every caller including a super admin.' })
+  locked?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Why the key is locked, and where its value actually changes. Present iff `locked`.',
+    example: 'Bootstrap / data-plane transport value, read from the process environment and fixed for the process lifetime.',
+  })
+  lockReason?: string;
+
+  @ApiPropertyOptional({
+    description: 'Short badge text for the lock KIND (Bootstrap / Platform secret / Tenant secret / Secret).',
+    example: 'Bootstrap',
+  })
+  lockLabel?: string;
 }
 
 export class SettingCatalogResponse {

@@ -4,6 +4,7 @@ import { CommonServiceModule } from '../baseServices/common.service.module';
 import { GlobalSettingServiceModule } from '../globalSetting/globalSetting.service.module';
 import { PlatformStorageSettingsResolver } from '../tenant-storage-config/platform-storage-settings.resolver';
 import { EffectiveSettingsService } from './effective-settings.service';
+import { FeatureAvailabilityService } from './feature-availability.service';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import { SettingsRegistryWriteService } from './settings-registry-write.service';
 import { TenantSettingsService } from './tenant-settings.service';
@@ -22,8 +23,20 @@ import { TenantSettingsService } from './tenant-settings.service';
   // dependency the `db-config` lane needs — the cascade itself is the pure
   // function the upload path already uses.
   imports: [CommonServiceModule, GlobalSettingServiceModule, CoreDatabaseModule],
-  providers: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService, PlatformStorageSettingsResolver],
-  exports: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService, PlatformStorageSettingsResolver],
+  providers: [
+    EffectiveSettingsService,
+    SettingsRegistryWriteService,
+    TenantSettingsService,
+    PlatformStorageSettingsResolver,
+    FeatureAvailabilityService,
+  ],
+  exports: [
+    EffectiveSettingsService,
+    SettingsRegistryWriteService,
+    TenantSettingsService,
+    PlatformStorageSettingsResolver,
+    FeatureAvailabilityService,
+  ],
 })
 export class EffectiveSettingsModule implements OnModuleInit {
   private readonly logger = new Logger(EffectiveSettingsModule.name);

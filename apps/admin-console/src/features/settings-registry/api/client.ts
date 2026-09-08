@@ -3,9 +3,9 @@
  * prepends the `/api/hope` BFF proxy mount.
  */
 
-import { getJson, getWithEtag, putWithEtag, request, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, putWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
-import type { EffectiveSetting, SettingCatalog, SettingScope, WriteRegistrySettingResult } from './types';
+import type { EffectiveSetting, ResetRegistrySettingResult, SettingCatalog, SettingScope, WriteRegistrySettingResult } from './types';
 
 const BASE = 'admin/settings';
 
@@ -49,4 +49,19 @@ export function putRegistrySetting(
   // the path where a caller hands us one anyway.
   const usable = etag && versionFromEtag(etag) > 0 ? etag : null;
   return usable ? putWithEtag(path, body, usable) : request(path, { method: 'PUT', body });
+}
+
+/**
+ * Reset ONE tenant override so the key inherits the platform default again.
+ *
+ * A DELETE and not a write of the platform's current value: copying the value
+ * down looks identical today and diverges silently the next time the platform
+ * default moves, leaving the tenant pinned to a stale number nobody chose.
+ *
+ * `scope=system` is refused by the gateway (400) — the platform row is the top
+ * of the cascade, so there is nothing above it to inherit. The console never
+ * offers it.
+ */
+export function resetRegistrySetting(key: string): Promise<ResetRegistrySettingResult> {
+  return deleteJson(`${BASE}/registry/${encodeURIComponent(key)}`, undefined, { scope: 'tenant' });
 }

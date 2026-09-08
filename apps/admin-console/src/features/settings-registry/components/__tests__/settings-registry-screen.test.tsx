@@ -54,6 +54,13 @@ const ITEMS: SettingCatalogItem[] = [
     maxScope: 'system',
     editableBy: 'none',
     category: 'Storage',
+    // TASK-932 R-6 / D-6 — the lock is DERIVED SERVER-SIDE and projected onto
+    // the catalog item. The console renders the reason verbatim rather than
+    // re-deriving it, so the fixture carries what the gateway sends.
+    locked: true,
+    lockLabel: 'Bootstrap',
+    lockReason:
+      'Bootstrap / data-plane transport value, read from the process environment and fixed for the process lifetime. It changes by redeploying with a new value — never from an admin screen, for anyone.',
   },
   {
     key: LIST_KEY,
@@ -93,7 +100,7 @@ function sheetContent(): HTMLElement {
   return element;
 }
 
-function stubFetch(opts: { elevated?: boolean; catalog?: SettingCatalog; onPut?: () => Response } = {}): RecordedCall[] {
+function stubFetch(opts: { elevated?: boolean; catalog?: SettingCatalog; onPut?: () => Response; workingTenant?: string | null } = {}): RecordedCall[] {
   const { elevated = true, catalog = CATALOG } = opts;
   const calls: RecordedCall[] = [];
 
@@ -109,8 +116,24 @@ function stubFetch(opts: { elevated?: boolean; catalog?: SettingCatalog; onPut?:
       calls.push(call);
       const [path] = call.url.split('?');
 
+      // The grid persists per-user layout via `users/me/settings` — no saved
+      // layout in tests. The adapter is a module-level singleton with an
+      // in-flight-promise cache, so leaving this unhandled makes one test's
+      // rejected load bleed into the next one's first paint.
+      if (call.url.includes('/users/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
       if (path === '/api/auth/session') {
-        return Response.json({ user: { id: 'u-1', roles: elevated ? ['SUPER_ADMIN'] : ['TENANT_ADMIN'] }, isElevated: elevated });
+        return Response.json({
+          user: { id: 'u-1', roles: elevated ? ['SUPER_ADMIN'] : ['TENANT_ADMIN'] },
+          isElevated: elevated,
+          effectiveIsElevated: elevated,
+          // TASK-932 R-6 — a TENANT override is only addressable when a working
+          // tenant is selected: the write lane takes the target from CLS, never
+          // from a caller-supplied id, so offering the scope without one would
+          // produce a 400 on save. `opts.workingTenant: null` exercises the
+          // unscoped platform admin.
+          workingTenantId: opts.workingTenant === null ? null : 'tnt-1',
+          workingTenantName: opts.workingTenant === null ? null : (opts.workingTenant ?? 'ArcaAI'),
+        });
       }
       if (call.method === 'GET' && path === '/api/hope/admin/settings/catalog') {
         return Response.json(catalog);
@@ -135,9 +158,19 @@ function stubFetch(opts: { elevated?: boolean; catalog?: SettingCatalog; onPut?:
 
 const putCalls = (calls: RecordedCall[]) => calls.filter((c) => c.method === 'PUT');
 
-/** Open the drawer on one key by its row action. */
-async function openKey(label: RegExp) {
-  fireEvent.click(await screen.findByRole('button', { name: label }));
+/**
+ * Open the drawer on one key by clicking its ROW.
+ *
+ * Not by the row's action button: the grid virtualises and lays its columns out
+ * by measured width, and jsdom reports zero for both — so the trailing actions
+ * column is not reliably present. The row click is the primary affordance
+ * anyway (the button is the keyboard-reachable duplicate of it).
+ */
+async function openKey(key: string) {
+  const cell = await screen.findByText(key);
+  const row = cell.closest('[data-slot="data-grid-row"]');
+  if (!(row instanceof HTMLElement)) throw new Error(`no grid row for ${key}`);
+  fireEvent.click(row);
   return screen.findByRole('dialog');
 }
 
@@ -147,15 +180,30 @@ afterEach(() => {
 });
 
 describe('SettingsRegistryScreen — the inventory', () => {
+  // TASK-932 R-7 — the screen is an `AdminDataGrid` now, like `/settings`, so
+  // the category taxonomy renders as GROUP ROWS rather than as one `<Table>` per
+  // category. The taxonomy is still the server's; only the rendering moved.
   it('groups keys by the server-side category taxonomy', async () => {
+    stubFetch();
+    const { container } = renderWithProviders(<SettingsRegistryScreen />);
+
+    expect(await screen.findByText(NUMBER_KEY)).toBeDefined();
+    expect(container.querySelectorAll('[data-slot="data-grid-group-row"]').length).toBeGreaterThan(0);
+    expect(screen.getByRole('grid', { name: 'Settings registry' })).toBeDefined();
+  });
+
+  it('offers the grid toolbar (omni search + facets) instead of a bespoke filter row', async () => {
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
 
-    // By ROLE, not by text: the category names also appear as <option>s in the
-    // filter, and a bare text query cannot tell a heading from a filter choice.
-    expect(await screen.findByRole('heading', { name: /Rate limits/ })).toBeDefined();
-    expect(screen.getByRole('heading', { name: /Pipeline/ })).toBeDefined();
-    expect(screen.getByText(NUMBER_KEY)).toBeDefined();
+    await screen.findByText(NUMBER_KEY);
+    // The four facets (Category / Tier / Max scope / Editability) collapse into
+    // this control below a ~1024px GRID CONTAINER, and jsdom has no width — so
+    // the chips themselves are asserted in `task-932-settings-registry.spec.ts`,
+    // where the viewport is real. What is checkable here is that the screen no
+    // longer ships its own filter row.
+    expect(screen.getByRole('button', { name: /Filter/i })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Editable here only' })).toBeNull();
   });
 
   it('fetches values LAZILY — rendering the list must not cost one request per key', async () => {
@@ -183,14 +231,14 @@ describe('SettingsRegistryScreen — the inventory', () => {
     expect(screen.getByText('Tighten-only')).toBeDefined();
   });
 
-  it('labels an env-tier key as not editable here, rather than offering a control', async () => {
+  it('marks a LOCKED key as locked, rather than offering a control', async () => {
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
 
     await screen.findByText(ENV_KEY);
-    expect(screen.getByText('Deploy-time')).toBeDefined();
-    // The action reads "View", not "Edit" — the affordance matches the reality.
-    expect(screen.getByRole('button', { name: new RegExp(`View ${ENV_KEY}`) })).toBeDefined();
+    // The action reads "Locked", not "Edit" — the affordance matches the
+    // reality, and the reality is the SERVER's (`locked` is derived there).
+    expect(screen.getByRole('button', { name: new RegExp(`Locked ${ENV_KEY}`) })).toBeDefined();
   });
 
   it('filters by search', async () => {
@@ -203,15 +251,17 @@ describe('SettingsRegistryScreen — the inventory', () => {
     expect(screen.getByText(NUMBER_KEY)).toBeDefined();
   });
 
-  it('filters to keys this lane can actually write', async () => {
+  it('shows the whole catalog by default — filtering is opt-in through the facets', async () => {
+    // The old screen shipped a single "Editable here only" toggle. It is
+    // replaced by the Editability facet (Editable here / Locked / Managed
+    // elsewhere), asserted above; the facet's own interaction is a popover and
+    // is covered end to end in `task-932-settings-registry.spec.ts`.
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
 
     await screen.findByText(ENV_KEY);
-    fireEvent.click(screen.getByRole('button', { name: 'Editable here only' }));
-
-    await waitFor(() => expect(screen.queryByText(ENV_KEY)).toBeNull());
     expect(screen.getByText(NUMBER_KEY)).toBeDefined();
+    expect(screen.getByText(LIST_KEY)).toBeDefined();
   });
 
   it('has no axe violations', async () => {
@@ -227,7 +277,7 @@ describe('SettingRegistryDrawer — type-aware controls', () => {
   it('renders a numeric input for a number key and sends a NUMBER', async () => {
     const calls = stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
     fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: '250' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
@@ -239,7 +289,7 @@ describe('SettingRegistryDrawer — type-aware controls', () => {
   it('renders a switch for a boolean key, not a text box', async () => {
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${FLAG_KEY}`));
+    const dialog = await openKey(FLAG_KEY);
 
     expect(await within(dialog).findByRole('switch')).toBeDefined();
   });
@@ -247,7 +297,7 @@ describe('SettingRegistryDrawer — type-aware controls', () => {
   it('renders a line-per-entry textarea for a string[] key and sends an ARRAY', async () => {
     const calls = stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${LIST_KEY}`));
+    const dialog = await openKey(LIST_KEY);
 
     fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: 'pii\nphi' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
@@ -259,7 +309,7 @@ describe('SettingRegistryDrawer — type-aware controls', () => {
   it('refuses a malformed number in the form rather than collecting a 400', async () => {
     const calls = stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
     fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: 'lots' } });
 
@@ -273,7 +323,7 @@ describe('SettingRegistryDrawer — governance surfaced before the click', () =>
   it('announces that a system-scope write changes every tenant', async () => {
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${FLAG_KEY}`));
+    const dialog = await openKey(FLAG_KEY);
 
     expect(await within(dialog).findByText(/changes the platform for every tenant/i)).toBeDefined();
   });
@@ -281,7 +331,7 @@ describe('SettingRegistryDrawer — governance surfaced before the click', () =>
   it('shows which tier actually answered — the "why is it this value" question', async () => {
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
     expect(await within(dialog).findByText('platform (SYSTEM)')).toBeDefined();
   });
@@ -289,16 +339,19 @@ describe('SettingRegistryDrawer — governance surfaced before the click', () =>
   it('offers no editing controls for a non-writable tier, and says which owner has it', async () => {
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`View ${ENV_KEY}`));
+    const dialog = await openKey(ENV_KEY);
 
     expect(await within(dialog).findByText(/not editable here/)).toBeDefined();
+    // The reason comes from the SERVER, verbatim — the console keeps no second
+    // copy of the rule that produced it.
+    expect(within(dialog).getByText(/fixed for the process lifetime/)).toBeDefined();
     expect(within(dialog).queryByRole('button', { name: 'Save' })).toBeNull();
   });
 
   it('demands an explicit confirmation before a kill-switch is turned ON', async () => {
     const calls = stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${FLAG_KEY}`));
+    const dialog = await openKey(FLAG_KEY);
 
     fireEvent.click(await within(dialog).findByRole('switch'));
 
@@ -316,10 +369,14 @@ describe('SettingRegistryDrawer — governance surfaced before the click', () =>
   it('states the tighten-only rule on a floored key at tenant scope', async () => {
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${LIST_KEY}`));
+    const dialog = await openKey(LIST_KEY);
 
     // Switch to the tenant row — the floor only applies below the platform value.
-    fireEvent.click(await within(dialog).findByRole('radio', { name: 'This tenant only' }));
+    // The scope control NAMES the tenant a tenant-scope write lands on:
+    // "This tenant only" leaves the admin to remember which one, and TASK-932
+    // R-6 is precisely the class of bug where the row read and the row written
+    // were different and nothing on screen said so.
+    fireEvent.click(await within(dialog).findByRole('radio', { name: 'ArcaAI override' }));
 
     expect(await within(dialog).findByText(/only ADD to the platform list/)).toBeDefined();
   });
@@ -327,7 +384,7 @@ describe('SettingRegistryDrawer — governance surfaced before the click', () =>
   it('offers a tenant admin no system-scope option at all', async () => {
     stubFetch({ elevated: false, catalog: { items: [ITEMS[0]], categories: ['Rate limits'] } });
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
     await within(dialog).findByLabelText('New value');
     expect(within(dialog).queryByText(/changes the platform for every tenant/i)).toBeNull();
@@ -338,7 +395,7 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
   it('sends If-Match from the prior read', async () => {
     const calls = stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
     fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: '250' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
@@ -350,7 +407,7 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
   it('omits If-Match on a FIRST write — there is no row to precondition against', async () => {
     const calls = stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${FLAG_KEY}`));
+    const dialog = await openKey(FLAG_KEY);
 
     fireEvent.click(await within(dialog).findByRole('switch'));
     fireEvent.click(within(dialog).getByRole('button', { name: /I understand/ }));
@@ -364,9 +421,9 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
   it('carries the chosen scope in the body, so the write lands on the intended row', async () => {
     const calls = stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
-    fireEvent.click(await within(dialog).findByRole('radio', { name: 'This tenant only' }));
+    fireEvent.click(await within(dialog).findByRole('radio', { name: 'ArcaAI override' }));
     fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: '250' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
 
@@ -377,7 +434,7 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
   it('surfaces a 412 as a conflict and does NOT retry the stale write', async () => {
     const calls = stubFetch({ onPut: () => Response.json({ message: 'conflict' }, { status: 412 }) });
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
     fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: '250' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
@@ -389,7 +446,7 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
   it('surfaces a 428 as a stale-tab precondition error rather than forcing the write', async () => {
     const calls = stubFetch({ onPut: () => Response.json({ message: 'precondition required' }, { status: 428 }) });
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
     fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: '250' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
@@ -401,7 +458,7 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
   it('re-reads the winning value after a conflict instead of resubmitting', async () => {
     const calls = stubFetch({ onPut: () => Response.json({ message: 'conflict' }, { status: 412 }) });
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
 
     const readsBefore = calls.filter((c) => c.method === 'GET' && c.url.includes('/settings/registry/')).length;
     fireEvent.change(await within(dialog).findByLabelText('New value'), { target: { value: '250' } });
@@ -415,7 +472,7 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
   it('has no axe violations with the editor open', async () => {
     stubFetch();
     renderWithProviders(<SettingsRegistryScreen />);
-    const dialog = await openKey(new RegExp(`Edit ${NUMBER_KEY}`));
+    const dialog = await openKey(NUMBER_KEY);
     await within(dialog).findByLabelText('New value');
 
     expect(await axe(sheetContent())).toHaveNoViolations();
