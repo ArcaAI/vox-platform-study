@@ -22,7 +22,7 @@
  * The values are not caller input: they come off the `LiveSession`, which took them from the
  * authenticated recording-start request.
  */
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 
 import type { IActiveUserContext } from '../../../interfaces';
