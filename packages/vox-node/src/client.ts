@@ -202,7 +202,7 @@ export class HopeClient {
     this.jobs = new JobsResource(transport);
     this.tenants = new TenantsResource(transport);
     this.workflows = new WorkflowsResource(transport, isServiceAccount);
-    this.agents = new AgentsResource(transport, isServiceAccount);
+    this.agents = new AgentsResource(transport);
     this.admin = new AdminNamespace(transport);
   }
 }
