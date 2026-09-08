@@ -58,12 +58,36 @@ export function useScopingDepartments() {
   });
 }
 
+/**
+ * TASK-932 R-16a — how long after `recording/stop` the durable finalizer is given to land the
+ * note before the draft pane stops asking, and how often it asks. Under a governing tenant
+ * workflow the interpreter's `n_finalize` persists the note tens of seconds after the stop
+ * call returns, through a gateway write that carries no summary-job id — so no SSE reaches this
+ * screen and a plain query that 404'd at open would never be asked again.
+ */
+export const FINALIZE_SETTLE_WINDOW_MS = 180_000;
+export const FINALIZE_POLL_MS = 5_000;
+
+export interface UseLatestSummaryOptions {
+  /** `Date.now()` of the stop being settled; `null`/absent = not settling, never poll. */
+  awaitingFinalizeSince?: number | null;
+  /** Poll cadence while settling (tests shrink it). */
+  pollMs?: number;
+}
+
 /** Latest draft for the review pane. null = nothing generated yet (not an error). */
-export function useLatestSummary(consultationId: string | null, enabled = true) {
+export function useLatestSummary(consultationId: string | null, enabled = true, options: UseLatestSummaryOptions = {}) {
+  const { awaitingFinalizeSince = null, pollMs = FINALIZE_POLL_MS } = options;
   return useQuery({
     queryKey: playgroundConsultationKeys.latestSummary(consultationId ?? 'none'),
     queryFn: () => getLatestSummary(consultationId as string),
     enabled: enabled && !!consultationId,
+    // Bounded, and only while there is nothing on screen: a draft already loaded is never
+    // re-polled, and a consultation that never finalizes is not asked forever.
+    refetchInterval: (query) => {
+      if (awaitingFinalizeSince === null || query.state.data) return false;
+      return Date.now() - awaitingFinalizeSince < FINALIZE_SETTLE_WINDOW_MS ? pollMs : false;
+    },
   });
 }
 
