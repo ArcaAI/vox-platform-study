@@ -131,54 +131,53 @@ interface Graph {
   edges: Array<{ id: string; from: string; fromPort: string; to: string; toPort: string }>;
 }
 
-/** WF-I-004 (trajectory stated) + WF-I-010 (bounded retry), on EXECUTABLE nodes only. */
-const BASE_CONFIG = { emitsTrajectory: true, retry: { maximumAttempts: 3 } };
-const isBoundary = (type: string): boolean => type === 'core.start' || type === 'core.end';
 const DEGRADE = 'degrade';
 
-const NODE_CONFIG: Record<string, Record<string, unknown>> = {
-  'consultation.captureBinding': { action: 'start', onError: DEGRADE },
-  'consultation.extractEntities': { requiresFinalized: true, onError: DEGRADE },
-  'consultation.bindTerminology': { purposeScope: 'terminology_validation', unmappedOutputKey: 'unmappedTerms', onError: DEGRADE },
-  'consultation.phiHop': { mode: 'pseudonymize', onError: DEGRADE },
-  'consultation.synthesize': { taskKey: 'text.finalize', producesCode: false, onError: DEGRADE },
-  'consultation.sensors': { onError: DEGRADE },
-  'consultation.persistDraft': { occ: true, onError: DEGRADE },
-};
+/**
+ * The canonical `core` chain — the same fixture as `task-779-workflow-lifecycle.spec.ts`, and the
+ * shape of the seeded reference graphs (`seed/28-workflow-library.ts`).
+ *
+ * TASK-893 Phase 4 retired the `consultation.*` NODE TYPES; the clinical steps they named survive
+ * as ACTIONS behind `core.action` (`packages/workflow-contract/src/action-catalogue.ts`). That is
+ * exactly what this suite needs to keep testing: `classesOf('core.action', config)` resolves the
+ * delegate's classes per INSTANCE, so `consultation.consentGate` still carries `mandatory`, and
+ * `publish-findings.ts` labels the `GUARDRAIL_OPTED_OUT` warning with the delegate's KEY
+ * (`actionDelegateOf(config)?.key ?? node.type`) — so the message still names the guard, not the
+ * generic `core.action`.
+ *
+ * `emitsTrajectory` is gone: every `core.*` schema is `additionalProperties: false` and declares
+ * no such key, and `WF-I-004`/`WF-I-010` are `paletteKey: 'summarization'`, filtered out for a
+ * `core` definition.
+ */
+const CANONICAL_NODES: ReadonlyArray<{ key: string; type: string; config: Record<string, unknown> }> = [
+  { key: 'core.trigger', type: 'core.trigger', config: { kinds: ['consultation', 'api'] } },
+  { key: 'consultation.consentGate', type: 'core.action', config: { actionKey: 'consultation.consentGate', action: {}, onError: DEGRADE } },
+  {
+    key: 'consultation.phiHop',
+    type: 'core.action',
+    config: { actionKey: 'consultation.phiHop', action: { mode: 'pseudonymize' }, onError: DEGRADE },
+  },
+  { key: 'consultation.persistDraft', type: 'core.action', config: { actionKey: 'consultation.persistDraft', action: { occ: true }, onError: DEGRADE } },
+  { key: 'core.humanReview', type: 'core.humanReview', config: { reviewType: 'clinical_finalization', assignRole: 'DOCTOR', timeoutSeconds: 3600 } },
+  { key: 'core.output', type: 'core.output', config: { protocols: ['http'] } },
+];
 
-/** The canonical consultation chain (`task-779-workflow-lifecycle.spec.ts`'s fixture). */
-const CANONICAL_TYPES = [
-  'core.start',
-  'consultation.consentGate',
-  'consultation.captureBinding',
-  'consultation.extractEntities',
-  'consultation.bindTerminology',
-  'consultation.phiHop',
-  'consultation.synthesize',
-  'consultation.sensors',
-  'consultation.persistDraft',
-  'consultation.hitlGate',
-  'core.end',
-] as const;
-
-/** A linear graph over `types`, ordered on the CONTROL ports (`next` → `after`). */
-function chain(types: readonly string[], overrides: Record<string, Record<string, unknown>> = {}): Graph {
+/** A linear graph over `specs`, ordered on the CONTROL ports (`next` → `after`). Overrides are
+ *  keyed by the node's `key` — its action key where it has one, else its node type. */
+function chain(
+  specs: ReadonlyArray<{ key: string; type: string; config: Record<string, unknown> }>,
+  overrides: Record<string, Record<string, unknown>> = {},
+): Graph {
   return {
     version: 1,
-    nodes: types.map((type, index) => ({
-      id: `n${index}`,
-      type,
-      config: {
-        ...(isBoundary(type) ? {} : BASE_CONFIG),
-        ...(NODE_CONFIG[type] ?? {}),
-        ...(overrides[type] ?? {}),
-      },
-    })),
-    edges: types.slice(1).map((_, index) => ({ id: `e${index}`, from: `n${index}`, fromPort: 'next', to: `n${index + 1}`, toPort: 'after' })),
+    nodes: specs.map((spec, index) => ({ id: `n${index}`, type: spec.type, config: { ...spec.config, ...(overrides[spec.key] ?? {}) } })),
+    edges: specs.slice(1).map((_, index) => ({ id: `e${index}`, from: `n${index}`, fromPort: 'next', to: `n${index + 1}`, toPort: 'after' })),
   };
 }
 
-const nodeIdOfType = (graph: Graph, type: string): string => graph.nodes.find((node) => node.type === type)!.id;
+/** Addresses a fixture node by its `key` — the action key where it has one, else the node type. */
+const nodeIdOf = (key: string): string => `n${CANONICAL_NODES.findIndex((spec) => spec.key === key)}`;
+
 
 // ── fixtures ───────────────────────────────────────────────────────────────
 
@@ -205,7 +204,7 @@ const uniqueSlug = (label: string) => `t890_${label}_${Date.now().toString(36)}_
 async function createDefinition(request: APIRequestContext, graph: Graph, label: string): Promise<{ status: number; body: Definition }> {
   const response = await request.post('/api/v1/admin/workflow-definitions', {
     headers: bearer(adminToken),
-    data: { slug: uniqueSlug(label), name: `t890 ${label}`, paletteKey: 'consultation', graph },
+    data: { slug: uniqueSlug(label), name: `t890 ${label}`, paletteKey: 'core', graph },
   });
   const body = (await response.json()) as Definition;
   if (response.status() === 201) createdDefinitions.push(body.id);
@@ -356,7 +355,7 @@ test.describe('TASK-890 §3.14 — the ledger records HOW each call was screened
 
 test.describe('TASK-890 §3.14a (D-1) — a disabled mandatory guard PUBLISHES, and is named', () => {
   test('a disabled `consultation.consentGate` publishes with a GUARDRAIL_OPTED_OUT WARNING naming the node', async ({ request }) => {
-    const graph = chain(CANONICAL_TYPES, { 'consultation.consentGate': { enabled: false } });
+    const graph = chain(CANONICAL_NODES, { 'consultation.consentGate': { enabled: false } });
     const created = await createDefinition(request, graph, 'consent_off');
     expect(created.status, JSON.stringify(created.body)).toBe(201);
 
@@ -368,37 +367,41 @@ test.describe('TASK-890 §3.14a (D-1) — a disabled mandatory guard PUBLISHES, 
     expect(warnings.length, 'the opt-out must be recorded on the published artifact').toBeGreaterThan(0);
     // NEVER blocking — an opt-out is a decision on the record, not a refusal.
     expect(warnings.every((finding) => finding.severity === 'WARNING')).toBe(true);
-    expect(warnings.some((finding) => finding.nodeId === nodeIdOfType(graph, 'consultation.consentGate'))).toBe(true);
+    expect(warnings.some((finding) => finding.nodeId === nodeIdOf('consultation.consentGate'))).toBe(true);
     expect(warnings.some((finding) => (finding.message ?? '').includes('consultation.consentGate'))).toBe(true);
   });
 
   /**
-   * KNOWN DEFECT, PINNED — do not "fix" this test (rule 05 §Known defects precedent).
+   * KNOWN GAP, PINNED — do not "fix" this test by asserting what §3.14a claims (rule 05
+   * §Known defects precedent). It WIDENED under TASK-893, and this assertion is the record.
    *
    * D-1 rests on a compensating claim (§3.14a #4): "a mandatory node may be switched OFF; it may
-   * never be REMOVED, and the rule catalogue is what says so". Measured at the wave-2b close, the
-   * SECOND half does not hold on this deployment. Deleting `consultation.consentGate` publishes
-   * **200** with `validationReport.ok: false` carrying nine rule-catalogue ERRORs — `WF-CONS-001
-   * expected exactly one node of type "consultation.consentGate", found 0` plus a `WF-CONS-002`
-   * per orphaned node.
+   * never be REMOVED, and the rule catalogue is what says so."
    *
-   * The reason is design decision #3, which predates this ticket: DRAFT rule-catalogue findings
-   * never block the transition — only the ENGINE gate (shape + `compile()` + `publishFindings`)
-   * refuses a publish (`workflow-definition.service.ts` `engineClean`). Mandatory PRESENCE is a
-   * rule-catalogue rule, so it is recorded and not enforced while the rule set is at DRAFT.
+   * At the wave-2b close the second half was ADVISORY: deleting `consultation.consentGate`
+   * published 200 but the report said `ok: false` and carried `WF-CONS-001 expected exactly one
+   * node of type "consultation.consentGate", found 0` plus a `WF-CONS-002` per orphaned node —
+   * recorded, not enforced, because DRAFT rule-catalogue findings never block the transition
+   * (only the ENGINE gate does: `workflow-definition.service.ts` `engineClean`).
    *
-   * So the presence half of D-1's compensating control is ADVISORY today, and this test asserts
-   * what actually happens rather than what §3.14a claims: the publish succeeds, the report says
-   * `ok: false`, and the finding NAMES the missing node type. Making it blocking is an owner
-   * decision (promote the consultation core rule set out of DRAFT, or move the presence check
-   * into `publishFindings`), recorded in §9 as an open question — not something a wave close
-   * should decide by itself.
+   * TASK-893 Phase 4 deleted `DRAFT_CONSULTATION_RULE_SET` with the palette (TASK-930 D-9), and
+   * the mandatory clinical guards became `core.action` DELEGATES rather than node types. There is
+   * no `REQUIRED_NODE_TYPE` / `REQUIRED_PATH_THROUGH` rule over action keys, so removing the
+   * consent gate from a `core` graph is now neither blocked NOR reported: measured here, publish
+   * answers 200 with `validationReport.ok: true` and ZERO findings. The presence half of D-1's
+   * compensating control has no enforcement AND no reporting path left.
+   *
+   * The `GUARDRAIL_OPTED_OUT` message the test above asserts still tells the author "publish
+   * still refuses a graph that removed it" (`publish-findings.ts`), which is no longer true of
+   * any graph a tenant can author. Restoring the control — a class-based mandatory-presence rule
+   * over `classesOf()` (`mandatory` resolves per instance, so it would reach the actions), or
+   * moving the check into `publishFindings` — is an OWNER decision, not a fix-up lane's.
    */
-  test('the SAME graph with that node DELETED records the missing-presence ERROR (advisory today — see the comment)', async ({ request }) => {
-    const graph = chain(CANONICAL_TYPES.filter((type) => type !== 'consultation.consentGate'));
+  test('the SAME graph with that node DELETED publishes CLEAN — the presence half of D-1 is unenforced AND unreported', async ({ request }) => {
+    const graph = chain(CANONICAL_NODES.filter((spec) => spec.key !== 'consultation.consentGate'));
     const created = await createDefinition(request, graph, 'consent_gone');
     if (created.status !== 201) {
-      // Some deployments refuse the shape at CREATE; that is the stronger outcome, and fine.
+      // If a later release refuses the shape at CREATE, that is the stronger outcome and fine.
       expect(created.status).toBeGreaterThanOrEqual(400);
       return;
     }
@@ -409,22 +412,23 @@ test.describe('TASK-890 §3.14a (D-1) — a disabled mandatory guard PUBLISHES, 
       .validationReport;
     const errors = (report?.findings ?? []).filter((finding) => finding.severity === 'ERROR');
 
-    if (published.status() >= 400) {
-      // The desired behaviour. If a later release makes the rule set blocking this branch takes
-      // over and the test stays honest without an edit.
+    if (published.status() >= 400 || errors.length > 0) {
+      // The desired behaviour. If a later release restores a mandatory-presence rule this branch
+      // takes over and the test stays honest without an edit.
       expect(errors.length, JSON.stringify(body)).toBeGreaterThan(0);
       return;
     }
 
-    expect(report?.ok, JSON.stringify(report)).toBe(false);
+    // What actually happens today, asserted so the gap cannot close silently either way.
+    expect(report?.ok, JSON.stringify(report)).toBe(true);
     expect(
-      errors.some((finding) => (finding.message ?? '').includes('consultation.consentGate')),
-      JSON.stringify(errors),
-    ).toBe(true);
+      (report?.findings ?? []).some((finding) => (finding.message ?? '').includes('consentGate')),
+      'nothing in the published report mentions the removed consent gate',
+    ).toBe(false);
   });
 
   test('a graph that disables nothing carries no GUARDRAIL_OPTED_OUT finding at all', async ({ request }) => {
-    const created = await createDefinition(request, chain(CANONICAL_TYPES), 'clean');
+    const created = await createDefinition(request, chain(CANONICAL_NODES), 'clean');
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const published = await request.post(`/api/v1/admin/workflow-definitions/${created.body.id}/publish`, { headers: bearer(adminToken), data: {} });
     const body = (await published.json()) as Definition;
