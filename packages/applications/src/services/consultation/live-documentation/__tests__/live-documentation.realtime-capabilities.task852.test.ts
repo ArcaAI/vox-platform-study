@@ -44,8 +44,10 @@ const SEED_GENERATED = path.resolve(HERE, '../../../../../../database/src/prisma
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const seed: any = await import(/* @vite-ignore */ SEED_GENERATED);
-const GEN_COMPILED_CONFIG = seed.GEN_COMPILED_CONFIG;
-const RHEUM_COMPILED_CONFIG = seed.RHEUM_COMPILED_CONFIG;
+// TASK-930 §8.5 — the ArcaAI set is GENERATED from the department x visit-type table into one
+// slug-keyed blob map, replacing the per-workflow `*_COMPILED_CONFIG` constants seed 23/24 exported.
+const GEN_COMPILED_CONFIG = seed.ARCAAI_GENERATED['ARCAAI:arcaai-gen-consultation'].compiledConfig;
+const RHEUM_COMPILED_CONFIG = seed.ARCAAI_GENERATED['ARCAAI:arcaai-rheum-consultation'].compiledConfig;
 
 /** The ArcaAI customer tenant the seeded assignments bind. */
 const ARCAAI = '50000000-0000-0000-0000-000000000001';
@@ -58,19 +60,19 @@ const UNASSIGNED = 'tenant-no-assignment-852';
  * default) instead of returning a canned answer — the cascade order is part of what item 2 claims.
  */
 const SEEDED_ASSIGNMENTS = [
-  { tenantId: ARCAAI, scope: 'TENANT' as const, scopeId: null as string | null, paletteKey: 'consultation', slug: 'arcaai-consultation-soap' },
+  { tenantId: ARCAAI, scope: 'TENANT' as const, scopeId: null as string | null, paletteKey: 'core', slug: 'arcaai-gen-consultation' },
   {
     tenantId: ARCAAI,
     scope: 'DEPARTMENT' as const,
     scopeId: '70000000-0000-0000-0001-000000000011' as string | null,
-    paletteKey: 'consultation',
-    slug: 'arcaai-rheum-consultation-soap',
+    paletteKey: 'core',
+    slug: 'arcaai-rheum-consultation',
   },
 ];
 
 const PUBLISHED_DEFINITIONS: Record<string, { slug: string; compiledConfig: unknown }> = {
-  'arcaai-consultation-soap': { slug: 'arcaai-consultation-soap', compiledConfig: GEN_COMPILED_CONFIG },
-  'arcaai-rheum-consultation-soap': { slug: 'arcaai-rheum-consultation-soap', compiledConfig: RHEUM_COMPILED_CONFIG },
+  'arcaai-gen-consultation': { slug: 'arcaai-gen-consultation', compiledConfig: GEN_COMPILED_CONFIG },
+  'arcaai-rheum-consultation': { slug: 'arcaai-rheum-consultation', compiledConfig: RHEUM_COMPILED_CONFIG },
 };
 
 /** `department override -> tenant default -> platform default`, over the SEEDED rows. */
@@ -192,30 +194,34 @@ describe(' item 2 — the ArcaAI assignment resolves to a TENANT lane, not the p
     // still produces a note, so only the source distinguishes "authoring governs the live plane"
     // from "authoring governs nothing".
     expect(caps.laneSource).toBe('tenant-graph');
-    expect(caps.definitionSlug).toBe('arcaai-consultation-soap');
+    expect(caps.definitionSlug).toBe('arcaai-gen-consultation');
     expect(caps.definitionVersionNumber).toBe(1);
     expect(caps.assignmentSource).toBe('tenant');
 
     // And it got there by WALKING the chain, not by reading a constant.
-    expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'consultation', null);
-    expect(definitions.findPublishedBySlug).toHaveBeenCalledWith(ARCAAI, 'arcaai-consultation-soap');
+    expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'core', null);
+    expect(definitions.findPublishedBySlug).toHaveBeenCalledWith(ARCAAI, 'arcaai-gen-consultation');
   });
 
-  it('carries the five realtime node types the seeded graph authors, and no durable ones', async () => {
+  it('carries the realtime nodes the seeded graph authors, and no durable ones', async () => {
     const { service } = buildService({ graphEnabled: true });
 
     const caps = await service.getRealtimeCapabilities(ARCAAI);
 
-    expect(caps.nodes.map((n) => n.type).sort()).toEqual([
-      'agent.grammar',
-      'agent.important_findings',
-      'consultation.captureBinding',
-      'consultation.extractEntities',
-      'consultation.realtimeSummary',
-    ]);
-    // `consultation.persistDraft` is `lane: 'durable'` and must never appear here — it is the node
-    // whose presence in BOTH engines would mean two writers on one clinical document.
-    expect(caps.nodes.some((n) => n.type === 'consultation.persistDraft')).toBe(false);
+    // TASK-893 — every realtime node is a `core.agent` now, so the TYPE no longer distinguishes
+    // them and the read-out's discriminators are the node id and the CAPABILITY it runs.
+    expect(caps.nodes.map((n) => n.nodeId).sort()).toEqual(['n_asr', 'n_ner', 'n_summary_new', 'n_summary_revisit']);
+    expect([...new Set(caps.nodes.map((n) => n.type))]).toEqual(['core.agent']);
+    // …and TODAY every one of them reads as `generateDocument`, because the capability is derived
+    // from the node's `agentRef` and a SLUG-form ref needs the host to resolve the agent's task —
+    // `RealtimeCapabilities.resolveAgent` is optional and this service does not implement it, so
+    // the lane falls back to TEXT_GENERATION exactly as `CoreAgentHandler` does at run time. This
+    // assertion pins the CURRENT behaviour, not the desired one: wiring an agent-task resolver is
+    // what will make `n_asr` read (and run) as `transcribe`.
+    expect([...new Set(caps.nodes.map((n) => n.canonicalType))]).toEqual(['generateDocument']);
+    // `n_finalize` is `execution.lane: 'durable'` and must never appear here — a node running on
+    // BOTH engines would mean two writers on one clinical document.
+    expect(caps.nodes.some((n) => n.nodeId === 'n_finalize')).toBe(false);
   });
 
   it('a DEPARTMENT override wins over the tenant default, so the cascade is real', async () => {
@@ -224,7 +230,7 @@ describe(' item 2 — the ArcaAI assignment resolves to a TENANT lane, not the p
     const caps = await service.getRealtimeCapabilities(ARCAAI, '70000000-0000-0000-0001-000000000011');
 
     expect(caps.assignmentSource).toBe('department');
-    expect(caps.definitionSlug).toBe('arcaai-rheum-consultation-soap');
+    expect(caps.definitionSlug).toBe('arcaai-rheum-consultation');
     expect(caps.laneSource).toBe('tenant-graph');
   });
 });
@@ -246,11 +252,8 @@ describe(' item 6 — the read-out reports REAL state, including when there is n
     expect(caps.assignmentSource).toBe('platform-default');
     // The platform lane genuinely runs, so reporting its nodes is the honest answer — an empty
     // list here would claim nothing executes, which is false.
-    expect(caps.nodes.map((n) => n.type).sort()).toEqual([
-      'consultation.captureBinding',
-      'consultation.extractEntities',
-      'consultation.realtimeSummary',
-    ]);
+    expect(caps.nodes.map((n) => n.nodeId).sort()).toEqual(['capture', 'extract', 'summarize']);
+    expect([...new Set(caps.nodes.map((n) => n.type))]).toEqual(['core.agent']);
   });
 
   it('with the kill-switch OFF there is NO lane, and it says so rather than describing one', async () => {
@@ -271,7 +274,7 @@ describe(' item 6 — the read-out reports REAL state, including when there is n
     const { service } = buildService({ graphEnabled: true });
 
     const caps = await service.getRealtimeCapabilities(ARCAAI);
-    const byType = Object.fromEntries(caps.nodes.map((n) => [n.type, n]));
+    const byNode = Object.fromEntries(caps.nodes.map((n) => [n.nodeId, n]));
 
     // Nothing in the seeded graph authors `enabled: false`, so every node is live.
     expect(caps.nodes.every((n) => n.enabled)).toBe(true);
@@ -284,10 +287,10 @@ describe(' item 6 — the read-out reports REAL state, including when there is n
     // validator accepts, which is the property this assertion has always been about. The two
     // GRAPH BOUNDARIES (`core.trigger`, `core.output`) are what still withhold it, and neither
     // appears in a realtime lane's node list.
-    expect(byType['consultation.captureBinding'].togglable).toBe(true);
-    expect(byType['consultation.realtimeSummary'].togglable).toBe(true);
-    expect(byType['agent.important_findings'].togglable).toBe(true);
-    expect(byType['agent.grammar'].togglable).toBe(true);
+    expect(byNode['n_asr'].togglable).toBe(true);
+    expect(byNode['n_ner'].togglable).toBe(true);
+    expect(byNode['n_summary_new'].togglable).toBe(true);
+    expect(byNode['n_summary_revisit'].togglable).toBe(true);
   });
 
   it('honours an authored `enabled: false` — the item 3/4 toggle, seen from the read-out', async () => {
@@ -296,13 +299,13 @@ describe(' item 6 — the read-out reports REAL state, including when there is n
     const withDisabledFindings = JSON.parse(JSON.stringify(GEN_COMPILED_CONFIG));
     for (const stage of withDisabledFindings.stages) {
       for (const node of stage.nodes) {
-        if (node.type === 'agent.important_findings') node.config = { ...node.config, enabled: false };
+        if (node.nodeId === 'n_ner') node.config = { ...node.config, enabled: false };
       }
     }
-    definitions.findPublishedBySlug = vi.fn(async () => ({ slug: 'arcaai-consultation-soap', compiledConfig: withDisabledFindings }));
+    definitions.findPublishedBySlug = vi.fn(async () => ({ slug: 'arcaai-gen-consultation', compiledConfig: withDisabledFindings }));
 
     const caps = await service.getRealtimeCapabilities(ARCAAI);
-    const findings = caps.nodes.find((n) => n.type === 'agent.important_findings');
+    const findings = caps.nodes.find((n) => n.nodeId === 'n_ner');
 
     expect(findings?.enabled).toBe(false);
     // Still LISTED. A disabled node that vanished from the read-out would be indistinguishable
