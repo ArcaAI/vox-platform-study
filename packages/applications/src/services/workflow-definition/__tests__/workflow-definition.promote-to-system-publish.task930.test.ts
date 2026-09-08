@@ -33,7 +33,8 @@ import { SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { WorkflowDefinitionService } from '../workflow-definition.service';
 
 const GLOBAL = '50000000-0000-0000-0000-000000000000';
-const SCHEMA_ID = 'ctx-schema-1';
+/** `core.trigger`'s own config schema requires a UUID here — the publish gate checks that too. */
+const SCHEMA_ID = '79000000-0000-0000-0001-000000000010';
 
 /**
  * A CLS double that actually MODELS `runInTenantContext`: `set('tenantId')` mutates, `run`
@@ -104,7 +105,11 @@ const mockContextSchemaService = {
       schemaId: SCHEMA_ID,
       versionNumber: 1,
       versionId: 'ctx-version-1',
-      payloadSchema: { type: 'object', properties: {}, additionalProperties: false },
+      payloadSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { intake: { type: 'object', properties: { severity: { type: 'string' } } } },
+      },
     };
   }),
 };
@@ -117,10 +122,19 @@ const mockContextSchemaService = {
 const GRAPH = {
   version: 1,
   nodes: [
-    { id: 'n_trigger', type: 'core.trigger', config: { contextSchema: { contextSchemaId: SCHEMA_ID, versionNumber: 1 } } },
-    { id: 'n_out', type: 'core.output', config: {} },
+    {
+      id: 't1',
+      type: 'core.trigger',
+      config: { kinds: ['api'], contextSchema: { contextSchemaId: SCHEMA_ID, versionNumber: 1 } },
+      position: { x: 0, y: 0 },
+    },
+    { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 'general-medicine-summarization' } }, position: { x: 1, y: 0 } },
+    { id: 'o1', type: 'core.output', config: { protocols: ['http'] }, position: { x: 2, y: 0 } },
   ],
-  edges: [],
+  edges: [
+    { id: 'e1', from: 't1', to: 'a1', fromPort: 'out', toPort: 'context' },
+    { id: 'e2', from: 'a1', to: 'o1', fromPort: 'out', toPort: 'in' },
+  ],
 };
 
 const entity = (overrides: Record<string, unknown> = {}) => ({

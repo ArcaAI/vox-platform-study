@@ -24,7 +24,7 @@ import {
   WorkflowDefinitionStatus,
 } from '@arcaai/domains';
 import { canonicalJson, type WorkflowGraph, type WorkflowGraphNode } from '@arcaai/workflow-contract';
-import { IAgentPromotionService } from './IAgentPromotionService';
+import { IAgentPromotionService, type PromoteOptions } from './IAgentPromotionService';
 import { AgentPromotionResponse, PaginatedAgentPromotionResponse, PromoteWorkflowRequest } from './dto';
 import { AgentPromotionDtoMapper } from './agentPromotion.dto.mapper';
 import { EvalRunService } from '../eval/eval-run.service';
@@ -202,7 +202,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   // Promote — ELEVATED TENANT-LESS context
   // =========================================================================
 
-  async promote(dto: PromoteWorkflowRequest): Promise<AgentPromotionResponse> {
+  async promote(dto: PromoteWorkflowRequest, options?: PromoteOptions): Promise<AgentPromotionResponse> {
     const { fromTenantId, toTenantId, sourceDefinitionSlug } = dto;
 
     // ---- 1. Mechanical precondition (see the class header) ----------------
@@ -265,9 +265,17 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       } as never);
       promotion.validate();
 
+      const savedPromotion = await this.promotionRepository.create(promotion, tx);
+
+      // TASK-930 D-4 — the caller's own write, INSIDE this transaction. `promoteToSystem`
+      // publishes the copy here; if the publish refuses, everything above rolls back with it
+      // instead of leaving an orphan DRAFT in the target. Deliberately LAST: the hook may read
+      // the rows written above, and nothing after it may write.
+      await options?.afterWrite?.(definition, tx);
+
       return {
         targetDefinition: definition,
-        savedPromotion: await this.promotionRepository.create(promotion, tx),
+        savedPromotion,
         checksum: promotedChecksum,
       };
     });

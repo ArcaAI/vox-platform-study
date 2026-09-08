@@ -18,7 +18,7 @@ import {
   WorkflowDefinitionRepository,
   WorkflowDefinitionStatus,
 } from '@arcaai/domains';
-import type { JsonValue } from '@arcaai/domains';
+import type { CorePrisma, JsonValue } from '@arcaai/domains';
 import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import {
@@ -1108,21 +1108,45 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       });
     }
 
-    const promotion = await this.agentPromotionService.promote({
-      sourceDefinitionSlug: source.slug,
-      fromTenantId: GLOBAL_PLAYGROUND_TENANT_ID,
-      toTenantId: SYSTEM_TENANT_ID,
-      definitionVersionNumber: source.versionNumber,
-      changeReason: dto.changeReason,
-    });
+    // TASK-930 D-4 — the publish is part of the promotion's UNIT OF WORK, not a step after it.
+    //
+    // Two things were wrong here, and they are separate. First, `publishEntity` makes ordinary
+    // TENANT-SCOPED reads (`resolveTriggerContextSchema` →
+    // `ConsultationContextSchemaService.resolveReference` → `requireTenantId()`), and this method
+    // runs under the elevated TENANT-LESS context the cross-tenant copy requires — so the publish
+    // answered `400 "Tenant ID is required"` and the route could not be called at all. It runs
+    // under SYSTEM's context now: the tenant that OWNS the promoted row, borrowed for the step and
+    // restored on the way out, the same discipline `cloneFromSystem` uses for its target.
+    //
+    // Second, the publish ran AFTER the copy had committed, so any refusal — this one, the publish
+    // gate, a hyper-parameter the bound configuration rejects — left an orphan SYSTEM DRAFT behind
+    // and burned a version number. Inside the transaction, a refusal rolls the copy back with it,
+    // which is the "a block writes nothing" posture the eval gate and the §6.2 agent check above
+    // already have.
+    let published: WorkflowDefinitionResponse | undefined;
+    const promotion = await this.agentPromotionService.promote(
+      {
+        sourceDefinitionSlug: source.slug,
+        fromTenantId: GLOBAL_PLAYGROUND_TENANT_ID,
+        toTenantId: SYSTEM_TENANT_ID,
+        definitionVersionNumber: source.versionNumber,
+        changeReason: dto.changeReason,
+      },
+      {
+        afterWrite: async (promoted, tx) => {
+          published = await runInTenantContext(this.clsService, SYSTEM_TENANT_ID, () =>
+            this.publishEntity(promoted, { activate: true }, tx),
+          );
+        },
+      },
+    );
 
-    const targetId = promotion.targetDefinitionVersionId;
-    if (!targetId) {
+    if (!published) {
+      // The hook is the only writer of `published`, so this is unreachable unless the promotion
+      // service stopped honouring it — which would silently return an UNPUBLISHED SYSTEM template,
+      // the exact state this method exists to prevent.
       throw new ConflictException('The promotion recorded no target definition row; nothing was published into SYSTEM.');
     }
-
-    const promoted = await this.workflowDefinitionRepository.findById(targetId);
-    const published = await this.publishEntity(promoted, { activate: true });
 
     return {
       promotionId: promotion.id,
@@ -1383,7 +1407,14 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * `promoteToSystem()` does it with a super-admin privilege check. The split is deliberate and
    * the guard is not optional — it moved, it did not disappear.
    */
-  private async publishEntity(entity: WorkflowDefinitionEntity, dto: PublishWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
+  private async publishEntity(
+    entity: WorkflowDefinitionEntity,
+    dto: PublishWorkflowDefinitionRequest,
+    // TASK-930 D-4 — supplied ONLY by `promoteToSystem`, whose publish runs inside the
+    // promotion's transaction against a row that is not visible outside it yet. A repository
+    // caches its database context at construction, so `tx` has to be passed, not inherited.
+    tx?: CorePrisma.TransactionClient,
+  ): Promise<WorkflowDefinitionResponse> {
     this.assertMutable(entity);
     await this.assertPaletteEntitled(entity);
 
@@ -1445,12 +1476,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const activate = dto.activate ?? true;
     if (activate) {
       entity.isActive = true;
-      await this.demoteExistingActive(entity.tenantId, entity.slug, entity.id);
+      await this.demoteExistingActive(entity.tenantId, entity.slug, entity.id, tx);
     }
 
     // Publish is not a CAS (`consultation-context-schema.service.ts`'s discipline) — an
     // unrelated concurrent metadata edit must not 412 the publish().
-    const updated = await this.workflowDefinitionRepository.update(entity.id, entity);
+    const updated = await this.workflowDefinitionRepository.update(entity.id, entity, tx);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: entity.id,
@@ -2249,12 +2280,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
   /** At most one ACTIVE version per `(tenantId, slug)` — mirrors
    *  `ConsultationContextSchemaService.demoteExistingDefault` / `DepartmentAgent.isDefault`. */
-  private async demoteExistingActive(tenantId: string, slug: string, exceptId: string): Promise<void> {
+  private async demoteExistingActive(tenantId: string, slug: string, exceptId: string, tx?: CorePrisma.TransactionClient): Promise<void> {
     const current = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, slug);
     if (!current || current.id === exceptId) return;
     current.isActive = false;
     current.updatedBy = this.requestUserId ?? undefined;
-    await this.workflowDefinitionRepository.update(current.id, current);
+    await this.workflowDefinitionRepository.update(current.id, current, tx);
   }
 }
 
