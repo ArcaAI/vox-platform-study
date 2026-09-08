@@ -19,6 +19,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useRegistrySetting, usePutRegistrySetting } from '../api/hooks';
 import type { SettingCatalogItem, SettingScope } from '../api/types';
 import {
+  defaultScopeFor,
   floorHint,
   isPlatformWideWrite,
   isUnsetAndFailClosed,
@@ -31,11 +32,25 @@ import { RegistryValueEditor } from './registry-value-editor';
 import { fromDraft, toDraft } from './registry-value';
 
 const SCOPE_LABEL: Record<SettingScope, string> = {
-  system: 'Platform (all tenants)',
+  system: 'Platform default (SYSTEM)',
   tenant: 'This tenant only',
   department: 'Department',
   doctor: 'Doctor',
 };
+
+/**
+ * The scope control's label, naming the tenant a `tenant`-scope write would
+ * land on.
+ *
+ * Saying "This tenant only" while a working tenant is selected leaves the admin
+ * to remember WHICH one — and TASK-932 R-6 is precisely the class of bug where
+ * the row being read and the row being written were not the same and nothing on
+ * screen said so.
+ */
+function scopeLabel(scope: SettingScope, workingTenantName: string | null): string {
+  if (scope === 'tenant' && workingTenantName) return `${workingTenantName} override`;
+  return SCOPE_LABEL[scope];
+}
 
 /**
  * One governance row. `mono` is a flag rather than pre-rendered JSX so the row
@@ -109,18 +124,28 @@ export function SettingRegistryDrawer({
   open,
   onOpenChange,
   isElevated,
+  workingTenantName = null,
 }: {
   item: SettingCatalogItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isElevated: boolean;
+  /**
+   * The shell's working tenant, or null when an elevated caller has selected
+   * none. It decides two things: whether a TENANT override is addressable at
+   * all, and which tenant the scope control names.
+   */
+  workingTenantName?: string | null;
 }) {
   const uid = useId();
   const block = item ? writeBlockFor(item, isElevated) : null;
-  const scopes = item ? writableScopes(item, isElevated) : [];
+  // A tenant-bound caller always has a tenant; an elevated one has whatever the
+  // shell switcher says.
+  const hasWorkingTenant = !isElevated || workingTenantName !== null;
+  const scopes = item ? writableScopes(item, isElevated, hasWorkingTenant) : [];
 
   const [scope, setScope] = useState<SettingScope | null>(null);
-  const activeScope = scope ?? scopes[0] ?? 'system';
+  const activeScope = scope ?? defaultScopeFor(scopes);
 
   const settingQuery = useRegistrySetting(item?.key ?? null, activeScope, open);
   const putSetting = usePutRegistrySetting();
@@ -292,11 +317,31 @@ export function SettingRegistryDrawer({
                     >
                       {scopes.map((option) => (
                         <ToggleGroupItem key={option} value={option}>
-                          {SCOPE_LABEL[option]}
+                          {scopeLabel(option, workingTenantName)}
                         </ToggleGroupItem>
                       ))}
                     </ToggleGroup>
+                    <p className="text-muted-foreground text-xs">
+                      {activeScope === 'system'
+                        ? 'Saving writes the PLATFORM row on the reserved SYSTEM tenant — the value every tenant without an override of its own inherits.'
+                        : `Saving writes an override on ${workingTenantName ?? 'the selected tenant'} only. The platform default is left untouched.`}
+                    </p>
                   </div>
+                ) : null}
+
+                {/* An elevated caller with no working tenant can only reach the
+                    platform row, and that is worth SAYING rather than leaving as
+                    an absent control: "why can I not set this for one tenant"
+                    is the question the missing option provokes. */}
+                {isElevated && !hasWorkingTenant && item.maxScope !== 'system' && !block ? (
+                  <Alert>
+                    <IconInfoCircle aria-hidden />
+                    <AlertTitle>Editing the platform default</AlertTitle>
+                    <AlertDescription>
+                      No working tenant is selected, so this drawer writes the platform row. Select a tenant in the header to give that tenant an
+                      override instead.
+                    </AlertDescription>
+                  </Alert>
                 ) : null}
 
                 {isPlatformWideWrite(activeScope) && !block ? (

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getRegistrySetting, getSettingsCatalog, putRegistrySetting } from './client';
+import { getRegistrySetting, getSettingsCatalog, putRegistrySetting, resetRegistrySetting } from './client';
 import { settingsRegistryKeys } from './keys';
 import type { SettingScope } from './types';
 
@@ -42,5 +42,18 @@ export function usePutRegistrySetting() {
     // same key is now stale even though its own row did not move.
     onSuccess: (_result, variables) =>
       queryClient.invalidateQueries({ queryKey: [...settingsRegistryKeys.root, 'setting', variables.key] }),
+  });
+}
+
+/**
+ * Reset one tenant override. Invalidates BOTH scopes of the key like a write
+ * does: dropping the tenant row changes what that tenant resolves, and the
+ * platform read is the value it now inherits.
+ */
+export function useResetRegistrySetting() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key }: { key: string }) => resetRegistrySetting(key),
+    onSuccess: (_result, variables) => queryClient.invalidateQueries({ queryKey: [...settingsRegistryKeys.root, 'setting', variables.key] }),
   });
 }

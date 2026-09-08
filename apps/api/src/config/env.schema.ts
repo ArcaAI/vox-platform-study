@@ -4,8 +4,8 @@
 //
 // SOURCE OF TRUTH: the schema is BUILT from setting descriptors, never from a
 // hand-written key literal. `BOOTSTRAP_ENV_SETTINGS` (lane F) supplies the
-// bootstrap floor, `PLATFORM_KNOB_SETTINGS` / `FEATURE_FLAG_SETTINGS` the
-// operational knobs and gates still read from env, and
+// bootstrap floor, `PLATFORM_KNOB_SETTINGS` the operational knobs still read
+// from env, and
 // `API_PLATFORM_ENV_SETTINGS` the gateway topology. Env-var NAMES come from
 // `toEnvVarName()` — the mechanical dotted-key ↔ SCREAMING_SNAKE mapping of plan
 // so a rename in the registry can never silently diverge from what this
@@ -37,7 +37,13 @@
 // Handled by `VAULT_CONDITIONAL` / `NOT_READ_BY_THIS_PROCESS` below rather than
 // by weakening the descriptors, which are correct as classifications.
 
-import { BOOTSTRAP_ENV_SETTINGS, FEATURE_FLAG_SETTINGS, PLATFORM_KNOB_SETTINGS, toEnvVarName, type SettingDescriptor } from '@arcaai/applications';
+import {
+  BOOTSTRAP_ENV_SETTINGS,
+  HARNESS_CLAIM_CHECK_ENABLED,
+  PLATFORM_KNOB_SETTINGS,
+  toEnvVarName,
+  type SettingDescriptor,
+} from '@arcaai/applications';
 import { z } from 'zod';
 import { API_PLATFORM_ENV_SETTINGS } from './env.descriptors';
 
@@ -77,7 +83,15 @@ const CONNECTION_STRING_NAME = new Set(['DATABASE_URL', 'DIRECT_URL', 'REDIS_URL
 export const API_ENV_DESCRIPTORS: SettingDescriptor[] = [
   ...BOOTSTRAP_ENV_SETTINGS,
   ...PLATFORM_KNOB_SETTINGS,
-  ...FEATURE_FLAG_SETTINGS,
+  // TASK-932 D-4 - `FEATURE_FLAG_SETTINGS` was spread here. Its file is gone:
+  // three of its keys migrated to `global-kv` together with their readers, so no
+  // environment variable is their authority any more and validating one at boot
+  // would assert a contract nothing honours. `harness.claimCheck.enabled` is the
+  // one that stayed `env` (its reader is pydantic-settings inside the Python
+  // harness worker), and it is declared here for the reason stated in the header:
+  // one shared env file means one shared contract, so a typo in a downstream
+  // service's flag fails the gateway's boot instead of silently doing nothing.
+  HARNESS_CLAIM_CHECK_ENABLED,
   ...API_PLATFORM_ENV_SETTINGS,
 ].filter((d) => !NOT_READ_BY_THIS_PROCESS.has(toEnvVarName(d.key)));
 

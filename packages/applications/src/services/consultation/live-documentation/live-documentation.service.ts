@@ -157,6 +157,7 @@ import {
   CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY,
 } from '../../settings-registry/descriptors/consultation-realtime.descriptors';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+import { LIVE_DOC_GROUNDEDNESS_ENABLED_KEY } from '../../settings-registry/descriptors/feature-availability.descriptors';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 
 // F-28: defensive caps on the append-only `LiveSession.transcriptParts` buffer.
@@ -576,6 +577,18 @@ function readNumericEnv(configService: ConfigService, key: string): number | und
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/**
+ * An explicitly-pinned boolean env override, or undefined when the deployment
+ * does not set one. Distinguishing "unset" from "set to false" is what lets a
+ * fixture that pinned a flag keep meaning what it said once the real answer
+ * moved to the settings cascade.
+ */
+function readBooleanEnv(configService: ConfigService, key: string): boolean | undefined {
+  const raw = configService.get(key);
+  if (raw === undefined || raw === null || String(raw).trim() === '') return undefined;
+  return String(raw) === 'true';
+}
+
 function toTranscriptMode(raw: unknown): AgenticTranscriptMode {
   return String(raw) === 'windowed' ? 'windowed' : 'whole';
 }
@@ -719,7 +732,28 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly textProvider?: string;
   private readonly textModel?: string;
   private readonly statsTtl: number;
-  private readonly groundednessEnabled: boolean;
+  /**
+   * TASK-932 D-4 - the env OVERRIDE for the groundedness gate, or undefined when
+   * the deployment does not pin it. It is no longer the answer: the stored
+   * `liveDoc.groundedness.enabled` row wins, resolved per flush against the
+   * session tenant. Kept as the fallback for an unwired settings graph, the same
+   * shape `envTextTimeoutMs` uses one field above.
+   */
+  private readonly envGroundednessEnabled?: boolean;
+  /**
+   * The EFFECTIVE groundedness gate for the flush in progress. Was `readonly`
+   * and read ONCE in the constructor, which is what made turning the gate on a
+   * RESTART - and made a per-tenant rollout impossible. Refreshed by
+   * {@link resolveGroundednessEnabled} on every flush.
+   */
+  private groundednessEnabled: boolean;
+  /**
+   * The registry's `envDefaults` object, held by IDENTITY so a per-flush refresh
+   * of `groundedness` is visible to `LiveToolRegistry.isEnabled` without giving
+   * the registry a second way to be told the same fact. `ner`/`vitals` are
+   * unconditional and stay literal.
+   */
+  private readonly toolEnvDefaults: { ner: boolean; vitals: boolean; groundedness: boolean };
   private readonly groundednessTimeoutMs: number;
   private readonly groundednessMaxRetries: number;
   private readonly groundednessRetryBackoffMs: number;
@@ -882,7 +916,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // fail-CLOSED: a blip is absorbed by a bounded retry, a sustained outage marks
     // segments `unverified` — an error path can NEVER mark `grounded`.
     this.guardrailServiceUrl = this.configService.get<string>('GUARDRAIL_URL') ?? 'http://localhost:8863';
-    this.groundednessEnabled = String(this.configService.get('LIVE_DOC_GROUNDEDNESS_ENABLED') ?? 'false') === 'true';
+    // TASK-932 D-4 - the env value is an OVERRIDE for an unwired settings graph,
+    // not the answer: `resolveGroundednessEnabled` re-resolves the stored
+    // `liveDoc.groundedness.enabled` row against the session tenant on every
+    // flush. Seeded here so the value before the first flush is the one that
+    // flush would resolve.
+    this.envGroundednessEnabled = readBooleanEnv(this.configService, 'LIVE_DOC_GROUNDEDNESS_ENABLED');
+    this.groundednessEnabled = this.envGroundednessEnabled ?? false;
     this.groundednessTimeoutMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_TIMEOUT_MS') ?? 5000);
     this.groundednessMaxRetries = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_MAX_RETRIES') ?? 1);
     this.groundednessRetryBackoffMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_RETRY_BACKOFF_MS') ?? 200);
@@ -892,6 +932,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // A plan entry of `enabled: null` ("follow the platform default", distinct
     // from `false`) resolves to exactly these — which is why an unconfigured
     // `toolConfig` reproduces today's behavior byte for byte.
+    // Held by identity - see the field's doc.
+    this.toolEnvDefaults = { ner: true, vitals: true, groundedness: this.groundednessEnabled };
     this.toolRegistry = new LiveToolRegistry({
       nlp: {
         httpService: this.httpService,
@@ -910,7 +952,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         maxRetries: this.groundednessMaxRetries,
         retryBackoffMs: this.groundednessRetryBackoffMs,
       },
-      envDefaults: { ner: true, vitals: true, groundedness: this.groundednessEnabled },
+      envDefaults: this.toolEnvDefaults,
     });
   }
 
@@ -2032,6 +2074,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-891 B1 — the realtime TEXT budget, resolved for THIS flush by the same
     // control-plane contract: a super admin's write governs the next flush, no redeploy.
     await this.resolveTextTimeoutMs(session.tenantId);
+    await this.resolveGroundednessEnabled(session.tenantId);
 
     // Supersede any in-flight generation: abort its HTTP calls and claim a new id.
     const myGeneration = ++session.generation;
@@ -3577,6 +3620,40 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       this.textTimeoutMs = fallback;
     }
     return this.textTimeoutMs;
+  }
+
+  /**
+   * TASK-932 D-4 - the groundedness gate for THIS flush.
+   *
+   * `liveDoc.groundedness.enabled` moved from `LIVE_DOC_GROUNDEDNESS_ENABLED`
+   * (read once in the constructor, so enabling it needed a restart and could
+   * never be scoped to a tenant) to the `global-kv` cascade. Same shape and same
+   * failure posture as {@link resolveTextTimeoutMs}: a stored row wins, an
+   * unresolvable read keeps the previous answer for this flush rather than
+   * flipping a clinical gate on a transient control-plane blip.
+   *
+   * Writing through `toolEnvDefaults` (held by identity) is what makes the new
+   * value visible to `LiveToolRegistry.isEnabled` — a session's frozen tool plan
+   * still wins, exactly as before; this only moves the `enabled: null` default.
+   */
+  private async resolveGroundednessEnabled(tenantId: string): Promise<boolean> {
+    const fallback = this.envGroundednessEnabled ?? false;
+    if (!this.effectiveSettings) {
+      this.groundednessEnabled = fallback;
+      this.toolEnvDefaults.groundedness = fallback;
+      return fallback;
+    }
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(LIVE_DOC_GROUNDEDNESS_ENABLED_KEY, { tenantId });
+      this.groundednessEnabled = resolved.sourceScope === 'code-default' ? fallback : resolved.value === true;
+    } catch (error) {
+      this.logger.warn({
+        message: 'liveDoc.groundedness.enabled resolution failed — keeping the previous answer for this flush',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    this.toolEnvDefaults.groundedness = this.groundednessEnabled;
+    return this.groundednessEnabled;
   }
 
   /** The env-override → code-default knobs, i.e. the pre-B1 resolution. */

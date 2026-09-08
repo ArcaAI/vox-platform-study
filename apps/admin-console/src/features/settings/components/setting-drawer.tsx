@@ -22,7 +22,6 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateGlobalSetting, useGlobalSetting, useRevealGlobalSetting, useRotateGlobalSetting, useUpdateGlobalSetting } from '../api/hooks';
 import type { GlobalSetting } from '../api/types';
-import { isAdvisoryFeatureFlag } from './advisory-feature-flags';
 import { SettingHistoryTab } from './setting-history-tab';
 import { isJsonType, isValueValid, ValueEditorPane } from './value-editor-pane';
 
@@ -192,7 +191,6 @@ function SettingBadges({ setting }: { setting: GlobalSetting }) {
       <Badge variant="outline">{setting.dataType}</Badge>
       {setting.isSecret ? <Badge variant="secondary">Secret</Badge> : null}
       {setting.locked ? <Badge variant="outline">Locked</Badge> : null}
-      {isAdvisoryFeatureFlag(setting) ? <Badge variant="outline">Advisory</Badge> : null}
     </>
   );
 }
@@ -387,12 +385,6 @@ function SettingDetailBody({
             )}
             {setting.locked ? (
               <p className="text-muted-foreground text-xs">This platform default is locked. Only a super admin may change it.</p>
-            ) : null}
-            {isAdvisoryFeatureFlag(setting) ? (
-              <p className="text-muted-foreground text-xs">
-                Advisory only &mdash; no runtime path reads this flag today. Changing the value here has no effect until a consumer is wired up to
-                read it.
-              </p>
             ) : null}
           </div>
           <OccConflictAlert

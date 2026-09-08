@@ -26,20 +26,17 @@ export interface WriteBlock {
  * Only `global-kv` is writable through this lane; every other tier is refused
  * with a 400 that names its dedicated owner. Stating the owner is the useful
  * half — "not writable here" without "go there instead" is a dead end.
+ *
+ * TASK-932 R-6 / D-6 — `env`, `vault-kv` and `db-secret` are no longer described
+ * here. They are LOCKED, and the gateway now says so on the catalog item
+ * (`locked` / `lockLabel` / `lockReason`, derived from tier + sensitivity). The
+ * console renders that reason verbatim rather than keeping a parallel copy: a
+ * second definition of the same rule is what lets a newly-registered bootstrap
+ * variable ship with an editor nobody remembered to disable. What stays below is
+ * the set of tiers this LANE cannot write although they ARE editable elsewhere —
+ * a different sentence, and the only one the console is entitled to author.
  */
 const TIER_BLOCK: Record<string, WriteBlock> = {
-  env: {
-    label: 'Deploy-time',
-    reason: 'This is an `env`-tier value, fixed for the process lifetime. It changes by redeploying, not from an admin screen.',
-  },
-  'vault-kv': {
-    label: 'Vault secret',
-    reason: 'This is a platform secret in Vault kv-v2. It is set by an operator through the Vault seeding runbook and never through an HTTP write.',
-  },
-  'db-secret': {
-    label: 'Tenant secret',
-    reason: 'This is a per-tenant secret held as Vault-Transit ciphertext. It is written through its own credential surface, never as a plain value.',
-  },
   'db-config': {
     label: 'Dedicated service',
     reason:
@@ -62,8 +59,20 @@ const TIER_BLOCK: Record<string, WriteBlock> = {
  * the server would actually give.
  */
 export function writeBlockFor(item: SettingCatalogItem, isElevated: boolean): WriteBlock | null {
-  // Secrets are never served by the read surface and never accepted by the
-  // write lane. A control here would be a lie about what the screen can do.
+  // The server's derived LOCK comes first, and it is authoritative: it is the
+  // one refusal that applies to EVERY caller, a platform admin included, so a
+  // rule that ran after the privilege checks below could report "super admin
+  // only" about a key no super admin can edit either.
+  if (item.locked) {
+    return {
+      label: item.lockLabel ?? 'Locked',
+      reason: item.lockReason ?? 'This setting is not editable from an admin surface.',
+    };
+  }
+
+  // Older catalog payloads (or a locally-stubbed one) may not carry the lock.
+  // Secrets are never served by the read surface and never accepted by the write
+  // lane, so this stays as the client-side floor under it.
   if (item.sensitivity === 'secret' || item.dataType === 'secret') {
     return {
       label: 'Secret',
@@ -96,14 +105,33 @@ export function writeBlockFor(item: SettingCatalogItem, isElevated: boolean): Wr
  * `department` / `doctor` are never offered: the gateway refuses them outright
  * (no descriptor declares a `maxScope` deeper than `tenant` in this tier).
  */
-export function writableScopes(item: SettingCatalogItem, isElevated: boolean): SettingScope[] {
+export function writableScopes(item: SettingCatalogItem, isElevated: boolean, hasWorkingTenant = true): SettingScope[] {
   const scopes: SettingScope[] = [];
-  // `system` is the platform row — SUPER_ADMIN only, always.
+  // `system` is the platform row — SUPER_ADMIN only, always. It needs NO
+  // working tenant: the row lives on the reserved SYSTEM tenant by definition,
+  // which is exactly what the read side had wrong (TASK-932 R-6).
   if (isElevated) scopes.push('system');
-  // `tenant` needs a maxScope that reaches it. `system`-only keys have no
-  // tenant row to write.
-  if (item.maxScope !== 'system') scopes.push('tenant');
+  // `tenant` needs a maxScope that reaches it AND a tenant to write to. An
+  // elevated caller with nothing selected has no tenant row to address, so
+  // offering the option would produce a 400 on save; a tenant-bound caller
+  // always has one.
+  if (item.maxScope !== 'system' && (!isElevated || hasWorkingTenant)) scopes.push('tenant');
   return scopes;
+}
+
+/**
+ * Which scope the drawer opens on.
+ *
+ * Defaults to the TENANT override whenever one is addressable, and the reason is
+ * the failure this ticket fixes rather than a preference: a platform admin who
+ * has deliberately selected a working tenant and then edits a key is almost
+ * never asking to move the platform default for every other tenant, but that is
+ * where an unconditional `system` default lands the write. Falling back to
+ * `system` covers the unscoped platform admin and the `maxScope: 'system'` keys,
+ * where the platform row is the only row there is.
+ */
+export function defaultScopeFor(scopes: readonly SettingScope[]): SettingScope {
+  return scopes.includes('tenant') ? 'tenant' : (scopes[0] ?? 'system');
 }
 
 /**
