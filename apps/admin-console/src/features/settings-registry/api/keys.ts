@@ -6,8 +6,4 @@ export const settingsRegistryKeys = {
   catalog: () => [...settingsRegistryKeys.root, 'catalog'] as const,
   /** Scoped: the same key resolves to a different row per scope. */
   setting: (key: string, scope: SettingScope) => [...settingsRegistryKeys.root, 'setting', key, scope] as const,
-  /** The caller-scoped feature gates. */
-  featuresEffective: () => [...settingsRegistryKeys.root, 'features', 'effective'] as const,
-  /** The cross-tenant matrix (super admin only). */
-  featureMatrix: () => [...settingsRegistryKeys.root, 'features', 'matrix'] as const,
 };

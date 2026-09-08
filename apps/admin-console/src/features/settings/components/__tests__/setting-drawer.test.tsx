@@ -122,6 +122,22 @@ describe('SettingDetailDrawer', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  it('has no axe violations on a feature-flags row', async () => {
+    const enforced = setting({ id: 's-7', key: 'enable-consultation-sharing', namespace: 'feature-flags', name: 'Consultation Sharing' });
+    stubFetch({
+      custom: (call) => {
+        if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-7') {
+          return Response.json(enforced, { headers: { etag: '"2"' } });
+        }
+        return undefined;
+      },
+    });
+    const { container } = renderWithProviders(<SettingDetailDrawer settingId="s-7" onClose={vi.fn()} onDelete={vi.fn()} />);
+
+    await screen.findByText('enable-consultation-sharing');
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
   // TASK-932 R-8 — the advisory badge and note are gone with the five rows they
   // described. This case is kept as the regression pin that NOTHING marks a
   // `feature-flags` row advisory any more.

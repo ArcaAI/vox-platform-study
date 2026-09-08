@@ -132,17 +132,19 @@ export function SettingsRegistryScreen() {
 
   /**
    * Resolved values for keys the admin has already opened, read from the query
-   * cache. Recomputed when the drawer opens or closes, which is exactly when the
-   * set can have grown — a cache subscription would re-render the whole grid on
-   * every unrelated query.
+   * cache on every render.
+   *
+   * Deliberately NOT memoized and deliberately NOT a cache subscription. A memo
+   * would need a dependency that says "a value may have arrived", which nothing
+   * here honestly has; a subscription would re-render the whole grid on every
+   * unrelated query in the app. The map holds at most the handful of keys an
+   * admin has actually opened, so rebuilding it costs nothing and is always
+   * current.
    */
-  const resolved = useMemo(() => {
-    const map = new Map<string, EffectiveSetting>();
-    for (const [, data] of queryClient.getQueriesData<{ data: EffectiveSetting }>({ queryKey: [...settingsRegistryKeys.root, 'setting'] })) {
-      if (data?.data?.key) map.set(data.data.key, data.data);
-    }
-    return map;
-  }, [queryClient, active]);
+  const resolved = new Map<string, EffectiveSetting>();
+  for (const [, data] of queryClient.getQueriesData<{ data: EffectiveSetting }>({ queryKey: [...settingsRegistryKeys.root, 'setting'] })) {
+    if (data?.data?.key) resolved.set(data.data.key, data.data);
+  }
 
   const filtered = useMemo(() => {
     const needle = (query.queryState.globalSearch ?? '').trim().toLowerCase();

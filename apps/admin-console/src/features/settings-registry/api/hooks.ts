@@ -1,9 +1,9 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getEffectiveFeatures, getFeatureMatrix, getRegistrySetting, getSettingsCatalog, putFeatureMatrix, putRegistrySetting, resetRegistrySetting } from './client';
+import { getRegistrySetting, getSettingsCatalog, putRegistrySetting, resetRegistrySetting } from './client';
 import { settingsRegistryKeys } from './keys';
-import type { FeatureMatrixWrite, SettingScope } from './types';
+import type { SettingScope } from './types';
 
 /** The descriptor inventory. Metadata only, so it caches well. */
 export function useSettingsCatalog(enabled = true) {
@@ -55,46 +55,5 @@ export function useResetRegistrySetting() {
   return useMutation({
     mutationFn: ({ key }: { key: string }) => resetRegistrySetting(key),
     onSuccess: (_result, variables) => queryClient.invalidateQueries({ queryKey: [...settingsRegistryKeys.root, 'setting', variables.key] }),
-  });
-}
-
-/**
- * The caller's feature gates. Cached for the session: they change only when a
- * platform admin edits the matrix, and that mutation invalidates them.
- */
-export function useEffectiveFeatures(enabled = true) {
-  return useQuery({
-    queryKey: settingsRegistryKeys.featuresEffective(),
-    queryFn: () => getEffectiveFeatures(),
-    staleTime: 5 * 60 * 1000,
-    enabled,
-  });
-}
-
-/** The cross-tenant matrix. 403 for a non-platform-admin, so do not retry it. */
-export function useFeatureMatrix(enabled = true) {
-  return useQuery({
-    queryKey: settingsRegistryKeys.featureMatrix(),
-    queryFn: () => getFeatureMatrix(),
-    enabled,
-    retry: false,
-  });
-}
-
-/**
- * Save a screenful of matrix edits as ONE batch.
- *
- * Invalidates the effective gates as well as the matrix: a save that hides a
- * console screen must be reflected in the navigation of the session that made
- * it, not on the next reload.
- */
-export function usePutFeatureMatrix() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (cells: FeatureMatrixWrite[]) => putFeatureMatrix(cells),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsRegistryKeys.featureMatrix() });
-      await queryClient.invalidateQueries({ queryKey: settingsRegistryKeys.featuresEffective() });
-    },
   });
 }
