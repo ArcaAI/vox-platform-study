@@ -38,6 +38,13 @@
  * `WorkflowDefinitionService.cloneFromSystem` re-points that binding by SLUG in the target tenant
  * (`documentTemplateRepository.findByTenantAndSlug`). Copy the workflows first and there is
  * nothing for the binding to resolve to.
+ *
+ * TASK-930 §6.3 — `workflowAssignments` comes LAST, and immediately after `workflowDefinitions`,
+ * for the same kind of reason `agentAssignments` follows `agents`: an assignment names a
+ * definition SLUG that must already resolve to a published definition in the target tenant, so
+ * copying it first would name nothing. It is a separate kind rather than a step of
+ * `workflowDefinitions` because the two answer different questions — which workflows a tenant
+ * HAS, and which one it RUNS — and a caller repairing one must be able to leave the other alone.
  */
 export const REFERENCE_SET_KINDS = [
   'contextSchemas',
@@ -46,6 +53,7 @@ export const REFERENCE_SET_KINDS = [
   'agentAssignments',
   'documentTemplates',
   'workflowDefinitions',
+  'workflowAssignments',
 ] as const;
 
 export type ReferenceSetKind = (typeof REFERENCE_SET_KINDS)[number];
