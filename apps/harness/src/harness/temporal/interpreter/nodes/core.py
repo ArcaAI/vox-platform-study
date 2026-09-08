@@ -27,6 +27,7 @@ derived from ``row.tenantId``, so it would mis-bill silently rather than fail.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from collections.abc import Callable
@@ -77,7 +78,6 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     read_text_primary,
     wire_provider,
 )
-from harness.temporal.interpreter.nodes.agentic import interpreter_agentic_data
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 from harness.temporal.models import HarnessPolicy
 
@@ -1163,6 +1163,27 @@ async def _run_speech(
         return NodeActivityResult(
             status="DEGRADED", reason="core.agent: synthesis returned no audio"
         )
+    # The DELTA lane, best-effort by contract. Audio frames ride the same per-run Redis Stream,
+    # the same envelope and the same resume-token contract as text deltas, base64-encoded; they
+    # never touch Temporal — not a signal, not an activity result — because the history ceiling
+    # is 51,200 events / 50 MB per run and a minute of speech would consume a measurable slice
+    # of it. A Redis outage costs the live view and nothing else, so it is deliberately not
+    # allowed to fail a synthesis that already succeeded, and a run with no `run_id` (the field
+    # is additive-optional) simply does not stream. MEASURED by
+    # `test_task849_audio_two_lane_split.py`.
+    if payload.run_id:
+        from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
+
+        producer = run_event_producer()
+        for sequence, frame in enumerate(synthesis.chunks):
+            await producer.emit_token_delta(
+                tenant_id=payload.tenant_id,
+                run_id=payload.run_id,
+                node_id=payload.node_id,
+                sequence=sequence,
+                text=base64.b64encode(frame).decode("ascii"),
+            )
+
     settings = get_settings()
     store, location = await open_store(settings.claim_check)
     ref = await store_bytes(
@@ -1469,8 +1490,56 @@ async def interpreter_core_output(payload: NodeActivityInput) -> NodeActivityRes
 
 @activity.defn(name="interpreter.core_data")
 async def interpreter_core_data(payload: NodeActivityInput) -> NodeActivityResult:
-    """The Data node under its `core` key — the SAME deterministic reshape as `agentic.data`."""
-    return await interpreter_agentic_data(payload)
+    """Deterministic reshape — the tier-2 escape hatch.
+
+    The mapping language is intentionally tiny: dotted reads out of this node's bound inputs,
+    renamed writes onto its output, plus literal constants. Anything richer is a transformation
+    language, which is a second place for tenant logic to live and a second thing to audit.
+
+    An unresolved mapping marked ``required`` DEGRADES the node observably; an optional one is
+    simply absent from the output. Neither ever invents a value — a fabricated field is worse
+    than a missing one, because a downstream schema check would pass on it.
+
+    TASK-893: the body moved here verbatim from the retired ``agentic.data`` activity, which
+    ``core.data`` had been delegating to. The reason prefix is the only change, and it now names
+    the node type that actually ran.
+    """
+    started = now()
+    config = _config(payload)
+    bound = _bound(payload)
+
+    output: dict[str, Any] = {}
+    constants = config.get("constants")
+    if isinstance(constants, dict):
+        output.update(constants)
+
+    missing_required: list[str] = []
+    mappings = config.get("mappings")
+    for mapping in mappings if isinstance(mappings, list) else []:
+        if not isinstance(mapping, dict):
+            continue
+        source = mapping.get("from")
+        target = mapping.get("to")
+        if not isinstance(source, str) or not isinstance(target, str):
+            continue
+        value = resolve_dotted_path(bound, source)
+        if value is MISSING:
+            if mapping.get("required") is True:
+                missing_required.append(source)
+            continue
+        output[target] = value
+
+    await record_and_flush(payload, status=STATUS_OK, started=started)
+    if missing_required:
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason=(
+                "core.data: required mapping(s) did not resolve: "
+                f"{', '.join(sorted(missing_required))}"
+            ),
+            output={"data": output},
+        )
+    return NodeActivityResult(status="SUCCEEDED", output={"data": output})
 
 
 @activity.defn(name="interpreter.core_note")

@@ -1,7 +1,7 @@
-"""The ONE activity an agentic.loop iteration runs besides its own nodes.
+"""The ONE activity a ``core.loop`` iteration runs besides its own body nodes.
 
-``AgenticLoopWorkflow`` runs exactly one iteration per generation and then
-``continue_as_new``s, so everything it needs on the next iteration must be carried forward as
+``LoopWorkflow`` (``core_loop_workflow.py``) runs exactly one iteration per generation
+and then ``continue_as_new``s, so everything it needs on the next iteration must be carried forward as
 INPUT. This activity is what turns one iteration's raw product into that carry-forward, and it
 lives in an activity rather than in the workflow body for three separate reasons:
 
@@ -75,7 +75,7 @@ def extract_tokens(output: Any) -> int:
 # Temporal's ceiling is 2 MB per payload / 4 MB per gRPC message, and the loop carries its ENTIRE
 # memory as input on every generation. A clinical deliberation that accumulates transcript across
 # iterations reaches that ceiling and the loop dies mid-run, which is the failure this exists to
-# prevent. 256 KiB leaves an order of magnitude of headroom for the rest of `AgenticLoopInput`
+# prevent. 256 KiB leaves an order of magnitude of headroom for the rest of `CoreLoopInput`
 # (bounds, node specs, seed inputs) rather than sailing close to the limit.
 LOOP_STATE_INLINE_LIMIT_BYTES = 256 * 1024
 
@@ -85,7 +85,7 @@ async def loop_state_rehydrate(ref: ClaimCheckRef) -> Any:
     """Load a carry-forward that was offloaded by the previous iteration's checkpoint.
 
     An ACTIVITY because a workflow cannot do I/O. The loop calls it only when
-    ``AgenticLoopState.ref`` is set, so an under-threshold loop pays nothing.
+    ``CoreLoopState.ref`` is set, so an under-threshold loop pays nothing.
 
     Integrity failures propagate unmodified — `load_blob` raises on a size or sha256 mismatch, and
     a loop that silently resumed from a corrupted or substituted state would produce clinical
@@ -117,13 +117,13 @@ async def _emit_iteration_event(
 
     A run with no ``run_id`` simply does not stream — the fields are additive-optional, so a
     caller from before they existed (or a fixture-capture script) is silently a no-op rather
-    than an error. Same posture ``agentic.tts`` takes on the delta lane.
+    than an error — the same posture the rest of the delta lane takes.
     """
     if not payload.run_id:
         return
-    # Imported inside the function for the reason `nodes/agentic.py` records at its own
-    # function-local import: `activities.py` pulls in the whole node tree, and a module-level
-    # import from here would be a needless heavy edge out of the loop's own module.
+    # Imported inside the function on purpose: `activities.py` pulls in the whole node tree,
+    # and a module-level import from here would be a needless heavy edge out of the loop's
+    # own module.
     from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
 
     try:

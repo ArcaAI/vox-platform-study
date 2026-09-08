@@ -24,10 +24,6 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Replayer
 
 from harness.temporal.interpreter.core_loop_workflow import LoopWorkflow
-from harness.temporal.interpreter.loop_workflow import (
-    AgenticLoopWorkflow,
-    AgenticSubAgentWorkflow,
-)
 from harness.temporal.interpreter.review_workflow import ReviewGateWorkflow
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.workflows import ConsultationLoopWorkflow, HarnessDocWorkflow
@@ -473,13 +469,20 @@ class TestWorkflowInterpreterReplayCompatibility:
     type, following the exact same "new type needs no era until its first fixture is frozen"
     precedent `ConsultationLoopWorkflow` set (`workflows.py:1611-1614`).
 
-    ``interpreter_v1_history.json`` is the fixture captured with the very first release
-    (`_capture_interpreter_replay_fixture.py`), per the ticket's "replay-compat discipline from
-    run #1" requirement — this interpreter must never repeat `HarnessDocWorkflow`'s position of
-    reaching eleven live `workflow.patched()` eras before anyone wrote a fixture. It covers, in
-    one run, the three command shapes a future change is most likely to break: a multi-stage
-    linear walk, a 3-node fan-out stage, and one DEGRADED node settling alongside SUCCEEDED
-    siblings in the same stage (the all-settled join).
+    ``interpreter_v1_history.json`` is captured by `_capture_interpreter_replay_fixture.py`, per
+    the ticket's "replay-compat discipline from run #1" requirement — this interpreter must never
+    repeat `HarnessDocWorkflow`'s position of reaching eleven live `workflow.patched()` eras
+    before anyone wrote a fixture. It covers, in one run, the three command shapes a future
+    change is most likely to break: a multi-stage linear walk, a 3-node fan-out stage, and one
+    DEGRADED node settling alongside SUCCEEDED siblings in the same stage (the all-settled join).
+
+    TASK-893: the fixture was RE-CAPTURED onto the `core.*` vocabulary. The original recording
+    walked the retired `noop`/`passthrough` seed types, so the current definition SKIPped every
+    node, completed early, and the replay failed `[TMPRL1100]` on the first recorded
+    `ActivityTaskScheduled`. Per the owner ruling of 2026-09-08 (TASK-930 README §4.5) that
+    history stopped being evidence the moment the vocabulary it replays was retired by decision;
+    the deploy precondition in `docs/operations/deprecation-register.md` — drain in-flight harness
+    workflows before deploying — is what carries the risk it used to.
 
     Any future ungated change to the interpreter's dispatch loop (a new/removed/reordered
     ``execute_activity`` call in the shared per-stage/per-node path) fails this replay with a
@@ -512,7 +515,7 @@ class TestRunEventStreamReplayCompatibility:
     async def test_a_stream_era_history_replays_on_the_current_definition(self):
         """FORWARD guard: today's in-flight runs must survive tomorrow's deploy.
 
-        `interpreter_stream_v1_history` is a real recorded history carrying the patch marker
+        `interpreter_stream_v1_history` is a recorded history carrying the patch marker
         and seven `interpreter.emit_run_events` activity events across the same three-stage /
         fan-out / degraded-sibling scenario the pre-stream fixture covers. Moving, reordering
         or ungating an emit changes the command sequence, and this is what makes that fail
@@ -528,53 +531,19 @@ class TestRunEventStreamReplayCompatibility:
     async def test_a_pre_stream_history_still_replays_with_no_emits(self):
         """BACKWARD guard, and the one that actually justifies the patch.
 
-        `interpreter_v1_history` was recorded before the mirror existed and carries NO
-        `emit_run_events` at all. `workflow.patched` returns False on it, the three emits are
-        skipped, and the command sequence still lines up. Deleting the gate — or "simplifying"
-        it to an unconditional emit — breaks exactly here.
+        `interpreter_v1_history` carries NO `emit_run_events` and no patch marker at all.
+        `workflow.patched` returns False on it, the emits are skipped, and the command sequence
+        still lines up. Deleting the gate — or "simplifying" it to an unconditional emit — breaks
+        exactly here.
+
+        TASK-893: this era is now SYNTHESISED rather than historical. The shipped definition
+        emits a run-completed event on every run, so no capture of it can omit the marker; the
+        capture script suppresses the mirror for the capture only (`--no-stream`, unsandboxed
+        runner) and replay always runs against the real method. It is synthesised because the
+        genuine pre-stream recordings walked the retired `noop`/`passthrough` vocabulary.
         """
         replayer = Replayer(
             workflows=[WorkflowInterpreter],
-            data_converter=pydantic_data_converter,
-        )
-        await replayer.replay_workflow(_history("interpreter_v1_history"))
-
-
-class TestAgenticLoopReplayCompatibility:
-    """b step 9 — the loop's own replay guards, in both directions.
-
-    The loop introduced ONE new command: the interpreter starting `AgenticLoopWorkflow` as a
-    child, gated behind `workflow.patched(_LOOP_PATCH)`. That gate is load-bearing rather than
-    ceremonial — shipped `agentic.loop` as a dispatchable ACTIVITY, so histories recorded
-    before this change genuinely carry an `ActivityTaskScheduled` for `interpreter.agentic_loop`
-    and must keep replaying that way.
-    """
-
-    @pytest.mark.asyncio
-    async def test_a_current_era_loop_history_replays_on_the_current_definition(self):
-        """FORWARD guard: today's in-flight loops must survive tomorrow's deploy.
-
-        The fixture is a real recorded history carrying the child-workflow start and the patch
-        marker. Moving or ungating the loop dispatch changes the command sequence, and this test
-        is what makes that fail here rather than against live clinical runs.
-        """
-        replayer = Replayer(
-            workflows=[WorkflowInterpreter, AgenticLoopWorkflow, AgenticSubAgentWorkflow],
-            data_converter=pydantic_data_converter,
-        )
-        await replayer.replay_workflow(_history("interpreter_loop_v1_history"))
-
-    @pytest.mark.asyncio
-    async def test_a_pre_loop_history_still_replays(self):
-        """BACKWARD guard: a history recorded before the loop existed must be unaffected.
-
-        `interpreter_v1_history` predates `agentic.loop` entirely, so the cheap operand
-        (`node.type == _LOOP_NODE_TYPE`) short-circuits and `workflow.patched` is never reached.
-        This asserts the guard costs nothing to a graph that contains no loop — the property that
-        lets it be added without touching every existing execution.
-        """
-        replayer = Replayer(
-            workflows=[WorkflowInterpreter, AgenticLoopWorkflow, AgenticSubAgentWorkflow],
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("interpreter_v1_history"))
@@ -601,20 +570,25 @@ class TestCoreVocabularyReplayCompatibility:
         await replayer.replay_workflow(_history("interpreter_core_v1_history"))
 
     @pytest.mark.asyncio
-    async def test_every_pre_core_history_still_replays_with_the_patch_never_consulted(self):
-        """BACKWARD guard, and the one that justifies the cheap-operand-first gate: no history
-        recorded before this ticket carries a `core.*` node, so `workflow.patched` is never
-        reached and the command sequence of every earlier era is byte-identical."""
+    async def test_every_history_without_a_child_construct_replays_with_the_patch_never_consulted(
+        self,
+    ):
+        """BACKWARD guard, and the one that justifies the cheap-operand-first gate.
+
+        `_CORE_PATCH` is consulted ONLY for a `core.humanReview` or a `core.loop` — the two types
+        the interpreter dispatches as CHILD WORKFLOWS. Neither interpreter fixture below carries
+        one, so `workflow.patched` is never reached and their command sequences are byte-identical
+        to what an ungated definition would produce.
+
+        TASK-893 note: this used to be phrased as "no history recorded before this ticket carries
+        a `core.*` node". That framing died with the legacy vocabulary — every fixture is a
+        `core.*` graph now — but the PROPERTY the gate has is unchanged and is what is asserted
+        here: the cheap operand is the node TYPE, and a graph carrying neither child construct
+        never records the marker.
+        """
         replayer = Replayer(
-            workflows=[
-                WorkflowInterpreter,
-                ReviewGateWorkflow,
-                LoopWorkflow,
-                AgenticLoopWorkflow,
-                AgenticSubAgentWorkflow,
-            ],
+            workflows=[WorkflowInterpreter, ReviewGateWorkflow, LoopWorkflow],
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("interpreter_v1_history"))
         await replayer.replay_workflow(_history("interpreter_stream_v1_history"))
-        await replayer.replay_workflow(_history("interpreter_loop_v1_history"))

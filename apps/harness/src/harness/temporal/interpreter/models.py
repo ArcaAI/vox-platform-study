@@ -325,8 +325,7 @@ class InterpreterStateQueryResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# The agentic LOOP — the second durable construct in this substrate,
-# and the first that ITERATES.
+# The LOOP — the durable construct that ITERATES (`core.loop`, `core_loop_workflow.py`).
 #
 # Every field here exists because something in the loop must survive a
 # ``continue_as_new`` boundary. That is the whole design constraint: the loop
@@ -337,7 +336,7 @@ class InterpreterStateQueryResult(BaseModel):
 # "carry" one would be to read a clock and subtract, which is exactly the
 # wall-clock read rule 06 forbids inside ``@workflow.defn``. So that one bound is
 # owned by the PARENT (the interpreter), whose single timer spans the whole
-# continue-as-new chain. See ``loop_workflow.py``'s module docstring.
+# continue-as-new chain. See ``core_loop_workflow.py``'s module docstring.
 # ---------------------------------------------------------------------------
 
 #: Why a loop stopped. Six values, deliberately DISTINGUISHABLE: an operator
@@ -354,112 +353,6 @@ LoopStopReason = Literal[
     "termination_key",
     "orchestrator_failed",
 ]
-
-
-class AgenticLoopBounds(BaseModel):
-    """The four ``agentic.loop`` bounds, already clamped by the TypeScript compiler.
-
-    Mirrors ``AGENTIC_LOOP_BOUNDS_PROPERTY`` in
-    ``packages/workflow-contract/src/node-config-schemas.ts``. Three are REQUIRED by that
-    schema; ``noProgressIterations`` carries the schema's own default of 2 so a config
-    compiled before the field existed still parses to the documented behaviour rather than
-    to "unbounded".
-    """
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    max_iterations: int = Field(alias="maxIterations")
-    max_duration_seconds: int = Field(alias="maxDurationSeconds")
-    max_total_tokens: int = Field(alias="maxTotalTokens")
-    no_progress_iterations: int = Field(default=2, alias="noProgressIterations")
-
-
-class AgenticLoopNodeSpec(BaseModel):
-    """One compiled graph node the loop dispatches — the orchestrator, or one sub-agent.
-
-    A projection of ``CompiledNode``, not the node itself: the loop needs the node's identity,
-    its config and its already-clamped execution envelope, and nothing else. ``activity_name``
-    travels so the child can repeat the interpreter's own S-4 cross-check (the registry decides
-    what runs; the wire's activity string is only ever a consistency check).
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    node_id: str
-    node_type: str
-    activity_name: str
-    config: dict[str, Any] = Field(default_factory=dict)
-    timeout_seconds: int
-    max_attempts: int
-
-
-class AgenticLoopState(BaseModel):
-    """The accumulator carried ACROSS ``continue_as_new`` — the loop's entire memory.
-
-    inline/ref are the claim-check pair ( rule 15): the orchestrator's
-    working state stays inline while it is small and moves to MinIO the moment it is not, so a
-    long clinical deliberation never marches the 2 MB payload ceiling. ``digest`` is a sha256
-    over the canonical form of that state, computed in the ACTIVITY that offloads it — it is
-    what ``noProgressIterations`` compares, and computing it in the activity is what keeps the
-    workflow body free of both the blob and the hashing.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    iterations: int = 0
-    tokens_used: int = 0
-    no_progress_streak: int = 0
-    digest: str = ""
-    inline: Any = None
-    # RESERVED, and deliberately never set in this pass. The claim-check offload is b
-    #: step 6; the field exists now so the carry-forward shape does not change when it lands
-    #: (a state model change is a replay-visible change to every in-flight loop).
-    ref: ClaimCheckRef | None = None
-    #: Sub-agent CHILD workflows that did not succeed, summed across every generation. A loop
-    #: is not failed by a failing worker — the orchestrator is free to route around it — but the
-    #: count travels so the outcome is never silently clean.
-    sub_agent_failures: int = 0
-
-
-class AgenticLoopInput(BaseModel):
-    """``AgenticLoopWorkflow``'s input — and, because of ``continue_as_new``, also its
-    own carry-forward between iterations. Every generation receives one of these."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    run_id: str
-    node_id: str
-    tenant_id: str
-    workflow_version_id: str
-    sandbox: bool = False
-    bounds: AgenticLoopBounds
-    orchestrator: AgenticLoopNodeSpec
-    sub_agents: list[AgenticLoopNodeSpec] = Field(default_factory=list)
-    #: Truthiness of this key on the orchestrator's output ends the loop early.
-    termination_key: str | None = None
-    #: What the graph bound into the loop node's own ``in`` port — the loop's seed, threaded
-    #: to the orchestrator on iteration 0 and never again (after that the orchestrator reads
-    #: its own previous working state).
-    seed_inputs: dict[str, Any] = Field(default_factory=dict)
-    run_payload: dict[str, Any] = Field(default_factory=dict)
-    state: AgenticLoopState = Field(default_factory=AgenticLoopState)
-
-
-class AgenticLoopResult(BaseModel):
-    """What the loop child returns to the interpreter.
-
-    ``stop_reason`` is the load-bearing field and it is never absent: a loop that ended
-    always says WHY, and the four bound reasons never collapse into one another.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    node_id: str
-    stop_reason: LoopStopReason
-    iterations: int
-    tokens_used: int
-    result: Any = None
-    sub_agent_failures: int = 0
 
 
 class LoopCheckpointInput(BaseModel):
@@ -488,7 +381,7 @@ class LoopCheckpointInput(BaseModel):
     #
     # `tokens_used_before` is the loop's cumulative total as of the START of this iteration.
     # The activity adds its own `tokens` to it so the event reports the same running figure
-    # the workflow will put on `AgenticLoopState.tokens_used` a moment later — the ONE piece
+    # the workflow will put on `CoreLoopState.tokens_used` a moment later — the ONE piece
     # of the bound arithmetic the activity cannot see for itself.
     #
     # Everything here is a scalar. The carry-forward itself must never join them: it may be
@@ -501,27 +394,6 @@ class LoopCheckpointInput(BaseModel):
     max_iterations: int = 0
     max_total_tokens: int = 0
     tokens_used_before: int = 0
-
-
-class AgenticSubAgentInput(BaseModel):
-    """``AgenticSubAgentWorkflow``'s input — ONE sub-agent, ONE iteration.
-
-    A sub-agent runs as a CHILD WORKFLOW rather than an activity so it gets its own history
-    and its own retry envelope: a sub-agent that thrashes cannot fill the orchestrator's
-    history, and a sub-agent that fails is a child-level failure the loop can absorb rather
-    than a workflow-task failure that wedges the whole loop.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    node: AgenticLoopNodeSpec
-    tenant_id: str
-    sandbox: bool = False
-    iteration: int = 0
-    bound_inputs: dict[str, Any] = Field(default_factory=dict)
-    bound_input_refs: dict[str, ClaimCheckRef] = Field(default_factory=dict)
-    run_payload: dict[str, Any] = Field(default_factory=dict)
-    trajectory: TrajectoryContext | None = None
 
 
 class LoopStateCheckpoint(BaseModel):
@@ -783,7 +655,7 @@ class ReviewGateResult(BaseModel):
 
 
 class CoreLoopBounds(BaseModel):
-    """Same four bounds as :class:`AgenticLoopBounds` (one schema, `AGENTIC_LOOP_BOUNDS_PROPERTY`)."""
+    """The four loop bounds, already clamped by the TypeScript compiler."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
