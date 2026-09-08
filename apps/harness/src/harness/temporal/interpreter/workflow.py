@@ -23,7 +23,11 @@ from temporalio.exceptions import ActivityError, ApplicationError
 
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
-    from harness.temporal.interpreter.activities import emit_run_events, load_config
+    from harness.temporal.interpreter.activities import (
+        emit_run_events,
+        load_config,
+        load_live_outputs,
+    )
     from harness.temporal.interpreter.compiled_config import (
         CompiledGate,
         CompiledNode,
@@ -47,6 +51,8 @@ with workflow.unsafe.imports_passed_through():
         InterpreterInput,
         InterpreterResult,
         InterpreterStateQueryResult,
+        LiveOutputsRequest,
+        LiveOutputsResult,
         NodeActivityInput,
         NodeActivityResult,
         NodeResult,
@@ -129,6 +135,30 @@ _EMIT_RETRY = RetryPolicy(maximum_attempts=1)
 # branch gating and the run context add NO command (a skip removes one only on graphs that carry
 # `branchGuards`, which likewise predate nothing), so they need no marker.
 _CORE_PATCH = "task-864-core-vocabulary"
+
+# TASK-932 R-16a — the LIVE HANDOFF's patch marker. FIFTH gate, and the one whose cheap operand
+# is NOT provably False on an existing history: a consultation-bound run whose graph binds a
+# `realtime` node's output into a durable one is exactly what every seeded consultation graph is,
+# so `workflow.patched` is what stands between this change and a non-determinism error on every
+# in-flight clinical run. Recapture the replay fixture alongside it
+# (`_capture_interpreter_replay_fixture.py`), per contracts/versioning.md rule 3.
+_LIVE_HANDOFF_PATCH = "task-932-live-handoff"
+
+#: How long the walk parks between two handoff reads. A timer plus one short activity per
+#: interval: a 30-minute consultation costs ~120 polls, well inside Temporal's 51,200-event
+#: ceiling, and the finalize starts within one interval of the clinician pressing stop.
+_LIVE_HANDOFF_POLL_INTERVAL = timedelta(seconds=15)
+
+#: The outer bound on the wait. A consultation still recording after this has outlived any
+#: session this platform documents; the walk proceeds with whatever the handoff last reported,
+#: which for an empty one is the pre-existing `no_bound_text` degrade. NEVER an infinite wait:
+#: a workflow that can park forever is one nobody can reason about.
+_LIVE_HANDOFF_MAX_WAIT = timedelta(hours=2)
+
+_LIVE_OUTPUTS_TIMEOUT = timedelta(seconds=30)
+#: One retry. The poll loop IS the retry policy — a read that fails is asked again in 15s — so
+#: spending a second attempt inside the activity buys only latency.
+_LIVE_OUTPUTS_RETRY = RetryPolicy(maximum_attempts=1)
 
 # The parent-owned duration bound's own reason. It is NOT a `LoopStopReason`, because the loop
 # child never produces it: the child is cancelled by the parent's timer and never gets to say
@@ -252,6 +282,12 @@ class WorkflowInterpreter:
         # TASK-864 — `compiledConfig.loops[]` by loop node id: the compiled BODY each
         # `core.loop` hands to its `LoopWorkflow` child.
         self._loops_by_id: dict[str, dict[str, Any]] = {}
+        # TASK-932 R-16a — the nodes this walk handed to the LIVE executor (`realtime_lane`),
+        # the one-shot handoff latch, and the context the handoff published. All three are pure
+        # derived state built from recorded activity results, replay-safe like `_node_outputs`.
+        self._live_skipped: set[str] = set()
+        self._live_handoff_done = False
+        self._live_context: dict[str, Any] = {}
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -290,6 +326,14 @@ class WorkflowInterpreter:
         for stage in config.stages:
             if self._cancelled:
                 break
+            # TASK-932 R-16a — the LIVE HANDOFF, once, immediately before the first stage that
+            # consumes a live-owned node's output. Placed here rather than at the top of `run`
+            # so the trigger and the realtime skips still settle the moment the run starts (the
+            # run-event mirror keeps showing the graph begin at consultation OPEN), and BEFORE
+            # `_emit_stage_started` so a stage is never announced as started and then parked for
+            # the length of a consultation.
+            if self._needs_live_handoff(stage, inp) and workflow.patched(_LIVE_HANDOFF_PATCH):
+                await self._await_live_outputs(inp)
             await self._emit_stage_started(stage, inp)
             node_results = await self._run_stage(stage, inp)
             self._stages.append(StageResult(stage_index=stage.stage_index, nodes=node_results))
@@ -485,6 +529,103 @@ class WorkflowInterpreter:
             bound[binding.to_port] = upstream_output[output_key]
         return bound
 
+    # TASK-932 R-16a — the LIVE HANDOFF.
+    #
+    # `_has_live_owner` closes a DOUBLE-WRITE hazard: exactly one runtime may execute a
+    # `realtime` node of a consultation-bound run, and the live executor is that runtime. What it
+    # did NOT do is give the durable half the results. `_resolve_bound_inputs` reads
+    # `self._node_outputs`, a skipped node stores none, so `n_finalize` — the `onEnd` finalizer
+    # every seeded consultation graph carries — resolved `bound_inputs: {}` and degraded
+    # `no_bound_text` on every consultation that ever ran. Skipping a node is a statement about
+    # WHO runs it, never about whether its output exists.
+    #
+    # Two things had to be true for the finalize to work, and neither was:
+    #
+    #  1. the live lane's outputs must be visible here (this handoff), and
+    #  2. the walk must not reach the finalizer BEFORE the consultation ends. The run is
+    #     dispatched at consultation OPEN (`ConsultationWorkflowDispatchService`, trigger
+    #     `consultation open`) and this body has no wait in it, so `n_finalize` was dispatched
+    #     within a second of the consultation opening — before a word had been spoken. The poll
+    #     loop below is that wait, and `execution.cadence: onEnd` is what the graph author wrote
+    #     to ask for it.
+
+    def _needs_live_handoff(self, stage: CompiledStage, inp: InterpreterInput) -> bool:
+        """Whether this stage consumes an output the LIVE executor owns (pure).
+
+        True exactly once per run, for the first stage carrying a node that (a) this walk will
+        actually dispatch and (b) binds an input from a node already skipped as `realtime_lane`.
+        A graph with no such edge — every API-plane run, and any consultation graph whose durable
+        half reads nothing from the live half — never waits at all.
+        """
+        # A SANDBOX run never waits. A Workbench execution is a dry run of the graph, not a
+        # consultation: there is no live session to hand off, and parking one for the length of a
+        # clinical session would turn "preview this workflow" into a two-hour wait. Its
+        # `external_write` nodes are already suppressed, so nothing it produces is persisted
+        # either — the handoff would buy it nothing even if one existed.
+        if inp.sandbox:
+            return False
+        if self._live_handoff_done or not _has_live_owner(inp) or not self._live_skipped:
+            return False
+        return any(
+            self._preflight_skip(node, inp) is None
+            and any(binding.from_node_id in self._live_skipped for binding in node.inputs)
+            for node in stage.nodes
+        )
+
+    async def _await_live_outputs(self, inp: InterpreterInput) -> None:
+        """Park until the live session hands off, then seed its outputs into the walk's cache.
+
+        A poll rather than a signal, deliberately. The interpreter's signal surface is a
+        one-name allow-list (`cancel`) and this is not an event the run must not miss: the fact
+        being waited on is DURABLE gateway state, so a read converges whether or not any single
+        delivery succeeded — a gateway restart at exactly the wrong moment cannot strand a
+        clinical run holding an unfinalized note.
+
+        Deterministic: a timer and an activity, nothing else. The loop count is decided by
+        recorded activity results, so a replay takes the same path.
+
+        Seeding NEVER overwrites an output this walk produced itself — the durable lane is
+        authoritative for the nodes it actually ran.
+        """
+        self._live_handoff_done = True
+        consultation_id = _opt_str(inp.payload.get("consultationId")) or (
+            inp.subject.consultation_id if inp.subject is not None else None
+        )
+        if not consultation_id:
+            # `_has_live_owner` was true, so identity exists on one of the two channels; if
+            # neither yields a string there is nothing to ask about and nothing to wait for.
+            return
+
+        request = LiveOutputsRequest(
+            run_id=inp.run_id,
+            tenant_id=inp.tenant_id,
+            consultation_id=consultation_id,
+            node_ids=sorted(self._live_skipped),
+        )
+        deadline = workflow.now() + _LIVE_HANDOFF_MAX_WAIT
+        while not self._cancelled:
+            try:
+                answer: LiveOutputsResult = await workflow.execute_activity(
+                    load_live_outputs,
+                    request,
+                    start_to_close_timeout=_LIVE_OUTPUTS_TIMEOUT,
+                    retry_policy=_LIVE_OUTPUTS_RETRY,
+                )
+            except ActivityError:
+                # Unreachable gateway. Indistinguishable, from here, from a session still in
+                # progress — so it is treated the same way and asked again, never mistaken for
+                # "the live lane produced nothing".
+                answer = LiveOutputsResult(ended=False)
+            if answer.ended:
+                for node_id, output in answer.outputs.items():
+                    if node_id not in self._node_outputs and isinstance(output, dict):
+                        self._node_outputs[node_id] = output
+                self._live_context = dict(answer.context)
+                return
+            if workflow.now() >= deadline:
+                return
+            await workflow.sleep(_LIVE_HANDOFF_POLL_INTERVAL)
+
     def _preflight_skip(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult | None:
         """Every reason this walk declines a node BEFORE dispatching anything (pure).
 
@@ -600,6 +741,12 @@ class WorkflowInterpreter:
     ) -> NodeResult:
         skipped = self._preflight_skip(node, inp)
         if skipped is not None:
+            # TASK-932 R-16a — remember WHICH nodes were handed to the live executor, so the
+            # handoff predicate below can ask "does this stage consume one of them?" without a
+            # second spelling of the lane rule. Recorded HERE and not in `_preflight_skip`,
+            # which stays PURE because the run-event mirror calls it too.
+            if skipped.reason == "realtime_lane":
+                self._live_skipped.add(node.node_id)
             return skipped
 
         # Present after `_preflight_skip` by construction — an unregistered/unimplemented type
@@ -707,6 +854,16 @@ class WorkflowInterpreter:
                 trigger = output["context"]
             elif node_type == "core.variable" and isinstance(output.get("vars"), dict):
                 variables.update(output["vars"])
+        # TASK-932 R-16a — the live handoff's context, overlaid onto `trigger`.
+        #
+        # `_prompt_scope` (`nodes/core.py`) exposes `trigger` under the alias `context`, which is
+        # what the seeded `casenote-finalization` instruction reads:
+        # `{{context.dna_style_text | default("")}}`. The clinician's effective DNA writing style
+        # is resolved GATEWAY-side at handoff time and arrives here; it is not, and must never
+        # be, something a caller can put in the run payload, so the handoff's value WINS over an
+        # identically-named key that arrived with the invocation.
+        if self._live_context:
+            trigger = {**trigger, **self._live_context}
         return {"trigger": trigger, "vars": variables, "nodes": dict(self._node_outputs)}
 
     async def _run_review(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult:

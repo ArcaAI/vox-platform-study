@@ -15,10 +15,12 @@ from temporalio import activity
 
 from harness.core.config import get_settings
 from harness.core.redis_client import build_run_event_redis
+from harness.services.api_client import ApiServiceError
 from harness.temporal.activities import (
     STATUS_ERROR,
     STATUS_OK,
     STEP_NODE,
+    _api_client,
     _now,
 )
 from harness.temporal.activities import (
@@ -28,6 +30,8 @@ from harness.temporal.claim_check import ClaimCheckRef, load_blob, open_store
 from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
 from harness.temporal.interpreter.models import (
+    LiveOutputsRequest,
+    LiveOutputsResult,
     NodeActivityInput,
     NodeActivityResult,
     RunEventBatch,
@@ -191,6 +195,52 @@ async def load_config(ref: ClaimCheckRef) -> CompiledWorkflowConfig:
 
 
 # ---------------------------------------------------------------------------
+# TASK-932 R-16a — the LIVE HANDOFF loader.
+# ---------------------------------------------------------------------------
+
+
+@activity.defn(name="interpreter.load_live_outputs")
+async def load_live_outputs(request: LiveOutputsRequest) -> LiveOutputsResult:
+    """Read the LIVE lane's final per-node outputs for a consultation-bound run.
+
+    The counterpart of ``load_config``: the ONLY place the live handoff is dereferenced, and
+    like it, all I/O lives here rather than in the workflow body.
+
+    Failure posture is deliberately the opposite of ``load_config``'s. A config that will not
+    load must fail the run — executing a partial graph is worse than not executing it. A live
+    handoff that will not load is a TRANSIENT condition of a session that is still in progress
+    or of a gateway that is briefly unreachable, and the workflow polls: so a gateway error is
+    reported as ``ended=False`` (ask again later) rather than raised, and only the workflow's own
+    bound ends the wait. Nothing is ever fabricated — an empty ``outputs`` with ``ended=True`` is
+    the gateway saying "the live lane produced nothing", which keeps the pre-existing
+    ``no_bound_text`` degrade for a consultation that never recorded.
+    """
+    settings = get_settings()
+    try:
+        raw = await _api_client(settings).live_handoff(
+            request.consultation_id,
+            tenant_id=request.tenant_id,
+            run_id=request.run_id,
+            node_ids=list(request.node_ids),
+        )
+    except ApiServiceError as exc:
+        # PHI-safe: the run/consultation ids and the status only — never the note.
+        activity.logger.warning(
+            "harness.interpreter.live_handoff_unavailable "
+            f"run_id={request.run_id} consultation_id={request.consultation_id} error={exc}"
+        )
+        return LiveOutputsResult(ended=False)
+    try:
+        return LiveOutputsResult.model_validate(raw)
+    except ValueError as exc:
+        activity.logger.warning(
+            "harness.interpreter.live_handoff_malformed "
+            f"run_id={request.run_id} consultation_id={request.consultation_id} error={exc}"
+        )
+        return LiveOutputsResult(ended=False)
+
+
+# ---------------------------------------------------------------------------
 # Run-event mirror — the CONTROL lane's one activity.
 # ---------------------------------------------------------------------------
 
@@ -293,5 +343,6 @@ async def emit_run_events(batch: RunEventBatch) -> int:
 INTERPRETER_ACTIVITIES: list[Callable[..., Any]] = [
     *NODE_ACTIVITIES,
     load_config,
+    load_live_outputs,
     emit_run_events,
 ]

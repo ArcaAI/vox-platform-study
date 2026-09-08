@@ -48,6 +48,26 @@ export class SummaryProvenanceResponse {
   @ApiPropertyOptional({ description: 'Generating model name', nullable: true })
   modelName?: string | null;
 
+  /**
+   * TASK-932 R-16a — the redaction MARKER `SummaryMeta` has carried since the redaction audit
+   * shipped and nothing exposed over HTTP.
+   *
+   * It is what makes "residual identifiers were replaced when this note was finalized" AUDITABLE
+   * by the console and by a test, instead of verifiable only against the database. The manifest
+   * itself stays off the wire: it is encrypted at rest and its contents (rule ids, labels, counts)
+   * answer no question a clinician asks at the bedside. The STYLE half is
+   * `SummaryResponse.structuredData.dnaStyleId`, because it is a column on the note row rather
+   * than on its provenance.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Whether the DNA redaction transform ran AND changed the note. `null` when the generating agent declared no redaction contract at all — which is not the same as "it ran and changed nothing".',
+    nullable: true,
+  })
+  redactionApplied?: boolean | null;
+
+
+
   @ApiPropertyOptional({ description: 'Entity-faithfulness sensor score (0..1)', nullable: true })
   entityFaithfulnessScore?: number | null;
 

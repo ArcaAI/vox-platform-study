@@ -736,3 +736,56 @@ class EvaluateExpressionResult(BaseModel):
 
     taken: bool
     error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# TASK-932 R-16a — the LIVE HANDOFF.
+# ---------------------------------------------------------------------------
+
+
+class LiveOutputsRequest(BaseModel):
+    """``interpreter.load_live_outputs`` — ask the gateway for the LIVE lane's final outputs.
+
+    The durable interpreter SKIPS every ``realtime`` node of a consultation-bound run
+    (``_has_live_owner``), so the outputs those nodes produced live in the gateway's live
+    session, not in this workflow's own cache. A durable consumer of one of them
+    (``n_finalize``, ``execution: {lane: durable, cadence: onEnd}``) therefore resolved
+    ``bound_inputs: {}`` and degraded ``no_bound_text`` on EVERY consultation. This request is
+    the handoff that closes it.
+
+    ``node_ids`` is what the walk actually skipped, so the gateway answers about the nodes this
+    run has, never about a lane it has to guess at.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    tenant_id: str
+    consultation_id: str
+    node_ids: list[str] = Field(default_factory=list)
+
+
+class LiveOutputsResult(BaseModel):
+    """The gateway's answer to :class:`LiveOutputsRequest`.
+
+    ``ended`` is the ONLY thing the poll loop waits on: ``False`` means the live session has not
+    handed off yet (the clinician is still recording, or has not started), ``True`` means the
+    live lane is finished and ``outputs`` is everything it produced — possibly nothing, for a
+    consultation that never recorded, which keeps the pre-existing ``no_bound_text`` degrade
+    exactly as it was.
+
+    ``outputs`` is keyed by NODE ID and each value is that node's own output dict in the same
+    shape the durable lane would have stored (``core.agent`` → ``{"text": …}`` and friends), so
+    ``_resolve_bound_inputs`` reads it through the declared socket table with no special case.
+
+    ``context`` is overlaid onto the run's ``trigger`` context for prompt rendering only — it
+    carries the clinician's effective DNA writing style (``dna_style_text`` / ``dna_style_id``),
+    which is resolved gateway-side at read time and never travels in the run payload a caller
+    composed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ended: bool = False
+    outputs: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)

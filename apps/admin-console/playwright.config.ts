@@ -17,7 +17,7 @@ import { defineConfig, devices } from '@playwright/test';
 // TASK-932: specs that need a microphone run in the `chromium-audio` project, where
 // Chromium's fake capture device replays this clinical WAV (16 kHz mono PCM). The
 // default `chromium` project ignores them so a plain run never asks for a mic.
-const AUDIO_SPECS = /task-932-(consultation-scribe|live-transcription)\.spec\.ts$/;
+const AUDIO_SPECS = /task-932-(consultation-scribe|consultation-audio|live-transcription)\.spec\.ts$/;
 const FAKE_MIC_WAV = path.resolve(__dirname, 'tests/e2e/fixtures/audio/cardiology_consult_01.wav');
 
 // Mirror the root playwright.config.ts convention: `.env.test` sets CI=false,

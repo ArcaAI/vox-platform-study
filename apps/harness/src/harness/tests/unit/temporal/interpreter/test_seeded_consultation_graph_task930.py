@@ -62,6 +62,8 @@ from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
 from harness.temporal.interpreter.loop_activities import LOOP_ACTIVITIES
 from harness.temporal.interpreter.models import (
     InterpreterInput,
+    LiveOutputsRequest,
+    LiveOutputsResult,
     NodeActivityInput,
     NodeActivityResult,
     ReviewDecisionSignal,
@@ -185,14 +187,32 @@ async def stub_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
     raise AssertionError(f"the seeded graph bound an unexpected agent: {slug!r}")
 
 
+#: TASK-932 R-16a — the LIVE HANDOFF, scripted. A consultation-bound run now WAITS for the live
+#: session to hand its outputs over before dispatching the durable `onEnd` finalizer, so this
+#: suite has to say what the live lane produced. `_LIVE_OUTPUTS` empty ⇒ "the live lane produced
+#: nothing", which is the state that reproduces the original `no_bound_text` degrade.
+_LIVE_OUTPUTS: dict[str, dict[str, Any]] = {}
+
+
+@activity.defn(name="interpreter.load_live_outputs")
+async def stub_load_live_outputs(request: LiveOutputsRequest) -> LiveOutputsResult:
+    return LiveOutputsResult(
+        ended=True,
+        outputs={k: v for k, v in _LIVE_OUTPUTS.items() if k in set(request.node_ids)},
+        context={},
+    )
+
+
+_STUBBED = {"interpreter.core_agent", "interpreter.load_live_outputs"}
 _ACTIVITIES = [
     *[
         a
         for a in INTERPRETER_ACTIVITIES
-        if getattr(a, "__temporal_activity_definition").name != "interpreter.core_agent"
+        if getattr(a, "__temporal_activity_definition").name not in _STUBBED
     ],
     *LOOP_ACTIVITIES,
     stub_core_agent,
+    stub_load_live_outputs,
 ]
 _WORKFLOWS = [WorkflowInterpreter, ConsultationGateWorkflow, ReviewGateWorkflow, LoopWorkflow]
 
@@ -305,12 +325,63 @@ class TestTheApiPlane:
 class TestTheConsultationPlaneIsUnCHANGED:
     @pytest.mark.asyncio
     async def test_a_consultation_bound_run_still_leaves_the_realtime_nodes_to_the_live_lane(self) -> None:
+        _LIVE_OUTPUTS.clear()
+        _LIVE_OUTPUTS["n_summary"] = {"text": "running note from the live lane"}
+        try:
+            _, nodes = await _run(
+                _seeded_consultation_config(),
+                payload={},
+                subject=RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001"),
+                review="approved",
+            )
+        finally:
+            _LIVE_OUTPUTS.clear()
+        for node_id in ("n_asr", "n_ner", "n_summary"):
+            assert nodes[node_id].status == "SKIPPED"
+            assert nodes[node_id].reason == "realtime_lane"
+
+
+class TestTheConsultationPlaneFinalizes:
+    """TASK-932 R-16a — the OTHER half of the §6.9 table, on the plane that ships.
+
+    TASK-930 fixed the API plane. On the consultation plane the same two nodes stayed broken for
+    a different reason: the realtime skip is CORRECT there (the live executor owns those nodes),
+    but it left their outputs invisible, so `n_finalize` degraded `no_bound_text` on every real
+    consultation and `n_output` published nothing.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_finalizer_gets_the_live_lane_s_note_and_the_output_publishes(self) -> None:
+        _LIVE_OUTPUTS.clear()
+        _LIVE_OUTPUTS["n_summary"] = {"text": "S: cough x3d\nO: afebrile\nA: URTI\nP: fluids"}
+        try:
+            result, nodes = await _run(
+                _seeded_consultation_config(),
+                payload={},
+                subject=RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001"),
+                review="approved",
+            )
+        finally:
+            _LIVE_OUTPUTS.clear()
+
+        assert nodes["n_summary"].status == "SKIPPED"
+        assert nodes["n_finalize"].status == "SUCCEEDED"
+        # `core.output` runs for real with `onSchemaViolation: 'fail'`, so SUCCEEDED IS
+        # "a payload satisfying `required: ['case_note']` was published".
+        assert nodes["n_output"].status == "SUCCEEDED"
+        assert result.status != "FAILED"
+
+    @pytest.mark.asyncio
+    async def test_a_consultation_that_never_recorded_still_degrades_with_the_named_reason(self) -> None:
+        """Nothing is invented for a session with no live output — the §6.9 line stands."""
+        _LIVE_OUTPUTS.clear()
         _, nodes = await _run(
             _seeded_consultation_config(),
             payload={},
             subject=RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001"),
             review="approved",
         )
-        for node_id in ("n_asr", "n_ner", "n_summary"):
-            assert nodes[node_id].status == "SKIPPED"
-            assert nodes[node_id].reason == "realtime_lane"
+        assert nodes["n_finalize"].status == "DEGRADED"
+        assert nodes["n_finalize"].reason == (
+            "core.agent: nothing bound on `in`/`context` to generate from"
+        )

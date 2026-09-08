@@ -21,6 +21,7 @@ import {
   HarnessLiveAssistService,
   HarnessLiveDocStartRequest,
   HarnessLiveDocStopRequest,
+  LiveHandoffResponse,
   HarnessLoopEventAck,
   HarnessLiveSummaryRequest,
   HarnessLoopEventRequest,
@@ -852,6 +853,56 @@ export class HarnessInternalController {
       this.cls.set('tenantId', dto.tenantId);
       await this.liveDocumentationService.stop(id, { persistSnapshot: dto.persistSnapshot });
       return { ok: true };
+    });
+  }
+
+  /**
+   * TASK-932 R-16a — the LIVE HANDOFF the durable interpreter polls at the close of a
+   * consultation (`interpreter.load_live_outputs`).
+   *
+   * A consultation-bound interpreter run SKIPS every `realtime` node so exactly one runtime
+   * executes it (`_has_live_owner`), and until this route existed the durable half had no way to
+   * see what that runtime produced: `n_finalize` resolved `bound_inputs: {}` and degraded
+   * "core.agent: nothing bound on `in`/`context` to generate from" on EVERY consultation.
+   *
+   * A GET, and a POLL, on purpose. `ended: false` means "the clinician has not stopped yet" and
+   * is answered from durable state, so it converges whether or not any single delivery
+   * succeeded — a signal that went missing while the harness restarted would strand a clinical
+   * run holding an unfinalized note.
+   *
+   * `tenantId` rides the query exactly like `GET /policy` and `GET .../entities`; `runId` is
+   * carried for correlation and `nodeIds` narrows the answer to the nodes this run actually
+   * skipped, so a graph is never told about a lane it does not have.
+   */
+  @Get('consultations/:id/live-handoff')
+  @ApiOperation({
+    summary: "Read the live lane's final per-node outputs for a consultation (interpreter live handoff)",
+    description:
+      'Polled by the durable interpreter before it dispatches an `onEnd` node that consumes a realtime node\'s output. `ended: false` means the live session has not handed off yet. **PHI-carrying**: the response includes the running clinical note and the clinician\'s effective DNA writing style.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the harness is acting on behalf of.' })
+  @ApiQuery({ name: 'runId', required: false, description: 'The interpreter run asking, for correlation.' })
+  @ApiQuery({
+    name: 'nodeIds',
+    required: false,
+    description: 'Comma-separated graph node ids the caller skipped as `realtime_lane`. Omitted ⇒ every recorded node.',
+  })
+  async liveHandoff(
+    @Param('id') id: string,
+    @Query('tenantId') tenantId?: string,
+    @Query('nodeIds') nodeIds?: string,
+  ): Promise<LiveHandoffResponse> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId query parameter is required');
+    }
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      const requested = (nodeIds ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+      return this.liveDocumentationService.readLiveHandoff(id, requested);
     });
   }
 
