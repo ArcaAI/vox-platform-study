@@ -138,7 +138,7 @@ export function AllTenantsBody() {
             );
           }
           return (
-            <Link href="/tenants/storage" className="text-primary inline-flex items-center gap-1 text-sm underline-offset-4 hover:underline">
+            <Link href="/tenants/storage" className="text-foreground inline-flex items-center gap-1 text-sm underline-offset-4 hover:underline">
               Register
               <IconExternalLink aria-hidden className="size-3.5" />
             </Link>
