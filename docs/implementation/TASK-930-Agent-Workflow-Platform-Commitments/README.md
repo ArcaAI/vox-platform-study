@@ -103,17 +103,19 @@ All lanes branch from `dev-2.2 @ 7793d09ca` (the plan commit). Bootstrapped 2026
 (`pnpm install`, `db:generate`, `build:packages` — 22/22 tasks green in every tree; `.env.dev` /
 `.env.test` copied in). Per rule 14 §5 no worktree is removed before its branch is merged.
 
-| Lane | Ticket | Worktree · branch | Model | State (2026-09-08) |
+| Lane | Ticket | Worktree · branch | Model | State (2026-09-08, wave 3) |
 |---|---|---|---|---|
-| R | TASK-893 | `../hope-v2-t893-r` · `task-893-retire` | opus | 1st run killed by the account spend limit (HTTP 429) before its first commit; **relaunched** from the clean base, HEAD `7793d09ca` |
-| N | TASK-930 | `../hope-v2-t930-n` · `task-930-ner-plane` | opus | 1st run killed after commit `66241bb57` (enum + migration `20260907182330_task_930_agent_task_ner` + domains enum); its two discovery sub-reports completed and are saved (§4.2); **resumed** from step 2 |
-| P | TASK-930 | `../hope-v2-t930-p` · `task-930-promotion` | opus | 1st run killed before committing (two untracked files left); **relaunched** |
-| S | TASK-930 | `../hope-v2-t930-s` · `task-930-seeds` | opus | 1st run killed during reading; **relaunched** with two extra facts (NER catalogue rows are `built-in` / `TOKEN_CLASSIFICATION`; `25-agents.ts:43-80` hand-copies the contract task maps and must be extended) |
-| K | TASK-931 | `../hope-v2-t931-k` · `task-931-sdk` | opus | 1st run killed after commit `cf62eff3d` (`SDK_VERSION` derived from `package.json`); **resumed** from step 2 with the §4.2 stream-ticket shape |
-| A | TASK-931 | ALaaSv3.0 working tree (no branch, no commits) | sonnet | not in the original table — added because its code edits do not depend on the publish; 1st run killed during reading; **relaunched** |
+| R | TASK-893 | `../hope-v2-t893-r` · `task-893-retire` | fable | waves 1+2 both died before writing anything — **zero commits, clean tree**. Wave 3 starts the lane from the base with INTERFACES §7 as the design of record |
+| N | TASK-930 | `../hope-v2-t930-n` · `task-930-ner-plane` | opus | `66241bb57` (enum + migration + domains enum) and `96a4af2d1` (NER contract in `agent-schemas.ts` + tests) landed; `packages/types/src/agent.ts` (A-5 widening) left UNCOMMITTED. Wave 3 **resumes**: commit that file first, then §2.4 invocation, §3 scopes, §4 ticket, §5 outputSchema, §2.5 console |
+| P | TASK-930 | `../hope-v2-t930-p` · `task-930-promotion` | opus | zero commits, but wave 2 left ~1 000 uncommitted lines under `packages/applications/src/services/agentPromotion/` (service + interface + DTO + test). Wave 3 **commits that first**, then judges it against §6 and adds the controller/module, §6.2 409 check, §6.3 reference set, §6.4 console |
+| S | TASK-930 | `../hope-v2-t930-s` · `task-930-seeds` | fable | `eeb232436` carries the §2.1 enum line only (no migration, by contract). Both waves died during reading — the seed rebuild itself is unstarted. Wave 3 works against a throwaway `hope_seed_930` DB |
+| K | TASK-931 | `../hope-v2-t931-k` · `task-931-sdk` | opus | `cf62eff3d` (`SDK_VERSION` from `package.json`) landed; changesets + `.gitlab/ci/publish.yml` + CHANGELOG left UNCOMMITTED. Wave 3 **resumes** against the A-1 ticket shape |
+| A | TASK-931 | ALaaSv3.0 working tree | — | held back until the 3.1.0 publish; its edits do not gate the lanes |
 
 Merge order stays **N → P → R → S → K**; A lands after the 3.1.0 publish. Every brief is in the
-session scratchpad (`briefs/full-{R,N,P,S,K}.md`, `preamble.md`, `N-discovery.md`).
+session scratchpad (`briefs/full-{R,N,P,S,K}.md`, `preamble.md`, `N-discovery.md`, plus wave 3's
+`RESUME.md`, which adds one standing rule: **commit every ~10 minutes and keep a running
+`.lane-report.md`**, because the failure mode that cost two waves was uncommitted work at kill time).
 
 ### 4.2 Mid-flight contract amendments (recorded here, applied in `INTERFACES.md`)
 
@@ -168,5 +170,6 @@ _Pending — filled at close with per-lane evidence, merge commits, gates and th
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (wave 3) | Prior session's artifacts reviewed; measured per-lane state recorded in §4.1 (R and S effectively unstarted, N and K resuming from one commit each, P holding ~1 000 uncommitted lines). Five lanes relaunched from the same worktrees under a new account budget, tiers R/S `fable` · N/P/K `opus`, with a `RESUME.md` commit-discipline addendum. Lane A still held to after the publish. |
 | 2026-09-08 (later) | Six lanes spawned (R N P S K + A); all six killed by the account spend limit (HTTP 429, limit resets Sep 11) — N and K after one commit each, the rest before committing; all six relaunched/resumed. Lane log §4.1, contract amendments A-1..A-6 §4.2 (applied to `INTERFACES.md`). |
 | 2026-09-08 | Created from the owner's four-part brief. Five discovery lanes measured the current state (§2); ten decisions recorded (§3); five-lane plan with a written contract (`INTERFACES.md`). Status `In Progress`. |
