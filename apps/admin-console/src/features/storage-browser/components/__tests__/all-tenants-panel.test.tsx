@@ -198,6 +198,19 @@ describe('StorageBrowserScreen — "All tenants" view (TASK-932)', () => {
     expect(registerLink.getAttribute('href')).toBe('/tenants/storage');
   });
 
+  it('m6 — the "Register" link carries a persistent underline, not a hover-only one', async () => {
+    stubAllTenants();
+    renderAllTenantsScreen();
+
+    const grid = await screen.findByRole('grid', { name: 'Storage buckets across all tenants' });
+    const orphanCell = await within(grid).findByText('orphan-bucket');
+    const orphanRow = orphanCell.closest('[role="row"]') as HTMLElement;
+    const registerLink = within(orphanRow).getByRole('link', { name: /register/i });
+    // Before m6 this was `hover:underline` only — nothing distinguished the
+    // link from plain text until the pointer was already over it.
+    expect(registerLink.className.split(/\s+/)).toContain('underline');
+  });
+
   it('shows the Empty state when no tenant has any bucket', async () => {
     stubAllTenants((call) => {
       const parsed = new URL(call.url, 'http://test.local');
@@ -209,6 +222,18 @@ describe('StorageBrowserScreen — "All tenants" view (TASK-932)', () => {
     renderAllTenantsScreen();
 
     expect(await screen.findByText('No buckets yet')).toBeDefined();
+  });
+
+  it('m4 — a search matching nothing shows the filtered-empty state, not "No buckets yet"', async () => {
+    stubAllTenants();
+    renderAllTenantsScreen();
+
+    await screen.findByRole('grid', { name: 'Storage buckets across all tenants' });
+    fireEvent.change(screen.getByLabelText('Search buckets'), { target: { value: 'no-such-bucket-anywhere' } });
+
+    expect(await screen.findByText('No buckets match this search')).toBeDefined();
+    expect(screen.queryByText('No buckets yet')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeDefined();
   });
 
   it('has no axe violations', async () => {
