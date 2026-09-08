@@ -35,10 +35,11 @@
  *    `svc:workflow:run:write` on it, so both machine credential classes reach it.
  */
 
-import { CredentialClassError, ReservedRunIdentityError } from '../core/errors';
+import { CredentialClassError, ReservedRunIdentityError, SocketUnavailableError } from '../core/errors';
 import { generateUuidV7 } from '../core/idempotency';
 import { reservedRunIdentityKeysIn } from '../core/run-identity';
 import { parseSseStream } from '../core/sse';
+import { readSocketFrames, resolveSocketUrl, type SocketFrame, type WorkflowRunStreamTicket } from '../core/socket';
 import type { Transport } from '../core/transport';
 import { encodePathSegment } from '../core/url';
 import type {
@@ -72,6 +73,7 @@ export const WORKFLOW_PLANE_ROUTES: ReadonlyArray<{ method: string; path: string
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/cancel' },
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/stream' },
+  { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/stream-ticket' },
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide' },
   { method: 'GET', path: '/api/v1/consultations/{consultationId}/workflows' },
@@ -132,10 +134,25 @@ export interface StreamRunOptions {
    * — a dropped connection should cost latency, not events.
    */
   autoResume?: boolean;
-  /** Reconnect attempts before giving up. Default `5`. */
+  /** Reconnect attempts before giving up. Default `5`. Ignored by the socket lane, which does not resume. */
   maxResumeAttempts?: number;
-  // TODO(TASK-864): workflow socket protocol — a `transport: 'sse' | 'socket'` option lands here
-  // when the run stream gains a socket lane; SSE with `Last-Event-ID` resume stays the default.
+  /**
+   * Which lane the run's events arrive on. Default `'sse'`.
+   *
+   * **`'sse'` is the default because it is the only lane that RESUMES.** A dropped SSE
+   * connection reconnects with `Last-Event-ID` and loses no frames; a dropped socket ends the
+   * iteration, because its ticket is single-use and the gateway replays nothing after the
+   * cursor you opened with.
+   *
+   * Reach for `'socket'` when something between you and the gateway BUFFERS
+   * `text/event-stream` — the symptom is a run that looks stalled and then completes all at
+   * once — or when a socket is the budget you already hold. It mints a run-scoped, single-use
+   * ticket (`POST …/runs/{runId}/stream-ticket`) and opens the URL that response returns; a
+   * JWT never travels in a query string. Needs `globalThis.WebSocket`, i.e. **Node 22+**;
+   * without it the SDK throws {@link SocketUnavailableError} rather than importing a polyfill
+   * or silently serving the transport you ruled out.
+   */
+  transport?: 'sse' | 'socket';
 }
 
 function runsPath(slug: string): string {
@@ -176,6 +193,17 @@ export function assertApiKeyPlane(isServiceAccount: boolean, surface: string): v
   );
 }
 
+/**
+ * Refuse the socket lane on a runtime without `globalThis.WebSocket`, BEFORE anything is spent.
+ *
+ * `readSocketFrames` throws the same error, but only once it is reached — by which time a
+ * single-use, ~30-second ticket has been minted and, in `runAndStream`, a run has been STARTED.
+ * Checking first turns "your run is going and you cannot watch it" into a synchronous refusal.
+ */
+function assertSocketRuntime(): void {
+  if (typeof (globalThis as { WebSocket?: unknown }).WebSocket !== 'function') throw new SocketUnavailableError();
+}
+
 /** Throw a {@link ReservedRunIdentityError} when `input` carries a server-stamped identity key. */
 function assertNoReservedIdentity(input: Record<string, unknown>): void {
   const offending = reservedRunIdentityKeysIn(input);
@@ -200,6 +228,14 @@ function toRunEvent(data: string, resumeToken: string | undefined): WorkflowRunE
   }
   if (typeof envelope !== 'object' || envelope === null) return null;
   return { ...(envelope as WorkflowRunEvent), ...(resumeToken === undefined ? {} : { resumeToken }) };
+}
+
+/** Decode one socket frame — the gateway sends `{ event, id?, data }`, where `data` is already the envelope. */
+function socketFrameToRunEvent(frame: SocketFrame): WorkflowRunEvent | null {
+  if (typeof frame.data !== 'object' || frame.data === null) return null;
+  // `id` is the SAME opaque cursor the SSE lane carries on its `id:` line, which is what lets a
+  // caller persist `resumeToken` from either lane and hand it back to the other.
+  return { ...(frame.data as WorkflowRunEvent), ...(frame.id === undefined ? {} : { resumeToken: frame.id }) };
 }
 
 /** `true` when this event means the run has reached a terminal state. */
@@ -330,6 +366,33 @@ abstract class WorkflowInvocationBase {
     // Hand off to the ordinary run stream, which owns the reconnect loop. The
     // POST above WAS the first connection, so the budget here is resumes only.
     yield* this.resumeRunStream(slug, state.runId, state, options, options.maxResumeAttempts ?? DEFAULT_MAX_RESUME_ATTEMPTS, scopeId);
+  }
+
+  /**
+   * Read a run's events over a WebSocket instead of SSE (TASK-931).
+   *
+   * Three steps, in this order, and the order is the contract: check the runtime has a socket
+   * (a single-use ticket spent on a runtime that cannot open it is a ticket wasted), mint the
+   * run-scoped ticket, then open the `url` the gateway returned — resolved against the
+   * client's own `baseUrl`, `http(s)` → `ws(s)`.
+   *
+   * No resume loop. The ticket is single-use and ~30s-lived, so a re-mint after a drop would
+   * be a NEW subscription, not a resumption; SSE is the lane that resumes, and this option's
+   * doc says so. A caller who needs to pick up where a socket left off passes the last
+   * `resumeToken` back as `lastEventId`, which the gateway reads off the query string.
+   */
+  protected async *streamRunOverSocket(slug: string, runId: string, options: StreamRunOptions): AsyncGenerator<WorkflowRunEvent, void, void> {
+    assertSocketRuntime();
+    const ticket = await this.transport.request<WorkflowRunStreamTicket>({
+      method: 'POST',
+      path: `${runPath(slug, runId)}/stream-ticket`,
+      signal: options.signal,
+    });
+    const url = resolveSocketUrl(this.transport.baseUrl, ticket.url, options.lastEventId);
+    for await (const frame of readSocketFrames(url, { signal: options.signal })) {
+      const event = socketFrameToRunEvent(frame);
+      if (event !== null) yield event;
+    }
   }
 
   /** Path of the run's SSE endpoint. Overridden where the plane's runs live under a different prefix. */
@@ -559,7 +622,26 @@ export class WorkflowsResource extends WorkflowInvocationBase {
     body: StartWorkflowRunRequest,
     options: StartRunOptions & StreamRunOptions = {},
   ): AsyncGenerator<WorkflowRunEvent, void, void> {
+    if (options.transport === 'socket') return this.startRunThenSocket(slug, body, options);
     return this.startRunStreaming(slug, body, options);
+  }
+
+  /**
+   * `transport: 'socket'` variant of {@link runAndStream}: start the run ASYNC, then open the
+   * socket against the `runId` it returns.
+   *
+   * `?mode=stream` would put the events on the POST's own response body, which is an SSE
+   * stream by construction — there is no socket to hand off to. So the socket lane costs one
+   * extra round trip on the start, and says so here rather than pretending otherwise.
+   */
+  private async *startRunThenSocket(
+    slug: string,
+    body: StartWorkflowRunRequest,
+    options: StartRunOptions & StreamRunOptions,
+  ): AsyncGenerator<WorkflowRunEvent, void, void> {
+    assertSocketRuntime();
+    const handle = await this.run(slug, body, options);
+    yield* this.streamRunOverSocket(slug, handle.runId, options);
   }
 
   /** `GET /api/v1/workflows/{slug}/runs/{runId}` — live status, stages and delivered result. */
@@ -586,6 +668,7 @@ export class WorkflowsResource extends WorkflowInvocationBase {
    * `autoResume: false` to opt out.
    */
   streamRun(slug: string, runId: string, options: StreamRunOptions = {}): AsyncGenerator<WorkflowRunEvent, void, void> {
+    if (options.transport === 'socket') return this.streamRunOverSocket(slug, runId, options);
     const state: ResumeState = { lastEventId: options.lastEventId, terminal: false, runId };
     // One connection for the initial connect, plus the resume budget on top —
     // `autoResume: false` spends the first and buys none.

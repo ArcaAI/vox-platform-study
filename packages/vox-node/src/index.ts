@@ -55,6 +55,15 @@ export type {
 export { RESERVED_RUN_IDENTITY_KEYS, reservedRunIdentityKeysIn } from './core/run-identity';
 
 /**
+ * The run-socket ticket shape (TASK-931). Exported because the ticket is minted over an
+ * ordinary route: an integrator may want to mint one here and hand it to a socket somewhere
+ * else — a browser, a worker — rather than iterate {@link WorkflowsResource.streamRun} in this
+ * process. `resolveSocketUrl` is the other half of that hand-off.
+ */
+export { resolveSocketUrl } from './core/socket';
+export type { SocketFrame, WorkflowRunStreamTicket } from './core/socket';
+
+/**
  * Inbound-webhook signature verification. HOPE signs every
  * delivery `X-Hope-Webhook-Signature: sha256=<hex>` over the RAW body
  * (`services/webhook/webhook-delivery.processor.ts`); this is the receiver
@@ -111,6 +120,7 @@ export {
   QuotaExceededError,
   RateLimitError,
   ReservedRunIdentityError,
+  SocketUnavailableError,
   VersionConflictError,
 } from './core/errors';
 export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } from './core/errors';

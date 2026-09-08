@@ -51,11 +51,17 @@ describe.skipIf(!AGENT_ROUTES_SHIPPED)('every route hope.agents calls exists in 
     expect(find(method, path)).toBeDefined();
   });
 
-  it.each(AGENT_PLANE_ROUTES)('$method $path is the business plane: API key allowed, no service-account scope', ({ method, path }) => {
+  /**
+   * AMENDED TASK-931: the third assertion used to be `svcScopes: []`, i.e. deny-by-default for a
+   * service account, which is what the SDK refused early on behalf of. TASK-930 §3 declares
+   * `svc:agent:definition:read` / `svc:agent:invocation:write` here, so BOTH machine credential
+   * classes reach this plane. What has not changed, and is the assertion worth keeping, is that
+   * an API key reaches it and the routes are not public.
+   */
+  it.each(AGENT_PLANE_ROUTES)('$method $path is the business plane: API key allowed, not public', ({ method, path }) => {
     const route = find(method, path)!;
     expect(route.isPublic).toBe(false);
     expect(route.apiKeyForbidden).toBe(false);
-    expect(route.svcScopes ?? []).toEqual([]);
   });
 });
 
