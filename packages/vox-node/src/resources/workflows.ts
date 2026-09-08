@@ -26,16 +26,20 @@
  *    tracks each frame's opaque `id` and reconnects with `Last-Event-ID`, so
  *    a disconnect costs latency, never events. Doing this by hand means
  *    knowing that the snapshot frame deliberately carries no token.
- * 3. **Refuses the wrong credential class** — every route here records
- *    `svcScopes: []` in `route-manifest.json`, i.e. deny-by-default for a
- *    service account. A service-account client gets a plain explanation
- *    instead of a 403 that looks like a missing grant.
+ * 3. **Refuses the wrong credential class where the gateway still does** — the
+ *    CONSULTATION-bound plane records `svcScopes: []` in `route-manifest.json`,
+ *    i.e. deny-by-default for a service account, so a service-account client
+ *    gets a plain explanation instead of a 403 that looks like a missing grant.
+ *    The UNBOUND plane no longer needs that: TASK-930 declares
+ *    `svc:workflow:definition:read` / `svc:workflow:run:read` /
+ *    `svc:workflow:run:write` on it, so both machine credential classes reach it.
  */
 
-import { CredentialClassError, ReservedRunIdentityError } from '../core/errors';
+import { CredentialClassError, ReservedRunIdentityError, SocketUnavailableError } from '../core/errors';
 import { generateUuidV7 } from '../core/idempotency';
 import { reservedRunIdentityKeysIn } from '../core/run-identity';
 import { parseSseStream } from '../core/sse';
+import { readSocketFrames, resolveSocketUrl, type SocketFrame, type WorkflowRunStreamTicket } from '../core/socket';
 import type { Transport } from '../core/transport';
 import { encodePathSegment } from '../core/url';
 import type {
@@ -69,6 +73,7 @@ export const WORKFLOW_PLANE_ROUTES: ReadonlyArray<{ method: string; path: string
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/cancel' },
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/stream' },
+  { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/stream-ticket' },
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide' },
   { method: 'GET', path: '/api/v1/consultations/{consultationId}/workflows' },
@@ -129,10 +134,25 @@ export interface StreamRunOptions {
    * — a dropped connection should cost latency, not events.
    */
   autoResume?: boolean;
-  /** Reconnect attempts before giving up. Default `5`. */
+  /** Reconnect attempts before giving up. Default `5`. Ignored by the socket lane, which does not resume. */
   maxResumeAttempts?: number;
-  // TODO(TASK-864): workflow socket protocol — a `transport: 'sse' | 'socket'` option lands here
-  // when the run stream gains a socket lane; SSE with `Last-Event-ID` resume stays the default.
+  /**
+   * Which lane the run's events arrive on. Default `'sse'`.
+   *
+   * **`'sse'` is the default because it is the only lane that RESUMES.** A dropped SSE
+   * connection reconnects with `Last-Event-ID` and loses no frames; a dropped socket ends the
+   * iteration, because its ticket is single-use and the gateway replays nothing after the
+   * cursor you opened with.
+   *
+   * Reach for `'socket'` when something between you and the gateway BUFFERS
+   * `text/event-stream` — the symptom is a run that looks stalled and then completes all at
+   * once — or when a socket is the budget you already hold. It mints a run-scoped, single-use
+   * ticket (`POST …/runs/{runId}/stream-ticket`) and opens the URL that response returns; a
+   * JWT never travels in a query string. Needs `globalThis.WebSocket`, i.e. **Node 22+**;
+   * without it the SDK throws {@link SocketUnavailableError} rather than importing a polyfill
+   * or silently serving the transport you ruled out.
+   */
+  transport?: 'sse' | 'socket';
 }
 
 function runsPath(slug: string): string {
@@ -153,8 +173,15 @@ function reviewPath(slug: string, runId: string, nodeId: string): string {
  * Deliberately checked in the RESOURCE and not the transport: the transport
  * carries whatever credential it was configured with and is right to be
  * ignorant of which plane a path belongs to. Which credential class a route
- * accepts is a property of the ROUTE, and `route-manifest.json` records
- * `svcScopes: []` for every route in {@link WORKFLOW_PLANE_ROUTES}.
+ * accepts is a property of the ROUTE.
+ *
+ * Since TASK-930 the only caller is the CONSULTATION-bound plane
+ * (`/consultations/{id}/workflows*`), which still records `svcScopes: []`: running
+ * a workflow that writes into a clinical record is not a power the platform hands
+ * a machine identity. The unbound plane's routes now declare their `svc:*` scopes,
+ * so {@link WorkflowsResource} overrides the check away rather than explaining a
+ * refusal the gateway would not make. Still exported: an integrator switching
+ * credential classes catches this by name.
  */
 export function assertApiKeyPlane(isServiceAccount: boolean, surface: string): void {
   if (!isServiceAccount) return;
@@ -164,6 +191,17 @@ export function assertApiKeyPlane(isServiceAccount: boolean, surface: string): v
       'refused with a 403 that no role grant can fix. Construct a second HopeClient with `apiKey` for this work — the admin plane ' +
       '(`hope.admin.*`) is the mirror image: service account only.',
   );
+}
+
+/**
+ * Refuse the socket lane on a runtime without `globalThis.WebSocket`, BEFORE anything is spent.
+ *
+ * `readSocketFrames` throws the same error, but only once it is reached — by which time a
+ * single-use, ~30-second ticket has been minted and, in `runAndStream`, a run has been STARTED.
+ * Checking first turns "your run is going and you cannot watch it" into a synchronous refusal.
+ */
+function assertSocketRuntime(): void {
+  if (typeof (globalThis as { WebSocket?: unknown }).WebSocket !== 'function') throw new SocketUnavailableError();
 }
 
 /** Throw a {@link ReservedRunIdentityError} when `input` carries a server-stamped identity key. */
@@ -192,6 +230,14 @@ function toRunEvent(data: string, resumeToken: string | undefined): WorkflowRunE
   return { ...(envelope as WorkflowRunEvent), ...(resumeToken === undefined ? {} : { resumeToken }) };
 }
 
+/** Decode one socket frame — the gateway sends `{ event, id?, data }`, where `data` is already the envelope. */
+function socketFrameToRunEvent(frame: SocketFrame): WorkflowRunEvent | null {
+  if (typeof frame.data !== 'object' || frame.data === null) return null;
+  // `id` is the SAME opaque cursor the SSE lane carries on its `id:` line, which is what lets a
+  // caller persist `resumeToken` from either lane and hand it back to the other.
+  return { ...(frame.data as WorkflowRunEvent), ...(frame.id === undefined ? {} : { resumeToken: frame.id }) };
+}
+
 /** `true` when this event means the run has reached a terminal state. */
 function isTerminalEvent(event: WorkflowRunEvent): boolean {
   if (event.type === 'workflow.run.completed') return true;
@@ -218,6 +264,18 @@ abstract class WorkflowInvocationBase {
   /** Human-readable name of this plane, used in the credential-class error. */
   protected abstract surfaceName(): string;
 
+  /**
+   * Refuse the wrong credential class for THIS plane, before the request leaves.
+   *
+   * Strict by default — the consultation-bound plane is API-key/JWT only — and
+   * overridden to a no-op by {@link WorkflowsResource}, whose routes accept a service
+   * account since TASK-930. A hook rather than a boolean flag so the override carries
+   * the reason it exists at the place a reader looks for it.
+   */
+  protected assertCredentialClass(): void {
+    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+  }
+
   /** Gateway-relative path of the run COLLECTION for `slug` (where a run is POSTed). */
   protected abstract collectionPath(slug: string, scopeId?: string): string;
 
@@ -225,13 +283,13 @@ abstract class WorkflowInvocationBase {
   protected abstract listPath(scopeId?: string): string;
 
   protected async listWorkflows(scopeId?: string, signal?: AbortSignal): Promise<WorkflowSummary[]> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    this.assertCredentialClass();
     const response = await this.transport.request<{ data?: WorkflowSummary[] }>({ path: this.listPath(scopeId), signal });
     return Array.isArray(response?.data) ? response.data : [];
   }
 
   protected async startRun(slug: string, body: StartWorkflowRunRequest, options: StartRunOptions, scopeId?: string): Promise<WorkflowRunHandle> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    this.assertCredentialClass();
     assertNoReservedIdentity(body.input);
     const headers = idempotencyHeaders(options);
     return this.transport.request<WorkflowRunHandle>({
@@ -251,7 +309,7 @@ abstract class WorkflowInvocationBase {
     options: StartRunOptions,
     scopeId?: string,
   ): Promise<WorkflowRunStatus> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    this.assertCredentialClass();
     assertNoReservedIdentity(body.input);
     const headers = idempotencyHeaders(options);
     return this.transport.request<WorkflowRunStatus>({
@@ -286,7 +344,7 @@ abstract class WorkflowInvocationBase {
     options: StartRunOptions & StreamRunOptions,
     scopeId?: string,
   ): AsyncGenerator<WorkflowRunEvent, void, void> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    this.assertCredentialClass();
     assertNoReservedIdentity(body.input);
     const headers = { Accept: 'text/event-stream', ...(idempotencyHeaders(options) ?? {}) };
 
@@ -308,6 +366,33 @@ abstract class WorkflowInvocationBase {
     // Hand off to the ordinary run stream, which owns the reconnect loop. The
     // POST above WAS the first connection, so the budget here is resumes only.
     yield* this.resumeRunStream(slug, state.runId, state, options, options.maxResumeAttempts ?? DEFAULT_MAX_RESUME_ATTEMPTS, scopeId);
+  }
+
+  /**
+   * Read a run's events over a WebSocket instead of SSE (TASK-931).
+   *
+   * Three steps, in this order, and the order is the contract: check the runtime has a socket
+   * (a single-use ticket spent on a runtime that cannot open it is a ticket wasted), mint the
+   * run-scoped ticket, then open the `url` the gateway returned — resolved against the
+   * client's own `baseUrl`, `http(s)` → `ws(s)`.
+   *
+   * No resume loop. The ticket is single-use and ~30s-lived, so a re-mint after a drop would
+   * be a NEW subscription, not a resumption; SSE is the lane that resumes, and this option's
+   * doc says so. A caller who needs to pick up where a socket left off passes the last
+   * `resumeToken` back as `lastEventId`, which the gateway reads off the query string.
+   */
+  protected async *streamRunOverSocket(slug: string, runId: string, options: StreamRunOptions): AsyncGenerator<WorkflowRunEvent, void, void> {
+    assertSocketRuntime();
+    const ticket = await this.transport.request<WorkflowRunStreamTicket>({
+      method: 'POST',
+      path: `${runPath(slug, runId)}/stream-ticket`,
+      signal: options.signal,
+    });
+    const url = resolveSocketUrl(this.transport.baseUrl, ticket.url, options.lastEventId);
+    for await (const frame of readSocketFrames(url, { signal: options.signal })) {
+      const event = socketFrameToRunEvent(frame);
+      if (event !== null) yield event;
+    }
   }
 
   /** Path of the run's SSE endpoint. Overridden where the plane's runs live under a different prefix. */
@@ -401,14 +486,7 @@ async function* readFrames(response: Response, state: ResumeState, signal?: Abor
  * retry.
  */
 export class WorkflowReviewsResource {
-  constructor(
-    private readonly transport: Transport,
-    private readonly isServiceAccount: boolean,
-  ) {}
-
-  private surfaceName(): string {
-    return 'The workflow human-review plane (`hope.workflows.reviews`)';
-  }
+  constructor(private readonly transport: Transport) {}
 
   /**
    * `GET /api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}` — is this review waiting, and
@@ -418,7 +496,6 @@ export class WorkflowReviewsResource {
    * `(runId, nodeId)` and not by the run alone.
    */
   async get(slug: string, runId: string, nodeId: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowReview> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowReview>({ path: reviewPath(slug, runId, nodeId), signal: options.signal });
   }
 
@@ -437,7 +514,6 @@ export class WorkflowReviewsResource {
     body: WorkflowReviewDecision,
     options: { signal?: AbortSignal } = {},
   ): Promise<WorkflowReviewDecisionResult> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowReviewDecisionResult>({
       method: 'POST',
       path: `${reviewPath(slug, runId, nodeId)}/decide`,
@@ -475,12 +551,21 @@ export class WorkflowsResource extends WorkflowInvocationBase {
 
   constructor(transport: Transport, isServiceAccount = false) {
     super(transport, isServiceAccount);
-    this.reviews = new WorkflowReviewsResource(transport, isServiceAccount);
+    this.reviews = new WorkflowReviewsResource(transport);
   }
 
   protected surfaceName(): string {
     return 'The workflow invocation plane (`hope.workflows`)';
   }
+
+  /**
+   * Both machine credential classes reach this plane (TASK-930 §3): an API key, and a service
+   * account holding `svc:workflow:definition:read` / `svc:workflow:run:read` /
+   * `svc:workflow:run:write`. Overridden to a no-op rather than deleted from the base, because
+   * {@link ConsultationWorkflowsResource} — the same code, the clinical prefix — still refuses
+   * a service account, and one class silently inheriting the other's rule is how that would rot.
+   */
+  protected override assertCredentialClass(): void {}
 
   protected collectionPath(slug: string): string {
     return runsPath(slug);
@@ -505,7 +590,6 @@ export class WorkflowsResource extends WorkflowInvocationBase {
    * rather than deciding what to send. Discovering a catalogue does not need an N+1 of these.
    */
   async schema(slug: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowSchemaDescription> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowSchemaDescription>({ path: `workflows/${encodePathSegment(slug)}/schema`, signal: options.signal });
   }
 
@@ -538,18 +622,35 @@ export class WorkflowsResource extends WorkflowInvocationBase {
     body: StartWorkflowRunRequest,
     options: StartRunOptions & StreamRunOptions = {},
   ): AsyncGenerator<WorkflowRunEvent, void, void> {
+    if (options.transport === 'socket') return this.startRunThenSocket(slug, body, options);
     return this.startRunStreaming(slug, body, options);
+  }
+
+  /**
+   * `transport: 'socket'` variant of {@link runAndStream}: start the run ASYNC, then open the
+   * socket against the `runId` it returns.
+   *
+   * `?mode=stream` would put the events on the POST's own response body, which is an SSE
+   * stream by construction — there is no socket to hand off to. So the socket lane costs one
+   * extra round trip on the start, and says so here rather than pretending otherwise.
+   */
+  private async *startRunThenSocket(
+    slug: string,
+    body: StartWorkflowRunRequest,
+    options: StartRunOptions & StreamRunOptions,
+  ): AsyncGenerator<WorkflowRunEvent, void, void> {
+    assertSocketRuntime();
+    const handle = await this.run(slug, body, options);
+    yield* this.streamRunOverSocket(slug, handle.runId, options);
   }
 
   /** `GET /api/v1/workflows/{slug}/runs/{runId}` — live status, stages and delivered result. */
   async getRun(slug: string, runId: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowRunStatus> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowRunStatus>({ path: runPath(slug, runId), signal: options.signal });
   }
 
   /** `POST /api/v1/workflows/{slug}/runs/{runId}/cancel`. Returns once the signal is SENT — cancellation may not be complete. */
   async cancelRun(slug: string, runId: string, options: { signal?: AbortSignal } = {}): Promise<WorkflowRunCancelResult> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
     return this.transport.request<WorkflowRunCancelResult>({ method: 'POST', path: `${runPath(slug, runId)}/cancel`, signal: options.signal });
   }
 
@@ -567,7 +668,7 @@ export class WorkflowsResource extends WorkflowInvocationBase {
    * `autoResume: false` to opt out.
    */
   streamRun(slug: string, runId: string, options: StreamRunOptions = {}): AsyncGenerator<WorkflowRunEvent, void, void> {
-    assertApiKeyPlane(this.isServiceAccount, this.surfaceName());
+    if (options.transport === 'socket') return this.streamRunOverSocket(slug, runId, options);
     const state: ResumeState = { lastEventId: options.lastEventId, terminal: false, runId };
     // One connection for the initial connect, plus the resume budget on top —
     // `autoResume: false` spends the first and buys none.

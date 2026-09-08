@@ -112,6 +112,7 @@ const CONFIG: PlaygroundConfig = {
   apiKey: 'test-key',
   tenantId: '50000000-0000-0000-0000-000000000000',
   pipelineId: '',
+  sttAgentSlug: '',
   languageMode: 'en',
 };
 

@@ -1,7 +1,18 @@
 /**
  * `vox-codegen` — the `bin` entry.
  *
- * npx @arcaai/vox-codegen --tenant <id> [--watch] [--out <path>]
+ * TWO modes, one per credential class, mutually exclusive by construction:
+ *
+ * ```
+ * npx @arcaai/vox-codegen --tenant <id> --token <jwt> [--watch] [--out <path>]
+ * npx @arcaai/vox-codegen --api-key <key> [--agents] [--workflows] [--out <dir>]
+ * ```
+ *
+ * The first types a tenant's consultation CONTEXT SCHEMA from a super-admin JWT — a platform
+ * operator's view. The second (TASK-931) types what the tenant PUBLISHES, from the API key an
+ * integrator actually holds. Mixing them is a refusal rather than a guess: they authenticate
+ * differently, read different routes, and answer different questions, so "which did you mean"
+ * has no safe default.
  *
  * Zero CLI-parsing dependencies: `node:util`'s `parseArgs` (Node >= 18) is
  * enough for this flag set, and this package otherwise carries zero runtime
@@ -13,35 +24,51 @@ import { parseArgs } from 'node:util';
 import process from 'node:process';
 import { CodegenError } from './errors';
 import { runCodegenOnce } from './run';
+import { runCatalogueCodegenOnce } from './run-catalogue';
 import { watchCodegen } from './watch';
 
 const DEFAULT_BASE_URL = 'http://localhost:8868';
 const DEFAULT_OUT_FILE = './consultation-context-schema.generated.ts';
 const DEFAULT_INTERVAL_MS = 5000;
+const DEFAULT_OUT_DIR = './generated';
 
-const HELP_TEXT = `vox-codegen — emit TypeScript types from a tenant's consultation context schema
+const HELP_TEXT = `vox-codegen — emit TypeScript types from a tenant's HOPE configuration
 
-Usage:
-  vox-codegen --tenant <id> [options]
+Two modes, one per credential class. They are mutually exclusive.
 
-Options:
-  --tenant <id>       Tenant id to generate types for (required)
+CONSULTATION CONTEXT SCHEMA (super-admin JWT)
+  vox-codegen --tenant <id> --token <jwt> [options]
+
+  --tenant <id>        Tenant id to generate types for (required)
   --token <jwt>        Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
-  --base-url <url>     Gateway origin (default: ${DEFAULT_BASE_URL}, or HOPE_API_BASE_URL)
   --department <id>    Prefer this department's schema default, falling back to the tenant default
-  --out <path>         Output file path (default: ${DEFAULT_OUT_FILE})
-  --watch               Keep polling and regenerate whenever the schema changes
-  --interval <ms>       Poll interval in watch mode (default: ${DEFAULT_INTERVAL_MS})
-  -h, --help             Show this help
+  --out <path>         Output FILE path (default: ${DEFAULT_OUT_FILE})
+  --watch              Keep polling and regenerate whenever the schema changes
+  --interval <ms>      Poll interval in watch mode (default: ${DEFAULT_INTERVAL_MS})
 
-The generated file is a build-time convenience, never a replacement for the
-SDK's runtime discovery (\`useConsultationSchema()\`). Commit it like any other
-source file; regenerate it whenever the tenant's schema changes.
+PUBLISHED AGENTS AND WORKFLOWS (API key — the business plane)
+  vox-codegen --api-key <key> [--agents] [--workflows] [options]
+
+  --api-key <key>      Tenant API key (or set HOPE_API_KEY). Never reaches an admin route.
+  --agents             Emit Agent_<Slug>_Input / _Output for every published agent
+  --workflows          Emit Workflow_<Slug>_Input / _Output for every published workflow
+  --out <dir>          Output DIRECTORY (default: ${DEFAULT_OUT_DIR})
+
+COMMON
+  --base-url <url>     Gateway origin (default: ${DEFAULT_BASE_URL}, or HOPE_API_BASE_URL)
+  -h, --help           Show this help
+
+Generated files are a build-time convenience, never a replacement for runtime
+discovery (\`useConsultationSchema()\`, \`hope.agents.list()\`). Commit them like any
+other source file; regenerate whenever the tenant changes what it publishes.
 `;
 
 interface ParsedArgs {
   tenant?: string;
   token?: string;
+  'api-key'?: string;
+  agents: boolean;
+  workflows: boolean;
   'base-url'?: string;
   department?: string;
   out?: string;
@@ -56,6 +83,9 @@ function readArgs(argv: string[]): ParsedArgs {
     options: {
       tenant: { type: 'string' },
       token: { type: 'string' },
+      'api-key': { type: 'string' },
+      agents: { type: 'boolean', default: false },
+      workflows: { type: 'boolean', default: false },
       'base-url': { type: 'string' },
       department: { type: 'string' },
       out: { type: 'string' },
@@ -67,6 +97,58 @@ function readArgs(argv: string[]): ParsedArgs {
     strict: true,
   });
   return values as ParsedArgs;
+}
+
+/**
+ * The business-plane mode: read the published catalogue with an API key, write one file per
+ * requested plane. Returns the process exit code, like {@link main}, and never throws for an
+ * operator error — those are messages on stderr, which is what an operator can act on.
+ */
+async function runBusinessPlane(options: {
+  apiKey: string | undefined;
+  baseUrl: string;
+  agents: boolean;
+  workflows: boolean;
+  outDir: string;
+  watch: boolean;
+}): Promise<number> {
+  if (!options.apiKey) {
+    process.stderr.write('vox-codegen: --agents / --workflows need a tenant API key — pass --api-key or set HOPE_API_KEY\n');
+    return 1;
+  }
+  if (!options.agents && !options.workflows) {
+    process.stderr.write('vox-codegen: --api-key needs at least one of --agents / --workflows to know what to emit\n');
+    return 1;
+  }
+  if (options.watch) {
+    // Not an omission: the context-schema mode polls one endpoint and compares its `etag`.
+    // A published catalogue is N definitions with no aggregate validator, so a watch here
+    // would be an N-request poll that cannot tell "unchanged" from "not read yet".
+    process.stderr.write(
+      'vox-codegen: --watch is only supported for the consultation-context mode (--tenant); a published catalogue has no aggregate etag to poll\n',
+    );
+    return 1;
+  }
+
+  try {
+    const result = await runCatalogueCodegenOnce({
+      baseUrl: options.baseUrl,
+      apiKey: options.apiKey,
+      agents: options.agents,
+      workflows: options.workflows,
+      outDir: options.outDir,
+    });
+    for (const file of result.files) {
+      process.stdout.write(`vox-codegen: wrote ${file.path} (${file.count} ${file.surface})\n`);
+    }
+    return 0;
+  } catch (error) {
+    if (error instanceof CodegenError) {
+      process.stderr.write(`vox-codegen: ${error.message}\n`);
+      return 1;
+    }
+    throw error;
+  }
 }
 
 /** Runs one CLI invocation and returns the process exit code. Never calls `process.exit` itself — the caller decides when that happens. */
@@ -87,9 +169,34 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
   const tenantId = args.tenant;
   const token = args.token ?? process.env.HOPE_API_TOKEN;
+  const apiKey = args['api-key'] ?? process.env.HOPE_API_KEY;
   const baseUrl = args['base-url'] ?? process.env.HOPE_API_BASE_URL ?? DEFAULT_BASE_URL;
-  const outFile = args.out ?? DEFAULT_OUT_FILE;
   const departmentId = args.department;
+  const wantsCatalogue = args.agents || args.workflows;
+
+  // The two modes authenticate differently and read different routes. Refuse the combination
+  // rather than pick one: a run that silently ignored half the flags would emit a file the
+  // operator did not ask for, and they would find out at review time or not at all.
+  if (apiKey !== undefined && tenantId !== undefined) {
+    process.stderr.write(
+      'vox-codegen: --api-key and --tenant are mutually exclusive. --tenant reads a consultation context schema ' +
+        'with a SUPER_ADMIN JWT; --api-key reads the published agents and workflows on the business plane. Run one, then the other.\n',
+    );
+    return 1;
+  }
+
+  if (apiKey !== undefined || wantsCatalogue) {
+    return runBusinessPlane({
+      apiKey,
+      baseUrl,
+      agents: args.agents,
+      workflows: args.workflows,
+      outDir: args.out ?? DEFAULT_OUT_DIR,
+      watch: args.watch,
+    });
+  }
+
+  const outFile = args.out ?? DEFAULT_OUT_FILE;
 
   if (!tenantId) {
     process.stderr.write('vox-codegen: --tenant <id> is required\n');

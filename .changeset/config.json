@@ -19,7 +19,6 @@
   ],
   "ignore": [
     "@arcaai/async-contract",
-    "@arcaai/vox-codegen",
     "@arcaai/vox-node-codegen",
     "@arcaai/workflow-contract"
   ]

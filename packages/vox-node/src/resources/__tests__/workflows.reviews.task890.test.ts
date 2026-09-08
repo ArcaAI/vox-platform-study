@@ -12,7 +12,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { HopeClient } from '../../client';
-import { CredentialClassError } from '../../core/errors';
 
 function stubFetch(responses: Array<() => Response>): { fetch: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } {
   const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -63,11 +62,9 @@ describe('hope.workflows.schema', () => {
     expect(calls[0]!.url).toBe('https://api.example.com/api/v1/workflows/a%2Fb/schema');
   });
 
-  it('refuses a service-account client — this is the API-key plane', async () => {
-    const { fetch } = stubFetch([() => json(SCHEMA)]);
-    const hope = new HopeClient({ baseUrl: 'https://api.example.com', serviceAccount: { clientId: 'c', clientSecret: 's' }, fetch });
-    await expect(hope.workflows.schema('triage')).rejects.toBeInstanceOf(CredentialClassError);
-  });
+  // AMENDED TASK-931: this plane accepted an API key ONLY until TASK-930 declared
+  // `svc:workflow:definition:read` on it. The refusal now belongs to the consultation-bound
+  // plane alone — pinned in `task931-agent-plane.test.ts`, along with the reach it replaced.
 });
 
 describe('hope.workflows.list — the contract travels with the catalogue', () => {
@@ -138,11 +135,8 @@ describe('hope.workflows.reviews', () => {
     expect(calls[0]!.url).toBe('https://api.example.com/api/v1/workflows/triage/runs/run%2F1/reviews/n%20review');
   });
 
-  it('refuses a service-account client on both methods', async () => {
-    const { fetch } = stubFetch([() => json(REVIEW)]);
-    const hope = new HopeClient({ baseUrl: 'https://api.example.com', serviceAccount: { clientId: 'c', clientSecret: 's' }, fetch });
-
-    await expect(hope.workflows.reviews.get('triage', 'run-1', 'n')).rejects.toBeInstanceOf(CredentialClassError);
-    await expect(hope.workflows.reviews.decide('triage', 'run-1', 'n', { decision: 'approved' })).rejects.toBeInstanceOf(CredentialClassError);
-  });
+  // AMENDED TASK-931: reviews are reachable with a service account holding
+  // `svc:workflow:run:read` / `svc:workflow:run:write` (TASK-930 §3) — see
+  // `task931-agent-plane.test.ts`. Releasing a parked run is machine work like any other; what
+  // a service account may NOT do is release one bound to a consultation.
 });

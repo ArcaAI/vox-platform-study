@@ -86,3 +86,50 @@ export const UNCONFIGURED_CONSULTATION_SCHEMA_BUNDLE: ConsultationSchemaBundle =
   definition: null,
   etag: 'none',
 };
+
+// =============================================================================
+// The BUSINESS plane (TASK-931) — what a tenant PUBLISHES
+// =============================================================================
+//
+// A local mirror again, for the reason in this file's header: this package has zero workspace
+// dependencies, and importing `@arcaai/vox-node`'s types would pull it into that package's
+// build graph for a handful of interfaces. Only the fields the generator READS are declared —
+// a build-time tool has no business asserting the whole wire contract.
+
+/** One published, active Agent — `GET /agents` + `GET /agents/{slug}`. */
+export interface PublishedAgent {
+  slug: string;
+  name: string;
+  description: string | null;
+  /** `TEXT_GENERATION` | `TEXT_TO_SPEECH` | `SPEECH_TO_TEXT` | `NAMED_ENTITY_RECOGNITION`, as a string: a NEW task value must not break a build-time tool. */
+  task: string | null;
+  versionNumber: number | null;
+  /** JSON Schema (the authorable subset) of the invocation body. `null` when the agent declares none. */
+  inputSchema: Record<string, unknown> | null;
+  outputSchema: Record<string, unknown> | null;
+}
+
+/** One published workflow definition — `GET /workflows` + `GET /workflows/{slug}/schema`. */
+export interface PublishedWorkflow {
+  slug: string;
+  name: string;
+  description: string | null;
+  versionNumber: number | null;
+  triggerKinds: string[];
+  protocols: string[];
+  /**
+   * From the schema route's `components.Workflow_<slug>_Input`.
+   *
+   * `null` is a real answer, not a gap: a definition whose Trigger declares no context schema
+   * has no input contract, and generating an open `object` from that would produce code that
+   * compiles and then 400s.
+   */
+  inputSchema: Record<string, unknown> | null;
+  outputSchema: Record<string, unknown> | null;
+}
+
+/** What one business-plane run of the generator read. */
+export interface PublishedCatalogue {
+  agents: PublishedAgent[];
+  workflows: PublishedWorkflow[];
+}

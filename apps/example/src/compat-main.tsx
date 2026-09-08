@@ -23,8 +23,10 @@ const SDK_CONFIG_OPTIONS: V1SdkConfig = {
   websocketUrl: WEBSOCKET_BASE_URL,
   // REQUIRED — there is NO default API key (the adapter throws if omitted).
   credentials: { apiKey: import.meta.env.VITE_API_KEY ?? '' },
-  // Enables live backend streaming transcription (omit → local STT).
-  sttPipelineId: import.meta.env.VITE_PIPELINE_ID,
+  // Enables live backend streaming transcription (omit → the tenant's assigned
+  // ASR agent decides). `sttAgentSlug` replaced the deprecated `sttPipelineId`
+  // when the ASR Agent replaced the pipeline (TASK-865); the adapter prefers it.
+  sttAgentSlug: import.meta.env.VITE_STT_AGENT_SLUG,
   audioSettings: { noiseSuppression: true },
 };
 

@@ -36,7 +36,16 @@ export function ConnectionPanel({ config, connected, onChange, onConnect, onDisc
 
         <label>
           Pipeline ID
-          <input value={config.pipelineId} onChange={(e) => set('pipelineId', e.target.value)} placeholder="ASR pipeline id" />
+          <input value={config.pipelineId} onChange={(e) => set('pipelineId', e.target.value)} placeholder="ASR pipeline id (deprecated)" />
+        </label>
+
+        <label>
+          ASR Agent slug
+          <input
+            value={config.sttAgentSlug}
+            onChange={(e) => set('sttAgentSlug', e.target.value)}
+            placeholder="published SPEECH_TO_TEXT agent — empty uses the tenant assignment"
+          />
         </label>
 
         <label>
