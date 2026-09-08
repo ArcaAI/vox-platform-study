@@ -1085,6 +1085,11 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     const source = await this.resolveVersionForTenant(GLOBAL_PLAYGROUND_TENANT_ID, dto.sourceDefinitionSlug, dto.definitionVersionNumber);
 
+    // TASK-930 §6.2 — before the eval gate, because it is cheaper and its failure is more
+    // actionable: a graph naming an agent SYSTEM does not carry cannot run for ANY tenant
+    // provisioned from it, whatever the evals say.
+    await this.assertReferencedAgentsInSystem(source.graph as WorkflowGraph);
+
     // The gate runs BEFORE the promotion, so a block writes nothing at all.
     const verdict = (await this.evalPromotionGate?.evaluateWorkflowPromotion({
       tenantId: GLOBAL_PLAYGROUND_TENANT_ID,
@@ -1127,6 +1132,63 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       evalGateMode: verdict.mode,
       warnings: [...(promotion.warnings ?? []), ...verdict.failures, ...(verdict.warning ? [verdict.warning] : [])],
     };
+  }
+
+  /**
+   * TASK-930 §6.2 — every `core.agent` node in the graph must name an agent SYSTEM already
+   * carries as a PUBLISHED, ACTIVE row.
+   *
+   * ## Why this is a precondition of the promotion and not a warning on it
+   *
+   * A `core.agent` node binds an agent BY SLUG, and since TASK-890 OD-M a by-slug agent read no
+   * longer widens to SYSTEM — a tenant resolves its OWN provisioned clone. So the SYSTEM
+   * workflow this promotion publishes is the thing every future tenant is provisioned from, and
+   * if SYSTEM has no agent of that slug there is nothing for the clone to be made of. The graph
+   * is not degraded; it is unrunnable, and without this check it fails for the first clinician
+   * to open a consultation rather than for the platform admin who caused it.
+   *
+   * ## Why 409, and why every slug at once
+   *
+   * The request is well-formed and the caller is entitled — what is not ready is the platform's
+   * own state, which is a CONFLICT. And a promoter who has to fix one slug per 409 does the same
+   * work five times, so `missing` carries them all. The hint names §6.1 because promoting the
+   * agents is the fix.
+   *
+   * A graph with no `core.agent` node reads nothing and needs no repository — which is also why
+   * the missing-dependency refusal below can be unconditional without breaking the agent-less
+   * fixtures.
+   */
+  private async assertReferencedAgentsInSystem(graph: WorkflowGraph | null | undefined): Promise<void> {
+    const slugs = new Set<string>();
+    for (const node of graph?.nodes ?? []) {
+      if (node.type !== 'core.agent') continue;
+      const config = (node.config ?? {}) as { agentRef?: { slug?: unknown } };
+      const slug = config.agentRef?.slug;
+      if (typeof slug === 'string' && slug.length > 0) slugs.add(slug);
+    }
+    if (slugs.size === 0) return;
+
+    if (!this.agentRepository) {
+      // Loudly, not silently: skipping the gate would publish into SYSTEM the exact broken state
+      // it exists to prevent, and the cause would be this method's own missing dependency.
+      throw new Error('WorkflowDefinitionService.promoteToSystem requires AgentRepository to check the graph’s agent references (misconfiguration).');
+    }
+
+    const missing: string[] = [];
+    for (const slug of [...slugs].sort()) {
+      // SYSTEM, never the Global source: a Global-only agent does not make the SYSTEM copy runnable.
+      const agent = await this.agentRepository.findPublishedActiveBySlug(SYSTEM_TENANT_ID, slug);
+      if (!agent) missing.push(slug);
+    }
+    if (missing.length === 0) return;
+
+    throw new ConflictException({
+      message:
+        `This workflow references ${missing.length === 1 ? 'an agent' : 'agents'} the SYSTEM reference set does not carry as a published, active version: ` +
+        `${missing.join(', ')}. Promote ${missing.length === 1 ? 'it' : 'them'} first with POST admin/agents/promote-to-system, then retry.`,
+      code: 'AGENTS_NOT_IN_SYSTEM',
+      missing,
+    });
   }
 
   /**
