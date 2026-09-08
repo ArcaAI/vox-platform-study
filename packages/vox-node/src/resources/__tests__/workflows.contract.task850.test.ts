@@ -86,7 +86,7 @@ const UNBOUND_ROUTES = WORKFLOW_PLANE_ROUTES.filter((r) => !r.path.includes('/co
  * Done), never here. This entry MUST be emptied in that regeneration commit — a pending list
  * that outlives the route it was waiting for is how a missing route stops being noticed.
  */
-const PENDING_GATEWAY_ROUTES: ReadonlySet<string> = new Set(['POST /api/v1/workflows/{slug}/runs/{runId}/stream-ticket']);
+const PENDING_GATEWAY_ROUTES: ReadonlySet<string> = new Set([]); // TASK-930: the stream-ticket route landed with lane N
 
 /**
  * `true` while the manifest on disk predates TASK-930's service-account scopes.
