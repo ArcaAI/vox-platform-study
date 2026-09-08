@@ -17,6 +17,7 @@ import {
   useSidebar,
 } from '@arcaai/ui/components/shadcn/sidebar';
 import { usePermissions, useSession } from '@/shared/auth/hooks';
+import { useFeatureGates } from '@/shared/feature-gates/use-feature-gates';
 import { activeNavDomainId, matchNavEntry, NAV_SECTIONS, visibleNavDomains, visibleNavEntries } from '@/shared/navigation/nav-config';
 import { DomainRail } from './domain-rail';
 import { rovingItemProps, useRovingFocus } from './use-roving-focus';
@@ -47,11 +48,12 @@ export function AppSidebar() {
   const pathname = usePathname();
   const { data: rules } = usePermissions();
   const { data: session } = useSession();
+  const { gates } = useFeatureGates();
   const { isMobile } = useSidebar();
   const { containerRef, onKeyDown } = useRovingFocus<HTMLDivElement>('vertical');
 
-  const entries = visibleNavEntries(rules, session?.user.roles);
-  const domains = visibleNavDomains(rules, session?.user.roles);
+  const entries = visibleNavEntries(rules, session?.user.roles, gates);
+  const domains = visibleNavDomains(rules, session?.user.roles, gates);
   const activeEntry = matchNavEntry(pathname, entries);
   // A route no domain owns (`/account`, `/developer`, a 404) still gets a
   // frame: the first domain the caller can reach, with nothing selected.

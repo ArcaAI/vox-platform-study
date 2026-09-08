@@ -7,6 +7,7 @@ import { useTheme } from 'next-themes';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Kbd } from '@arcaai/ui/components/shadcn/kbd';
 import { usePermissions } from '@/shared/auth/hooks';
+import { useFeatureGates } from '@/shared/feature-gates/use-feature-gates';
 import { NAV_SECTIONS, visibleNavEntries, visibleUserMenuEntries } from '@/shared/navigation/nav-config';
 
 /**
@@ -19,10 +20,11 @@ export function CommandPalette() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { data: rules } = usePermissions();
+  const { gates } = useFeatureGates();
   // /developer and /account left NAV_ENTRIES for the user menu,
   // but they are still screens a user jumps to — keep them searchable here, or the
   // nav reorganisation silently removes two routes from ⌘K.
-  const entries = [...visibleNavEntries(rules), ...visibleUserMenuEntries(rules)];
+  const entries = [...visibleNavEntries(rules, undefined, gates), ...visibleUserMenuEntries(rules)];
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
