@@ -46,7 +46,7 @@ import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot } from '../live-ag
 import type { ResolvedWorkflowAssignment } from '../../../workflow-assignment/IWorkflowAssignmentService';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SEED_GENERATED = path.resolve(HERE, '../../../../../../database/src/prisma/db_main/seed/23-arcaai-workflow-authoring.generated.ts');
+const SEED_GENERATED = path.resolve(HERE, '../../../../../../database/src/prisma/db_main/seed/29-arcaai-agents-and-workflows.generated.ts');
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const seed: any = await import(/* @vite-ignore */ SEED_GENERATED);

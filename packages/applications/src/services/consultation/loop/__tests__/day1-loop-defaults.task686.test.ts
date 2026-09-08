@@ -36,7 +36,7 @@ import {
   DAY1_CONTEXT_SCHEMAS,
   DAY1_CONTEXT_SCHEMA_DEFINITION,
   DAY1_CONTEXT_SCHEMA_VERSIONS,
-} from '../../../../../../database/src/prisma/db_main/seed/07e-consultation-loop-defaults';
+} from '../../../../../../database/src/prisma/db_main/seed/07e-consultation-note-context-schema';
 
 // =============================================================================
 // 1. The seeded definition is publishable by the real validator
