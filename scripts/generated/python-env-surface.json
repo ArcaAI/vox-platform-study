@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 355,
+  "distinctNames": 356,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -2252,6 +2252,18 @@
           "dataType": "boolean",
           "default": "true",
           "description": ""
+        },
+        {
+          "name": "NLP_WARM_MODELS",
+          "aliases": [],
+          "class": "NLPServiceConfig",
+          "field": "warm_models",
+          "prefix": "NLP_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "",
+          "description": "A SCHEDULING lever, never a selection one: a request still names its own model, resolved tenant-first by the caller, and an entry here only decides that those weights are loaded before the first caller asks. The control-plane set (`warmModels`) is loaded too and WINS on a duplicate; this exists only because nothing produces that key today, which left the warm path inert while a cold `/guard/*` call was being cancelled and restarted forever (TASK-930 D-7). Retire it once `warmModels` is served."
         },
         {
           "name": "NLP_WORKERS",
