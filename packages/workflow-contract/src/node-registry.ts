@@ -185,7 +185,6 @@ export interface WorkflowNodeEvalGate {
  * see the derivation below, which attaches it uniformly from `NODE_CONFIG_SCHEMAS`.
  */
 const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDescriptor, 'configSchema' | 'inputs' | 'outputs'>>> = Object.freeze({
-
   // ===========================================================================================
   // TASK-864 — the `core` vocabulary: ONE palette for every future graph.
   //
