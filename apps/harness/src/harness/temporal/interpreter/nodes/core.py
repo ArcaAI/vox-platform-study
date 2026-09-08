@@ -80,47 +80,6 @@ from harness.temporal.interpreter.nodes.agentic import interpreter_agentic_data
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 from harness.temporal.models import HarnessPolicy
 
-# The `core.action` catalogue — the legacy node types that survive as ACTIONS, keyed by their
-# own key. MUST stay byte-identical to `ACTION_KEYS` in
-# `packages/workflow-contract/src/core-contract.ts`; `test_core_nodes.py` pins the list.
-ACTION_KEYS: tuple[str, ...] = (
-    "consultation.consentGate",
-    "consultation.captureBinding",
-    "consultation.extractEntities",
-    "consultation.bindTerminology",
-    "consultation.phiHop",
-    "consultation.retrieveEvidence",
-    "consultation.assemblePrompt",
-    "consultation.sensors",
-    "consultation.inferentialSensors",
-    "consultation.persistDraft",
-    "consultation.finalizeAssurance",
-    "consultation.realtimeSummary",
-    "consultation.suggestions",
-    "consultation.proposeCorrections",
-    "agent.transcription",
-    "agent.normalization",
-    "agent.ner",
-    "agent.grammar",
-    "agent.important_findings",
-    "agent.retrieval",
-    "agent.feedback",
-    "agent.dna_redaction",
-    "agent.dna_style",
-    "guard.phi",
-    "guard.moderation",
-    "guard.groundedness",
-    "guardrail.check",
-    "agentic.guardrail",
-    "session.timeout",
-    "summary.finalize",
-    "feedback.capture",
-    # TASK-882 — the whole endpoint stage is authorable through `core.action`.
-    "livedoc.stop",
-    "harness.finalize",
-    "prompt.template_ref",
-)
-
 
 def _config(payload: NodeActivityInput) -> dict[str, Any]:
     config = getattr(payload, "config", None)
@@ -1344,14 +1303,16 @@ async def interpreter_core_note(payload: NodeActivityInput) -> NodeActivityResul
 
 @activity.defn(name="interpreter.core_action")
 async def interpreter_core_action(payload: NodeActivityInput) -> NodeActivityResult:
-    """Delegate to the legacy node type named by `actionKey`, with the action's own config.
+    """Delegate to the catalogue activity named by `actionKey`, with the action's own config.
 
-    The delegate's activity is called DIRECTLY (a plain coroutine — `agentic.agent` does the
-    same for `generate.text`), under a payload whose `node_type` is the action key so every
-    trajectory row still names the capability that ran. `record_and_flush` is the delegate's.
+    The action's activity is called DIRECTLY (a plain coroutine), under a payload whose
+    `node_type` is the action key so every trajectory row still names the capability that ran.
+    `record_and_flush` is the action's. The catalogue is `action_catalogue.py` (TASK-893) — one
+    table, mirrored by `action-catalogue.ts`, never a hand-copied key list here.
     """
-    # Imported here rather than at module scope: `registry.py` imports this module.
-    from harness.temporal.interpreter.registry import ACTION_CATALOGUE  # noqa: PLC0415
+    # Imported here rather than at module scope: the catalogue's node modules are siblings of
+    # this one, and a module-scope import would fix an import order nothing else needs.
+    from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE  # noqa: PLC0415
 
     config = _config(payload)
     key = config.get("actionKey")
