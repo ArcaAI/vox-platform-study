@@ -1,22 +1,10 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getEffectiveFeatures, getFeatureMatrix, putFeatureMatrix } from './client';
+import { invalidateFeatureGates } from '@/shared/feature-gates/use-feature-gates';
+import { getFeatureMatrix, putFeatureMatrix } from './client';
 import { featureAvailabilityKeys } from './keys';
 import type { FeatureMatrixWrite } from './types';
-
-/**
- * The caller's feature gates. Cached for the session: they change only when a
- * platform admin edits the matrix, and that mutation invalidates them.
- */
-export function useEffectiveFeatures(enabled = true) {
-  return useQuery({
-    queryKey: featureAvailabilityKeys.effective(),
-    queryFn: () => getEffectiveFeatures(),
-    staleTime: 5 * 60 * 1000,
-    enabled,
-  });
-}
 
 /**
  * The cross-tenant matrix. A non-platform-admin gets a 403, which is a settled
@@ -45,6 +33,11 @@ export function usePutFeatureMatrix() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: featureAvailabilityKeys.matrix() });
       await queryClient.invalidateQueries({ queryKey: featureAvailabilityKeys.effective() });
+      // The shell's own gate cache (`['feature-gates']`) is a SEPARATE query
+      // from the matrix screen's own `effective()` key above — invalidating
+      // one never invalidated the other, so a save never refreshed the nav
+      // until the next reload (M1).
+      await invalidateFeatureGates(queryClient);
     },
   });
 }
