@@ -14,6 +14,13 @@
  *
  * TASK-863 REMOVED the `/agents` case: the route is a real screen again (the
  * first-class Agent entity), so it is neither retired nor a redirect.
+ *
+ * TASK-932 added `/ai-configuration` ("Speech & Voice") → the SAME target
+ * `/audio/pipelines` already uses: the ASR Agent is the one authoring surface
+ * for both retired bindings. Unlike `/tools-mcp`'s retiering, this one leaves
+ * the nav ENTIRELY (not just a tier move), so it needed a redirect stub —
+ * see `nav-config.test.ts`'s "keeps the retired per-capability credential
+ * screens... out of the rail" for the nav-entry-removal half of this change.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -64,6 +71,10 @@ const RETIRED_ROUTES: ReadonlyArray<readonly [route: string, modulePath: string,
   // (their audience is unchanged; the `(global)` layout would 404 a tenant admin).
   ['/audio/pipelines', '../../(tenant)/audio/pipelines/page', '/agents?task=SPEECH_TO_TEXT'],
   ['/harness/pipeline-policy', '../../(tenant)/harness/pipeline-policy/page', '/workflow-studio/assignments'],
+  // TASK-932: "Speech & Voice" left the rail entirely (not a retier — see
+  // nav-config.test.ts). Same target as `/audio/pipelines`: the ASR Agent
+  // replaces both retired bindings.
+  ['/ai-configuration', '../../(tenant)/ai-configuration/page', '/agents?task=SPEECH_TO_TEXT'],
 ];
 
 describe('retired route redirects', () => {
