@@ -22,7 +22,15 @@ export * from './descriptors/platform-ops.descriptors';
 export * from './descriptors/platform-secrets.descriptors';
 export * from './descriptors/bootstrap-env.descriptors';
 export * from './descriptors/platform-knobs.descriptors';
-export * from './descriptors/feature-flags.descriptors';
+// TASK-932 — the feature-availability catalog: the matrix screen and its
+// endpoints select on `FEATURE_AVAILABILITY_CATEGORY`, and Lane N's console
+// gates read the keys.
+export * from './descriptors/feature-availability.descriptors';
 export * from './settings-registry-write.service';
+// TASK-932 R-6/D-6 -- the derived lock (bootstrap / credential / data-plane are
+// un-editable for everyone) and the tenant-visibility predicate behind R-1/D-5.
+export * from './setting-lock';
+export * from './catalog-visibility';
+export * from './feature-availability.service';
 export * from './tenant-clamp';
 export * from './tenant-settings.service';

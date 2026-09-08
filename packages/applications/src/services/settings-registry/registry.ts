@@ -15,7 +15,7 @@ import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors'
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { CONSULTATION_REALTIME_SETTINGS } from './descriptors/consultation-realtime.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
-import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
+import { FEATURE_AVAILABILITY_SETTINGS } from './descriptors/feature-availability.descriptors';
 import { GUARDRAIL_JUDGE_SETTINGS } from './descriptors/guardrail-judge.descriptors';
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
@@ -26,7 +26,7 @@ import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
 import { SECURITY_POLICY_SETTINGS } from './descriptors/security-policy.descriptors';
-import { SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
+import { HARNESS_CLAIM_CHECK_ENABLED, SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
 import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-connections.descriptors';
 import { TEXT_GENERATION_SETTINGS } from './descriptors/text-generation.descriptors';
 import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-policy.descriptors';
@@ -100,6 +100,10 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // effective-config route. Registered at their current Python defaults, so
   // cataloging them changes no behaviour.
   ...SERVICE_RUNTIME_SETTINGS,
+  // The harness worker's Temporal-history protection. Still `env` (its reader is
+  // pydantic-settings inside the worker), re-categorised out of the dissolved
+  // "Feature Flags" bucket — see the descriptor.
+  HARNESS_CLAIM_CHECK_ENABLED,
   // The rest of stt's runtime tuning — VAD, streaming geometry and timeouts,
   // transcription chunking, punctuation, semantic endpointing, worker/threading
   // and the non-secret halves of the cloud engine connections. All were
@@ -136,8 +140,13 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // Rate-limit TIER policy — genuinely `global-kv` today (RateLimitSettingsService
   // already resolves them from GlobalSetting); they were simply never cataloged.
   ...RATE_LIMIT_TIER_SETTINGS,
-  // Feature gates still read from env, carrying `targetTier: 'redis-flag'`.
-  ...FEATURE_FLAG_SETTINGS,
+  // Feature availability — the ONE surface a platform admin uses to decide
+  // which features exist, per tenant (TASK-932 R-8). Replaces
+  // `FEATURE_FLAG_SETTINGS`, whose file is deleted: the four console visibility
+  // gates are new, three of its five keys migrated from `env` to `global-kv`
+  // with their readers, and `harness.claimCheck.enabled` was never a feature at
+  // all — it is a Python worker knob and now sits with the service runtime.
+  ...FEATURE_AVAILABILITY_SETTINGS,
   // Credential policy — password complexity/rotation (readers already existed
   // and already preferred the stored row; they were simply never cataloged, so
   // no admin could reach them) and the issued-secret strength policy behind

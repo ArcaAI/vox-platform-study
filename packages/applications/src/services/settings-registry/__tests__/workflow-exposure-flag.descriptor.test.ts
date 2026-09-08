@@ -36,10 +36,20 @@ describe('workflowExposure.enabled descriptor', () => {
     expect(() => HOPE_SETTINGS_REGISTRY.killSwitches()).not.toThrow();
   });
 
-  it('stays an operator veto: an env-tier boolean a platform admin can set to false', () => {
+  // TASK-932 D-4 — the veto survived the migration; where it LIVES did not.
+  // `WORKFLOW_EXPOSURE_ENABLED` was one env value for the whole deployment, so
+  // withdrawing the public plane from ONE tenant was impossible and withdrawing
+  // it at all was a redeploy. It is `global-kv` now, and `maxScope: 'tenant'`
+  // because `WorkflowExposureService` resolves a tenant on every gated call.
+  it('stays an operator veto, now on the global-kv cascade rather than env', () => {
     const descriptor = HOPE_SETTINGS_REGISTRY.get(KEY)!;
-    expect(descriptor.tier).toBe('env');
+    expect(descriptor.tier).toBe('global-kv');
     expect(descriptor.dataType).toBe('boolean');
+    expect(descriptor.maxScope).toBe('tenant');
+    // `globalOnly`: the PLATFORM decides availability. A tenant that could grant
+    // itself the public invoke plane is not being gated by anything.
+    expect(descriptor.globalOnly).toBe(true);
+    expect(descriptor.category).toBe('Feature Availability');
   });
 
   it('records that the API-key-scope precondition was discharged, so the default is not re-flipped by memory', () => {

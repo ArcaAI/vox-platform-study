@@ -29,7 +29,7 @@
 // The code value wins; reconciling or retiring the legacy row belongs to the
 // seed owner.
 
-import { ConsumingDeployable, CONSUMING_DEPLOYABLES, SettingDescriptor } from '../registry.types';
+import { ConsumingDeployable, CONSUMING_DEPLOYABLES, EDITABLE_BY_NONE, SettingDescriptor } from '../registry.types';
 
 /**
  * Registry keys → the consuming Python service's current fallback. Shared by the
@@ -412,3 +412,42 @@ export const SERVICE_RUNTIME_SETTINGS: SettingDescriptor[] = (Object.keys(SERVIC
     default: SERVICE_RUNTIME_DEFAULTS[key],
   }),
 );
+
+/**
+ * The harness worker's claim-check offload switch — moved here from
+ * `feature-flags.descriptors.ts`, which TASK-932 dissolved.
+ *
+ * It is NOT a feature (nothing about the product is available or unavailable
+ * because of it): it decides whether large clinical blobs are written to a
+ * content-addressed store instead of into Temporal workflow history, protecting
+ * the ~50 MB history budget. That is service runtime, so it is categorised as
+ * such and it stays `tier: 'env'` — the reader is `pydantic-settings` inside the
+ * Python harness worker, and moving it would need the effective-config pull
+ * route plus a worker restart contract (D-4 keeps that out of this ticket).
+ * `targetTier` records the intended destination so the pending migration stays
+ * queryable rather than becoming folklore.
+ *
+ * DEFAULTS **ON**, and is therefore NOT marked `killSwitch` — it is a
+ * PROTECTION, so turning it off REMOVES a safeguard (unbounded history growth)
+ * rather than disabling an enforcement path. Marking it a kill-switch would
+ * violate the defaults-OFF invariant and fail registry assembly. Same polarity
+ * as `rateLimit.enabled` (`platform-ops.descriptors.ts`).
+ */
+export const HARNESS_CLAIM_CHECK_ENABLED: SettingDescriptor = {
+  key: 'harness.claimCheck.enabled',
+  tier: 'env',
+  targetTier: 'global-kv',
+  dataType: 'boolean',
+  sensitivity: 'internal',
+  // An env var has no cascade; the governance suite binds `env` ⇒ `system`.
+  maxScope: 'system',
+  editableBy: EDITABLE_BY_NONE,
+  failMode: 'open-to-default',
+  category: 'Service Runtime',
+  label: 'Harness claim-check offload',
+  description:
+    'Moves large clinical blobs OUT of Temporal workflow history into a self-hosted content-addressed store, protecting the ~50 MB history budget. ' +
+    'DEFAULTS ON, and is therefore NOT marked `killSwitch` — it is a PROTECTION, so turning it off REMOVES a safeguard (unbounded history growth) rather than disabling an enforcement path. ' +
+    'Turning it off is a deliberate acceptance of unbounded Temporal history, exactly as the harness startup validator states.',
+  default: true,
+};
