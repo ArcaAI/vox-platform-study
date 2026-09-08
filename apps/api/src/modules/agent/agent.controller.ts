@@ -25,7 +25,14 @@ import {
   withUsageAttributes,
   withUsageTrigger,
 } from '@arcaai/applications';
-import type { AgentNerEntity, AgentNerInvocationResult, AgentTextInvocationResult, GuardrailDisposition, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
+import type {
+  AgentNerEntity,
+  AgentNerInvocationResult,
+  AgentTextInvocationResult,
+  GuardrailDisposition,
+  ResolvedAgent,
+  UsageEventBatchInput,
+} from '@arcaai/applications';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
