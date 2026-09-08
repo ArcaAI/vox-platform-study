@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Readable } from 'node:stream';
 import { AsrPipelineRepository, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
-import { PromptTemplateSyntaxError, PromptVariableUnresolvedError, renderTemplate } from '@arcaai/workflow-contract';
+import { PromptTemplateSyntaxError, PromptVariableUnresolvedError, outputSchemaResponseFormat, renderTemplate } from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { SecretsService } from '../baseServices/_meta/secrets';
@@ -19,6 +19,23 @@ export interface AgentTextInvocationResult {
   provider: string | null;
   model: string | null;
   usage: { promptTokens: number | null; completionTokens: number | null } | null;
+}
+
+/** TASK-930 §2.3 — ONE extracted span, in the agent's output vocabulary rather than `apps/nlp`'s. */
+export interface AgentNerEntity {
+  text: string;
+  label: string;
+  start: number;
+  end: number;
+  score?: number;
+}
+
+export interface AgentNerInvocationResult {
+  entities: AgentNerEntity[];
+  /** The model id actually sent on the wire — what the usage row attributes the call to. */
+  model: string | null;
+  /** Characters SENT, the unit `ner.extract` meters on. Counted here so the caller cannot disagree with the wire. */
+  charCount: number;
 }
 
 /** The TTS forward body the gateway's speech proxy already speaks (`SpeechSynthesizeRequest`). */
@@ -47,6 +64,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 export class AgentInvocationService {
   private readonly logger = new Logger(AgentInvocationService.name);
   private readonly textServiceUrl: string;
+  private readonly nlpServiceUrl: string;
 
   constructor(
     private readonly httpService: HttpService,
@@ -57,6 +75,7 @@ export class AgentInvocationService {
   ) {
     // Bootstrap TRANSPORT address (rule 00): the only sanctioned env default.
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
   }
 
   /** TIER 3 — the invocation body against the agent's declared `inputSchema`. */
@@ -161,7 +180,10 @@ export class AgentInvocationService {
       ...(typeof generation.temperature === 'number' ? { temperature: generation.temperature } : {}),
       ...(typeof generation.maxTokens === 'number' ? { max_tokens: generation.maxTokens } : {}),
       ...(typeof generation.topP === 'number' ? { top_p: generation.topP } : {}),
-      ...responseFormatOf(parameters),
+      // TASK-930 §5 — the author's explicit `responseFormat` first; failing that, the agent's own
+      // DECLARED `outputSchema` as a `json_schema` constraint. Without the second half the column
+      // was documentation: an agent could promise `{ case_note, redactions }` and be handed prose.
+      ...agentResponseFormat(resolved.slug, compiled.outputSchema, parameters),
       stream: mode === 'stream',
       context: { agentSlug: resolved.slug, agentVersionId: resolved.agentVersionId },
     };
@@ -214,6 +236,84 @@ export class AgentInvocationService {
       provider: data.provider ?? compiled.model.provider ?? null,
       model: data.model ?? wireModel,
       usage: data.usage ? { promptTokens: data.usage.prompt_tokens ?? null, completionTokens: data.usage.completion_tokens ?? null } : null,
+    };
+  }
+
+  /**
+   * TASK-930 §2.4 — run a `NAMED_ENTITY_RECOGNITION` agent against `apps/nlp`.
+   *
+   * ## Why this is not `invokeText` with a different URL
+   *
+   * Token classification is a ONE-SHOT pass over the whole document: there is no prompt to
+   * assemble, no session to stream and no provider credential to fold in. `apps/nlp` serves it
+   * from platform-hosted weights, which is exactly why `AGENT_TASK_SERVICE.NAMED_ENTITY_RECOGNITION`
+   * is `null` — there is no `AiProviderConnection` plane to consult, so none is consulted here.
+   *
+   * ## What goes on the wire
+   *
+   * The route's `model_name` is REQUIRED (an absent one is a 503 at `apps/nlp`, by design), so it
+   * is resolved from the agent's own materialised primary row rather than guessed: the declared
+   * `wireModelId` when the row has one, and the catalogue LOCATOR (`sourceUri`) otherwise —
+   * which is the normal case for the `built-in` NER catalogue, whose rows route by HF id and
+   * legitimately declare no wire id (the publish gate exempts `platform-self-host` for exactly
+   * this reason). `model_path` rides along when the resolver derived one.
+   *
+   * `labels` is the agent's INSTRUCTION (what to look for; an open-taxonomy extractor refuses
+   * without it and a closed-taxonomy checkpoint ignores it), while `threshold` / `aggregation`
+   * are its PARAMETERS (how hard to look). Each is omitted when the agent declared none, so the
+   * checkpoint's own declaration keeps applying rather than being overwritten by a literal
+   * chosen here.
+   *
+   * `X-Tenant-Id` is mandatory on this hop (owner directive 2026-08-16): an invocation always
+   * has a tenant, so there is no tenant-less branch to declare.
+   */
+  async invokeNer(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>): Promise<AgentNerInvocationResult> {
+    if (resolved.task !== 'NAMED_ENTITY_RECOGNITION') {
+      throw new BadRequestException(
+        `Agent '${resolved.slug}' is a ${resolved.task} agent; entity extraction applies to NAMED_ENTITY_RECOGNITION agents only.`,
+      );
+    }
+    const text = typeof input.text === 'string' ? input.text : '';
+    if (text.length === 0) throw new BadRequestException('Provide `text` to extract entities from.');
+
+    const compiled = resolved.compiledConfig;
+    const parameters = asRecord(compiled.parameters);
+    const instruction = asRecord(compiled.instruction);
+    const primary = resolved.models.find((model) => model.role === 'primary');
+    // Refused HERE rather than relayed: `apps/nlp` answers 503 "model not available" for an
+    // absent `model_name`, which names neither this agent nor the row it binds.
+    const modelName = wireModelIdOf(resolved) ?? primary?.sourceUri ?? null;
+    if (!modelName) {
+      throw new ConflictException({
+        message:
+          `Agent '${resolved.slug}' binds model '${compiled.model.slug}', which resolves to no checkpoint id, ` +
+          'so there is nothing to send as `model_name` for token classification.',
+        code: 'AGENT_MODEL_WIRE_ID_MISSING',
+      });
+    }
+
+    const labels = Array.isArray(instruction.labels) ? (instruction.labels as unknown[]).filter((label): label is string => typeof label === 'string') : [];
+    const body: Record<string, unknown> = {
+      text,
+      model_name: modelName,
+      ...(primary?.localPath ? { model_path: primary.localPath } : {}),
+      ...(typeof input.language === 'string' ? { language: input.language } : {}),
+      ...(labels.length > 0 ? { labels } : {}),
+      ...(typeof parameters.threshold === 'number' ? { threshold: parameters.threshold } : {}),
+      ...(typeof parameters.aggregation === 'string' ? { aggregation_strategy: parameters.aggregation } : {}),
+    };
+
+    const headers = internalServiceHeaders({
+      serviceToken: await resolveInternalAccessToken(this.secretsService, 'NLP_SERVICE_TOKEN'),
+      tenantId,
+      tenantlessReason: TENANTLESS.CONTROL_PLANE,
+    });
+
+    const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, body, { headers });
+    return {
+      entities: mapNerEntities(response.data),
+      model: modelName,
+      charCount: [...text].length,
     };
   }
 
@@ -363,6 +463,61 @@ function boundContextPayloadSchema(resolved: ResolvedAgent): Record<string, unkn
   return payloadSchema !== null && typeof payloadSchema === 'object' && !Array.isArray(payloadSchema)
     ? (payloadSchema as Record<string, unknown>)
     : null;
+}
+
+/**
+ * TASK-930 §2.3 — `apps/nlp`'s wire entities in the AGENT's output vocabulary.
+ *
+ * The wire shape is `apps/nlp`'s `Entity` (`schemas/common.py`): `entity_type` / `confidence` /
+ * `position.{start,end}`, plus enrichment fields (`umls_cui`, `icd_code`, `assertion`) that
+ * belong to the clinical NER plane and are deliberately NOT re-exported here — the agent's
+ * declared schema closes `additionalProperties`, so anything it does not name would be a
+ * violation of the contract this agent published.
+ *
+ * A span with no resolvable OFFSETS is DROPPED rather than emitted with substituted ones: the
+ * output schema requires `start`/`end` because a span the caller cannot locate in its own text
+ * is not a finding, and a fabricated offset would highlight the wrong words in a clinical note.
+ */
+function mapNerEntities(data: unknown): AgentNerEntity[] {
+  const raw = asRecord(data).entities;
+  if (!Array.isArray(raw)) return [];
+  const entities: AgentNerEntity[] = [];
+  for (const item of raw) {
+    const entity = asRecord(item);
+    const position = asRecord(entity.position);
+    const start = position.start;
+    const end = position.end;
+    if (typeof start !== 'number' || typeof end !== 'number') continue;
+    entities.push({
+      text: typeof entity.text === 'string' ? entity.text : '',
+      label: typeof entity.entity_type === 'string' ? entity.entity_type : 'UNKNOWN',
+      start,
+      end,
+      ...(typeof entity.confidence === 'number' ? { score: entity.confidence } : {}),
+    });
+  }
+  return entities;
+}
+
+/**
+ * TASK-930 §5 — the ONE `response_format` decision, in precedence order.
+ *
+ * An explicit `parameters.responseFormat` is the author's hyper-parameter and always wins,
+ * including when it says "plain text". Only when the author expressed no opinion does the
+ * agent's DECLARED `outputSchema` become the engine constraint — which is the whole point of
+ * §5: the column stops being a promise the runtime never kept.
+ *
+ * `outputSchemaResponseFormat` (the shared contract rule, also applied by the harness and the
+ * realtime lane) already returns `undefined` when `responseFormat` is set, so the two branches
+ * cannot both fire; the explicit check is kept because `responseFormatOf` legitimately answers
+ * `{}` for a malformed `json_schema` pair, and that silence must not be filled by the schema.
+ */
+function agentResponseFormat(slug: string, outputSchema: unknown, parameters: Record<string, unknown>): Record<string, unknown> {
+  const explicit = responseFormatOf(parameters);
+  if (Object.keys(explicit).length > 0) return explicit;
+  if (parameters.responseFormat !== undefined) return {};
+  const enforced = outputSchemaResponseFormat(slug, outputSchema, parameters);
+  return enforced ? { response_format: enforced } : {};
 }
 
 function responseFormatOf(parameters: Record<string, unknown>): Record<string, unknown> {

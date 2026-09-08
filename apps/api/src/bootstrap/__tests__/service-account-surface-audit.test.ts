@@ -20,6 +20,7 @@ import {
   SERVICE_ACCOUNT_FORBIDDEN,
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
+  AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
   STANDALONE_FEATURE_SVC_SCOPES,
   resolveServiceAccountImpliedPermissions,
   toServiceAccountScope,
@@ -150,16 +151,23 @@ describe('D — svc:* scope coverage', () => {
   // be provoked without mutating it — assert the properties D now depends on
   // instead, so a future hand-added entry that breaks one is caught here as well
   // as at boot.
-  it('the non-admin svc: scopes are exactly the two declared source families', () => {
+  // TASK-930 §3 added a THIRD non-admin family — the agent/workflow business plane.
+  it('the non-admin svc: scopes are exactly the three declared source families', () => {
     const nonAdmin = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY)
       .filter((s) => !s.endsWith(':*') && !s.startsWith('svc:admin:'))
       .sort();
-    expect(nonAdmin).toEqual([...STANDALONE_FEATURE_SVC_SCOPES, ...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES].sort());
+    expect(nonAdmin).toEqual(
+      [...STANDALONE_FEATURE_SVC_SCOPES, ...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES, ...AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES].sort(),
+    );
   });
 
-  it('the two non-admin families are disjoint — every scope has exactly one justification', () => {
+  it('the three non-admin families are disjoint — every scope has exactly one justification', () => {
     for (const scope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
       expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
+    }
+    for (const scope of AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES) {
+      expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
+      expect(ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES).not.toContain(scope);
     }
   });
 

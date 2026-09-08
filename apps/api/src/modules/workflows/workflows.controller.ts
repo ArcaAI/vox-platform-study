@@ -11,16 +11,38 @@ import {
   WorkflowSummaryListResponse,
   type WorkflowSchemaDescription,
 } from '@arcaai/applications';
-import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Optional, Param, Post, Body, Query, Req, Res } from '@nestjs/common';
+import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Optional, Param, Post, Body, Query, Req, Res, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { CanCreate, CanList, CanRead, CanUpdate, RequiredScopes } from '../../decorators';
+import { CanCreate, CanList, CanRead, CanUpdate, RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
+import { StreamTicketService } from '../auth/stream-ticket.service';
+import { WORKFLOW_RUN_TICKET_NAMESPACE } from '../streaming/workflow-ws.gateway';
 import type { RequestWithAuth } from '../../types/request-with-auth';
+import { ClsService } from 'nestjs-cls';
+import type { IActiveUserContext } from '@arcaai/applications';
 import { deliverRun } from './deliver-run';
 import { WorkflowRunCompletionService } from './workflow-run-completion.service';
 import { WorkflowStreamService } from './workflow-stream.service';
+
+/**
+ * TASK-930 §4 — what `POST /workflows/:slug/runs/:runId/stream-ticket` answers.
+ *
+ * `expiresAt` is ABSOLUTE (epoch ms), not a duration: the ticket lives 30 seconds and a client
+ * that computed a deadline from a relative number would be wrong by however long the response
+ * spent in flight — on a 30-second budget that is not a rounding error. It is the same field
+ * `IssueStreamTicketResponse` already carries, so both minting routes answer one shape.
+ */
+export interface WorkflowRunStreamTicketResponse {
+  ticket: string;
+  /** Epoch MILLISECONDS at which the ticket stops being redeemable. */
+  expiresAt: number;
+  /** Always `workflow_run:<runId>` — derived here, never accepted from the wire. */
+  scope: string;
+  /** The socket to open with it, query string already built and encoded. */
+  url: string;
+}
 
 /**
  * `WorkflowsController` — the exposure plane: a tenant's
@@ -49,11 +71,18 @@ export class WorkflowsController {
     // TASK-864 (G9) — optional so the existing unit fixtures construct unchanged; absent, a run's
     // terminal status is reconciled on the next status read, exactly as before.
     @Optional() private readonly runCompletion?: WorkflowRunCompletionService,
+    // TASK-930 §4 — both are GLOBAL providers in production (`StreamTicketModule` is `@Global`,
+    // `nestjs-cls` provides `ClsService` app-wide), and both are `@Optional()` here only so the
+    // existing positional unit fixtures keep constructing. The ticket route refuses loudly when
+    // either is absent rather than minting something unattributable.
+    @Optional() private readonly streamTicketService?: StreamTicketService,
+    @Optional() private readonly cls?: ClsService<IActiveUserContext>,
   ) {}
 
   @Get()
   @CanList('WorkflowDefinition')
   @RequiredScopes('workflow:definition:read')
+  @RequiredSvcScopes('svc:workflow:definition:read')
   @ApiOperation({ summary: "The tenant's published + active, invokable workflows (slug + identity — no per-definition input schema exists yet)." })
   @ApiResponse({ status: 200, type: WorkflowSummaryListResponse })
   async list(): Promise<WorkflowSummaryListResponse> {
@@ -64,6 +93,7 @@ export class WorkflowsController {
   @HttpCode(HttpStatus.ACCEPTED)
   @CanCreate('WorkflowRun')
   @RequiredScopes('workflow:run:write')
+  @RequiredSvcScopes('svc:workflow:run:write')
   @Throttle({ heavy: { limit: 20, ttl: 60000 } })
   @ApiOperation({
     summary: "Start a run of the tenant's active published version of :slug. The canonical invocation entry point.",
@@ -110,6 +140,7 @@ export class WorkflowsController {
   @HttpCode(HttpStatus.ACCEPTED)
   @CanCreate('WorkflowRun')
   @RequiredScopes('workflow:run:write')
+  @RequiredSvcScopes('svc:workflow:run:write')
   // First `heavy`-tier consumer in the codebase ( limiting) — the pre-registered
   // `heavy` tier (20 req/60s, `rate-limit-config.service.ts`) is a deliberate, reviewed choice
   // for a surface that starts a durable Temporal workflow per call. Per-key `ApiKey.rateLimit`
@@ -146,6 +177,7 @@ export class WorkflowsController {
   @Get(':slug/schema')
   @CanRead('WorkflowDefinition')
   @RequiredScopes('workflow:definition:read')
+  @RequiredSvcScopes('svc:workflow:definition:read')
   @ApiOperation({
     summary:
       'The published definition`s generated contract: input/output component schemas, trigger kinds, protocols, admitted modes, and an AsyncAPI fragment for its run events (TASK-864).',
@@ -160,6 +192,7 @@ export class WorkflowsController {
   @Get(':slug/runs/:runId')
   @CanRead('WorkflowRun')
   @RequiredScopes('workflow:run:read')
+  @RequiredSvcScopes('svc:workflow:run:read')
   @ApiOperation({ summary: 'Live run status + result (queried from the interpreter dispatcher).' })
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
@@ -173,6 +206,7 @@ export class WorkflowsController {
   @HttpCode(HttpStatus.OK)
   @CanUpdate('WorkflowRun')
   @RequiredScopes('workflow:run:write')
+  @RequiredSvcScopes('svc:workflow:run:write')
   @ApiOperation({ summary: "Cancel a run — sends the interpreter's allow-listed cancel signal, never a caller-supplied signal name." })
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
@@ -195,6 +229,7 @@ export class WorkflowsController {
   @Get(':slug/runs/:runId/reviews/:nodeId')
   @CanRead('WorkflowRun')
   @RequiredScopes('workflow:run:read')
+  @RequiredSvcScopes('svc:workflow:run:read')
   @ApiOperation({
     summary:
       'The live state of one Human-review node of a run: whether it is waiting, how many times it has escalated, and the decision if one was made.',
@@ -219,6 +254,7 @@ export class WorkflowsController {
   @HttpCode(HttpStatus.OK)
   @CanUpdate('WorkflowRun')
   @RequiredScopes('workflow:run:write')
+  @RequiredSvcScopes('svc:workflow:run:write')
   @ApiOperation({
     summary: 'Release a Human-review node with a decision — the graph resumes down the `approved` or `rejected` handle.',
     description:
@@ -249,9 +285,77 @@ export class WorkflowsController {
     return this.workflowExposureService.decideReview(slug, runId, nodeId, dto);
   }
 
+  /**
+   * TASK-930 §4 — a single-use ticket for THIS run's socket.
+   *
+   * ## Why a second minting route rather than a scope on the first
+   *
+   * `POST /auth/stream-ticket` takes a scope STRING from the caller and is `@ForbidApiKey()` —
+   * deliberately, because it is the credential-issuing plane and a credential authenticating
+   * itself there is circular. The consequence was that `/ws/workflows` was reachable only by a
+   * browser session: an API key or a service account, the two credentials that actually run
+   * workflows unattended, could poll status or hold an SSE connection but never open the socket.
+   *
+   * This route inverts the shape that made that necessary. It takes no scope: the scope is
+   * DERIVED from the path (`workflow_run:<runId>`), so nothing wider than the run in the URL can
+   * be minted, and the ownership check that the auth controller performs for `workflow_run:`
+   * tickets is the route's own `getRunStatus` — the same pre-stream check the SSE route and the
+   * socket gateway make. Ownership is proved BEFORE the mint, so a foreign or unknown run is a
+   * 404 (never a 403) and no ticket is ever issued for it.
+   *
+   * The ticket itself is the SAME kind, from the same service, with the same single-use 30-second
+   * semantics; `workflow-ws.gateway.ts` is unchanged and cannot tell the two minting routes apart.
+   */
+  @Post(':slug/runs/:runId/stream-ticket')
+  @HttpCode(HttpStatus.CREATED)
+  @CanRead('WorkflowRun')
+  // READ, not write: minting a ticket observes a run. Gating it behind `workflow:run:write`
+  // would take the socket away from exactly the read-only credentials it exists to serve.
+  @RequiredScopes('workflow:run:read')
+  @RequiredSvcScopes('svc:workflow:run:read')
+  @ApiOperation({
+    summary: 'Mint a single-use, 30-second ticket for this run’s WebSocket stream.',
+    description:
+      'The API-key and service-account equivalent of `POST /auth/stream-ticket`, which is JWT-only. The scope is derived from the path ' +
+      '(`workflow_run:<runId>`) and the run’s ownership is proved before the ticket is issued, so nothing broader than this run can be minted. ' +
+      'Open the returned `url` — the ticket is consumed on first use and cannot be replayed.',
+  })
+  @ApiParam({ name: 'slug' })
+  @ApiParam({ name: 'runId' })
+  @ApiResponse({ status: 201, description: 'The ticket, its absolute expiry, its scope, and the socket URL to open with it.' })
+  @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
+  @ApiResponse({ status: 403, description: 'Scope violation.' })
+  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  async issueRunStreamTicket(@Param('slug') slug: string, @Param('runId') runId: string): Promise<WorkflowRunStreamTicketResponse> {
+    if (!this.streamTicketService || !this.cls) {
+      throw new ServiceUnavailableException('Stream tickets are not available on this instance.');
+    }
+    // FIRST: 404-over-403 ownership, through the same read every other run route makes.
+    await this.workflowExposureService.getRunStatus(slug, runId);
+
+    const user = this.cls.get('user');
+    if (!user?.id) throw new UnauthorizedException('User context not available');
+    // The ACTIVE (CLS) tenant wins, so a super admin's selected `X-Tenant-Id` — and a service
+    // account's exchange-bound working tenant — both land on the ticket the socket reads back.
+    const tenantId = this.cls.get('tenantId') || user.tenantId || null;
+
+    const scope = `${WORKFLOW_RUN_TICKET_NAMESPACE}:${runId}`;
+    const issued = await this.streamTicketService.issueTicket({
+      userId: user.id,
+      tenantId,
+      scope,
+      // Carried so a ticket minted under impersonation restores the claim on the socket request.
+      impersonatedBy: user.impersonatedBy ?? null,
+    });
+
+    const query = new URLSearchParams({ slug, runId, ticket: issued.ticket });
+    return { ticket: issued.ticket, expiresAt: issued.expiresAt, scope: issued.scope, url: `/ws/workflows?${query.toString()}` };
+  }
+
   @Get(':slug/runs/:runId/stream')
   @CanRead('WorkflowRun')
   @RequiredScopes('workflow:run:read')
+  @RequiredSvcScopes('svc:workflow:run:read')
   @StreamScope({ namespace: 'workflow_run', param: 'runId' })
   @ApiOperation({
     summary: 'SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).',

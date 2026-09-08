@@ -175,6 +175,49 @@ export const ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES = ['webhook:event:read', '
 export const ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES: readonly string[] = ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES.map(toServiceAccountScope);
 
 /**
+ * TASK-930 §3 — the FOURTH `svc:` family: the agent + workflow BUSINESS plane.
+ *
+ * ─── The gap this closes ────────────────────────────────────────────────────
+ *
+ * A service account could reach every admin area and three standalone features, but NOT the two
+ * planes a machine identity most obviously exists to drive: invoking a published agent
+ * (`/agents/**`) and running a published workflow (`/workflows/**`). `AgentController`'s own
+ * docblock said so out loud — "service accounts are deliberately not admitted (`svcScopes: []`)"
+ * — which made an integration reach for a tenant API key bound to a human, or for nothing at all.
+ *
+ * ─── Why a FOURTH family rather than five more lines in the second ──────────
+ *
+ * The same reason `ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES` exists.
+ * {@link STANDALONE_FEATURE_SCOPE_SOURCES} means "standalone BUSINESS-plane features an end user
+ * drives through the SDK/compat surfaces (STT, summarization)". Agents and workflows are neither
+ * standalone nor compat: they are the platform's own composition plane, published content a
+ * tenant authors and a machine then calls. A constant whose name no longer describes its
+ * contents is exactly how the NEXT scope gets mis-derived, and the boot audit would then be
+ * reconciling against a lie.
+ *
+ * ─── What is deliberately ABSENT ────────────────────────────────────────────
+ *
+ * The CONSULTATION-BOUND plane (`workflows:` plural — `POST /consultations/:id/workflows/...`)
+ * is not here. It writes real `ContextItem` rows against a patient's consultation, which is a
+ * clinical surface, not a machine-identity one. Deny-by-default means that silence is a refusal,
+ * not an oversight; opening it would be a new owner decision.
+ *
+ * `svc:admin:*` does NOT reach these — the wildcard expands over the `svc:admin:` PREFIX — so
+ * the family is granted explicitly or not at all, exactly like the other two source families.
+ */
+export const AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES = [
+  'agent:definition:read',
+  'agent:invocation:write',
+  'workflow:definition:read',
+  'workflow:run:read',
+  'workflow:run:write',
+] as const;
+
+/** The renamespaced form of {@link AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES}. */
+export const AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES: readonly string[] =
+  AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES.map(toServiceAccountScope);
+
+/**
  * Renamespace one declared source family into the registry. Shared by both
  * source-list families so they cannot drift in how a `svc:` row is built: the
  * description, the category and — the load-bearing part — the `implies` all
@@ -213,7 +256,7 @@ function buildRegistry(): Record<string, ScopeDefinition> {
     };
   }
 
-  // The two source-list families, each derived from the SAME API-key definition
+  // The three source-list families, each derived from the SAME API-key definition
   // the human-credential path uses on the same route, so the scope and its
   // abilities can never disagree. A source name that stops existing in
   // `API_KEY_SCOPE_REGISTRY` is a module-load crash, not a silently missing
@@ -221,6 +264,7 @@ function buildRegistry(): Record<string, ScopeDefinition> {
   // string while CASL refused it.
   deriveFamilyInto(registry, STANDALONE_FEATURE_SCOPE_SOURCES, 'STANDALONE_FEATURE_SCOPE_SOURCES');
   deriveFamilyInto(registry, ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES, 'ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES');
+  deriveFamilyInto(registry, AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES, 'AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES');
 
   // Wildcards carry `[]` and are resolved by EXPANSION in
   // `resolveServiceAccountImpliedPermissions`, never by a literal of their own —

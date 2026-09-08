@@ -10726,7 +10726,9 @@
       "method": "GET",
       "path": "/api/v1/agents",
       "routePath": "/agents",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:agent:definition:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -10744,7 +10746,9 @@
       "method": "GET",
       "path": "/api/v1/agents/{slug}",
       "routePath": "/agents/:slug",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:agent:definition:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -10762,7 +10766,9 @@
       "method": "POST",
       "path": "/api/v1/agents/{slug}/invocations",
       "routePath": "/agents/:slug/invocations",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -10780,7 +10786,9 @@
       "method": "POST",
       "path": "/api/v1/agents/{slug}/speech",
       "routePath": "/agents/:slug/speech",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -10798,7 +10806,9 @@
       "method": "POST",
       "path": "/api/v1/agents/{slug}/transcriptions",
       "routePath": "/agents/:slug/transcriptions",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15590,7 +15600,9 @@
       "method": "GET",
       "path": "/api/v1/workflows",
       "routePath": "/workflows",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:definition:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15613,7 +15625,9 @@
       "method": "POST",
       "path": "/api/v1/workflows/{slug}/invoke",
       "routePath": "/workflows/:slug/invoke",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:run:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15636,7 +15650,9 @@
       "method": "POST",
       "path": "/api/v1/workflows/{slug}/runs",
       "routePath": "/workflows/:slug/runs",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:run:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15659,7 +15675,9 @@
       "method": "GET",
       "path": "/api/v1/workflows/{slug}/runs/{runId}",
       "routePath": "/workflows/:slug/runs/:runId",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:run:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15682,7 +15700,9 @@
       "method": "POST",
       "path": "/api/v1/workflows/{slug}/runs/{runId}/cancel",
       "routePath": "/workflows/:slug/runs/:runId/cancel",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:run:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15705,7 +15725,9 @@
       "method": "GET",
       "path": "/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}",
       "routePath": "/workflows/:slug/runs/:runId/reviews/:nodeId",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:run:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15728,7 +15750,9 @@
       "method": "POST",
       "path": "/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide",
       "routePath": "/workflows/:slug/runs/:runId/reviews/:nodeId/decide",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:run:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15751,7 +15775,34 @@
       "method": "GET",
       "path": "/api/v1/workflows/{slug}/runs/{runId}/stream",
       "routePath": "/workflows/:slug/runs/:runId/stream",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:run:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflow:run:read"
+      ],
+      "requiredPermissions": [
+        [
+          "read",
+          "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowsController",
+      "handler": "issueRunStreamTicket",
+      "method": "POST",
+      "path": "/api/v1/workflows/{slug}/runs/{runId}/stream-ticket",
+      "routePath": "/workflows/:slug/runs/:runId/stream-ticket",
+      "svcScopes": [
+        "svc:workflow:run:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -15774,7 +15825,9 @@
       "method": "GET",
       "path": "/api/v1/workflows/{slug}/schema",
       "routePath": "/workflows/:slug/schema",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflow:definition:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [

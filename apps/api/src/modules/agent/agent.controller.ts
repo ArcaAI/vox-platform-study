@@ -19,12 +19,13 @@ import {
   TtsAgentResolverService,
   UsageIdempotencyKey,
   buildLlmUsageInputFromTokenCounts,
+  buildNerUsageEvent,
   classifyLlmDeployment,
   toLedgerProvider,
   withUsageAttributes,
   withUsageTrigger,
 } from '@arcaai/applications';
-import type { AgentTextInvocationResult, GuardrailDisposition, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
+import type { AgentNerEntity, AgentNerInvocationResult, AgentTextInvocationResult, GuardrailDisposition, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
@@ -48,7 +49,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
-import { RequiredScopes } from '../../decorators';
+import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { classifyTtsProvider } from '../speech/tts-provider-classification';
 
@@ -83,6 +84,20 @@ export interface AgentTextInvocationResponse {
   usage: { promptTokens: number | null; completionTokens: number | null } | null;
 }
 
+/**
+ * TASK-930 §2.4 — the NER answer, in the SAME envelope as the text one so a caller reads
+ * `agentSlug` / `agentVersionId` / `output` identically whichever task the slug resolves to.
+ * `output` is the agent's declared output schema verbatim (`{ entities }`).
+ */
+export interface AgentNerInvocationResponse {
+  agentSlug: string;
+  agentVersionId: string;
+  output: { entities: AgentNerEntity[] };
+  provider: string | null;
+  model: string | null;
+  usage: null;
+}
+
 export interface AgentTranscriptionResponse {
   id: string;
   status: string;
@@ -107,7 +122,13 @@ const AGENT_INVOCATION_TRIGGER = 'AGENT_INVOCATION' as const;
  * AgentController — the Agent BUSINESS plane (TASK-863 §3.5), mounted at `/agents`
  * (global prefix -> `/api/v1/agents`). API key or JWT; every route pairs an authorization
  * decorator (the deny-by-default boot audit) with `@RequiredScopes` (the API-key gate).
- * Service accounts are deliberately not admitted (`svcScopes: []`).
+ *
+ * TASK-930 §3 — service accounts ARE now admitted, through the fourth `svc:` family
+ * (`AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES`): `svc:agent:definition:read` reads the
+ * published catalogue and `svc:agent:invocation:write` runs it. The scopes are DERIVED from the
+ * API-key scopes gating the same routes, so a machine identity reaches exactly what a
+ * human-delegated key reaches and not one route more. A service account binds its
+ * `workingTenantId` at token EXCHANGE, so it never sends `X-Tenant-Id` here.
  *
  * Every route resolves the agent through the ONE resolver the harness also uses, then
  * executes through the EXISTING service paths: `apps/text` `/generate` (via
@@ -144,6 +165,7 @@ export class AgentController {
   @Get()
   @Authorize()
   @RequiredScopes('agent:definition:read')
+  @RequiredSvcScopes('svc:agent:definition:read')
   @ApiOperation({ summary: 'List the published agents visible to the tenant (own agents shadow the platform defaults)' })
   @ApiQuery({ name: 'task', required: false, enum: AgentTask })
   @ApiResponse({ status: 200, type: AgentSummaryListResponse })
@@ -154,6 +176,7 @@ export class AgentController {
   @Get(':slug')
   @Authorize()
   @RequiredScopes('agent:definition:read')
+  @RequiredSvcScopes('svc:agent:definition:read')
   @ApiOperation({ summary: 'Describe one published agent: its task, version, I/O schemas and protocols' })
   @ApiParam({ name: 'slug', type: String })
   @ApiResponse({ status: 200, type: AgentSummaryResponse })
@@ -166,6 +189,7 @@ export class AgentController {
   @HttpCode(HttpStatus.OK)
   @Authorize()
   @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
   @Throttle({ heavy: { limit: 20, ttl: 60000 } })
   @ApiOperation({
     summary: 'Invoke a TEXT_GENERATION agent (blocking JSON, or SSE with ?mode=stream)',
@@ -184,7 +208,15 @@ export class AgentController {
   })
   async invoke(@Param('slug') slug: string, @Body() body: AgentInvocationBody, @Res() res: Response, @Query('mode') mode?: string): Promise<void> {
     const tenantId = this.requireTenant();
-    const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug });
+    // TASK-930 §2.4 — resolved WITHOUT a task pin, then dispatched on the agent's own task.
+    // Pinning TEXT_GENERATION here would have made a NER agent unreachable through the route
+    // its `protocols: ['http']` declares, and the refusal would have named the wrong thing
+    // ("this call needs TEXT_GENERATION") for a caller who asked for exactly what it published.
+    const resolved = await this.resolver.resolve({ tenantId, agentSlug: slug });
+    if (resolved.task === AgentTask.NAMED_ENTITY_RECOGNITION) {
+      await this.invokeNer(resolved, tenantId, slug, body, res, mode);
+      return;
+    }
     // `context` is checked against the agent's FROZEN context schema inside `invokeText`, not
     // against `inputSchema` — so it is withheld from this check. Without that, the two
     // declarations collide: every default `inputSchema` is `additionalProperties: false` and
@@ -267,9 +299,74 @@ export class AgentController {
     res.status(HttpStatus.OK).json(payload);
   }
 
+  /**
+   * TASK-930 §2.4 — the NER half of `POST /agents/:slug/invocations`.
+   *
+   * One-shot by construction: `apps/nlp` classifies the whole document in a single pass, so
+   * `?mode=stream` is REFUSED with a named code rather than degraded to a blocking answer — a
+   * caller that opened an SSE reader against a silent one-shot route would simply hang, and a
+   * 400 that says why is the only honest reply to a protocol the agent never declared.
+   *
+   * Metered like every other inference activity (OD-E): the `monthlyNlpTextUnits` allowance is
+   * checked BEFORE the call (nothing is billed for a refused one), and the row is the SAME
+   * `ner.extract` shape the two clinical NER call sites and the playground proxy already write,
+   * so an agent invocation appears in the tenant's NLP rollup rather than in a fourth vocabulary.
+   */
+  private async invokeNer(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    slug: string,
+    body: AgentInvocationBody,
+    res: Response,
+    mode?: string,
+  ): Promise<void> {
+    if (mode === 'stream') {
+      throw new BadRequestException({
+        message: `Agent '${resolved.slug}' performs NAMED_ENTITY_RECOGNITION, a one-shot task with nothing to stream. Re-send without \`mode=stream\`.`,
+        code: 'MODE_UNSUPPORTED',
+      });
+    }
+    const { context: _context, ...invocationInput } = body ?? {};
+    const problems = this.invocation.inputProblems(resolved, invocationInput);
+    if (problems.length > 0) throw new BadRequestException({ message: 'The invocation body does not match the agent’s inputSchema.', problems });
+
+    await this.entitlementsService?.assertMeterQuota(tenantId, 'monthlyNlpTextUnits');
+    const result = await this.invocation.invokeNer(resolved, tenantId, body ?? {});
+    this.emitInvocationUsage(this.buildNerUsage(tenantId, result), slug);
+
+    const payload: AgentNerInvocationResponse = {
+      agentSlug: resolved.slug,
+      agentVersionId: resolved.agentVersionId,
+      output: { entities: result.entities },
+      // Always the platform's own token-classification runtime: a NER agent resolves no
+      // provider connection at all (`compiledConfig.service` is null), so there is no vendor
+      // to attribute and the catalogue row's own provider is the whole truth.
+      provider: resolved.compiledConfig.model.provider ?? null,
+      model: result.model,
+      usage: null,
+    };
+    res.status(HttpStatus.OK).json(payload);
+  }
+
+  /** The `ner.extract` ledger row for ONE agent invocation — the shared shape, with this route's trigger. */
+  private buildNerUsage(tenantId: string, result: AgentNerInvocationResult): UsageEventBatchInput {
+    return withUsageTrigger(
+      buildNerUsageEvent({
+        tenantId,
+        // A fresh id per invocation: keying on anything shared silently drops the second call
+        // (see `nerUsageEvent.ts` — that defect is why the key is per-invocation).
+        requestId: generateId(),
+        charCount: result.charCount,
+        model: result.model,
+      }),
+      AGENT_INVOCATION_TRIGGER,
+    );
+  }
+
   @Post(':slug/speech')
   @Authorize()
   @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
   @Throttle({ heavy: { limit: 20, ttl: 60000 } })
   @ApiOperation({
     summary: 'Synthesize speech with a TEXT_TO_SPEECH agent (streamed audio, the existing speech proxy contract)',
@@ -396,6 +493,7 @@ export class AgentController {
   @HttpCode(HttpStatus.CREATED)
   @Authorize()
   @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
   @ApiOperation({
     summary: 'Start a batch transcription with a SPEECH_TO_TEXT agent (returns a TranscriptionJob)',
     description:
