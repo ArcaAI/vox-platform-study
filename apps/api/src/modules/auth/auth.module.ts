@@ -1,5 +1,6 @@
 import {
   AuthServiceModule,
+  EffectiveSettingsModule,
   FederatedAuthServiceModule,
   RegistrationServiceModule,
   UserDepartmentServiceModule,
@@ -53,6 +54,11 @@ import { StreamTicketModule } from './stream-ticket.module';
     FederatedAuthServiceModule,
     // RegistrationService (verified self-signup) for RegisterController.
     RegistrationServiceModule,
+    // TASK-932 D-4 - `TenantSettingsService`, so `RegisterController` resolves
+    // `registration.selfSignupEnabled` from the `global-kv` tier instead of the
+    // retired `REGISTRATION_SELF_SIGNUP_ENABLED` env read. NestJS dedupes the
+    // module instance with the AppModule import.
+    EffectiveSettingsModule,
     // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets
     // `IWorkflowRunService.getRun` already 404s a foreign-tenant runId; reused here rather than
     // adding a second lookup path.

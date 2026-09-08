@@ -12,6 +12,7 @@ import { IGlobalSettingService } from '../globalSetting/IGlobalSettingService';
 import { IRedisCacheService } from '../baseServices/redis';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import { SettingDataType, SettingDescriptor, SettingScope } from './registry.types';
+import { SETTING_TIER_LOCKED, settingLockFor } from './setting-lock';
 import { assertTightenOnlyFloor } from './tenant-clamp';
 
 /**
@@ -81,6 +82,15 @@ export interface WriteRegistrySettingOptions {
    * version to match.
    */
   expectedVersion?: number;
+}
+
+/** Outcome of {@link SettingsRegistryWriteService.reset}. */
+export interface ResetRegistrySettingResult {
+  key: string;
+  tier: string;
+  scope: SettingScope;
+  /** `false` when there was no override to remove — a no-op, not a failure. */
+  removed: boolean;
 }
 
 export interface WriteRegistrySettingResult {
@@ -175,6 +185,21 @@ export class SettingsRegistryWriteService extends BaseService {
     this.assertMayWriteAtScope(scope, key);
     const targetTenantId = this.targetTenantFor(scope, key);
 
+    // 4c. LOCKED tiers (TASK-932 R-6 / D-6). Bootstrap, credential and
+    //     data-plane transport values are un-editable for EVERY caller, a super
+    //     administrator included — the owner's words, and the half a UI-only
+    //     rule cannot deliver.
+    //
+    //     It runs BEFORE the tier dispatch below, and the ordering is the whole
+    //     point: both refusals are 400s, but they say different things. "Not
+    //     writable through the registry lane (yet) — its dedicated service owns
+    //     it" is true of `db-config` and is an invitation to go and edit it
+    //     somewhere else. For `env` / `vault-kv` / `db-secret` that sentence is
+    //     FALSE — there is no other screen — so the generic message would send
+    //     an admin looking for a surface that does not exist. The lock is
+    //     derived from descriptor metadata, never a key list (`setting-lock.ts`).
+    this.assertNotLocked(descriptor);
+
     // 5. Tier dispatch. `db-config` keys (pipeline policy, TTS config) keep
     //    their dedicated services until those adopt this enforcement point;
     //    refusing here is deliberate, not an oversight.
@@ -258,6 +283,110 @@ export class SettingsRegistryWriteService extends BaseService {
     await this.publishPythonInvalidation(key, scope, targetTenantId);
 
     return { key, tier: descriptor.tier, value, scope, version: persisted.version };
+  }
+
+  /**
+   * The LOCK guard — 400 for every caller, including a super administrator.
+   *
+   * The message carries the machine-readable {@link SETTING_TIER_LOCKED} marker
+   * so a client can branch on the KIND of refusal rather than on prose, and the
+   * descriptor's own reason so the admin is told where the value actually
+   * changes instead of only that it did not.
+   */
+  private assertNotLocked(descriptor: SettingDescriptor): void {
+    const lock = settingLockFor(descriptor);
+    if (!lock) return;
+    throw new ArgumentInvalidException(`${SETTING_TIER_LOCKED}: setting '${descriptor.key}' is not editable (${lock.label}). ${lock.reason}`);
+  }
+
+  /**
+   * RESET one TENANT override back to the inherited value.
+   *
+   * ── WHY A DELETE AND NOT A WRITE ──────────────────────────────────────────
+   * "Reset to the platform default" means the tenant stops holding an opinion,
+   * so the cascade resumes: `tenant → SYSTEM → descriptor default`. Writing the
+   * platform's CURRENT value into the tenant row would look identical today and
+   * diverge silently the next time a platform admin moves the default — the
+   * tenant would be pinned to a stale copy nobody remembers choosing. Removing
+   * the row is the only thing that actually restores inheritance.
+   *
+   * The removal is a SOFT delete, like every other row in this platform. Both
+   * readers that matter agree with that: the Prisma soft-delete extension
+   * filters `resourceStatus: DELETED` out of `AppSettingsService`'s cache load
+   * (so the cascade falls through immediately) and out of `findBackingRow` (so a
+   * later write CREATES again — and `createOrRecoverRace` already revives over
+   * the soft-delete unique index).
+   *
+   * ── WHY `system` SCOPE IS REFUSED ─────────────────────────────────────────
+   * There is no tier above SYSTEM to inherit from. Deleting the platform row
+   * would not "reset" anything — it would drop the platform to the descriptor's
+   * code default, which is a DIFFERENT and usually a fail-safe value (a
+   * kill-switch's OFF). That is a legitimate thing to want, and it is a WRITE of
+   * `descriptor.default`, stated as such and versioned as such — the matrix's
+   * `value: null` on the platform column does exactly that. Silently overloading
+   * DELETE with it would make one verb mean two things.
+   *
+   * Every guard from {@link write} applies unchanged and in the same order,
+   * because a reset changes the effective value exactly as a write does.
+   */
+  async reset(key: string, options: WriteRegistrySettingOptions = {}): Promise<ResetRegistrySettingResult> {
+    const descriptor = this.getDescriptorOrThrow(key);
+
+    if (descriptor.sensitivity === 'secret') {
+      throw new ArgumentInvalidException(`Setting '${key}' is a secret; secret values are never written through the settings registry lane.`);
+    }
+    if (descriptor.globalOnly && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException(`Setting '${key}' is managed by super administrators only.`);
+    }
+
+    const scope: SettingScope = options.scope ?? 'tenant';
+    if (scope === 'system') {
+      throw new ArgumentInvalidException(
+        `Setting '${key}' cannot be RESET at 'system' scope: the platform row is the top of the cascade, so there is nothing above it to inherit. ` +
+          'Write the descriptor default explicitly instead.',
+      );
+    }
+    HOPE_SETTINGS_REGISTRY.assertWithinMaxScope(key, scope);
+    this.assertMayWriteAtScope(scope, key);
+    this.assertNotLocked(descriptor);
+    if (descriptor.tier !== 'global-kv') {
+      throw new ArgumentInvalidException(
+        `Tier '${descriptor.tier}' is not writable through the registry lane (yet). ` + `Setting '${key}' is managed by its dedicated service.`,
+      );
+    }
+
+    const targetTenantId = this.targetTenantFor(scope, key);
+    const existing = await this.findBackingRow(key, targetTenantId);
+
+    // Already inheriting. Idempotent by design: a "reset all tenants" sweep must
+    // not fail on the tenants that never had an override in the first place.
+    if (!existing) {
+      return { key, tier: descriptor.tier, scope, removed: false };
+    }
+
+    // Same precondition contract as `updateExisting`: a caller that read the row
+    // must say which version it saw, or a concurrent edit is destroyed silently.
+    // A reset with NO `expectedVersion` is accepted — unlike a write — because
+    // the batch matrix save resets cells the caller never opened, and the
+    // outcome (the row is gone) does not depend on what it contained.
+    if (options.expectedVersion !== undefined && existing.version !== options.expectedVersion) {
+      throw new OptimisticConcurrencyException('GlobalSetting', existing.id, {
+        expectedVersion: options.expectedVersion,
+        currentVersion: existing.version,
+      });
+    }
+
+    await this.actingOnTenant(targetTenantId, () => this.globalSettings.deleteById(existing.id));
+
+    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+      resourceId: existing.id,
+      data: { key, scope, tier: descriptor.tier, namespace: REGISTRY_SETTING_NAMESPACE, tenantId: targetTenantId, reset: true },
+    });
+
+    await this.appSettings.refreshCache();
+    await this.publishPythonInvalidation(key, scope, targetTenantId);
+
+    return { key, tier: descriptor.tier, scope, removed: true };
   }
 
   /**
