@@ -14,7 +14,7 @@ export interface GeneratedWorkflowBlob {
   compiledConfig: Record<string, unknown>;
 }
 
-export const REGISTRY_CHECKSUM: string = "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de";
+export const REGISTRY_CHECKSUM: string = "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256";
 
 export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "GLOBAL:general-medicine-consultation": {
@@ -24,7 +24,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -36,7 +36,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -551,7 +551,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "060f1b0709764a40144417aae3e71864551517dca06e1312539eb022569c5071"
+      "checksum": "a280e95f71466e0c46d85ec87ffc44446ca8149b3dbdce48ef4767cbf2f71406"
     }
   },
   "GLOBAL:platform-default-summarization": {
@@ -561,7 +561,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -573,7 +573,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -864,7 +864,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "4b8e32f032b7ef6b65f99c5d00c1c881a796447fadfde23734222950b163528a"
+      "checksum": "0c3511dde5e56018f2a54c9a60f4ea2a50995da7c424a8ebb51a6d9fdccb8294"
     }
   },
   "SYSTEM:general-medicine-consultation": {
@@ -874,7 +874,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -886,7 +886,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -1401,7 +1401,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "c50c076730148c42d77fe49f0cdcb6fb2711726d8b87327a6745251426012f33"
+      "checksum": "10ad6395e873941e5c37b4da539f850e9f0782702012f4af67f62553d2f7da20"
     }
   },
   "SYSTEM:platform-default-summarization": {
@@ -1411,7 +1411,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -1423,7 +1423,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "07f93e152738b204c63e1b1e946465153fa8265f25c016a4c1a4087cbb8c76de",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -1714,7 +1714,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "f67034071ce5aa176dd01f1a131f0fe72bbdf0f26a33776885f1ba2439fc5539"
+      "checksum": "13999eff9c153ed9ab7de4b9334964a9348ac0f3ad8f94ace297a165c27c60e8"
     }
   }
 };
