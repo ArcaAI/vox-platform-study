@@ -126,12 +126,41 @@ const snapshot = (): FrozenLiveAgentSnapshot => ({
   frozenAt: '2026-08-28T00:00:00.000Z',
 });
 
+/**
+ * TASK-930 (G-1) — the tasks of the agents the seeded ArcaAI graphs reference, as
+ * `25-agents.ts` / `29-arcaai-agents-and-workflows.ts` declare them. Held as data here (the
+ * seed-driven proof lives in `live-documentation.realtime-agent-task.task930.test.ts`) so this
+ * suite keeps testing the READ-OUT rather than the catalogue.
+ */
+const SEEDED_AGENT_TASKS: Record<string, string> = {
+  'realtime-transcription': 'SPEECH_TO_TEXT',
+  'medical-ner': 'NAMED_ENTITY_RECOGNITION',
+  'arcaai-gen-summary-new-visit': 'TEXT_GENERATION',
+  'arcaai-gen-summary-revisit': 'TEXT_GENERATION',
+  'arcaai-rheum-summary-new-visit': 'TEXT_GENERATION',
+  'arcaai-rheum-summary-revisit': 'TEXT_GENERATION',
+  'casenote-finalization': 'TEXT_GENERATION',
+};
+
+/** Only a PUBLISHED agent of the CALLER's tenant resolves — `AgentResolverService`'s contract. */
+function agentResolverDouble() {
+  return {
+    resolve: vi.fn(async ({ tenantId, agentSlug }: { tenantId: string; agentSlug?: string | null }) => {
+      const task = agentSlug ? SEEDED_AGENT_TASKS[agentSlug] : undefined;
+      if (tenantId !== ARCAAI || !agentSlug || !task) throw new Error('Agent not found');
+      return { slug: agentSlug, versionNumber: 1, task, compiledConfig: { outputSchema: {}, parameters: {} } };
+    }),
+  };
+}
+
 interface BuildOpts {
   graphEnabled?: boolean;
   /** Omit the two lane-resolution hops entirely (production DI may not supply them). */
   withoutLaneHops?: boolean;
   /** Make the assignment cascade throw. */
   assignmentThrows?: boolean;
+  /** Omit the agent resolver, as a composition that predates TASK-930 would. */
+  withoutAgentResolver?: boolean;
 }
 
 function buildService(opts: BuildOpts = {}) {
@@ -155,6 +184,7 @@ function buildService(opts: BuildOpts = {}) {
     });
   }
   const definitions = definitionRepositoryDouble();
+  const agentResolver = agentResolverDouble();
 
   const service = new LiveDocumentationService(
     { axiosRef: { post } } as never,
@@ -175,9 +205,16 @@ function buildService(opts: BuildOpts = {}) {
     { findById: vi.fn(async () => ({ id: 'c1', metadata: null })) } as never,
     (opts.withoutLaneHops ? undefined : assignments) as never,
     (opts.withoutLaneHops ? undefined : definitions) as never,
+    undefined, // documentSectionRepository
+    undefined, // promptTemplateRepository
+    undefined, // liveAssist
+    undefined, // textAgents
+    undefined, // entitlements
+    undefined, // usageLedger
+    (opts.withoutAgentResolver ? undefined : agentResolver) as never,
   );
 
-  return { service, assignments, definitions };
+  return { service, assignments, definitions, agentResolver };
 }
 
 // =============================================================================
@@ -204,7 +241,7 @@ describe(' item 2 — the ArcaAI assignment resolves to a TENANT lane, not the p
   });
 
   it('carries the realtime nodes the seeded graph authors, and no durable ones', async () => {
-    const { service } = buildService({ graphEnabled: true });
+    const { service, agentResolver } = buildService({ graphEnabled: true });
 
     const caps = await service.getRealtimeCapabilities(ARCAAI);
 
@@ -212,16 +249,34 @@ describe(' item 2 — the ArcaAI assignment resolves to a TENANT lane, not the p
     // them and the read-out's discriminators are the node id and the CAPABILITY it runs.
     expect(caps.nodes.map((n) => n.nodeId).sort()).toEqual(['n_asr', 'n_ner', 'n_summary_new', 'n_summary_revisit']);
     expect([...new Set(caps.nodes.map((n) => n.type))]).toEqual(['core.agent']);
-    // …and TODAY every one of them reads as `generateDocument`, because the capability is derived
-    // from the node's `agentRef` and a SLUG-form ref needs the host to resolve the agent's task —
-    // `RealtimeCapabilities.resolveAgent` is optional and this service does not implement it, so
-    // the lane falls back to TEXT_GENERATION exactly as `CoreAgentHandler` does at run time. This
-    // assertion pins the CURRENT behaviour, not the desired one: wiring an agent-task resolver is
-    // what will make `n_asr` read (and run) as `transcribe`.
-    expect([...new Set(caps.nodes.map((n) => n.canonicalType))]).toEqual(['generateDocument']);
+    // TASK-930 (G-1) — the capability is derived from the node's `agentRef`, and a SLUG-form ref
+    // needs the HOST to resolve the agent's task. Until this ticket `resolveAgent` was
+    // unimplemented, so every node read (and RAN) as `generateDocument` — the ASR node would have
+    // generated a note instead of transcribing, and the NER node instead of extracting. The
+    // read-out now reports what the lane actually dispatches.
+    const byNode = Object.fromEntries(caps.nodes.map((n) => [n.nodeId, n.canonicalType]));
+    expect(byNode).toEqual({
+      n_asr: 'transcribe',
+      n_ner: 'extractEntities',
+      n_summary_new: 'generateDocument',
+      n_summary_revisit: 'generateDocument',
+    });
+    // …and it got there by RESOLVING each referenced agent for THIS tenant, not by reading the slug.
+    expect(agentResolver.resolve).toHaveBeenCalledWith({ tenantId: ARCAAI, agentSlug: 'realtime-transcription' });
+    expect(agentResolver.resolve).toHaveBeenCalledWith({ tenantId: ARCAAI, agentSlug: 'medical-ner' });
     // `n_finalize` is `execution.lane: 'durable'` and must never appear here — a node running on
     // BOTH engines would mean two writers on one clinical document.
     expect(caps.nodes.some((n) => n.nodeId === 'n_finalize')).toBe(false);
+  });
+
+  it('falls back to `generateDocument` when no agent resolver is wired — the pre-TASK-930 answer, and never a throw', async () => {
+    const { service } = buildService({ graphEnabled: true, withoutAgentResolver: true });
+
+    const caps = await service.getRealtimeCapabilities(ARCAAI);
+
+    // The read-out DESCRIBES what would run. Without a resolver `CoreAgentHandler` falls back to
+    // TEXT_GENERATION, so reporting anything else here would describe a lane that does not exist.
+    expect([...new Set(caps.nodes.map((n) => n.canonicalType))]).toEqual(['generateDocument']);
   });
 
   it('a DEPARTMENT override wins over the tenant default, so the cascade is real', async () => {
