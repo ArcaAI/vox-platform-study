@@ -462,6 +462,37 @@ and `tree(345f55db6) == tree(HEAD)` — so every branch's content is in HEAD by 
 pre-rewrite head stays reachable through the reflog for the life of this checkout; nothing was
 reset, because the rewrite is the owner's decision and the content is intact.
 
+### 4.10 Lane F-E2E — the API e2e suite on the core vocabulary
+
+After the owner's DB resets, the test DB was rebuilt non-destructively (plain `prisma db push` on
+the empty tmpfs database, then `RUN_SEED=all NODE_ENV=test pnpm test:db:seed` — the first attempt
+skipped the seed because `RUN_SEED` was unset, which is the seed's fail-closed contract, not a
+defect). The full Playwright suite then showed **1 161 passed / 11 failed**, every failure in a spec
+authored on the retired vocabulary — `apps/api/tests/e2e/**` was in no lane's ownership row.
+
+**F-E2E — DONE.** `44e87808e`, 5 commits, only `apps/api/tests/e2e/**` touched. Ten retargets
+(`task-779` ×6: `CANONICAL_TYPES` → a `core.trigger → core.action{consentGate/phiHop/persistDraft}
+→ core.humanReview → core.output` chain, `WF-CONS-007` → `WF-CORE-002`, `core.start` → `core.trigger`;
+`task-722` ×3: `noop` + `summarization` → `core.trigger{kinds:['api']} → core.output`;
+`task-890-guardrail-optout`: the warning still names `consultation.consentGate` because
+`classesOf('core.action', config)` resolves `mandatory` per instance), one **not-a-regression**
+(`task-890-metering`: `platform-summarization` is gone under D-8; the 429 quota precheck passes on
+`general-medicine-summarization`), one case **deleted under D-9** (the `WF-CONS-002/004`
+reachability case — `WF-CORE-003` is structurally unauthorable at the wire since the boundaries
+declare no inverse ports). Final: **1 180 passed / 50 skipped, exit 0** (`.merge-logs/F-E2E-full-1.log`).
+
+**FU-6 — escalated for an owner ruling (TASK-890 D-1 compensating control #4):** measured on the
+live gateway, a graph that DELETES its `consentGate` action now creates 201, publishes 200 with
+`validationReport.ok: true` and zero findings; before TASK-893 it was `ok: false` +
+`WF-CONS-001 … found 0`. `DRAFT_CONSULTATION_RULE_SET` left with the palette (D-9) and no surviving
+rule is written over the `mandatory` class or an action key, so removal is neither blocked nor
+reported — and `publish-findings.ts` (~L396) still tells the author "publish still refuses a graph
+that removed it", which is no longer true. Pinned as CURRENT behaviour at
+`task-890-guardrail-optout.spec.ts:400`. Best localisation: a `DRAFT_CORE_RULE_SET` rule over
+`classesOf()`'s `mandatory` (which does resolve through `core.action`), or the check beside the
+`GUARDRAIL_OPTED_OUT` loop in `publishFindings`. The policy question underneath — WHICH actions are
+mandatory for a `core` graph that may be API-only — is the owner's.
+
 Orchestrator sequence after the lanes report:
 
 1. Merge in the order **N → P → R → S → K** (N first so the enum exists for everything after;
@@ -641,6 +672,7 @@ Each is real, each is out of this wave's brief, and each is recorded here so it 
 | Date | Change |
 |---|---|
 | 2026-09-08 (docs close) | §6 filled: the four asks answered against C-1..C-5, the per-lane delivered surface, the nine merge commits, the one additive migration, the six API changes, the five regenerated artifacts and the final gate chain (`typecheck:all` 0 · `lint:all` 0 · unit **23 803 / 0** · harness **2 201 / 6** pre-existing). Five follow-ups raised (§6.10: the task-355 patch-marker drift, G-2, G-3, the slug-blind `realtimeCapabilityIndex`, and the post-publish re-runs). §6.9 carries a marked `<!-- LOCAL-TEST-EVIDENCE -->` placeholder — the ask #2/#3 runtime runs are blocked on the owner's database-reset consent, so the status stays `In Progress`. Rule amendments landed with it: 05 (the promotion gate, and the boundary condition on the existence-before-privilege ordering rule), 08 (SDK 3.1.0), 00 (D-8 provenance), 06 (the harness vocabulary and its drain precondition). |
+| 2026-09-08 (e2e) | SDK 3.1.0 published (TASK-931 §4.5); `quick-compat-app` on 3.1.0 (FU-5 closed); test DB rebuilt; F-E2E retargeted the eleven vocabulary-era e2e failures — suite 1 180 passed / 0 failed; FU-6 escalated (§4.10). |
 | 2026-09-08 (runtime) | Owner reset both DBs; both verified (SYSTEM 5/2, Global 5/2, ArcaAI 27/13, NER enum, zero legacy node types). The last applications integration file passes (2/2). Test API on :8968 and the dev stack on :8868 started; e2e and lane LOCAL (the four §6.9 runs) dispatched. History rewrite recorded with the containment proof (§4.9). |
 | 2026-09-08 (F-RT) | G-1 fixed and green (§4.7); the original session transcript cross-checked against §1 (§4.8); five-artifact regeneration started; DB resets await the owner's explicit consent (Prisma's agent guard). |
 | 2026-09-08 (fix-up) | F-TS and F-PY reported and merged (§4.6): the integrated tree builds and every TS suite is green; harness 34 → 6 reds (the six are a pre-existing task-355 patch-marker defect → own ticket). G-1 (realtime `resolveAgent`) dispatched as lane F-RT before the local-test gate. |

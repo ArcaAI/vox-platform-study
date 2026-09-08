@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `In Progress` — **all four phases are delivered and merged** on `dev-2.2` (Phase 1 2026-09-07; Phases 2 + 4 as **lane R** of the TASK-930 wave plus fix-up lanes F-TS / F-PY, 2026-09-08; Phase 3 superseded by the seed rebuild, lane S). Held open for exactly ONE unrun gate — Phase 4 declares `pnpm test:e2e` and the API e2e suite has not run on the integrated tree (§6). Lane contract: [`../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md`](../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md) §7. |
+| **Status** | `Completed` — all four phases delivered and merged on `dev-2.2`; the Phase 4 gate `pnpm test:e2e` ran green on 2026-09-08 (1 180 passed / 50 skipped, exit 0) after lane F-E2E retargeted the eleven vocabulary-era specs (TASK-930 README §4.10) |
 | **Type** | `refactor` + `feature` (studio UX) / `infrastructure` (registry + seed retirement) |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-07 |
@@ -624,6 +624,7 @@ definition of done.
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (close) | Phase 4's declared `pnpm test:e2e` gate ran green on the integrated tree (1 180 passed, exit 0). Status → `Completed`. FU-6 (the lost D-1 compensating control #4) is recorded in TASK-930 §4.10 for an owner ruling. |
 | 2026-09-08 (close) | §6 records Phases 2–4: the action catalogue as a first-class table (17 kept / 17 dropped), the vocabulary deleted TS + Python in lockstep (registry 72 → 11, `NodeSpec` 64 → 11, activities 65 → 29), Phase 3 superseded by the seed rebuild, seven source defects fixed rather than tests edited (P-1..P-7), the agentic-loop removal and the drain deploy precondition. Two follow-ups the retirement created are named (G-2 unreachable realtime capabilities, G-3 the inert prompt tier) and so is the pre-existing task-355 patch-marker defect behind the six harness reds. Status kept `In Progress` for one reason only: Phase 4's declared `pnpm test:e2e` has not been run on the integrated tree. Rule amendments landed with it (05 promotion gate, 06 harness vocabulary + drain precondition, and the register's `21/23/24` row made renderable). |
 | 2026-09-07 | Created. Root-caused the four interaction failures to read-only mode on 11/12 seeded PUBLISHED definitions (verified live); found edge deletion unwired in the Studio; found `ACTION_CATALOGUE` derived from the deprecated registry entries, which is why they still exist. Plan drafted in four dependency-ordered phases. |
 | 2026-09-08 (later) | Lane R worktree `../hope-v2-t893-r` (branch `task-893-retire`, base `7793d09ca`): first run killed by the account spend limit before committing; relaunched. Amendment: R exports `outputSchemaResponseFormat` from `packages/workflow-contract/src/index.ts` (TASK-930 §4.2 A-4). Full lane log: TASK-930 README §4.1. |
