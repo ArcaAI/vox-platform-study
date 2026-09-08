@@ -58,15 +58,34 @@ const CAPABILITY_BY_TASK: Record<string, string> = {
 };
 
 /** Every REALTIME `core.agent` of the seeded graph, with the capability its agent's task implies. */
-const REALTIME_AGENT_NODES: Array<{ nodeId: string; slug: string; task: string; capability: string }> = (CONSULTATION_GRAPH.stages as any[])
+const ALL_REALTIME_AGENT_NODES: Array<{ nodeId: string; slug: string; task: string; capability: string; cadence: string | undefined }> = (
+  CONSULTATION_GRAPH.stages as any[]
+)
   .flatMap((stage) => stage.nodes as any[])
   .filter((node) => node.type === 'core.agent' && node.config?.execution?.lane === 'realtime')
   .map((node) => {
     const slug = node.config.agentRef.slug as string;
     const task = TASK_BY_SLUG.get(slug);
     if (!task) throw new Error(`seed drift: the graph references agent '${slug}', which the seeded catalogue does not declare`);
-    return { nodeId: node.nodeId as string, slug, task, capability: CAPABILITY_BY_TASK[task]! };
+    return {
+      nodeId: node.nodeId as string,
+      slug,
+      task,
+      capability: CAPABILITY_BY_TASK[task]!,
+      cadence: node.config?.execution?.cadence as string | undefined,
+    };
   });
+
+/**
+ * TASK-932 D-9 — the nodes a FLUSH walks, which is not every realtime node any more.
+ *
+ * `onStart` is the warm-start cadence: `buildRealtimeLane` partitions those nodes OUT of
+ * `lane.stages` and into `lane.onStart`, because a node left in the flush lane runs once per
+ * turn. This suite's subject is the per-flush dispatch, so its expectations are derived from the
+ * per-turn half; {@link ON_START_NODES} is asserted separately below.
+ */
+const REALTIME_AGENT_NODES = ALL_REALTIME_AGENT_NODES.filter((node) => node.cadence !== 'onStart');
+const ON_START_NODES = ALL_REALTIME_AGENT_NODES.filter((node) => node.cadence === 'onStart');
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 const CID = 'consultation-930-g1';
@@ -216,6 +235,27 @@ describe('TASK-930 G-1 — the seeded consultation graph dispatches on the AGENT
     expect(new Set(REALTIME_AGENT_NODES.map((node) => node.capability)).size).toBeGreaterThan(1);
   });
 
+  it('TASK-932 — the seed also declares a WARM START, and it is not one of the per-flush nodes', () => {
+    // If this list is ever empty the two assertions below stop meaning anything, so it is checked
+    // rather than assumed: the point of the partition is that `n_presummary` EXISTS and is
+    // still absent from the flush lane.
+    expect(ON_START_NODES.map((node) => node.nodeId)).toEqual(['n_presummary']);
+    expect(ON_START_NODES[0]!.slug).toBe('case-notes-pre-summary');
+    expect(REALTIME_AGENT_NODES.map((node) => node.nodeId)).not.toContain('n_presummary');
+  });
+
+  it('TASK-932 — the per-flush capability read-out describes the FLUSH lane, warm start excluded', async () => {
+    const { service } = buildService();
+
+    const caps = await service.getRealtimeCapabilities(TENANT);
+
+    // `getRealtimeCapabilities` reports what a flush does. The warm start runs once, at session
+    // open, so listing it here would tell an operator the lane makes an extra generation call on
+    // every turn — which is exactly the thing the partition prevents.
+    expect(caps.nodes.map((node) => node.nodeId).sort()).toEqual(REALTIME_AGENT_NODES.map((node) => node.nodeId).sort());
+    expect(caps.nodes.map((node) => node.nodeId)).not.toContain('n_presummary');
+  });
+
   it('the read-out reports each node’s capability as its seeded agent’s task implies', async () => {
     const { service, agentResolver } = buildService();
 
@@ -236,6 +276,10 @@ describe('TASK-930 G-1 — the seeded consultation graph dispatches on the AGENT
 
     // Before this ticket: 3 `/generate` calls (one per `core.agent`) and 0 `/classify/tokens` —
     // the ASR and NER nodes each summarised the transcript instead of doing their own work.
+    //
+    // TASK-932: still ONE generation per flush with the warm start on the graph. A warm-start node
+    // left in the flush lane would make this 2 — a second LLM call against the same 20 s live
+    // budget, every turn.
     expect(calls).toEqual({ classify: 1, generate: 1 });
   });
 

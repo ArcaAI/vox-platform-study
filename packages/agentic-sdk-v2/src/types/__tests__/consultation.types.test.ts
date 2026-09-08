@@ -300,3 +300,49 @@ describe('isRevisit()', () => {
     expect(isRevisit(consultation)).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK-932 — the summary language on `session.open()`
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('TASK-932 — OpenSessionInput.language', () => {
+  it('is accepted alongside every other open field and is forwarded verbatim', () => {
+    // The whole input object is POSTed as the body (`openSessionOperation`), so "the type accepts
+    // it" IS the forwarding contract — there is no per-field mapping to get wrong.
+    const input: OpenSessionInput = {
+      patientId: 'p-1',
+      appointmentDate: '2026-09-09',
+      departmentId: 'dept-gen',
+      workflowDefinitionSlug: 'arcaai-gen-consultation',
+      language: 'ml',
+      metadata: { source: 'playground' },
+    };
+    expect(input.language).toBe('ml');
+  });
+
+  it('is OPTIONAL — omitting it is undeclared, which is not English', () => {
+    const input: OpenSessionInput = { patientId: 'p-1' };
+    expect(input.language).toBeUndefined();
+  });
+
+  it('is a different axis from the STT language mode: neither type mentions the other', () => {
+    // A regional tag is a legal value; the STT channel is reached through
+    // `audio.start({ languageMode })` and never through this field.
+    const input: OpenSessionInput = { patientId: 'p-1', language: 'en-IN' };
+    expect(input.language).toBe('en-IN');
+    expect(Object.keys(input)).not.toContain('languageMode');
+  });
+
+  it('is readable back off the consultation the open returns', () => {
+    const consultation: Consultation = {
+      id: 'c-1',
+      patientId: 'p-1',
+      doctorId: 'd-1',
+      appointmentDate: '2026-09-09',
+      language: 'ml',
+      createdAt: '2026-09-09T00:00:00.000Z',
+      updatedAt: '2026-09-09T00:00:00.000Z',
+    };
+    expect(consultation.language).toBe('ml');
+  });
+});
