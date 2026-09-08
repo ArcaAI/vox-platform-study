@@ -19,6 +19,10 @@ from harness.temporal.interpreter.activities import interpreter_noop, interprete
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.models import TrajectoryContext
 
+#: TASK-893 — this suite drives the interpreter through the retired `noop`/`passthrough` seed
+#: types, which now exist only as test scaffolding (see `../conftest.py`).
+pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
+
 
 @pytest.fixture
 def env() -> ActivityEnvironment:

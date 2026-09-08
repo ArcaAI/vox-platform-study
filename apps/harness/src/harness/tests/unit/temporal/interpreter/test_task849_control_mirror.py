@@ -37,6 +37,10 @@ from harness.temporal.interpreter.run_events import (
 )
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 
+#: TASK-893 — this suite drives the interpreter through the retired `noop`/`passthrough` seed
+#: types, which now exist only as test scaffolding (see `../conftest.py`).
+pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
+
 _BUCKET = "harness-claim-check"
 TENANT = "22222222-2222-2222-2222-222222222222"
 
