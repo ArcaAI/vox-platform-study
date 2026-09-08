@@ -39,15 +39,31 @@ const configWithTemplate = (templateSlug?: string) => ({
   slug: WORKFLOW_SLUG,
   versionNumber: 3,
   stages: [
-    { stageIndex: 0, nodes: [{ nodeId: 'capture', type: 'consultation.captureBinding', config: {}, inputs: [], onError: 'fail' }] },
+    // TASK-893 — every realtime node is a `core.agent` declaring its own lane on the instance.
+    {
+      stageIndex: 0,
+      nodes: [
+        {
+          nodeId: 'capture',
+          type: 'core.agent',
+          config: { agentRef: { task: 'SPEECH_TO_TEXT' }, execution: { lane: 'realtime', cadence: 'perTurn' } },
+          inputs: [],
+          onError: 'fail',
+        },
+      ],
+    },
     {
       stageIndex: 1,
       nodes: [
         {
           nodeId: 'summarize',
-          type: 'consultation.realtimeSummary',
-          config: templateSlug ? { documentTemplateSlug: templateSlug } : {},
-          inputs: [{ fromNodeId: 'capture', fromPort: 'out', toPort: 'in' }],
+          type: 'core.agent',
+          config: {
+            agentRef: { task: 'TEXT_GENERATION' },
+            execution: { lane: 'realtime', cadence: 'perTurn' },
+            ...(templateSlug ? { documentTemplateSlug: templateSlug } : {}),
+          },
+          inputs: [{ fromNodeId: 'capture', fromPort: 'transcript', toPort: 'in' }],
           onError: 'degrade',
         },
       ],
@@ -164,8 +180,8 @@ describe('TASK-891 D7 — realtimeDocumentTemplateSlug', () => {
           nodes: [
             {
               nodeId: 'summarize',
-              type: 'consultation.realtimeSummary',
-              config: { documentTemplateSlug: TEMPLATE_SLUG },
+              type: 'core.agent',
+              config: { agentRef: { task: 'TEXT_GENERATION' }, execution: { lane: 'realtime' }, documentTemplateSlug: TEMPLATE_SLUG },
               timeoutMs: 1000,
               maxAttempts: 1,
               inputs: [],
@@ -192,8 +208,8 @@ describe('TASK-891 D7 — realtimeDocumentTemplateSlug', () => {
           nodes: [
             {
               nodeId: 'summarize',
-              type: 'consultation.realtimeSummary',
-              config: { documentTemplateSlug: '   ' },
+              type: 'core.agent',
+              config: { agentRef: { task: 'TEXT_GENERATION' }, execution: { lane: 'realtime' }, documentTemplateSlug: '   ' },
               timeoutMs: 1000,
               maxAttempts: 1,
               inputs: [],

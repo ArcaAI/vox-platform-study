@@ -125,7 +125,10 @@ describe('TASK-891 B4 — the admin stats snapshot names the node that degraded'
     expect(stats!.staleDropCount).toBe(0);
 
     const degrades = stats!.nodeDegrades ?? [];
-    const summary = degrades.find((d) => d.type === 'consultation.realtimeSummary');
+    // TASK-893 — every realtime node is a `core.agent`, so the node ID is what names it. On the
+    // platform lane those ids are stable by contract (`PLATFORM_LANE_NODE_IDS`), which is exactly
+    // why trajectories and this admin surface may cite them.
+    const summary = degrades.find((d) => d.nodeId === 'summarize');
     expect(summary, 'the failing node is not named on the admin surface — diagnosing it still needs pod logs').toBeDefined();
     expect(summary!.reason).toContain(TEXT_ERROR);
     expect(summary!.nodeId).toBeTruthy();

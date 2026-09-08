@@ -50,23 +50,24 @@ const SEED_GENERATED = path.resolve(HERE, '../../../../../../database/src/prisma
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const seed: any = await import(/* @vite-ignore */ SEED_GENERATED);
-const GEN_COMPILED_CONFIG = seed.GEN_COMPILED_CONFIG;
-const RHEUM_COMPILED_CONFIG = seed.RHEUM_COMPILED_CONFIG;
+// TASK-930 §8.5 — one slug-keyed blob map replaced the per-workflow `*_COMPILED_CONFIG` exports.
+const GEN_COMPILED_CONFIG = seed.ARCAAI_GENERATED['ARCAAI:arcaai-gen-consultation'].compiledConfig;
+const RHEUM_COMPILED_CONFIG = seed.ARCAAI_GENERATED['ARCAAI:arcaai-rheum-consultation'].compiledConfig;
 
 const ARCAAI = '50000000-0000-0000-0000-000000000001';
 const OTHER_TENANT = 'tenant-not-arcaai-858';
 const CID = 'consultation-858-001';
 
 /** The tenant DEFAULT — what the cascade resolves when nothing else speaks. */
-const ASSIGNED_SLUG = 'arcaai-consultation-soap';
+const ASSIGNED_SLUG = 'arcaai-gen-consultation';
 /** A DIFFERENT published consultation graph — what a clinician selects instead. */
-const SELECTED_SLUG = 'arcaai-rheum-consultation-soap';
+const SELECTED_SLUG = 'arcaai-rheum-consultation';
 /** Published, visible to this tenant, but not a consultation-governing graph. */
 const STT_SLUG = 'arcaai-transcription-agent';
 
 const PUBLISHED_DEFINITIONS: Record<string, { slug: string; paletteKey: string; compiledConfig: unknown }> = {
-  [ASSIGNED_SLUG]: { slug: ASSIGNED_SLUG, paletteKey: 'consultation', compiledConfig: GEN_COMPILED_CONFIG },
-  [SELECTED_SLUG]: { slug: SELECTED_SLUG, paletteKey: 'consultation', compiledConfig: RHEUM_COMPILED_CONFIG },
+  [ASSIGNED_SLUG]: { slug: ASSIGNED_SLUG, paletteKey: 'core', compiledConfig: GEN_COMPILED_CONFIG },
+  [SELECTED_SLUG]: { slug: SELECTED_SLUG, paletteKey: 'core', compiledConfig: RHEUM_COMPILED_CONFIG },
   [STT_SLUG]: { slug: STT_SLUG, paletteKey: 'stt', compiledConfig: { slug: STT_SLUG, versionNumber: 1, stages: [] } },
 };
 
@@ -75,7 +76,7 @@ function assignmentServiceDouble() {
   return {
     resolve: vi.fn(
       async (tenantId: string, paletteKey: string): Promise<ResolvedWorkflowAssignment> =>
-        tenantId === ARCAAI && paletteKey === 'consultation'
+        tenantId === ARCAAI && paletteKey === 'core'
           ? { workflowDefinitionSlug: ASSIGNED_SLUG, source: 'tenant' }
           : { workflowDefinitionSlug: null, source: 'platform-default' },
     ),
@@ -241,10 +242,10 @@ describe(' G1 — the consultation’s own selection resolves the realtime lane'
 
     const caps = await service.getRealtimeCapabilities(ARCAAI, null, CID);
 
-    expect(caps.nodes.length).toBeGreaterThan(0);
-    expect(caps.nodes.some((n) => n.type === 'consultation.captureBinding')).toBe(true);
+    // TASK-893 — the selected graph's realtime nodes are `core.agent`s, told apart by node id.
+    expect(caps.nodes.map((n) => n.nodeId).sort()).toEqual(['n_asr', 'n_ner', 'n_summary_new', 'n_summary_revisit']);
     // Never a durable node: two writers on one clinical document is the hazard the lane filter exists for.
-    expect(caps.nodes.some((n) => n.type === 'consultation.persistDraft')).toBe(false);
+    expect(caps.nodes.some((n) => n.nodeId === 'n_finalize')).toBe(false);
   });
 });
 
@@ -260,7 +261,7 @@ describe(' G1 — an unresolvable selection degrades to the cascade, never to no
 
     expect(caps.assignmentSource).toBe('tenant');
     expect(caps.definitionSlug).toBe(ASSIGNED_SLUG);
-    expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'consultation', null);
+    expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'core', null);
   });
 
   it('a FOREIGN tenant’s consultation row is not read across the boundary', async () => {
@@ -293,7 +294,7 @@ describe(' G1 — an unresolvable selection degrades to the cascade, never to no
 
     // The substrate gate fails open on an unreadable row, and so does this: a store
     // outage must cost the clinician the SELECTED graph, never the documentation.
-    expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'consultation', null);
+    expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'core', null);
     expect(definitions.findPublishedBySlug).toHaveBeenCalledWith(ARCAAI, ASSIGNED_SLUG);
     await service.stop(CID, { persistSnapshot: false });
   });
