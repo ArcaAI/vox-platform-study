@@ -157,7 +157,11 @@ const CANONICAL_NODES: ReadonlyArray<{ key: string; type: string; config: Record
     type: 'core.action',
     config: { actionKey: 'consultation.phiHop', action: { mode: 'pseudonymize' }, onError: DEGRADE },
   },
-  { key: 'consultation.persistDraft', type: 'core.action', config: { actionKey: 'consultation.persistDraft', action: { occ: true }, onError: DEGRADE } },
+  {
+    key: 'consultation.persistDraft',
+    type: 'core.action',
+    config: { actionKey: 'consultation.persistDraft', action: { occ: true }, onError: DEGRADE },
+  },
   { key: 'core.humanReview', type: 'core.humanReview', config: { reviewType: 'clinical_finalization', assignRole: 'DOCTOR', timeoutSeconds: 3600 } },
   { key: 'core.output', type: 'core.output', config: { protocols: ['http'] } },
 ];
@@ -177,7 +181,6 @@ function chain(
 
 /** Addresses a fixture node by its `key` — the action key where it has one, else the node type. */
 const nodeIdOf = (key: string): string => `n${CANONICAL_NODES.findIndex((spec) => spec.key === key)}`;
-
 
 // ── fixtures ───────────────────────────────────────────────────────────────
 
