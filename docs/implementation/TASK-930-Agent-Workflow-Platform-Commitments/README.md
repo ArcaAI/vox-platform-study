@@ -108,7 +108,7 @@ All lanes branch from `dev-2.2 @ 7793d09ca` (the plan commit). Bootstrapped 2026
 | R | TASK-893 | `../hope-v2-t893-r` · `task-893-retire` | fable → **opus** | wave 3's fable run reached 7 commits (Phase 2 TS+Py, realtime rekey, applications retarget, Studio dropdown, registry deletion) then hit the fable session limit (429, resets 21:20 Saigon) with the legacy-test deletion uncommitted; **resumed 17:25 on opus** from its own `.lane-report.md`. Before that: waves 1+2 both died before writing anything — **zero commits, clean tree**. Wave 3 starts the lane from the base with INTERFACES §7 as the design of record |
 | N | TASK-930 | `../hope-v2-t930-n` · `task-930-ner-plane` | opus | **DONE-WITH-GAPS @ `9128d7507`** (§4.3). Was: `66241bb57` (enum + migration + domains enum) and `96a4af2d1` (NER contract in `agent-schemas.ts` + tests) landed; `packages/types/src/agent.ts` (A-5 widening) left UNCOMMITTED. Wave 3 **resumes**: commit that file first, then §2.4 invocation, §3 scopes, §4 ticket, §5 outputSchema, §2.5 console |
 | P | TASK-930 | `../hope-v2-t930-p` · `task-930-promotion` | opus | **DONE @ `4a634f8c8`** (§4.3). Was: zero commits, but wave 2 left ~1 000 uncommitted lines under `packages/applications/src/services/agentPromotion/` (service + interface + DTO + test). Wave 3 **commits that first**, then judges it against §6 and adds the controller/module, §6.2 409 check, §6.3 reference set, §6.4 console |
-| S | TASK-930 | `../hope-v2-t930-s` · `task-930-seeds` | fable → **opus** | wave 3's fable run reached 8 commits (§8.1 deletion, §8.2 schema, §8.3 agents, §8.4/8.5/8.6 workflows + generator + regen script) then hit the same 429 with the §6.3 copier RED test uncommitted; **resumed 17:25 on opus**, briefed with P's kind set and N's five scopes. Before that: `eeb232436` carries the §2.1 enum line only (no migration, by contract). Both waves died during reading — the seed rebuild itself is unstarted. Wave 3 works against a throwaway `hope_seed_930` DB |
+| S | TASK-930 | `../hope-v2-t930-s` · `task-930-seeds` | fable → **opus** | **DONE @ `5eb24b9a1`** (§4.3). wave 3's fable run reached 8 commits (§8.1 deletion, §8.2 schema, §8.3 agents, §8.4/8.5/8.6 workflows + generator + regen script) then hit the same 429 with the §6.3 copier RED test uncommitted; **resumed 17:25 on opus**, briefed with P's kind set and N's five scopes. Before that: `eeb232436` carries the §2.1 enum line only (no migration, by contract). Both waves died during reading — the seed rebuild itself is unstarted. Wave 3 works against a throwaway `hope_seed_930` DB |
 | K | TASK-931 | `../hope-v2-t931-k` · `task-931-sdk` | opus | **DONE @ `0bf31a4e6`** (§4.3). Was: `cf62eff3d` (`SDK_VERSION` from `package.json`) landed; changesets + `.gitlab/ci/publish.yml` + CHANGELOG left UNCOMMITTED. Wave 3 **resumes** against the A-1 ticket shape |
 | A | TASK-931 | ALaaSv3.0 working tree | — | held back until the 3.1.0 publish; its edits do not gate the lanes |
 
@@ -205,6 +205,32 @@ Gates pasted: `sdk:test` 3 704 / 244 files, `sdk-node:test` 452 / 30 files, code
 `check:exports` clean, all builds/lints/typechecks 0. `apps/quick-compat-app` typecheck cannot run
 until 3.1.0 is on the registry (it installs the PUBLISHED package) — re-run after publish.
 
+**Lane S — DONE.** `task-930-seeds` @ `5eb24b9a1`, 18 commits, tree clean, 48 files all in-row,
+merges clean; its only sibling overlap is the intentional identical enum hunk shared with N. It
+corrected its own handoff: the "RED, now the two copiers" note was stale — the copiers had landed
+before the kill and the §6.3 suite was 5/5 green on first run.
+
+Delivered: the legacy seed set deleted (23 / 24 / 07e / 07g and their regen scripts); ONE trigger
+context schema `consultation_note_context` (`isDefault: true`, 07e folded in — `DAY1_CONTEXT_SCHEMA_SLUG`
+has no runtime reader); Global and SYSTEM each 5 agents (1 STT, 2 TEXT_GEN, 1 TTS, 1 NER) + 2
+workflows with SYSTEM carrying `sourceTenantId = Global`; ArcaAI generated from the department ×
+visit-type table — 27 agents, 13 workflows, 1 TENANT + 11 DEPARTMENT assignments; the §6.3 seed copier
+cloning `workflowDefinitions` + TENANT-scope `workflowAssignments` with a parity test proving the
+re-stamped clone equals a real `compile()`; the five §3 scopes in `94-service-account.ts`; a fix to a
+real break in `09-consultation.ts` (it still named the deleted `example-transcription`).
+
+Gates pasted: database **80 files / 1 651 tests**, typecheck clean, `seed:regen:workflows` twice →
+`git status` clean, **two real seed runs** on the throwaway `hope_seed_930` (run 2 every counter
+`+0` → idempotent, DB then dropped), `audit-publish-findings` clean over all 17 persisted graphs.
+
+Report answers: no document-template binding kind exists on `Agent.instruction` (only
+`{value}` | `{path}`), so the General Medicine heading lists are bound as constants; the ArcaAI v3
+templates declare no variables, so §8.5's "variables populated" is pinned as the EMPTY set.
+
+**Binding consequence for the merge order:** the `.generated.ts` blobs are checksum-bound to THIS
+tree's node registry. Lane R's retirement changes that checksum, so after R merges the orchestrator
+must re-run `seed:regen:workflows` — S's new parity test goes red until then, by design.
+
 ### 4.4 Orchestrator punch list — the unowned files, resolved (wave 3)
 
 Lane S reported four cross-lane needs that share one root cause: **the §1 ownership table has no
@@ -215,9 +241,10 @@ that has not landed yet.
 
 | Unowned file | What must change | When |
 |---|---|---|
-| `packages/applications/src/services/consultation/prompt/prompt-assembly.service.ts:770` | `LEGACY_CONTEXT_SCHEMA_SLUG` repointed from `consultation_legacy_v1` to `consultation_note_context`. The resolver is FAIL-CLOSED (`LEGACY_CONTEXT_SCHEMA_MISSING`), so the moment S's §8.1 deletion lands without this, every prompt assembly throws. **Highest-risk item in the wave.** | with the S merge, in the same commit |
+| `packages/applications/src/services/consultation-context-schema/context-schema-definition.ts:56` (the constant; consumed at `prompt-assembly.service.ts:770/786`) | `LEGACY_CONTEXT_SCHEMA_SLUG` repointed from `consultation_legacy_v1` to `consultation_note_context`. The resolver is FAIL-CLOSED (`LEGACY_CONTEXT_SCHEMA_MISSING`), so the moment S's §8.1 deletion lands without this, every prompt assembly throws. **Highest-risk item in the wave.** | with the S merge, in the same commit |
 | `tests/contracts/tenant-reference-set-parity.contract.test.ts:36` | `SEED_DECLARED_EXCEPTIONS` drops `workflowDefinitions` — §6.3 makes the seed copier and the runtime service copy the same kind set, which is exactly what this contract exists to pin | with the S merge (P's §6.3 half is already on `task-930-promotion`) |
-| `live-documentation.*.task858` / `…task852`, `day1-loop-defaults.task686` | retarget imports off deleted seeds 23 / 24 / 07e | with the S merge |
+| `live-documentation.consultation-selected-lane.task858:49`, `live-documentation.realtime-capabilities.task852:43`, `live-documentation.governed-graph-mode.task858:385-386`, `consultation/loop/__tests__/day1-loop-defaults.task686` | retarget path-imports off deleted seeds 23 / 24 / 07e onto `28-workflow-library.generated.ts`, `29-arcaai-agents-and-workflows.generated.ts`, `07e-consultation-note-context-schema.ts` | with the S merge |
+| `packages/database` `.generated.ts` seed blobs | `pnpm --filter @arcaai/database seed:regen:workflows` after R lands (registry checksum changes); S's parity test is red until then | after the R merge, before S's gates |
 | `packages/applications/src/services/consultation-context-schema/context-schema-definition.ts` | check only — S folds `DAY1_CONTEXT_SCHEMA_SLUG` into the new schema because it has **no runtime reader** (`LoopConfigService` reads `isDefault`). Verify that still holds after R's retirement | at merge |
 | `packages/applications/src/services/consultation/__tests__/nlp-egress-redacted.grep-gate.test.ts` | **Owner ruling (orchestrator, 2026-09-08): allow-list entry for `services/agent/agent-invocation.service.ts`**, reason as lane N drafted it — the caller submits this text itself through a scoped public API and receives character OFFSETS into it; `pseudonymize` is not length-preserving, so redacting first would return spans that index a document the caller never sees, i.e. highlight the wrong words in a clinical note. This is the gate's own documented review moment; the unredacted hop is caller-owned text, unlike the transcript/DNA hops where HOPE moves a patient's text the caller never sent. **Flagged to the owner; overrule before the N merge if the posture is wrong.** | with the N merge |
 | `apps/api/tests/e2e/task-776-credential-classes.spec.ts:183-188` | uses `GET /workflows` as the "no `@RequiredSvcScopes` → 403" example; it now HAS one and returns 200 once the seeded account holds `svc:workflow:definition:read` (which lane S is adding). Repoint at a still-undeclared business route (a `/consultations/:id/workflows*` route) or drop the case | with the S merge, before e2e |
@@ -275,6 +302,7 @@ _Pending — filled at close with per-lane evidence, merge commits, gates and th
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (wave 3, S) | Lane S reported DONE on its opus resume and was verified; the legacy-slug punch-list row corrected to the constant's real home; the post-R `seed:regen:workflows` dependency recorded. Only R outstanding. |
 | 2026-09-08 (wave 3, later) | P, N, K reported (§4.3) and were verified against their trees — all merge clean. The two fable lanes (R, S) hit that model's session limit mid-step with substantial committed progress; both resumed on opus. Owner ruling recorded on the PHI egress grep-gate (§4.4). Test infra brought up. |
 | 2026-09-08 (wave 3) | Prior session's artifacts reviewed; measured per-lane state recorded in §4.1 (R and S effectively unstarted, N and K resuming from one commit each, P holding ~1 000 uncommitted lines). Five lanes relaunched from the same worktrees under a new account budget, tiers R/S `fable` · N/P/K `opus`, with a `RESUME.md` commit-discipline addendum. Lane A still held to after the publish. |
 | 2026-09-08 (later) | Six lanes spawned (R N P S K + A); all six killed by the account spend limit (HTTP 429, limit resets Sep 11) — N and K after one commit each, the rest before committing; all six relaunched/resumed. Lane log §4.1, contract amendments A-1..A-6 §4.2 (applied to `INTERFACES.md`). |
