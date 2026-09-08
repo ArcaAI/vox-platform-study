@@ -21,11 +21,12 @@ export type StepOrderEntry = { step: number } | { marker: 'cycle' | 'unreachable
 
 /**
  * Node types that START a graph. `core.trigger` is the `core` vocabulary's entry boundary
- * (classes `['boundary', 'mandatory', 'entry']`); `core.start` is its deprecated predecessor and
- * is still the entry of every seeded, published definition until the Phase-3 migration lands.
- * Naming both is what keeps the badges meaningful on the graphs that exist TODAY.
+ * (classes `['boundary', 'mandatory', 'entry']`). Its deprecated predecessor `core.start` was
+ * named here too, because it was the entry of every seeded definition until the migration
+ * landed; TASK-893 Phase 4 retired it and re-seeded on `core`, so naming it now would only
+ * declare an entry the registry cannot produce.
  */
-const ENTRY_NODE_TYPES: ReadonlySet<string> = new Set(['core.trigger', 'core.start']);
+const ENTRY_NODE_TYPES: ReadonlySet<string> = new Set(['core.trigger']);
 
 interface StepOrderNode {
   id: string;
