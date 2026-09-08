@@ -11,6 +11,7 @@ import {
   ContextItemVersionRepository,
   ConsultationRepository,
   CorePrisma,
+  DnaWritingStyleReportRepository,
   CoreUnitOfWorkService,
   SummaryMetaRepository,
   NamedEntityRepository,
@@ -317,6 +318,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // TASK-932 D-10 — the clinician's OWN writing-style report, so finalize applies it without
+    // the caller having to know its id. Optional + trailing for the same two reasons as every
+    // dependency above it: the 17 positional `new SummaryService(...)` fixtures keep their arity,
+    // and DNA style is enrichment — a deployment without the repository finalizes exactly as it
+    // does today, with no style.
+    @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1916,13 +1923,51 @@ export class SummaryService extends BaseService implements ISummaryService {
     doctorId: string | null | undefined,
     dnaStyleId?: string,
   ): Promise<string | undefined> {
-    if (!dnaStyleId || !this.configResolver) return dnaStyleId;
+    // TASK-932 D-10 — the CALLER no longer has to name the style.
+    //
+    // TASK-891 OD-5 deleted the writing-style dropdown ("the workflow combines agents including
+    // … DNA writing style redaction … I dont think we need any dropdown"), which left
+    // `request.dnaStyleId` permanently undefined from the console — and this method returned
+    // early on exactly that, so `dna_style_text` was never injected and every finalized note came
+    // back in the model's own voice. The report the clinician was told to author first was read
+    // by nothing.
+    //
+    // Precedence is unchanged where it existed: an EXPLICIT id still wins, and is still gated. The
+    // new tier is the doctor's own latest report, resolved only when no id was supplied.
+    const explicit = dnaStyleId?.trim() || undefined;
+    if (!this.configResolver) {
+      // Legacy composition (no ConfigResolver): pass the explicit id through UNGATED, exactly as
+      // before, and auto-resolve NOTHING. Applying a style whose effective on/off switch cannot
+      // be read would be a new decision made in the dark — and the doctor's own opt-out lives
+      // behind that switch.
+      return explicit;
+    }
+
+    const candidate = explicit ?? (await this.resolveDoctorDnaStyleId(doctorId));
+    if (!candidate) return undefined;
+
     const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({
       tenantId,
       departmentId: departmentId ?? null,
       doctorId: doctorId ?? null,
     });
-    return effective ? dnaStyleId : undefined;
+    return effective ? candidate : undefined;
+  }
+
+  /**
+   * The consultation doctor's LATEST DNA writing-style report id, or `undefined`.
+   *
+   * `findLatestForDoctor` already filters `isLatest` + `ENABLED` and swallows its own errors, so
+   * "the doctor has no report" and "the lookup failed" both arrive here as `null` — which is the
+   * right conflation for this call site, because both mean the same thing to a finalize: no
+   * style. The tenant boundary is not re-asserted here: `consultation.doctorId` was read off a
+   * consultation this method's caller already proved is in the caller's tenant
+   * (`assertParentInScope`), and the report is tenant-scoped by the Prisma extension.
+   */
+  private async resolveDoctorDnaStyleId(doctorId: string | null | undefined): Promise<string | undefined> {
+    if (!doctorId || !this.dnaReportRepository) return undefined;
+    const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
+    return report?.id ?? undefined;
   }
 
   /**
