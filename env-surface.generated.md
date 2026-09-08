@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 115 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 21 |
-| Python declared fields | 307 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 355 |
-| `turbo.json#globalEnv` entries | 484 |
+| Python declared fields | 308 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 356 |
+| `turbo.json#globalEnv` entries | 485 |
 
 ## Variables — the TypeScript platform surface
 
@@ -388,6 +388,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `NLP_TORCH_NUM_THREADS` | `apps/nlp` | no | no | `0` | commented | — |
 | `NLP_TRACES_ENABLED` | `apps/nlp` | no | no | `true` | commented | `OTEL_TRACES_ENABLED` |
 | `NLP_URL` | `apps/guardrail` | no | no | `http://localhost:8864` | commented | `GUARDRAIL_V2_NLP_URL` |
+| `NLP_WARM_MODELS` | `apps/nlp` | no | no | `` | commented | — |
 | `NLP_WORKERS` | `apps/nlp` | no | no | `1` | commented | `WORKERS` |
 | `NODE_ENV` | `apps/text` | no | no | `development` | commented | — |
 | `ONNX_NUM_THREADS__MOVED_TO_CONTROL_PLANE` | `apps/stt` | no | no | `0` | commented | — |
