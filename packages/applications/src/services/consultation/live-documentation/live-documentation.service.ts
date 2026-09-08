@@ -62,6 +62,7 @@ import {
   PromptVariableUnresolvedError,
   renderTemplate,
   resolveGuardrailDecision,
+  type ExpressionValue,
 } from '@arcaai/workflow-contract';
 import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
@@ -98,6 +99,11 @@ import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-f
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
 import { readSummaryLanguage, summaryLanguageName } from '../consultation/summary-language';
+// TASK-932 — the visit type the realtime lane's `core.condition` guards branch on. The SHARED
+// instance rather than an injected one: since TASK-882 `VisitTypeService` holds no state, takes
+// no dependency and derives the answer from the consultation's own parent link, so the facade
+// `ConsultationWorkflowDispatchService` falls back to is the same object either way.
+import { DEFAULT_VISIT_TYPE_SERVICE } from '../visit-type/visit-type.service';
 // the clinical-document SHAPE catalog. The live loop no longer knows
 // what a SOAP note is: it resolves a COMPILED template once per session and
 // reads its strict `responseFormat`, its section list and its prose instruction
@@ -564,6 +570,21 @@ interface LiveSession {
    * produced must not change language halfway through because a row was edited.
    */
   summaryLanguage?: string | null;
+  /**
+   * TASK-932 — the consultation's VISIT TYPE key (`new-visit` / `revisit`), frozen at `start()`.
+   *
+   * It is what the seeded consultation graph's `core.condition` branches on
+   * (`trigger.context.visit_type`), and it is derived exactly as
+   * `ConsultationWorkflowDispatchService.visitTypeSelectorTags` derives it — from the
+   * consultation's own parent link — so the workflow that was ASSIGNED and the branch that is
+   * TAKEN cannot disagree about which visit this is.
+   *
+   * `undefined` = the gateway could not determine one (no consultation repository, or the read
+   * failed). The guard expressions then error and the condition takes `else`, which is the
+   * seeded graph's own new-visit branch — observable in `RealtimeRunResult.branchEvaluations`
+   * rather than silently indistinguishable from a real `new-visit`.
+   */
+  visitType?: string;
   /**
    * TASK-932 R-16a — the live lane's LAST SUCCESSFUL output per node id, accumulated across
    * flushes and handed to the durable interpreter at `stop()`.
@@ -1510,6 +1531,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // TASK-932 §3.7 — freeze the declared summary language off the SAME row read, so the
       // operating frame costs no extra I/O on the start path.
       session.summaryLanguage = readSummaryLanguage(consultation?.metadata);
+      // ...and the visit type off the same row, for the same reason. `forConsultation` is pure.
+      session.visitType = DEFAULT_VISIT_TYPE_SERVICE.forConsultation(session.tenantId, {
+        isFollowUp: Boolean(consultation?.parentConsultationId),
+      }).key;
     } catch (error) {
       this.logger.warn({
         message: 'Governing-engine marker could not be read — this engine keeps the consultation so it is still documented',
@@ -2894,6 +2919,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         capabilities,
         isStale: ctx.isStale,
         signal: ctx.signal,
+        runContext: this.realtimeRunContext(session),
       });
     } catch (error) {
       // A BINDING error is a contract violation in the tenant's graph, not a bad
@@ -2912,6 +2938,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     if (ctx.isStale()) return 'stale';
 
+    // TASK-932 — a guard expression that could NOT be evaluated took `else`. Loud, because the
+    // note a fallen-through condition produces is indistinguishable from the note the intended
+    // branch would have produced: only this line says which one the clinician is reading.
+    for (const evaluation of run.branchEvaluations) {
+      if (evaluation.errors.length === 0) continue;
+      this.logger.warn({
+        message: 'Realtime branch guard could not be evaluated — the condition fell through to `else`',
+        consultationId: session.consultationId,
+        nodeId: evaluation.nodeId,
+        handle: evaluation.handle,
+        visitType: session.visitType ?? null,
+        // PHI-safe: a branch KEY and the evaluator's own message. Never the context it read.
+        errors: evaluation.errors,
+      });
+    }
+
     // Degrade is NEVER silent: every non-success outcome is published to the
     // clinician's control channel as a typed event. Silent degradation to an
     // empty note is exactly why the 2026-08-25 outage went unnoticed for hours.
@@ -2928,13 +2970,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const expected = realtimeCapabilityIndex(effectiveLane);
     const ranAs = (o: RealtimeRunResult['outcomes'][number], capability: RealtimeCapabilityKey): boolean =>
       (o.capability ?? expected.get(o.nodeId)) === capability;
-    const summarize = run.outcomes.find((o) => ranAs(o, 'generateDocument'));
-    const extract = run.outcomes.find((o) => ranAs(o, 'extractEntities'));
+    // TASK-932 — a `core.condition` split gives ONE capability several nodes, and all but the
+    // taken one are `skipped`. Taking the first match would read the branch the graph routed
+    // AROUND: on a revisit that is `n_summary_new`, whose skipped outcome carries no sections,
+    // so the clinician would get an empty note while `n_summary_revisit` succeeded beside it.
+    // Prefer the outcome that actually ran; fall back to the first so a lane in which every
+    // node of a capability skipped still reports a skip, exactly as it did before.
+    const ran = (capability: RealtimeCapabilityKey) =>
+      run.outcomes.find((o) => ranAs(o, capability) && o.status !== 'skipped') ?? run.outcomes.find((o) => ranAs(o, capability));
+    const summarize = ran('generateDocument');
+    const extract = ran('extractEntities');
     const extractOutput = extract?.status === 'succeeded' ? extract.output : undefined;
     // Lane N — IMPORTANT FINDINGS. No handler produces this capability since the `core.*`
     // retirement removed `agent.important_findings`, so this stays empty until one does; the
     // lookup is kept keyed on the capability rather than deleted so wiring a handler is enough.
-    const findingsNode = run.outcomes.find((o) => ranAs(o, 'extractFindings'));
+    const findingsNode = ran('extractFindings');
     const findingsOutput = findingsNode?.status === 'succeeded' ? findingsNode.output : undefined;
 
     return {
@@ -3115,6 +3165,36 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         nodes: stage.nodes.map((node) => (node.type === 'consultation.extractEntities' ? { ...node, enabled: false } : node)),
       })),
     };
+  }
+
+  /**
+   * TASK-932 — the run context every `core.condition` guard on this lane is evaluated against.
+   *
+   * ## Why this shape, exactly
+   *
+   * `{ trigger, vars, nodes }` is the run context TASK-864 §3.2 declares and the harness builds
+   * in `WorkflowInterpreter._run_context`, where `trigger` is the `core.trigger` node's published
+   * `context` — which is the RUN PAYLOAD, and the consultation run payload is
+   * `{ context: { visit_type, current_department, ... } }`. That is why the seeded branch reads
+   * `trigger.context.visit_type` and not `trigger.visit_type`, and it is why the nesting below is
+   * a fact about the durable contract rather than a choice made here.
+   *
+   * ## What it deliberately does NOT carry
+   *
+   * `vars` is `{}` and `nodes` is `{}`. This lane executes neither `core.variable` nor the
+   * condition itself, so there is nothing honest to put in either; a guard reading them errors
+   * and the condition takes `else` OBSERVABLY (`RealtimeRunResult.branchEvaluations`) instead of
+   * being answered from a cache that was never filled. The durable lane, which does run those
+   * nodes, remains the place a graph expresses a condition over them.
+   *
+   * Only the keys the gateway actually resolved are present: an ABSENT `visit_type` must read as
+   * "the gateway does not know", which the evaluator reports as `no such key`, and never as a
+   * substituted default that would route a follow-up visit down the new-visit branch in silence.
+   */
+  private realtimeRunContext(session: LiveSession): Record<string, ExpressionValue> {
+    const context: Record<string, ExpressionValue> = {};
+    if (session.visitType) context.visit_type = session.visitType;
+    return { trigger: { context }, vars: {}, nodes: {} };
   }
 
   /**
