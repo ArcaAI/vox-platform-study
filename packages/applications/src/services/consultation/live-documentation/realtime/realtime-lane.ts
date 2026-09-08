@@ -63,6 +63,15 @@ export interface RealtimeNode {
   readonly onError: 'fail' | 'degrade';
   /** `config.enabled === false` — authored OFF, so the executor skips it. */
   readonly enabled: boolean;
+  /**
+   * TASK-932 D-9 — the authored `execution.cadence`, or `undefined` when the node declares none.
+   *
+   * Only `onStart` changes anything: it partitions the node OUT of {@link RealtimeLane.stages}
+   * and into {@link RealtimeLane.onStart}. Every other value (including absent) keeps today's
+   * behaviour exactly — walked on every flush — because that is what every realtime node did
+   * before this cadence existed and nothing here is trying to reinterpret them.
+   */
+  readonly cadence: string | undefined;
 }
 
 /** Nodes in one topological level. Every node in a stage runs CONCURRENTLY. */
@@ -76,7 +85,22 @@ export interface RealtimeLane {
   readonly source: 'platform-default' | 'tenant-graph';
   readonly definitionSlug: string | null;
   readonly definitionVersionNumber: number | null;
+  /**
+   * The stages a FLUSH walks: every realtime node except the `onStart` ones.
+   *
+   * Partitioned rather than filtered at the call site, because the executor walks whatever it is
+   * given: leaving a warm-start node in here ran the pre-summary once per flush, which is a
+   * second LLM call on the 20 s live budget and a second PRE_SUMMARY context item per turn.
+   */
   readonly stages: readonly RealtimeStage[];
+  /**
+   * TASK-932 D-9 — the `onStart` nodes, in graph order, which
+   * {@link LiveDocumentationService.start} runs ONCE when the session opens.
+   *
+   * Empty for every lane authored before this cadence existed, which is what makes the
+   * partition additive.
+   */
+  readonly onStart: readonly RealtimeNode[];
   /**
    * TASK-890 §3.14 — the WORKFLOW-level guardrail opinion, from the compiled graph's
    * `policyBindings.guardrail` (authored on `core.trigger`). `null` = the workflow says
@@ -121,6 +145,11 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
   definitionVersionNumber: null,
   // The platform lane has no author, so it expresses no workflow-level guardrail opinion.
   guardrail: null,
+  // TASK-932 D-9 — the code-built lane declares NO warm start. The pre-summary is a node a
+  // tenant AUTHORS on its graph; encoding one here would give every tenant with no graph a
+  // capability they never asked for, which is exactly the "the hardcoded loop runs regardless of
+  // what the tenant authored" defect this lane exists to have fixed.
+  onStart: Object.freeze([]),
   stages: Object.freeze([
     Object.freeze({
       stageIndex: 0,
@@ -134,6 +163,7 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
           inputs: Object.freeze([]),
           onError: 'fail',
           enabled: true,
+          cadence: 'perTurn',
         } as RealtimeNode),
       ]),
     } as RealtimeStage),
@@ -150,6 +180,7 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
           // Entity extraction failing has never stopped the note being published.
           onError: 'degrade',
           enabled: true,
+          cadence: 'perTurn',
         } as RealtimeNode),
         Object.freeze({
           nodeId: PLATFORM_LANE_NODE_IDS.summarize,
@@ -162,6 +193,7 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
           // has never failed the flush, and must not start to.
           onError: 'degrade',
           enabled: true,
+          cadence: 'perTurn',
         } as RealtimeNode),
       ]),
     } as RealtimeStage),
@@ -206,6 +238,7 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
   if (admitted.size === 0) return null;
 
   const stages: RealtimeStage[] = [];
+  const onStart: RealtimeNode[] = [];
   for (const stage of compiled.stages) {
     const nodes = (stage.nodes ?? [])
       .filter((node) => admitted.has(node.nodeId))
@@ -218,20 +251,41 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
         inputs: (node.inputs ?? []).filter((binding) => admitted.has(binding.fromNodeId)),
         onError: node.onError === 'fail' ? 'fail' : 'degrade',
         enabled: node.config?.enabled !== false,
+        cadence: cadenceOf(node.config),
       }));
-    if (nodes.length === 0) continue;
-    stages.push({ stageIndex: stages.length, nodes });
+    // TASK-932 D-9 — PARTITION, in stage order, before the stages are renumbered. A warm-start
+    // node left in the flush lane runs once per turn: a second LLM call against the live budget
+    // and a second PRE_SUMMARY row per flush. Its bindings are kept as authored — the warm start
+    // reads the trigger's context, which the executor resolves from the run context exactly as it
+    // does for a node whose producer sits on the durable lane.
+    onStart.push(...nodes.filter((node) => node.cadence === 'onStart'));
+    const perTurn = nodes.filter((node) => node.cadence !== 'onStart');
+    if (perTurn.length === 0) continue;
+    stages.push({ stageIndex: stages.length, nodes: perTurn });
   }
 
-  if (stages.length === 0) return null;
+  // A lane of NOTHING BUT warm-start nodes is still a lane: the tenant authored realtime work and
+  // this runtime owns it. Returning `null` here would serve `PLATFORM_REALTIME_LANE` instead and
+  // write a hardcoded note beside the graph's own — the substrate-exclusivity hazard, arriving
+  // through a cadence.
+  if (stages.length === 0 && onStart.length === 0) return null;
 
   return {
     source: 'tenant-graph',
     definitionSlug: compiled.slug ?? null,
     definitionVersionNumber: compiled.versionNumber ?? null,
     stages,
+    onStart,
     guardrail: compiled.policyBindings?.guardrail?.enabled ?? null,
   };
+}
+
+/** The authored `execution.cadence`, or `undefined`. A malformed `execution` reads as absent. */
+function cadenceOf(config: Readonly<Record<string, unknown>> | undefined): string | undefined {
+  const execution = config?.execution;
+  if (typeof execution !== 'object' || execution === null || Array.isArray(execution)) return undefined;
+  const cadence = (execution as { cadence?: unknown }).cadence;
+  return typeof cadence === 'string' ? cadence : undefined;
 }
 
 /**

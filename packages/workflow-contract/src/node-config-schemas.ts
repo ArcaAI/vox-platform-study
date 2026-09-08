@@ -179,8 +179,39 @@ const DOCUMENT_VERSION_NUMBER_PROPERTY = Object.freeze({
     "DD-2 — this node's own pin onto one immutable version of that document template. Absent means the node follows the template's current pin.",
 });
 
+/**
+ * TASK-932 §3.7 — the SLUG form of the same binding, and the one the REALTIME lane actually reads.
+ *
+ * `realtimeDocumentTemplateSlug` (`realtime-lane.ts`, TASK-891 D7) looks for exactly this key on
+ * the frozen lane's summary node and hands it to `resolveForGeneration(tenantId, slug)` — the
+ * parameter that method has accepted since it was written and that nothing ever supplied. The
+ * reader shipped; the authoring schema did not, and since every schema here is
+ * `additionalProperties: false`, a graph carrying the key could not be PUBLISHED at all: the
+ * publish gate answered `NODE_CONFIG_SCHEMA: /documentTemplateSlug: property is not declared`.
+ * So OD-2's third wire-up was unreachable, not merely unused, and the traced 2026-09-07 session's
+ * `templateId: null` had nowhere else to come from.
+ *
+ * SLUG rather than id, deliberately, and both forms are kept: an id is a ROW REFERENCE and a
+ * document template is CONTENT, cloned per tenant with a fresh id (`copyDocumentTemplates`), so a
+ * graph that travels between tenants — the reference set, a promotion into SYSTEM — must name the
+ * shape by the one identifier its clones share. `documentTemplateId` stays for a node pinned to a
+ * specific row inside one tenant.
+ *
+ * Not `required`, like both properties above: a node that names no shape falls open to the
+ * platform SOAP shape, which is what every graph published before this ticket does.
+ */
+const DOCUMENT_TEMPLATE_SLUG_PROPERTY = Object.freeze({
+  type: 'string',
+  minLength: 1,
+  maxLength: 128,
+  summary: 'Which document layout this step produces, by name.',
+  description:
+    'The `DocumentTemplate.slug` whose compiled shape this node produces, resolved in the REQUEST tenant. Portable across tenants, unlike `documentTemplateId`.',
+});
+
 const DOCUMENT_BINDING_PROPERTIES = Object.freeze({
   documentTemplateId: DOCUMENT_TEMPLATE_ID_PROPERTY,
+  documentTemplateSlug: DOCUMENT_TEMPLATE_SLUG_PROPERTY,
   documentVersionNumber: DOCUMENT_VERSION_NUMBER_PROPERTY,
 });
 
@@ -1037,10 +1068,14 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
         }),
         cadence: Object.freeze({
           type: 'string',
-          enum: Object.freeze(['once', 'perTurn', 'onEnd']),
+          enum: Object.freeze(['once', 'perTurn', 'onStart', 'onEnd']),
           default: 'once',
           summary: 'When this step runs during the session.',
-          description: 'WHEN it runs — once at start, per live turn, or once at the close.',
+          description:
+            'WHEN it runs — `once` at the run`s start, `onStart` once when the LIVE session opens (before any turn), ' +
+            '`perTurn` on every live turn, `onEnd` once at the close. `onStart` is a REALTIME cadence: it is the ' +
+            'warm-start slot (pre-summary of the prior record) the live executor runs in parallel with the capture ' +
+            'session, and the durable interpreter skips it with every other `execution.lane: realtime` node.',
         }),
       }),
     }),
@@ -1049,6 +1084,23 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
     onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
   }),
 });
+
+/**
+ * TASK-932 D-9 — the execution cadences a `core.agent` / `core.action` instance may declare,
+ * exported so a runtime reads the vocabulary instead of re-typing its string literals.
+ *
+ * `onStart` is the REALTIME warm-start slot: it runs ONCE when the live session opens, before
+ * the first turn, in parallel with the capture session. It is what makes the pre-summary of the
+ * prior record a node of the graph rather than a call the console happens to make; the durable
+ * interpreter skips it exactly as it skips every other `execution.lane: 'realtime'` node with a
+ * live owner (`_configured_realtime` in `apps/harness/.../interpreter/workflow.py`), so no
+ * harness registry change is implied by adding it — the vocabulary the interpreter mirrors is
+ * `NODE_REGISTRY` / `ACTION_CATALOGUE`, and neither reads a cadence.
+ */
+export const NODE_EXECUTION_CADENCES = Object.freeze(['once', 'perTurn', 'onStart', 'onEnd'] as const);
+
+/** One of {@link NODE_EXECUTION_CADENCES}. */
+export type NodeExecutionCadence = (typeof NODE_EXECUTION_CADENCES)[number];
 
 const CORE_CLASSIFY_SCHEMA: NodeConfigSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -1342,7 +1394,7 @@ const CORE_ACTION_SCHEMA: NodeConfigSchema = Object.freeze({
       additionalProperties: false,
       properties: Object.freeze({
         lane: Object.freeze({ type: 'string', enum: Object.freeze(['durable', 'realtime']) }),
-        cadence: Object.freeze({ type: 'string', enum: Object.freeze(['once', 'perTurn', 'onEnd']) }),
+        cadence: Object.freeze({ type: 'string', enum: Object.freeze(['once', 'perTurn', 'onStart', 'onEnd']) }),
       }),
     }),
     onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),

@@ -119,8 +119,8 @@ export {
 } from './node-registry';
 export type { WorkflowNodeDescriptor, WorkflowNodeEvalGate, WorkflowNodeLane, WorkflowNodeTrigger } from './node-registry';
 
-export { ACTION_CONFIG_SCHEMAS, GROUNDING_POLICY_TARGETS, NODE_CONFIG_SCHEMAS, TERMINOLOGY_PURPOSE_SCOPES } from './node-config-schemas';
-export type { NodeConfigSchema } from './node-config-schemas';
+export { ACTION_CONFIG_SCHEMAS, GROUNDING_POLICY_TARGETS, NODE_CONFIG_SCHEMAS, NODE_EXECUTION_CADENCES, TERMINOLOGY_PURPOSE_SCOPES } from './node-config-schemas';
+export type { NodeConfigSchema, NodeExecutionCadence } from './node-config-schemas';
 
 // the node CONTRACT: typed ports, their compatibility lattice, and the publish-time
 // checks built on it. `document -> ner` being a TYPE ERROR is a property of

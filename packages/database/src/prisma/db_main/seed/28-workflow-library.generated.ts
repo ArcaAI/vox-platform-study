@@ -14,17 +14,17 @@ export interface GeneratedWorkflowBlob {
   compiledConfig: Record<string, unknown>;
 }
 
-export const REGISTRY_CHECKSUM: string = "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149";
+export const REGISTRY_CHECKSUM: string = "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256";
 
 export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "GLOBAL:general-medicine-consultation": {
-    "graphChecksum": "1b36163568018037bfb26e7f282634d912a783f4cf98ed07590e2ac6f4f100a9",
+    "graphChecksum": "71e696b3a4bf2f0e081afcc3c70296a95fd077371299e25473f7df79aac30e01",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -36,7 +36,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -264,6 +264,44 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               ],
               "onError": "fail",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_presummary",
+              "type": "core.agent",
+              "activity": "interpreter.core_agent",
+              "config": {
+                "agentRef": {
+                  "slug": "case-notes-pre-summary"
+                },
+                "execution": {
+                  "lane": "realtime",
+                  "cadence": "onStart"
+                },
+                "guardrail": {
+                  "enabled": true
+                },
+                "onError": "degrade"
+              },
+              "timeoutSeconds": 300,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "context"
+                }
+              ],
+              "onError": "degrade",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -372,6 +410,11 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 "backoffCoefficient": 2
               },
               "inputs": [
+                {
+                  "fromNodeId": "n_presummary",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
                 {
                   "fromNodeId": "n_summary",
                   "fromPort": "out",
@@ -508,7 +551,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "6b6f7ead0019650ed033cbc19e4076c2ecc31a172d28d6f6ea39288705c70282"
+      "checksum": "a280e95f71466e0c46d85ec87ffc44446ca8149b3dbdce48ef4767cbf2f71406"
     }
   },
   "GLOBAL:platform-default-summarization": {
@@ -518,7 +561,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -530,7 +573,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -821,17 +864,17 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "aa35f0773321bdae9cd9f8c671aa59c40d5bda3199b052e04a38614ee5b0e490"
+      "checksum": "0c3511dde5e56018f2a54c9a60f4ea2a50995da7c424a8ebb51a6d9fdccb8294"
     }
   },
   "SYSTEM:general-medicine-consultation": {
-    "graphChecksum": "45a8f3a569eebacba2e48b541cae766631c3d47a1508b44b878bc9ca6fd84c41",
+    "graphChecksum": "e01ba0bcff74aa21522e943eaba678b1871c00b0895a457d59ff6889d6f9387e",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -843,7 +886,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -1071,6 +1114,44 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               ],
               "onError": "fail",
               "emitsTrajectory": true
+            },
+            {
+              "nodeId": "n_presummary",
+              "type": "core.agent",
+              "activity": "interpreter.core_agent",
+              "config": {
+                "agentRef": {
+                  "slug": "case-notes-pre-summary"
+                },
+                "execution": {
+                  "lane": "realtime",
+                  "cadence": "onStart"
+                },
+                "guardrail": {
+                  "enabled": true
+                },
+                "onError": "degrade"
+              },
+              "timeoutSeconds": 300,
+              "retry": {
+                "maximumAttempts": 1,
+                "initialIntervalSeconds": 1,
+                "backoffCoefficient": 2
+              },
+              "inputs": [
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_trigger",
+                  "fromPort": "out",
+                  "toPort": "context"
+                }
+              ],
+              "onError": "degrade",
+              "emitsTrajectory": true
             }
           ]
         },
@@ -1179,6 +1260,11 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 "backoffCoefficient": 2
               },
               "inputs": [
+                {
+                  "fromNodeId": "n_presummary",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
                 {
                   "fromNodeId": "n_summary",
                   "fromPort": "out",
@@ -1315,7 +1401,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "7329146b60465275e1678bde361f6feba10d31a890530b5f41c16b404934bb59"
+      "checksum": "10ad6395e873941e5c37b4da539f850e9f0782702012f4af67f62553d2f7da20"
     }
   },
   "SYSTEM:platform-default-summarization": {
@@ -1325,7 +1411,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -1337,7 +1423,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "b7f556b38bba350d4befc623675cc55393abf9b62307552c57709e0f57a9d149",
+      "registryChecksum": "e2c6f549844c728a6815fb1f63ef1d651145693fb32bba16a5d8d9ce2a2c0256",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -1628,7 +1714,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "ff3ce0f3b6fee1eb46fc9b7d51ad3c50929ecd18355e48874ac9cdc5b2a08ce1"
+      "checksum": "13999eff9c153ed9ab7de4b9334964a9348ac0f3ad8f94ace297a165c27c60e8"
     }
   }
 };

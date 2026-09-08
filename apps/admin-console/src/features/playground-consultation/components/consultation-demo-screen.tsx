@@ -54,6 +54,7 @@ import {
   useHarnessAssuranceStream,
   useHarnessProgressStream,
   useDocumentSectionsStream,
+  usePreSummaryStream,
   useLiveAssistStream,
   useLatestSummary,
   useNamedEntities,
@@ -72,6 +73,8 @@ import { useLiveMetrics } from '../hooks/use-live-metrics';
 import { useNoteEditor, type EditableDraft } from '../hooks/use-note-editor';
 import { CaseNoteColumn } from './scribe/case-note-column';
 import { ConsultationsColumn, type ConsultationListRow } from './scribe/consultations-column';
+import type { OpenConsultationOptions } from './scribe/consultations-column';
+import { deriveSummaryLanguages } from '../lib/summary-languages';
 import { GoverningWorkflowMeta } from './scribe/governing-workflow-meta';
 import { LiveSessionColumn, type SdkTranscriptSegment, type TranscriptReviewHighlight } from './scribe/live-session-column';
 import { ScribeFooter } from './scribe/scribe-footer';
@@ -242,7 +245,18 @@ function ScribeWorkspace() {
   // tenant default would have sent a slug on every open and silently overridden a DEPARTMENT
   // assignment — `isTenantDefault` describes the tenant tier, not this consultation.
   const [workflowChoice, setWorkflowChoice] = useState('');
+  /**
+   * TASK-932 §3.7 — the language the NOTE is written in, declared at OPEN.
+   *
+   * A different axis from `languageMode` above and bound at a different moment: the STT mode is a
+   * property of the CAPTURE (`audio.start`), this is a property of the CONSULTATION
+   * (`session.open`). EMPTY IS THE DEFAULT here for the same reason it is there — undeclared is
+   * not English; the tenant's own agent body decides.
+   */
+  const [summaryLanguage, setSummaryLanguage] = useState('');
   const languageModes = useArcaSttLanguageModes();
+  /** The offerable summary languages, DERIVED from the same catalogue the STT picker reads. */
+  const summaryLanguages = useMemo(() => deriveSummaryLanguages(languageModes.modes), [languageModes.modes]);
   // the citation currently highlighted in the live-session
   // column's transcript-review pane (click-to-source from the case-note
   // column's evidence panel).
@@ -300,6 +314,15 @@ function ScribeWorkspace() {
   // connection from `live` (useArcaLiveSummary) — that SDK hook only ever parses the legacy
   // undiscriminated payload on the same channel.
   const documentSections = useDocumentSectionsStream(consultationId, isRecording);
+  /**
+   * TASK-932 D-9 — the WARM-START feed.
+   *
+   * Enabled whenever a consultation is selected, NOT gated on `isRecording` like the section
+   * stream: the warm start fires when the live session opens, which is the same moment recording
+   * starts, and a stream opened only once `isRecording` has propagated through React state would
+   * routinely miss the `running` event and sometimes the `ready` one too.
+   */
+  const preSummaryStream = usePreSummaryStream(consultationId, !!consultationId);
   // corrections the clinician ACCEPTED, accumulated for `feedback.capture` to
   // promote over the raw transcript when the endpoint sequence runs at recording-stop.
   // Reset per consultation, same as every other derived-state reset on this screen.
@@ -413,16 +436,41 @@ function ScribeWorkspace() {
     }
   }
 
-  async function handleOpenPatient(patientId: string, department?: string, workflowDefinitionSlug?: string) {
+  async function handleOpenPatient(patientId: string, options: OpenConsultationOptions) {
     try {
-      // `departmentId` and `workflowDefinitionSlug` reach the gateway DTO verbatim; the SDK
-      // forwards the input object as the request body. The slug is authorized by the same
-      // predicate that produced the selectable list, so anything offered here is accepted.
+      // Every field reaches the gateway DTO verbatim; the SDK forwards the input object as the
+      // request body. The slug is authorized by the same predicate that produced the selectable
+      // list, so anything offered here is accepted.
+      //
+      // TASK-932 §3.7 — `language` and `parentConsultationId` join it. `parentConsultationId` is
+      // how a REVISIT is declared: the platform derives the visit type from it, and the
+      // department workflows branch on that (`n_visit`), so there is no separate visit-type field
+      // to send.
       const opened = await sdkSession.open({
         patientId,
-        ...(department ? { departmentId: department } : {}),
-        ...(workflowDefinitionSlug ? { workflowDefinitionSlug } : {}),
+        ...(options.departmentId ? { departmentId: options.departmentId } : {}),
+        ...(options.workflowDefinitionSlug ? { workflowDefinitionSlug: options.workflowDefinitionSlug } : {}),
+        ...(options.language ? { language: options.language } : {}),
+        ...(options.parentConsultationId ? { parentConsultationId: options.parentConsultationId } : {}),
       });
+
+      /**
+       * TASK-932 §3.7 — the PRIOR RECORD, submitted immediately after the open and BEFORE the
+       * clinician can press Record.
+       *
+       * Order is the whole point: the warm-start node reads the consultation's CASE_NOTE items
+       * when the live session opens, so a note added after `recording/start` arrives too late to
+       * be summarised and the pre-summary panel would resolve to `no_case_notes` while the notes
+       * sat right there. Best-effort: a consultation that opened is open, and losing the paste is
+       * a smaller failure than refusing the consultation — but it is SAID, never swallowed.
+       */
+      if (options.previousCaseNotes) {
+        try {
+          await context.addCaseNote(options.previousCaseNotes);
+        } catch (error) {
+          toast.error(errorMessage(error, 'The consultation opened, but the previous case notes could not be added'));
+        }
+      }
       const row: ConsultationListRow = {
         id: opened.id,
         patientId: opened.patientId,
@@ -488,6 +536,7 @@ function ScribeWorkspace() {
       live.stop();
       liveAssist.close();
       documentSections.close();
+      preSummaryStream.close();
       toast.success('Recording stopped — final snapshot persisted');
     } catch (error) {
       toast.error(errorMessage(error, 'Could not stop recording'));
@@ -663,6 +712,11 @@ function ScribeWorkspace() {
               workflowsLoading={selectableWorkflows.isLoading}
               selectedWorkflowSlug={workflowChoice}
               onWorkflowChange={setWorkflowChoice}
+              // TASK-932 §3.7 — the note's language, derived from the same catalogue the STT
+              // picker reads. Empty stays the default: undeclared is not English.
+              summaryLanguages={summaryLanguages}
+              selectedSummaryLanguage={summaryLanguage}
+              onSummaryLanguageChange={setSummaryLanguage}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
@@ -720,6 +774,7 @@ function ScribeWorkspace() {
               suggestions={liveAssist.suggestions}
               suggestionsNodeType={liveAssist.suggestionsNodeType ?? undefined}
               documentSections={documentSections.documents}
+              preSummary={preSummaryStream.preSummary}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

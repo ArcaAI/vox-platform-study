@@ -14,6 +14,7 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Label } from '@arcaai/ui/components/shadcn/label';
+import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
 import { cn } from '@arcaai/ui';
@@ -57,11 +58,13 @@ export interface ConsultationsColumnProps {
   /** Select an existing consultation (loads it into the SDK session). */
   onSelect: (row: ConsultationListRow) => void;
   /**
-   * Open (get-or-create) a consultation for a patient id, optionally scoped to
-   * a department. `departmentId` is what makes the department prompt tier and
-   * the workflow-assignment department tier reachable at all.
+   * Open (get-or-create) a consultation for a patient id.
+   *
+   * ONE options object rather than a positional tail: TASK-932 adds three more axes (visit type,
+   * summary language, the prior record) and a five-argument call whose middle three are all
+   * optional strings is a bug waiting for someone to transpose two of them.
  */
-  onOpenPatient: (patientId: string, departmentId?: string, workflowDefinitionSlug?: string) => Promise<void>;
+  onOpenPatient: (patientId: string, options: OpenConsultationOptions) => Promise<void>;
   activeIsRecording: boolean;
   /**
    * the published consultation workflows this caller may pass as
@@ -91,6 +94,44 @@ export interface ConsultationsColumnProps {
   departmentsError?: boolean;
   selectedDepartmentId?: string;
   onDepartmentChange?: (id: string) => void;
+  /**
+   * TASK-932 §3.7 — the BCP-47 tags the summary-language picker offers.
+   *
+   * Supplied by the screen from the STT language catalogue rather than hardcoded here, so the
+   * console offers what the platform actually transcribes. `undefined` keeps the control off, the
+   * same convention `workflows` uses.
+ */
+  summaryLanguages?: SummaryLanguageOption[];
+  selectedSummaryLanguage?: string;
+  onSummaryLanguageChange?: (tag: string) => void;
+}
+
+/** One offerable summary language: the tag that is sent, and the name a clinician reads. */
+export interface SummaryLanguageOption {
+  tag: string;
+  label: string;
+}
+
+/**
+ * TASK-932 §3.7 — everything the New form can declare about a consultation, in one object.
+ *
+ * `parentConsultationId` is what makes the visit type REAL: the platform's visit type is derived
+ * from it (`SummaryService.visitType`, `ConsultationFactory.CreateRevisit`), and the department
+ * workflows branch on it (`n_visit`). There is no separate "visit type" field to send — declaring
+ * a parent IS declaring a revisit, which is why the control writes one and not the other.
+ */
+export interface OpenConsultationOptions {
+  departmentId?: string;
+  workflowDefinitionSlug?: string;
+  /** BCP-47; absent = undeclared, which is not English. */
+  language?: string;
+  /** Present ⇒ this is a REVISIT of that consultation. */
+  parentConsultationId?: string;
+  /**
+   * The prior record the clinician pasted, submitted as a CASE_NOTE before recording starts so
+   * the warm-start pre-summary has something to read. Empty ⇒ nothing is submitted.
+   */
+  previousCaseNotes?: string;
 }
 
 /** Minimal department shape the picker needs. */
@@ -124,6 +165,16 @@ const NO_DEPARTMENT = '__none__';
  * consultation.
  */
 const ASSIGNED_WORKFLOW = '__assigned__';
+
+/** Sentinel for "this revisit names no parent" — Radix Select forbids an empty-string value. */
+const NO_PARENT = '__none__';
+
+/**
+ * Sentinel for "declare no summary language", which is the DEFAULT and is not English: the
+ * tenant's own agent body decides, exactly as it did before the field existed (TASK-891 OD-1's
+ * posture, applied to the output axis).
+ */
+const UNDECLARED_LANGUAGE = '__undeclared__';
 
 /**
  * The department picker's DEGRADED state — a designed state, not a failure.
@@ -188,18 +239,29 @@ export function ConsultationsColumn({
   workflowsLoading = false,
   selectedWorkflowSlug = '',
   onWorkflowChange,
+  summaryLanguages,
+  selectedSummaryLanguage = '',
+  onSummaryLanguageChange,
 }: ConsultationsColumnProps) {
   const [query, setQuery] = useState('');
   const [showNewForm, setShowNewForm] = useState(false);
   const [patientId, setPatientId] = useState('');
   const [patientIdError, setPatientIdError] = useState<string | null>(null);
   const [openPending, setOpenPending] = useState(false);
+  // TASK-932 §3.7 — the three new axes of the New form. Local state, because none of them
+  // survives the open: the consultation carries them from that moment on.
+  const [visitType, setVisitType] = useState<'new-visit' | 'revisit'>('new-visit');
+  const [parentConsultationId, setParentConsultationId] = useState('');
+  const [previousCaseNotes, setPreviousCaseNotes] = useState('');
 
   // Toggle the New form; closing it discards any half-typed input.
   function toggleNewForm() {
     if (showNewForm) {
       setPatientId('');
       setPatientIdError(null);
+      setVisitType('new-visit');
+      setParentConsultationId('');
+      setPreviousCaseNotes('');
     }
     setShowNewForm((previous) => !previous);
   }
@@ -222,6 +284,23 @@ export function ConsultationsColumn({
    */
   const patientSuggestions = useMemo(() => Array.from(new Set(rows.map((row) => row.patientId))).sort(), [rows]);
 
+  /**
+   * This patient's OWN earlier consultations, newest first — the parent a revisit may name.
+   *
+   * Read off `rows`, the clinician's already-loaded list, rather than a second request: the list
+   * is exactly "consultations this clinician may open", so anything offered here is one the
+   * gateway will accept as a parent (`assertCrossAggregateRefsInTenant`). A patient whose history
+   * is not in this list has none the caller can see, which is the honest answer.
+   */
+  const parentCandidates = useMemo(() => {
+    const needle = patientId.trim().toLowerCase();
+    if (!needle) return [];
+    return rows
+      .filter((row) => row.patientId.toLowerCase() === needle)
+      .slice()
+      .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+  }, [rows, patientId]);
+
   async function handleOpenSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = patientId.trim();
@@ -232,7 +311,16 @@ export function ConsultationsColumn({
     setPatientIdError(null);
     setOpenPending(true);
     try {
-      await onOpenPatient(trimmed, selectedDepartmentId || undefined, selectedWorkflowSlug || undefined);
+      await onOpenPatient(trimmed, {
+        ...(selectedDepartmentId ? { departmentId: selectedDepartmentId } : {}),
+        ...(selectedWorkflowSlug ? { workflowDefinitionSlug: selectedWorkflowSlug } : {}),
+        ...(selectedSummaryLanguage ? { language: selectedSummaryLanguage } : {}),
+        // A revisit is DECLARED by naming its parent; picking "Revisit" without one leaves the
+        // consultation a new visit, which is what the platform would have derived anyway. The
+        // control says so rather than silently disagreeing with the badge.
+        ...(visitType === 'revisit' && parentConsultationId ? { parentConsultationId } : {}),
+        ...(previousCaseNotes.trim() ? { previousCaseNotes: previousCaseNotes.trim() } : {}),
+      });
       setShowNewForm(false);
     } finally {
       setOpenPending(false);
@@ -380,6 +468,118 @@ export function ConsultationsColumn({
                 </p>
               </>
             )}
+
+            {/* TASK-932 §3.7 — VISIT TYPE. Not a field of its own on the wire: the platform
+                derives the visit type from `parentConsultationId` (`SummaryService.visitType`),
+                and the department workflows branch on it (`n_visit`). So the control writes a
+                parent, and says plainly that a revisit needs one. */}
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="text-sm font-medium">Visit type</legend>
+              <div role="radiogroup" aria-label="Visit type" className="flex gap-2">
+                {(
+                  [
+                    { value: 'new-visit', label: 'New visit' },
+                    { value: 'revisit', label: 'Revisit' },
+                  ] as const
+                ).map((option) => (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={visitType === option.value}
+                    variant={visitType === option.value ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setVisitType(option.value);
+                      if (option.value === 'new-visit') setParentConsultationId('');
+                    }}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+              {visitType === 'revisit' ? (
+                parentCandidates.length > 0 ? (
+                  <>
+                    <Label htmlFor="scribe-parent-consultation">Previous consultation</Label>
+                    <Select value={parentConsultationId || NO_PARENT} onValueChange={(next) => setParentConsultationId(next === NO_PARENT ? '' : next)}>
+                      <SelectTrigger id="scribe-parent-consultation" className="w-full">
+                        <SelectValue placeholder="Pick the visit this follows" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_PARENT}>Not linked</SelectItem>
+                        {parentCandidates.map((row) => (
+                          <SelectItem key={row.id} value={row.id}>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate">{row.createdAt ? formatDateTime(row.createdAt) : row.id}</span>
+                              <span className="text-muted-foreground truncate text-xs">{statusMeta(row.status).label}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-muted-foreground text-xs">
+                      A revisit is declared by naming the visit it follows. Leave it unlinked and this opens as a new visit.
+                    </p>
+                  </>
+                ) : (
+                  <p role="status" className="text-muted-foreground text-xs">
+                    No earlier consultation for this patient is visible to you, so this will open as a new visit.
+                  </p>
+                )
+              ) : null}
+            </fieldset>
+
+            {/* TASK-932 §3.7 — SUMMARY LANGUAGE. A different axis from the STT language mode in
+                the footer: that one governs what the microphone may HEAR and stays undeclared by
+                default (TASK-891 OD-1); this governs what the NOTE is written in. */}
+            {summaryLanguages === undefined ? null : (
+              <>
+                <Label htmlFor="scribe-summary-language">Summary language</Label>
+                <Select
+                  value={selectedSummaryLanguage || UNDECLARED_LANGUAGE}
+                  onValueChange={(next) => onSummaryLanguageChange?.(next === UNDECLARED_LANGUAGE ? '' : next)}
+                >
+                  <SelectTrigger id="scribe-summary-language" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNDECLARED_LANGUAGE}>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate">Not declared</span>
+                        <span className="text-muted-foreground truncate text-xs">the agent decides</span>
+                      </span>
+                    </SelectItem>
+                    {summaryLanguages.map((language) => (
+                      <SelectItem key={language.tag} value={language.tag}>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate">{language.label}</span>
+                          <span className="text-muted-foreground truncate font-mono text-xs">{language.tag}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  The language the generated notes are written in. Independent of the transcription language.
+                </p>
+              </>
+            )}
+
+            {/* TASK-932 §3.7 — the PRIOR RECORD. Submitted as a case note BEFORE recording
+                starts, which is what the warm-start pre-summary node reads. */}
+            <Label htmlFor="scribe-previous-case-notes">Previous case notes</Label>
+            <Textarea
+              id="scribe-previous-case-notes"
+              value={previousCaseNotes}
+              onChange={(event) => setPreviousCaseNotes(event.target.value)}
+              placeholder="Paste the patient's prior case notes, if you have them."
+              rows={4}
+              className="resize-none"
+            />
+            <p className="text-muted-foreground text-xs">
+              Added to the consultation before recording starts, so the pre-summary has the prior record to work from.
+            </p>
           </form>
         ) : (
           <div className="relative flex items-center">

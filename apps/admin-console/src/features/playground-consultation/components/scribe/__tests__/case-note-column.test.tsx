@@ -492,3 +492,85 @@ describe(' accessibility — 0 axe violations on every new/changed state', () =>
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+/**
+ * TASK-932 D-9 — the WARM-START panel.
+ *
+ * The pre-summary is generated in parallel with the microphone opening, so this panel is on
+ * screen before it has anything in it. All three states must therefore be DRAWN differently —
+ * which is the lesson of TASK-891 B5, where an unpopulated section and a failed one rendered the
+ * same `<Skeleton />` forever ("The owner watched that skeleton for ten minutes").
+ *
+ * The other rule is that a lane authoring NO warm start must leave no empty labelled box on the
+ * screen (rule 11 §4), which is why the whole panel is absent until an event arrives.
+ */
+describe('CaseNoteColumn — TASK-932 pre-summary panel', () => {
+  const panel = () => screen.queryByTestId('pre-summary-panel');
+
+  it('renders nothing at all before an event arrives — absence is not an empty box', () => {
+    render(<CaseNoteColumn {...baseProps()} />);
+    expect(panel()).toBeNull();
+  });
+
+  it('while RUNNING, shows a skeleton and says what it is doing', () => {
+    render(<CaseNoteColumn {...baseProps({ preSummary: { status: 'running', content: null, error: null, agentSlug: null, updatedAt: null } })} />);
+    expect(panel()?.getAttribute('data-status')).toBe('running');
+    expect(screen.getByText(/reading the previous case notes/i)).toBeTruthy();
+    // A skeleton is correct HERE and only here: content is genuinely on its way.
+    expect(panel()!.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
+  });
+
+  it('when READY, shows the pre-summary text and badges it as AI-generated', () => {
+    render(
+      <CaseNoteColumn
+        {...baseProps({
+          preSummary: { status: 'ready', content: '- Diabetes (recorded 11-Aug-2026)', error: null, agentSlug: 'case-notes-pre-summary', updatedAt: null },
+        })}
+      />,
+    );
+    expect(panel()?.getAttribute('data-status')).toBe('ready');
+    expect(screen.getByText('- Diabetes (recorded 11-Aug-2026)')).toBeTruthy();
+    // Rule 11 §7 — AI-generated content carries an AI badge.
+    expect(screen.getByText('AI')).toBeTruthy();
+    expect(panel()!.querySelectorAll('[data-slot="skeleton"]').length).toBe(0);
+  });
+
+  it('`no_case_notes` reads as a FACT about the patient, not as an error', () => {
+    render(<CaseNoteColumn {...baseProps({ preSummary: { status: 'degraded', content: null, error: 'no_case_notes', agentSlug: null, updatedAt: null } })} />);
+    // The badge and the sentence both say it, which is the point — one for the glance, one for
+    // the read — so match the count rather than assuming a single node.
+    expect(screen.getAllByText(/nothing to summarise/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/no previous case notes were available/i)).toBeTruthy();
+    // Not styled as a failure: a first-ever visit has no prior record, and that is normal.
+    expect(screen.queryByText(/^unavailable$/i)).toBeNull();
+  });
+
+  it('a real failure says so, and never leaves the clinician looking at a skeleton', () => {
+    render(
+      <CaseNoteColumn {...baseProps({ preSummary: { status: 'degraded', content: null, error: 'warm_start_unwired', agentSlug: null, updatedAt: null } })} />,
+    );
+    expect(screen.getByText(/^unavailable$/i)).toBeTruthy();
+    expect(screen.getByText(/not available in this environment/i)).toBeTruthy();
+    expect(panel()!.querySelectorAll('[data-slot="skeleton"]').length).toBe(0);
+  });
+
+  it('an unrecognised reason code still resolves the panel rather than showing the raw code', () => {
+    render(
+      <CaseNoteColumn {...baseProps({ preSummary: { status: 'degraded', content: null, error: 'AxiosError', agentSlug: null, updatedAt: null } })} />,
+    );
+    expect(screen.getByText(/could not be produced for this consultation/i)).toBeTruthy();
+    expect(screen.queryByText('AxiosError')).toBeNull();
+  });
+
+  it('has no axe violations in any of the three states', async () => {
+    for (const preSummary of [
+      { status: 'running' as const, content: null, error: null, agentSlug: null, updatedAt: null },
+      { status: 'ready' as const, content: 'x', error: null, agentSlug: null, updatedAt: null },
+      { status: 'degraded' as const, content: null, error: 'no_case_notes', agentSlug: null, updatedAt: null },
+    ]) {
+      const { container, unmount } = render(<CaseNoteColumn {...baseProps({ preSummary })} />);
+      expect(await axe(container)).toHaveNoViolations();
+      unmount();
+    }
+  });
+});

@@ -60,7 +60,8 @@ describe('TASK-930 D-6 — a seeded published agent passes the publish gate the 
   it('the fixture covers all three seeded agent sets', () => {
     expect(PLATFORM_AGENT_SPECS.length).toBeGreaterThan(0);
     expect(GLOBAL_AGENT_SPECS.length).toBe(PLATFORM_AGENT_SPECS.length);
-    expect(ARCAAI_AGENT_SPECS.length).toBe(22);
+    // 22 department agents (11 x 2 visit types) + the tenant warm start (TASK-932 D-9).
+    expect(ARCAAI_AGENT_SPECS.length).toBe(23);
   });
 
   it.each(ALL_SPECS.map((spec) => [label(spec), spec] as const))(

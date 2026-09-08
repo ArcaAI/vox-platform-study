@@ -687,12 +687,14 @@ function MyJobsStrip({ selection, onSelectJob }: { selection: Selection; onSelec
  * (one gateway job per file) → a master/detail transcript panel fed either by a
  * queue row's live SSE segments or by a past job from the owner-scoped strip.
  */
-export function BatchTab({ agentSlug }: { agentSlug: string | null }) {
+export function BatchTab({ agentSlug, language = null }: { agentSlug: string | null; language?: string | null }) {
   const [selection, setSelection] = useState<Selection>(null);
   const [streamStatuses, setStreamStatuses] = useState<Record<string, StreamStatus>>({});
 
   const queue = useBatchQueue({
     agentSlug,
+    // TASK-932 §3.7 — the same language the streaming tab declares, snapshotted per row.
+    language,
     onItemCompleted: (item) => toast.success(`${item.fileName} transcribed`),
     onItemFailed: (item) => toast.error(`${item.fileName} failed — ${item.error ?? 'unknown error'}`),
   });

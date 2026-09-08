@@ -2,7 +2,7 @@
  * TASK-930 §8.3 — the seeded Agents: the promotion process, as data.
  *
  * Global (`50000000-…`, the platform-admin PLAYGROUND — a customer tenant, never a config tier)
- * AUTHORS five agents. SYSTEM carries the IDENTICAL five as the PROMOTED copy: same slug, same
+ * AUTHORS six agents. SYSTEM carries the IDENTICAL six as the PROMOTED copy: same slug, same
  * configuration, `sourceAgentId` / `sourceTenantId` / `sourceSlug` / `sourceVersionNumber`
  * pointing at the Global row — exactly the provenance `POST /admin/agents/promote-to-system`
  * (INTERFACES §6.1) stamps, so a seeded promotion and a real one are indistinguishable. ArcaAI
@@ -10,11 +10,14 @@
  *
  *   realtime-transcription          SPEECH_TO_TEXT            arcaai-whisper-large-ml-en-gguf-q8_0 (+ gguf, + faster-whisper CT2)
  *   medical-ner                     NAMED_ENTITY_RECOGNITION  medical-ner (TOKEN_CLASSIFICATION, built-in)         INTERFACES §2
+ *   case-notes-pre-summary          TEXT_GENERATION           gemma + the platform pre-summary template, guards ON  TASK-932 D-9
  *   general-medicine-summarization  TEXT_GENERATION           gemma + the General Medicine summary template, guards ON
  *   casenote-finalization           TEXT_GENERATION           gemma + inline system prompt, `{ case_note, redactions }` output schema
  *   text-to-speech                  TEXT_TO_SPEECH            kokoro / af_heart
  *
- * `AgentAssignment` (TENANT scope) in BOTH tenants: one row per task, unqualified.
+ * `AgentAssignment` (TENANT scope) in BOTH tenants: one row per task, unqualified — plus ONE
+ * qualified row, `TEXT_GENERATION [phase:pre-summary]` -> `case-notes-pre-summary`, which an
+ * unqualified request never sees (see `assignmentsFor`).
  *
  * Rows are written directly (unscoped client, create-only): a PUBLISHED Agent is immutable at
  * the service AND at the `agent_immutability_guard` trigger, so an upsert with an `update`
@@ -146,7 +149,24 @@ export const assignmentId = (n: number) => `9c000000-0000-0000-0004-${String(n).
 export const arcaaiAgentId = (n: number) => `9c000000-0000-0000-0005-${String(n).padStart(12, '0')}`;
 
 /** The five lineage keys, in seed order. */
-export const SEEDED_AGENT_SLUGS = ['realtime-transcription', 'medical-ner', 'general-medicine-summarization', 'casenote-finalization', 'text-to-speech'] as const;
+export const SEEDED_AGENT_SLUGS = [
+  'realtime-transcription',
+  'medical-ner',
+  'case-notes-pre-summary',
+  'general-medicine-summarization',
+  'casenote-finalization',
+  'text-to-speech',
+] as const;
+
+/**
+ * TASK-932 D-9 — the WARM-START agent's lineage key.
+ *
+ * Named here because three files reference it and none of them may spell it: `28-workflow-library`
+ * puts it on the `n_presummary` node, phase 29 seeds ArcaAI's own copy bound to the department
+ * corpus' v3 pre-summary body, and `LiveDocumentationService` runs whatever the graph's `onStart`
+ * node names — never this constant, which is exactly the point.
+ */
+export const PRE_SUMMARY_AGENT_SLUG = 'case-notes-pre-summary';
 
 /** The ONE ASR lineage key — Global and SYSTEM both carry it (§8.3); `09-consultation.ts` names it. */
 export const ASR_AGENT_SLUG = 'realtime-transcription';
@@ -196,8 +216,88 @@ export function generalMedicinePromptVariables(): Record<string, { value: string
   );
 }
 
+/**
+ * TASK-932 D-9 — the nine names the pre-summary corpus binds, in the order the body reads them.
+ *
+ * Declared here rather than imported from `07b-arcaai-clinical-templates.ts` for the same reason
+ * `GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES` is declared in `07-prompt-template.ts`: the list is a
+ * property of the PROMPT, and the two bodies that carry it (the SYSTEM platform default …040 and
+ * the ArcaAI v3 corpus) declare exactly this set. `pre-summary-agent.task932.test.ts` cross-checks
+ * it against both bodies, so the two cannot silently diverge.
+ */
+export const PRE_SUMMARY_VARIABLE_NAMES: readonly string[] = [
+  'current_department',
+  'visit_type',
+  'safe_age',
+  'safe_dob',
+  'safe_gender',
+  'safe_vitals',
+  'formatted_test_results',
+  'formatted_previous_visits',
+  'language_name',
+];
+
+/**
+ * Every pre-summary variable, bound to the trigger's validated context.
+ *
+ * The bodies themselves are written in the `{{context.<name>}}` grammar and are NOT rewritten:
+ * `buildAgentPromptScope` publishes the trigger under BOTH `trigger` and `context`
+ * (`agent-prompt-scope.ts`), so `{{context.safe_age}}` already resolves from
+ * `trigger.context.safe_age` with no binding at all. The bindings below are declared anyway, for
+ * two reasons that are not decoration:
+ *
+ *  - the bare name and the dotted path must be the SAME value ("`{{age}}` and
+ *    `{{context.patientAge}}` are the same value", `agent-prompt-scope.ts` §3.3), and declaring
+ *    the binding is how that is stated rather than assumed;
+ *  - `publish-findings` cross-checks a template's placeholders against the agent's DECLARED
+ *    variables plus the trigger's namespace, so an author editing the body in the Studio sees the
+ *    nine names as variables of the agent instead of as an opaque context reach-through.
+ *
+ * Every one of the nine is a field of `consultation_note_context`
+ * (`07e-consultation-note-context-schema.ts`: six §8.2 fields, three folded-in v1 names), so the
+ * paths resolve on the seeded graphs by construction.
+ */
+export function preSummaryPromptVariables(): Record<string, { path: string }> {
+  return Object.fromEntries(PRE_SUMMARY_VARIABLE_NAMES.map((name) => [name, { path: `trigger.context.${name}` }]));
+}
+
+/**
+ * The WARM-START hyper-parameters.
+ *
+ * Same class as {@link SUMMARIZATION_PARAMETERS} — guards ON, reasoning OFF — with a larger
+ * completion budget, because the pre-summary reproduces a whole prior record under five headings
+ * while a per-turn note extends one that already exists. Reasoning stays off for the reason
+ * TASK-891 measured: 92% of the completion went to reasoning tokens on this model, and the
+ * warm start races the capture session it runs beside.
+ */
+export const PRE_SUMMARY_PARAMETERS = {
+  generation: { temperature: 0.2, maxTokens: 3072, reasoning: { enabled: false } },
+  responseFormat: 'text',
+  guards: { enabled: true },
+};
+
+/**
+ * TASK-932 D-10 — the finalize prompt now carries the DNA WRITING-STYLE block.
+ *
+ * `{{context.dna_style_text}}` is a declared field of `consultation_note_context`
+ * (`07e`, folded in from the v1 vocabulary) and is the SAME name `PromptAssemblyService`
+ * injects on the gateway finalize path, so one clinician's style reaches both finalizers under
+ * one name. It carries `default("")` for the reason the grammar has the filter at all: a
+ * consultation whose doctor has no report, or has DNA switched off, must finalize normally —
+ * `renderTemplate` throws `PromptVariableUnresolved` on an undefaulted miss, and a finalize that
+ * fails because a style is absent would be a worse outcome than a finalize with no style.
+ *
+ * The block is STYLE ONLY, and says so twice. A writing style may change how a fact is phrased;
+ * it may never change, add or remove one. That boundary is the whole reason DNA is applied at
+ * finalize rather than live (TASK-891 F-1 / D-10): the clinician reads the note before signing it.
+ */
 export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
-  'You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician\'s work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code. Return a JSON object with `case_note` (the finalized Markdown note) and `redactions` (an array of `{ text, label }`).';
+  'You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician\'s work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code.\n\n' +
+  '=== WRITING STYLE ===\n' +
+  'The clinician`s own documentation style, when one is supplied, is:\n{{context.dna_style_text | default("")}}\n' +
+  'Apply it to HOW the note reads — sentence length, register, abbreviation habit, the order in which findings are stated within a heading — and to nothing else. It must never change WHAT the note says: not one clinical fact, drug name, dose, route, frequency, value, date, laterality or heading may be added, removed, reworded into a different meaning, or re-ordered between headings to suit it. An abbreviation is used only where the style calls for one AND the expansion is unambiguous in context. When the block above is empty, write in plain clinical prose and change nothing about your output.\n' +
+  'The redaction rules above outrank the style in every case: a name is replaced with its placeholder however the clinician would have written it.\n\n' +
+  'Return a JSON object with `case_note` (the finalized Markdown note) and `redactions` (an array of `{ text, label }`).';
 
 /** INTERFACES §8.3 — `{ case_note: string, redactions: [{ text, label }] }`. */
 export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
@@ -221,7 +321,7 @@ export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
  * ONE catalogue for both tenants — the whole point of §8.3 is that Global and SYSTEM differ only
  * by tenant, id, the template id each tenant owns, and provenance.
  */
-function catalogue(tenantId: string, ids: (n: number) => string, generalMedicineTemplateId: string): SeedAgentSpec[] {
+function catalogue(tenantId: string, ids: (n: number) => string, generalMedicineTemplateId: string, preSummaryTemplateId: string): SeedAgentSpec[] {
   const tier = tenantId === SYSTEM_TENANT_ID ? 'tier:platform-default' : 'tier:playground';
   return [
     {
@@ -256,6 +356,24 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       status: 'PUBLISHED',
       isActive: true,
       tags: [tier, 'task:ner', 'capability:entity-recognition'],
+      provenance: null,
+    },
+    {
+      id: ids(6),
+      tenantId,
+      slug: PRE_SUMMARY_AGENT_SLUG,
+      name: 'Case-notes pre-summary (warm start)',
+      description:
+        "The WARM START of a consultation: one pass over the patient's prior case notes, producing the dated background the clinician reads while the recording is coming up. Bound to the platform pre-summary template; guardrail screening ON.",
+      task: 'TEXT_GENERATION',
+      modelSlug: 'lms-gemma-4-e2b-it-qat',
+      fallbackModelSlugs: [],
+      instruction: { promptTemplateId: preSummaryTemplateId, promptVersionNumber: 1, variables: preSummaryPromptVariables() },
+      parameters: PRE_SUMMARY_PARAMETERS,
+      outputSchema: null,
+      status: 'PUBLISHED',
+      isActive: true,
+      tags: [tier, 'task:llm', 'capability:pre-summary', 'phase:pre-summary'],
       provenance: null,
     },
     {
@@ -314,10 +432,10 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
 }
 
 /** Global authors. */
-export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = catalogue(SEED_TENANT_ID, glob, TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY);
+export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = catalogue(SEED_TENANT_ID, glob, TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY, TEMPLATE_IDS.PRE_SUMMARY_DEFAULT);
 
 /** SYSTEM is the promoted copy — provenance → the Global row of the same slug. */
-export const PLATFORM_AGENT_SPECS: SeedAgentSpec[] = catalogue(SYSTEM_TENANT_ID, sys, SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID).map((spec) => {
+export const PLATFORM_AGENT_SPECS: SeedAgentSpec[] = catalogue(SYSTEM_TENANT_ID, sys, SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, TEMPLATE_IDS.PRE_SUMMARY_DEFAULT).map((spec) => {
   const source = GLOBAL_AGENT_SPECS.find((global) => global.slug === spec.slug);
   if (!source) throw new Error(`SYSTEM agent ${spec.slug} has no Global source`);
   return { ...spec, provenance: { sourceAgentId: source.id, sourceTenantId: source.tenantId, sourceSlug: source.slug, sourceVersionNumber: 1 } };
@@ -336,6 +454,16 @@ const assignmentsFor = (tenantId: string, offset: number): SeedAgentAssignment[]
   { id: assignmentId(offset + 2), tenantId, task: 'TEXT_GENERATION', agentSlug: 'general-medicine-summarization' },
   { id: assignmentId(offset + 3), tenantId, task: 'TEXT_TO_SPEECH', agentSlug: 'text-to-speech' },
   { id: assignmentId(offset + 4), tenantId, task: 'NAMED_ENTITY_RECOGNITION', agentSlug: 'medical-ner' },
+  // TASK-932 D-9 — the warm start, QUALIFIED. `TEXT_GENERATION` already carries an unqualified
+  // TENANT row (the running note), and a second unqualified row for the same task would be a
+  // coin-toss at resolve time. `phase:pre-summary` is TASK-891's reserved selector key
+  // (`TEXT_PHASE_TAG_KEY`, `harness-policy.service.ts`) with a new value, so this row is a
+  // candidate ONLY for a request that asks for it: `tierCandidates` admits a row whose selector
+  // is a SUBSET of the request's tags, so an unqualified request still sees exactly the one
+  // unqualified row it always did. The graph names the agent by SLUG on `n_presummary`, so
+  // nothing depends on this row today — it is what a tenant re-points to change the warm start
+  // without editing its graph.
+  { id: assignmentId(offset + 5), tenantId, task: 'TEXT_GENERATION', agentSlug: PRE_SUMMARY_AGENT_SLUG, selectorKey: 'phase:pre-summary' },
 ];
 
 /**

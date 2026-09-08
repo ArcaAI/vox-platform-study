@@ -92,6 +92,7 @@ import { HarnessLiveAssistService } from '../harness/harness-live-assist.service
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
+import { readSummaryLanguage, summaryLanguageName } from '../consultation/summary-language';
 // the clinical-document SHAPE catalog. The live loop no longer knows
 // what a SOAP note is: it resolves a COMPILED template once per session and
 // reads its strict `responseFormat`, its section list and its prose instruction
@@ -132,10 +133,13 @@ import {
   type RealtimeCapabilities,
   type RealtimeCapabilityKey,
   type RealtimeLane,
+  type RealtimeNode,
   type RealtimeResolvedAgentView,
   type RealtimeRunResult,
   type SectionPatchDto,
 } from './realtime';
+import { PRE_SUMMARY_EVENT, type PreSummaryEventDto, type PreSummaryStatus } from './realtime/dto/section-patch.dto';
+import { ILivePreSummaryRunner, type ILivePreSummaryRunner as ILivePreSummaryRunnerPort } from './live-pre-summary.port';
 import { readGoverningEngineMarker, tenantWorkflowGoverns } from '../governing-engine';
 // lane A — the consultation's OWN workflow selection, durable from create.
 import { readWorkflowSelectionMarker } from '../consultation/workflow-selection';
@@ -546,6 +550,23 @@ interface LiveSession {
    * node publishes is the pipeline's output either way.
    */
   sttPipelineId?: string | null;
+  /**
+   * TASK-932 §3.7 — the consultation's declared SUMMARY language, frozen at `start()`.
+   *
+   * `null` = undeclared, which is not English: the operating frame then says nothing about an
+   * output language and the department body decides, exactly as it did before this ticket. Frozen
+   * with the agent, the template and the lane for the same reason all three are — the note being
+   * produced must not change language halfway through because a row was edited.
+   */
+  summaryLanguage?: string | null;
+  /**
+   * TASK-932 D-9 — the WARM START, kicked off at `start()` and never awaited by a flush.
+   *
+   * Held on the session only so a `stop()` racing it can be reasoned about and a test can await
+   * it: nothing downstream depends on its value. The pre-summary it produces is read from the
+   * database (`resolveWarmStartPreSummary`) and from the live feed, not from here.
+   */
+  onStartPromise?: Promise<void>;
 }
 
 /**
@@ -876,6 +897,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // keeps its arity; ABSENT ⇒ `CoreAgentHandler` falls back to TEXT_GENERATION exactly as it did
     // before this ticket, which is why the read-out reports that same fallback.
     @Optional() @Inject(AgentResolverService) private readonly agentResolver?: AgentResolverService,
+    // TASK-932 D-9 — how a WARM-START (`onStart`) node actually generates. The GRAPH decides that
+    // the warm start happens and which agent it names; this runs it, over the pre-summary
+    // pipeline that already exists (`live-pre-summary.port.ts` documents the seam it does not
+    // close). Optional + trailing so every positional fixture keeps its arity; ABSENT ⇒ a graph
+    // that declares a warm start publishes `degraded: warm_start_unwired` rather than silently
+    // doing nothing, because a panel that never resolves is the skeleton-forever defect again.
+    @Optional() @Inject(ILivePreSummaryRunner) private readonly preSummaryRunner?: ILivePreSummaryRunnerPort,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1086,8 +1114,127 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // resolved until the lane it is named on exists.
     session.templatePromise = this.ensureTemplateResolved(session);
     session.substratePromise = this.ensureSubstrateResolved(session);
+    // TASK-932 D-9 — the WARM START, kicked off with the same fire-and-forget shape as everything
+    // above it and for the same reason: `start()` is synchronous for the recording controller.
+    //
+    // It runs IN PARALLEL with the capture session opening, which is the whole point of the
+    // `onStart` cadence and of the graph edge that authors it (`n_trigger.next -> n_presummary`
+    // sits beside `n_trigger.next -> n_asr`, not before it). Sequencing the pre-summary ahead of
+    // capture would make the microphone wait on an LLM call over the patient's whole prior record.
+    session.onStartPromise = this.runOnStartNodes(session);
 
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
+  }
+
+  // ------------------------------------------------------------------
+  // TASK-932 D-9 — the WARM START (`onStart` cadence)
+  // ------------------------------------------------------------------
+
+  /**
+   * Run the session's `onStart` nodes ONCE, and publish what happened.
+   *
+   * ## What makes this a graph step rather than a call the console makes
+   *
+   * Everything that DECIDES is on the graph: whether a warm start happens at all
+   * (`lane.onStart` is empty for every lane that authors none), which agent it is
+   * (`agentRef.slug`), that it runs on the realtime lane at the `onStart` cadence, and that it
+   * DEGRADES rather than fails (`onError`). The durable interpreter skips the same node with
+   * `reason: 'realtime_lane'` whenever a live session owns the run, so exactly one runtime
+   * executes it — the invariant TASK-864/TASK-930 made structural, extended to a new cadence
+   * rather than worked around.
+   *
+   * ## NEVER THROWS, NEVER BLOCKS
+   *
+   * This is background work for a consultation that is already recording. Every failure is a
+   * `degraded` event with a PHI-safe reason; nothing here can fail a session, stop a flush, or
+   * delay the microphone. `enabled: false` on the node is honoured exactly as the flush lane
+   * honours it — an authored-but-switched-off warm start publishes nothing at all, because the
+   * tenant turned it off rather than it having gone wrong.
+   */
+  private async runOnStartNodes(session: LiveSession): Promise<void> {
+    let nodes: readonly RealtimeNode[] = [];
+    try {
+      const lane = session.laneSnapshot !== undefined ? session.laneSnapshot : await (session.lanePromise ?? this.ensureLaneResolved(session));
+      nodes = (lane?.onStart ?? []).filter((node) => node.enabled);
+    } catch {
+      // A lane that cannot be resolved has already been logged by `ensureLaneResolved`, which
+      // never rejects; this catch exists only so a future change there cannot take the session
+      // down through this path.
+      return;
+    }
+    if (nodes.length === 0) return;
+
+    // The substrate gate can stand this engine down entirely (a governed consultation whose
+    // durable run owns the document). Asked BEFORE anything is published: a warm start written
+    // beside a document this engine does not own is the same exclusivity hazard as a flush.
+    const allowed = session.substrateAllowed ?? (await (session.substratePromise ?? this.ensureSubstrateResolved(session)));
+    if (!allowed) return;
+
+    for (const node of nodes) {
+      const agentSlug = readAgentRef(node.config)?.slug ?? null;
+      await this.publishPreSummary(session, { status: 'running', agentSlug });
+
+      if (!this.preSummaryRunner) {
+        this.logger.warn({
+          message: 'A warm-start node is authored but no pre-summary runner is wired — publishing a named degrade rather than nothing',
+          consultationId: session.consultationId,
+          nodeId: node.nodeId,
+          agentSlug,
+        });
+        await this.publishPreSummary(session, { status: 'degraded', error: 'warm_start_unwired', agentSlug });
+        continue;
+      }
+
+      // `run` is contractually total, so there is no try/catch here by design: a rejection would
+      // be a broken implementation of the port, and swallowing it here would hide that.
+      const result = await this.preSummaryRunner.run({
+        consultationId: session.consultationId,
+        tenantId: session.tenantId,
+        userId: session.userId ?? null,
+        agentSlug,
+      });
+
+      await this.publishPreSummary(session, {
+        status: result.status,
+        agentSlug,
+        ...(result.content === undefined ? {} : { content: result.content }),
+        ...(result.reason === undefined ? {} : { error: result.reason }),
+      });
+
+      this.logger.log({
+        message: result.status === 'ready' ? 'Warm-start pre-summary ready' : 'Warm-start pre-summary degraded',
+        consultationId: session.consultationId,
+        nodeId: node.nodeId,
+        agentSlug,
+        // PHI-safe: a reason CODE and a LENGTH, never the text.
+        reason: result.reason ?? null,
+        contentChars: result.content?.length ?? 0,
+      });
+    }
+  }
+
+  /**
+   * Publish one `presummary` event on the consultation's live channel.
+   *
+   * `safeChannelPublish`, not `safePublish`: this is an ADDITIVE event beside the whole-document
+   * payload, exactly like `section.patch`, and it must not overwrite the snapshot cache — a
+   * client reconnecting mid-consultation asks that cache for the running NOTE, and answering
+   * with a pre-summary would replace the clinician's document with its own background material.
+   */
+  private async publishPreSummary(
+    session: LiveSession,
+    fields: { status: PreSummaryStatus; content?: string; error?: string; agentSlug?: string | null },
+  ): Promise<void> {
+    const event: PreSummaryEventDto = {
+      event: PRE_SUMMARY_EVENT,
+      consultationId: session.consultationId,
+      status: fields.status,
+      ...(fields.content === undefined ? {} : { content: fields.content }),
+      ...(fields.error === undefined ? {} : { error: fields.error }),
+      ...(fields.agentSlug ? { agentSlug: fields.agentSlug } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    await this.safeChannelPublish(this.channel(session.consultationId), JSON.stringify(event));
   }
 
   isActive(consultationId: string): boolean {
@@ -1309,6 +1456,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     try {
       const consultation = await this.consultationRepository.findById(session.consultationId);
       governed = tenantWorkflowGoverns(consultation?.metadata);
+      // TASK-932 §3.7 — freeze the declared summary language off the SAME row read, so the
+      // operating frame costs no extra I/O on the start path.
+      session.summaryLanguage = readSummaryLanguage(consultation?.metadata);
     } catch (error) {
       this.logger.warn({
         message: 'Governing-engine marker could not be read — this engine keeps the consultation so it is still documented',
@@ -2172,6 +2322,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       elidedParts > 0,
       this.stablePrefixFor(agent, template),
       template.compiled.title,
+      this.operatingFrame(template, session.summaryLanguage),
     );
 
     // TEXT first (a structured S/O/A/P running note), then NER over the resulting
@@ -2207,7 +2358,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const graph = lane
       ? await this.runGraphLane(session, lane, {
           buildPrompt: (sourceText) =>
-            this.buildTextUserPrompt(priorNote, sourceText, notes, elidedParts > 0, this.stablePrefixFor(agent, template), template.compiled.title),
+            this.buildTextUserPrompt(
+              priorNote,
+              sourceText,
+              notes,
+              elidedParts > 0,
+              this.stablePrefixFor(agent, template),
+              template.compiled.title,
+              this.operatingFrame(template, session.summaryLanguage),
+            ),
           agent,
           template,
           signal,
@@ -3492,6 +3651,53 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       : `${agent.stableUserPrefix}\n\n${template.compiled.promptInstruction}`;
   }
 
+  /**
+   * TASK-932 §3.7 — the OPERATING FRAME: the four steps a partial-summary turn actually performs.
+   *
+   * ## Why this is not in the department body
+   *
+   * The v3 department corpus is the CLINICAL instruction — what belongs under which heading,
+   * which source may supply it, how a date is written. It is the customer's signed-off content
+   * and this ticket does not touch a byte of it. What it does not say, because it predates the
+   * realtime lane, is how a TURN works: that the transcript arriving is partial and possibly
+   * code-switched, that a running note already exists and must be extended rather than restarted,
+   * and that the output language is a separate axis from the transcript's.
+   *
+   * Every one of those is a property of the RUNTIME, identical for all 22 department bodies, so
+   * stating it once here is what keeps it out of 22 prompts that would then drift.
+   *
+   * ## The steps, and why each is stated
+   *
+   *  1. TRANSLATE INTERNALLY. Malayalam-English code-switching is the default STT posture
+   *     (`ASR_PARAMETERS.decoding.languageMode: 'ml-en'`, code-switching on), so a turn routinely
+   *     arrives mixed. Left unsaid, the model mirrors whatever language dominates the last few
+   *     seconds and the note changes language mid-consultation.
+   *  2. MERGE, don't restart. The prior note is already in the prompt (`Current <title> so far`),
+   *     but "here is your previous output" is not an instruction to preserve it.
+   *  3. WRITE IN the declared language — omitted entirely when none was declared, because
+   *     undeclared is not English (TASK-891 OD-1's posture, applied to the output axis).
+   *  4. FILL the resolved template's sections, BY KEY. The section list is the compiled
+   *     template's own, so a department shape and its prompt cannot disagree.
+   */
+  private operatingFrame(template: ResolvedDocumentTemplate, summaryLanguage: string | null | undefined): string {
+    const sectionKeys = template.compiled.sectionKeys;
+    const languageName = summaryLanguageName(summaryLanguage);
+    const languageStep = languageName
+      ? `Write every section value in ${languageName}${languageName === summaryLanguage ? '' : ` (${summaryLanguage})`}, whatever language was spoken. Keep the section keys and headings exactly as given, in English.`
+      : 'No output language was declared for this consultation: follow the clinical instruction above, and do not switch language part-way through the note.';
+
+    return [
+      '',
+      '',
+      'HOW TO PRODUCE THIS TURN:',
+      "1. The transcript is PARTIAL and may be code-switched or not in English. Read it in whatever language it is in and understand it in English internally; never transcribe another language's words into the note untranslated.",
+      '2. This is an UPDATE, not a fresh note. Keep everything the running note above already records, extend a section the new transcript adds to, and revise one only where the new transcript contradicts it.',
+      `3. ${languageStep}`,
+      `4. Fill the sections of this document and no others, using these keys exactly: ${sectionKeys.join(', ')}. A section the consultation has not reached is null — never a placeholder, never invented content.`,
+      '5. The consultation is still in progress. Write no closing summary, no sign-off and no statement that the encounter has ended.',
+    ].join('\n');
+  }
+
   private buildTextUserPrompt(
     priorNote: string,
     delta: string,
@@ -3503,6 +3709,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // the tenant actually published; a model told to update a SOAP note and
     // decoded against a discharge summary is being given two different jobs.
     documentTitle: string = PLATFORM_TEMPLATE.compiled.title,
+    // TASK-932 §3.7 — the operating frame, already rendered. Passed in rather than built here so
+    // this method stays a pure string assembly and the frame is testable on its own.
+    operatingFrame = '',
   ): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
@@ -3528,7 +3737,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       ? `\n\nUpdate the existing ${documentTitle} above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
       : `\n\nFrom the transcript and any clinician notes/labs above, produce the running ${documentTitle} now.`;
 
-    return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock;
+    // The frame goes LAST, after the delta instruction: it is the turn's procedure, and a
+    // trailing block is what the model reads immediately before generating. It is deliberately
+    // NOT part of `stablePrefix` — the prefix is byte-identical across every flush of a session
+    // so the engine can reuse its cached KV, and the frame carries the same bytes for the same
+    // session, so appending it here costs the cache nothing while keeping the prefix's contract
+    // (tenant-governed prose + compiled structure) unmuddied.
+    return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock + operatingFrame;
   }
 
   /**
