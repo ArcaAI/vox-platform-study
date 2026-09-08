@@ -132,7 +132,13 @@ describe('WorkflowDefinitionService.promoteToSystem — the graph’s agents mus
     );
     mockRepository.update.mockImplementation((_id: string, updated: unknown) => Promise.resolve(updated));
     mockRepository.findAllVersionsBySlug.mockResolvedValue([]);
-    mockAgentPromotion.promote.mockResolvedValue({ id: 'promo-1', targetDefinitionVersionId: 'sys-draft-1', warnings: [] });
+    // TASK-930 D-4 — the publish now runs INSIDE the promotion's transaction, through `afterWrite`.
+    mockAgentPromotion.promote.mockImplementation(async (_dto: unknown, options?: { afterWrite?: (d: unknown) => Promise<void> }) => {
+      await options?.afterWrite?.(
+        entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false }),
+      );
+      return { id: 'promo-1', targetDefinitionVersionId: 'sys-draft-1', warnings: [] };
+    });
     mockEvalGate.evaluateWorkflowPromotion.mockResolvedValue({
       mode: 'warn',
       evaluated: true,
@@ -197,6 +203,8 @@ describe('WorkflowDefinitionService.promoteToSystem — the graph’s agents mus
 
     expect(mockAgentPromotion.promote).toHaveBeenCalledWith(
       expect.objectContaining({ fromTenantId: GLOBAL, toTenantId: SYSTEM_TENANT_ID }),
+      // D-4 — the publish travels as the promotion's in-transaction step.
+      expect.objectContaining({ afterWrite: expect.any(Function) }),
     );
     expect(result.published).toBe(true);
   });

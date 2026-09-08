@@ -355,7 +355,8 @@ describe('WorkflowDefinitionService', () => {
       expect(entity.registryChecksum).toBeTruthy();
       expect(entity.isActive).toBe(true);
       expect(previousActive.isActive).toBe(false);
-      expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-id-0', previousActive);
+      // The trailing `undefined` is the optional `tx`, which only `promoteToSystem` supplies (D-4).
+      expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-id-0', previousActive, undefined);
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ resourceId: 'def-id-1' }));
       expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
     });
