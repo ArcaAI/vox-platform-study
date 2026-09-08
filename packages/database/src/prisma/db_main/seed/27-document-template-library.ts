@@ -142,7 +142,7 @@ import { createHash } from 'node:crypto';
 import type { CorePrismaClient } from '../../../client';
 import type { DocumentTemplateStatus } from '../../../generated/core-prisma-client/enums';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
-import { canonicalJson } from './07e-consultation-loop-defaults';
+import { canonicalJson } from './07e-consultation-note-context-schema';
 
 // =============================================================================
 // Shape types — structural mirrors of `document-template-shape.ts`
