@@ -40,6 +40,9 @@ const agentRepository = { findSystemReferences: vi.fn() };
 const promptTemplateRepository = { findSystemReferences: vi.fn() };
 const assignmentRepository = { findAllForScope: vi.fn(), findForScopeSelector: vi.fn() };
 const workflowDefinitionRepository = { findSystemTemplates: vi.fn() };
+// TASK-930 §6.3 — the seventh kind. Empty here: what it copies is pinned by its own suite
+// (`tenant-reference-set.workflow-assignments.task930.test.ts`); this file pins the ORDER.
+const workflowAssignmentRepository = { findAll: vi.fn(async () => []), findForScopeSelector: vi.fn(async () => null) };
 const contextSchemaRepository = { findAll: vi.fn(), findByTenantAndSlug: vi.fn() };
 const documentTemplateRepository = { findAll: vi.fn(), findByTenantAndSlug: vi.fn() };
 const documentTemplateVersionRepository = { findByTemplateAndVersionNumber: vi.fn() };
@@ -118,6 +121,7 @@ function make(): TenantReferenceSetService {
     promptTemplateRepository as never,
     assignmentRepository as never,
     workflowDefinitionRepository as never,
+    workflowAssignmentRepository as never,
     contextSchemaRepository as never,
     documentTemplateRepository as never,
     documentTemplateVersionRepository as never,
@@ -221,6 +225,9 @@ describe('TenantReferenceSetService.provision', () => {
       'agentAssignments',
       'documentTemplates',
       'workflowDefinitions',
+      // TASK-930 §6.3 — the deliberate edit this assertion exists to force. Still CONTENT: which
+      // workflow a tenant RUNS is its own row, not a value it inherits at read time.
+      'workflowAssignments',
     ]);
   });
 
