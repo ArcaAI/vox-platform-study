@@ -51,6 +51,7 @@ from harness.temporal.interpreter.guardrail_optout import (
     resolve_guardrail_decision,
 )
 from harness.temporal.interpreter.models import (
+    RESERVED_RUN_IDENTITY_KEYS,
     EvaluateExpressionInput,
     EvaluateExpressionResult,
     NodeActivityInput,
@@ -136,6 +137,33 @@ def _schema_violation(schema: Any, value: Any) -> str | None:
 # ---------------------------------------------------------------------------------------------
 
 
+def _authored_context(run_payload: dict[str, Any]) -> dict[str, Any]:
+    """``run_payload`` minus the gateway-owned RUN ENVELOPE — what an AUTHOR actually supplied.
+
+    TASK-930 D-2. A context schema describes the context an author declares, and it closes
+    (``additionalProperties: false``) so an undeclared kind is a caller error rather than
+    something to pass through silently. The five ``RESERVED_RUN_IDENTITY_KEYS`` are not that:
+    they are the server's own envelope, and validating them against an author's schema killed the
+    entire clinical plane — every consultation-plane run failed on the first node in ~230 ms with
+    ``('consultationId', 'externalPatientId', 'userId' were unexpected)``, reproduced with an
+    empty caller payload.
+
+    Exempting them costs the check NOTHING, and that is the whole argument for doing it here
+    rather than loosening the schema: a caller CANNOT put those keys in a payload. The gateway
+    refuses an invocation that names one (``exposure-palette-policy.ts#reservedIdentityKeysIn``
+    -> 400), and ``sanitize_run_payload`` strips them unconditionally before re-stamping the
+    server-resolved :class:`RunSubject`. So every occurrence in ``run_payload`` is, by
+    construction, the platform's own — there is no author-supplied value being waved through, and
+    ``additionalProperties: false`` stays exactly as sharp as its author meant it for everything
+    they could actually send.
+
+    Only the VALIDATED object narrows. The published ``context`` is still the full payload, so the
+    thirteen ``run_identity(...)`` readers and any ``trigger.context.*`` binding are untouched.
+    """
+    return {key: value for key, value in run_payload.items() if key not in RESERVED_RUN_IDENTITY_KEYS}
+
+
+
 @activity.defn(name="interpreter.core_trigger")
 async def interpreter_core_trigger(payload: NodeActivityInput) -> NodeActivityResult:
     """Validate the run payload against the declared context schema and publish it as
@@ -159,7 +187,7 @@ async def interpreter_core_trigger(payload: NodeActivityInput) -> NodeActivityRe
     declared = schema.get("resolved") if isinstance(schema, dict) else None
     if not isinstance(declared, dict):
         declared = schema.get("inline") if isinstance(schema, dict) else None
-    violation = _schema_violation(declared, context)
+    violation = _schema_violation(declared, _authored_context(context))
     if violation is not None:
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
         raise RuntimeError(
