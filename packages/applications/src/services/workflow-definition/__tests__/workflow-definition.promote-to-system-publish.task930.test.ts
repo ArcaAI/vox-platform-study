@@ -170,8 +170,7 @@ const entity = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const SYSTEM_DRAFT = () =>
-  entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false });
+const SYSTEM_DRAFT = () => entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false });
 
 /**
  * A promotion double that behaves like the real one: the copy commits inside a transaction, and
@@ -224,9 +223,7 @@ describe('WorkflowDefinitionService.promoteToSystem — the publish half (TASK-9
     mockEntitlements.isEnforcementEnabled.mockReturnValue(false);
     mockEntitlements.isFeatureEnabled.mockResolvedValue(true);
     mockDatabaseService.baseClient.$transaction.mockImplementation((cb: (tx: unknown) => unknown) => cb({}));
-    mockRepository.findPublishedBySlug.mockImplementation((tenantId: string) =>
-      Promise.resolve(tenantId === GLOBAL ? entity() : null),
-    );
+    mockRepository.findPublishedBySlug.mockImplementation((tenantId: string) => Promise.resolve(tenantId === GLOBAL ? entity() : null));
     mockRepository.findById.mockResolvedValue(SYSTEM_DRAFT());
     mockRepository.update.mockImplementation((_id: string, updated: unknown) => Promise.resolve(updated));
     mockRepository.findAllVersionsBySlug.mockResolvedValue([]);
@@ -252,9 +249,7 @@ describe('WorkflowDefinitionService.promoteToSystem — the publish half (TASK-9
   });
 
   it('no longer answers 400 "Tenant ID is required" — the route is reachable end to end', async () => {
-    const result = await service
-      .promoteToSystem({ sourceDefinitionSlug: 'general-medicine-consultation' })
-      .catch((caught: unknown) => caught);
+    const result = await service.promoteToSystem({ sourceDefinitionSlug: 'general-medicine-consultation' }).catch((caught: unknown) => caught);
 
     expect(result).not.toBeInstanceOf(BadRequestException);
     expect((result as { published: boolean }).published).toBe(true);
