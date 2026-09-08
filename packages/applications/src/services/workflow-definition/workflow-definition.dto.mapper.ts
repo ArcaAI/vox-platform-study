@@ -1,6 +1,6 @@
 import { WorkflowDefinitionEntity } from '@arcaai/domains';
-import { registryChecksum } from '@arcaai/workflow-contract';
-import type { WorkflowNodeDescriptor, WorkflowPortDescriptor } from '@arcaai/workflow-contract';
+import { CORE_PALETTE_KEY, WORKFLOW_NODE_REGISTRY, registryChecksum } from '@arcaai/workflow-contract';
+import type { CoreActionDescriptor, WorkflowNodeDescriptor, WorkflowPortDescriptor } from '@arcaai/workflow-contract';
 import { FetchResponse } from '../../common';
 import { PaginatedWorkflowDefinitionResponse, WorkflowDefinitionResponse, WorkflowNodePortResponse, WorkflowNodeResponse } from './dto';
 
@@ -104,6 +104,52 @@ export class WorkflowDefinitionDtoMapper {
     dto.idempotent = descriptor.idempotent;
     dto.schemaVersion = descriptor.schemaVersion;
     dto.evalGate = descriptor.evalGate ? { goldenSetId: descriptor.evalGate.goldenSetId, enabled: descriptor.evalGate.enabled } : null;
+    return dto;
+  }
+
+  /**
+   * TASK-893 Phase 4 — project one `CoreActionDescriptor` into the SAME wire shape as a node type.
+   *
+   * The Studio resolves a `core.action` instance's sockets by looking `config.actionKey` up in the
+   * one descriptor map it builds from `GET /admin/workflow-nodes` (`effectiveNodePorts` in
+   * `apps/admin-console/src/features/workflow-studio/lib/core-ports.ts`). Until the retirement
+   * every action was ALSO a registered node type, so that lookup found its delegate for free.
+   * `ACTION_CATALOGUE` is a table of its own now, and an action missing from this payload makes
+   * the canvas fall back to `core.action`'s generic SUPERSET — six sockets drawn where the action
+   * declares one, and `isValidConnection` accepting wires the delegate refuses. Silently.
+   *
+   * The five fields an action descriptor does not carry are taken from the HOST `core.action`
+   * node type rather than invented here: an action instance IS a `core.action` node, and the
+   * catalogue only overrides its ports, config schema, activity, safety flags and lane.
+   */
+  static toActionResponse(descriptor: CoreActionDescriptor): WorkflowNodeResponse {
+    const host = WORKFLOW_NODE_REGISTRY['core.action'];
+    const dto = new WorkflowNodeResponse();
+    dto.type = descriptor.key;
+    // Every kept action is dispatchable — an unimplemented one would have been dropped, not kept.
+    dto.implemented = true;
+    dto.activityName = descriptor.activityName;
+    dto.classes = [...descriptor.classes];
+    dto.paletteKey = CORE_PALETTE_KEY;
+    // Nothing in the catalogue is deprecated: the retirement DELETED the legacy vocabulary rather
+    // than leaving it flagged, so a `false` here is a fact, not a placeholder.
+    dto.deprecated = false;
+    dto.replacedBy = null;
+    dto.critical = descriptor.critical;
+    dto.externalWrite = descriptor.externalWrite;
+    dto.defaultTimeoutSeconds = descriptor.defaultTimeoutSeconds;
+    dto.defaultMaxAttempts = descriptor.defaultMaxAttempts;
+    dto.entitlementKey = descriptor.entitlementKey ?? null;
+    dto.configSchema = descriptor.configSchema ?? null;
+    dto.inputs = descriptor.ports.inputs.map(toPortResponse);
+    dto.outputs = descriptor.ports.outputs.map(toPortResponse);
+    dto.lane = descriptor.lane;
+    dto.trigger = host.trigger;
+    dto.requires = [...host.requires];
+    dto.idempotent = host.idempotent;
+    dto.schemaVersion = host.schemaVersion;
+    // An eval gate is bound to a node TYPE; the catalogue declares none.
+    dto.evalGate = null;
     return dto;
   }
 }

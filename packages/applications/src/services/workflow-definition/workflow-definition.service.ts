@@ -22,6 +22,7 @@ import type { JsonValue } from '@arcaai/domains';
 import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import {
+  ACTION_CATALOGUE,
   buildPortableBundle,
   canonicalJson,
   compile,
@@ -1469,12 +1470,24 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   // Node registry (read-only projection)
   // ============================================================
 
+  /**
+   * The node PALETTE the Studio authors against: the eleven `core.*` node types AND the seventeen
+   * `ACTION_CATALOGUE` entries a `core.action` may delegate to, in one sorted list keyed by type.
+   *
+   * TASK-893 Phase 4 — the actions are here because the client resolves a `core.action`
+   * instance's effective ports by looking its `config.actionKey` up in the SAME map it builds
+   * from this payload. They used to be node types, so the lookup found them for free; leaving
+   * them out now makes every action instance fall back to `core.action`'s generic superset,
+   * which draws sockets the action does not have and accepts wires it refuses — with no error.
+   * The two vocabularies share one keyspace by construction (no action key is a node type).
+   */
   async listNodes(): Promise<WorkflowNodeRegistryResponse> {
+    const nodes = [
+      ...Object.values(WORKFLOW_NODE_REGISTRY).map((descriptor) => WorkflowDefinitionDtoMapper.toNodeResponse(descriptor)),
+      ...Object.values(ACTION_CATALOGUE).map((descriptor) => WorkflowDefinitionDtoMapper.toActionResponse(descriptor)),
+    ];
     return {
-      nodes: Object.values(WORKFLOW_NODE_REGISTRY)
-        .slice()
-        .sort((a, b) => a.key.localeCompare(b.key))
-        .map((descriptor) => WorkflowDefinitionDtoMapper.toNodeResponse(descriptor)),
+      nodes: nodes.sort((a, b) => a.type.localeCompare(b.type)),
       registryChecksum: registryChecksum(),
     };
   }

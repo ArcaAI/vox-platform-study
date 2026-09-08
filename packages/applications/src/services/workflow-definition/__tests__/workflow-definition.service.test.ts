@@ -20,7 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
 import { SysEventType, WorkflowDefinitionStatus } from '@arcaai/domains';
-import { WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
+import { ACTION_CATALOGUE, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
 import { WorkflowDefinitionService } from '../workflow-definition.service';
 
 const mockClsService = { get: vi.fn(), set: vi.fn() };
@@ -538,9 +538,12 @@ describe('WorkflowDefinitionService', () => {
       // core.start/core.end boundary markers) without ever catching a real defect — the thing it
       // is actually here to prove is that `listNodes` is a LIVE, SORTED, complete projection of
       // whatever the registry currently holds, and that survives palette growth.
-      const expectedKeys = Object.values(WORKFLOW_NODE_REGISTRY)
-        .map((descriptor) => descriptor.key)
-        .sort((a, b) => a.localeCompare(b));
+      // TASK-893 — the palette is the node registry PLUS the action catalogue: a `core.action`
+      // instance's ports are resolved client-side by looking its `actionKey` up in this same
+      // list, so an action missing here silently degrades the canvas to the generic superset.
+      const expectedKeys = [...Object.values(WORKFLOW_NODE_REGISTRY).map((d) => d.key), ...Object.keys(ACTION_CATALOGUE)].sort((a, b) =>
+        a.localeCompare(b),
+      );
 
       expect(result.nodes.map((n) => n.type)).toEqual(expectedKeys);
       expect(result.nodes.length).toBeGreaterThan(0);
