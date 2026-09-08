@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { vi } from 'vitest';
 import { SidebarProvider } from '@arcaai/ui/components/shadcn/sidebar';
 import type { PermissionRule } from '@/shared/auth/ability';
+import { FEATURE_GATE_KEYS, type FeatureGateMap } from '@/shared/feature-gates/keys';
 import { renderWithProviders } from '@/test/render';
 
 /**
@@ -32,7 +33,18 @@ export interface NavFixtureOptions {
   rules?: PermissionRule[];
   roles?: string[];
   isElevated?: boolean;
+  /**
+   * Platform-wide feature-gate resolution (TASK-932 §3.2). Defaults to every
+   * key `true` — the rail/sidebar/⌘K specs predate the gate axis and assert
+   * the gated entries (MLflow, Agentic policy, Tools & MCP, the whole
+   * Workflow & Harness domain) are reachable by ability alone; a test that
+   * wants to exercise a CLOSED gate passes its own partial map here.
+   */
+  gates?: FeatureGateMap;
 }
+
+/** Every feature gate open — the harness default so ability remains the only variable most specs vary. */
+const ALL_GATES_OPEN: FeatureGateMap = Object.fromEntries(FEATURE_GATE_KEYS.map((key) => [key, true]));
 
 /** The narrow caller, shared so the rail and the sidebar are judged alike. */
 export const NARROW_TENANT_FIXTURE: NavFixtureOptions = {
@@ -41,8 +53,8 @@ export const NARROW_TENANT_FIXTURE: NavFixtureOptions = {
   isElevated: false,
 };
 
-/** Stubs the two BFF reads (`useSession` + `usePermissions`) the shell depends on. */
-export function stubNavSession({ rules = SUPER_ADMIN_RULES, roles = ['SUPER_ADMIN'], isElevated = true }: NavFixtureOptions = {}) {
+/** Stubs the three BFF reads (`useSession` + `usePermissions` + `useFeatureGates`) the shell depends on. */
+export function stubNavSession({ rules = SUPER_ADMIN_RULES, roles = ['SUPER_ADMIN'], isElevated = true, gates = ALL_GATES_OPEN }: NavFixtureOptions = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
@@ -56,6 +68,9 @@ export function stubNavSession({ rules = SUPER_ADMIN_RULES, roles = ['SUPER_ADMI
           impersonatingUserId: null,
           impersonatingUsername: null,
         });
+      }
+      if (url.includes('features/effective')) {
+        return Response.json({ items: Object.entries(gates).map(([key, value]) => ({ key, value, sourceScope: 'system' })) });
       }
       return Response.json({ userId: 'u-1', tenantId: null, permissions: rules });
     }),
