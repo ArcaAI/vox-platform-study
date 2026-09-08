@@ -151,8 +151,21 @@ test.describe('PUT features/matrix', () => {
     // about which cell to re-read.
     const headers = auth(await superAdminToken(request));
     const read = async () => (await (await request.get(`${FEATURES}/matrix`, { headers })).json()) as MatrixBody;
-    const before = await read();
+    let before = await read();
     const tenant = before.tenants[0]!;
+    const NEIGHBOUR = 'console.tools.mcp.enabled';
+    const neighbourOf = (body: MatrixBody) => body.cells.find((c) => c.key === NEIGHBOUR && c.tenantId === tenant.id)!;
+    // The neighbour must start from INHERIT (no row): a previous run that
+    // failed before its restore, or the console suite sharing this database,
+    // may have left an override behind, and a stored row demands If-Match.
+    if (neighbourOf(before).value !== null) {
+      const clear = await request.put(`${FEATURES}/matrix`, {
+        headers,
+        data: { cells: [{ key: NEIGHBOUR, tenantId: tenant.id, value: null, expectedVersion: neighbourOf(before).version }] },
+      });
+      expect(clear.status(), await clear.text()).toBe(200);
+      before = await read();
+    }
 
     const response = await request.put(`${FEATURES}/matrix`, {
       headers,
@@ -161,7 +174,7 @@ test.describe('PUT features/matrix', () => {
           // Deliberately stale.
           { key: GATE, tenantId: tenant.id, value: true, expectedVersion: 9999 },
           // Valid, and must survive its neighbour's failure.
-          { key: 'console.tools.mcp.enabled', tenantId: tenant.id, value: true },
+          { key: NEIGHBOUR, tenantId: tenant.id, value: true },
         ],
       },
     });
@@ -173,13 +186,13 @@ test.describe('PUT features/matrix', () => {
     expect(body.errors[0]!.status).toBe(412);
 
     const after = await read();
-    expect(after.cells.find((c) => c.key === 'console.tools.mcp.enabled' && c.tenantId === tenant.id)!.value).toBe(true);
+    expect(neighbourOf(after).value).toBe(true);
 
     // Restore.
-    const applied = after.cells.find((c) => c.key === 'console.tools.mcp.enabled' && c.tenantId === tenant.id)!;
+    const applied = neighbourOf(after);
     await request.put(`${FEATURES}/matrix`, {
       headers,
-      data: { cells: [{ key: 'console.tools.mcp.enabled', tenantId: tenant.id, value: null, expectedVersion: applied.version }] },
+      data: { cells: [{ key: NEIGHBOUR, tenantId: tenant.id, value: null, expectedVersion: applied.version }] },
     });
   });
 
