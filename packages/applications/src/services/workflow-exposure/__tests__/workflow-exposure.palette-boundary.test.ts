@@ -30,17 +30,28 @@ const mockS3Service = { putFile: vi.fn().mockResolvedValue(undefined) };
 const mockRedisCache = { get: vi.fn().mockResolvedValue(null), setex: vi.fn().mockResolvedValue(undefined) };
 const mockEntitlements = { isEnforcementEnabled: vi.fn(() => false), assertMeterQuota: vi.fn() };
 
-const compiledWith = (...nodeTypes: string[]) => ({
+type CompiledNodeSpec = string | { type: string; config: Record<string, unknown> };
+const compiledWith = (...specs: CompiledNodeSpec[]) => ({
   formatVersion: 1,
-  stages: [{ stageIndex: 0, nodes: nodeTypes.map((type, i) => ({ nodeId: `n${i}`, type, activity: `interpreter.${type}`, config: {} })) }],
+  stages: [
+    {
+      stageIndex: 0,
+      nodes: specs.map((spec, i) => {
+        const { type, config } = typeof spec === 'string' ? { type: spec, config: {} } : spec;
+        return { nodeId: `n${i}`, type, activity: `interpreter.${type}`, config };
+      }),
+    },
+  ],
   gates: [],
 });
+const action = (actionKey: string) => ({ type: 'core.action', config: { actionKey } });
+const liveAgent = (slug: string) => ({ type: 'core.agent', config: { agentRef: { slug }, execution: { lane: 'realtime' } } });
 
-const SUMMARIZATION_CONFIG = compiledWith('core.start', 'input.context_binding', 'generate.text', 'core.end');
+const SUMMARIZATION_CONFIG = compiledWith('core.trigger', 'core.agent', 'core.output');
 /** The C-8 chain: `consultation.persistDraft` -> `persist_draft` activity -> real ContextItem rows. */
-const CONSULTATION_CONFIG = compiledWith('core.start', 'consultation.consentGate', 'consultation.persistDraft', 'core.end');
+const CONSULTATION_CONFIG = compiledWith('core.trigger', action('consultation.consentGate'), action('consultation.persistDraft'), 'core.output');
 /** The smuggling variant — declares an approved palette, carries a consultation write node. */
-const SMUGGLED_CONFIG = compiledWith('core.start', 'generate.text', 'consultation.persistDraft', 'core.end');
+const SMUGGLED_CONFIG = compiledWith('core.trigger', 'core.agent', action('consultation.persistDraft'), 'core.output');
 
 const definition = (overrides: Record<string, unknown> = {}) => ({
   id: overrides.id ?? 'def-1',
@@ -48,7 +59,7 @@ const definition = (overrides: Record<string, unknown> = {}) => ({
   slug: overrides.slug ?? 'discharge_summary',
   name: overrides.name ?? 'Discharge Summary',
   description: null,
-  paletteKey: overrides.paletteKey ?? 'summarization',
+  paletteKey: overrides.paletteKey ?? 'core',
   versionNumber: 1,
   compiledConfig: overrides.compiledConfig ?? SUMMARIZATION_CONFIG,
 });
@@ -108,7 +119,7 @@ describe(' W1 — exposure-plane palette boundary (C-8)', () => {
   describe('the boundary is over COMPILED NODE TYPES, not the declared paletteKey', () => {
     it('refuses a summarization-declared graph carrying a consultation write node', async () => {
       mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(
-        definition({ paletteKey: 'summarization', compiledConfig: SMUGGLED_CONFIG }),
+        definition({ paletteKey: 'core', compiledConfig: SMUGGLED_CONFIG }),
       );
       const service = build();
 

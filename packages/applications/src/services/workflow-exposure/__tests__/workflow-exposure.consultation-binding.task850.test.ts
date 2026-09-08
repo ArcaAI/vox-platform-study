@@ -38,17 +38,28 @@ const mockRedisCache = { get: vi.fn().mockResolvedValue(null), setex: vi.fn().mo
 const mockEntitlements = { isEnforcementEnabled: vi.fn(() => false), assertMeterQuota: vi.fn() };
 const mockConsultationService = { getById: vi.fn() };
 
-const compiledWith = (...nodeTypes: string[]) => ({
+type CompiledNodeSpec = string | { type: string; config: Record<string, unknown> };
+const compiledWith = (...specs: CompiledNodeSpec[]) => ({
   formatVersion: 1,
-  stages: [{ stageIndex: 0, nodes: nodeTypes.map((type, i) => ({ nodeId: `n${i}`, type, activity: `interpreter.${type}`, config: {} })) }],
+  stages: [
+    {
+      stageIndex: 0,
+      nodes: specs.map((spec, i) => {
+        const { type, config } = typeof spec === 'string' ? { type: spec, config: {} } : spec;
+        return { nodeId: `n${i}`, type, activity: `interpreter.${type}`, config };
+      }),
+    },
+  ],
   gates: [],
 });
+const action = (actionKey: string) => ({ type: 'core.action', config: { actionKey } });
+const liveAgent = (slug: string) => ({ type: 'core.agent', config: { agentRef: { slug }, execution: { lane: 'realtime' } } });
 
-const SUMMARIZATION_CONFIG = compiledWith('core.start', 'input.context_binding', 'generate.text', 'core.end');
+const SUMMARIZATION_CONFIG = compiledWith('core.trigger', 'core.agent', 'core.output');
 /** The C-8 chain: `consultation.persistDraft` -> `persist_draft` -> real ContextItem rows. */
-const CONSULTATION_CONFIG = compiledWith('core.start', 'consultation.consentGate', 'consultation.synthesize', 'consultation.persistDraft', 'core.end');
+const CONSULTATION_CONFIG = compiledWith('core.trigger', action('consultation.consentGate'), 'core.agent', action('consultation.persistDraft'), 'core.output');
 /** Every node is `lane: 'realtime'`, which the DURABLE interpreter skips — an invoke would do nothing. */
-const REALTIME_ONLY_CONFIG = compiledWith('core.start', 'consultation.captureBinding', 'consultation.realtimeSummary', 'core.end');
+const REALTIME_ONLY_CONFIG = compiledWith('core.trigger', liveAgent('realtime-transcription'), liveAgent('general-medicine-summarization'), 'core.output');
 
 const definition = (overrides: Record<string, unknown> = {}) => ({
   id: overrides.id ?? 'def-1',
@@ -56,7 +67,7 @@ const definition = (overrides: Record<string, unknown> = {}) => ({
   slug: overrides.slug ?? 'consult_flow',
   name: overrides.name ?? 'Consultation Flow',
   description: null,
-  paletteKey: overrides.paletteKey ?? 'consultation',
+  paletteKey: overrides.paletteKey ?? 'core',
   versionNumber: 1,
   compiledConfig: overrides.compiledConfig ?? CONSULTATION_CONFIG,
 });
@@ -92,11 +103,11 @@ describe('the two palette sets are pinned, and only one is wide', () => {
   it('leaves the unbound set exactly as C-8 left it', () => {
     // TASK-864 widened both sets by `core`, whose real boundary is the CLASS-BASED rule
     // (`clinicalWriteViolation`) — see `workflow-exposure.core-protocols.task864.test.ts`.
-    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['core', 'summarization']);
+    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['core']);
   });
 
   it('admits consultation ONLY on the consultation-bound set', () => {
-    expect([...CONSULTATION_BOUND_ALLOWED_PALETTES].sort()).toEqual(['consultation', 'core', 'summarization']);
+    expect([...CONSULTATION_BOUND_ALLOWED_PALETTES].sort()).toEqual(['core']);
     expect(EXPOSURE_ALLOWED_PALETTES.has('consultation')).toBe(false);
   });
 });
@@ -162,7 +173,7 @@ describe('THE REFUSAL: a caller cannot name someone else’s consultation', () =
   });
 
   it('400s when the caller tries to smuggle identity through `input` — never a silent drop', async () => {
-    mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(definition({ paletteKey: 'summarization', compiledConfig: SUMMARIZATION_CONFIG }));
+    mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(definition({ paletteKey: 'core', compiledConfig: SUMMARIZATION_CONFIG }));
     const service = build();
 
     // A silent drop would let the caller believe it addressed a consultation it did not.
@@ -192,7 +203,7 @@ describe('THE REFUSAL: a caller cannot name someone else’s consultation', () =
 describe('list() and the gate keep agreeing', () => {
   it('omits consultation definitions from the unbound catalogue', async () => {
     mockWorkflowDefinitionRepository.findActivePublishedByTenant.mockResolvedValue([
-      definition({ slug: 'summary_ok', paletteKey: 'summarization', compiledConfig: SUMMARIZATION_CONFIG }),
+      definition({ slug: 'summary_ok', paletteKey: 'core', compiledConfig: SUMMARIZATION_CONFIG }),
       definition({ slug: 'consult_flow' }),
     ]);
     const service = build();
@@ -202,7 +213,7 @@ describe('list() and the gate keep agreeing', () => {
 
   it('includes them in the consultation-bound catalogue', async () => {
     mockWorkflowDefinitionRepository.findActivePublishedByTenant.mockResolvedValue([
-      definition({ slug: 'summary_ok', paletteKey: 'summarization', compiledConfig: SUMMARIZATION_CONFIG }),
+      definition({ slug: 'summary_ok', paletteKey: 'core', compiledConfig: SUMMARIZATION_CONFIG }),
       definition({ slug: 'consult_flow' }),
       definition({ slug: 'realtime_only', compiledConfig: REALTIME_ONLY_CONFIG }),
     ]);

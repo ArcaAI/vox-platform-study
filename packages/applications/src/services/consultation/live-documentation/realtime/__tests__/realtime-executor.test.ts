@@ -217,7 +217,7 @@ describe('task 4 — disabled nodes are skipped; failures degrade, never silentl
     const result = await run(PLATFORM_REALTIME_LANE, caps);
 
     expect(result.events).toEqual([
-      { nodeId: PLATFORM_LANE_NODE_IDS.extract, type: 'core.agent', config: { agentRef: { task: 'NAMED_ENTITY_RECOGNITION' } }, status: 'degraded', reason: 'nlp unavailable', laneSource: 'platform-default' },
+      { nodeId: PLATFORM_LANE_NODE_IDS.extract, type: 'core.agent', status: 'degraded', reason: 'nlp unavailable', laneSource: 'platform-default' },
     ]);
   });
 
@@ -245,7 +245,7 @@ describe('task 4 — disabled nodes are skipped; failures degrade, never silentl
 
     expect(caps.extractEntities).not.toHaveBeenCalled();
     expect(result.outcomes[1]).toMatchObject({ nodeId: 'extract', status: 'succeeded' });
-    expect(result.outputs.get('extract')).toEqual({ entities: [] });
+    expect(result.outputs.get('extract')).toEqual({ data: { entities: [] }, text: '', entities: [] });
   });
 });
 
