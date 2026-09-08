@@ -27,7 +27,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller ProviderConnectionController
- * (6 routes). Several controllers sharing one scope share one
+ * (7 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -129,6 +129,27 @@ export class AdminAiProviderResource extends AdminResource {
       path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}/models`,
       query: options.query,
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Reset one built-in provider connection to its platform default (super admin only).
+   *
+   * Restores the endpoint, `enabled` state, extras and key material of a PLATFORM-MANAGED row — the built-in inference engines (LM Studio, Ollama, vLLM, llama.cpp) and the model registry (Hugging Face, the S3/MinIO weight store) — from `BUILT_IN_CONNECTION_DEFAULTS`. **This is not `DELETE`.** Deleting a SYSTEM engine row does not return it to the default: `apps/text` resolves a self-hosted engine’s base URL only from the injected provider overrides, with no environment fallback, so a missing row is a 503 on every generation. Connection CEILINGS (`maxConcurrent`, `rpmLimit`, `tpmLimit`, `timeoutS`) are PRESERVED — they are an operator’s tuning of their own hardware, not part of the row’s identity. No `If-Match`: the operation means “whatever it says now, put it back”, so a stale token would refuse the caller who most needs it.
+   *
+   * `POST /api/v1/admin/providers/{service}/{provider}/reset` — `ProviderConnectionController.reset`.
+   */
+  reset(
+    service: string,
+    provider: string,
+    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
+  ): Promise<AiProviderConnectionResponse> {
+    return this.request<AiProviderConnectionResponse>({
+      method: 'POST',
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}/reset`,
+      query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

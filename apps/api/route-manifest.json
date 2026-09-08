@@ -5511,6 +5511,29 @@
     },
     {
       "controller": "ProviderConnectionController",
+      "handler": "reset",
+      "method": "POST",
+      "path": "/api/v1/admin/providers/{service}/{provider}/reset",
+      "routePath": "/admin/providers/:service/:provider/reset",
+      "svcScopes": [
+        "svc:admin:ai-provider:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ProviderConnectionController",
       "handler": "testConnection",
       "method": "POST",
       "path": "/api/v1/admin/providers/{service}/{provider}/test",
@@ -7513,6 +7536,98 @@
       "requiredPermissions": [
         [
           "read",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "SettingsFeaturesController",
+      "handler": "getEffectiveFeatures",
+      "method": "GET",
+      "path": "/api/v1/admin/settings/features/effective",
+      "routePath": "/admin/settings/features/effective",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "SettingsFeaturesController",
+      "handler": "getFeatureMatrix",
+      "method": "GET",
+      "path": "/api/v1/admin/settings/features/matrix",
+      "routePath": "/admin/settings/features/matrix",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "SettingsFeaturesController",
+      "handler": "putFeatureMatrix",
+      "method": "PUT",
+      "path": "/api/v1/admin/settings/features/matrix",
+      "routePath": "/admin/settings/features/matrix",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "SettingsRegistryWriteController",
+      "handler": "resetSetting",
+      "method": "DELETE",
+      "path": "/api/v1/admin/settings/registry/{key}",
+      "routePath": "/admin/settings/registry/:key",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
           "GlobalSetting"
         ]
       ],
