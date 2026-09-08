@@ -16,6 +16,7 @@ control plane and reconfigures these caches without a redeploy.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any, Generic, TypeVar
 
@@ -51,6 +52,61 @@ __all__ = [
 ]
 
 
+class _DetachedLoad(Generic[T]):
+    """One load per key, running as a task that OUTLIVES its requesters.
+
+    The shared cache already shields waiters from each other: concurrent callers
+    for one key join a single future, and a waiter's cancellation cannot cancel
+    it. The OWNER of that future is the exception — it awaits the factory
+    directly, so cancelling the owner cancels the load itself.
+
+    That is the whole of TASK-930 D-7. A cold GLiNER2 load takes minutes;
+    guardrail (and, above it, `apps/text`'s screen timeout) gives up in seconds
+    and the disconnect cancels the request task. Every attempt therefore killed
+    the load it had just started, and a stack under a periodic caller reloaded
+    from zero forever instead of converging.
+
+    Wrapping the factory moves the work off the requester's task: the load runs
+    once per key and every requester — owner included — waits on it under a
+    shield. A cancellation then costs the REQUEST and never the WORK, and a load
+    that finishes with nobody attached is handed to the next requester, which
+    admits it to the cache.
+
+    A FAILED load is still never cached: a finished task is dropped as soon as
+    one requester has taken its outcome, and a task that failed while unattached
+    is discarded rather than replayed at the next caller.
+    """
+
+    def __init__(self, factory: Callable[[str], Awaitable[T]]) -> None:
+        self._factory = factory
+        self._loads: dict[str, asyncio.Task[T]] = {}
+
+    async def __call__(self, key: str) -> T:
+        task = self._loads.get(key)
+        if task is not None and task.done() and _failed(task):
+            # A load that failed unattached is not an answer for this caller.
+            self._loads.pop(key, None)
+            task = None
+        if task is None:
+            task = asyncio.ensure_future(self._factory(key))
+            # Retrieve the outcome even if no requester ever does, so an
+            # abandoned failure is not reported as "never retrieved" at GC.
+            task.add_done_callback(_failed)
+            self._loads[key] = task
+        try:
+            return await asyncio.shield(task)
+        finally:
+            # Only a FINISHED load is dropped. A cancelled requester leaves the
+            # task in place, which is what lets the next one join it.
+            if task.done() and self._loads.get(key) is task:
+                self._loads.pop(key, None)
+
+
+def _failed(task: asyncio.Task[Any]) -> bool:
+    """True when ``task`` ended badly; retrieves the exception either way."""
+    return task.cancelled() or task.exception() is not None
+
+
 class ModelCache(_SharedModelCache[T], Generic[T]):
     """The shared cache with nlp's defaults and its `cached_models()` spelling."""
 
@@ -63,7 +119,7 @@ class ModelCache(_SharedModelCache[T], Generic[T]):
         **kwargs: Any,  # pass-through for metrics / vram_probe / time_func
     ) -> None:
         super().__init__(
-            factory=factory,
+            factory=_DetachedLoad(factory),
             max_size=max_size,
             ttl_seconds=ttl_seconds,
             name=kwargs.pop("name", "nlp_model_cache"),
