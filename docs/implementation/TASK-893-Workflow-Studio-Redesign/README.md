@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `In Progress` — Phase 1 `Completed` (merged 2026-09-07). Phases 2 + 4 run as **lane R** of the TASK-930 wave (2026-09-08); Phase 3 is replaced by the seed rebuild (lane S). Lane contract: [`../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md`](../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md) §7. |
+| **Status** | `In Progress` — **all four phases are delivered and merged** on `dev-2.2` (Phase 1 2026-09-07; Phases 2 + 4 as **lane R** of the TASK-930 wave plus fix-up lanes F-TS / F-PY, 2026-09-08; Phase 3 superseded by the seed rebuild, lane S). Held open for exactly ONE unrun gate — Phase 4 declares `pnpm test:e2e` and the API e2e suite has not run on the integrated tree (§6). Lane contract: [`../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md`](../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md) §7. |
 | **Type** | `refactor` + `feature` (studio UX) / `infrastructure` (registry + seed retirement) |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-07 |
@@ -400,8 +400,22 @@ removal.
 
 ## 6. Implementation Summary
 
-**Phase 1 is complete and merged to `dev-2.2`.** Phases 2-4 (promote the action catalogue, migrate
-the seeded graphs, delete the legacy vocabulary) are unstarted and remain as planned in §4.
+**All four phases are delivered on `dev-2.2`.** Phase 1 merged 2026-09-07 (recorded immediately
+below); Phases 2 and 4 merged 2026-09-08 as **lane R** of the TASK-930 wave, with the Python half
+finished by fix-up lane **F-PY**; Phase 3 was **superseded** — the owner directed a deletion and
+rebuild (TASK-930 D-8) instead of a migration, delivered by lane S. That record is
+[§6 Phases 2–4](#phases-24--the-legacy-vocabulary-retirement-2026-09-08) below.
+
+**One declared gate is still unrun, which is why this ticket is not yet `Completed`:** Phase 4's
+gate line names `pnpm test:e2e`, and the API e2e suite has not been run on the integrated tree —
+the isolated test infra (`:5433`) was down for the whole wave, and one e2e spec was EDITED during
+the merge (`task-776-credential-classes.spec.ts`, whose deny-by-default example moved off
+`GET /workflows` now that route admits service accounts). It rides on the same local-stack and
+database consent that gates TASK-930's ask #2/#3 runs. Everything else in the Phase 4 gate is
+green: `pnpm typecheck:all` 0 · `pnpm lint:all` 0 · workspace `pnpm test:unit` **23 803 passed /
+0 failed** · `pnpm harness:test` **2 201 passed / 6 failed** (the six are a pre-existing task-355
+patch-marker defect, its own ticket — §6 below) · `grep "deprecated: true"` over the registry
+returns 0 · the deprecation register records both the removal and its deploy precondition.
 
 ### Delivery — five parallel lanes against one written contract
 
@@ -476,6 +490,94 @@ than none. `useSandboxNodeStates` is wired forward-compatibly and returns an emp
 rendering is already in place on the canvas. Unblocking it needs the interpreter to stamp a graph
 node id onto trajectory rows, which is outside this ticket.
 
+### Phases 2–4 — the legacy vocabulary retirement (2026-09-08)
+
+Run as **lane R** of the TASK-930 wave (worktree `../hope-v2-t893-r`, branch `task-893-retire`,
+35 commits, merged at `699c0ca33`), against the written contract in
+[`../TASK-930-…/INTERFACES.md`](../TASK-930-Agent-Workflow-Platform-Commitments/INTERFACES.md) §7.
+Two fix-up lanes finished the integration it could not reach from inside its own file ownership:
+**F-TS** on the primary checkout (`474cc2728`…`17aa15a77`) and **F-PY** (`fixup-930-harness`,
+merged at `2232354c6`). The full wave record, including the rulings that decided the reds, is
+TASK-930 README §4.3 / §4.5 / §4.6.
+
+**Phase 2 — the action catalogue is its own table.** `ACTION_CATALOGUE` stopped being a filtered
+view of the deprecation table (§2.7's load-bearing finding) and became a first-class table in both
+languages — `packages/workflow-contract/src/action-catalogue.ts` and
+`apps/harness/…/interpreter/action_catalogue.py` — with `ACTION_PORTS` and `ACTION_CONFIG_SCHEMAS`
+beside it. **17 keys kept, 17 agent-shaped keys dropped** (INTERFACES §7.2). `effective_spec` (Python)
+and `actionDelegateOf` / `classesOf()` (TS) resolve a `core.action` INSTANCE through the catalogue,
+never through the node registry, so a `mandatory` / `redaction` / `activity` class still reaches a
+rule or a finding. The Studio's action dropdown reads the catalogue instead of
+`deprecated === true && replacedBy === 'core.action'`.
+
+**Phase 3 — superseded, not skipped.** The owner directed deletion-and-rebuild (TASK-930 D-8,
+recorded inline at §4 Phase 3 above), so no legacy graph was migrated. Lane S deleted seeds
+`21` / `23` / `24` / `07e-consultation-loop-defaults` / `07g-consultation-legacy-context-schema`
+with their regen scripts and authored the replacement set in `core.*` from scratch:
+`07e-consultation-note-context-schema.ts` (ONE trigger context schema, `isDefault: true`),
+`28-workflow-library{,.generated}.ts` (Global and SYSTEM each carrying five agents and two
+workflows, SYSTEM stamped `sourceTenantId = Global`) and
+`29-arcaai-agents-and-workflows{,.generated}.ts` (27 agents / 13 workflows generated from the
+department × visit-type table, 1 TENANT + 11 DEPARTMENT assignments). The §2.8 concern that
+assignments bind by slug is answered by re-seeding them against the new slugs under palette `core`.
+
+**Phase 4 — the vocabulary is gone, in lockstep.** `WORKFLOW_NODE_REGISTRY` 72 → **11 `core.*`
+types**; `registry.py` 64 → the **11** matching `NodeSpec`s; `NODE_ACTIVITIES` 65 → **29**, derived
+from the catalogue so the worker serves exactly what the interpreter dispatches;
+`MANDATORY_NODE_TYPES = {core.trigger, core.output}`; the `WF-CONS-*` / `WF-SUMM-*` rules and
+`DRAFT_CONSULTATION_RULE_SET` deleted; `grep "deprecated: true"` returns 0. Seventeen of the retired
+types **survive as actions** behind `core.action`, descriptors, ports, schemas and activity callables
+copied verbatim — they are no longer node types.
+
+**Source defects found and fixed, rather than tests edited.** Each was invisible until the
+vocabulary moved:
+
+| # | Defect | Fix |
+|---|---|---|
+| **P-1** | `GUARDRAIL_OPTED_OUT` in `publish-findings.ts` had become dead code — it tested the mandatory SET, which is now exactly the two types whose schema withholds `enabled`. It is the first of TASK-890 D-1's three compensating controls | resolve the mandatory class per INSTANCE |
+| **P-2** | `core.start` was still in `ENTRY_NODE_TYPES` after being retired | removed; the Studio no longer treats it as a graph entry |
+| **P-3** | The realtime flush projection, degrade reason and admin read-out keyed on the retired `canonicalRealtimeNodeType` | re-keyed on a CAPABILITY (`realtimeCapabilityOf()`) |
+| **P-4** | `node-prompt-binding.ts` never read a `core.action`'s `config.action.promptTemplateId`, so **every core graph pinned no prompt version** — a template edit silently re-prompted a published clinical workflow | binding collected from the delegate config |
+| **P-5** | `config-resolver.service.ts`'s `isGenerationNode` missed core graphs, so **auto-summary stayed ON for a graph that switched it off** | resolved through `classesOf` |
+| **P-6** | `GET /admin/workflow-nodes` served node types only, so the Studio's `effectiveNodePorts` fell back to the generic superset (six sockets where the action has one) | serves the 17 action descriptors too, each labelled `kind: 'node' \| 'action'`; the palette rail filters on it, because an action is not a draggable node type |
+| **P-7** | `agentic.tts` streamed every synthesis frame on the delta lane; its `core.agent` `_run_speech` replacement stored the artifact and streamed nothing — the audio half of the two-lane split had been lost with the node type | emission ported into `_run_speech`, measured by `test_task849_audio_two_lane_split.py` |
+
+**The agentic-loop subsystem was removed, not orphaned.** `agentic.loop` was the only dispatcher of
+`AgenticLoopWorkflow` / `AgenticSubAgentWorkflow` and left the registry in Phase 4; under OD-2 the
+subsystem is deleted (531 lines, 8 activities, both worker registrations, its tests and fixtures).
+`interpreter/loop_activities.py` is KEPT — the live `core.loop` schedules
+`interpreter.loop_state_checkpoint` through it. Register entry:
+[`deprecation-register.md` §"TASK-893 fix-up"](../../operations/deprecation-register.md).
+
+**Deploy precondition (unchanged, and the reason this is not a pure code change): drain in-flight
+harness workflows before deploying.** Deleting a node type changes what the interpreter SCHEDULES,
+so a history recorded when that node dispatched replays as `TMPRL1100 Nondeterminism`, and
+`workflow.patched` cannot rescue it because the old path IS the deleted entry. The six backward-guard
+replay tests were re-fixtured onto `core.*` under the owner ruling of 2026-09-08 (TASK-930 §4.5) —
+a recorded history stops being evidence once the vocabulary it replays is retired by decision.
+
+**Pinned as tests rather than silently changed** (each is a real consequence of the retirement, and
+a reviewer's most likely undo): all ten `WF-I-*` invariants are INERT under `core` (they declare
+`paletteKey: 'summarization'` and `validate()` skips a foreign palette); `WF-S-007` is vacuous for
+`core`; anti-laundering is weaker for NER (a `core.agent` typed on `text`, which `document` widens
+to); and `compileGate` may now be unreachable, since nothing is `gate`-classed.
+
+**Follow-ups this retirement created, each out of scope here:** `proposeCorrections` /
+`extractFindings` are implemented but unreachable — no `core.*` node resolves to either capability,
+so grammar corrections and important-findings mining left the realtime lane (TASK-930 §4.6 G-2);
+`PromptResolutionService` graph tier 1a is unauthorable under `core` and is now inert source (G-3);
+and the six remaining harness reds are a **live defect, not fixture rot** — `HarnessDocWorkflow` no
+longer issues `workflow.patched("task-355-optimistic-delivery")` while recorded histories carry the
+marker, the same deploy hazard class as the drain precondition.
+
+**Gates.** Lane R: workflow-contract 38 files / 827 · Studio 56 files / 544 (`--max-warnings 0`) ·
+`py-workflow-contract` 75 · harness ruff + mypy (152 files) clean. F-TS: `build:packages` 22/22 ·
+applications **12 242 passed / 0 failed** · api **4 270 passed** · admin-console **2 640 passed** ·
+workflow-contract 839 · database 1 651. F-PY: `pnpm harness:test` **34 → 6 failed / 2 201 passed** ·
+ruff + mypy (150 files) clean. Integrated tree at `61e05e089`+: `pnpm typecheck:all` 0 errors,
+`pnpm lint:all` 0 errors, workspace `pnpm test:unit` **23 803 passed / 0 failed**. `pnpm test:e2e`
+is the one gate still owed (see the top of §6).
+
 *(The section below is the accessibility record the plan requires from the editor-shell lane, and it
 outlives the ticket because it is the contract that replaced the List view.)*
 
@@ -522,6 +624,7 @@ definition of done.
 
 | Date | Change |
 |---|---|
+| 2026-09-08 (close) | §6 records Phases 2–4: the action catalogue as a first-class table (17 kept / 17 dropped), the vocabulary deleted TS + Python in lockstep (registry 72 → 11, `NodeSpec` 64 → 11, activities 65 → 29), Phase 3 superseded by the seed rebuild, seven source defects fixed rather than tests edited (P-1..P-7), the agentic-loop removal and the drain deploy precondition. Two follow-ups the retirement created are named (G-2 unreachable realtime capabilities, G-3 the inert prompt tier) and so is the pre-existing task-355 patch-marker defect behind the six harness reds. Status kept `In Progress` for one reason only: Phase 4's declared `pnpm test:e2e` has not been run on the integrated tree. Rule amendments landed with it (05 promotion gate, 06 harness vocabulary + drain precondition, and the register's `21/23/24` row made renderable). |
 | 2026-09-07 | Created. Root-caused the four interaction failures to read-only mode on 11/12 seeded PUBLISHED definitions (verified live); found edge deletion unwired in the Studio; found `ACTION_CATALOGUE` derived from the deprecated registry entries, which is why they still exist. Plan drafted in four dependency-ordered phases. |
 | 2026-09-08 (later) | Lane R worktree `../hope-v2-t893-r` (branch `task-893-retire`, base `7793d09ca`): first run killed by the account spend limit before committing; relaunched. Amendment: R exports `outputSchemaResponseFormat` from `packages/workflow-contract/src/index.ts` (TASK-930 §4.2 A-4). Full lane log: TASK-930 README §4.1. |
 | 2026-09-08 | Phases 2 + 4 started as lane R of the TASK-930 wave (measured baseline: 72 registry entries / 61 deprecated / 11 `core.*`; rule counts WF-CONS 19, WF-S 7, WF-I 10, WF-SUMM 6, WF-STT 0, WF-CORE 3 — the §2.7/§2.8 figures were approximate). Phase 3 superseded by the seed rebuild. Action catalogue curated to 17 kept / 17 dropped keys (INTERFACES §7.2). |
