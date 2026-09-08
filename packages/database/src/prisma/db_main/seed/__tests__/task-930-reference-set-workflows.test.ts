@@ -10,14 +10,24 @@
  * the regen script's own `engineOutputFor`.
  */
 import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../00-constants';
 import { NOTE_CONTEXT_SCHEMAS, NOTE_CONTEXT_SCHEMA_VERSIONS, canonicalJson, noteContextSchemaIdFor } from '../07e-consultation-note-context-schema';
 import { cloneId, provisionTenantReferenceSet, restampCompiledConfig } from '../26-tenant-reference-set';
 import { CONSULTATION_WORKFLOW_SLUG, WORKFLOW_LIBRARY_ASSIGNMENTS, WORKFLOW_LIBRARY_ASSIGNMENT_CHANGES, WORKFLOW_LIBRARY_TARGETS, workflowLibraryDefinitions } from '../28-workflow-library';
-import { engineOutputFor } from '../../../../../scripts/regen-workflow-seeds';
 import { REGISTRY_CHECKSUM } from '../28-workflow-library.generated';
+
+// `scripts/` sits outside this package's tsconfig `rootDir`, so the regen script is loaded by
+// PATH at runtime — the same posture the retired parity tests used for the contract itself.
+// Reusing the script's own `engineOutputFor` is the point: the test and the generator cannot
+// drift apart into two different "real" engines.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REGEN_SRC = path.resolve(HERE, '../../../../../scripts/regen-workflow-seeds.ts');
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { engineOutputFor }: any = await import(/* @vite-ignore */ REGEN_SRC);
 
 const TENANT = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 type Row = Record<string, any>;
@@ -134,8 +144,8 @@ describe('phase 26 clones the SYSTEM workflow library into a tenant', () => {
     const system = workflowLibraryDefinitions().find((row) => row.tenantId === SYSTEM_TENANT_ID && row.slug === CONSULTATION_WORKFLOW_SLUG)!;
     const restamped = restampCompiledConfig(system.compiledConfig as Row, { definitionId: 'd', tenantId: 't', schemaId: 's', versionId: 'v' });
     expect(restamped).toMatchObject({ definitionId: 'd', tenantId: 't' });
-    expect(restamped.policyBindings.contextSchemaVersionId).toBe('v');
-    expect(restamped.policyBindings.contextSchemaRefs).toEqual([{ nodeId: 'n_trigger', schemaId: 's', versionNumber: 1, versionId: 'v' }]);
+    expect((restamped.policyBindings as Row).contextSchemaVersionId).toBe('v');
+    expect((restamped.policyBindings as Row).contextSchemaRefs).toEqual([{ nodeId: 'n_trigger', schemaId: 's', versionNumber: 1, versionId: 'v' }]);
     const { checksum, ...rest } = restamped;
     expect(checksum).toBe(sha256(rest));
     expect((system.compiledConfig as Row).definitionId).not.toBe('d'); // untouched input

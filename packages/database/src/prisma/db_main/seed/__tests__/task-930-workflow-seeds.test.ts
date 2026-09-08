@@ -13,6 +13,8 @@
  * seed:regen:workflows`), never hand-patched. This test asserts the committed checksum equals the
  * live `registryChecksum()` so that drift is a red test rather than a silent seed failure.
  */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../00-constants';
@@ -32,11 +34,21 @@ import {
   arcaaiWorkflowDefinitions,
 } from '../29-arcaai-agents-and-workflows';
 import { ARCAAI_GENERATED, REGISTRY_CHECKSUM as ARCAAI_REGISTRY_CHECKSUM } from '../29-arcaai-agents-and-workflows.generated';
-import { engineOutputFor } from '../../../../../scripts/regen-workflow-seeds';
-import * as contract from '../../../../../../workflow-contract/dist/index.mjs';
 
+// `scripts/` sits outside this package's tsconfig `rootDir`, so the regen script is loaded by
+// PATH at runtime — the same posture the retired parity tests used for the contract itself.
+// Reusing the script's own `engineOutputFor` is the point: the test and the generator cannot
+// drift apart into two different "real" engines.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REGEN_SRC = path.resolve(HERE, '../../../../../scripts/regen-workflow-seeds.ts');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const liveRegistryChecksum: string = (contract as any).registryChecksum();
+const { engineOutputFor }: any = await import(/* @vite-ignore */ REGEN_SRC);
+
+// The LIVE registry checksum, from the built contract the script itself compiles against.
+const CONTRACT_DIST = path.resolve(HERE, '../../../../../../workflow-contract/dist/index.mjs');
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const contract: any = await import(/* @vite-ignore */ CONTRACT_DIST);
+const liveRegistryChecksum: string = contract.registryChecksum();
 
 describe('TASK-930 §8.6 — the generated blobs are real engine output', () => {
   it('both generated modules carry the LIVE registry checksum (regenerate, never hand-patch)', () => {

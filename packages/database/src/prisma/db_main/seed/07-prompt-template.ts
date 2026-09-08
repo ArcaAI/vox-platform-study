@@ -1,6 +1,6 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
-import type { PromptTemplateCategory, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
+import type { PromptTemplateCategory, PromptTemplateScope, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
 import { SEED_DEPARTMENT_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 /**
