@@ -123,16 +123,18 @@ describe('WorkflowDefinitionService.promoteToSystem — the graph’s agents mus
     mockEntitlements.isFeatureEnabled.mockResolvedValue(true);
     mockDatabaseService.baseClient.$transaction.mockImplementation((cb: (tx: unknown) => unknown) => cb({}));
     mockRepository.findPublishedBySlug.mockImplementation((tenantId: string) =>
-      Promise.resolve(
-        tenantId === GLOBAL ? entity() : entity({ id: 'sys-v1', tenantId: SYSTEM_TENANT_ID, versionNumber: 1, isActive: true }),
-      ),
+      Promise.resolve(tenantId === GLOBAL ? entity() : entity({ id: 'sys-v1', tenantId: SYSTEM_TENANT_ID, versionNumber: 1, isActive: true })),
     );
     mockRepository.findById.mockResolvedValue(
       entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false }),
     );
     mockRepository.update.mockImplementation((_id: string, updated: unknown) => Promise.resolve(updated));
     mockRepository.findAllVersionsBySlug.mockResolvedValue([]);
-    mockAgentPromotion.promote.mockResolvedValue({ id: 'promo-1', targetDefinitionVersionId: 'sys-draft-1', warnings: [] });
+    // TASK-930 D-4 — the publish now runs INSIDE the promotion's transaction, through `afterWrite`.
+    mockAgentPromotion.promote.mockImplementation(async (_dto: unknown, options?: { afterWrite?: (d: unknown) => Promise<void> }) => {
+      await options?.afterWrite?.(entity({ id: 'sys-draft-1', tenantId: SYSTEM_TENANT_ID, status: WorkflowDefinitionStatus.DRAFT, isActive: false }));
+      return { id: 'promo-1', targetDefinitionVersionId: 'sys-draft-1', warnings: [] };
+    });
     mockEvalGate.evaluateWorkflowPromotion.mockResolvedValue({
       mode: 'warn',
       evaluated: true,
@@ -153,9 +155,7 @@ describe('WorkflowDefinitionService.promoteToSystem — the graph’s agents mus
   it('refuses with a 409 AGENTS_NOT_IN_SYSTEM naming EVERY agent slug SYSTEM does not carry', async () => {
     mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue(null);
 
-    const error = await service
-      .promoteToSystem({ sourceDefinitionSlug: 'general-medicine-consultation' })
-      .catch((caught: unknown) => caught);
+    const error = await service.promoteToSystem({ sourceDefinitionSlug: 'general-medicine-consultation' }).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ConflictException);
     const body = (error as ConflictException).getResponse() as { code: string; missing: string[]; message: string };
@@ -173,9 +173,7 @@ describe('WorkflowDefinitionService.promoteToSystem — the graph’s agents mus
       Promise.resolve(slug === 'medical-ner' ? null : { id: 'sys-agent-1', tenantId, slug }),
     );
 
-    const error = await service
-      .promoteToSystem({ sourceDefinitionSlug: 'general-medicine-consultation' })
-      .catch((caught: unknown) => caught);
+    const error = await service.promoteToSystem({ sourceDefinitionSlug: 'general-medicine-consultation' }).catch((caught: unknown) => caught);
 
     expect(((error as ConflictException).getResponse() as { missing: string[] }).missing).toEqual(['medical-ner']);
   });
@@ -197,6 +195,8 @@ describe('WorkflowDefinitionService.promoteToSystem — the graph’s agents mus
 
     expect(mockAgentPromotion.promote).toHaveBeenCalledWith(
       expect.objectContaining({ fromTenantId: GLOBAL, toTenantId: SYSTEM_TENANT_ID }),
+      // D-4 — the publish travels as the promotion's in-transaction step.
+      expect.objectContaining({ afterWrite: expect.any(Function) }),
     );
     expect(result.published).toBe(true);
   });
