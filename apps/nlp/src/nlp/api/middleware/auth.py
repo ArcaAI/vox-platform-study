@@ -42,9 +42,11 @@ class ServiceAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Owner decision D-D (2026-08-17): the CANONICAL credential is the single
-        # shared `INTERNAL_ACCESS_TOKEN`; the legacy per-service token stays
-        # accepted as a zero-cost backward-compatibility fallback. Both empty ⇒
-        # auth bypassed (local dev / hermetic CI), unchanged.
+        # shared `INTERNAL_ACCESS_TOKEN`, and on this service it is the ONLY one
+        # accepted — lane D removed the legacy per-service `NLP_SERVICE_TOKEN`
+        # rather than keeping it as a fallback, so a caller that presents the
+        # legacy token is answered 401 exactly like a caller presenting none.
+        # Empty ⇒ auth bypassed (local dev / hermetic CI), unchanged.
         accepted: tuple[str, ...] = settings.service.accepted_service_tokens
 
         if not accepted:
