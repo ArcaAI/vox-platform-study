@@ -59,6 +59,7 @@ from harness.temporal.interpreter.models import (
     ResolvedAgent,
     ResolvedClassificationModel,
 )
+from harness.temporal.interpreter.nodes._consultation_shared import run_identity
 from harness.temporal.interpreter.nodes._shared import (
     MISSING,
     STATUS_DEGRADED,
@@ -806,6 +807,141 @@ def _generation_stats(
     return stats
 
 
+# ---------------------------------------------------------------------------------------------
+# TASK-932 R-16a — the FINALIZED note becomes the consultation's own note.
+# ---------------------------------------------------------------------------------------------
+
+#: The execution cadence that means "once, at the close of the session" (`node-config-schemas.ts`
+#: `NODE_EXECUTION_CADENCES`). It is the ONLY cadence that carries a durable-lane consequence: a
+#: `core.agent` declaring it, inside a consultation-bound run, IS that consultation's finalizer.
+_CADENCE_ON_END = "onEnd"
+
+
+def _execution(config: dict[str, Any]) -> dict[str, Any]:
+    execution = config.get("execution")
+    return execution if isinstance(execution, dict) else {}
+
+
+def _is_consultation_finalizer(payload: NodeActivityInput, config: dict[str, Any]) -> bool:
+    """Whether THIS node is the consultation's end-of-session note (pure).
+
+    Three conditions, and each removes a different way of getting this wrong:
+
+    * a CONSULTATION-bound run — an exposure-plane invocation has no clinical record to write to,
+      and a graph declaring ``kinds: ['consultation','api']`` runs on both;
+    * ``execution.cadence: onEnd`` — the graph author's own declaration that this step runs once
+      at the close. `perTurn` is the live lane's running note (already persisted by the live
+      executor as ``LIVE_SOAP_SNAPSHOT``), `onStart` is the warm start, `once` is a plain
+      one-shot generation. Only `onEnd` means "this is the note";
+    * not SANDBOX — a Workbench run must never write a clinical record. `core.agent` is
+      ``external_write=False`` on the TYPE (an LLM agent has to be runnable in a sandbox), so the
+      suppression is made HERE, exactly as ``_run_speech`` already makes it for a TTS artifact.
+    """
+    if payload.sandbox:
+        return False
+    if _execution(config).get("cadence") != _CADENCE_ON_END:
+        return False
+    return bool(run_identity(payload.run_payload).consultation_id)
+
+
+def _finalized_note(output: dict[str, Any]) -> str | None:
+    """The clinician-facing note out of a finalizer's answer (pure).
+
+    The seeded ``casenote-finalization`` agent declares
+    ``outputSchema: {case_note, redactions}``, which TASK-930 §5 turns into the response format,
+    so the parsed ``data`` is the honest source. ``text`` is the fallback for an agent that
+    declares no schema — but NEVER when ``data`` parsed, because then ``text`` is the raw JSON
+    document and persisting it would put a serialized object in front of a clinician.
+    """
+    data = output.get("data")
+    if isinstance(data, dict):
+        case_note = data.get("case_note")
+        return case_note.strip() or None if isinstance(case_note, str) else None
+    text = output.get("text")
+    return text.strip() or None if isinstance(text, str) else None
+
+
+def _redaction_audit(output: dict[str, Any]) -> tuple[bool | None, dict[str, Any] | None]:
+    """The redaction MARKER and its audit manifest (pure), or ``(None, None)``.
+
+    **The manifest never carries removed PHI.** A finalizer reports each redaction as
+    ``{text, label}`` where ``text`` is the identifier it replaced — so only the LABELS and their
+    COUNTS travel, which is exactly what ``SummaryMeta.redactionManifest`` is documented to hold
+    ("rule ids, actions, spans and counts — NEVER removed PHI plaintext"). Copying the list
+    through would move patient identifiers into a second column for no diagnostic gain.
+
+    ``(None, None)`` when the agent declared no redaction contract at all — absent is not
+    ``redactionApplied: false``, which would assert that a transform ran and changed nothing.
+    """
+    data = output.get("data")
+    if not isinstance(data, dict) or not isinstance(data.get("redactions"), list):
+        return None, None
+    counts: dict[str, int] = {}
+    for entry in data["redactions"]:
+        if not isinstance(entry, dict):
+            continue
+        label = entry.get("label")
+        key = label if isinstance(label, str) and label else "UNLABELLED"
+        counts[key] = counts.get(key, 0) + 1
+    total = sum(counts.values())
+    return bool(total), {"source": "core.agent", "labelCounts": counts, "total": total}
+
+
+async def _persist_finalized_note(
+    payload: NodeActivityInput,
+    candidate: ResolvedAgent,
+    output: dict[str, Any],
+) -> str | None:
+    """Write the finalized note onto the consultation. Returns a failure reason, or ``None``.
+
+    Reuses ``persist_draft`` — the SAME gateway write ``HarnessDocWorkflow`` has always used —
+    so the note lands as a ``RAW_SUMMARY`` ``ContextItem`` with its ``SummaryMeta``
+    (``dnaWritingStyleId``, ``redactionApplied``, the encrypted manifest, model/prompt
+    provenance), the ``ai_draft_v1`` snapshot is captured, and the consultation advances to
+    ``PENDING_REVIEW`` — which is precisely the state a graph's ``core.humanReview`` gate then
+    waits in. One consultation still gets ONE harness draft: the gateway ADOPTS its own prior row
+    rather than creating a second, and refuses to overwrite a clinician's edit.
+
+    The DNA style id comes from the run context the LIVE HANDOFF published, never from the node's
+    config: which style applied is a fact about the clinician whose consultation this is, and the
+    gateway resolved it under the tenant AND doctor gate.
+    """
+    # Imported inside the function for the same reason `_run_transcription` does it.
+    from harness.temporal.activities import persist_draft  # noqa: PLC0415
+    from harness.temporal.models import PersistDraftInput  # noqa: PLC0415
+
+    content = _finalized_note(output)
+    if not content:
+        return "the finalizer returned no `case_note` to persist"
+
+    identity = run_identity(payload.run_payload)
+    trigger = _run_context(payload).get("trigger")
+    dna_style_id = trigger.get("dna_style_id") if isinstance(trigger, dict) else None
+    redaction_applied, redaction_manifest = _redaction_audit(output)
+
+    try:
+        await persist_draft(
+            PersistDraftInput(
+                consultation_id=identity.consultation_id or "",
+                tenant_id=payload.tenant_id,
+                content=content,
+                user_id=identity.user_id,
+                job_id=identity.job_id,
+                model_name=candidate.model.source_uri or candidate.model.slug,
+                prompt_version=(
+                    str(candidate.version_number) if candidate.version_number is not None else None
+                ),
+                dna_style_id=dna_style_id if isinstance(dna_style_id, str) and dna_style_id else None,
+                redaction_applied=redaction_applied,
+                redaction_manifest=redaction_manifest,
+                is_auto_generated=True,
+            )
+        )
+    except ApiServiceError as exc:
+        return f"the finalized note was not persisted: {exc}"
+    return None
+
+
 async def _run_text_generation(
     payload: NodeActivityInput,
     resolved: ResolvedAgent,
@@ -1045,6 +1181,26 @@ async def _run_text_generation(
                 guardrail=guardrail_decision,
             ),
         )
+
+        # TASK-932 R-16a — the FINALIZED note becomes the consultation's note.
+        #
+        # Until now nothing in a `core` graph persisted it. `consultation.persistDraft` cannot be
+        # wired to a `core.agent` at all — its `in` port is `document` and `core.agent` publishes
+        # `text` / `object`, and the port lattice allows widening ONLY specific -> general
+        # (`port-model.ts`), which is deliberate — so the note reached `core.output` (delivery)
+        # and `core.humanReview` (a gate over a note nobody had written) and stopped there. A
+        # clinician opening the console saw an empty case-note column.
+        #
+        # A persist FAILURE degrades and keeps the output rather than raising: raising is what
+        # makes Temporal re-run this activity FROM THE PRIMARY, re-billing a generation that
+        # already completed. The note still reaches the review gate and the output node, and the
+        # reason names what did not happen.
+        if _is_consultation_finalizer(payload, config):
+            failure = await _persist_finalized_note(payload, candidate, output)
+            if failure is not None:
+                return NodeActivityResult(
+                    status="DEGRADED", reason=f"core.agent: {failure}", output=output
+                )
         return NodeActivityResult(status="SUCCEEDED", output=output)
 
     if exhausted:
