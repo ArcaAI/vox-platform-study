@@ -60,6 +60,7 @@ import { ClinicalSuggestionsPanel } from './clinical-suggestions-panel';
 import { CorrectionProposalsPanel } from './correction-proposals-panel';
 import { composeAutofill, formatSoapSections } from '../../lib/soap-autofill';
 import type { DocumentView, SectionState } from '../../api/document-sections';
+import type { PreSummaryView } from '../../api/hooks';
 import type { ClinicalSuggestion, CorrectionProposal, CorrectionsEnvelope } from '../../api/live-assist';
 
 /** Humanizes a `DocumentTemplate.slug` (`soap_note` → "Soap Note") — no join to the template needed. */
@@ -270,6 +271,80 @@ export function AssuranceStrip({ progress, assurance }: AssuranceStripProps) {
  */
 export type LiveStreamStatus = 'idle' | 'connecting' | 'open' | 'error' | 'closed';
 
+/**
+ * TASK-932 D-9 — the WARM-START panel.
+ *
+ * The first thing the clinician sees, and the first thing that has to be honest. The pre-summary
+ * is generated in parallel with the microphone opening, so the panel is on screen before it has
+ * content — which is exactly the situation TASK-891 B5 fixed for the case note ("`state ===
+ * 'empty'` renders a `<Skeleton />` … so 'still generating' and 'generation failed' were the same
+ * pixels forever. The owner watched that skeleton for ten minutes"). So all three states are
+ * DRAWN differently: a skeleton while running, the text when ready, and a plain sentence when
+ * there is nothing to summarise.
+ *
+ * `no_case_notes` is not an error and is not styled as one: a first-ever visit has no prior
+ * record, which is a fact about the patient. Every other reason IS a failure and says so, with
+ * the PHI-safe code the lane published — never clinical text, because the code is what the
+ * channel carries.
+ *
+ * Nothing renders until an event arrives: a lane that authors no warm start must not leave an
+ * empty labelled box on the screen (rule 11 §4).
+ */
+const PRE_SUMMARY_REASONS: Record<string, string> = {
+  no_case_notes: 'No previous case notes were available for this patient, so there is nothing to summarise.',
+  warm_start_unwired: 'The pre-summary service is not available in this environment.',
+  empty_pre_summary: 'The assistant returned an empty pre-summary.',
+};
+
+function PreSummaryPanel({ preSummary }: { preSummary: PreSummaryView | null }) {
+  if (!preSummary) return null;
+
+  const isBenign = preSummary.status === 'degraded' && preSummary.error === 'no_case_notes';
+
+  return (
+    <section aria-label="Pre-summary" data-testid="pre-summary-panel" data-status={preSummary.status} className="flex flex-col gap-2 rounded-md border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-medium">
+          <IconClipboardCheck aria-hidden className="size-4" />
+          Pre-summary
+        </h3>
+        {preSummary.status === 'running' ? (
+          <span className="text-muted-foreground flex items-center gap-1.5 text-xs" aria-live="polite">
+            <Spinner aria-hidden className="size-3.5" />
+            Reading the previous case notes
+          </span>
+        ) : preSummary.status === 'ready' ? (
+          <Badge variant="secondary" className="gap-1.5">
+            <IconSparkles aria-hidden className="size-3.5" />
+            AI
+          </Badge>
+        ) : (
+          <Badge variant={isBenign ? 'outline' : 'destructive'} className="gap-1.5" aria-live="polite">
+            {isBenign ? null : <IconAlertTriangle aria-hidden className="size-3.5" />}
+            {isBenign ? 'Nothing to summarise' : 'Unavailable'}
+          </Badge>
+        )}
+      </div>
+
+      {preSummary.status === 'running' ? (
+        // A skeleton is correct HERE and only here: this is the one state where content is
+        // genuinely on its way.
+        <div className="flex flex-col gap-2" aria-hidden>
+          <Skeleton className="h-3.5 w-full" />
+          <Skeleton className="h-3.5 w-11/12" />
+          <Skeleton className="h-3.5 w-4/5" />
+        </div>
+      ) : preSummary.status === 'ready' && preSummary.content ? (
+        <p className="text-muted-foreground text-sm whitespace-pre-wrap">{preSummary.content}</p>
+      ) : (
+        <p className="text-muted-foreground text-sm">
+          {PRE_SUMMARY_REASONS[preSummary.error ?? ''] ?? 'The pre-summary could not be produced for this consultation.'}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export interface CaseNoteColumnProps {
   hasConsultation: boolean;
   isRecording: boolean;
@@ -286,6 +361,15 @@ export interface CaseNoteColumnProps {
    * nothing has arrived on that plane yet and the legacy view renders unchanged.
  */
   documentSections?: DocumentView[];
+  /**
+   * TASK-932 D-9 — the WARM START, from the `presummary` plane on the same live-summary stream.
+   *
+   * `null` = no event has arrived, which is NOT "there is no warm start": a graph that authors
+   * one publishes `running` within a moment of the session opening, and a graph that authors none
+   * publishes nothing ever. The panel renders only once something arrives, so a lane without a
+   * warm start shows no empty box.
+ */
+  preSummary?: PreSummaryView | null;
   draft: SummaryResult | null;
   draftLoading: boolean;
   progress: HarnessProgressSnapshot | null;
@@ -369,6 +453,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     liveStatus = 'idle',
     liveError = null,
     documentSections = [],
+    preSummary = null,
     draft,
     draftLoading,
     progress,
@@ -502,6 +587,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           nested region with the same name is screen-reader noise. */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" tabIndex={0}>
         <AssuranceStrip progress={progress} assurance={assurance} />
+        <PreSummaryPanel preSummary={preSummary} />
 
         {!hasConsultation ? (
           <EmptyState icon={IconFileText} title="No case note" description="Select a consultation to see its note." />

@@ -18,6 +18,21 @@ import { useLiveSttSession, usePlaygroundAsrAgents } from '../api';
 import type { LiveSttStatus } from '../api';
 import { isStalledQuery } from '../lib/stalled-query';
 import { BatchTab } from './batch-tab';
+
+/**
+ * TASK-932 §3.7 — the languages this screen offers to DECLARE.
+ *
+ * The pair the platform's own ASR agent transcribes (`ASR_PARAMETERS.decoding.languageMode:
+ * 'ml-en'`). It is not a default and it is not a catalogue: the empty option stays selected, and
+ * an agent that serves another language is reached by the SDK caller declaring its tag. Kept here
+ * rather than read from `GET /audio/transcription-jobs/language-modes` because that catalogue
+ * describes MODES (`ml-en` code-switch) and this control declares a single LANGUAGE — the two are
+ * different axes, which is exactly what OD-1 turned on.
+ */
+const LANGUAGE_OPTIONS: ReadonlyArray<{ tag: string; label: string }> = [
+  { tag: 'en', label: 'English' },
+  { tag: 'ml', label: 'Malayalam' },
+];
 import { StreamingTab } from './streaming-tab';
 
 const FOOTER_STATUS: Record<LiveSttStatus, string> = {
@@ -46,6 +61,16 @@ function ScreenBody() {
   // "send no slug": the tenant → department AgentAssignment cascade decides. The
   // tenant default is shown as a hint in the picker, never preselected.
   const [agentSlug, setAgentSlug] = useState<string | null>(null);
+  /**
+   * TASK-932 §3.7 — the transcription language.
+   *
+   * `null` is the DEFAULT and is not English: TASK-891 OD-1 settled that the code-switch mode
+   * stays on until a language is DECLARED, so the empty option is labelled honestly rather than
+   * defaulted away. The transport has carried this field since TASK-891
+   * (`use-live-stt-session.ts`, `uploadBatchAudio`) and nothing has ever sent it — this screen is
+   * the missing half, on both tabs.
+   */
+  const [language, setLanguage] = useState<string | null>(null);
 
   const agents = useMemo(() => agentsQuery.data ?? [], [agentsQuery.data]);
   const selectedAgent = agents.find((agent) => agent.slug === agentSlug) ?? null;
@@ -72,7 +97,7 @@ function ScreenBody() {
       return;
     }
     void setTabParam(null);
-    void live.start({ ...(agentSlug ? { agentSlug } : {}), tenantId });
+    void live.start({ ...(agentSlug ? { agentSlug } : {}), ...(language ? { language } : {}), tenantId });
   }
 
   function handleStop() {
@@ -132,6 +157,25 @@ function ScreenBody() {
                 ))}
               </NativeSelect>
             )}
+            {/* TASK-932 §3.7 — the transcription language. A sibling of the agent picker rather
+                than a property of it: the same ASR agent serves several languages, and OD-1 says
+                a specific one is reached only by declaring it. */}
+            <Label htmlFor="language-picker">Language</Label>
+            <NativeSelect
+              id="language-picker"
+              className="w-48"
+              value={language ?? ''}
+              onChange={(event) => setLanguage(event.target.value || null)}
+              disabled={busy}
+            >
+              {/* Empty = undeclared: the agent's own code-switch mode decides (TASK-891 OD-1). */}
+              <NativeSelectOption value="">Not declared &middot; code-switch</NativeSelectOption>
+              {LANGUAGE_OPTIONS.map((option) => (
+                <NativeSelectOption key={option.tag} value={option.tag}>
+                  {option.label}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
           </div>
         }
         tabs={
@@ -164,7 +208,7 @@ function ScreenBody() {
             <StreamingTab live={live} agentName={selectedAgent?.name ?? null} canStart={canStart} onStart={handleStart} />
           </TabsContent>
           <TabsContent value="batch">
-            <BatchTab agentSlug={agentSlug} />
+<BatchTab agentSlug={agentSlug} language={language} />
           </TabsContent>
         </PlaygroundCanvas>
       </ScreenTemplate>

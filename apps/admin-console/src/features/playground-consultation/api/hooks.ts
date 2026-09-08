@@ -430,6 +430,94 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
   return { documents, status: stream.status, error: stream.error, close: stream.close, reopen: stream.reopen };
 }
 
+/**
+ * TASK-932 D-9 — the WARM-START panel's feed: the `presummary` events on the SAME
+ * `live-summary/stream` channel the case note and the section patches already use.
+ *
+ * A separate connection for the same reason `useDocumentSectionsStream` is one: the SDK's
+ * `useArcaLiveSummary` parses only the undiscriminated legacy payload, and Redis pub/sub is
+ * happy with more than one subscriber. Filtered to `event === 'presummary'`; every other message
+ * on the channel — the whole-document snapshot, a `section.patch` — is somebody else's.
+ *
+ * ## Why three states and a monotonic fold
+ *
+ * `running` arrives when the session opens and `ready`/`degraded` some seconds later, so the
+ * panel must be able to say "working" rather than showing an empty box that a clinician reads as
+ * "there is nothing". A TERMINAL state is never displaced by a `running` one: SSE makes no
+ * ordering guarantee, and a stale `running` landing after `ready` would take a rendered
+ * pre-summary off the screen.
+ */
+export type PreSummaryStatus = 'running' | 'ready' | 'degraded';
+
+export interface PreSummaryView {
+  status: PreSummaryStatus;
+  content: string | null;
+  /** PHI-safe reason CODE on `degraded` (e.g. `no_case_notes`) — never clinical text. */
+  error: string | null;
+  agentSlug: string | null;
+  updatedAt: string | null;
+}
+
+export interface PreSummaryStreamHandle {
+  /** `null` until the first event — which is not the same as "there is no warm start". */
+  preSummary: PreSummaryView | null;
+  status: StreamStatus;
+  error: string | null;
+  close: () => void;
+  reopen: () => void;
+}
+
+interface PreSummaryEventPayload {
+  event?: string;
+  status?: PreSummaryStatus;
+  content?: string;
+  error?: string;
+  agentSlug?: string;
+  updatedAt?: string;
+}
+
+const TERMINAL_PRE_SUMMARY: ReadonlySet<PreSummaryStatus> = new Set<PreSummaryStatus>(['ready', 'degraded']);
+
+/** Exported for the reducer test — the fold is the part with a rule in it. */
+export function foldPreSummaryEvent(current: PreSummaryView | null, raw: string): PreSummaryView | null {
+  const event = parseJson<PreSummaryEventPayload>(raw);
+  if (!event || event.event !== 'presummary') return current;
+  const status = event.status;
+  if (status !== 'running' && status !== 'ready' && status !== 'degraded') return current;
+  // A terminal state is never displaced by a `running` one (see the docblock).
+  if (current && TERMINAL_PRE_SUMMARY.has(current.status) && status === 'running') return current;
+  return {
+    status,
+    content: typeof event.content === 'string' ? event.content : null,
+    error: typeof event.error === 'string' ? event.error : null,
+    agentSlug: typeof event.agentSlug === 'string' ? event.agentSlug : (current?.agentSlug ?? null),
+    updatedAt: typeof event.updatedAt === 'string' ? event.updatedAt : null,
+  };
+}
+
+export function usePreSummaryStream(consultationId: string | null, enabled = true): PreSummaryStreamHandle {
+  const [preSummary, setPreSummary] = useState<PreSummaryView | null>(null);
+
+  const [trackedId, setTrackedId] = useState(consultationId);
+  if (consultationId !== trackedId) {
+    setTrackedId(consultationId);
+    setPreSummary(null);
+  }
+
+  const handleEvent = useCallback((_type: string, data: string) => {
+    setPreSummary((current) => foldPreSummaryEvent(current, data));
+  }, []);
+
+  const stream = useEventStream({
+    path: consultationId ? liveSummaryStreamPath(consultationId) : null,
+    scope: consultationId ? `consultation_live_summary:${consultationId}` : null,
+    onEvent: handleEvent,
+    enabled: enabled && !!consultationId,
+  });
+
+  return { preSummary, status: stream.status, error: stream.error, close: stream.close, reopen: stream.reopen };
+}
+
 // ─── Async summary job progress (the useDnaJobProgress pattern) ───
 
 /** Fallback poll cadence while the SSE stream is down and the job is non-terminal. */
