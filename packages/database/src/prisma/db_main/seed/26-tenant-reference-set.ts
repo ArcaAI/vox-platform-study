@@ -43,7 +43,7 @@
 import { createHash } from 'node:crypto';
 import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
-import { LEGACY_CONTEXT_SCHEMA_SLUG } from './07g-consultation-legacy-context-schema';
+import { NOTE_CONTEXT_SCHEMA_SLUG } from './07e-consultation-note-context-schema';
 
 /** Per-tenant, per-kind counts — the same shape the service's summary reports. */
 export interface ReferenceSetSeedSummary {
@@ -63,7 +63,7 @@ export interface ReferenceSetSeedSummary {
  * valid UUID (version nibble forced to 8, variant to 8) so it is indistinguishable from any
  * other id at the type level while never colliding with a generated UUIDv7.
  */
-function cloneId(tenantId: string, kind: string, sourceId: string): string {
+export function cloneId(tenantId: string, kind: string, sourceId: string): string {
   const hex = createHash('sha256').update(`task-890:${kind}:${tenantId}:${sourceId}`).digest('hex');
   return [hex.slice(0, 8), hex.slice(8, 12), `8${hex.slice(13, 16)}`, `8${hex.slice(17, 20)}`, hex.slice(20, 32)].join('-');
 }
@@ -473,5 +473,5 @@ export const seedTenantReferenceSets = async (client: CorePrismaClient): Promise
     );
   }
   if (summaries.length === 0) console.log('  (no non-SYSTEM tenants to provision)');
-  console.log(`Reference set provisioned for ${summaries.length} tenant(s). Bridge schema slug: ${LEGACY_CONTEXT_SCHEMA_SLUG}`);
+  console.log(`Reference set provisioned for ${summaries.length} tenant(s). Trigger context schema slug: ${NOTE_CONTEXT_SCHEMA_SLUG}`);
 };

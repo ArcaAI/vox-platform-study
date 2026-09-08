@@ -36,7 +36,8 @@
     "db:studio": "prisma studio",
     "decrypt:row": "tsx scripts/decrypt-row.ts",
     "dna:phi-scan": "tsx scripts/dna-phi-scan.ts",
-    "seed": "tsx src/index.ts"
+    "seed": "tsx src/index.ts",
+    "seed:regen:workflows": "tsx scripts/regen-workflow-seeds.ts"
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",

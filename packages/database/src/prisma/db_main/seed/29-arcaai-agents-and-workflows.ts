@@ -1,0 +1,216 @@
+/**
+ * TASK-930 §8.5 — the ArcaAI tenant's agents and workflows, GENERATED from a table, not hand-written.
+ *
+ * For each of the 11 ArcaAI clinical departments (`04-department.ts`) × {`new-visit`, `revisit`}:
+ * one TEXT_GENERATION agent `arcaai-<dept>-summary-<visit>` on gemma, guards ON, bound to that
+ * department's v3 clinical template (`07b`, pinned at `ARCAAI_CLINICAL_APPROVED_VERSION`). For
+ * each department: one workflow `arcaai-<dept>-consultation` = the §8.4 consultation graph with
+ * the per-turn summary step replaced by a `core.condition` on `{{trigger.context.visit_type}}`
+ * fanning out to the department's two agents (`else` → new-visit). DEPARTMENT-scope
+ * `WorkflowAssignment` rows for all 11 and a TENANT-scope default → `arcaai-gen-consultation`.
+ *
+ * ArcaAI additionally receives the SYSTEM set through phase 26 (`realtime-transcription`,
+ * `medical-ner`, `casenote-finalization`, `text-to-speech`, `general-medicine-summarization`,
+ * the two library workflows, the schema, the templates). The graphs here reference those agents
+ * by SLUG only — the lineage key resolves at run time, so seed ORDER is not a dependency.
+ *
+ * `instruction.variables` is ABSENT on the department agents on purpose: the v3 department bodies
+ * declare no variables and carry no `{{…}}` placeholder (`07b-arcaai-clinical-content-v3.ts` —
+ * only the pre-summary does), so there is nothing to bind (F6 says "every DECLARED variable").
+ *
+ * The trigger references ArcaAI's CLONE of `consultation_note_context` — the id phase 26 derives
+ * (`cloneId`), so the reference is stable before the clone exists; the compiler freezes the
+ * resolved payload schema either way. `createdBy` is the SYSTEM user: these rows assert no human
+ * authorship. Still excluded from `safe` (`seed-mode.ts`): one customer's content is not platform
+ * configuration.
+ *
+ * Engine output (`graphChecksum` / `compiledConfig` / `validationReport`) lives in
+ * `29-arcaai-agents-and-workflows.generated.ts`, written by `scripts/regen-workflow-seeds.ts`.
+ */
+import type { CorePrismaClient } from '../../../client';
+import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from './04-department';
+import { ARCAAI_CLINICAL_APPROVED_VERSION } from './07b-arcaai-clinical-templates';
+import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
+import { SUMMARIZATION_PARAMETERS, arcaaiAgentId, seedAgentSpecs, type SeedAgentSpec, type SeedAgentsClient } from './25-agents';
+import { cloneId } from './26-tenant-reference-set';
+import {
+  CORE_PALETTE_KEY,
+  buildConsultationGraph,
+  createWorkflowDefinitions,
+  definitionRow,
+  generatedFor,
+  workflowTargetKey,
+  writeWorkflowAssignments,
+  type SeedWorkflowsClient,
+  type WorkflowSeedTarget,
+} from './28-workflow-library';
+import { ARCAAI_GENERATED, REGISTRY_CHECKSUM } from './29-arcaai-agents-and-workflows.generated';
+
+const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
+
+export const VISIT_TYPES = ['new-visit', 'revisit'] as const;
+export type VisitType = (typeof VISIT_TYPES)[number];
+
+/** ArcaAI's clone of the SYSTEM `consultation_note_context` — the id phase 26 derives. */
+export const ARCAAI_NOTE_CONTEXT_SCHEMA_ID = cloneId(ARCAAI, 'context-schema', noteContextSchemaIdFor(SYSTEM_TENANT_ID));
+export const ARCAAI_NOTE_CONTEXT_SCHEMA_VERSION_ID = cloneId(ARCAAI, 'context-schema-version', noteContextSchemaVersionIdFor(SYSTEM_TENANT_ID));
+
+// =============================================================================
+// The table
+// =============================================================================
+
+export interface ArcaaiDepartmentRow {
+  ordinal: number;
+  code: string;
+  slugPart: string;
+  name: string;
+  /** The seed-time department id (`SEED_DEPARTMENT_IDS`); the persisted id is resolved by code at seed time. */
+  departmentSeedId: string;
+  templates: Record<VisitType, string>;
+}
+
+/** One row per ArcaAI clinical department, in `04-department.ts` order. */
+export const ARCAAI_DEPARTMENT_TABLE: ArcaaiDepartmentRow[] = ARCAAI_ALL_CLINICAL_DEPARTMENTS.map((department, index) => ({
+  ordinal: index + 1,
+  code: department.code,
+  slugPart: department.code.toLowerCase(),
+  name: department.name,
+  departmentSeedId: department.id,
+  templates: { 'new-visit': department.newPatientPromptId, revisit: department.revisitPromptId },
+}));
+
+export const arcaaiAgentSlug = (row: ArcaaiDepartmentRow, visit: VisitType): string => `arcaai-${row.slugPart}-summary-${visit}`;
+export const arcaaiWorkflowSlug = (row: ArcaaiDepartmentRow): string => `arcaai-${row.slugPart}-consultation`;
+
+// =============================================================================
+// Agents — 11 × 2
+// =============================================================================
+
+export const ARCAAI_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_TABLE.flatMap((row) =>
+  VISIT_TYPES.map((visit, visitIndex): SeedAgentSpec => ({
+    id: arcaaiAgentId((row.ordinal - 1) * VISIT_TYPES.length + visitIndex + 1),
+    tenantId: ARCAAI,
+    slug: arcaaiAgentSlug(row, visit),
+    name: `${row.name} summary (${visit})`,
+    description: `The per-turn ${row.name} running note for a ${visit} encounter, bound to the department's approved v${ARCAAI_CLINICAL_APPROVED_VERSION} clinical template; guardrail screening ON.`,
+    task: 'TEXT_GENERATION',
+    modelSlug: 'lms-gemma-4-e2b-it-qat',
+    fallbackModelSlugs: [],
+    instruction: { promptTemplateId: row.templates[visit], promptVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION },
+    parameters: SUMMARIZATION_PARAMETERS,
+    outputSchema: null,
+    status: 'PUBLISHED',
+    isActive: true,
+    tags: ['tier:tenant-authored', 'task:llm', 'capability:summarization', `specialty:${row.slugPart}`, `visit-type:${visit}`],
+    provenance: null,
+  })),
+);
+
+// =============================================================================
+// Workflows — 11
+// =============================================================================
+
+const arcaaiWorkflowId = (ordinal: number) => `99000000-0000-0000-0001-${String(ordinal).padStart(12, '0')}`;
+
+export const ARCAAI_WORKFLOW_TARGETS: WorkflowSeedTarget[] = ARCAAI_DEPARTMENT_TABLE.map((row) => ({
+  key: workflowTargetKey('ARCAAI', arcaaiWorkflowSlug(row)),
+  id: arcaaiWorkflowId(row.ordinal),
+  tenantId: ARCAAI,
+  slug: arcaaiWorkflowSlug(row),
+  name: `${row.name} Consultation`,
+  description: `Realtime transcription, medical NER, the ${row.name} running note selected by visit type (new-visit / revisit), case-note finalization, clinician review and the {case_note, entities} output.`,
+  graph: buildConsultationGraph({
+    contextSchemaId: ARCAAI_NOTE_CONTEXT_SCHEMA_ID,
+    summarizer: { kind: 'condition', newVisitSlug: arcaaiAgentSlug(row, 'new-visit'), revisitSlug: arcaaiAgentSlug(row, 'revisit') },
+  }),
+  contextSchemaVersionId: ARCAAI_NOTE_CONTEXT_SCHEMA_VERSION_ID,
+  tags: ['palette:core', 'kind:consultation', 'kind:api', 'tenant-authored', `specialty:${row.slugPart}`],
+  sourceTemplateSlug: null,
+}));
+
+/** LAZY — see `workflowLibraryDefinitions`. */
+export const arcaaiWorkflowDefinitions = () => ARCAAI_WORKFLOW_TARGETS.map((target) => definitionRow(target, generatedFor(ARCAAI_GENERATED, target.key), REGISTRY_CHECKSUM));
+
+// =============================================================================
+// Assignments — DEPARTMENT scope × 11, TENANT default → the General Medicine workflow
+// =============================================================================
+
+const ARCAAI_ASSIGNMENT_SLOT = '0001';
+const assignmentIdFor = (n: number) => `9a000000-0000-0000-${ARCAAI_ASSIGNMENT_SLOT}-${String(n).padStart(12, '0')}`;
+const assignmentChangeIdFor = (n: number) => `9a000000-0000-0001-${ARCAAI_ASSIGNMENT_SLOT}-${String(n).padStart(12, '0')}`;
+
+const GEN = ARCAAI_DEPARTMENT_TABLE.find((row) => row.code === 'GEN');
+if (!GEN) throw new Error('The ArcaAI department table has no GEN (General Medicine) row');
+export const ARCAAI_DEFAULT_WORKFLOW_SLUG = arcaaiWorkflowSlug(GEN);
+
+/** `departmentIdByCode` maps a seed-time code to the PERSISTED department id (04 upserts by `(tenantId, code)`). */
+export function arcaaiWorkflowAssignments(departmentIdByCode: ReadonlyMap<string, string>) {
+  const rows = [
+    {
+      id: assignmentIdFor(1),
+      tenantId: ARCAAI,
+      scope: 'TENANT' as const,
+      scopeId: null as string | null,
+      paletteKey: CORE_PALETTE_KEY,
+      workflowDefinitionSlug: ARCAAI_DEFAULT_WORKFLOW_SLUG,
+      selectorKey: '',
+      createdBy: SYSTEM_USER_ID,
+    },
+    ...ARCAAI_DEPARTMENT_TABLE.map((row) => {
+      const departmentId = departmentIdByCode.get(row.code);
+      if (!departmentId) throw new Error(`Missing ArcaAI department for code ${row.code}`);
+      return {
+        id: assignmentIdFor(row.ordinal + 1),
+        tenantId: ARCAAI,
+        scope: 'DEPARTMENT' as const,
+        scopeId: departmentId as string | null,
+        paletteKey: CORE_PALETTE_KEY,
+        workflowDefinitionSlug: arcaaiWorkflowSlug(row),
+        selectorKey: '',
+        createdBy: SYSTEM_USER_ID,
+      };
+    }),
+  ];
+  const changes = rows.map((row, index) => ({
+    id: assignmentChangeIdFor(index + 1),
+    tenantId: ARCAAI,
+    scope: row.scope,
+    scopeId: row.scopeId,
+    paletteKey: CORE_PALETTE_KEY,
+    changedBy: SYSTEM_USER_ID,
+    assignmentVersion: 1,
+    beforeSlug: null as string | null,
+    afterSlug: row.workflowDefinitionSlug,
+    reason: row.scope === 'TENANT' ? 'Seeded day-1 ArcaAI tenant default consultation workflow (TASK-930 §8.5).' : `Seeded day-1 ArcaAI department consultation workflow (TASK-930 §8.5).`,
+  }));
+  return { rows, changes };
+}
+
+// =============================================================================
+// Seeding
+// =============================================================================
+
+export interface SeedArcaaiClient extends SeedAgentsClient, SeedWorkflowsClient {
+  department: { findMany(args: { where: { tenantId: string; code: { in: string[] } }; select: { id: true; code: true } }): Promise<Array<{ id: string; code: string }>> };
+}
+
+export const seedArcaaiAgentsAndWorkflows = async (client: CorePrismaClient | SeedArcaaiClient) => {
+  const typed = client as unknown as SeedArcaaiClient;
+  console.log('Seeding the ArcaAI department agents and consultation workflows (11 departments × 2 visit types) ...');
+
+  const agents = await seedAgentSpecs(typed, ARCAAI_AGENT_SPECS, 'ArcaAI department', 200);
+  const definitions = await createWorkflowDefinitions(typed, arcaaiWorkflowDefinitions());
+
+  const departments = await typed.department.findMany({
+    where: { tenantId: ARCAAI, code: { in: ARCAAI_DEPARTMENT_TABLE.map((row) => row.code) } },
+    select: { id: true, code: true },
+  });
+  const { rows, changes } = arcaaiWorkflowAssignments(new Map(departments.map((department) => [department.code, department.id])));
+  const assignments = await writeWorkflowAssignments(typed, rows, changes);
+
+  console.log(
+    `  ✓ ArcaAI agents: ${agents.created} created, ${agents.skippedExisting} skipped, ${agents.skippedUnresolvable} unresolvable · workflows: ${definitions.created} created, ${definitions.skipped} skipped · assignments: ${assignments}`,
+  );
+  return { success: true as const, agents, definitions, assignments };
+};
