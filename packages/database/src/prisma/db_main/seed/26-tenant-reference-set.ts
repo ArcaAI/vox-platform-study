@@ -43,7 +43,7 @@
 import { createHash } from 'node:crypto';
 import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
-import { LEGACY_CONTEXT_SCHEMA_SLUG } from './07g-consultation-legacy-context-schema';
+import { NOTE_CONTEXT_SCHEMA_SLUG, canonicalJson } from './07e-consultation-note-context-schema';
 
 /** Per-tenant, per-kind counts — the same shape the service's summary reports. */
 export interface ReferenceSetSeedSummary {
@@ -53,6 +53,8 @@ export interface ReferenceSetSeedSummary {
   agents: number;
   agentAssignments: number;
   documentTemplates: number;
+  workflowDefinitions: number;
+  workflowAssignments: number;
 }
 
 /**
@@ -63,7 +65,7 @@ export interface ReferenceSetSeedSummary {
  * valid UUID (version nibble forced to 8, variant to 8) so it is indistinguishable from any
  * other id at the type level while never colliding with a generated UUIDv7.
  */
-function cloneId(tenantId: string, kind: string, sourceId: string): string {
+export function cloneId(tenantId: string, kind: string, sourceId: string): string {
   const hex = createHash('sha256').update(`task-890:${kind}:${tenantId}:${sourceId}`).digest('hex');
   return [hex.slice(0, 8), hex.slice(8, 12), `8${hex.slice(13, 16)}`, `8${hex.slice(17, 20)}`, hex.slice(20, 32)].join('-');
 }
@@ -417,6 +419,195 @@ async function copyDocumentTemplates(client: CorePrismaClient, tenantId: string)
   return added;
 }
 
+// =============================================================================
+// Workflow definitions + assignments (TASK-930 §6.3)
+// =============================================================================
+
+/** A compiled artifact, re-stamped for its new owner. */
+export interface RestampTarget {
+  definitionId: string;
+  tenantId: string;
+  /** The tenant's clone of the context schema the trigger references, and its pinned version. */
+  schemaId: string;
+  versionId: string;
+}
+
+const TRIGGER_NODE_TYPE = 'core.trigger';
+
+/**
+ * Re-stamp a frozen `compiledConfig` for a clone: `definitionId` / `tenantId`, the trigger's
+ * context-schema reference (on the compiled trigger node AND in `policyBindings.contextSchemaRefs`
+ * / `contextSchemaVersionId`), then the checksum — sha256 over the contract's canonical JSON of
+ * every other field, exactly as `compile()` computes it. PURE: the source object is not touched.
+ *
+ * Why re-stamp rather than copy verbatim (the agent copier's posture): a workflow's artifact
+ * NAMES its owner (`definitionId`, `tenantId`) and its tenant's schema row, so a verbatim copy
+ * would be a SYSTEM artifact wearing a tenant's row id. The resolved payload schema inside stays —
+ * the clone's definition is byte-identical to its source. `task-930-reference-set-workflows.test.ts`
+ * proves the result equals a real `compile()` of the re-pointed graph in the target tenant.
+ */
+export function restampCompiledConfig(compiled: Record<string, unknown>, target: RestampTarget): Record<string, unknown> {
+  const next = JSON.parse(JSON.stringify(compiled)) as Record<string, unknown>;
+  next.definitionId = target.definitionId;
+  next.tenantId = target.tenantId;
+  const policyBindings = (next.policyBindings ?? {}) as Record<string, unknown>;
+  if (policyBindings.contextSchemaVersionId !== undefined) policyBindings.contextSchemaVersionId = target.versionId;
+  if (Array.isArray(policyBindings.contextSchemaRefs)) {
+    policyBindings.contextSchemaRefs = (policyBindings.contextSchemaRefs as Array<Record<string, unknown>>).map((ref) => ({ ...ref, schemaId: target.schemaId, versionId: target.versionId }));
+  }
+  next.policyBindings = policyBindings;
+  for (const stage of (next.stages ?? []) as Array<{ nodes?: Array<Record<string, unknown>> }>) {
+    for (const node of stage.nodes ?? []) {
+      if (node.type !== TRIGGER_NODE_TYPE) continue;
+      const config = (node.config ?? {}) as Record<string, unknown>;
+      const contextSchema = config.contextSchema as Record<string, unknown> | undefined;
+      if (contextSchema && typeof contextSchema.contextSchemaId === 'string') contextSchema.contextSchemaId = target.schemaId;
+    }
+  }
+  delete next.checksum;
+  return { ...next, checksum: createHash('sha256').update(canonicalJson(next)).digest('hex') };
+}
+
+/** The graph with its trigger re-pointed at `schemaId`; `null` when the trigger binds no reference. */
+function repointTriggerGraph(graph: unknown, schemaId: string): { graph: Record<string, unknown>; sourceSchemaId: string } | null {
+  const next = JSON.parse(JSON.stringify(graph)) as { nodes?: Array<Record<string, unknown>> };
+  const trigger = (next.nodes ?? []).find((node) => node.type === TRIGGER_NODE_TYPE);
+  const contextSchema = ((trigger?.config as Record<string, unknown> | undefined)?.contextSchema ?? null) as Record<string, unknown> | null;
+  if (!contextSchema || typeof contextSchema.contextSchemaId !== 'string') return null;
+  const sourceSchemaId = contextSchema.contextSchemaId;
+  contextSchema.contextSchemaId = schemaId;
+  return { graph: next as Record<string, unknown>, sourceSchemaId };
+}
+
+/**
+ * Clone every PUBLISHED + ACTIVE SYSTEM workflow definition into one tenant, PUBLISHED + ACTIVE
+ * (the same posture as `copyAgents`: an assignment must resolve, and a DRAFT would not), with
+ * the provenance `WorkflowDefinitionService.cloneFromSystem` stamps (`sourceTemplateSlug`,
+ * `templateLocked`). The trigger's context-schema reference is re-pointed by SLUG at the
+ * tenant's own clone — the schema was copied first (`copyContextSchemas`) — and the artifact is
+ * re-stamped (see `restampCompiledConfig`). A source whose schema the tenant does not hold is
+ * skipped: a workflow whose trigger cannot resolve is unservable, and looks provisioned.
+ */
+async function copyWorkflowDefinitions(client: CorePrismaClient, tenantId: string): Promise<number> {
+  const sources = await client.workflowDefinition.findMany({
+    where: { tenantId: SYSTEM_TENANT_ID, status: 'PUBLISHED', isActive: true, resourceStatus: 'ENABLED' },
+    orderBy: { slug: 'asc' },
+  });
+  let added = 0;
+  for (const source of sources) {
+    const existing = await client.workflowDefinition.findFirst({ where: { tenantId, slug: source.slug }, select: { id: true } });
+    if (existing) continue;
+
+    const id = cloneId(tenantId, 'workflow-definition', source.id);
+    let graph = source.graph as Record<string, unknown>;
+    let compiledConfig = source.compiledConfig as Record<string, unknown> | null;
+
+    // Resolve the SYSTEM schema the trigger names → its slug → the tenant's clone of that slug.
+    const probe = repointTriggerGraph(source.graph, '');
+    if (probe) {
+      const sourceSchema = await client.consultationContextSchema.findFirst({ where: { id: probe.sourceSchemaId }, select: { id: true, slug: true } });
+      const clone = sourceSchema
+        ? await client.consultationContextSchema.findFirst({ where: { tenantId, slug: sourceSchema.slug, resourceStatus: 'ENABLED' }, select: { id: true, pinnedVersionNumber: true } })
+        : null;
+      const version =
+        clone && clone.pinnedVersionNumber !== null
+          ? await client.consultationContextSchemaVersion.findFirst({ where: { schemaId: clone.id, versionNumber: clone.pinnedVersionNumber }, select: { id: true } })
+          : null;
+      if (!clone || !version) continue;
+      graph = repointTriggerGraph(source.graph, clone.id)!.graph;
+      compiledConfig = compiledConfig ? restampCompiledConfig(compiledConfig, { definitionId: id, tenantId, schemaId: clone.id, versionId: version.id }) : null;
+    } else if (compiledConfig) {
+      compiledConfig = restampCompiledConfig(compiledConfig, { definitionId: id, tenantId, schemaId: '', versionId: '' });
+    }
+
+    await client.workflowDefinition.create({
+      data: {
+        id,
+        tenantId,
+        slug: source.slug,
+        name: source.name,
+        description: source.description,
+        paletteKey: source.paletteKey,
+        versionNumber: 1,
+        parentVersionId: null,
+        status: 'PUBLISHED',
+        isActive: true,
+        sourceTemplateSlug: source.slug,
+        templateLocked: true,
+        graph: graph as never,
+        graphChecksum: createHash('sha256').update(canonicalJson(graph)).digest('hex'),
+        compiledConfig: compiledConfig as never,
+        compiledConfigChecksum: compiledConfig ? (compiledConfig.checksum as string) : null,
+        registryChecksum: source.registryChecksum,
+        validationReport: source.validationReport as never,
+        needsReview: false,
+        validatedAt: source.validatedAt,
+        publishedAt: new Date(),
+        // The platform's tags assert something about the PLATFORM's row, not a tenant's copy.
+        tags: [],
+        createdBy: SYSTEM_USER_ID,
+      },
+    });
+    added += 1;
+  }
+  return added;
+}
+
+/**
+ * One TENANT-scope workflow assignment per SYSTEM TENANT-scope assignment (DEPARTMENT rows are
+ * tenant topology and are skipped — §6.3), with its WORM change row. Written only when the slug
+ * resolves to a PUBLISHED + ACTIVE definition in the tenant, and never over a row the tenant
+ * already holds for that `(palette, selector)` — a tenant that decided keeps its decision.
+ */
+async function copyWorkflowAssignments(client: CorePrismaClient, tenantId: string): Promise<number> {
+  const sources = await client.workflowAssignment.findMany({
+    where: { tenantId: SYSTEM_TENANT_ID, scope: 'TENANT', resourceStatus: 'ENABLED' },
+  });
+  let added = 0;
+  for (const source of sources) {
+    const existing = await client.workflowAssignment.findFirst({
+      where: { tenantId, scope: 'TENANT', scopeId: null, paletteKey: source.paletteKey, selectorKey: source.selectorKey, resourceStatus: 'ENABLED' },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    const resolvable = await client.workflowDefinition.findFirst({
+      where: { tenantId, slug: source.workflowDefinitionSlug, status: 'PUBLISHED', isActive: true, resourceStatus: 'ENABLED' },
+      select: { id: true },
+    });
+    if (!resolvable) continue;
+
+    await client.workflowAssignment.create({
+      data: {
+        id: cloneId(tenantId, 'workflow-assignment', source.id),
+        tenantId,
+        scope: 'TENANT',
+        scopeId: null,
+        paletteKey: source.paletteKey,
+        workflowDefinitionSlug: source.workflowDefinitionSlug,
+        selectorKey: source.selectorKey,
+        createdBy: SYSTEM_USER_ID,
+      },
+    });
+    await client.workflowAssignmentChange.create({
+      data: {
+        id: cloneId(tenantId, 'workflow-assignment-change', source.id),
+        tenantId,
+        scope: 'TENANT',
+        scopeId: null,
+        paletteKey: source.paletteKey,
+        changedBy: SYSTEM_USER_ID,
+        assignmentVersion: 1,
+        beforeSlug: null,
+        afterSlug: source.workflowDefinitionSlug,
+        reason: 'Provisioned from the platform reference set',
+      },
+    });
+    added += 1;
+  }
+  return added;
+}
+
 /**
  * Provision ONE tenant, in the order the runtime requires: schemas, prompts, agents (whose
  * instruction is re-pointed at the prompt clones), the assignments that name them, and finally the
@@ -429,11 +620,9 @@ async function copyDocumentTemplates(client: CorePrismaClient, tenantId: string)
  * `WorkflowDefinitionService.cloneFromSystem` re-points that binding by SLUG in the target tenant,
  * so the template has to exist before a workflow can be copied onto it.
  *
- * Workflow definitions are deliberately NOT copied here. `WorkflowAssignmentService.resolve` has
- * no SYSTEM tier and never had one, so a tenant without a definition behaves exactly as it does
- * today — the legacy dispatch path — and the copy buys nothing the seeded tenants need. The
- * runtime service does copy them (a tenant admin gets something to publish), and the re-sync
- * route adds them to a seeded tenant on request.
+ * Workflow definitions and their TENANT-scope assignments come LAST (TASK-930 §6.3): a definition's
+ * trigger is re-pointed at the schema clone made first, and an assignment is only written once
+ * the definition it names resolves in the tenant.
  */
 export async function provisionTenantReferenceSet(client: CorePrismaClient, tenantId: string): Promise<ReferenceSetSeedSummary> {
   if (!tenantId || tenantId === SYSTEM_TENANT_ID) {
@@ -444,7 +633,9 @@ export async function provisionTenantReferenceSet(client: CorePrismaClient, tena
   const agents = await copyAgents(client, tenantId);
   const agentAssignments = await copyAgentAssignments(client, tenantId);
   const documentTemplates = await copyDocumentTemplates(client, tenantId);
-  return { tenantId, contextSchemas, promptTemplates, agents, agentAssignments, documentTemplates };
+  const workflowDefinitions = await copyWorkflowDefinitions(client, tenantId);
+  const workflowAssignments = await copyWorkflowAssignments(client, tenantId);
+  return { tenantId, contextSchemas, promptTemplates, agents, agentAssignments, documentTemplates, workflowDefinitions, workflowAssignments };
 }
 
 /** Every non-SYSTEM tenant that exists — the seed population, plus anything created since. */
@@ -469,9 +660,9 @@ export const seedTenantReferenceSets = async (client: CorePrismaClient): Promise
     console.log(
       `  ${summary.tenantId}: +${summary.contextSchemas} context schema(s), +${summary.promptTemplates} prompt template(s), ` +
         `+${summary.agents} agent(s), +${summary.agentAssignments} assignment(s), ` +
-        `+${summary.documentTemplates} document template(s)`,
+        `+${summary.documentTemplates} document template(s), +${summary.workflowDefinitions} workflow definition(s), +${summary.workflowAssignments} workflow assignment(s)`,
     );
   }
   if (summaries.length === 0) console.log('  (no non-SYSTEM tenants to provision)');
-  console.log(`Reference set provisioned for ${summaries.length} tenant(s). Bridge schema slug: ${LEGACY_CONTEXT_SCHEMA_SLUG}`);
+  console.log(`Reference set provisioned for ${summaries.length} tenant(s). Trigger context schema slug: ${NOTE_CONTEXT_SCHEMA_SLUG}`);
 };

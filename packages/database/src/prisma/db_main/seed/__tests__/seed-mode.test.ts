@@ -74,23 +74,17 @@ describe('resolveSeedMode — "all" is refused outside development/test', () => 
 });
 
 describe('isPhaseEnabled — which phases each mode runs', () => {
-  // added the last two. They are neither credentials nor PHI: both carry
-  // `createdBy: <the ArcaAI tenant admin>`, so running them in `safe` would attribute tenant
-  // configuration — and a PUBLISHED clinical workflow — to a named human who never authored it.
-  // See `seed-mode.ts`'s table for the full reasoning.
-  // adds the two `-arcaai` halves for the same reason: their rows carry
-  // `createdBy: <the ArcaAI tenant admin>` on PUBLISHED clinical workflows. Their
-  // SYSTEM halves (formerly `23a-realtime-transcription-agent` — retired by TASK-861 —,
-  // `24-example-consultation-workflows`) stay IN every mode — see the "still runs
-  // platform-config phases" case below.
+  // TASK-930 — `29-arcaai-agents-and-workflows` (one customer tenant's agents, graphs and
+  // assignments) is excluded for the reason `07f` is: one customer's content is not platform
+  // configuration. The SYSTEM + Global library (`28-workflow-library`) stays IN every mode — see
+  // the "still runs platform-config phases" case below.
   const DANGEROUS = [
     '02-apikey',
     '07f-arcaai-department-context-schemas',
     '08-dna-writing-style',
     '09-consultation',
     '10-audit-log',
-    '23-arcaai-workflow-authoring',
-    '24-example-consultation-workflows-arcaai',
+    '29-arcaai-agents-and-workflows',
     '91-user',
   ];
 
@@ -125,11 +119,12 @@ describe('isPhaseEnabled — which phases each mode runs', () => {
       '03-role',
       '15-entitlements',
       '20-ai-price-book',
-      // the SYSTEM template halves. A `safe` bootstrap that skipped
-      // them would ship a Workflow Studio with an empty template library, which
-      // is precisely the platform configuration `safe` exists to install.
-      '21-workflow-definition',
-      '24-example-consultation-workflows',
+      // the SYSTEM + Global workflow library and the agents. A `safe` bootstrap that skipped
+      // them would ship a tenant with nothing to be provisioned from, which is precisely the
+      // platform configuration `safe` exists to install.
+      '25-agents',
+      '28-workflow-library',
+      '26-tenant-reference-set',
     ]) {
       expect(isPhaseEnabled(phase, 'safe')).toBe(true);
     }

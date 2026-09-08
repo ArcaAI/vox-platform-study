@@ -41,46 +41,28 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  * | `08-dna-writing-style` | Synthetic clinician writing samples |
  * | `09-consultation` | Synthetic, Vault-encrypted PHI |
  * | `10-audit-log` | Fabricated rows in the HIPAA audit trail |
- * | `23-arcaai-workflow-authoring` | FABRICATED GOVERNANCE — see below |
- * | `24-example-consultation-workflows-arcaai`| FABRICATED GOVERNANCE — the ArcaAI half of |
+ * | `29-arcaai-agents-and-workflows` | One CUSTOMER tenant's agents, workflows and assignments — see below |
  * | `91-user` | Demo accounts (`*@example.com`) with a documented default password |
  *
- * ## A phase string is a FILE STEM, with one suffix
+ * ## A phase string is a FILE STEM
  *
- * `24-example-consultation-workflows` (and, until TASK-861 retired it, the
- * `23a` realtime transcription agent) seeds BOTH a SYSTEM-owned platform half
- * and an ArcaAI tenant-authored half, and the two halves belong on opposite sides of this list. Splitting
- * each into two files would separate a graph from the compiled artifact whose
- * only correctness property is "equals what the compiler emits for that graph",
- * so instead each file exports two seed functions and `index.ts` gates them
- * with two phase strings: the bare stem for the SYSTEM half, and the stem plus
- * `-arcaai` for the tenant half. Nothing else in this list uses a suffix, and
- * nothing else should without the same reason.
+ * TASK-930 rebuilt the seed set so that every phase file is ONE side of this list: the workflow
+ * library (`28-workflow-library`, Global + SYSTEM, `createdBy: SYSTEM_USER_ID`) is platform
+ * configuration and runs in every mode; the ArcaAI content (`29-arcaai-agents-and-workflows`)
+ * is one customer tenant's and is excluded. The former `-arcaai` suffix convention (one file, two
+ * halves) is gone with the files that needed it.
  *
- * ## Why `23-arcaai-workflow-authoring` stays excluded ( item 2, re-decided 2026-09-02)
+ * ## Why `29-arcaai-agents-and-workflows` is excluded
  *
- * Its `WorkflowAssignment` rows are the switch that makes a tenant-authored graph govern a
- * consultation, so it is tempting to read "the substrate-exclusivity gate now passes, land the
- * rows" as "and therefore ship them everywhere". It is not. The rows carry
- * `createdBy: <the ArcaAI tenant admin>` and publish a CLINICAL workflow under that attribution.
- * In a demo database that is the point; in a real one it is a published clinical workflow
- * attributed to a named human who never authored it — a fabricated governance act, and the same
- * objection that keeps `AgentPromotion` out of this dataset entirely. A real tenant authors its
- * own.
+ * Every row is scoped to the ArcaAI **customer** tenant. `safe` is platform configuration only,
+ * and one customer's agents, graphs and assignments are not platform configuration — a real
+ * tenant authors its own (or receives the SYSTEM reference set through phase 26, which DOES run
+ * in `safe`). Its DEPARTMENT-scope assignments also reference department rows that only the
+ * ArcaAI demo tenant carries.
  *
- * Two further reasons, each sufficient on its own:
- *
- *  - Every row is scoped to the ArcaAI **customer** tenant (`50000000-…`). `safe` is platform
- *    configuration only, and one customer's graphs are not platform configuration.
- *  - `createdBy` and the department override reference `91-user` / department rows that a `safe`
- *    run does not create, so the rows would land with dangling authorship.
- *
- * The SYSTEM-owned platform default (`21-workflow-definition`, `createdBy: SYSTEM_USER_ID`) is
- * deliberately NOT excluded — that IS platform configuration, and it is what a `safe` bootstrap
- * needs so a tenant with no graph of its own still resolves a lane. The same reasoning keeps the
- * SYSTEM half of `24-example-consultation-workflows` IN every mode: they are the clone-from-template library
- * `findSystemTemplates` serves, so excluding them would ship a production tenant a Workflow
- * Studio with nothing to start from.
+ * The SYSTEM-owned library (`28-workflow-library`, `createdBy: SYSTEM_USER_ID`) is deliberately
+ * NOT excluded — that IS platform configuration, and it is what a `safe` bootstrap needs so a
+ * tenant with no graph of its own still resolves a lane, and what the reference set clones.
  *
  * Kept as an explicit deny-list rather than an allow-list so that adding a new
  * platform-config phase does not silently require a second edit here — but
@@ -94,8 +76,7 @@ export const SEED_PHASES_EXCLUDED_FROM_SAFE: readonly string[] = [
   '08-dna-writing-style',
   '09-consultation',
   '10-audit-log',
-  '23-arcaai-workflow-authoring',
-  '24-example-consultation-workflows-arcaai',
+  '29-arcaai-agents-and-workflows',
   '91-user',
 ] as const;
 

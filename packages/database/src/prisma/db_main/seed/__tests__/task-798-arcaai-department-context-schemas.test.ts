@@ -33,7 +33,7 @@ import {
   ARCAAI_DEPARTMENT_CONTEXT_SCHEMAS,
   seedArcaaiDepartmentContextSchemas,
 } from '../07f-arcaai-department-context-schemas';
-import { definitionChecksum } from '../07e-consultation-loop-defaults';
+import { definitionChecksum } from '../07e-consultation-note-context-schema';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from '../00-constants';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

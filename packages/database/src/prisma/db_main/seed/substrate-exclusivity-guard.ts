@@ -17,8 +17,8 @@
  * Substrate B's `consultation.persistDraft` node calls the SAME `persist_draft` activity
  * Substrate A uses. So with an assignment present and no gate, BOTH engines write one clinical
  * `ContextItem`: two writers, one document. That is a clinical-safety defect, not a race to be
- * tuned — which is why the assignment rows in `23-arcaai-workflow-authoring.ts` ship DISABLED and
- * this module, not a human's recollection, decides whether they may be enabled.
+ * tuned — which is why a tenant-authored assignment row may only be enabled once this module,
+ * not a human's recollection, says the gate exists.
  *
  * ## What "the gate exists" is taken to mean
  *

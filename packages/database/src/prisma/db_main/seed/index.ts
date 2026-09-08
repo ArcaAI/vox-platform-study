@@ -18,9 +18,8 @@ import { seedArcaaiClinicalTemplates } from './07b-arcaai-clinical-templates';
 import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
 import { seedLiveAgentDefaults } from './07c-live-agent-defaults';
 import { seedDeptFreePreSummaryDefault } from './07d-dept-free-pre-summary-default';
-import { seedConsultationLoopDefaults } from './07e-consultation-loop-defaults';
+import { seedConsultationNoteContextSchema } from './07e-consultation-note-context-schema';
 import { seedArcaaiDepartmentContextSchemas } from './07f-arcaai-department-context-schemas';
-import { seedConsultationLegacyContextSchema } from './07g-consultation-legacy-context-schema';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
@@ -35,13 +34,12 @@ import { seedAiRoutingPolicy } from './16-ai-routing-policy';
 import { seedGuardrailAvailability } from './18-guardrail-availability';
 import { seedAiProviderConnection } from './17-ai-provider-connection';
 import { seedAiPriceBook } from './20-ai-price-book';
-import { seedWorkflowDefinition } from './21-workflow-definition';
-import { seedArcaaiWorkflowAuthoring } from './23-arcaai-workflow-authoring';
-import { seedArcaaiExampleConsultationWorkflows, seedExampleConsultationWorkflowTemplates } from './24-example-consultation-workflows';
 import { seedConsentGrant } from './22-consent-grant';
 import { seedAgents } from './25-agents';
 import { seedTenantReferenceSets } from './26-tenant-reference-set';
 import { seedDocumentTemplateLibrary } from './27-document-template-library';
+import { seedWorkflowLibrary } from './28-workflow-library';
+import { seedArcaaiAgentsAndWorkflows } from './29-arcaai-agents-and-workflows';
 import { seedUser } from './91-user';
 import { seedBootstrapAdmin } from './92-bootstrap-admin';
 import { seedBootstrapTenantAdmin } from './93-bootstrap-tenant-admin';
@@ -212,14 +210,11 @@ export const seed = async () => {
     // retired `DepartmentAgent`.) Idempotent upsert-by-id.
     await seedAgentGoldenLibrary(client);
     console.log('');
-    // Day-1 consultation context schema: one servable TENANT-scoped
-    // default per seeded tenant. This is what makes `LoopConfigService` resolve
-    // `enabled: true` on a fresh install — the SIGNALLING gate is on, but the
-    // workflow's own gate is DERIVED, and before this row nothing satisfied it.
-    // (Its other source used to be the loop configuration on a seeded default
-    // agent; since it is the tenant's governing WorkflowDefinition,
-    // which a fresh install does not have.) CREATE-ONLY.
-    await seedConsultationLoopDefaults(client);
+    // TASK-930 §8.2 — the ONE trigger context schema, `consultation_note_context`: the day-1
+    // item kinds plus the clinical prompt fields, Global-authored + SYSTEM-promoted, the tenant
+    // DEFAULT (what makes `LoopConfigService` resolve `enabled: true` on a fresh install). ArcaAI
+    // receives it through phase 26. CREATE-ONLY.
+    await seedConsultationNoteContextSchema(client);
     console.log('');
     // Department-scoped consultation vocabularies for the two ArcaAI clinical
     // departments. Runs AFTER 07e so the tenant-wide default already exists —
@@ -228,11 +223,6 @@ export const seed = async () => {
       await seedArcaaiDepartmentContextSchemas(client);
       console.log('');
     }
-    // TASK-890 §3.4 — the SYSTEM REFERENCE row for the v1 prompt vocabulary. Not a
-    // tenant's schema and never resolved from SYSTEM at run time: the reference set CLONES
-    // it into each tenant, and the prompt path reads that clone. CREATE-ONLY.
-    await seedConsultationLegacyContextSchema(client);
-    console.log('');
 
     // Phase 4: Depends on Phase 3
     // Demo accounts (*@example.com) with a documented default password. In
@@ -319,43 +309,25 @@ export const seed = async () => {
     // defines, and CREATE-ONLY like it.
     await seedAiPriceBook(client);
     console.log('');
-    // Platform-default Summarization WorkflowDefinition — the row the dispatcher falls
-    // back to when a tenant has authored none. SYSTEM-tenant, CREATE-ONLY.
-    await seedWorkflowDefinition(client);
-    console.log('');
-    // The tenant-authored consultation workflows — ArcaAI-owned,
-    // PUBLISHED, on the real `consultation` palette. Runs after 21 so the
-    // platform default exists first. Its WorkflowAssignment rows are GATED on
-    // the Substrate-A exclusivity mechanism and print a loud warning when they
-    // are skipped; see `substrate-exclusivity-guard.ts`.
-    if (isPhaseEnabled('23-arcaai-workflow-authoring', mode)) {
-      await seedArcaaiWorkflowAuthoring(client);
-      console.log('');
-    }
-    // TASK-861: `23a-realtime-transcription-agent{,.generated}.ts` are GONE. The
-    // realtime "Transcription Agent" was an `stt`-palette workflow that compiled
-    // back into the deprecated `AsrPipeline`; the ASR Agent is now a first-class
-    // `Agent` row (`25-agents.ts`, TASK-863), resolved by the gateway into a
-    // `ResolvedAsrSpec`. The three example consultation workflows below are
-    // unchanged, each seeded twice: the SYSTEM halves are platform configuration
-    // (SYSTEM-tenant, createdBy SYSTEM_USER_ID, served by `findSystemTemplates`)
-    // and run in EVERY seeding mode; the ArcaAI halves carry a named human
-    // author and sit on the same deny-list as 23.
-    if (isPhaseEnabled('24-example-consultation-workflows', mode)) {
-      await seedExampleConsultationWorkflowTemplates(client);
-      console.log('');
-    }
-    if (isPhaseEnabled('24-example-consultation-workflows-arcaai', mode)) {
-      await seedArcaaiExampleConsultationWorkflows(client);
-      console.log('');
-    }
-    // TASK-863 — first-class Agents: SYSTEM platform defaults (+ their TENANT-scope
-    // assignments, the cascade's last tier) and the Global playground examples. Model
-    // rows are resolved by slug, so this runs AFTER the catalogue (06-stt) and the prompt
-    // templates (07*) it binds; a spec whose model/template is missing is skipped, never
-    // seeded broken. ArcaAI gets nothing — provisioning clones SYSTEM.
+    // TASK-930 §8.3 — the Agents: Global AUTHORS five, SYSTEM carries the IDENTICAL five as the
+    // promoted copy (provenance → Global), each tenant with one TENANT assignment per task. Model
+    // rows resolve by slug, so this runs AFTER the catalogue (06) and the templates (07*) it
+    // binds; a spec whose model/template is missing is skipped, never seeded broken.
     if (isPhaseEnabled('25-agents', mode)) {
       await seedAgents(client);
+      console.log('');
+    }
+    // TASK-930 §8.4 — the core-palette workflow library (Global + SYSTEM): the consultation
+    // workflow and the summarization reference workflow, PUBLISHED, plus each tenant's TENANT
+    // assignment. Runs AFTER the agents (the graphs reference them by slug) and the context
+    // schema (the trigger references it by row id). Platform configuration: every mode.
+    await seedWorkflowLibrary(client);
+    console.log('');
+    // TASK-930 §8.5 — ArcaAI: 22 department × visit-type agents, 11 department workflows, the
+    // DEPARTMENT assignments and the TENANT default. One customer tenant's content — excluded
+    // from `safe`. Runs BEFORE phase 26 so ArcaAI's own TENANT default is what the copier finds.
+    if (isPhaseEnabled('29-arcaai-agents-and-workflows', mode)) {
+      await seedArcaaiAgentsAndWorkflows(client);
       console.log('');
     }
 
@@ -369,8 +341,9 @@ export const seed = async () => {
     console.log('');
 
     // TASK-890 §3.4 — provision every non-SYSTEM tenant with the platform REFERENCE SET
-    // (context schemas, prompt templates, agents, their TENANT assignments, and the document
-    // templates seeded just above). It runs LAST among the content phases because it copies
+    // (context schemas, prompt templates, agents, their TENANT assignments, the document
+    // templates seeded just above, and — TASK-930 §6.3 — the workflow library and its TENANT
+    // assignments). It runs LAST among the content phases because it copies
     // what they seeded, and it must run at all because the seeded tenants are written directly
     // rather than through `TenantService.create`: after L13 step v nothing widens a CONTENT
     // read to SYSTEM, so an unprovisioned tenant fails closed on its first consultation.
