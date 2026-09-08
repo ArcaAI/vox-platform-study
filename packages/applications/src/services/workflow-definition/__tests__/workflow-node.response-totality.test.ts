@@ -49,6 +49,20 @@ const NODE_REGISTRY_SOURCE = resolve(REPO_ROOT, 'packages/workflow-contract/src/
  */
 const DESCRIPTOR_TO_DTO_FIELD: Readonly<Record<string, string>> = Object.freeze({ key: 'type' });
 
+/**
+ * DTO fields that deliberately have NO descriptor source, each with the reason it exists.
+ *
+ * Declared here for the same purpose as the rename map above: an invented field and a
+ * deliberate one are indistinguishable to the check below, so the deliberate ones are named
+ * once, in the place the check reads — never by loosening the check.
+ *
+ * `kind` (TASK-893) says WHICH vocabulary an entry belongs to. The payload now carries the
+ * eleven node types AND the seventeen `ACTION_CATALOGUE` entries, because the client resolves a
+ * `core.action` instance's effective ports by looking its `actionKey` up in this same list; the
+ * palette must offer only the node types, and a descriptor cannot say which it is.
+ */
+const NON_DESCRIPTOR_DTO_FIELDS: ReadonlySet<string> = new Set(['kind']);
+
 /** Strip block and line comments so a doc comment can never be mistaken for a declaration. */
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -165,7 +179,7 @@ describe('WorkflowNodeResponse is a total projection of WorkflowNodeDescriptor',
     const projected = new Set(fields.map((field) => DESCRIPTOR_TO_DTO_FIELD[field] ?? field));
     const dto = WorkflowDefinitionDtoMapper.toNodeResponse(FULLY_POPULATED_DESCRIPTOR);
 
-    const phantom = Object.keys(dto as unknown as Record<string, unknown>).filter((key) => !projected.has(key));
+    const phantom = Object.keys(dto as unknown as Record<string, unknown>).filter((key) => !projected.has(key) && !NON_DESCRIPTOR_DTO_FIELDS.has(key));
 
     expect(
       phantom,

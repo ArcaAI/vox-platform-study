@@ -79,6 +79,12 @@ describe('TASK-893 — the workflow-node registry payload carries the action cat
     }
   });
 
+  it('is labelled `action`, so the palette can serve it without offering it as a node type', () => {
+    const nodes = served();
+    for (const key of Object.keys(ACTION_CATALOGUE)) expect(nodes.get(key)!.kind).toBe('action');
+    for (const key of Object.keys(WORKFLOW_NODE_REGISTRY)) expect(nodes.get(key)!.kind).toBe('node');
+  });
+
   it('never collides with a node type — the two vocabularies share one keyspace', () => {
     for (const key of Object.keys(ACTION_CATALOGUE)) {
       expect(WORKFLOW_NODE_REGISTRY[key], `action key '${key}' is also a node type — one of the two would silently win`).toBeUndefined();

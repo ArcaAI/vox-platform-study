@@ -51,8 +51,15 @@ export class WorkflowNodeEvalGateResponse {
  * package's zero-deps registry IS the source of truth
  */
 export class WorkflowNodeResponse {
-  @ApiProperty({ description: 'The node type string authored on a graph node.' })
+  @ApiProperty({ description: 'The node type string authored on a graph node, or — for `kind: "action"` — the `actionKey` a `core.action` delegates to.' })
   type: string;
+
+  @ApiProperty({
+    enum: ['node', 'action'],
+    description:
+      'WHICH vocabulary this entry belongs to. `node` = a registered node TYPE, authorable on a graph and offered in the palette. `action` = an `ACTION_CATALOGUE` entry a `core.action` instance delegates to: it is served here because the client resolves an instance`s effective ports by looking its `actionKey` up in this same list, but it is NOT a node type and must never be added to a graph directly.',
+  })
+  kind: 'node' | 'action';
 
   @ApiProperty({ description: 'False = an OBSERVABLE, non-executable placeholder — never silently dropped from the list.' })
   implemented: boolean;
