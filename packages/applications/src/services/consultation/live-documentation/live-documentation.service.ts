@@ -19,15 +19,18 @@ import {
   AgentSessionKind,
   AgentStepStatus,
   AgentStepType,
+  type ConsultationEntity,
   ConsultationRepository,
   ContextItemEntity,
   ContextItemFactory,
   ContextItemRepository,
   ContextItemType,
+  DnaWritingStyleReportRepository,
   DocumentSectionRepository,
   PromptTemplateRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
+import { ConfigResolver } from '../../config-resolver';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
@@ -81,6 +84,8 @@ import {
   LiveSummaryVitalsDto,
   LiveSummaryStatsDto,
   LiveSummaryAgentDto,
+  LiveHandoffResponse,
+  type LiveHandoffRecord,
 } from './dto';
 // the harness inbound contract for interpreter summary text. Type-only: this
 // service consumes the shape, never the harness module's runtime code.
@@ -560,6 +565,19 @@ interface LiveSession {
    */
   summaryLanguage?: string | null;
   /**
+   * TASK-932 R-16a — the live lane's LAST SUCCESSFUL output per node id, accumulated across
+   * flushes and handed to the durable interpreter at `stop()`.
+   *
+   * Per NODE and last-write-wins, not per flush: a flush in which NER degraded must not erase
+   * the entities the previous one produced, because what the finalizer needs is "the best the
+   * live lane got to", not "whatever the final flush happened to return".
+   *
+   * The shape is the realtime executor's own `RealtimeRunResult.outputs`, unaltered, which is
+   * what lets the interpreter resolve it through the same declared socket table it uses for a
+   * node it ran itself (`_resolve_bound_inputs`).
+   */
+  liveNodeOutputs?: Record<string, Record<string, unknown>>;
+  /**
    * TASK-932 D-9 — the WARM START, kicked off at `start()` and never awaited by a flush.
    *
    * Held on the session only so a `stop()` racing it can be reasoned about and a test can await
@@ -581,6 +599,16 @@ interface LiveSession {
  * that channel verbatim. Optionally persists the last snapshot as a PRE_SUMMARY
  * context item on stop.
  */
+/**
+ * TASK-932 R-16a — the consultation lifecycle states from which the live lane can STILL hand
+ * something off. Everything else means capture is over, whether or not a handoff record exists.
+ *
+ * `DRAINING` is deliberately NOT here. It means "capture stopped, not yet drafted", so nothing
+ * further is coming — and treating it as live would park a durable run for two hours whenever a
+ * stop was routed to an instance that owned no session and therefore wrote no record.
+ */
+const LIVE_CAPTURE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'PRIMED', 'RECORDING', 'REOPENED']);
+
 /** The effective `agentic.context.*` knobs for one resolution. */
 export interface AgenticContextKnobs {
   liveDeltaMaxChars: number;
@@ -685,6 +713,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly instanceId = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   /** Renew the owner lock at half its TTL so a live session never lets it lapse (C5-06). */
   private readonly lockRenewalMs = Math.floor((this.LOCK_TTL * 1000) / 2);
+
+  /**
+   * TASK-932 R-16a — the LIVE HANDOFF record, `+ consultationId` → JSON {@link LiveHandoffRecord}.
+   *
+   * Redis rather than a column: this is TRANSIENT handoff state consumed seconds after it is
+   * written (the interpreter polls on a 15s interval), it is the same class of state as the
+   * session snapshot and the agent freeze this service already mirrors here, and it carries the
+   * clinical note — which the `WorkflowRun` read model has no encrypted column for and must not
+   * be given a plaintext one.
+   */
+  private readonly HANDOFF_PREFIX = 'live-doc:handoff:';
+  /** Matches the interpreter's own `_LIVE_HANDOFF_MAX_WAIT`: past it, nothing is still asking. */
+  private readonly HANDOFF_TTL = 7200; // 2h
 
   // Admin live console: cross-instance per-session stats in Redis.
   private readonly STATS_PREFIX = 'live-doc:stats:'; // + consultationId → JSON LiveDocSessionStatsResponse
@@ -904,6 +945,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // that declares a warm start publishes `degraded: warm_start_unwired` rather than silently
     // doing nothing, because a panel that never resolves is the skeleton-forever defect again.
     @Optional() @Inject(ILivePreSummaryRunner) private readonly preSummaryRunner?: ILivePreSummaryRunnerPort,
+    // TASK-932 R-16a — the two halves of the clinician's EFFECTIVE DNA writing style, resolved
+    // at the live HANDOFF so the durable finalizer's `{{context.dna_style_text}}` renders. The
+    // repository supplies the report (id + ciphertext); `ConfigResolver` answers the tenant AND
+    // doctor gate the doctor-facing reads already respect. Optional + trailing so every
+    // positional fixture keeps its arity; ABSENT ⇒ the handoff carries no style and the note is
+    // finalized in plain clinical prose, which is what the seeded instruction's
+    // `default("")` already means. Never a substituted default: a style nobody enabled must not
+    // shape a clinical note.
+    @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1955,6 +2006,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         await this.persistDurableSnapshot(session, finalPayload, { force: true });
       }
 
+      // TASK-932 R-16a — HAND OFF to the durable lane, before the session is torn down and
+      // while its accumulated node outputs still exist. This is what unblocks `n_finalize`:
+      // until it is written the interpreter's poll answers `ended: false` and it keeps waiting,
+      // which is the correct reading of "the clinician has not stopped yet".
+      await this.persistLiveHandoff(session);
+
       this.teardownLocal(session);
     }
 
@@ -2608,6 +2665,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       updatedAt: new Date().toISOString(),
     };
 
+    // TASK-932 R-16a — remember what the LIVE lane produced, per node, for the durable
+    // finalizer to bind at stop. Captured HERE and not inside `runGraphLane`: this is the point
+    // at which this flush's generation has won every staleness check, so what is recorded is
+    // what the clinician actually saw.
+    if (graph) this.captureLiveNodeOutputs(session, graph.run);
     session.lastPayload = payload;
     await this.safePublish(consultationId, payload);
     await this.persistDurableSnapshot(session, payload, { force: false });
@@ -4603,6 +4665,186 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   private snapshotKey(consultationId: string): string {
     return `${this.CHANNEL_PREFIX}${consultationId}:last`;
+  }
+
+  // ------------------------------------------------------------------
+  // TASK-932 R-16a — the LIVE HANDOFF
+  //
+  // The durable interpreter skips every `realtime` node of a consultation-bound run so exactly
+  // one runtime executes it (`_has_live_owner`). That is right, and it left the durable half
+  // with nothing to bind: `n_finalize` — the seeded `casenote-finalization` agent, `execution:
+  // { lane: durable, cadence: onEnd }` — resolved `bound_inputs: {}` and degraded
+  // "core.agent: nothing bound on `in`/`context` to generate from" on every consultation the
+  // platform has ever run. These three methods are the bridge.
+  // ------------------------------------------------------------------
+
+  /** Where one consultation's handoff record lives. */
+  private handoffKey(consultationId: string): string {
+    return `${this.HANDOFF_PREFIX}${consultationId}`;
+  }
+
+  /**
+   * Fold ONE flush's successful node outputs into the session's accumulated set.
+   *
+   * Pure bookkeeping, deliberately: no I/O, no publish, nothing that can fail a flush. A node
+   * that degraded this flush contributes nothing and does NOT erase what it produced earlier —
+   * the finalizer wants the best the live lane reached, not the tail of it.
+   */
+  private captureLiveNodeOutputs(session: LiveSession, run: RealtimeRunResult): void {
+    if (run.outputs.size === 0) return;
+    const accumulated = session.liveNodeOutputs ?? (session.liveNodeOutputs = {});
+    for (const [nodeId, output] of run.outputs) {
+      accumulated[nodeId] = output;
+    }
+  }
+
+  /**
+   * Write the session's accumulated live outputs where the durable run can read them.
+   *
+   * Called from `stop()` BEFORE `teardownLocal`, which is the only moment both facts are true:
+   * the session still holds its outputs, and no further flush will add to them.
+   *
+   * A write failure is logged at ERROR, not swallowed quietly and not thrown. Not thrown,
+   * because a clinician pressing stop must always get their recording stopped; at ERROR,
+   * because the consequence is a consultation whose note never finalizes — the interpreter
+   * keeps answering "not ended yet" until its own bound expires and then degrades with a named
+   * reason. That is a visible, recoverable failure, and it deserves to be visible.
+   *
+   * A session that produced NOTHING still writes a record. "The live lane ran and produced
+   * nothing" and "the live lane has not handed off yet" are different states and the durable
+   * poll waits on exactly that difference; conflating them would park the run for two hours on
+   * a consultation that was simply silent.
+   */
+  private async persistLiveHandoff(session: LiveSession): Promise<void> {
+    const record: LiveHandoffRecord = {
+      endedAt: new Date().toISOString(),
+      tenantId: session.tenantId,
+      outputs: session.liveNodeOutputs ?? {},
+    };
+    try {
+      await this.cacheService.setex(this.handoffKey(session.consultationId), this.HANDOFF_TTL, JSON.stringify(record));
+    } catch (error) {
+      this.logger.error({
+        message:
+          'Live handoff could not be written — the durable run will not be able to bind this consultation’s note and its finalize will degrade',
+        consultationId: session.consultationId,
+        // PHI-safe: node ids and a count, never the note.
+        nodeIds: Object.keys(record.outputs),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * TASK-932 R-16a — the durable interpreter's read of this consultation's live handoff.
+   *
+   * Answers three states, and the distinction between the last two is the whole contract:
+   *
+   *  * **not ended** — a handoff record has not been written and the consultation can still
+   *    produce one (it is `OPEN` / `PRIMED` / `RECORDING` / `REOPENED`). The caller polls.
+   *  * **ended with outputs** — the live lane handed off. `outputs` is filtered to the node ids
+   *    the caller asked about, so a graph is never told about a lane it does not have.
+   *  * **ended with nothing** — a consultation that never recorded, or one whose lifecycle has
+   *    moved past capture without a record (a stop routed to an instance that owned no session,
+   *    or a Redis eviction). Empty is reported honestly; the finalizer then degrades with its
+   *    own named reason rather than being handed a fabricated note.
+   *
+   * `context` is resolved HERE, once, and only when the handoff has actually ended: the
+   * clinician's effective DNA writing style, gated by the tenant AND doctor toggles the
+   * doctor-facing reads use. Resolving it here rather than stamping it into the run payload at
+   * dispatch is deliberate — it means the style cannot be supplied, or spoofed, by a caller.
+   */
+  async readLiveHandoff(consultationId: string, nodeIds: readonly string[] = []): Promise<LiveHandoffResponse> {
+    const record = await this.readLiveHandoffRecord(consultationId);
+    const consultation = await this.loadConsultationForHandoff(consultationId);
+    // Capture is over the moment the consultation leaves the states that can still produce it.
+    // `DRAINING` counts as ended on purpose: it means capture stopped, so nothing more is
+    // coming, and a run must not wait two hours for a record that a non-owner stop never wrote.
+    const stillLive = consultation !== null && LIVE_CAPTURE_STATUSES.has(String(consultation.status ?? ''));
+    if (!record && stillLive) return { ended: false, outputs: {}, context: {} };
+
+    const requested = new Set(nodeIds);
+    const outputs = Object.fromEntries(
+      Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)),
+    );
+    return {
+      ended: true,
+      ...(record ? { endedAt: record.endedAt } : {}),
+      outputs,
+      context: await this.resolveHandoffContext(consultation),
+    };
+  }
+
+  /** The stored record, or `null` (absent, evicted, or unparseable — all "no handoff yet"). */
+  private async readLiveHandoffRecord(consultationId: string): Promise<LiveHandoffRecord | null> {
+    try {
+      const raw = await this.cacheService.get(this.handoffKey(consultationId));
+      if (!raw) return null;
+      const parsed = JSON.parse(typeof raw === 'string' ? raw : String(raw)) as LiveHandoffRecord;
+      return parsed && typeof parsed.outputs === 'object' && parsed.outputs !== null ? parsed : null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Live handoff record could not be read — reporting no handoff',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /** The consultation row, or `null` when it cannot be read (no repository, or a bad id). */
+  private async loadConsultationForHandoff(consultationId: string): Promise<ConsultationEntity | null> {
+    if (!this.consultationRepository) return null;
+    try {
+      return (await this.consultationRepository.findById(consultationId)) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The clinician's EFFECTIVE DNA writing style, as run-context additions.
+   *
+   * `{}` — never a partial or a placeholder — whenever DNA does not apply: no consultation, no
+   * doctor, no report, the tenant/doctor gate off, or an unwired secrets backend. The seeded
+   * finalize instruction reads `{{context.dna_style_text | default("")}}`, so an absent style
+   * renders as plain clinical prose, which is exactly what "this clinician has no style on
+   * file" should produce.
+   *
+   * Best-effort by construction: a failure to resolve a WRITING STYLE must never cost the note
+   * it would have styled.
+   */
+  private async resolveHandoffContext(consultation: ConsultationEntity | null): Promise<Record<string, unknown>> {
+    const doctorId = consultation?.doctorId;
+    if (!consultation || !doctorId || !this.dnaReportRepository || !this.secretsService) return {};
+    try {
+      if (this.configResolver) {
+        const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({
+          tenantId: consultation.tenantId,
+          departmentId: consultation.departmentId ?? null,
+          doctorId,
+        });
+        // The doctor's own opt-out lives behind this switch — an unreadable gate drops DNA
+        // rather than applying it (`resolveEffectiveDnaStyleEnabled` fails closed internally).
+        if (!effective) return {};
+      }
+      const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
+      if (!report) return {};
+      const { styleText } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
+      const text = styleText?.trim();
+      if (!text) return {};
+      // `dna_style_id` travels beside the text so the persisted `SummaryMeta.dnaWritingStyleId`
+      // names the report that actually shaped the note, not the one that happens to be latest
+      // when someone later reads it.
+      return { dna_style_text: text, dna_style_id: report.id };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Effective DNA writing style could not be resolved for the live handoff — finalizing without it',
+        consultationId: consultation.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {};
+    }
   }
 
   /**

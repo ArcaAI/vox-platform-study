@@ -23,6 +23,7 @@ import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workf
 import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 import { LivePreSummaryModule } from '../summary/live-pre-summary.module';
+import { ConfigResolverModule } from '../../config-resolver/config-resolver.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -123,6 +124,11 @@ import { LivePreSummaryModule } from '../summary/live-pre-summary.module';
     // an `onStart` node publishes `degraded: warm_start_unwired`, which is observable rather than
     // silent.
     LivePreSummaryModule,
+    // TASK-932 R-16a — supplies `ConfigResolver`, which answers the tenant AND doctor DNA gate
+    // the LIVE HANDOFF respects before it hands the clinician's writing style to the durable
+    // finalizer. The report repository itself comes from `CoreDatabaseModule` above. Absent ⇒
+    // the handoff carries no style and the note finalizes in plain clinical prose.
+    ConfigResolverModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],
