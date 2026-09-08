@@ -520,6 +520,34 @@ broadcasts `ResourceUpdated` inside the transaction on this path (a rollback wou
 that did not happen — restructuring the shared `publishEntity` is a follow-up, FU-7), and
 `compileSttPipelineIfNeeded` is not tx-threaded (pre-existing, only on an `stt`-palette promotion).
 
+**W3 — DONE (unmerged until W1 releases the primary).** `worktree-agent-a1603cbf5cac779c8` @
+`d1c680d2a`, 4 commits, 11 files (+649/−8), all in scope; provenance proved in-tree; nlp 659 /
+guardrail 518 / text 1 664 passed, ruff + mypy clean ×3. (1) **Root cause of the lost load** is the
+shared `hope_runtime_models.ModelCache.get`: waiters are shielded from each other but the OWNER awaits
+the factory directly, so cancelling the owner cancels the load and pops the key — fixed in nlp's own
+subclass with a detached single-flight load task shielded for owner and waiters alike. (2) **The warm
+path was dead everywhere**: nothing in the repo produces `warmModels`, and nlp's boot fetch fails
+because it starts before the gateway and the old code returned on that failure — now a bootstrap list
+`NLP_WARM_MODELS` (default empty, dev-only) unions with the control-plane set. **Ruling (orchestrator):
+accepted as a bootstrap SCHEDULING lever, not a selection one — a request still names its own model,
+resolved tenant-first — with W3's "retire it once `warmModels` has a producer" note; giving
+`warmModels` a control-plane producer is FU-8.** (3) The breaker's half-open admitted unlimited probes
+(a stampede at the peer least able to absorb it) and a caller-cancelled probe left it half-open
+FOREVER, waving every request through — now one probe at a time, a cancellation releases the slot and
+counts nothing, fail-closed unchanged. (4) text's guardrail client logs the exception CLASS (`error=`
+is never empty again); the timeout budget is already control-plane config over a 10 s floor and was
+left alone with the reasoning in the docstring.
+
+**W3's residual (b) is the last link in D-7 and is a DEV CONFIGURATION defect, D-8:** `nlp.log` shows
+`POST /api/v1/guard/pii → 401 nlp.auth.rejected` from guardrail — the peer token guardrail sends is
+not the one nlp expects on this launch. That alone trips the breaker (`_PeerStatusError(401)`) and
+keeps guardrail answering `block` on all five reasons regardless of items 1–3. Orchestrator traces it
+below (§4.12).
+
+Activation after merge: `NLP_WARM_MODELS=fastino/gliner2-privacy-filter-PII-multi,fastino/gliguard-LLMGuardrails-300M`
+in `.env.dev`; the name into `turbo.json#globalEnv`; `pnpm env:python-surface && pnpm env:sync`;
+restart nlp, guardrail, text.
+
 Merge W2 into `dev-2.2` after W1 lands; re-run §6.9 (lane LOCAL) on the result; then FU-6 and the
 statuses.
 
