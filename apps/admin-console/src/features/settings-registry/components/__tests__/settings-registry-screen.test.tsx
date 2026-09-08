@@ -271,6 +271,22 @@ describe('SettingsRegistryScreen — the inventory', () => {
 
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it('m3 — mounting at ?key=<key> opens the drawer for that key', async () => {
+    stubFetch();
+    renderWithProviders(<SettingsRegistryScreen />, { searchParams: `?key=${NUMBER_KEY}` });
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(NUMBER_KEY)).toBeDefined();
+  });
+
+  it('m3 — an unknown ?key= leaves the drawer closed', async () => {
+    stubFetch();
+    renderWithProviders(<SettingsRegistryScreen />, { searchParams: '?key=no-such-key' });
+
+    await screen.findByText(NUMBER_KEY);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
 
 describe('SettingRegistryDrawer — type-aware controls', () => {

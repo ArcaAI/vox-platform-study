@@ -121,9 +121,21 @@ export function SettingsRegistryScreen() {
   const [active, setActive] = useState<SettingCatalogItem | null>(null);
   // Deep-linkable selection, and the signal that re-reads the value cache when a
   // drawer closes (an opened key now has a resolved value to show).
-  const [, setSelectedKey] = useQueryState('key', parseAsString);
+  const [selectedKey, setSelectedKey] = useQueryState('key', parseAsString);
 
   const items = useMemo(() => catalogQuery.data?.items ?? [], [catalogQuery.data]);
+
+  // m3 — `?key=` was written on every row open but never READ back: a shared
+  // deep link landed on the plain list with the drawer closed. Seed the
+  // active drawer from the param once the catalog carries a matching item —
+  // the render-time derived-state pattern (see `FilterSearch`'s own re-sync),
+  // not an effect: `active` already set means the admin picked a row
+  // themselves (or this already opened one), so it never fights that choice,
+  // and the seed always lands in the SAME commit as the catalog arriving.
+  if (active === null && selectedKey) {
+    const found = items.find((item) => item.key === selectedKey);
+    if (found) setActive(found);
+  }
 
   const categoryOptions = useMemo<FilterOption[]>(
     () => (catalogQuery.data?.categories ?? []).map((value) => ({ value, label: value })),
