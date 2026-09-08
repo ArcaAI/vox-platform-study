@@ -186,6 +186,18 @@ export interface WorkflowNodePort {
  */
 export interface WorkflowNodeDescriptor {
   type: string;
+  /**
+   * TASK-893 — WHICH vocabulary this entry belongs to.
+   *
+   * `node` is a registered node TYPE: authorable on a graph, offered in the palette. `action` is
+   * an `ACTION_CATALOGUE` entry a `core.action` instance delegates to — served in this same list
+   * because `effectiveNodePorts` resolves an instance's sockets by looking its `actionKey` up
+   * here, but NOT a node type and never draggable onto a canvas.
+   *
+   * Optional so a gateway that predates the label still reads: absent means `node`, which is what
+   * every entry was before the action catalogue joined the payload.
+   */
+  kind?: 'node' | 'action';
   implemented: boolean;
   activityName: string;
   classes: readonly string[];
