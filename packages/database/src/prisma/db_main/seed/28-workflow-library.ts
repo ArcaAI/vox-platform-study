@@ -8,7 +8,7 @@
  *   general-medicine-consultation     ① trigger → ② realtime-transcription (realtime, perTurn) →
  *                                     ③ medical-ner (realtime, perTurn) → ④ general-medicine-summarization
  *                                     (realtime, perTurn) → ⑤ casenote-finalization (durable, onEnd) →
- *                                     ⑥ humanReview clinical_finalization → ⑦ output {case_note, entities}
+ *                                     ⑥ humanReview clinical_finalization → ⑦ output {case_note, redactions}
  *   platform-default-summarization    trigger [api] → general-medicine-summarization (durable, once) → output
  *
  * The consultation graph is a BUILDER shared with phase 29: ArcaAI replaces ④ with a
@@ -134,14 +134,27 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
       {
         id: 'n_output',
         type: 'core.output',
+        // TASK-930 D-1. The published result is the FINALIZER's own contract
+        // (`casenote-finalization.outputSchema` = `{ case_note, redactions }`), because that is
+        // the node this output is fed from. Two corrections are folded in here:
+        //
+        //  - `entities` is no longer REQUIRED. NER consumes a `transcript`, and the port lattice
+        //    refuses to feed it anything else on purpose (`port-model.ts`: "`document -> ner` is
+        //    a type error … the anti-hallucination-laundering rule made structural"). Only live
+        //    audio produces a transcript, so an API-plane run legitimately has no entities — and
+        //    on the consultation plane they are written by the realtime lane onto the
+        //    consultation, not carried out through this port. Requiring them made every API-plane
+        //    run FAIL on its own schema (§6.9 D-1).
+        //  - the run's ENTITIES are therefore not claimed at all rather than declared and never
+        //    populated; `redactions` is, because the finalizer really does return it.
         config: {
           protocols: ['http', 'http-sse', 'socket'],
           outputSchema: {
             type: 'object',
-            required: ['case_note', 'entities'],
+            required: ['case_note'],
             properties: {
               case_note: { type: 'string' },
-              entities: { type: 'array', items: { type: 'object', required: ['text', 'label'], properties: { text: { type: 'string' }, label: { type: 'string' }, start: { type: 'integer' }, end: { type: 'integer' }, score: { type: 'number' } } } },
+              redactions: { type: 'array', items: { type: 'object', required: ['text', 'label'], properties: { text: { type: 'string' }, label: { type: 'string' } } } },
             },
           },
           onSchemaViolation: 'fail',
@@ -169,7 +182,13 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
           ] as const)),
       ...summaryIds.map((id) => [id, 'out', 'n_finalize', 'in'] as const),
       ['n_finalize', 'out', 'n_review', 'in'],
-      ['n_review', 'out', 'n_output', 'in'],
+      // TASK-930 D-1. The OUTPUT is fed by the finalizer, not by the review.
+      // `core.humanReview.out` carries the review DECISION (`{outcome, reviewerId, comment,
+      // editedPayload, escalations}`) — handing that to `core.output` made the declared
+      // `{case_note, …}` contract unreachable on EVERY plane, whatever ran upstream. The review
+      // still gates the publish, through the ORDERING edge a review handle is meant to carry.
+      ['n_finalize', 'data', 'n_output', 'in'],
+      ['n_review', 'next', 'n_output', 'after'],
     ]),
   };
 }
@@ -234,7 +253,7 @@ function libraryTargets(tenantKey: 'GLOBAL' | 'SYSTEM', tenantId: string): Workf
       slug: CONSULTATION_WORKFLOW_SLUG,
       name: 'General Medicine Consultation',
       description:
-        'Realtime transcription, medical NER and the per-turn General Medicine running note; case-note finalization at the close, a clinician review, and the {case_note, entities} output. Governs consultations and is exposed on the API plane.',
+        'Realtime transcription, medical NER and the per-turn General Medicine running note; case-note finalization at the close, a clinician review, and the {case_note, redactions} output. Governs consultations and is exposed on the API plane.',
       graph: buildConsultationGraph({ contextSchemaId, summarizer: { kind: 'agent', slug: 'general-medicine-summarization' } }),
       contextSchemaVersionId,
       tags: ['palette:core', 'kind:consultation', 'kind:api', 'specialty:general-medicine'],

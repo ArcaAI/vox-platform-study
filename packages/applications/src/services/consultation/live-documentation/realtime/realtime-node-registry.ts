@@ -54,6 +54,12 @@ export const REALTIME_NODE_TYPES: ReadonlySet<string> = new Set(
  * `execution.lane` in their own config. A `core.action` inherits its catalogue entry's lane when
  * the instance says nothing. The durable interpreter applies the SAME predicate
  * (`_configured_realtime` in `workflow.py`), so exactly one runtime executes any given node.
+ *
+ * TASK-930 D-1 — the durable side additionally asks whether this lane can actually own the run.
+ * This lane is driven by `LiveDocumentationService.flush` inside a consultation's live session and
+ * has no other entry point, so an exposure-plane (unbound) run has no live owner and the
+ * interpreter runs the node itself rather than skipping it for a runtime that will never see it.
+ * The predicate below is unchanged, and so is the invariant: still exactly one runtime per node.
  */
 export function isRealtimeNode(type: string, config?: Readonly<Record<string, unknown>>): boolean {
   if (type === 'core.agent' || type === 'core.action') {

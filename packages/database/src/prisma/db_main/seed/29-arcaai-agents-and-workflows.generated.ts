@@ -14,7 +14,7 @@ export const REGISTRY_CHECKSUM: string = "b7f556b38bba350d4befc623675cc55393abf9
 
 export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "ARCAAI:arcaai-gen-consultation": {
-    "graphChecksum": "c96cbc0ac7a4917a4188f27c191c642f8d7fe458bb44570eafa6dfcd1d9c3fe8",
+    "graphChecksum": "71d5d60c4c73779cee84672a1329f0401ca22a0e2b2bf216f98315cfd6325c57",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -525,14 +525,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -546,15 +545,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -572,7 +562,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -607,11 +602,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "e14dfb2fcdd4e6620e9965237c5cfa42f73d4e969a074f3d171ed5b18515972c"
+      "checksum": "e04d49e5c233268524baa7aed6a84295f4b7eeab7580eec1065bb54213cf90e1"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
-    "graphChecksum": "b24f3a77fe6916eaaa2f0a3cb6c9774ea319890c1437c1a41e00d6a308a1e0c0",
+    "graphChecksum": "b884bbf7256bc8754bfc59961bcd367cc43323604f435e75bdc2dd120f277b80",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1122,14 +1117,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -1143,15 +1137,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -1169,7 +1154,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -1204,11 +1194,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "9970148781fbf7dd23d1101f9d9c17afc5d198b28411af4a932e5f4da223064e"
+      "checksum": "c2d64bf55dda6f48e0885f009c4f82f25ab6d395708317ce42e3c78c7c1963d5"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
-    "graphChecksum": "40507b27a05e674cf05923983141fabc51832437fe31cd064d52ce8960583984",
+    "graphChecksum": "03cdbf66269277795b587c920401b545d495e1ca61b169e795e671e1395c7bdf",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1719,14 +1709,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -1740,15 +1729,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -1766,7 +1746,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -1801,11 +1786,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "bfbf91d4816d8d3f3f9920ca401ad27d77eb2fd6b08b73734178d742678394b5"
+      "checksum": "ab9f5261fb8e242be004f7cf2dd44c1475f68d111793794563de77e3df7b3154"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
-    "graphChecksum": "bc7f25b3c31b46efb0bd98e9d7dda0daa57461f86cb514570a2ceb906e034ee3",
+    "graphChecksum": "3a89b3bfed89afcafc2eae78e13d970d5249c99c8e4e0555e080748b12795bdb",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -2316,14 +2301,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -2337,15 +2321,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -2363,7 +2338,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -2398,11 +2378,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "bad3af1ed665dfd5ca22c9a902b09b80bec64013dff32b729a703483c2df265d"
+      "checksum": "a6c4838318019b7bf867f6ed53d3da917e35a02e5c7be21a0a3499f09dbb30c7"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
-    "graphChecksum": "a9301dbd5ec22ee0b70b9bb8f6265117df39771c1324a6cf981cf288e7342f8a",
+    "graphChecksum": "617d3e52f417d0b2f9119f99a89632b990e71d6b3167ede16e7297608f807edc",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -2913,14 +2893,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -2934,15 +2913,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -2960,7 +2930,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -2995,11 +2970,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "bd00b31d2a851c9afe1e4c032811e4666216c259c62851825af5a9ece2d2734a"
+      "checksum": "6aaf756199731b036d6a63ed8a1461b6d4c1465b63eaadf2d05d0c2902652331"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
-    "graphChecksum": "8c9b37e9dd2df8e9e369cccb49d793a99839ed78587f0e6295e9f8122cd23ab8",
+    "graphChecksum": "9c6be078dc39d6cd52a096b5df39d9579cd80cf9e128cebf1c76020fb982aa95",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -3510,14 +3485,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -3531,15 +3505,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -3557,7 +3522,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -3592,11 +3562,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "312b155cc288901931dc77fa83727aa5ccd1f5aab611cc776faac733cebeac9e"
+      "checksum": "92fbac7132554dce61f8104817bd05ab88cb1095f8971a55075f79c50c0f4a14"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
-    "graphChecksum": "028418fc79e6f219c5f0975134d96c3f4d8996be83740d57c85a525831366fa5",
+    "graphChecksum": "87d727947aca2057216b4617e301bda5dfd1b0b3327d7cff105d429eb9f5abba",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -4107,14 +4077,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -4128,15 +4097,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -4154,7 +4114,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -4189,11 +4154,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "2465428a375fd0ac8b6533d7e339801e378107ea4c3f9c3260072646bae98857"
+      "checksum": "d77b7d3999e0b5d0e49185d1ebc1484309ce69a966c1e7c4d1070e1a06702642"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
-    "graphChecksum": "c14b73729d93cbf320385f54e5dfb4c1bd6aaca36e46fa228176d265f055a9df",
+    "graphChecksum": "e930b7960aee49b893f5b72e8d0c6e97c2a24d8ca49510649584cda4081af548",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -4704,14 +4669,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -4725,15 +4689,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -4751,7 +4706,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -4786,11 +4746,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "b6ae1ef34dd7c659899fe4f023b6fa2035f4479ac3251b029ed931ecad25a13c"
+      "checksum": "7f4b6f92f9e2bcf81562de37899045e5e6a70cf2293add249ea107b98e145bdc"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
-    "graphChecksum": "9a396227e2e88e423fdefbb0403f49949fca8c8dbfe38d3b42988a8689f10510",
+    "graphChecksum": "15d49681eabefc7717f4dda32e29364da97127dadc1a1c39c65ebe1df65222c4",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -5301,14 +5261,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -5322,15 +5281,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -5348,7 +5298,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -5383,11 +5338,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "2ef6a4906b664541237a9094bd6f7b6de30befc86e4dcf56275edd5e321cc8be"
+      "checksum": "e7a9f04ff6186320a8751755df1578f7d554d9cfe804513cec706eeed99014ee"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
-    "graphChecksum": "1321715a900e73c7d0276bcc4d8fe96875cda22045346bf0836ad0dbc25db407",
+    "graphChecksum": "51e46e7582c52f686ccc640e8ace7b514070902d208061d46d6e1d4876fc6751",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -5898,14 +5853,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -5919,15 +5873,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -5945,7 +5890,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -5980,11 +5930,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "37a2895f862640b0f9636e6d7b1520f7d4780057ad2dfa16b707344fdeb85c59"
+      "checksum": "954b18162aa9a46cb88eaff9ded8794549f429f880440f3d9222f8bf6c11ee6a"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
-    "graphChecksum": "9caf66aee3eeeae82f743ce9efbcb6a498096b88d5edd00b54ed8160a002db63",
+    "graphChecksum": "8f86fd1e5cf203cd228c2a198dd90eb61160aef67eefdcaf2fda0ec4769fe6fc",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -6495,14 +6445,13 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 "outputSchema": {
                   "type": "object",
                   "required": [
-                    "case_note",
-                    "entities"
+                    "case_note"
                   ],
                   "properties": {
                     "case_note": {
                       "type": "string"
                     },
-                    "entities": {
+                    "redactions": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -6516,15 +6465,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "start": {
-                            "type": "integer"
-                          },
-                          "end": {
-                            "type": "integer"
-                          },
-                          "score": {
-                            "type": "number"
                           }
                         }
                       }
@@ -6542,7 +6482,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "inputs": [
                 {
                   "fromNodeId": "n_review",
-                  "fromPort": "out",
+                  "fromPort": "next",
+                  "toPort": "after"
+                },
+                {
+                  "fromNodeId": "n_finalize",
+                  "fromPort": "data",
                   "toPort": "in"
                 }
               ],
@@ -6577,7 +6522,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "810463f9dab2ef2613423804e829de3ab5368c522cfeadfea35fded004da6a9e"
+      "checksum": "fdf4a0257e1bf296b25e09283e1b56d69d105d9b5d007130ffeadcd453df9331"
     }
   }
 };
