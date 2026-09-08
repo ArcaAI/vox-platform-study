@@ -12,7 +12,7 @@
  * This is the test that the control actually renders as a control.
  */
 import { describe, expect, it } from 'vitest';
-import { NODE_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
+import { ACTION_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
 import { toFieldDescriptors, type FieldDescriptor } from '../schema-form';
 
 function findField(fields: FieldDescriptor[], path: string): FieldDescriptor | undefined {
@@ -26,11 +26,18 @@ function findField(fields: FieldDescriptor[], path: string): FieldDescriptor | u
   return undefined;
 }
 
-const GATED_NODE_KEYS = ['generate.text', 'consultation.synthesize', 'consultation.realtimeSummary'] as const;
+/**
+ * TASK-893 Phase 4 — the gate rides with the PROMPT BINDING, and after the legacy palettes were
+ * retired the one surviving surface that binds a prompt template directly is the
+ * `prompt.template_ref` ACTION (a `core.agent`'s prompt comes from the referenced Agent). So the
+ * inspector renders the gate from `ACTION_CONFIG_SCHEMAS`, under a `core.action` node's `action`
+ * sub-config, rather than from a node type of its own.
+ */
+const GATED_ACTION_KEYS = ['prompt.template_ref'] as const;
 
 describe('the eval gate is an authorable control in the node inspector', () => {
-  it.each(GATED_NODE_KEYS)('%s renders evalGate as a group, not a raw-JSON escape hatch', (key) => {
-    const fields = toFieldDescriptors(NODE_CONFIG_SCHEMAS[key]);
+  it.each(GATED_ACTION_KEYS)('%s renders evalGate as a group, not a raw-JSON escape hatch', (key) => {
+    const fields = toFieldDescriptors(ACTION_CONFIG_SCHEMAS[key]);
     const gate = findField(fields, 'evalGate');
 
     expect(gate).toBeDefined();
@@ -40,8 +47,8 @@ describe('the eval gate is an authorable control in the node inspector', () => {
     expect(gate?.kind).toBe('group');
   });
 
-  it.each(GATED_NODE_KEYS)('%s renders the enable/disable toggle as a boolean field', (key) => {
-    const fields = toFieldDescriptors(NODE_CONFIG_SCHEMAS[key]);
+  it.each(GATED_ACTION_KEYS)('%s renders the enable/disable toggle as a boolean field', (key) => {
+    const fields = toFieldDescriptors(ACTION_CONFIG_SCHEMAS[key]);
     const enabled = findField(fields, 'evalGate.enabled');
 
     expect(enabled).toBeDefined();
@@ -49,8 +56,8 @@ describe('the eval gate is an authorable control in the node inspector', () => {
     expect(enabled?.required).toBe(true);
   });
 
-  it.each(GATED_NODE_KEYS)('%s renders the golden-set binding as a string field', (key) => {
-    const fields = toFieldDescriptors(NODE_CONFIG_SCHEMAS[key]);
+  it.each(GATED_ACTION_KEYS)('%s renders the golden-set binding as a string field', (key) => {
+    const fields = toFieldDescriptors(ACTION_CONFIG_SCHEMAS[key]);
     const goldenSetId = findField(fields, 'evalGate.goldenSetId');
 
     expect(goldenSetId).toBeDefined();
