@@ -12,7 +12,7 @@ const TENANT = 'tenant-a';
 const DEPARTMENT = 'dept-radiology';
 // A palette that IS registered in the code-owned node registry — a free string
 // is rejected, which is the point of the check.
-const PALETTE = 'summarization';
+const PALETTE = 'core';
 
 function makeService(opts: { existing?: unknown; published?: boolean; department?: { tenantId: string } | null; byId?: unknown } = {}) {
   const assignmentRepository = {

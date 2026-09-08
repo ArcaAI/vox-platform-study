@@ -82,17 +82,24 @@ describe('WorkflowValidatorService.validateGraph', () => {
     expect(report.findings.length).toBeGreaterThan(0);
   });
 
-  it("the empty-table fallback carries EVERY palette's rules, not just summarization's", async () => {
+  it("the empty-table fallback carries EVERY palette's rules, not just the palette-agnostic ones", async () => {
     const { service } = makeService([]);
 
-    // A consultation graph missing every mandatory clinical node. `validate()` skips any rule
-    // whose `paletteKey` does not match, so a fallback seeded with `DRAFT_SUMMARIZATION_RULE_SET`
-    // alone matches only the palette-agnostic `WF-S-*` rows and reports NO `WF-CONS-*` finding —
-    // an `ok`-looking report on a graph that violates the palette's clinical invariants.
-    const report = await service.validateGraph(TENANT, 'consultation', GRAPH);
+    // TASK-893 retired the `consultation` palette and its `WF-CONS-*` rules with the rest of the
+    // legacy vocabulary; `core` is the one palette left, and `WF-CORE-*` are its palette-scoped
+    // rules. The property under test is unchanged: `validate()` skips any rule whose `paletteKey`
+    // does not match, so a fallback carrying only the palette-agnostic `WF-S-*` rows would report
+    // an `ok`-looking result on a graph that violates the palette's own invariants.
+    const report = await service.validateGraph(TENANT, 'core', {
+      version: 1,
+      // No `core.trigger` and no `core.output` — both of WF-CORE-001/002 are violated.
+      nodes: [{ id: 'a1', type: 'core.agent', config: { agentRef: { slug: 'summarizer' } } }],
+      edges: [],
+    });
 
     const ruleIds = report.findings.map((f) => f.ruleId);
-    expect(ruleIds).toContain('WF-CONS-007');
+    expect(ruleIds).toContain('WF-CORE-001');
+    expect(ruleIds).toContain('WF-CORE-002');
     expect(report.ok).toBe(false);
   });
 
