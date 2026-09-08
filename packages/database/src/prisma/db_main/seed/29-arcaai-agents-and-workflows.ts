@@ -30,10 +30,20 @@
 import type { CorePrismaClient } from '../../../client';
 import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from './04-department';
-import { ARCAAI_CLINICAL_APPROVED_VERSION } from './07b-arcaai-clinical-templates';
+import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATE_IDS } from './07b-arcaai-clinical-templates';
 import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
-import { SUMMARIZATION_PARAMETERS, arcaaiAgentId, seedAgentSpecs, type SeedAgentSpec, type SeedAgentsClient } from './25-agents';
+import {
+  PRE_SUMMARY_AGENT_SLUG,
+  PRE_SUMMARY_PARAMETERS,
+  SUMMARIZATION_PARAMETERS,
+  arcaaiAgentId,
+  preSummaryPromptVariables,
+  seedAgentSpecs,
+  type SeedAgentSpec,
+  type SeedAgentsClient,
+} from './25-agents';
 import { cloneId } from './26-tenant-reference-set';
+import { arcaaiDocumentTemplateSlug, seedArcaaiDepartmentDocumentTemplates } from './27-document-template-library';
 import {
   CORE_PALETTE_KEY,
   buildConsultationGraph,
@@ -87,7 +97,42 @@ export const arcaaiWorkflowSlug = (row: ArcaaiDepartmentRow): string => `arcaai-
 // Agents — 11 × 2
 // =============================================================================
 
-export const ARCAAI_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_TABLE.flatMap((row) =>
+/**
+ * TASK-932 D-9 — ArcaAI's OWN warm-start agent.
+ *
+ * The tenant carries the same lineage key as the platform (`case-notes-pre-summary`) bound to a
+ * DIFFERENT body: the v3 corpus' pre-summary, which is the one the customer signed off — dated
+ * provenance parentheses, event dates kept inline and unreformatted, one bullet per diagnosis,
+ * status-post interventions, English-only output. Seeded HERE rather than left to phase 26,
+ * because `copyAgents` skips a slug the tenant already has and this phase runs first: the tenant's
+ * own body wins, and the SYSTEM copy is simply not made.
+ *
+ * `promptVersionNumber` tracks `ARCAAI_CLINICAL_APPROVED_VERSION` like every department agent, so
+ * a corpus roll-back is one constant for the whole tenant, warm start included.
+ */
+export const ARCAAI_PRE_SUMMARY_AGENT_SPEC: SeedAgentSpec = {
+  id: arcaaiAgentId(23),
+  tenantId: ARCAAI,
+  slug: PRE_SUMMARY_AGENT_SLUG,
+  name: 'Case-notes pre-summary (warm start)',
+  description: `The ArcaAI warm start: one pass over the patient's prior case notes on the department corpus' approved v${ARCAAI_CLINICAL_APPROVED_VERSION} pre-summary body; guardrail screening ON.`,
+  task: 'TEXT_GENERATION',
+  modelSlug: 'lms-gemma-4-e2b-it-qat',
+  fallbackModelSlugs: [],
+  instruction: {
+    promptTemplateId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    promptVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION,
+    variables: preSummaryPromptVariables(),
+  },
+  parameters: PRE_SUMMARY_PARAMETERS,
+  outputSchema: null,
+  status: 'PUBLISHED',
+  isActive: true,
+  tags: ['tier:tenant-authored', 'task:llm', 'capability:pre-summary', 'phase:pre-summary'],
+  provenance: null,
+};
+
+export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_TABLE.flatMap((row) =>
   VISIT_TYPES.map((visit, visitIndex): SeedAgentSpec => ({
     id: arcaaiAgentId((row.ordinal - 1) * VISIT_TYPES.length + visitIndex + 1),
     tenantId: ARCAAI,
@@ -107,6 +152,9 @@ export const ARCAAI_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_TABLE.flatM
   })),
 );
 
+/** The 22 department agents plus the tenant's own warm start — what phase 29 writes. */
+export const ARCAAI_AGENT_SPECS: SeedAgentSpec[] = [...ARCAAI_DEPARTMENT_AGENT_SPECS, ARCAAI_PRE_SUMMARY_AGENT_SPEC];
+
 // =============================================================================
 // Workflows — 11
 // =============================================================================
@@ -123,6 +171,15 @@ export const ARCAAI_WORKFLOW_TARGETS: WorkflowSeedTarget[] = ARCAAI_DEPARTMENT_T
   graph: buildConsultationGraph({
     contextSchemaId: ARCAAI_NOTE_CONTEXT_SCHEMA_ID,
     summarizer: { kind: 'condition', newVisitSlug: arcaaiAgentSlug(row, 'new-visit'), revisitSlug: arcaaiAgentSlug(row, 'revisit') },
+    // TASK-932 §3.7 — the note SHAPE, per department and per visit type. `realtimeDocumentTemplateSlug`
+    // reads this off the frozen lane and hands it to `resolveForGeneration`, which is the third
+    // wire-up TASK-891 OD-2 named and nothing had ever supplied: a traced session logged
+    // `templateId: null` and produced the platform SOAP shape while its governing workflow sat
+    // right there on the lane.
+    documentTemplateSlugs: {
+      n_summary_new: arcaaiDocumentTemplateSlug(row.slugPart, 'new-visit'),
+      n_summary_revisit: arcaaiDocumentTemplateSlug(row.slugPart, 'revisit'),
+    },
   }),
   contextSchemaVersionId: ARCAAI_NOTE_CONTEXT_SCHEMA_VERSION_ID,
   tags: ['palette:core', 'kind:consultation', 'kind:api', 'tenant-authored', `specialty:${row.slugPart}`],
@@ -195,11 +252,21 @@ export interface SeedArcaaiClient extends SeedAgentsClient, SeedWorkflowsClient 
   department: { findMany(args: { where: { tenantId: string; code: { in: string[] } }; select: { id: true; code: true } }): Promise<Array<{ id: string; code: string }>> };
 }
 
+/** The 22 ArcaAI department note shapes this phase writes, so a caller can count them without a DB. */
+export const ARCAAI_DOCUMENT_TEMPLATE_SLUGS: readonly string[] = ARCAAI_DEPARTMENT_TABLE.flatMap((row) =>
+  VISIT_TYPES.map((visit) => arcaaiDocumentTemplateSlug(row.slugPart, visit)),
+);
+
 export const seedArcaaiAgentsAndWorkflows = async (client: CorePrismaClient | SeedArcaaiClient) => {
   const typed = client as unknown as SeedArcaaiClient;
   console.log('Seeding the ArcaAI department agents and consultation workflows (11 departments × 2 visit types) ...');
 
   const agents = await seedAgentSpecs(typed, ARCAAI_AGENT_SPECS, 'ArcaAI department', 200);
+  // TASK-932 §3.7 — the department note SHAPES, written HERE and not in phase 27: they are one
+  // customer's content, and phase 27 runs in `safe` mode. The definitions below name their slugs,
+  // so the rows must exist before a lane resolves one (`resolveForGeneration` falls open to the
+  // platform SOAP shape for a slug it cannot find — which is the silent wrong-shape note again).
+  const documentTemplates = await seedArcaaiDepartmentDocumentTemplates(typed as unknown as CorePrismaClient, ARCAAI);
   const definitions = await createWorkflowDefinitions(typed, arcaaiWorkflowDefinitions());
 
   const departments = await typed.department.findMany({
@@ -210,7 +277,7 @@ export const seedArcaaiAgentsAndWorkflows = async (client: CorePrismaClient | Se
   const assignments = await writeWorkflowAssignments(typed, rows, changes);
 
   console.log(
-    `  ✓ ArcaAI agents: ${agents.created} created, ${agents.skippedExisting} skipped, ${agents.skippedUnresolvable} unresolvable · workflows: ${definitions.created} created, ${definitions.skipped} skipped · assignments: ${assignments}`,
+    `  ✓ ArcaAI agents: ${agents.created} created, ${agents.skippedExisting} skipped, ${agents.skippedUnresolvable} unresolvable · document templates: ${documentTemplates} · workflows: ${definitions.created} created, ${definitions.skipped} skipped · assignments: ${assignments}`,
   );
-  return { success: true as const, agents, definitions, assignments };
+  return { success: true as const, agents, definitions, assignments, documentTemplates };
 };

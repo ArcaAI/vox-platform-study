@@ -57,8 +57,16 @@ const ALL_SPECS: SeedAgentSpec[] = [...PLATFORM_AGENT_SPECS, ...GLOBAL_AGENT_SPE
 const contractKnows = (task: string) => (AGENT_TASKS as readonly string[]).includes(task);
 
 describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', () => {
-  it('five slugs, one per tenant, all PUBLISHED + ACTIVE; ids unique', () => {
-    expect([...SEEDED_AGENT_SLUGS].sort()).toEqual(['casenote-finalization', 'general-medicine-summarization', 'medical-ner', 'realtime-transcription', 'text-to-speech']);
+  it('six slugs, one per tenant, all PUBLISHED + ACTIVE; ids unique', () => {
+    // TASK-932 D-9 added the sixth: `case-notes-pre-summary`, the realtime WARM START.
+    expect([...SEEDED_AGENT_SLUGS].sort()).toEqual([
+      'case-notes-pre-summary',
+      'casenote-finalization',
+      'general-medicine-summarization',
+      'medical-ner',
+      'realtime-transcription',
+      'text-to-speech',
+    ]);
     for (const specs of [PLATFORM_AGENT_SPECS, GLOBAL_AGENT_SPECS]) {
       expect(specs.map((spec) => spec.slug).sort()).toEqual([...SEEDED_AGENT_SLUGS].sort());
       for (const spec of specs) expect(spec).toMatchObject({ status: 'PUBLISHED', isActive: true });
@@ -138,16 +146,31 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
     }
   });
 
-  it('each tenant assigns exactly one agent per task at TENANT scope, unqualified', () => {
+  it('each tenant assigns exactly one UNQUALIFIED agent per task at TENANT scope', () => {
     for (const assignments of [PLATFORM_AGENT_ASSIGNMENTS, GLOBAL_AGENT_ASSIGNMENTS]) {
-      expect(assignments.map((a) => [a.task, a.agentSlug]).sort()).toEqual([
+      const unqualified = assignments.filter((a) => !a.selectorKey);
+      expect(unqualified.map((a) => [a.task, a.agentSlug]).sort()).toEqual([
         ['NAMED_ENTITY_RECOGNITION', 'medical-ner'],
         ['SPEECH_TO_TEXT', 'realtime-transcription'],
         ['TEXT_GENERATION', 'general-medicine-summarization'],
         ['TEXT_TO_SPEECH', 'text-to-speech'],
       ]);
-      expect(assignments.every((a) => !a.selectorKey)).toBe(true);
     }
+  });
+
+  it('TASK-932 — the warm start is the ONE qualified row, and an unqualified request can never see it', () => {
+    for (const assignments of [PLATFORM_AGENT_ASSIGNMENTS, GLOBAL_AGENT_ASSIGNMENTS]) {
+      const qualified = assignments.filter((a) => a.selectorKey);
+      expect(qualified).toHaveLength(1);
+      expect(qualified[0]).toMatchObject({ task: 'TEXT_GENERATION', agentSlug: 'case-notes-pre-summary', selectorKey: 'phase:pre-summary' });
+      // `AgentAssignmentService.tierCandidates` admits a row whose selector is a SUBSET of the
+      // request's tags, so a request carrying none sees only the unqualified rows. Two
+      // unqualified TEXT_GENERATION rows in one tier WOULD be a coin toss; there is exactly one.
+      expect(assignments.filter((a) => a.task === 'TEXT_GENERATION' && !a.selectorKey)).toHaveLength(1);
+    }
+    // Ids are unique across BOTH tenants' assignment blocks (SYSTEM 1-5, Global 11-15).
+    const ids = [...PLATFORM_AGENT_ASSIGNMENTS, ...GLOBAL_AGENT_ASSIGNMENTS].map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('the checksum is sha256 over the contract`s canonicalJson', () => {
@@ -188,33 +211,38 @@ describe('TASK-930 — seedAgents against an in-memory client', () => {
     return { client, agents, fallbacks, assignments };
   }
 
-  it('seeds ten agents (5 SYSTEM + 5 Global), their fallback chains and eight assignments; a second run is a no-op', async () => {
+  it('seeds twelve agents (6 SYSTEM + 6 Global), their fallback chains and ten assignments; a second run is a no-op', async () => {
     const { client, agents, fallbacks, assignments } = fakeClient();
     const first = await seedAgents(client);
-    expect(first).toEqual({ created: 10, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 8 });
+    expect(first).toEqual({ created: 12, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 10 });
     const system = agents.get(PLATFORM_AGENT_SPECS.find((s) => s.slug === 'general-medicine-summarization')!.id);
     expect(system.compiledConfig.resolvedPrompt).toMatchObject({ source: 'template', promptTemplateId: SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, promptVersionNumber: 1 });
     expect(system).toMatchObject({ sourceTenantId: SEED_TENANT_ID, sourceSlug: 'general-medicine-summarization', sourceVersionNumber: 1 });
     expect(fallbacks.filter((f) => f.agentId === PLATFORM_AGENT_SPECS.find((s) => s.slug === 'realtime-transcription')!.id)).toHaveLength(2);
     expect(new Set(fallbacks.map((f) => f.id)).size).toBe(fallbacks.length);
     const byTenant = (tenantId: string) => [...assignments.values()].filter((a) => a.tenantId === tenantId);
-    expect(byTenant(SYSTEM_TENANT_ID)).toHaveLength(4);
-    expect(byTenant(SEED_TENANT_ID)).toHaveLength(4);
-    for (const row of assignments.values()) expect(row).toMatchObject({ scope: 'TENANT', scopeId: null, selectorKey: '' });
+    expect(byTenant(SYSTEM_TENANT_ID)).toHaveLength(5);
+    expect(byTenant(SEED_TENANT_ID)).toHaveLength(5);
+    for (const row of assignments.values()) expect(row).toMatchObject({ scope: 'TENANT', scopeId: null });
+    // Four unqualified rows per tenant plus the one `phase:pre-summary` row (TASK-932 D-9).
+    expect([...assignments.values()].filter((a) => a.selectorKey === '')).toHaveLength(8);
+    expect([...assignments.values()].filter((a) => a.selectorKey === 'phase:pre-summary')).toHaveLength(2);
 
     const second = await seedAgents(client);
-    expect(second).toEqual({ created: 0, skippedExisting: 10, skippedUnresolvable: 0, assignmentsCreated: 0 });
+    expect(second).toEqual({ created: 0, skippedExisting: 12, skippedUnresolvable: 0, assignmentsCreated: 0 });
   });
 
   it('fails closed: a missing model or an unapproved template skips the agent and its assignment', async () => {
     const missingNer = fakeClient({ models: Object.keys(REGISTRY).filter((slug) => slug !== 'medical-ner') });
     const result = await seedAgents(missingNer.client);
     expect(result.skippedUnresolvable).toBe(2);
-    expect(result.assignmentsCreated).toBe(6);
+    // 5 declared rows per tenant, minus the NER one whose agent was skipped.
+    expect(result.assignmentsCreated).toBe(8);
 
     const unapproved = fakeClient({ approvedTemplates: false });
     const result2 = await seedAgents(unapproved.client);
-    expect(result2.skippedUnresolvable).toBe(2); // the two template-bound summarization agents
+    // The FOUR template-bound agents: two summarization + two warm-start (TASK-932 D-9).
+    expect(result2.skippedUnresolvable).toBe(4);
     expect(result2.created).toBe(8);
   });
 });

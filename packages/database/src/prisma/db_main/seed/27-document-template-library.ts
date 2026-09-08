@@ -692,3 +692,640 @@ export const seedDocumentTemplateLibrary = async (client: CorePrismaClient): Pro
   );
   console.log('  (tenant copies are provisioned by 26-tenant-reference-set)');
 };
+
+// =============================================================================
+// TASK-932 §3.7 — the ArcaAI DEPARTMENT shapes
+// =============================================================================
+
+/**
+ * Eleven departments x two visit types = 22 tenant-owned `DocumentTemplate` rows, so a
+ * consultation's running note is shaped by the DEPARTMENT it is in, not only by the visit type.
+ *
+ * ## Why these are ArcaAI rows and not SYSTEM ones
+ *
+ * A Rheumatology "Disease Activity" heading is one customer's clinical practice, not the
+ * platform's. Seeding it into SYSTEM would clone it into every tenant through
+ * `copyDocumentTemplates` — a Dietetics tenant would receive ten department shapes it has no
+ * departments for. The two SYSTEM rows above stay the platform reference set (the visit-type
+ * axis, which every tenant has); the department axis is tenant CONTENT, written directly to the
+ * tenant that has those departments, exactly as phase 29 writes its agents and workflows.
+ *
+ * That is also why {@link seedArcaaiDepartmentDocumentTemplates} is EXPORTED but not called by
+ * `seedDocumentTemplateLibrary`: phase 27 runs in `safe` mode (it is platform configuration) and
+ * one customer's content must not. Phase 29 — which `SEED_PHASES_EXCLUDED_FROM_SAFE` already
+ * lists for precisely this reason — invokes it.
+ *
+ * ## What differs from the platform pair, and what deliberately does not
+ *
+ * Each shape is the corresponding platform shape with the department's own sections SPLICED IN
+ * at the clinically right position — Surgery's operative findings sit with the examination,
+ * Rheumatology's disease activity beside it, Dietetics' intake with the history. Everything else
+ * is inherited verbatim: the same `REALTIME_NOTE_PROTOCOL` global instruction, the same section
+ * keys, titles, forms and instructions, and the same D-21 posture of NOT marking anything
+ * `required` (under `strict: true` a required section forbids the decoder from representing "not
+ * discussed", so it invents one).
+ *
+ * The additions are short on purpose. A heading the transcript never reaches costs a null and a
+ * line of prompt; a heading nobody can fill costs the clinician's trust in the whole note.
+ */
+
+/** The department's own sections, and where they splice into the inherited list. */
+interface DepartmentSectionSplice {
+  /** Insert AFTER this inherited section key; appended when the key is absent from the shape. */
+  after: string;
+  sections: SeedSectionDeclaration[];
+}
+
+interface ArcaaiDepartmentShapeSpec {
+  code: string;
+  /** `code.toLowerCase()` — the slug part phase 29 uses for its agents and workflows. */
+  slugPart: string;
+  name: string;
+  newVisit: DepartmentSectionSplice[];
+  revisit: DepartmentSectionSplice[];
+}
+
+/**
+ * The eleven departments' additions, derived from the headings their own v3 prompt bodies carry
+ * (`07b-arcaai-clinical-content-v3.ts`). Only the headings a SOAP shape does not already express
+ * are lifted; the corpus' safety protocol is instruction, and instruction stays in the prompt.
+ */
+const ARCAAI_DEPARTMENT_SHAPE_SPECS: readonly ArcaaiDepartmentShapeSpec[] = [
+  {
+    code: 'GEN',
+    slugPart: 'gen',
+    name: 'General Medicine',
+    // The platform shapes ARE the General Medicine shapes — the corpus they were ported from is
+    // the General Medicine body. Splicing anything here would be authoring, not reuse.
+    newVisit: [],
+    revisit: [],
+  },
+  {
+    code: 'SURG',
+    slugPart: 'surg',
+    name: 'Surgery',
+    newVisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'operative_findings',
+            title: 'Operative Findings & Procedures',
+            form: 'BULLETS',
+            instruction:
+              'Operations and procedures discussed today, each with its date exactly as stated, the findings recorded ' +
+              'at the time, and the current wound or stoma status. A procedure the record mentions but the clinician ' +
+              'did not raise today does not appear.',
+          },
+          {
+            key: 'fitness_for_surgery',
+            title: 'Fitness for Surgery',
+            form: 'PROSE',
+            instruction:
+              'Anaesthetic risk, comorbidity control and pre-operative clearances as the clinician stated them today. ' +
+              'Never grade a risk class the clinician did not give.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'wound_and_recovery',
+            title: 'Wound & Recovery Status',
+            form: 'BULLETS',
+            instruction:
+              'Wound, drain and stoma status at this visit, with post-operative day where the clinician gave it, and ' +
+              'any complication named today. Absence of a complication from the conversation is not evidence it did ' +
+              'not occur.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'RHEUM',
+    slugPart: 'rheum',
+    name: 'Rheumatology',
+    newVisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'joint_examination',
+            title: 'Joint Examination',
+            form: 'BULLETS',
+            instruction:
+              'Tender and swollen joints by name and side, deformity, and range of movement as examined today. Record ' +
+              'a count only where the clinician stated one — never total the joints yourself.',
+          },
+          {
+            key: 'disease_activity',
+            title: 'Disease Activity',
+            form: 'PROSE',
+            instruction:
+              'Disease activity as the clinician assessed it today, with any score exactly as spoken and its name. Do ' +
+              'not calculate a score, and do not infer activity from a medication change.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'disease_activity',
+            title: 'Disease Activity & Response',
+            form: 'PROSE',
+            instruction:
+              'Activity today against the last documented assessment, both dated, and the response to therapy the ' +
+              'clinician described. Report a trend only where two dated values support it.',
+          },
+          {
+            key: 'immunosuppression_monitoring',
+            title: 'Immunosuppression & Monitoring',
+            form: 'BULLETS',
+            instruction:
+              'Steroid, DMARD and biologic doses at this visit with the previous dose shown inline when it changed, ' +
+              'plus the monitoring bloods discussed. A taper is recorded as a taper, never flattened to its latest dose.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'NEUR',
+    slugPart: 'neur',
+    name: 'Neurology',
+    newVisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'neurological_examination',
+            title: 'Neurological Examination',
+            form: 'BULLETS',
+            instruction:
+              'Cranial nerves, power by group and side, tone, reflexes, sensation, coordination and gait as examined ' +
+              'today. Reproduce a grade exactly as spoken; do not complete a partial examination.',
+          },
+          {
+            key: 'seizure_and_episode_history',
+            title: 'Seizure / Episode History',
+            form: 'BULLETS',
+            instruction:
+              'Episode semiology, frequency, duration, triggers and the date of the last event, each as stated. Omit ' +
+              'the heading entirely when no episodic disorder was discussed.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'neurological_examination',
+            title: 'Neurological Examination',
+            form: 'BULLETS',
+            instruction:
+              'Findings at this visit, and a historical finding only where the clinician referred to it today, with ' +
+              'its date beside it.',
+          },
+          {
+            key: 'episode_frequency_change',
+            title: 'Episode Frequency & Change',
+            form: 'PROSE',
+            instruction:
+              'Episode burden today against the last documented figure, both dated. Never estimate a frequency the ' +
+              'patient did not give.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'ORTH',
+    slugPart: 'orth',
+    name: 'Orthopedics',
+    newVisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'musculoskeletal_examination',
+            title: 'Musculoskeletal Examination',
+            form: 'BULLETS',
+            instruction:
+              'Site and side, range of movement, stability, neurovascular status and gait as examined today. Laterality ' +
+              'is reproduced exactly and is never inferred.',
+          },
+          {
+            key: 'injury_mechanism',
+            title: 'Injury Mechanism & Timeline',
+            form: 'PROSE',
+            instruction:
+              'How the injury happened and when, in the patient`s own account, with dates written as stated. Omit the ' +
+              'heading when the presentation is not traumatic.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'functional_recovery',
+            title: 'Functional Recovery & Rehabilitation',
+            form: 'BULLETS',
+            instruction:
+              'Weight-bearing status, range of movement against the last documented value (both dated), physiotherapy ' +
+              'progress and return-to-activity advice given today.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'HEME',
+    slugPart: 'heme',
+    name: 'Hematology',
+    newVisit: [
+      {
+        after: 'reports',
+        sections: [
+          {
+            key: 'counts_and_transfusion',
+            title: 'Counts & Transfusion History',
+            form: 'BULLETS',
+            instruction:
+              'Haemogram and marrow findings with their values and dates exactly as reported, plus transfusions and ' +
+              'their dates. Do not convert units and do not compute a delta the record does not state.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'investigations',
+        sections: [
+          {
+            key: 'counts_trend',
+            title: 'Counts Trend',
+            form: 'BULLETS',
+            instruction:
+              'The latest counts against the previous ones, every value dated. Where only one dated value exists, ' +
+              'report it with its date and no trend.',
+          },
+          {
+            key: 'chemotherapy_cycle',
+            title: 'Chemotherapy / Transfusion Cycle',
+            form: 'PROSE',
+            instruction:
+              'Regimen, cycle number and the date given, exactly as stated, with toxicities the patient reported ' +
+              'today. Never number a cycle the clinician did not number.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'BREN',
+    slugPart: 'bren',
+    name: 'Breast & Endocrine',
+    newVisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'breast_and_nodal_examination',
+            title: 'Breast & Nodal Examination',
+            form: 'BULLETS',
+            instruction:
+              'Lump site, side, size as measured or stated, skin and nipple changes, and axillary nodal status. Size ' +
+              'and laterality are reproduced exactly and never estimated.',
+          },
+          {
+            key: 'endocrine_assessment',
+            title: 'Endocrine Assessment',
+            form: 'PROSE',
+            instruction:
+              'Thyroid, parathyroid or adrenal findings and the symptoms the patient reported today. Omit the heading ' +
+              'when no endocrine problem was discussed.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'breast_and_nodal_examination',
+            title: 'Breast & Nodal Examination',
+            form: 'BULLETS',
+            instruction: 'Findings at this visit, compared with the last documented ones where the clinician made the comparison today, both dated.',
+          },
+          {
+            key: 'adjuvant_therapy_status',
+            title: 'Adjuvant Therapy Status',
+            form: 'PROSE',
+            instruction:
+              'Hormonal, targeted or radiotherapy status with doses and dates as stated, and tolerance as the patient ' +
+              'described it today.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'DERM',
+    slugPart: 'derm',
+    name: 'Dermatology',
+    newVisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'lesion_examination',
+            title: 'Lesion Examination',
+            form: 'BULLETS',
+            instruction:
+              'Morphology, distribution, site and extent as examined today, with any body-surface figure exactly as ' +
+              'the clinician gave it. Never compute an extent.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'lesion_response',
+            title: 'Lesion Response',
+            form: 'PROSE',
+            instruction:
+              'Extent and morphology today against the last documented assessment, both dated, and the response to ' +
+              'topical or systemic therapy as described.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'DIET',
+    slugPart: 'diet',
+    name: 'Dietetics',
+    newVisit: [
+      {
+        after: 'drug_history',
+        sections: [
+          {
+            key: 'dietary_intake',
+            title: 'Dietary Intake & Pattern',
+            form: 'BULLETS',
+            instruction:
+              'Usual intake, meal pattern, restrictions and supplements as the patient described them today. Record a ' +
+              'calorie or protein figure only where one was stated — never estimate one from a food list.',
+          },
+        ],
+      },
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'anthropometry',
+            title: 'Anthropometry',
+            form: 'BULLETS',
+            instruction:
+              'Weight, height, BMI and circumferences as measured or stated today, each with its date. Do not ' +
+              'calculate a BMI the record does not carry.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'examination_and_vitals',
+        sections: [
+          {
+            key: 'anthropometry_trend',
+            title: 'Anthropometry Trend',
+            form: 'BULLETS',
+            instruction:
+              'Every dated weight and measurement supplied, in series, so the trajectory is visible. Use all the ' +
+              'dated values, not only the two most recent.',
+          },
+          {
+            key: 'diet_adherence',
+            title: 'Diet Adherence',
+            form: 'PROSE',
+            instruction: 'Adherence to the prescribed plan as the patient reported it today, and the barriers they named.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'NEPH',
+    slugPart: 'neph',
+    name: 'Nephrology',
+    newVisit: [
+      {
+        after: 'reports',
+        sections: [
+          {
+            key: 'renal_function',
+            title: 'Renal Function',
+            form: 'BULLETS',
+            instruction:
+              'Creatinine, eGFR, urea, electrolytes and urine findings with their values and dates exactly as ' +
+              'reported. Never compute an eGFR or a clearance.',
+          },
+          {
+            key: 'dialysis_access',
+            title: 'Dialysis & Access',
+            form: 'PROSE',
+            instruction:
+              'Modality, schedule, dry weight and access status as stated today. Omit the heading when the patient is ' +
+              'not on renal replacement therapy.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'investigations',
+        sections: [
+          {
+            key: 'renal_function_trend',
+            title: 'Renal Function Trend',
+            form: 'BULLETS',
+            instruction:
+              'The latest renal panel against the previous one, every value dated, with the trend the clinician stated. ' +
+              'Never interpolate a missing value.',
+          },
+          {
+            key: 'fluid_and_access_status',
+            title: 'Fluid Balance & Access',
+            form: 'PROSE',
+            instruction: 'Inter-dialytic weight gain, blood pressure control and access complications as discussed at this visit.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'SONC',
+    slugPart: 'sonc',
+    name: 'Surgical Oncology',
+    newVisit: [
+      {
+        after: 'reports',
+        sections: [
+          {
+            key: 'staging_and_pathology',
+            title: 'Staging & Pathology',
+            form: 'BULLETS',
+            instruction:
+              'Histology, grade, receptor status and stage exactly as the report states them, each dated. Never assign ' +
+              'or upgrade a stage, and never write a diagnostic code.',
+          },
+          {
+            key: 'mdt_plan',
+            title: 'Multidisciplinary Plan',
+            form: 'PROSE',
+            instruction:
+              'The multidisciplinary decision as recorded, with its date, and what the clinician told the patient ' +
+              'today. Omit the heading when no such meeting was discussed.',
+          },
+        ],
+      },
+    ],
+    revisit: [
+      {
+        after: 'investigations',
+        sections: [
+          {
+            key: 'treatment_response',
+            title: 'Treatment Response',
+            form: 'PROSE',
+            instruction:
+              'Response to surgery, chemotherapy or radiotherapy as assessed today against the last documented ' +
+              'assessment, both dated. Never declare a response the clinician did not declare.',
+          },
+          {
+            key: 'surveillance_plan',
+            title: 'Surveillance Plan',
+            form: 'BULLETS',
+            instruction: 'Surveillance imaging, markers and review intervals agreed today, each as spoken.',
+          },
+        ],
+      },
+    ],
+  },
+] as const;
+
+/** Splice a department's sections into a base shape, keeping the base's order and its instructions. */
+function spliceSections(base: SeedDocumentShape, splices: readonly DepartmentSectionSplice[], title: string): SeedDocumentShape {
+  const sections: SeedSectionDeclaration[] = [];
+  const pending = new Map<string, SeedSectionDeclaration[]>();
+  for (const splice of splices) {
+    pending.set(splice.after, [...(pending.get(splice.after) ?? []), ...splice.sections]);
+  }
+  for (const section of base.sections) {
+    sections.push(section);
+    const additions = pending.get(section.key);
+    if (additions) {
+      sections.push(...additions);
+      pending.delete(section.key);
+    }
+  }
+  // A splice whose anchor the base shape does not carry is APPENDED rather than dropped: losing a
+  // department's own heading because a platform key was renamed would be silent, and silent is
+  // the one failure mode a note shape cannot afford. `arcaai-department-document-templates` asserts
+  // no such orphan exists today, so this branch is a safety net and not a design.
+  for (const additions of pending.values()) sections.push(...additions);
+
+  const keys = sections.map((section) => section.key);
+  const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
+  if (duplicate) throw new Error(`department shape "${title}": duplicate section key "${duplicate}"`);
+
+  return { schemaVersion: '1.0', title, ...(base.globalInstruction === undefined ? {} : { globalInstruction: base.globalInstruction }), sections };
+}
+
+export const ARCAAI_DEPARTMENT_VISIT_TYPES = ['new-visit', 'revisit'] as const;
+export type ArcaaiDocumentVisitType = (typeof ARCAAI_DEPARTMENT_VISIT_TYPES)[number];
+
+/** `arcaai-<dept>-soap-<visit>` — the slug a workflow's realtime summary node NAMES. */
+export const arcaaiDocumentTemplateSlug = (slugPart: string, visit: ArcaaiDocumentVisitType): string => `arcaai-${slugPart}-soap-${visit}`;
+
+/** Id blocks: slot `0001` is ArcaAI's (slot `0000` is the SYSTEM reference pair above). */
+const arcaaiDocumentTemplateId = (n: number) => `8a000000-0000-0000-0001-${String(n).padStart(12, '0')}`;
+const arcaaiDocumentTemplateVersionId = (n: number) => `8b000000-0000-0000-0001-${String(n).padStart(12, '0')}`;
+
+export const ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES: readonly DocumentTemplateLibraryEntry[] = ARCAAI_DEPARTMENT_SHAPE_SPECS.flatMap((spec, index) =>
+  ARCAAI_DEPARTMENT_VISIT_TYPES.map((visit, visitIndex) => {
+    const ordinal = index * ARCAAI_DEPARTMENT_VISIT_TYPES.length + visitIndex + 1;
+    const base = visit === 'new-visit' ? NEW_VISIT_NOTE_SHAPE : REVISIT_NOTE_SHAPE;
+    const label = visit === 'new-visit' ? 'New / Referral Visit' : 'Follow-up / Review Visit';
+    const shape = spliceSections(base, visit === 'new-visit' ? spec.newVisit : spec.revisit, `${spec.name} Consultation Note — ${label}`);
+    return entry(
+      arcaaiDocumentTemplateId(ordinal),
+      arcaaiDocumentTemplateVersionId(ordinal),
+      arcaaiDocumentTemplateSlug(spec.slugPart, visit),
+      `${spec.name} — ${label}`,
+      `The live running-note SHAPE for a ${spec.name} ${label.toLowerCase()}: the platform visit-type shape with the department's own headings spliced in where they belong.`,
+      shape,
+    );
+  }),
+);
+
+/**
+ * Write the 22 department shapes to the ArcaAI tenant.
+ *
+ * Called from phase 29, not from `seedDocumentTemplateLibrary`: these are one CUSTOMER's rows and
+ * `safe` mode is platform configuration only. Upsert-by-id like the SYSTEM pair, for the same
+ * reason — a corrected shape has to be able to reach a dev database that already ran the phase.
+ */
+export const seedArcaaiDepartmentDocumentTemplates = async (client: CorePrismaClient, tenantId: string): Promise<number> => {
+  for (const item of ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES) {
+    const head = {
+      id: item.id,
+      tenantId,
+      slug: item.slug,
+      name: item.name,
+      description: item.description,
+      status: 'PUBLISHED' as DocumentTemplateStatus,
+      pinnedVersionNumber: 1,
+      // Never the tenant DEFAULT: `resolveForGeneration(tenantId)` with no slug reads the default,
+      // and a department shape answering for every department is exactly the wrong note. The
+      // selector is the workflow node's `documentTemplateSlug`.
+      isDefault: false,
+      sourceTemplateSlug: null,
+      templateLocked: false,
+      createdBy: SYSTEM_USER_ID,
+    };
+    await client.documentTemplate.upsert({ where: { id: item.id }, update: head, create: head });
+
+    const version = {
+      id: item.versionId,
+      tenantId,
+      templateId: item.id,
+      versionNumber: 1,
+      shape: item.shape as never,
+      compiled: item.compiled as never,
+      compilerVersion: SEED_DOCUMENT_TEMPLATE_COMPILER_VERSION,
+      checksum: item.checksum,
+      changeReason: 'ArcaAI department running-note shape (TASK-932)',
+      createdBy: SYSTEM_USER_ID,
+    };
+    await client.documentTemplateVersion.upsert({ where: { id: item.versionId }, update: version, create: version });
+  }
+  return ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES.length;
+};

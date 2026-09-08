@@ -69,6 +69,13 @@ export interface BatchQueueItem {
 export interface UseBatchQueueOptions {
   /** Snapshot onto every row at enqueue time, so a picker change mid-queue cannot rewrite history. `null` ⇒ the tenant default agent. */
   agentSlug: string | null;
+  /**
+   * TASK-932 §3.7 — the transcription language, snapshotted per row the same way.
+   *
+   * `null` / absent ⇒ UNDECLARED, which is not English: the agent's own code-switch mode decides
+   * (TASK-891 OD-1). `uploadBatchAudio` already accepted this field and nothing ever sent it.
+   */
+  language?: string | null;
   /** Rows in flight at once (upload + stream). */
   concurrency?: number;
   onItemCompleted?: (item: BatchQueueItem) => void;
@@ -84,6 +91,8 @@ const ACTIVE_STATUSES: readonly BatchItemStatus[] = ['uploading', 'processing'];
 interface ItemRuntime {
   file: File;
   agentSlug: string | null;
+  /** TASK-932 — snapshot at enqueue, like `agentSlug`: a picker change mid-queue must not rewrite history. */
+  language: string | null;
   abort: AbortController | null;
 }
 
@@ -138,7 +147,7 @@ export interface BatchQueueHandle {
   applyJob: (itemId: string, job: PlaygroundTranscriptionJob) => void;
 }
 
-export function useBatchQueue({ agentSlug, concurrency = DEFAULT_BATCH_CONCURRENCY, onItemCompleted, onItemFailed }: UseBatchQueueOptions): BatchQueueHandle {
+export function useBatchQueue({ agentSlug, language = null, concurrency = DEFAULT_BATCH_CONCURRENCY, onItemCompleted, onItemFailed }: UseBatchQueueOptions): BatchQueueHandle {
   const queryClient = useQueryClient();
   const [items, setItems] = useState<BatchQueueItem[]>([]);
 
@@ -156,13 +165,15 @@ export function useBatchQueue({ agentSlug, concurrency = DEFAULT_BATCH_CONCURREN
   // them dependencies. Written in an effect: a ref write during render is a
   // lint error here (react-hooks/refs) and the same pattern as `useEventStream`.
   const agentRef = useRef(agentSlug);
+  const languageRef = useRef(language);
   const onCompletedRef = useRef(onItemCompleted);
   const onFailedRef = useRef(onItemFailed);
   useEffect(() => {
     agentRef.current = agentSlug;
+    languageRef.current = language;
     onCompletedRef.current = onItemCompleted;
     onFailedRef.current = onItemFailed;
-  }, [agentSlug, onItemCompleted, onItemFailed]);
+  }, [agentSlug, language, onItemCompleted, onItemFailed]);
 
   const patch = useCallback((id: string, update: Partial<BatchQueueItem> | ((previous: BatchQueueItem) => Partial<BatchQueueItem>)) => {
     if (unmountedRef.current) return;
@@ -216,7 +227,12 @@ export function useBatchQueue({ agentSlug, concurrency = DEFAULT_BATCH_CONCURREN
       patch(id, { status: 'uploading', uploadProgress: 0, error: null });
 
       try {
-        const created = await uploadBatchAudio({ file: runtime.file, agentSlug: runtime.agentSlug ?? undefined, signal: abort.signal });
+        const created = await uploadBatchAudio({
+          file: runtime.file,
+          agentSlug: runtime.agentSlug ?? undefined,
+          ...(runtime.language ? { language: runtime.language } : {}),
+          signal: abort.signal,
+        });
         runtime.abort = null;
         if (cancelledRef.current.has(id)) {
           // Cancelled while the POST was in flight: the job exists on the
@@ -271,7 +287,7 @@ export function useBatchQueue({ agentSlug, concurrency = DEFAULT_BATCH_CONCURREN
     const created: BatchQueueItem[] = list.map((file) => {
       idCounterRef.current += 1;
       const id = `batch-item-${idCounterRef.current}`;
-      runtimeRef.current.set(id, { file, agentSlug: agentRef.current, abort: null });
+      runtimeRef.current.set(id, { file, agentSlug: agentRef.current, language: languageRef.current, abort: null });
       return {
         id,
         fileName: file.name,

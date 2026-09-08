@@ -36,6 +36,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { SEED_TENANT_ID, SEED_WORKFLOW_DEFINITION_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 import { NOTE_CONTEXT_SCHEMA_SLUG, noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
+import { PRE_SUMMARY_AGENT_SLUG } from './25-agents';
 import { REGISTRY_CHECKSUM, WORKFLOW_LIBRARY_GENERATED, type GeneratedWorkflowBlob } from './28-workflow-library.generated';
 
 /** Pinned so every derived blob is reproducible; a wall-clock value would make them un-diffable. */
@@ -63,19 +64,47 @@ export interface ConsultationGraphOptions {
   /** The tenant's own `consultation_note_context` row — a REFERENCE, resolved at compile time. */
   contextSchemaId: string;
   summarizer: SummarizerSpec;
+  /**
+   * TASK-932 §3.7 — the `DocumentTemplate.slug` each realtime summary node NAMES, keyed by the
+   * node id it belongs to (`n_summary`, or `n_summary_new` / `n_summary_revisit`).
+   *
+   * This is OD-2's third wire-up, the one `realtimeDocumentTemplateSlug` reads off the frozen
+   * lane and hands to `resolveForGeneration`. Absent ⇒ the node names none and the lane falls
+   * open to the platform SOAP shape, which is what every graph did before this ticket — so
+   * omitting it is a real state, not a hole.
+   */
+  documentTemplateSlugs?: Readonly<Record<string, string>>;
 }
 
 const REALTIME_PER_TURN = { lane: 'realtime', cadence: 'perTurn' };
+/**
+ * TASK-932 D-9 — the WARM-START slot. Runs ONCE when the live session opens, before the first
+ * turn, alongside the capture session; the durable interpreter skips it like every other
+ * `lane: 'realtime'` node with a live owner.
+ */
+const REALTIME_ON_START = { lane: 'realtime', cadence: 'onStart' };
 
 /** The §8.4 consultation graph. Node ids are stable across variants so the tests can address them. */
 export function buildConsultationGraph(options: ConsultationGraphOptions): SeedGraph {
+  /** The `documentTemplateSlug` for one summary node, or nothing — an absent slug is omitted, never `null`. */
+  const documentBinding = (nodeId: string): Record<string, string> => {
+    const slug = options.documentTemplateSlugs?.[nodeId];
+    return slug ? { documentTemplateSlug: slug } : {};
+  };
+
   const summaryNodes: SeedNode[] =
     options.summarizer.kind === 'agent'
       ? [
           {
             id: 'n_summary',
             type: 'core.agent',
-            config: { agentRef: { slug: options.summarizer.slug }, execution: REALTIME_PER_TURN, guardrail: { enabled: true }, onError: 'degrade' },
+            config: {
+              agentRef: { slug: options.summarizer.slug },
+              execution: REALTIME_PER_TURN,
+              guardrail: { enabled: true },
+              onError: 'degrade',
+              ...documentBinding('n_summary'),
+            },
           },
         ]
       : [
@@ -94,12 +123,24 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
           {
             id: 'n_summary_new',
             type: 'core.agent',
-            config: { agentRef: { slug: options.summarizer.newVisitSlug }, execution: REALTIME_PER_TURN, guardrail: { enabled: true }, onError: 'degrade' },
+            config: {
+              agentRef: { slug: options.summarizer.newVisitSlug },
+              execution: REALTIME_PER_TURN,
+              guardrail: { enabled: true },
+              onError: 'degrade',
+              ...documentBinding('n_summary_new'),
+            },
           },
           {
             id: 'n_summary_revisit',
             type: 'core.agent',
-            config: { agentRef: { slug: options.summarizer.revisitSlug }, execution: REALTIME_PER_TURN, guardrail: { enabled: true }, onError: 'degrade' },
+            config: {
+              agentRef: { slug: options.summarizer.revisitSlug },
+              execution: REALTIME_PER_TURN,
+              guardrail: { enabled: true },
+              onError: 'degrade',
+              ...documentBinding('n_summary_revisit'),
+            },
           },
         ];
   const summaryIds = options.summarizer.kind === 'agent' ? ['n_summary'] : ['n_summary_new', 'n_summary_revisit'];
@@ -111,6 +152,16 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
         id: 'n_trigger',
         type: 'core.trigger',
         config: { kinds: ['consultation', 'api'], contextSchema: { contextSchemaId: options.contextSchemaId, versionNumber: 1 }, guardrail: { enabled: true } },
+      },
+      {
+        // TASK-932 D-9 — the WARM START. A sibling of the capture node, not a predecessor: it
+        // reads the trigger's context (department, visit type, safe demographics, prior visits)
+        // and the consultation's own case notes, and produces the dated background the clinician
+        // reads while the microphone is coming up. `degrade`, always: a consultation whose prior
+        // record failed to summarise is still a consultation that must record.
+        id: 'n_presummary',
+        type: 'core.agent',
+        config: { agentRef: { slug: PRE_SUMMARY_AGENT_SLUG }, execution: REALTIME_ON_START, guardrail: { enabled: true }, onError: 'degrade' },
       },
       { id: 'n_asr', type: 'core.agent', config: { agentRef: { slug: 'realtime-transcription' }, execution: REALTIME_PER_TURN, onError: 'fail' } },
       { id: 'n_ner', type: 'core.agent', config: { agentRef: { slug: 'medical-ner' }, execution: REALTIME_PER_TURN, onError: 'degrade' } },
@@ -162,6 +213,18 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
       },
     ],
     edges: edges([
+      // The warm start is a PARALLEL branch off the trigger, not a step before the ASR node:
+      // `next` and `after` are both `multiple`, so the compiler puts `n_presummary` and `n_asr`
+      // in the same stage and the pre-summary is generated WHILE the capture session opens.
+      // Sequencing it ahead of capture would make the microphone wait on an LLM call.
+      ['n_trigger', 'next', 'n_presummary', 'after'],
+      ['n_trigger', 'out', 'n_presummary', 'context'],
+      // An ORDERING edge, not a data one. WF-S-004 requires every node to reach a terminal, and
+      // the warm start genuinely does have to be finished before the note is closed — but the
+      // finalizer's inputs are the partial summaries and the work notes (its own system prompt
+      // says so), so handing it the pre-summary TEXT would change what it merges. `next -> after`
+      // carries sequence and no payload, which is exactly the claim being made.
+      ['n_presummary', 'next', 'n_finalize', 'after'],
       ['n_trigger', 'next', 'n_asr', 'after'],
       ['n_asr', 'transcript', 'n_ner', 'in'],
       ...(options.summarizer.kind === 'agent'
