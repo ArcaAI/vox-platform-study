@@ -15,17 +15,23 @@
  * different things: a descriptor-governed KEY here, a raw row (and secrets)
  * there. `/settings` keeps the row and secret administration it already owns.
  *
- * ## Fields the gateway does NOT currently serve
+ * ## The governance fields ARE served
  *
- * `SettingDescriptor` in @arcaai/applications declares `killSwitch`,
- * `failMode`, `floorDirection`, `default`, `consumedBy` and `targetTier`, and
- * `SettingsCatalogController.getCatalog` maps NONE of them onto the wire — it
- * projects ten fields by hand. They are declared OPTIONAL below and every
- * consumer degrades gracefully when they are absent, so the affordances that
- * depend on them light up the moment the catalog projection widens, with no
- * further console change. They are deliberately NOT reconstructed client-side:
- * a hand-maintained table of 210 keys' governance metadata is exactly the
- * desynchronisation this lane exists to eliminate.
+ * This block used to say the opposite — that `killSwitch`, `failMode`,
+ * `floorDirection`, `default`, `consumedBy` and `targetTier` were declared on
+ * the descriptor but projected by nothing. That stopped being true when the
+ * catalog projection widened, and the comment outlived it. All six are on the
+ * wire, and TASK-932 adds the derived LOCK (`locked` / `lockLabel` /
+ * `lockReason`).
+ *
+ * They stay OPTIONAL here for one reason only: a field the server may omit for a
+ * given key (a secret's `default`, a lock on an unlocked key) must be optional or
+ * every consumer would branch on a falsy value that means two things. They are
+ * deliberately NOT reconstructed client-side — a hand-maintained table of 219
+ * keys' governance metadata is exactly the desynchronisation this lane exists to
+ * eliminate, and the lock is the newest example: it is derived on the server from
+ * tier + sensitivity precisely so a new bootstrap variable cannot ship with an
+ * editor nobody remembered to disable.
  */
 
 /** Storage tier — decides whether this lane can write the key at all. */
@@ -59,8 +65,7 @@ export interface SettingCatalogItem {
   label?: string;
   description?: string;
 
-  // ---- Declared on the descriptor; NOT yet projected by the catalog route. ----
-  // Present-and-typed so the UI is complete the day the gateway serves them.
+  // ---- The governance half of the descriptor, served by the catalog route. ----
 
   /** An enforcing kill-switch whose safe position is OFF. */
   killSwitch?: boolean;
@@ -68,8 +73,27 @@ export interface SettingCatalogItem {
   failMode?: SettingFailMode;
   /** Set when a tenant override may only TIGHTEN relative to the platform value. */
   floorDirection?: SettingFloorDirection;
-  /** The code default — the last fallback in the cascade. */
+  /** The code default — the last fallback in the cascade. Omitted for secrets. */
   default?: unknown;
+  /** Deployables served this key on the effective-config pull route. */
+  consumedBy?: readonly string[];
+  /** Recorded eventual home when `tier` is not where the key ends up. */
+  targetTier?: SettingTier;
+
+  /**
+   * TASK-932 R-6 / D-6 — un-editable from ANY admin surface, for every caller
+   * including a super admin (bootstrap, credentials, data-plane transport).
+   *
+   * DERIVED SERVER-SIDE. The console must not re-derive it: the whole point is
+   * that registering a descriptor is the only step needed to govern a key, and a
+   * second copy of the rule here would drift the first time a tier changed.
+   * Absent (not `false`) when the key is editable.
+   */
+  locked?: boolean;
+  /** Short badge text for the lock KIND. Present iff `locked`. */
+  lockLabel?: string;
+  /** Why it is locked and where the value actually changes. Present iff `locked`. */
+  lockReason?: string;
 }
 
 /** `GET admin/settings/catalog`. */
@@ -101,4 +125,91 @@ export interface WriteRegistrySettingResult {
   value: unknown;
   scope: SettingScope;
   version: number;
+}
+
+/** `DELETE admin/settings/registry/:key?scope=tenant` result. */
+export interface ResetRegistrySettingResult {
+  key: string;
+  tier: SettingTier;
+  scope: SettingScope;
+  /** `false` when there was no override to remove — a no-op, not a failure. */
+  removed: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Feature availability (TASK-932 R-8) — `admin/settings/features/*`
+// ---------------------------------------------------------------------------
+
+/** One resolved gate for the calling context. `GET features/effective`. */
+export interface EffectiveFeature {
+  key: string;
+  value: boolean;
+  /** Which tier answered: a tenant override, the platform row, or the code default. */
+  sourceScope: 'system' | 'tenant' | 'default';
+}
+
+/** A feature ROW on the matrix. */
+export interface FeatureMatrixFeature {
+  key: string;
+  label?: string;
+  description?: string;
+  /** What a tenant inherits when neither it nor the platform holds a row. */
+  default: boolean;
+  /**
+   * `system` means the key has NO per-tenant row — its consumer has no tenant in
+   * hand — so the screen disables its tenant cells rather than offering a
+   * checkbox the cascade would ignore.
+   */
+  maxScope: SettingScope;
+  killSwitch?: boolean;
+  category: string;
+}
+
+export interface FeatureMatrixTenant {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/** The platform-default column id. Not a tenant — the reserved SYSTEM tier. */
+export const PLATFORM_COLUMN = 'system';
+
+export interface FeatureMatrixCell {
+  key: string;
+  /** A tenant id, or {@link PLATFORM_COLUMN}. */
+  tenantId: string;
+  /** `null` = no row: this tenant INHERITS. The platform column is never null. */
+  value: boolean | null;
+  /** Backing row version; 0 when nothing is stored. Echo as `expectedVersion`. */
+  version: number;
+}
+
+export interface FeatureMatrix {
+  features: FeatureMatrixFeature[];
+  tenants: FeatureMatrixTenant[];
+  cells: FeatureMatrixCell[];
+}
+
+export interface FeatureMatrixWrite {
+  key: string;
+  tenantId: string;
+  value: boolean | null;
+  expectedVersion?: number;
+}
+
+export interface FeatureMatrixCellError {
+  key: string;
+  tenantId: string;
+  status: number;
+  message: string;
+}
+
+/**
+ * `PUT features/matrix`. The batch is ORDERED and PARTIAL and answers 200 either
+ * way — `errors` is where a drifted or refused cell reports, so one stale cell
+ * cannot discard a screenful of valid edits.
+ */
+export interface FeatureMatrixWriteResult {
+  cells: FeatureMatrixCell[];
+  errors: FeatureMatrixCellError[];
 }
