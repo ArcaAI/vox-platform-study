@@ -145,7 +145,7 @@ def _consultation_graph() -> dict:
     )
 
 
-async def _run(body: dict, *, subject: RunSubject | None = None) -> dict[str, Any]:
+async def _run(body: dict, *, subject: RunSubject | None = None, sandbox: bool = False) -> dict[str, Any]:
     ref = await _store(body)
     run_id = str(uuid.uuid4())
     async with await WorkflowEnvironment.start_time_skipping(
@@ -161,6 +161,7 @@ async def _run(body: dict, *, subject: RunSubject | None = None) -> dict[str, An
                     config_ref=ref,
                     tenant_id=_TENANT,
                     run_id=run_id,
+                    sandbox=sandbox,
                     # What `sanitize_run_payload` re-stamps before a real run starts: identity
                     # reaches the nodes through `run_payload`, and `core.trigger` publishes it
                     # as the run's `trigger` context.
@@ -263,6 +264,24 @@ class TestLiveHandoff:
         assert _HANDOFF_CALLS == []
         assert by_id["n_summary"].status == "SUCCEEDED"
         assert by_id["n_finalize"].status == "SUCCEEDED"
+
+    @pytest.mark.asyncio
+    async def test_a_sandbox_run_never_waits_on_a_live_session(self):
+        """A Workbench execution is a dry run of the graph, not a consultation.
+
+        Its `external_write` nodes are already suppressed, so a handoff would buy it nothing —
+        and parking it for the length of a clinical session would turn "preview this workflow"
+        into a two-hour wait.
+        """
+        _HANDOFF_SCRIPT.append(LiveOutputsResult(ended=False))
+        by_id = await _run(
+            _consultation_graph(),
+            subject=RunSubject(consultationId=_CONSULTATION),
+            sandbox=True,
+        )
+
+        assert _HANDOFF_CALLS == []
+        assert by_id["n_summary"].reason == "realtime_lane"
 
     @pytest.mark.asyncio
     async def test_the_handoff_context_reaches_the_agent_s_prompt_scope_as_context_dot_star(self):
