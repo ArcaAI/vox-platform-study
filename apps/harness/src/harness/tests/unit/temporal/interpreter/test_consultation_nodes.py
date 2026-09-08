@@ -14,9 +14,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from harness.services.guardrail_client import GuardrailServiceError, RedactResult
+from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import consultation as nodes_consultation
-from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
 from harness.temporal.interpreter.registry import NODE_REGISTRY
 
 # TASK-893 Phase 4: these are ACTIONS behind `core.action` now, not node types. The human wait

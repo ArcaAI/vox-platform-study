@@ -23,9 +23,9 @@ from typing import Any
 import pytest
 from temporalio import activity as temporal_activity
 
+from harness.temporal.interpreter.activities import NODE_ACTIVITIES
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import agentic
-from harness.temporal.interpreter.activities import NODE_ACTIVITIES
 from harness.temporal.interpreter.registry import NODE_REGISTRY
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
