@@ -219,7 +219,19 @@ export function compiledGraphLeakProblems(compiled: unknown): string[] {
 // Hyper-parameter capability gating
 // =============================================================================================
 
-/** The closed hyper-parameter vocabulary the generic agent node offers. */
+/**
+ * The closed vocabulary of CAPABILITY-GATED generation keys.
+ *
+ * The first seven are what the generic agent node offers under `config.generation`. `reasoning`
+ * (TASK-891 C1 / OD-4) is authorable on the AGENT only — `AGENT_PARAMETER_SCHEMAS[...]`'s
+ * `parameters.generation.reasoning` — and the node's own block deliberately does not offer it.
+ * It belongs in this list all the same, because ONE capability declaration
+ * (`AiModel._metadata.supportedGenerationParams`) gates BOTH surfaces through
+ * `hyperparameterCapabilityProblems`: a row that may not declare `reasoning` cannot express that
+ * its engine honours it, which is how a seeded, already-published agent came to be unpublishable
+ * (TASK-930 D-6). It is also what makes that refusal report as `CAPABILITY` rather than `CONFIG`
+ * (`agent-findings.ts#codeForConfigProblem`), which is what it is.
+ */
 export const GENERATION_HYPERPARAMETERS = [
   'temperature',
   'maxTokens',
@@ -228,6 +240,7 @@ export const GENERATION_HYPERPARAMETERS = [
   'presencePenalty',
   'stopSequences',
   'seed',
+  'reasoning',
 ] as const;
 
 export type GenerationHyperparameter = (typeof GENERATION_HYPERPARAMETERS)[number];
