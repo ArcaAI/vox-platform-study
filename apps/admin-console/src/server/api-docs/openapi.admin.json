@@ -18857,6 +18857,11 @@
             "nullable": true,
             "type": "number"
           },
+          "redactionApplied": {
+            "description": "Whether the DNA redaction transform ran AND changed the note. `null` when the generating agent declared no redaction contract at all — which is not the same as \"it ran and changed nothing\".",
+            "nullable": true,
+            "type": "boolean"
+          },
           "sensorScores": {
             "description": "Full sensor-score detail object emitted by the harness (persisted in the SummaryMeta.guardrailDecisions column)",
             "nullable": true,

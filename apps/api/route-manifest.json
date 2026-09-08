@@ -13634,6 +13634,22 @@
     },
     {
       "controller": "HarnessInternalController",
+      "handler": "liveHandoff",
+      "method": "GET",
+      "path": "/api/v1/internal/harness/consultations/{id}/live-handoff",
+      "routePath": "/internal/harness/consultations/:id/live-handoff",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "HarnessInternalController",
       "handler": "publishLiveSummary",
       "method": "POST",
       "path": "/api/v1/internal/harness/consultations/{id}/live-summary",
