@@ -236,6 +236,15 @@ describe('companion seed updates', () => {
         'smr/default-smr-model',
         'smr/smr-azure-deployment',
         'ux-constants/smr-provider-models',
+        // TASK-932 R-8 — the five advisory `feature-flags` rows. Nothing read
+        // them, so dropping them from the seeded arrays is not enough on its
+        // own: an already-provisioned database would keep serving five toggles
+        // that do nothing. This is the list that sweeps those copies.
+        'feature-flags/enable-transcription',
+        'feature-flags/enable-dna-style',
+        'feature-flags/enable-cross-chain-summary',
+        'feature-flags/enable-ner-extraction',
+        'feature-flags/enable-code-switching',
       ].sort(),
     );
   });
@@ -253,11 +262,12 @@ describe('companion seed updates', () => {
     };
     const result = await retireSupersededGlobalSettings!(client as never);
 
-    // 7 = the original six superseded keys + `smr/smr-azure-deployment` (D-740-1
-    // moved that key to the `text` namespace, so the old row must be swept too).
+    // 12 = the original six superseded keys, + `smr/smr-azure-deployment`
+    // (D-740-1 moved that key to the `text` namespace, so the old row must be
+    // swept too), + the five advisory `feature-flags` rows TASK-932 removed.
     expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(RETIRED_GLOBAL_SETTING_KEYS!.length);
-    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(7);
-    expect(result.retired).toBe(14);
+    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(12);
+    expect(result.retired).toBe(24);
     updates.forEach(({ where, data }) => {
       expect(where.resourceStatus).toEqual({ not: 'DELETED' });
       expect(where.namespace).toBeTypeOf('string');
