@@ -236,6 +236,45 @@ describe('NoteGenerationService', () => {
       expect(config.autoSummaryEnabled).toBe(true);
     });
 
+    // TASK-932 — substrate exclusivity. `ConsultationWorkflowDispatchService` stamps the
+    // governing-engine marker when the interpreter takes a consultation at OPEN; from then on the
+    // tenant-authored graph's own finalize node documents the encounter, and the legacy
+    // `HarnessDocWorkflow` this seam would start on `TRANSCRIPTION_CREATED` must stand down.
+    // Until the palette fix this branch was unreachable (the resolver never found a graph, so
+    // auto-summary was always OFF) — the moment it could answer TRUE, both engines wrote one note.
+    it('stands the legacy auto-summary down when a tenant-authored workflow governs the consultation', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'c1',
+        tenantId: 'tenant-abc',
+        departmentId: 'dept-card-001',
+        doctorId: 'dr-smith-001',
+        metadata: {
+          governingEngine: { engine: 'tenant-workflow', workflowRunId: 'run-1', workflowDefinitionSlug: 'arcaai-gen-consultation' },
+          // even an explicit per-consultation opt-in does not resurrect the second engine
+          pipelineConfig: { autoSummaryEnabled: true },
+        },
+      });
+      const { service, mockConfigResolver } = buildService(mockHarnessGateway, true);
+
+      const config = await service.resolveConfig('c1');
+
+      expect(config.autoSummaryEnabled).toBe(false);
+      expect(mockConfigResolver.resolveAutoSummaryEnabled).not.toHaveBeenCalled();
+    });
+
+    it('a MALFORMED marker (no workflowRunId) reads as absent — the graph still decides', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'c1',
+        tenantId: 'tenant-abc',
+        metadata: { governingEngine: { engine: 'tenant-workflow' } },
+      });
+      const { service } = buildService(mockHarnessGateway, true);
+
+      const config = await service.resolveConfig('c1');
+
+      expect(config.autoSummaryEnabled).toBe(true);
+    });
+
     it('an unwired resolver answers the code default', async () => {
       const service = new NoteGenerationService(mockConsultationRepository as any, mockHarnessGateway as any, mockEventEmitter as any, mockClsService as any);
 

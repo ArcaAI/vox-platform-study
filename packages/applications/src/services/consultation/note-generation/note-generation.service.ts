@@ -10,6 +10,7 @@ import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { ConsultationPipelineConfig, DEFAULT_PIPELINE_CONFIG } from '../events/consultation.events';
 import { INoteGenerationService } from './INoteGenerationService';
 import { GenerateParams, GenerationDecision, GenerationTrigger, HARNESS_SUPPORTED_TRIGGERS } from './types';
+import { tenantWorkflowGoverns } from '../governing-engine';
 
 /**
  * Generator Entry-Point Seam.
@@ -139,19 +140,35 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
       const metadata = consultation.metadata as Record<string, unknown> | null;
       const override = (metadata?.pipelineConfig ?? {}) as Partial<ConsultationPipelineConfig>;
 
+      // TASK-932 — substrate exclusivity, the same gate `LoopContextSignalService` applies: a
+      // consultation the interpreter took at OPEN (governing-engine marker) is documented by its
+      // graph's own finalize node, so the legacy `HarnessDocWorkflow` this config would start on
+      // `TRANSCRIPTION_CREATED` stands down — no per-consultation opt-in resurrects a second
+      // engine writing the same note. This branch became reachable only when the resolvers
+      // started asking for the CORE palette; before that no graph was ever found and this path
+      // answered OFF by accident, which is why the double write never showed.
+      const governed = tenantWorkflowGoverns(metadata);
+      if (governed) {
+        this.logger.log({
+          message: 'Legacy auto-summary stood down — a tenant-authored workflow governs this consultation (substrate exclusivity)',
+          consultationId,
+        });
+      }
+
       // The assigned workflow's generation node owns auto-summary (TASK-882); the
       // per-consultation metadata override wins on top (back-compat). An unwired
       // resolver answers the code default.
-      const autoSummaryFromGraph = this.configResolver
-        ? await this.configResolver.resolveAutoSummaryEnabled({
-            tenantId: consultation.tenantId,
-            departmentId: consultation.departmentId ?? null,
-            doctorId: consultation.doctorId ?? null,
-          })
-        : DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled;
+      const autoSummaryFromGraph =
+        !governed && this.configResolver
+          ? await this.configResolver.resolveAutoSummaryEnabled({
+              tenantId: consultation.tenantId,
+              departmentId: consultation.departmentId ?? null,
+              doctorId: consultation.doctorId ?? null,
+            })
+          : DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled;
 
       return {
-        autoSummaryEnabled: override.autoSummaryEnabled ?? autoSummaryFromGraph,
+        autoSummaryEnabled: governed ? false : (override.autoSummaryEnabled ?? autoSummaryFromGraph),
         // dnaStyleId / summaryTemplate / includeSharedContext stay per-consultation.
         dnaStyleId: override.dnaStyleId ?? DEFAULT_PIPELINE_CONFIG.dnaStyleId,
         summaryTemplate: override.summaryTemplate ?? DEFAULT_PIPELINE_CONFIG.summaryTemplate,
