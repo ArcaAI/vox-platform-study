@@ -31,6 +31,24 @@ GUARDRAIL_DISABLED_REASON = "external_guardrail_disabled"
 GUARDRAIL_TENANT_OPTED_OUT_REASON = "tenant_opted_out"
 
 
+def _describe(exc: BaseException) -> str:
+    """A NEVER-EMPTY description of a failed attempt: class, plus any message.
+
+    httpx's timeout exceptions carry no message — `str(httpx.ReadTimeout(...))`
+    raised by the transport is `""` — so logging `str(exc)` produced
+    `attempt_failed … error=` three times, then `exhausted_fail_closed … error=`,
+    and the whole 502 chain named no cause at all (TASK-930 D-7). The class IS
+    the diagnosis: connect-refused, read-timeout and a malformed payload need
+    three different responses.
+
+    PHI-safe: an exception raised by the transport carries the request's shape,
+    never its body.
+    """
+    detail = str(exc).strip()
+    name = type(exc).__name__
+    return f"{name}: {detail}" if detail else name
+
+
 def _skip_reason(posture: GuardrailPosture) -> str:
     """Which of the two skip reasons this resolved posture represents."""
     return GUARDRAIL_TENANT_OPTED_OUT_REASON if posture.opted_out else GUARDRAIL_DISABLED_REASON
@@ -244,6 +262,21 @@ class ExternalGuardrailClient:
         (3 * 10s + 0.3s) before the 503. The degrade-safe path therefore relies on
         the CALLER's own request timeout as the outer bound; do not raise the
         defaults without accounting for this ceiling.
+
+        The budget is CONFIG, not a literal: `timeout_s` / `max_retries` /
+        `retry_backoff_ms` ride on the resolved posture, served by the control
+        plane's `externalGuardrail` group, with `GUARDRAIL_TIMEOUT_FLOOR_S` as
+        the floor a checkout starts on. Deliberately unchanged by TASK-930 D-7:
+        the observed screen was ~7.6 s WARM against a 10 s budget, which looks
+        tight — but that sample had guardrail's nlp delegation shed by an open
+        circuit, so it is a lower bound rather than a healthy round-trip, and a
+        raise multiplies by attempts. The failure it was blamed for is a COLD
+        model load measured in MINUTES; no per-attempt budget can cover that and
+        one that tried would hold a clinician's request for the duration. The
+        cold-start answers are `apps/nlp` retaining a cancelled load and warming
+        at boot, and guardrail's breaker admitting one probe. If a clean warm
+        measurement later shows the p99 near 10 s, raise the SERVED value first —
+        it needs no redeploy — and move the floor only if every deployment agrees.
         """
         attempts = posture.max_retries + 1
         last_error = ""
@@ -258,7 +291,7 @@ class ExternalGuardrailClient:
                 response.raise_for_status()
                 return parse(response.json()), ""
             except Exception as exc:
-                last_error = str(exc)
+                last_error = _describe(exc)
                 is_last = attempt + 1 >= attempts
                 logger.warning(
                     "external_guardrail.attempt_failed",
