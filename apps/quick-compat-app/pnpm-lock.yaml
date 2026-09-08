@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@arcaai/vox':
-        specifier: ^2.0.2
-        version: 2.0.2(@arcaai/med-ner@2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8))(@types/react@19.2.18)(highlight.run@9.28.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
+        specifier: ^3.1.0
+        version: 3.1.0(@arcaai/med-ner@2.0.2(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8))(@microsoft/clarity@1.0.2)(@types/react@19.2.18)(highlight.run@9.28.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -36,57 +36,47 @@ importers:
 
 packages:
 
+  '@arcaai/json-schema-subset@0.1.0':
+    resolution: {integrity: sha512-KJpnbnCiivmzftHzmfmiMT5EzFnyvJcvHJjV6S4pqrzmTi/1k7xb1bizlToh8Z+EKsBnp3K5XuflR9SiV+gvxw==, tarball: https://npm.pkg.github.com/download/@arcaai/json-schema-subset/0.1.0/dba22923ba80219bf1d41663ce1589c42a253f73}
+
   '@arcaai/med-ner@2.0.2':
     resolution: {integrity: sha512-9xTWlNENQBW15RIZzLNmZvkK2ukkOyDVDi5URk1HjjaNpN29jyoumHJRXakaec5SwyeJk6rKzbFlZ/yMekqIQA==, tarball: https://npm.pkg.github.com/download/@arcaai/med-ner/2.0.2/a4d9f9e902df36ea3e2d6d40982618805d33c594}
     peerDependencies:
       '@arcaai/room': ^0.1.0
       react: ^18.3.0 || ^19.0.4
 
-  '@arcaai/noise-filter@2.0.2':
-    resolution: {integrity: sha512-sJ1OS3ik7OLj3fl9PfI+joGlb3nT66Yh8h90IK3V4CHUBdzFnYaIXpzBj06XSPIQaHl+vX1BEx7YdRSoNtNIHQ==}
+  '@arcaai/noise-filter@3.1.0':
+    resolution: {integrity: sha512-/QsetaaDWamh+6REpYP+/Uqa39b77Plp/rANsdOuZ5ccNez9ZuExWDNplwbYOYkLl7pJbUeqkhER94LAHegV6g==, tarball: https://npm.pkg.github.com/download/@arcaai/noise-filter/3.1.0/6d65efb059511937ceda24ed69902e66846651cb}
     peerDependencies:
-      '@arcaai/room': ^0.1.0
+      '@arcaai/room': ^3.1.0
       react: ^18.3.0 || ^19.0.4
-    peerDependenciesMeta:
-      react:
-        optional: true
 
-  '@arcaai/room@2.0.2':
-    resolution: {integrity: sha512-1zCH+EQyadyfFw0Am+pzsZQVWbWl4DWItVUq8pQV5vJ7CGqvFWSnHTBcMiZMXzzVs8v/jUtvABf+yS3vhYbX+A==}
+  '@arcaai/room@3.1.0':
+    resolution: {integrity: sha512-vzLj41HphmNUBNnkEOw2kwiVdl1gQHI6XklWoydhfbHkGq6hzkNfnu0V/QypxhsWWijvmbJbKpdJSdbbWXxaOg==, tarball: https://npm.pkg.github.com/download/@arcaai/room/3.1.0/25ab94e210b3ff129ca8548b8137907da2a086c2}
     peerDependencies:
       react: ^18.3.0 || ^19.0.4
 
-  '@arcaai/stt@2.0.2':
-    resolution: {integrity: sha512-NI7l749GGTFLF01N98CD0ZqMxkd9xGj+k1pryFc92ugvENM8bFLVcksp6hpZsCDzNqfCGajjc1mh9JPafle+3Q==}
+  '@arcaai/stt@3.1.0':
+    resolution: {integrity: sha512-NeEyp1Lsjo8B0vPqPQX3avJdEFOrum3G6KMTYj296WfAXOF220/4T+F1UiXIOmBr0QYQso7r9/D2FVXSHdgbWw==, tarball: https://npm.pkg.github.com/download/@arcaai/stt/3.1.0/ed240eac88d6a62d447fdcea81f0ca294abf1cbe}
     engines: {node: '>=22.0.0'}
     peerDependencies:
-      '@arcaai/room': 2.0.2
+      '@arcaai/room': ^3.1.0
       react: ^18.3.0 || ^19.0.4
-    peerDependenciesMeta:
-      react:
-        optional: true
 
-  '@arcaai/vad@2.0.2':
-    resolution: {integrity: sha512-T8bg6xD9spLGxFGlEIuCHIqOinyFMsYHXq/iKZHx74FjOEV9ekA5DLwb2+0jkBGVYWE309r0ZKJahOp8E7U0Aw==}
+  '@arcaai/vad@3.1.0':
+    resolution: {integrity: sha512-B8zC54pidzPrCdVABQKAxXyq3iRRmisqR9K3XUKSL4ZpKPS1e7maTuoFQUL1uPCJ/CEB3lO84sOvSJ7rsvlPYg==, tarball: https://npm.pkg.github.com/download/@arcaai/vad/3.1.0/85e2cc64d94dc2dffc0cea6f749802510bbd1ac5}
     peerDependencies:
-      '@arcaai/room': ^0.1.0
+      '@arcaai/room': ^3.1.0
       react: ^18.3.0 || ^19.0.4
-    peerDependenciesMeta:
-      react:
-        optional: true
 
-  '@arcaai/vox@2.0.2':
-    resolution: {integrity: sha512-QzkEjgfDoes7ofzt4SgIZjNmGwqWI7iRBgc2KVbmxpcAxC3rFfM2KOSNdzepD+JW00UrSWreEhw229iRq3mT8Q==}
+  '@arcaai/vox@3.1.0':
+    resolution: {integrity: sha512-heR1zFo6mesG09Fmf4daIyuqxtFww8F8oFfFa2wXRLni07NP4eYtgGitXwItTDfrLDSnzgHASDsWbyUifRi9uA==, tarball: https://npm.pkg.github.com/download/@arcaai/vox/3.1.0/e5571b83d372fe7b5248ef5d31f4644ff027aa2c}
     peerDependencies:
-      '@arcaai/med-ner': 2.0.2
+      '@arcaai/med-ner': ^3.1.0
+      '@microsoft/clarity': ^1.0.0
       highlight.run: ^9.0.0
       react: ^18.3.0 || ^19.0.4
       react-dom: ^18.3.0 || ^19.0.4
-    peerDependenciesMeta:
-      '@arcaai/med-ner':
-        optional: true
-      highlight.run:
-        optional: true
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
@@ -422,6 +412,9 @@ packages:
   '@launchdarkly/js-sdk-common@2.25.2':
     resolution: {integrity: sha512-l/OJiIGnLS6Qt6J/Lc3KgUXL4vAES5wsxIgNZcw3yCUbDEuTyVR9Qya9Aqy1klg2kF1VsHiY2wvaKimlIZK7+g==}
 
+  '@microsoft/clarity@1.0.2':
+    resolution: {integrity: sha512-9EZYROFpJxEGmQpHvUFqvD3ZJ7QQSqnibYSWmS+1xusoZfG1QQ1/Al9yVBBc11DWMbJrs1pe1hLT273it/skJg==}
+
   '@oxc-project/types@0.144.0':
     resolution: {integrity: sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg==}
 
@@ -583,8 +576,8 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
-  deepmerge-ts@7.1.5:
-    resolution: {integrity: sha512-HOJkrhaYsweh+W+e74Yn7YStZOilkoPb6fycpwNLKzSPtruFs48nYis0zy5yJz1+ktUhHxoRDJ27RQAWLIJVJw==}
+  deepmerge-ts@7.1.6:
+    resolution: {integrity: sha512-gQhL1ksGBLQbHeAo47YU6cs2ahd3Pv+8PFYoWogNZbQnNwQyOh9Ad5kbeHFiWwbKdeWQJ5Z7Y7mwb9ew2hXBLw==}
     engines: {node: '>=16.0.0'}
 
   define-data-property@1.1.4:
@@ -915,8 +908,8 @@ packages:
       yaml:
         optional: true
 
-  zustand@5.0.14:
-    resolution: {integrity: sha512-/8tAspM5LMPr28b3fwLYrtdj77ECpfZviaP75CMTnwO8ISyaE4GDIG/9rDDYq/cH9D2Xw2A2RXglLInmVBQB/g==}
+  zustand@5.0.15:
+    resolution: {integrity: sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A==}
     engines: {node: '>=12.20.0'}
     peerDependencies:
       '@types/react': '>=18.0.0'
@@ -935,62 +928,61 @@ packages:
 
 snapshots:
 
-  '@arcaai/med-ner@2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8)':
+  '@arcaai/json-schema-subset@0.1.0': {}
+
+  '@arcaai/med-ner@2.0.2(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@arcaai/room': 2.0.2(react@19.2.8)
+      '@arcaai/room': 3.1.0(react@19.2.8)
       '@huggingface/transformers': 4.2.0
       react: 19.2.8
-    optional: true
 
-  '@arcaai/noise-filter@2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8)':
+  '@arcaai/noise-filter@3.1.0(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@arcaai/room': 2.0.2(react@19.2.8)
+      '@arcaai/room': 3.1.0(react@19.2.8)
       '@jitsi/rnnoise-wasm': 0.2.1
-    optionalDependencies:
       react: 19.2.8
 
-  '@arcaai/room@2.0.2(react@19.2.8)':
+  '@arcaai/room@3.1.0(react@19.2.8)':
     dependencies:
       eventemitter3: 5.0.4
       react: 19.2.8
 
-  '@arcaai/stt@2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8)':
+  '@arcaai/stt@3.1.0(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@arcaai/room': 2.0.2(react@19.2.8)
+      '@arcaai/room': 3.1.0(react@19.2.8)
       '@huggingface/transformers': 4.2.0
       eventemitter3: 5.0.4
       onnxruntime-common: 1.27.0
       onnxruntime-web: 1.27.0
-    optionalDependencies:
       react: 19.2.8
 
-  '@arcaai/vad@2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8)':
+  '@arcaai/vad@3.1.0(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@arcaai/room': 2.0.2(react@19.2.8)
+      '@arcaai/room': 3.1.0(react@19.2.8)
       '@ricky0123/vad-web': 0.0.30
-    optionalDependencies:
       react: 19.2.8
 
-  '@arcaai/vox@2.0.2(@arcaai/med-ner@2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8))(@types/react@19.2.18)(highlight.run@9.28.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)':
+  '@arcaai/vox@3.1.0(@arcaai/med-ner@2.0.2(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8))(@microsoft/clarity@1.0.2)(@types/react@19.2.18)(highlight.run@9.28.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)':
     dependencies:
-      '@arcaai/noise-filter': 2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8)
-      '@arcaai/room': 2.0.2(react@19.2.8)
-      '@arcaai/stt': 2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8)
-      '@arcaai/vad': 2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8)
+      '@arcaai/json-schema-subset': 0.1.0
+      '@arcaai/med-ner': 2.0.2(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8)
+      '@arcaai/noise-filter': 3.1.0(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8)
+      '@arcaai/room': 3.1.0(react@19.2.8)
+      '@arcaai/stt': 3.1.0(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8)
+      '@arcaai/vad': 3.1.0(@arcaai/room@3.1.0(react@19.2.8))(react@19.2.8)
       '@huggingface/transformers': 4.2.0
+      '@microsoft/clarity': 1.0.2
       '@ricky0123/vad-web': 0.0.30
-      deepmerge-ts: 7.1.5
+      deepmerge-ts: 7.1.6
       diff: 9.0.0
       eventemitter3: 5.0.4
+      highlight.run: 9.28.0
       onnxruntime-common: 1.27.0
       onnxruntime-web: 1.27.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
       valibot: 1.4.2(typescript@5.9.3)
-      zustand: 5.0.14(@types/react@19.2.18)(react@19.2.8)
-    optionalDependencies:
-      '@arcaai/med-ner': 2.0.2(@arcaai/room@2.0.2(react@19.2.8))(react@19.2.8)
-      highlight.run: 9.28.0
+      zustand: 5.0.15(@types/react@19.2.18)(react@19.2.8)
     transitivePeerDependencies:
       - '@types/react'
       - immer
@@ -1193,15 +1185,14 @@ snapshots:
   '@launchdarkly/js-client-sdk-common@1.30.1':
     dependencies:
       '@launchdarkly/js-sdk-common': 2.25.2
-    optional: true
 
   '@launchdarkly/js-client-sdk@4.9.3':
     dependencies:
       '@launchdarkly/js-client-sdk-common': 1.30.1
-    optional: true
 
-  '@launchdarkly/js-sdk-common@2.25.2':
-    optional: true
+  '@launchdarkly/js-sdk-common@2.25.2': {}
+
+  '@microsoft/clarity@1.0.2': {}
 
   '@oxc-project/types@0.144.0': {}
 
@@ -1296,7 +1287,7 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  deepmerge-ts@7.1.5: {}
+  deepmerge-ts@7.1.6: {}
 
   define-data-property@1.1.4:
     dependencies:
@@ -1391,10 +1382,8 @@ snapshots:
     dependencies:
       '@launchdarkly/js-client-sdk': 4.9.3
       imurmurhash: 0.1.4
-    optional: true
 
-  imurmurhash@0.1.4:
-    optional: true
+  imurmurhash@0.1.4: {}
 
   json-stringify-safe@5.0.1: {}
 
@@ -1624,7 +1613,7 @@ snapshots:
       esbuild: 0.28.1
       fsevents: 2.3.3
 
-  zustand@5.0.14(@types/react@19.2.18)(react@19.2.8):
+  zustand@5.0.15(@types/react@19.2.18)(react@19.2.8):
     optionalDependencies:
       '@types/react': 19.2.18
       react: 19.2.8
