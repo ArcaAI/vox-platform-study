@@ -91,6 +91,15 @@ const ASR_MODEL = {
 };
 const STAGED_ASR = { ...ASR_MODEL, id: 'model-asr-staged', slug: 'arcaai-whisper-large-ml-en-gguf', availability: 'AVAILABLE' };
 const AZURE_LLM = { ...LLM_MODEL, id: 'model-azure', slug: 'azure-gpt-5.4-mini', provider: 'azure' };
+// TASK-930 — the NER catalogue: a SYSTEM `built-in` TOKEN_CLASSIFICATION row, weights staged.
+const NER_MODEL = {
+  ...ASR_MODEL,
+  id: 'model-ner',
+  slug: 'medical-ner',
+  taskType: 'TOKEN_CLASSIFICATION',
+  availability: 'AVAILABLE',
+  wireModelId: null,
+};
 
 function agent(overrides: Record<string, unknown> = {}) {
   const base: Record<string, unknown> = {
@@ -867,5 +876,63 @@ describe('the source tenant`s fallback chain is read under the SOURCE`s tenant (
     await makeService().newVersion('sys-1', { slug: 'my-summarizer' });
 
     expect(mockFallbackRepository.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * TASK-930 §2.2 — a NAMED_ENTITY_RECOGNITION agent publishes.
+ *
+ * Nothing in the publish gate mentions the task by name; every decision is table-driven
+ * (`AGENT_TASK_MODEL_TASK_TYPE`, `MODEL_TASK_TYPE_SERVICE`, `providerClassOf`). That is exactly
+ * why it is worth a test: NER is the FIRST task whose `service` is `null` — no
+ * `AiProviderConnection` plane governs token classification — and the paths that build on
+ * `service` are the ones a reader would expect to break.
+ *
+ * The chain that must hold: `providerClassOf(null, 'built-in', SYSTEM row)` short-circuits on
+ * the provider and answers `platform-self-host` BEFORE `service` is consulted, so the staged
+ * weights decide usability and the `wireModelId` refusal (cloud/engine only) is never reached.
+ */
+describe('publish — a NAMED_ENTITY_RECOGNITION agent (TASK-930 §2.2)', () => {
+  function nerAgent(overrides: Record<string, unknown> = {}) {
+    return agent({
+      task: AgentTask.NAMED_ENTITY_RECOGNITION,
+      modelId: NER_MODEL.id,
+      instruction: { labels: ['MEDICATION'] },
+      parameters: { threshold: 0.5 },
+      ...overrides,
+    });
+  }
+
+  it('publishes a built-in TOKEN_CLASSIFICATION row, and compiles it with NO provider service', async () => {
+    mockAiModelRepository.findById.mockResolvedValue(NER_MODEL);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(nerAgent());
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+
+    const published = await makeService().publish('agent-1', {});
+
+    expect(published.status).toBe('PUBLISHED');
+    const compiled = published.compiledConfig as unknown as { task: string; service: string | null; protocols: string[] };
+    expect(compiled.task).toBe('NAMED_ENTITY_RECOGNITION');
+    // `null`, not `'llm'`: inventing a service here is how a NER agent would start resolving
+    // (and metering) against a credential tier that does not govern it.
+    expect(compiled.service).toBeNull();
+    // One-shot — nothing to stream, so `?mode=stream` is a 400 rather than a slower answer.
+    expect(compiled.protocols).toEqual(['http']);
+    // No provider connection is consulted at all for a platform-self-hosted row.
+    expect(mockProviderConnections.resolveConnection).not.toHaveBeenCalled();
+  });
+
+  it('refuses a model of the wrong task type, exactly like the other three tasks', async () => {
+    mockAiModelRepository.findById.mockResolvedValue(LLM_MODEL);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(nerAgent({ modelId: LLM_MODEL.id }));
+
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_TASK_MISMATCH' } });
+  });
+
+  it('refuses an instruction key that is not `labels`', async () => {
+    mockAiModelRepository.findById.mockResolvedValue(NER_MODEL);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(nerAgent({ instruction: { hotwords: ['metformin'] } }));
+
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'CONFIG' } });
   });
 });
