@@ -18,6 +18,8 @@ import { API_KEY_SCOPE_REGISTRY, isValidScope } from '../../apiKey/apikey-scopes
 import {
   ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES,
   ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
+  AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES,
+  AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   STANDALONE_FEATURE_SCOPE_SOURCES,
   STANDALONE_FEATURE_SVC_SCOPES,
@@ -44,7 +46,12 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
     // …and nothing beyond them, apart from the two wildcards, the
     // standalone-feature family and the pre-convention family.
     const nonWildcard = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => !s.endsWith(':*'));
-    expect(nonWildcard.length).toBe(adminScopes.length + STANDALONE_FEATURE_SVC_SCOPES.length + ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES.length);
+    expect(nonWildcard.length).toBe(
+      adminScopes.length +
+        STANDALONE_FEATURE_SVC_SCOPES.length +
+        ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES.length +
+        AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES.length,
+    );
   });
 
   it('every non-wildcard scope declares at least one implied permission (no fail-open ceiling)', () => {
@@ -301,5 +308,59 @@ describe('hasServiceAccountScope', () => {
 
   it('does not let a prefix match cross a namespace boundary', () => {
     expect(hasServiceAccountScope(['svc:admin:department:*'], 'svc:admin:departmentagent:manage')).toBe(false);
+  });
+});
+
+/**
+ * TASK-930 §3 — the FOURTH `svc:` family: the agent/workflow BUSINESS plane.
+ *
+ * A service account could reach every admin area and three standalone features, but not the
+ * two planes a machine identity most obviously exists to drive — invoking a published agent and
+ * running a published workflow. These five are a family of their own for the same reason the
+ * other three are kept apart: `STANDALONE_FEATURE_SCOPE_SOURCES` means "standalone features an
+ * end user drives through the SDK/compat surfaces", and a constant whose name stops describing
+ * its contents is how the NEXT scope gets mis-derived.
+ *
+ * The consultation-bound plane (`workflows:` plural) is deliberately absent — it writes real
+ * `ContextItem` rows against a patient's consultation, which is not a machine-identity surface
+ * this ticket opens. Deny-by-default means that silence is a refusal, not an oversight.
+ */
+describe('TASK-930 §3 — the agent/workflow business-plane family', () => {
+  it('names exactly the five business-plane scopes', () => {
+    expect([...AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES]).toEqual([
+      'agent:definition:read',
+      'agent:invocation:write',
+      'workflow:definition:read',
+      'workflow:run:read',
+      'workflow:run:write',
+    ]);
+  });
+
+  it('registers each one under the svc: namespace with the SAME abilities the API-key scope carries', () => {
+    for (const source of AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES) {
+      const svc = toServiceAccountScope(source);
+      expect(SERVICE_ACCOUNT_SCOPE_REGISTRY[svc], `${svc} must be registered`).toBeDefined();
+      expect(SERVICE_ACCOUNT_SCOPE_REGISTRY[svc].implies).toEqual(API_KEY_SCOPE_REGISTRY[source].implies);
+    }
+  });
+
+  // The trap the whole file exists for: a registered scope with no ability passes
+  // `hasServiceAccountScope` and is then refused by CASL.
+  it('resolves every one to at least one ability', () => {
+    for (const svc of AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES) {
+      expect(resolveServiceAccountImpliedPermissions(svc).length, `${svc} resolves to no ability`).toBeGreaterThan(0);
+    }
+  });
+
+  // `svc:admin:*` expands over the `svc:admin:` PREFIX, not over "everything a machine may do":
+  // this family is granted explicitly or not at all.
+  it('is NOT reachable through the svc:admin:* wildcard', () => {
+    expect(hasServiceAccountScope(['svc:admin:*'], 'svc:agent:invocation:write')).toBe(false);
+    expect(hasServiceAccountScope(['svc:*'], 'svc:agent:invocation:write')).toBe(true);
+  });
+
+  // The consultation-bound plural plane stays closed.
+  it('does not admit the consultation-bound workflows: plane', () => {
+    expect(SERVICE_ACCOUNT_SCOPE_REGISTRY['svc:workflows:run:write']).toBeUndefined();
   });
 });
