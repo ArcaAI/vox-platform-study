@@ -572,7 +572,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // stayed null — which `useArcaSttProvider` reads as "capture has not started",
   // silently turning the mid-session STT-engine toggle into a no-op.
   const capture = useAudioCapture({
-    options: { sttPipelineId: config.pipelineId.trim() || undefined },
+    options: { sttAgentSlug: config.sttAgentSlug.trim() || undefined },
     language: languageMode,
     languageMode,
     ...audio.captureOptions,

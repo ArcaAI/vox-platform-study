@@ -71,6 +71,7 @@ const CONFIG: PlaygroundConfig = {
   apiKey: 'k-1',
   tenantId: '',
   pipelineId: 'pipe-1',
+  sttAgentSlug: '',
   languageMode: 'ml-en',
 };
 

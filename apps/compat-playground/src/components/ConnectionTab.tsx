@@ -34,7 +34,7 @@ interface ConnectionTabProps {
  * either to an `<Input value>` is a type error, and rendering `false` as text
  * would be a UI one.
  */
-type TextFieldKey = 'apiEndpoint' | 'apiKey' | 'tenantId' | 'pipelineId';
+type TextFieldKey = 'apiEndpoint' | 'apiKey' | 'tenantId' | 'pipelineId' | 'sttAgentSlug';
 
 const FIELDS: Array<{
   key: TextFieldKey;
@@ -67,9 +67,15 @@ const FIELDS: Array<{
   },
   {
     key: 'pipelineId',
-    label: 'Pipeline ID',
+    label: 'Pipeline ID (deprecated)',
     placeholder: 'streaming pipeline id — enables the ON/pipeline state',
-    hint: 'Streaming STT pipeline to run. Leave empty to use the tenant default provider.',
+    hint: 'Streaming STT pipeline for the transcription and batch hooks, which take no agent slug yet. Removed in R4.',
+  },
+  {
+    key: 'sttAgentSlug',
+    label: 'ASR Agent slug',
+    placeholder: 'published SPEECH_TO_TEXT agent slug',
+    hint: 'What the LIVE capture session selects (TASK-931). Leave empty to let the tenant/department agent assignment decide.',
   },
 ];
 
@@ -247,6 +253,7 @@ export function ConnectionTab({ connectedConfig, onConnect, onDisconnect, onForg
                     apiKey: '',
                     tenantId: '',
                     pipelineId: '',
+                    sttAgentSlug: '',
                     languageMode: '',
                     noiseSuppression: false,
                     voiceActivityDetection: false,

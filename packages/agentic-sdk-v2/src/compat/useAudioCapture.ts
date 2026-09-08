@@ -216,7 +216,11 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     try {
       setError(null);
       await audio.start({
-        pipelineId: options?.sttPipelineId,
+        // The ASR Agent slug wins over the deprecated pipeline id, exactly as
+        // `mapV1ConfigToV2` decides it for the PROVIDER config (TASK-931). Never both: the
+        // session body carries at most one selector, and sending two would make which one the
+        // gateway honours a property of key order.
+        ...(options?.sttAgentSlug ? { agentSlug: options.sttAgentSlug } : options?.sttPipelineId ? { pipelineId: options.sttPipelineId } : {}),
         ...(language ? { language } : {}),
         ...(languageMode ? { languageMode } : {}),
         ...(pendingSttProvider ? { startOn: pendingSttProvider } : {}),
@@ -255,6 +259,7 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     }
   }, [
     audio,
+    options?.sttAgentSlug,
     options?.sttPipelineId,
     language,
     languageMode,

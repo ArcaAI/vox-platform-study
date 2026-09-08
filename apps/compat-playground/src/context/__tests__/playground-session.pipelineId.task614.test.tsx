@@ -82,6 +82,7 @@ const BASE_CONFIG: PlaygroundConfig = {
   apiKey: 'test-key',
   tenantId: '50000000-0000-0000-0000-000000000000',
   pipelineId: '',
+  sttAgentSlug: '',
   languageMode: 'en',
 };
 
@@ -96,26 +97,40 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('playground pipelineId plumbing', () => {
-  it('gives the configured pipeline id to the hook that STARTS capture', () => {
-    mount({ pipelineId: 'pipeline-abc' });
+/**
+ * AMENDED TASK-931. The hook that STARTS capture now carries the ASR AGENT SLUG, not the
+ * deprecated pipeline id: `sttPipelineId` is removed in R4, and `useAudioCapture` forwards
+ * `sttAgentSlug` as `agentSlug`. The pipeline id keeps its own field and keeps flowing to the
+ * transcription and batch hooks, which accept no agent slug yet — so this file now pins BOTH,
+ * which is exactly the transitional state it is describing.
+ */
+describe('playground selector plumbing', () => {
+  it('gives the configured AGENT SLUG to the hook that STARTS capture', () => {
+    mount({ sttAgentSlug: 'clinic-asr' });
 
-    const options = captured.audioCapture?.options as { sttPipelineId?: string } | undefined;
-    expect(options?.sttPipelineId).toBe('pipeline-abc');
+    const options = captured.audioCapture?.options as { sttAgentSlug?: string } | undefined;
+    expect(options?.sttAgentSlug).toBe('clinic-asr');
   });
 
-  it('trims the configured pipeline id before forwarding it', () => {
-    mount({ pipelineId: '  pipeline-abc  ' });
+  it('trims the configured agent slug before forwarding it', () => {
+    mount({ sttAgentSlug: '  clinic-asr  ' });
 
-    const options = captured.audioCapture?.options as { sttPipelineId?: string } | undefined;
-    expect(options?.sttPipelineId).toBe('pipeline-abc');
+    const options = captured.audioCapture?.options as { sttAgentSlug?: string } | undefined;
+    expect(options?.sttAgentSlug).toBe('clinic-asr');
   });
 
-  it('forwards `undefined`, never an empty string, when no pipeline is configured', () => {
-    // An empty string is truthy on the wire once it reaches `audio.start`, and
-    // "tenant default" must stay expressible. `undefined` is the only value the
-    // SDK reads as "I did not choose one".
-    mount({ pipelineId: '   ' });
+  it('forwards `undefined`, never an empty string, when no agent is configured', () => {
+    // An empty string is truthy on the wire once it reaches `audio.start`, and "let the tenant
+    // assignment decide" must stay expressible. `undefined` is the only value the SDK reads as
+    // "I did not choose one".
+    mount({ sttAgentSlug: '   ' });
+
+    const options = captured.audioCapture?.options as { sttAgentSlug?: string } | undefined;
+    expect(options?.sttAgentSlug).toBeUndefined();
+  });
+
+  it('does NOT send the deprecated pipeline id on the capture hook any more', () => {
+    mount({ pipelineId: 'pipeline-abc', sttAgentSlug: 'clinic-asr' });
 
     const options = captured.audioCapture?.options as { sttPipelineId?: string } | undefined;
     expect(options?.sttPipelineId).toBeUndefined();

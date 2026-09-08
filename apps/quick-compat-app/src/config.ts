@@ -9,8 +9,16 @@ export interface AppConfig {
   apiEndpoint: string;
   /** Tenant SDK API key — required, no default. */
   apiKey: string;
-  /** Streaming/batch ASR pipeline id. */
+  /**
+   * Streaming/batch ASR pipeline id — DEPRECATED at the gateway (removed in R4), kept because
+   * `useArcaSpeechToText` and `useArcaBatchTranscription` accept no agent slug yet.
+   */
   pipelineId: string;
+  /**
+   * The published ASR Agent the live capture session selects (TASK-931). Empty means the
+   * tenant's agent assignment decides.
+   */
+  sttAgentSlug: string;
   /** Language (or code-switch mode id) used for live + batch transcription. */
   language: string;
 }
@@ -31,6 +39,7 @@ export const EMPTY_CONFIG: AppConfig = {
   apiEndpoint: 'http://localhost:8868',
   apiKey: '',
   pipelineId: '',
+  sttAgentSlug: '',
   language: 'en',
 };
 
