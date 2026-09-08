@@ -228,6 +228,34 @@ export function readAgentRef(config: Readonly<Record<string, unknown>>): Realtim
 }
 
 /**
+ * The capability a node INSTANCE is expected to run, derived from its authored config ALONE.
+ *
+ * The read-back counterpart of the `capability` a handler reports on success. A projection has to
+ * attribute a node that FAILED as well as one that succeeded — the flush projection reports
+ * `textFailed` / `nlpFailed`, and the SUMMARY node's degrade reason wins over any other node's —
+ * and `RealtimeNodeOutcome.capability` is present only on `succeeded`. This is that missing half.
+ *
+ * It agrees with {@link CoreAgentHandler} by construction: both read the task out of
+ * {@link readAgentRef} and both fall back to `TEXT_GENERATION` for a slug the host cannot resolve.
+ * A caller with an outcome in hand must still PREFER the reported capability — that one is what
+ * ran, this one is only what was expected.
+ */
+export function realtimeCapabilityOf(type: string, config?: Readonly<Record<string, unknown>>): RealtimeCapabilityKey | undefined {
+  if (type !== 'core.agent') return undefined;
+  switch (readAgentRef(config ?? {})?.task) {
+    case 'SPEECH_TO_TEXT':
+      return 'transcribe';
+    case 'NAMED_ENTITY_RECOGNITION':
+      return 'extractEntities';
+    case 'TEXT_TO_SPEECH':
+      // Not a realtime-lane task — the handler throws rather than running a capability.
+      return undefined;
+    default:
+      return 'generateDocument';
+  }
+}
+
+/**
  * `core.agent` on the realtime lane — dispatch on the RESOLVED task (INTERFACES §7.4).
  *
  *  - `SPEECH_TO_TEXT` → the live transcript (the former capture binding), under `transcript`.

@@ -111,11 +111,13 @@ import {
   reanchorAnnotations,
   PLATFORM_REALTIME_LANE,
   buildRealtimeLane,
-  canonicalRealtimeNodeType,
+  realtimeCapabilityOf,
   realtimeDocumentTemplateSlug,
   realtimeNodeIsTogglable,
   runRealtimeLane,
+  type RealtimeAgentRef,
   type RealtimeCapabilities,
+  type RealtimeCapabilityKey,
   type RealtimeLane,
   type RealtimeRunResult,
   type SectionPatchDto,
@@ -587,11 +589,30 @@ function storedNumber(result: { value: unknown; sourceScope: string }): number |
  *
  * `RealtimeDegradeEvent.reason` is contractually a reason code or an error name, never
  * clinical text, which is what makes it safe to put on the clinician's feed.
+ *
+ * TASK-893 — WHICH node is the summary one is answered by its CAPABILITY, never by a type
+ * string: every realtime node is a `core.agent` now, so matching on the type would pick the
+ * transcription node's reason as often as the summary node's.
  */
-function realtimeDegradeReason(run: RealtimeRunResult): string | undefined {
+function realtimeDegradeReason(run: RealtimeRunResult, lane: RealtimeLane): string | undefined {
   if (run.events.length === 0) return undefined;
-  const event = run.events.find((e) => canonicalRealtimeNodeType(e.type) === 'consultation.realtimeSummary') ?? run.events[0];
+  const capabilities = realtimeCapabilityIndex(lane);
+  const event = run.events.find((e) => capabilities.get(e.nodeId) === 'generateDocument') ?? run.events[0];
   return `${event.status}: ${event.reason}`;
+}
+
+/**
+ * Node id → the capability that node is expected to run, derived from the lane's authored config.
+ *
+ * The outcome's OWN `capability` is what actually ran and wins wherever it is present — but it is
+ * present only on `succeeded`, and every consumer below has to attribute the failures too.
+ */
+function realtimeCapabilityIndex(lane: RealtimeLane): Map<string, RealtimeCapabilityKey | undefined> {
+  const index = new Map<string, RealtimeCapabilityKey | undefined>();
+  for (const stage of lane.stages) {
+    for (const node of stage.nodes) index.set(node.nodeId, realtimeCapabilityOf(node.type, node.config));
+  }
+  return index;
 }
 
 function storedMode(result: { value: unknown; sourceScope: string }): AgenticTranscriptMode | undefined {
@@ -1581,7 +1602,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         stage.nodes.map((node) => ({
           nodeId: node.nodeId,
           type: node.type,
-          canonicalType: canonicalRealtimeNodeType(node.type, node.config),
+          canonicalType: realtimeCapabilityOf(node.type, node.config) ?? node.type,
           stageIndex: stage.stageIndex,
           enabled: node.enabled,
           togglable: realtimeNodeIsTogglable(node.type),
@@ -2379,7 +2400,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // TASK-891 B5 — WHY this flush produced nothing, when it produced nothing. The
         // summary node's own reason wins over any other node's: it is the one that
         // decides whether there is a note at all.
-        degradeReason: realtimeDegradeReason(graph.run),
+        degradeReason: realtimeDegradeReason(graph.run, lane),
       });
     }
 
@@ -2603,17 +2624,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       await this.publishDegradeEvents(session, run);
     }
 
-    // Read the outcomes back through the alias map, not the raw type. A tenant graph authored
-    // against the TARGET CATALOGUE runs `agent.ner` / `agent.transcription`, which are the same
-    // capability under a different name — matching on the pipeline key alone published
-    // `entities: []` with `nlpRan: false` for those graphs even though the node had succeeded.
-    const summarize = run.outcomes.find((o) => canonicalRealtimeNodeType(o.type) === 'consultation.realtimeSummary');
-    const extract = run.outcomes.find((o) => canonicalRealtimeNodeType(o.type) === 'consultation.extractEntities');
+    // Read the outcomes back by CAPABILITY, never by node type. Since TASK-893 every realtime
+    // node is a `core.agent` and the type says nothing about what it did, so a type match would
+    // read the transcription node's output as the note. The outcome's own `capability` is what
+    // RAN and wins; the lane-derived expectation covers the outcomes that never got that far
+    // (a degraded or timed-out node carries no capability, and `textFailed` / `nlpFailed` are
+    // exactly the flags that have to attribute those).
+    const expected = realtimeCapabilityIndex(effectiveLane);
+    const ranAs = (o: RealtimeRunResult['outcomes'][number], capability: RealtimeCapabilityKey): boolean =>
+      (o.capability ?? expected.get(o.nodeId)) === capability;
+    const summarize = run.outcomes.find((o) => ranAs(o, 'generateDocument'));
+    const extract = run.outcomes.find((o) => ranAs(o, 'extractEntities'));
     const extractOutput = extract?.status === 'succeeded' ? extract.output : undefined;
-    // Lane N. `agent.important_findings` is its OWN canonical type — it has no pipeline
-    // counterpart, so `canonicalRealtimeNodeType` returns it unchanged and matching on the raw
-    // type here is correct rather than the bug repeated.
-    const findingsNode = run.outcomes.find((o) => o.type === 'agent.important_findings');
+    // Lane N — IMPORTANT FINDINGS. No handler produces this capability since the `core.*`
+    // retirement removed `agent.important_findings`, so this stays empty until one does; the
+    // lookup is kept keyed on the capability rather than deleted so wiring a handler is enough.
+    const findingsNode = run.outcomes.find((o) => ranAs(o, 'extractFindings'));
     const findingsOutput = findingsNode?.status === 'succeeded' ? findingsNode.output : undefined;
 
     return {
@@ -3561,12 +3587,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * `callText`, which expresses no opinion and lets TEXT's platform posture govern — unchanged.
    */
   private async resolveRealtimeTextAgent(
-    input: { agentRef?: { slug: string; versionNumber?: number }; config?: Readonly<Record<string, unknown>> },
+    input: { agentRef?: RealtimeAgentRef; config?: Readonly<Record<string, unknown>> },
     tenantId: string,
     lane: RealtimeLane,
   ): Promise<{ spec: ResolvedTextGenerationSpec; overrides: NodeOverrides; guardrail: { enabled: boolean } } | undefined> {
-    if (!input.agentRef) return undefined;
-    const spec = await this.resolveRealtimeAgent(input.agentRef, tenantId);
+    // TASK-893 — a `core.agent` names its agent by SLUG or by TASK. Only the slug form pins an
+    // agent; the task form is the code-built platform lane saying "the tenant's assigned
+    // TEXT_GENERATION agent", which is exactly the `undefined` path `callText` already takes
+    // through `resolveTextSelection`. Resolving it here would hard-code a slug the assignment
+    // cascade owns.
+    const { slug, versionNumber } = (input.agentRef ?? {}) as { slug?: string; versionNumber?: number };
+    if (slug === undefined) return undefined;
+    const spec = await this.resolveRealtimeAgent({ slug, ...(versionNumber !== undefined ? { versionNumber } : {}) }, tenantId);
     const guardrail = resolveGuardrailDecision({
       node: guardrailOptOutOf(input.config),
       workflow: lane.guardrail,
