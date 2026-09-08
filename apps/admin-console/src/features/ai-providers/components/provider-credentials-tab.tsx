@@ -4,7 +4,8 @@ import { IconServerCog } from '@tabler/icons-react';
 import { EmptyState } from '@/shared/state/empty-state';
 import type { ProviderService } from '../api/types';
 import { ProviderCredentialCard } from './provider-credential-card';
-import { PROVIDERS_BY_SERVICE } from './provider-meta';
+import { cloudProvidersFor } from './provider-meta';
+import type { ProviderTier } from './use-provider-scope';
 
 const SERVICE_COPY: Record<ProviderService, string> = {
   llm: 'Bring your own Azure OpenAI, Amazon Bedrock, OpenAI, Anthropic, or Google Vertex AI account for text generation and summarization.',
@@ -19,23 +20,35 @@ const SERVICE_COPY: Record<ProviderService, string> = {
 };
 
 /**
- * One service's BYO-credential grid — one card per provider, driven by
- * `admin/providers/:service`. Keys are encrypted at rest via Vault Transit, are
- * never returned by any read, and there is no reveal flow.
+ * One service's credential grid — one card per provider visible to the tier,
+ * driven by `admin/providers/:service`. Keys are encrypted at rest via Vault
+ * Transit, are never returned by any read, and there is no reveal flow.
  *
- * A capability with NO tenant-BYO providers (`rerank`) renders its reason
- * rather than an empty grid: the only reranker is platform infrastructure, so
- * the gateway refuses a tenant row with a 403.
+ * A capability with NO providers for this tier renders its reason rather than an
+ * empty grid. On the TENANT tier that is a real case (`rerank` has no cloud
+ * vendor to bring an account to, and the whole `model-registry` plane is
+ * platform infrastructure) — though since TASK-932 the tab bar drops those
+ * services entirely, so this branch is the belt rather than the braces.
  */
-export function ProviderCredentialsTab({ service, tenantId, enabled = true }: { service: ProviderService; tenantId?: string; enabled?: boolean }) {
-  const providers = PROVIDERS_BY_SERVICE[service];
+export function ProviderCredentialsTab({
+  service,
+  tenantId,
+  tier = 'tenant',
+  enabled = true,
+}: {
+  service: ProviderService;
+  tenantId?: string;
+  tier?: ProviderTier;
+  enabled?: boolean;
+}) {
+  const providers = cloudProvidersFor(service);
 
   if (providers.length === 0) {
     return (
       <EmptyState
         icon={IconServerCog}
         title="Platform-managed capability"
-        description={`${SERVICE_COPY[service]} There is no cloud provider for a tenant to bring its own account to, so only the platform (SYSTEM) connection serves it — a tenant connection is refused.`}
+        description={`${SERVICE_COPY[service]} There is no cloud provider for a tenant to bring its own account to, so only the platform connection serves it — a tenant connection is refused.`}
       />
     );
   }
@@ -48,7 +61,7 @@ export function ProviderCredentialsTab({ service, tenantId, enabled = true }: { 
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
         {providers.map((meta) => (
-          <ProviderCredentialCard key={meta.id} service={service} meta={meta} tenantId={tenantId} enabled={enabled} />
+          <ProviderCredentialCard key={meta.id} service={service} meta={meta} tenantId={tenantId} tier={tier} enabled={enabled} />
         ))}
       </div>
     </div>
