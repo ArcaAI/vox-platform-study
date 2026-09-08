@@ -107,8 +107,6 @@ export { GUARDRAIL_DECISION_SOURCES, guardrailOptOutOf, resolveGuardrailDecision
 export type { GuardrailDecision, GuardrailDecisionSource, GuardrailOptOutInputs } from './guardrail-optout';
 
 export {
-  AGENTIC_NODE_TYPES,
-  AGENTIC_PALETTE_KEY,
   CORE_NODE_TYPES,
   CORE_PALETTE_KEY,
   WORKFLOW_NODE_REGISTRY,
@@ -121,7 +119,7 @@ export {
 } from './node-registry';
 export type { WorkflowNodeDescriptor, WorkflowNodeEvalGate, WorkflowNodeLane, WorkflowNodeTrigger } from './node-registry';
 
-export { GROUNDING_POLICY_TARGETS, NODE_CONFIG_SCHEMAS, TERMINOLOGY_PURPOSE_SCOPES } from './node-config-schemas';
+export { ACTION_CONFIG_SCHEMAS, GROUNDING_POLICY_TARGETS, NODE_CONFIG_SCHEMAS, TERMINOLOGY_PURPOSE_SCOPES } from './node-config-schemas';
 export type { NodeConfigSchema } from './node-config-schemas';
 
 // the node CONTRACT: typed ports, their compatibility lattice, and the publish-time
@@ -165,7 +163,7 @@ export type {
   ProviderGenerationCapabilities,
 } from './agentic-contract';
 
-export { NODE_PORTS } from './node-ports';
+export { ACTION_PORTS, NODE_PORTS } from './node-ports';
 export type { WorkflowNodePorts } from './node-ports';
 
 export { isValidConnection, nodeDescriptorContractProblems, workflowEdgePortProblems } from './port-validation';
@@ -204,7 +202,7 @@ export type {
   CompileResult,
 } from './compiler';
 
-export { DRAFT_CONSULTATION_RULE_SET, DRAFT_CORE_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from './rule-catalogue';
+export { DRAFT_CORE_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from './rule-catalogue';
 export type { DraftWorkflowRule } from './rule-catalogue';
 
 // `ALL_DRAFT_RULES` — every palette's bundled rule set, which is also `validate()`'s own

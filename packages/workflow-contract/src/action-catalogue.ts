@@ -25,8 +25,8 @@
  * `pnpm --filter @arcaai/workflow-contract regen:action-snapshot`), exactly as the node registry
  * does — see `node-registry.ts`'s module docstring for why a shared fixture and not a cross-import.
  */
-import { NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from './node-config-schemas';
-import { NODE_PORTS, type WorkflowNodePorts } from './node-ports';
+import { ACTION_CONFIG_SCHEMAS, type NodeConfigSchema } from './node-config-schemas';
+import { ACTION_PORTS, type WorkflowNodePorts } from './node-ports';
 import type { WorkflowNodeLane } from './node-registry';
 
 /** The port set an action instance offers — `WorkflowNodePorts` under the contract's name. */
@@ -271,8 +271,8 @@ const ACTION_DISPATCH: Readonly<Record<string, ActionDispatch>> = Object.freeze(
 export const ACTION_KEYS: readonly string[] = Object.freeze(Object.keys(ACTION_DISPATCH));
 
 function descriptorOf(key: string, dispatch: ActionDispatch): CoreActionDescriptor {
-  const configSchema = NODE_CONFIG_SCHEMAS[key];
-  const ports = NODE_PORTS[key];
+  const configSchema = ACTION_CONFIG_SCHEMAS[key];
+  const ports = ACTION_PORTS[key];
   if (configSchema === undefined || ports === undefined) {
     // A table that lost a row is a capability that vanished; fail at module load, not at publish.
     throw new Error(`action catalogue: \`${key}\` has no ${configSchema === undefined ? 'config schema' : 'port table'}`);

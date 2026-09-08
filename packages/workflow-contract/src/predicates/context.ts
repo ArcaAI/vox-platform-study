@@ -14,8 +14,9 @@
 import type { WorkflowGraph, WorkflowGraphNode } from '../graph-model';
 
 export interface WorkflowNodeClassLookup {
-  /** The registry-declared classes for a node type (e.g. `['phiBearing', 'mandatory']`). */
-  classesOf(nodeType: string): readonly string[];
+  /** The classes of a node INSTANCE (e.g. `['phiBearing', 'mandatory']`) — `config` lets a
+   *  `core.action` / `core.agent` resolve per instance (TASK-893). */
+  classesOf(nodeType: string, config?: Readonly<Record<string, unknown>>): readonly string[];
   /** The palette a node type belongs to, if registered. */
   paletteOf(nodeType: string): string | undefined;
 }
@@ -30,7 +31,7 @@ export type WorkflowNodeSelector = { type: string; class?: undefined } | { class
 
 function nodeMatches(node: WorkflowGraphNode, selector: WorkflowNodeSelector, ctx: WorkflowEvaluationContext): boolean {
   if (selector.type !== undefined) return node.type === selector.type;
-  if (selector.class !== undefined) return ctx.registry.classesOf(node.type).includes(selector.class);
+  if (selector.class !== undefined) return ctx.registry.classesOf(node.type, node.config).includes(selector.class);
   return false;
 }
 
