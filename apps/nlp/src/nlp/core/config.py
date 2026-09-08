@@ -264,8 +264,10 @@ class NLPServiceConfig(BaseSettings):
     # only. Unprefixed on purpose (`validation_alias` bypasses the env_prefix) —
     # it belongs to no single service. This is what the service ACCEPTS inbound as
     # `X-Service-Token` and PRESENTS on every outbound peer call.
-    # The legacy per-service token below stays accepted / used as a zero-cost
-    # backward-compatibility fallback; both empty ⇒ auth bypassed (dev / CI).
+    # It is the ONLY accepted credential on this service — the legacy
+    # per-service `NLP_SERVICE_TOKEN` was REMOVED (see the note below), so a peer
+    # that presents anything else is answered 401. Empty ⇒ auth bypassed (dev /
+    # CI). Guardrail presents this same value via `peer_service_token()`.
     internal_access_token: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN")
     )
