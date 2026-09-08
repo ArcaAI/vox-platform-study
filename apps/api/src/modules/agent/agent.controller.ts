@@ -19,12 +19,13 @@ import {
   TtsAgentResolverService,
   UsageIdempotencyKey,
   buildLlmUsageInputFromTokenCounts,
+  buildNerUsageEvent,
   classifyLlmDeployment,
   toLedgerProvider,
   withUsageAttributes,
   withUsageTrigger,
 } from '@arcaai/applications';
-import type { AgentTextInvocationResult, GuardrailDisposition, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
+import type { AgentNerEntity, AgentNerInvocationResult, AgentTextInvocationResult, GuardrailDisposition, ResolvedAgent, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
@@ -81,6 +82,20 @@ export interface AgentTextInvocationResponse {
   provider: string | null;
   model: string | null;
   usage: { promptTokens: number | null; completionTokens: number | null } | null;
+}
+
+/**
+ * TASK-930 §2.4 — the NER answer, in the SAME envelope as the text one so a caller reads
+ * `agentSlug` / `agentVersionId` / `output` identically whichever task the slug resolves to.
+ * `output` is the agent's declared output schema verbatim (`{ entities }`).
+ */
+export interface AgentNerInvocationResponse {
+  agentSlug: string;
+  agentVersionId: string;
+  output: { entities: AgentNerEntity[] };
+  provider: string | null;
+  model: string | null;
+  usage: null;
 }
 
 export interface AgentTranscriptionResponse {
@@ -184,7 +199,15 @@ export class AgentController {
   })
   async invoke(@Param('slug') slug: string, @Body() body: AgentInvocationBody, @Res() res: Response, @Query('mode') mode?: string): Promise<void> {
     const tenantId = this.requireTenant();
-    const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug });
+    // TASK-930 §2.4 — resolved WITHOUT a task pin, then dispatched on the agent's own task.
+    // Pinning TEXT_GENERATION here would have made a NER agent unreachable through the route
+    // its `protocols: ['http']` declares, and the refusal would have named the wrong thing
+    // ("this call needs TEXT_GENERATION") for a caller who asked for exactly what it published.
+    const resolved = await this.resolver.resolve({ tenantId, agentSlug: slug });
+    if (resolved.task === AgentTask.NAMED_ENTITY_RECOGNITION) {
+      await this.invokeNer(resolved, tenantId, slug, body, res, mode);
+      return;
+    }
     // `context` is checked against the agent's FROZEN context schema inside `invokeText`, not
     // against `inputSchema` — so it is withheld from this check. Without that, the two
     // declarations collide: every default `inputSchema` is `additionalProperties: false` and
@@ -265,6 +288,70 @@ export class AgentController {
       usage: result.usage,
     };
     res.status(HttpStatus.OK).json(payload);
+  }
+
+  /**
+   * TASK-930 §2.4 — the NER half of `POST /agents/:slug/invocations`.
+   *
+   * One-shot by construction: `apps/nlp` classifies the whole document in a single pass, so
+   * `?mode=stream` is REFUSED with a named code rather than degraded to a blocking answer — a
+   * caller that opened an SSE reader against a silent one-shot route would simply hang, and a
+   * 400 that says why is the only honest reply to a protocol the agent never declared.
+   *
+   * Metered like every other inference activity (OD-E): the `monthlyNlpTextUnits` allowance is
+   * checked BEFORE the call (nothing is billed for a refused one), and the row is the SAME
+   * `ner.extract` shape the two clinical NER call sites and the playground proxy already write,
+   * so an agent invocation appears in the tenant's NLP rollup rather than in a fourth vocabulary.
+   */
+  private async invokeNer(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    slug: string,
+    body: AgentInvocationBody,
+    res: Response,
+    mode?: string,
+  ): Promise<void> {
+    if (mode === 'stream') {
+      throw new BadRequestException({
+        message: `Agent '${resolved.slug}' performs NAMED_ENTITY_RECOGNITION, a one-shot task with nothing to stream. Re-send without \`mode=stream\`.`,
+        code: 'MODE_UNSUPPORTED',
+      });
+    }
+    const { context: _context, ...invocationInput } = body ?? {};
+    const problems = this.invocation.inputProblems(resolved, invocationInput);
+    if (problems.length > 0) throw new BadRequestException({ message: 'The invocation body does not match the agent’s inputSchema.', problems });
+
+    await this.entitlementsService?.assertMeterQuota(tenantId, 'monthlyNlpTextUnits');
+    const result = await this.invocation.invokeNer(resolved, tenantId, body ?? {});
+    this.emitInvocationUsage(this.buildNerUsage(tenantId, result), slug);
+
+    const payload: AgentNerInvocationResponse = {
+      agentSlug: resolved.slug,
+      agentVersionId: resolved.agentVersionId,
+      output: { entities: result.entities },
+      // Always the platform's own token-classification runtime: a NER agent resolves no
+      // provider connection at all (`compiledConfig.service` is null), so there is no vendor
+      // to attribute and the catalogue row's own provider is the whole truth.
+      provider: resolved.compiledConfig.model.provider ?? null,
+      model: result.model,
+      usage: null,
+    };
+    res.status(HttpStatus.OK).json(payload);
+  }
+
+  /** The `ner.extract` ledger row for ONE agent invocation — the shared shape, with this route's trigger. */
+  private buildNerUsage(tenantId: string, result: AgentNerInvocationResult): UsageEventBatchInput {
+    return withUsageTrigger(
+      buildNerUsageEvent({
+        tenantId,
+        // A fresh id per invocation: keying on anything shared silently drops the second call
+        // (see `nerUsageEvent.ts` — that defect is why the key is per-invocation).
+        requestId: generateId(),
+        charCount: result.charCount,
+        model: result.model,
+      }),
+      AGENT_INVOCATION_TRIGGER,
+    );
   }
 
   @Post(':slug/speech')

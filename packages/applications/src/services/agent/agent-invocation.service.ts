@@ -282,7 +282,7 @@ export class AgentInvocationService {
     const primary = resolved.models.find((model) => model.role === 'primary');
     // Refused HERE rather than relayed: `apps/nlp` answers 503 "model not available" for an
     // absent `model_name`, which names neither this agent nor the row it binds.
-    const modelName = compiled.model.wireModelId ?? primary?.wireModelId ?? primary?.sourceUri ?? null;
+    const modelName = wireModelIdOf(resolved) ?? primary?.sourceUri ?? null;
     if (!modelName) {
       throw new ConflictException({
         message:

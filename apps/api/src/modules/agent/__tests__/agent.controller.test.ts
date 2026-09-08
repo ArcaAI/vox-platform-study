@@ -146,11 +146,13 @@ describe('AgentController — metadata', () => {
 });
 
 describe('AgentController — invocations', () => {
-  it('blocking: resolves with the TEXT_GENERATION task pin, validates the body, answers JSON', async () => {
+  it('blocking: resolves the slug, validates the body, answers JSON', async () => {
     const { controller, resolver, invocation } = make();
     const res = fakeRes();
     await controller.invoke('clinic-summarizer', { text: 'hi' }, res as never, undefined);
-    expect(resolver.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: 'TEXT_GENERATION', agentSlug: 'clinic-summarizer' });
+    // TASK-930 — the invocations route no longer PINS the task: it resolves the slug and
+    // dispatches on the agent's own task, because NER shares this route with TEXT_GENERATION.
+    expect(resolver.resolve).toHaveBeenCalledWith({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
     expect(invocation.invokeText).toHaveBeenCalledWith(RESOLVED, TENANT, { text: 'hi' }, 'blocking');
     expect(res.statusCode).toBe(200);
     expect(res.body).toMatchObject({ agentSlug: 'clinic-summarizer', output: { text: 'hello' } });
@@ -465,5 +467,73 @@ describe('AgentController — the guardrail disposition on the ledger row (§3.1
       const batch = call[0] as { common: { attributesJson?: Record<string, unknown> } };
       expect(batch.common.attributesJson?.guardrail).toBeUndefined();
     }
+  });
+});
+
+describe('AgentController — TASK-930 §2.4: NER invocations share the route', () => {
+  const NER_RESOLVED = {
+    ...RESOLVED,
+    slug: 'medical-ner',
+    task: 'NAMED_ENTITY_RECOGNITION',
+    compiledConfig: {
+      ...RESOLVED.compiledConfig,
+      task: 'NAMED_ENTITY_RECOGNITION',
+      service: null,
+      model: { id: 'm', slug: 'medical-ner', provider: 'built-in', taskType: 'TOKEN_CLASSIFICATION' },
+      protocols: ['http'],
+    },
+  };
+
+  function nerControllerFixture() {
+    const fixture = make();
+    fixture.resolver.resolve.mockResolvedValue(NER_RESOLVED as never);
+    (fixture.invocation as unknown as { invokeNer: ReturnType<typeof vi.fn> }).invokeNer = vi.fn(async () => ({
+      entities: [{ text: 'metformin', label: 'MEDICATION', start: 11, end: 20, score: 0.94 }],
+      model: 'blaze999/Medical-NER',
+      charCount: 27,
+    }));
+    return fixture;
+  }
+
+  it('dispatches on the RESOLVED task, answering the §2.3 entity payload', async () => {
+    const fixture = nerControllerFixture();
+    const res = fakeRes();
+    await fixture.controller.invoke('medical-ner', { text: 'Prescribed metformin 500mg.' }, res as never, undefined);
+
+    expect(fixture.invocation.invokeText).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      agentSlug: 'medical-ner',
+      output: { entities: [{ text: 'metformin', label: 'MEDICATION', start: 11, end: 20, score: 0.94 }] },
+      model: 'blaze999/Medical-NER',
+    });
+  });
+
+  // A one-shot task has nothing to stream, so `?mode=stream` is REFUSED rather than silently
+  // degraded to a blocking answer — a caller that opened an SSE reader would otherwise hang.
+  it('refuses ?mode=stream with MODE_UNSUPPORTED', async () => {
+    const fixture = nerControllerFixture();
+    await expect(fixture.controller.invoke('medical-ner', { text: 'x' }, fakeRes() as never, 'stream')).rejects.toMatchObject({
+      response: { code: 'MODE_UNSUPPORTED' },
+    });
+    expect((fixture.invocation as unknown as { invokeNer: ReturnType<typeof vi.fn> }).invokeNer).not.toHaveBeenCalled();
+  });
+
+  // OD-E — every inference activity counts, and the allowance is checked BEFORE the model runs.
+  it('prechecks the NLP text-unit allowance and records the call', async () => {
+    const fixture = nerControllerFixture();
+    await fixture.controller.invoke('medical-ner', { text: 'Prescribed metformin 500mg.' }, fakeRes() as never, undefined);
+
+    expect(fixture.entitlementsService.assertMeterQuota).toHaveBeenCalledWith(TENANT, 'monthlyNlpTextUnits');
+    expect(fixture.usageLedger.recordUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ common: expect.objectContaining({ operation: 'ner.extract', model: 'blaze999/Medical-NER' }) }),
+    );
+  });
+
+  it('still validates the body against the agent inputSchema before calling NLP', async () => {
+    const fixture = nerControllerFixture();
+    fixture.invocation.inputProblems.mockReturnValue(['/text: required property is missing']);
+    await expect(fixture.controller.invoke('medical-ner', {}, fakeRes() as never, undefined)).rejects.toBeInstanceOf(BadRequestException);
+    expect((fixture.invocation as unknown as { invokeNer: ReturnType<typeof vi.fn> }).invokeNer).not.toHaveBeenCalled();
   });
 });
