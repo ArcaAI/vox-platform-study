@@ -12,7 +12,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { IconExternalLink } from '@tabler/icons-react';
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldContent, FieldDescription, FieldLabel, Switch } from '@arcaai/ui';
-import { agentVoxNodeSnippet } from '@/shared/docs/sdk-snippets';
+import { agentVoxNodeSnippet, type SdkSnippetAgentTask } from '@/shared/docs/sdk-snippets';
 import type { Agent, AgentTask } from '../api';
 
 interface EndpointDescriptor {
@@ -25,6 +25,9 @@ const ENDPOINTS: Record<AgentTask, EndpointDescriptor> = {
   TEXT_GENERATION: { method: 'POST', path: '/agents/{slug}/invocations', note: '?mode=blocking (default) or ?mode=stream for SSE' },
   SPEECH_TO_TEXT: { method: 'POST', path: '/agents/{slug}/transcriptions' },
   TEXT_TO_SPEECH: { method: 'POST', path: '/agents/{slug}/speech' },
+  // TASK-930 — the SAME route as text generation, and deliberately without the `?mode=stream`
+  // note: token classification is one-shot, and `mode=stream` on it is a 400, not a slower answer.
+  NAMED_ENTITY_RECOGNITION: { method: 'POST', path: '/agents/{slug}/invocations' },
 };
 
 
@@ -37,6 +40,20 @@ export interface AgentPublishDialogProps {
   agent: Agent;
   /** Set once the publish call has succeeded — switches the dialog to the integration view. */
   published: Agent | null;
+}
+
+/**
+ * TASK-930 — which SNIPPET shape a task takes.
+ *
+ * NER shares `hope.agents.invoke(slug, { text })` with text generation: same route, same call,
+ * only the `output` differs (`{ entities }` rather than `{ text }`), so the invoke-shaped
+ * snippet is correct for it rather than merely tolerable. Mapped HERE instead of widening
+ * `SdkSnippetAgentTask` because `shared/docs/` serves every feature and a NER-specific example
+ * — one that shows the entity payload — is a change to the shared snippet vocabulary, not to
+ * this dialog.
+ */
+function snippetTaskOf(task: AgentTask): SdkSnippetAgentTask {
+  return task === 'NAMED_ENTITY_RECOGNITION' ? 'TEXT_GENERATION' : task;
 }
 
 export function AgentPublishDialog({ open, onOpenChange, onConfirm, confirming, agent, published }: AgentPublishDialogProps) {
@@ -61,7 +78,7 @@ export function AgentPublishDialog({ open, onOpenChange, onConfirm, confirming, 
             </div>
             <div>
               <h4 className="text-sm font-medium">@arcaai/vox-node</h4>
-              <pre className="bg-muted overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">{agentVoxNodeSnippet(published.slug, published.task)}</pre>
+              <pre className="bg-muted overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">{agentVoxNodeSnippet(published.slug, snippetTaskOf(published.task))}</pre>
             </div>
             <Link href="/api-keys" className="inline-flex items-center gap-1 text-sm underline underline-offset-2">
               Mint an API key <IconExternalLink aria-hidden className="size-3" />
