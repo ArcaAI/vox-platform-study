@@ -49,7 +49,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
-import { RequiredScopes } from '../../decorators';
+import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { classifyTtsProvider } from '../speech/tts-provider-classification';
 
@@ -122,7 +122,13 @@ const AGENT_INVOCATION_TRIGGER = 'AGENT_INVOCATION' as const;
  * AgentController — the Agent BUSINESS plane (TASK-863 §3.5), mounted at `/agents`
  * (global prefix -> `/api/v1/agents`). API key or JWT; every route pairs an authorization
  * decorator (the deny-by-default boot audit) with `@RequiredScopes` (the API-key gate).
- * Service accounts are deliberately not admitted (`svcScopes: []`).
+ *
+ * TASK-930 §3 — service accounts ARE now admitted, through the fourth `svc:` family
+ * (`AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES`): `svc:agent:definition:read` reads the
+ * published catalogue and `svc:agent:invocation:write` runs it. The scopes are DERIVED from the
+ * API-key scopes gating the same routes, so a machine identity reaches exactly what a
+ * human-delegated key reaches and not one route more. A service account binds its
+ * `workingTenantId` at token EXCHANGE, so it never sends `X-Tenant-Id` here.
  *
  * Every route resolves the agent through the ONE resolver the harness also uses, then
  * executes through the EXISTING service paths: `apps/text` `/generate` (via
@@ -159,6 +165,7 @@ export class AgentController {
   @Get()
   @Authorize()
   @RequiredScopes('agent:definition:read')
+  @RequiredSvcScopes('svc:agent:definition:read')
   @ApiOperation({ summary: 'List the published agents visible to the tenant (own agents shadow the platform defaults)' })
   @ApiQuery({ name: 'task', required: false, enum: AgentTask })
   @ApiResponse({ status: 200, type: AgentSummaryListResponse })
@@ -169,6 +176,7 @@ export class AgentController {
   @Get(':slug')
   @Authorize()
   @RequiredScopes('agent:definition:read')
+  @RequiredSvcScopes('svc:agent:definition:read')
   @ApiOperation({ summary: 'Describe one published agent: its task, version, I/O schemas and protocols' })
   @ApiParam({ name: 'slug', type: String })
   @ApiResponse({ status: 200, type: AgentSummaryResponse })
@@ -181,6 +189,7 @@ export class AgentController {
   @HttpCode(HttpStatus.OK)
   @Authorize()
   @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
   @Throttle({ heavy: { limit: 20, ttl: 60000 } })
   @ApiOperation({
     summary: 'Invoke a TEXT_GENERATION agent (blocking JSON, or SSE with ?mode=stream)',
@@ -357,6 +366,7 @@ export class AgentController {
   @Post(':slug/speech')
   @Authorize()
   @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
   @Throttle({ heavy: { limit: 20, ttl: 60000 } })
   @ApiOperation({
     summary: 'Synthesize speech with a TEXT_TO_SPEECH agent (streamed audio, the existing speech proxy contract)',
@@ -483,6 +493,7 @@ export class AgentController {
   @HttpCode(HttpStatus.CREATED)
   @Authorize()
   @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
   @ApiOperation({
     summary: 'Start a batch transcription with a SPEECH_TO_TEXT agent (returns a TranscriptionJob)',
     description:
