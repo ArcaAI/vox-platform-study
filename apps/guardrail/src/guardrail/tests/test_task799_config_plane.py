@@ -560,3 +560,61 @@ def test_the_settings_classes_no_longer_carry_the_dead_fields() -> None:
         assert field not in RedisConfig.model_fields
     for field in ("max_wait_s", "max_retries", "retry_backoff_s", "batch_size"):
         assert field not in QueueConfig.model_fields
+
+
+# ---------------------------------------------------------------------------
+# D-8 (TASK-930) — the DELEGATION call site, not just the two boot ones.
+#
+# `/guard/pii` and `/guard/classify` are answered 401 by `apps/nlp` when
+# guardrail presents anything other than the shared `INTERNAL_ACCESS_TOKEN`,
+# because nlp's `accepted_service_tokens` admits that credential ALONE (the
+# legacy `NLP_SERVICE_TOKEN` was removed). `test_boot_call_sites_...` above pins
+# `EffectiveConfigClient` and `start_registration`, but NOT `_nlp_client` — the
+# only call site that actually reaches those two routes — and it pins only the
+# configuration where the legacy field is EMPTY, so a resolution bug that
+# returned the legacy token whenever one was set would not show up there.
+#
+# Both variables are set here, to DIFFERENT values, which is the real `.env.dev`
+# shape: a fallback that fires when it must not sends a token nlp rejects, and
+# the failure surfaces as a fail-closed `block` on every reason rather than as a
+# configuration error.
+# ---------------------------------------------------------------------------
+
+LEGACY_GUARDRAIL_TOKEN = "legacy-guardrail-service-token"
+
+
+def test_delegation_call_site_presents_the_shared_token_not_the_legacy_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from guardrail.core.config import Settings
+    from guardrail.core.dependencies import _nlp_client
+
+    monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", SHARED_TOKEN)
+    monkeypatch.setenv("GUARDRAIL_SERVICE_TOKEN", LEGACY_GUARDRAIL_TOKEN)
+
+    app_state = SimpleNamespace(settings=Settings(), http_client=object())
+    client = _nlp_client(
+        app_state,
+        "50000000-0000-0000-0000-000000000000",
+        SimpleNamespace(model="a-model", entailment=None, timeout_s=None),
+        peer_timeout_s=1.0,
+    )
+
+    assert client._service_token == SHARED_TOKEN
+    assert client._service_token != LEGACY_GUARDRAIL_TOKEN
+    # The header actually put on the wire — the thing nlp's middleware compares.
+    assert client._headers()["X-Service-Token"] == SHARED_TOKEN
+
+
+def test_delegation_falls_back_to_the_legacy_token_only_when_the_shared_one_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fallback is a migration affordance, so it must still work — but only
+    on ABSENCE. `CHANGE_ME` is absence too (`hope_env.placeholders`)."""
+    from guardrail.core.config import Settings
+
+    monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "CHANGE_ME")
+    monkeypatch.setenv("GUARDRAIL_SERVICE_TOKEN", LEGACY_GUARDRAIL_TOKEN)
+
+    settings = Settings()
+    assert settings.peer_service_token(settings.service_token) == LEGACY_GUARDRAIL_TOKEN
