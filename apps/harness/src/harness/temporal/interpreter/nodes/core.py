@@ -27,6 +27,7 @@ derived from ``row.tenantId``, so it would mis-bill silently rather than fail.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from collections.abc import Callable
@@ -1163,6 +1164,27 @@ async def _run_speech(
         return NodeActivityResult(
             status="DEGRADED", reason="core.agent: synthesis returned no audio"
         )
+    # The DELTA lane, best-effort by contract. Audio frames ride the same per-run Redis Stream,
+    # the same envelope and the same resume-token contract as text deltas, base64-encoded; they
+    # never touch Temporal — not a signal, not an activity result — because the history ceiling
+    # is 51,200 events / 50 MB per run and a minute of speech would consume a measurable slice
+    # of it. A Redis outage costs the live view and nothing else, so it is deliberately not
+    # allowed to fail a synthesis that already succeeded, and a run with no `run_id` (the field
+    # is additive-optional) simply does not stream. MEASURED by
+    # `test_task849_audio_two_lane_split.py`.
+    if payload.run_id:
+        from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
+
+        producer = run_event_producer()
+        for sequence, frame in enumerate(synthesis.chunks):
+            await producer.emit_token_delta(
+                tenant_id=payload.tenant_id,
+                run_id=payload.run_id,
+                node_id=payload.node_id,
+                sequence=sequence,
+                text=base64.b64encode(frame).decode("ascii"),
+            )
+
     settings = get_settings()
     store, location = await open_store(settings.claim_check)
     ref = await store_bytes(
