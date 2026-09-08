@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — TASK-931: `NAMED_ENTITY_RECOGNITION` is an agent task
+
+`AgentTask` gains the value, so `AGENT_ENDPOINTS.LIST('NAMED_ENTITY_RECOGNITION')` and every
+agent picker built on it type and filter. `useAgentInvocation().invoke()` is now generic over
+the agent's OUTPUT (defaulting to the `TEXT_GENERATION` `{ text }` shape), so a NER agent is the
+same call with a different answer:
+
+```ts
+const { output } = await invoke<NamedEntityRecognitionOutput>(slug, { text: note });
+// output.entities → [{ text, label, start, end, score? }, …]
+```
+
+`NamedEntityRecognitionInput` / `NamedEntityRecognitionOutput` / `RecognizedEntity` describe the
+task's DEFAULT schema; a tenant may author its own, which is why they are convenience types and
+not a constraint on `invoke`. It is a ONE-SHOT task — `?mode=stream` on a NER agent is a gateway
+400 (`MODE_UNSUPPORTED`), so reach for `invoke`, never `stream`.
+
+`AGENT_ENDPOINTS.LIST` now takes the shared `AgentTask` union by a TYPE-only import rather than
+its own inline copy of the three old values. The copy is exactly what went stale.
+
+### Added — TASK-931: `useWorkflowRun({ transport: 'socket' })`
+
+The run stream can be read over a WebSocket instead of SSE. The hook mints a run-scoped,
+single-use ticket (`POST /workflows/:slug/runs/:runId/stream-ticket`) and opens the `url` that
+response returns — never a JWT in a query string, the same rule as the SSE lane. `events`,
+`status`, `lastEventId`, terminal detection and `stopWatching()` are identical, so this is a
+one-word change at the call site.
+
+**SSE stays the default, because it is the only lane that RESUMES.** A socket's ticket is
+single-use, so a dropped socket ends the watch where SSE reconnects with `Last-Event-ID` and
+loses no frames. Pick `socket` when a proxy in front of you buffers `text/event-stream` — the
+failure mode is a run that looks stalled and then completes all at once — or when a socket is
+the per-tab connection budget you already hold. `SocketUnavailableError` names a missing
+`WebSocket` global rather than falling back silently, because a silent fallback would reproduce
+the problem you switched transports to solve.
+
+New exports on `/core`: `WorkflowRunSocketClient`, `SocketUnavailableError`,
+`resolveWorkflowSocketUrl`, `workflowRunStreamTicketPath`, `WorkflowRunStreamTicket`.
+
+### Fixed — TASK-931: `useAudioCapture` reads `sttAgentSlug`
+
+`V1SdkConfig` gained `sttAgentSlug` when the ASR Agent replaced the pipeline, and
+`mapV1ConfigToV2` has preferred it over `sttPipelineId` since — but the compat capture hook read
+`options.sttPipelineId` and nothing else. A compat app that moved its provider config to the
+agent slug AND drove capture from this hook (which the playground does, because whichever hook
+calls `audio.start()` first wins the shared-audio race) therefore started a session with **no
+selector at all** and silently ran the tenant default. It now forwards `sttAgentSlug` as
+`agentSlug`, with the adapter's precedence: the agent slug wins, and never both, because the
+session body carries at most one selector.
+
+The five first-party demo call sites (`apps/example`, `apps/compat-playground`,
+`apps/quick-compat-app`) move to `sttAgentSlug`, reading a NEW config field rather than
+repurposing `pipelineId` — the same value still feeds `useArcaSpeechToText` and
+`useArcaBatchTranscription`, which accept no agent slug yet. `sttPipelineId` itself is unchanged
+and still honoured (removed in R4).
+
+---
+
+## [3.0.1] — 2026-09-07
+
 ### BREAKING — TASK-890 (OD-F/OD-K): `@arcaai/vox` is business-plane only, no management surface
 
 Every admin-hook family has been removed, along with the `/admin/*` endpoint constants that backed
