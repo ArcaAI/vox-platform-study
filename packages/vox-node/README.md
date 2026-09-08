@@ -314,21 +314,31 @@ by what they are allowed to write:
 deliberately different powers, so they are different routes, abilities and
 scopes — granting the first never implies the second.
 
-### This plane is API-key only
+### Which credential reaches what
 
-Every workflow route declares `svcScopes: []` in `route-manifest.json` —
-deny-by-default for a service account, and no role grant changes that. The SDK
-refuses at the call site rather than letting you discover it as a 403:
+| Plane | API key | Service account |
+|---|---|---|
+| `hope.agents.*`, `hope.workflows.*` (incl. `.reviews`) | ✅ | ✅ since **3.1.0** |
+| `hope.consultations.workflows.*` — the CLINICAL plane | ✅ | ❌ refused at the call site |
+| `hope.admin.*` | ❌ never, under any scope | ✅ only |
 
-```ts
-hope.workflows.list();
-// CredentialClassError: … reachable with an API key only.
-```
+Until 3.1.0 the whole workflow plane declared `svcScopes: []` — deny-by-default
+for a service account — and the SDK refused at the call site rather than let you
+discover it as a 403 that no role grant could fix. The gateway now declares
+`svc:agent:definition:read`, `svc:agent:invocation:write`,
+`svc:workflow:definition:read`, `svc:workflow:run:read` and
+`svc:workflow:run:write`, so **one client can now both administer and invoke**.
 
-`hope.admin.*` is the exact mirror image (service account only), so an
-integration that needs both constructs **two clients** — one per credential
-class. A single client cannot span the planes; passing both credentials throws
-at construction.
+Two things did NOT change:
+
+- **The consultation-bound plane still refuses a service account.** Running a
+  workflow that writes into a clinical record is not a machine-identity power,
+  so it gained no `svc:*` scopes and `CredentialClassError` still fires there.
+- **A service-account client never sends `X-Tenant-Id`**, because
+  `workingTenantId` binds at token EXCHANGE. Setting both throws at construction
+  — as does passing an API key and a service account to one client.
+
+### Starting a run
 
 ### Starting a run
 
@@ -372,6 +382,30 @@ and a dropped connection reconnects with `Last-Event-ID`, so a disconnect costs
 latency, not events. Hand-rolling this means knowing that the snapshot frame
 deliberately carries no token.
 
+#### `transport: 'socket'` (3.1.0)
+
+```ts
+const status = await hope.workflows.waitForRun(slug, runId, { transport: 'socket' });
+```
+
+Same events, same terminal detection, same return value — a one-word change at
+the call site. It mints a run-scoped, single-use ~30-second ticket
+(`POST /workflows/{slug}/runs/{runId}/stream-ticket`) and opens the `url` that
+response returns; a JWT never travels in a query string.
+
+**SSE stays the default, because it is the only lane that RESUMES.** The
+socket's ticket is single-use, so a dropped socket ends the read where SSE
+reconnects and loses nothing. Reach for `socket` when something between you and
+the gateway BUFFERS `text/event-stream` — the symptom is a run that looks
+stalled and then completes all at once — or when a socket is the connection
+budget you already hold.
+
+It needs `globalThis.WebSocket`, i.e. **Node 22 or newer** (also Bun, Deno, edge
+runtimes): this package has zero runtime dependencies and will not import a
+polyfill on your behalf. Without it you get `SocketUnavailableError` naming that
+floor — never a silent fallback to SSE, which would reproduce the buffering
+symptom you switched transports to escape.
+
 Use the exported `isTerminalRunStatus(status)` rather than comparing strings —
 the terminal set includes `TIMED_OUT` and spells cancellation `CANCELED`
 (one L), which is easy to get wrong.
@@ -402,11 +436,12 @@ Hold the stream or poll `getRun`; do not fire and forget.
 ## Invoking agents — `hope.agents.*`
 
 A published **Agent** is a single-task product — an LLM agent (`TEXT_GENERATION`),
-a TTS agent (`TEXT_TO_SPEECH`), an ASR agent (`SPEECH_TO_TEXT`) — that a tenant
-admin configures and publishes; a workflow composes agents, an agent is what a
-workflow node calls. `hope.agents` invokes them directly, with the same client
-and the same credential rule as `hope.workflows` (API key only; `svcScopes: []`).
-Routes: TASK-863 §3.5.
+a TTS agent (`TEXT_TO_SPEECH`), an ASR agent (`SPEECH_TO_TEXT`), a NER agent
+(`NAMED_ENTITY_RECOGNITION`, new in 3.1.0) — that a tenant admin configures and
+publishes; a workflow composes agents, an agent is what a workflow node calls.
+`hope.agents` invokes them directly, with the same client and the same credential
+rule as `hope.workflows`: an API key **or** a service account (see
+[Which credential reaches what](#which-credential-reaches-what)).
 
 ```ts
 const hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL!, apiKey: process.env.HOPE_API_KEY! });
@@ -426,6 +461,28 @@ await pipeline(Readable.fromWeb(speech.stream!), createWriteStream('advice.mp3')
 // Batch ASR agent — multipart file or an already-uploaded mediaId → a TranscriptionJob.
 const job = await hope.agents.transcribe('clinic-asr', { file: recording, filename: 'visit.wav', language: 'en' });
 ```
+
+### `NAMED_ENTITY_RECOGNITION` (3.1.0)
+
+```ts
+const [ner] = await hope.agents.list({ task: 'NAMED_ENTITY_RECOGNITION' });
+const { output } = await hope.agents.invoke<NamedEntityRecognitionOutput>(ner.slug, {
+  text: 'Started metformin 500mg twice daily.',
+});
+// output.entities → [{ text: 'metformin', label: 'DRUG', start: 8, end: 17, score: 0.98 }, …]
+```
+
+Same method, different output — there is no second call to learn.
+`NamedEntityRecognitionInput` / `NamedEntityRecognitionOutput` / `RecognizedEntity`
+describe the task's DEFAULT schema; a tenant may author its own, which is why they
+are convenience types and not a constraint on `invoke`. Read the agent's own
+`inputSchema` / `outputSchema` from `get(slug)` when you need to know rather than
+assume, or generate them with
+[`@arcaai/vox-codegen`](../vox-codegen/README.md)'s `--agents` mode.
+
+It is a **one-shot** task: `?mode=stream` on a NER agent is a gateway 400
+(`MODE_UNSUPPORTED`), so `invokeAndStream` on one fails rather than answering
+slowly. There is nothing to stream — the answer is a single spans array.
 
 `invoke` sends the `Idempotency-Key` header exactly like a workflow run: a retry
 with the same key JOINS the in-flight invocation. The blocking 504 ceiling is never
