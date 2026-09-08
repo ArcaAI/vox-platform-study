@@ -28,6 +28,7 @@ derived from ``row.tenantId``, so it would mis-bill silently rather than fail.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -994,6 +995,15 @@ async def _run_text_generation(
             # spelling `json_object` was a 422 at the wire model before any provider was
             # reached. The gateway's contract is the one to speak here.
             wire_format = {"type": "json"}
+        if wire_format is None and response_format is None:
+            # TASK-930 §5 — the agent DECLARED an output contract and nobody set an explicit
+            # hyper-parameter, so the declaration becomes the constraint. Until now
+            # `outputSchema` was documentation on this lane: an agent could publish
+            # `{ case_note, redactions }` and be handed prose, and its `core.output` node then
+            # failed the very schema check the agent could have satisfied.
+            wire_format = output_schema_response_format(
+                resolved.slug, resolved.output_schema, parameters
+            )
 
         try:
             result = await _text_client(settings).generate(
@@ -1209,6 +1219,169 @@ async def _run_speech(
     )
 
 
+# ---------------------------------------------------------------------------------------------
+# TASK-930 §5 — `Agent.outputSchema` is ENFORCED, not decorative
+# ---------------------------------------------------------------------------------------------
+
+#: `AGENT_IO_DEFAULTS.TEXT_GENERATION.outputSchema` from `packages/workflow-contract`.
+#:
+#: Mirrored rather than imported: `packages/py-workflow-contract` carries the NODE vocabulary,
+#: not the agent I/O defaults, and this lane's only consumer of the rule is
+#: `_run_text_generation`, so the TEXT_GENERATION default is the only one that can ever arrive.
+#: Its shape is pinned by `test_core_agent_ner_task930.py` on this side and by
+#: `agent-schemas.task930.test.ts` on the other, so a drift is a failing test, not a silent
+#: constraint applied to every agent on the platform.
+_TEXT_GENERATION_DEFAULT_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "required": ["text"],
+    "properties": {"text": {"type": "string"}},
+}
+
+
+def output_schema_response_format(
+    slug: str, output_schema: Any, parameters: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """The ``json_schema`` response format a declared ``outputSchema`` implies.
+
+    The Python half of the ONE rule the gateway invocation service, this activity and the
+    realtime `core.agent` handler share (``outputSchemaResponseFormat`` in
+    ``packages/workflow-contract/src/agent-schemas.ts``), so an agent cannot behave differently
+    depending on which lane happens to run it.
+
+    Three deliberate silences, each returning ``None``:
+
+    * the declared schema IS the task default — nothing was declared, so nothing is enforced,
+      and enforcing it anyway would constrain every agent that simply never wrote one;
+    * it is not an object schema with at least one property — an engine cannot constrain to it,
+      and half a constraint is worse than none because it LOOKS like one;
+    * ``parameters.responseFormat`` is set — an explicit hyper-parameter is the author's
+      decision and always wins, including when it says plain text.
+    """
+    if parameters is not None and parameters.get("responseFormat") is not None:
+        return None
+    if not isinstance(output_schema, dict) or output_schema.get("type") != "object":
+        return None
+    properties = output_schema.get("properties")
+    if not isinstance(properties, dict) or not properties:
+        return None
+    if output_schema == _TEXT_GENERATION_DEFAULT_OUTPUT_SCHEMA:
+        return None
+    name = re.sub(r"[^a-z0-9_]", "_", slug, flags=re.IGNORECASE)
+    return {
+        "type": "json_schema",
+        "json_schema": {"name": f"{name}_output", "schema": output_schema, "strict": True},
+    }
+
+
+# ---------------------------------------------------------------------------------------------
+# core.agent — NAMED_ENTITY_RECOGNITION (TASK-930 §2.4)
+# ---------------------------------------------------------------------------------------------
+
+
+def _ner_entities(response: Any) -> list[dict[str, Any]]:
+    """`apps/nlp`'s wire entities in the AGENT's declared output vocabulary (§2.3).
+
+    The wire shape is `apps/nlp`'s ``Entity``: ``entity_type`` / ``confidence`` /
+    ``position.{start,end}``, plus enrichment fields (``umls_cui``, ``icd_code``, ``assertion``)
+    that belong to the clinical NER plane and are deliberately NOT re-exported — the agent's
+    declared schema closes ``additionalProperties``, so anything it does not name would violate
+    the contract the agent published.
+
+    A span with no resolvable OFFSETS is DROPPED rather than emitted with substituted ones: a
+    span the caller cannot locate in its own text is not a finding, and a fabricated offset
+    would highlight the wrong words in a clinical note.
+    """
+    raw = response.get("entities") if isinstance(response, dict) else None
+    if not isinstance(raw, list):
+        return []
+    entities: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        position = item.get("position")
+        position = position if isinstance(position, dict) else {}
+        start, end = position.get("start"), position.get("end")
+        if not isinstance(start, int) or not isinstance(end, int):
+            continue
+        entity: dict[str, Any] = {
+            "text": item.get("text") if isinstance(item.get("text"), str) else "",
+            "label": (
+                item.get("entity_type") if isinstance(item.get("entity_type"), str) else "UNKNOWN"
+            ),
+            "start": start,
+            "end": end,
+        }
+        confidence = item.get("confidence")
+        if isinstance(confidence, (int, float)):
+            entity["score"] = confidence
+        entities.append(entity)
+    return entities
+
+
+async def _run_ner(
+    payload: NodeActivityInput, resolved: ResolvedAgent, started: Any
+) -> NodeActivityResult:
+    """Run a NAMED_ENTITY_RECOGNITION agent through the SAME nlp call `core.classify` uses.
+
+    One route, one client, one set of registry facts: ``model_name``/``model_path`` are the
+    ``sourceUri``/``localPath`` the GATEWAY resolved, never anything this activity picks.
+    ``labels`` is the agent's INSTRUCTION (what to look for — required by an open-taxonomy
+    extractor, ignored by a closed-taxonomy checkpoint) and ``threshold``/``aggregation`` are
+    its PARAMETERS (how hard to look); each is omitted when the agent declared none, so the
+    checkpoint's own declaration keeps applying rather than being overwritten here.
+
+    Degrades rather than raises, like every other `_run_*`: the reason stays on the node so a
+    run's failure names the agent instead of surfacing as an opaque activity error.
+    """
+    text = " ".join(_texts(_bound(payload).get("in")))
+    if not text:
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
+        )
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason="core.agent: no text arrived on the `in` port — nothing to extract from",
+        )
+
+    instruction = resolved.instruction if isinstance(resolved.instruction, dict) else {}
+    parameters = resolved.parameters if isinstance(resolved.parameters, dict) else {}
+    labels = [
+        label
+        for label in (instruction.get("labels") or [])
+        if isinstance(label, str) and label.strip()
+    ]
+    raw_threshold = parameters.get("threshold")
+    aggregation = parameters.get("aggregation")
+
+    try:
+        response = await _nlp_client(get_settings()).classify_tokens_raw(
+            text,
+            tenant_id=payload.tenant_id,
+            model_name=resolved.model.source_uri,
+            model_path=resolved.model.local_path,
+            labels=labels or None,
+            threshold=(float(raw_threshold) if isinstance(raw_threshold, (int, float)) else None),
+            aggregation_strategy=aggregation if isinstance(aggregation, str) else None,
+        )
+    except NlpServiceError as exc:
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code="ner_failed"
+        )
+        return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {exc}")
+
+    await record_and_flush(payload, status=STATUS_OK, started=started)
+    return NodeActivityResult(
+        status="SUCCEEDED",
+        output={
+            "data": {"entities": _ner_entities(response)},
+            # The classified TEXT rides through on `out`, exactly as `core.classify` passes its
+            # own text along, so a node bound downstream still sees the document.
+            "out": text,
+            "agent": {"slug": resolved.slug, "versionNumber": resolved.version_number},
+        },
+    )
+
+
 @activity.defn(name="interpreter.core_agent")
 async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
     """Resolve the referenced Agent through the gateway and dispatch by its TASK."""
@@ -1264,6 +1437,12 @@ async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResu
         )
     if resolved.task == "SPEECH_TO_TEXT":
         return await _run_transcription(payload, resolved, started)
+    # TASK-930 §2.4 — an EXPLICIT arm, before the TTS fallthrough. Without it a NER agent
+    # reached `_run_speech` and degraded with "the resolved TTS agent names no `voice`": a
+    # complaint about a control its author never declared, for a task nobody had told the
+    # switch about. Every task the mirror admits is now named here.
+    if resolved.task == "NAMED_ENTITY_RECOGNITION":
+        return await _run_ner(payload, resolved, started)
     return await _run_speech(payload, resolved, started)
 
 
