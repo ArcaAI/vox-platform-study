@@ -23,6 +23,71 @@ import { assertTightenOnlyFloor } from './tenant-clamp';
 export const REGISTRY_SETTING_NAMESPACE = 'registry';
 
 /**
+ * The row this lane reads and writes for one `(tenantId, key)` pair.
+ *
+ * `namespace` is carried — rather than assumed to be
+ * {@link REGISTRY_SETTING_NAMESPACE} — because a row this lane ADOPTS keeps the
+ * namespace whichever seed created it under. See {@link pickBackingRow}.
+ */
+interface BackingRow {
+  id: string;
+  version: number;
+  /** The row's OWN namespace: `registry` for one this lane created, a seed's for an adopted row. */
+  namespace: string | null;
+}
+
+/** The shape a namespace-agnostic `(tenantId, key)` read returns, as far as the pick needs it. */
+export interface AdoptableRow {
+  namespace?: string | null;
+  createdAt?: Date | string | null;
+}
+
+/**
+ * ONE row backs one `(tenantId, key)` — pick it out of everything a
+ * namespace-agnostic read returned.
+ *
+ * ── WHY THE READ IS NAMESPACE-AGNOSTIC AT ALL ─────────────────────────────
+ * This lane used to look its backing row up by `(key, namespace: 'registry',
+ * tenantId)`, and every platform row a SEED wrote under some other namespace
+ * (`rate-limit`, `pipeline`, `general`, `stt.config`, …) was therefore invisible
+ * to it. The consequences were not subtle, and all three were observed on the
+ * dev stack for `rate-limit.enabled` (seeded under `rate-limit`):
+ *
+ *   1. `GET registry/rate-limit.enabled?scope=system` answered `version: 0`
+ *      while a SYSTEM row plainly existed, so no ETag was rendered;
+ *   2. the PUT took the CREATE branch and wrote a SECOND SYSTEM row for the
+ *      same key under `registry` — the database could not stop it, because the
+ *      only unique index on `GlobalSetting` is `(tenantId, name, key)` and the
+ *      lane names its rows after `descriptor.label`, not after the seed's name;
+ *   3. `AppSettingsService` keys the PLATFORM snapshot by `key` ALONE (one key,
+ *      one platform row — deliberately), so it then refused to build the cache
+ *      at all: *"duplicate platform key(s) detected — rate-limit.enabled
+ *      (2 rows). Refuse to start."* Every 45s refresh failed from then on.
+ *
+ * So the invariant to honour is uniqueness per `(tenantId, key)`, NOT per
+ * `(tenantId, namespace, key)`. A pre-existing row is ADOPTED — kept at its own
+ * id and its own namespace, and updated in place; only when no row exists at all
+ * does the lane create one, under {@link REGISTRY_SETTING_NAMESPACE}.
+ *
+ * ── THE PREFERENCE, WHEN A DATABASE ALREADY HAS MORE THAN ONE ─────────────
+ * `registry` first (this lane's own row is the one the tenant cache reads),
+ * otherwise the OLDEST — the row the platform has been serving, so adopting it
+ * changes no effective value on the way in.
+ */
+export function pickBackingRow<T extends AdoptableRow>(rows: readonly T[]): T | undefined {
+  if (rows.length <= 1) return rows[0];
+  const own = rows.find((row) => row.namespace === REGISTRY_SETTING_NAMESPACE);
+  if (own) return own;
+  return [...rows].sort((a, b) => createdAtMs(a) - createdAtMs(b))[0];
+}
+
+/** `createdAt` as a comparable number; a row that carries none sorts LAST, never ahead of a real one. */
+function createdAtMs(row: AdoptableRow): number {
+  const ms = row.createdAt ? new Date(row.createdAt).getTime() : Number.NaN;
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+}
+
+/**
  * The Redis pub/sub channel the PYTHON services watch for config invalidation
  * (RC-6).
  *
@@ -255,7 +320,7 @@ export class SettingsRegistryWriteService extends BaseService {
     const existing = await this.findBackingRow(key, targetTenantId);
     const persisted = await this.actingOnTenant(targetTenantId, () =>
       existing
-        ? this.updateExisting(existing, serialized, options.expectedVersion, key)
+        ? this.updateExisting(existing, serialized, valueType, options.expectedVersion, key)
         : this.createOrRecoverRace(key, descriptor, serialized, valueType, targetTenantId),
     );
 
@@ -265,7 +330,10 @@ export class SettingsRegistryWriteService extends BaseService {
         key,
         scope,
         tier: descriptor.tier,
-        namespace: REGISTRY_SETTING_NAMESPACE,
+        // The row's OWN namespace, not this lane's reserved one: an ADOPTED
+        // seeded row keeps its namespace, and an audit entry that claimed
+        // otherwise would point an operator at a row that does not exist.
+        namespace: persisted.namespace ?? REGISTRY_SETTING_NAMESPACE,
         tenantId: targetTenantId,
         newVersion: persisted.version,
       },
@@ -380,7 +448,8 @@ export class SettingsRegistryWriteService extends BaseService {
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: existing.id,
-      data: { key, scope, tier: descriptor.tier, namespace: REGISTRY_SETTING_NAMESPACE, tenantId: targetTenantId, reset: true },
+      // The ADOPTED row's own namespace — see the write's broadcast above.
+      data: { key, scope, tier: descriptor.tier, namespace: existing.namespace ?? REGISTRY_SETTING_NAMESPACE, tenantId: targetTenantId, reset: true },
     });
 
     await this.appSettings.refreshCache();
@@ -547,19 +616,39 @@ export class SettingsRegistryWriteService extends BaseService {
 
   /**
    * The backing KV row for `key` under `tenantId`, read FRESH (never the
-   * AppSettings snapshot).
+   * AppSettings snapshot) and across EVERY namespace.
+   *
+   * Two reads rather than one, implementing {@link pickBackingRow}'s preference
+   * at the database instead of in memory: this lane's own `registry` row first,
+   * then — only when it has none — the OLDEST row for the same `(tenantId,
+   * key)` under any namespace, which is the seeded row this lane ADOPTS. The
+   * second read is issued only on the miss, so a key this lane already owns
+   * still costs exactly one indexed lookup per write.
+   *
+   * The namespace-agnostic half is the whole fix: `rate-limit.enabled` is
+   * seeded under `rate-limit`, was invisible to the old `namespace: 'registry'`
+   * filter, and every governed write therefore created a SECOND platform row
+   * that took `AppSettingsService`'s cache down. See {@link pickBackingRow}.
    */
-  private async findBackingRow(key: string, tenantId: string): Promise<{ id: string; version: number } | null> {
-    // `Repository.findFirst` THROWS `DataNotFoundException` on no match (it
-    // never returns null) — on a fresh DB with no registry rows that exception
-    // used to escape as a blanket 404 on every `GET registry/:key`.
-    // "No backing row yet" is a normal state here (code-default /
-    // first write), so it maps to null, not an error.
+  private async findBackingRow(key: string, tenantId: string): Promise<BackingRow | null> {
+    const own = await this.findRowOrNull({ key, namespace: REGISTRY_SETTING_NAMESPACE, tenantId });
+    if (own) return own;
+    return this.findRowOrNull({ key, tenantId }, [{ createdAt: 'asc' }]);
+  }
+
+  /**
+   * One row read, with "no row" expressed as `null`.
+   *
+   * `Repository.findFirst` THROWS `DataNotFoundException` on no match (it never
+   * returns null) — on a fresh DB with no registry rows that exception used to
+   * escape as a blanket 404 on every `GET registry/:key`. "No backing row yet"
+   * is a normal state here (code default / first write), so it maps to null,
+   * not an error.
+   */
+  private async findRowOrNull(where: Record<string, unknown>, sort?: Array<{ [field: string]: 'asc' | 'desc' }>): Promise<BackingRow | null> {
     try {
-      const row = await this.globalSettingRepository.findFirst({
-        where: { key, namespace: REGISTRY_SETTING_NAMESPACE, tenantId },
-      } as never);
-      return row ? { id: row.id, version: row.version } : null;
+      const row = await this.globalSettingRepository.findFirst({ where, ...(sort ? { sort } : {}) } as never);
+      return row ? { id: row.id, version: row.version, namespace: row.namespace ?? null } : null;
     } catch (err) {
       if (err instanceof DataNotFoundException) return null;
       throw err;
@@ -572,11 +661,12 @@ export class SettingsRegistryWriteService extends BaseService {
    * overwrite RFC 7232 defines 428 for.
    */
   private async updateExisting(
-    existing: { id: string; version: number },
+    existing: BackingRow,
     serialized: string,
+    valueType: ValueType,
     expectedVersion: number | undefined,
     key: string,
-  ): Promise<{ id: string; version: number }> {
+  ): Promise<BackingRow> {
     if (expectedVersion === undefined) {
       // RFC 6585 §3 — mirrors the shape `extractExpectedVersion` throws at the
       // HTTP layer, so a caller sees one consistent 428 contract whether the
@@ -605,14 +695,46 @@ export class SettingsRegistryWriteService extends BaseService {
         currentVersion: existing.version,
       });
     }
-    const updated = await this.globalSettings.update(existing.id, { value: serialized, expectedVersion });
-    return { id: updated.id, version: updated.version };
+    return this.updateInPlace(existing, serialized, valueType, expectedVersion);
   }
 
   /**
-   * First write. Two writers can both observe "no row", so a unique-constraint
-   * failure is a LOST RACE, not an error: re-read and update instead of handing
-   * the loser a 500.
+   * Write `serialized` onto a row this lane already has (its own or an adopted
+   * one), keeping that row's id AND its namespace.
+   *
+   * `dataType` travels with the value because an ADOPTED row's type column was
+   * declared by whichever seed created it, while `serialized` was projected by
+   * THIS lane from `descriptor.dataType`. If those two ever disagreed the
+   * AppSettings cache would parse the new value under the old type — a boolean
+   * stored as the string `"false"`, which is truthy on the way back out. For a
+   * row this lane created they are equal already and the assignment is a no-op.
+   */
+  private async updateInPlace(row: BackingRow, serialized: string, valueType: ValueType, expectedVersion: number): Promise<BackingRow> {
+    const updated = await this.globalSettings.update(row.id, { value: serialized, dataType: valueType, expectedVersion });
+    return { id: updated.id, version: updated.version, namespace: row.namespace };
+  }
+
+  /**
+   * First write — the ONLY path that may add a row, and the one that must never
+   * add a SECOND one for a key that already has one.
+   *
+   * Two guards, because the database supplies neither:
+   *
+   *   1. a LAST-MOMENT re-read across every namespace. `GlobalSetting`'s only
+   *      unique index is `(tenantId, name, key)`, so a create under `registry`
+   *      named after `descriptor.label` collides with NOTHING when the existing
+   *      row is a seed's (`rate-limit` / `Rate Limit Enabled`) — the duplicate
+   *      that took `AppSettingsService` down was inserted without an error. The
+   *      re-read narrows that window rather than closing it; only a
+   *      `(tenantId, key)` unique index could close it, and adding one is a
+   *      migration this lane does not own.
+   *   2. the pre-existing recovery: two writers can both observe "no row", so a
+   *      unique-constraint failure is a LOST RACE, not an error — re-read and
+   *      update instead of handing the loser a 500.
+   *
+   * Both land on {@link updateInPlace} at the winner's OWN version: whoever got
+   * there first defines the version this write compares against, exactly as the
+   * lost-race recovery has always done.
    */
   private async createOrRecoverRace(
     key: string,
@@ -620,7 +742,10 @@ export class SettingsRegistryWriteService extends BaseService {
     serialized: string,
     valueType: ValueType,
     tenantId: string,
-  ): Promise<{ id: string; version: number }> {
+  ): Promise<BackingRow> {
+    const raced = await this.findBackingRow(key, tenantId);
+    if (raced) return this.updateInPlace(raced, serialized, valueType, raced.version);
+
     try {
       const created = await this.globalSettings.create({
         name: descriptor.label ?? key,
@@ -630,12 +755,11 @@ export class SettingsRegistryWriteService extends BaseService {
         namespace: REGISTRY_SETTING_NAMESPACE,
         tenantId,
       });
-      return { id: created.id, version: created.version };
+      return { id: created.id, version: created.version, namespace: REGISTRY_SETTING_NAMESPACE };
     } catch (error) {
       const winner = await this.findBackingRow(key, tenantId);
       if (!winner) throw error;
-      const updated = await this.globalSettings.update(winner.id, { value: serialized, expectedVersion: winner.version });
-      return { id: updated.id, version: updated.version };
+      return this.updateInPlace(winner, serialized, valueType, winner.version);
     }
   }
 

@@ -106,12 +106,23 @@ describe('SettingsRegistryWriteService — OCC', () => {
   it('recovers a lost create race by re-reading and updating instead of failing', async () => {
     // Both writers saw "no row"; the other one won. A unique-constraint failure
     // here must not surface as a 500 to the loser.
-    globalSettingRepository.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(existingRow(1));
-    globalSettings.create.mockRejectedValue(Object.assign(new Error('unique'), { code: 'P2002' }));
+    //
+    // Driven by the STATE of the row rather than by a fixed call sequence:
+    // TASK-932 made the lookup namespace-agnostic, so "is there a row?" is now
+    // up to two reads (this lane's `registry` row, then the oldest row under any
+    // namespace) and a `mockResolvedValueOnce` chain would be pinning the number
+    // of queries rather than the recovery this test is about.
+    let winnerExists = false;
+    globalSettingRepository.findFirst.mockImplementation(async () => (winnerExists ? existingRow(1) : null));
+    globalSettings.create.mockImplementation(async () => {
+      winnerExists = true;
+      throw Object.assign(new Error('unique'), { code: 'P2002' });
+    });
     globalSettings.update.mockResolvedValue({ id: 'row-1', version: 2 });
 
     const result = await buildService().write(KEY, 500);
 
+    expect(globalSettings.create).toHaveBeenCalledTimes(1);
     expect(globalSettings.update).toHaveBeenCalledWith('row-1', expect.objectContaining({ expectedVersion: 1 }));
     expect(result.version).toBe(2);
   });
