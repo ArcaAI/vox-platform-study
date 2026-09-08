@@ -246,3 +246,64 @@ test.describe('TASK-932 — reset restores inheritance', () => {
     expect(await response.text()).toMatch(/nothing above it to inherit/i);
   });
 });
+
+/**
+ * TASK-932 — the write lane ADOPTS a seeded row instead of duplicating its key.
+ *
+ * Reproduced live on the dev stack (2026-09-09, super admin, no working
+ * tenant): `rate-limit.enabled` is seeded as a SYSTEM row under the
+ * `rate-limit` namespace (`seed/12-rate-limit-settings.ts`), the write lane
+ * looked its backing row up under `registry` only, and so
+ *
+ *   - `GET …?scope=system` answered `version: 0` with the row plainly there
+ *     (no ETag to echo), and
+ *   - the PUT CREATED a second SYSTEM row for the same key, after which
+ *     `AppSettingsService` refused to build its cache at all — *"duplicate
+ *     platform key(s) detected — rate-limit.enabled (2 rows). Refuse to
+ *     start."* — and every 45s refresh failed until the row was deleted by hand.
+ *
+ * `AppSettingsService` keys the platform snapshot by `key` alone, so the
+ * invariant is ONE row per `(tenantId, key)` — which is what the last assertion
+ * here counts. The spec restores `true` so the stack is left as it was found,
+ * with rate limiting ON.
+ */
+const SEEDED_ELSEWHERE_KEY = 'rate-limit.enabled';
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+test.describe('TASK-932 — a platform row seeded under another namespace is adopted, not duplicated', () => {
+  test('the seeded version is reported, the write lands on THAT row, and one SYSTEM row remains', async ({ request }) => {
+    const headers = auth(await superAdminToken(request));
+    const path = `${SETTINGS}/registry/${SEEDED_ELSEWHERE_KEY}`;
+
+    // No `X-Tenant-Id` anywhere in this test: a platform admin edits the
+    // platform row from an unscoped session.
+    const before = await request.get(`${path}?scope=system`, { headers });
+    expect(before.status(), await before.text()).toBe(200);
+    const seeded = (await before.json()) as { value: unknown; version: number };
+    expect(seeded.version, 'the seeded SYSTEM row must be visible to the lane, whatever namespace it lives in').toBeGreaterThanOrEqual(1);
+    const etag = before.headers()['etag'];
+    expect(etag, 'a stored row must render an ETag for the client to echo').toBeTruthy();
+
+    const write = await request.put(path, { headers: { ...headers, 'If-Match': etag! }, data: { value: false, scope: 'system' } });
+    expect(write.status(), await write.text()).toBe(200);
+    const written = (await write.json()) as { value: unknown; version: number };
+    expect(written.value).toBe(false);
+    expect(written.version).toBe(seeded.version + 1);
+
+    // THE ASSERTION THE DEFECT WOULD FAIL: one row, not two.
+    const rows = await request.get(`${SETTINGS}/tenant/${SYSTEM_TENANT_ID}?search=${SEEDED_ELSEWHERE_KEY}&limit=100`, { headers });
+    expect(rows.status(), await rows.text()).toBe(200);
+    const listed = (await rows.json()) as { items: Array<{ key: string; namespace?: string; tenantId?: string | null }> };
+    const forKey = listed.items.filter((item) => item.key === SEEDED_ELSEWHERE_KEY);
+    expect(forKey, `exactly one SYSTEM row may exist for '${SEEDED_ELSEWHERE_KEY}'`).toHaveLength(1);
+    expect(forKey[0]!.namespace, 'the adopted row keeps its own namespace — nothing is migrated').toBe('rate-limit');
+
+    // Leave the stack as we found it: rate limiting ON.
+    const restore = await request.put(path, {
+      headers: { ...headers, 'If-Match': `"${written.version}"` },
+      data: { value: true, scope: 'system' },
+    });
+    expect(restore.status(), await restore.text()).toBe(200);
+    expect((await restore.json()).value).toBe(true);
+  });
+});

@@ -40,7 +40,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { FEATURE_AVAILABILITY_CATEGORY } from './descriptors/feature-availability.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import type { SettingDescriptor } from './registry.types';
-import { REGISTRY_SETTING_NAMESPACE, SettingsRegistryWriteService } from './settings-registry-write.service';
+import { type AdoptableRow, SettingsRegistryWriteService, pickBackingRow } from './settings-registry-write.service';
 import { TenantSettingsService } from './tenant-settings.service';
 
 /** The reserved platform-configuration tier. Never a customer tenant. */
@@ -266,15 +266,28 @@ export class FeatureAvailabilityService {
         .map((t) => ({ id: t.id, name: t.name ?? t.key ?? t.id, slug: t.key ?? t.id }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
+      // TASK-932 — NAMESPACE-AGNOSTIC, then de-duplicated by `pickBackingRow`:
+      // the same rule the write lane's `findBackingRow` applies. These cells are
+      // handed straight back to `writeService.write` as the `expectedVersion`,
+      // so a matrix that read a DIFFERENT row than the write lane adopts reports
+      // version 0 and then 428s on save. Filtering to the `registry` namespace
+      // here did exactly that for any key whose row a seed created elsewhere.
       const settingRows = keys.length
-        ? ((await this.globalSettingRepository.findAll({
-            where: { key: { in: keys }, namespace: REGISTRY_SETTING_NAMESPACE },
-          } as never)) as unknown as Array<{ key: string; tenantId: string; parsedValue?: unknown; value?: unknown; version: number }>)
+        ? ((await this.globalSettingRepository.findAll({ where: { key: { in: keys } } } as never)) as unknown as Array<MatrixRow>)
         : [];
 
-      const rows = new Map<string, { value: unknown; version: number }>();
+      const candidates = new Map<string, MatrixRow[]>();
       for (const row of settingRows) {
-        rows.set(rowKey(row.key, row.tenantId), { value: row.parsedValue ?? row.value, version: row.version });
+        const id = rowKey(row.key, row.tenantId);
+        const bucket = candidates.get(id);
+        if (bucket) bucket.push(row);
+        else candidates.set(id, [row]);
+      }
+
+      const rows = new Map<string, { value: unknown; version: number }>();
+      for (const [id, bucket] of candidates) {
+        const row = pickBackingRow(bucket)!;
+        rows.set(id, { value: row.parsedValue ?? row.value, version: row.version });
       }
       return { tenants, rows };
     });
@@ -319,6 +332,9 @@ export class FeatureAvailabilityService {
 }
 
 const rowKey = (key: string, tenantId: string): string => `${tenantId} ${key}`;
+
+/** One `GlobalSetting` row as the matrix reads it — `AdoptableRow` supplies the fields `pickBackingRow` needs. */
+type MatrixRow = AdoptableRow & { key: string; tenantId: string; parsedValue?: unknown; value?: unknown; version: number };
 
 function toBoolean(value: unknown): boolean {
   return value === true || value === 'true';
